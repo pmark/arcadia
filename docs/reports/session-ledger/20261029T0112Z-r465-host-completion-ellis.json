@@ -1,0 +1,29 @@
+{
+  "session_id": "r465-host-completion-ellis",
+  "role": "driver",
+  "model": "gpt-5.6-terra",
+  "effort": "medium",
+  "configured_effort": "medium",
+  "effective_effort": "medium",
+  "effort_source": "runtime",
+  "action_id": "repair-host-owned-source-completion-capabilities",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "subagent_tokens_total": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [
+    { "class": "host-only-fixture", "caught_by": "CODEX_SANDBOX guard" }
+  ],
+  "operator_touches": 0,
+  "host_touches": 0,
+  "frictions": [
+    { "id": "host-only-session-reconciliation", "cost_min": null, "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md" }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Bounded implementation pass complete; protected-host reconciliation and build remain for Rowan.",
+  "notes": "Host regression exposed a same-process readonly SQLite fixture leak; child-CLI correction awaits fresh host proof. No live action."
+}

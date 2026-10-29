@@ -574,8 +574,19 @@ const isSettlementRecordPath = isGovernedRecordPath;
  * candidate's history, and settlement refuses a dirty candidate. Returns the
  * settlement id, or null to leave the exit classified as it was.
  */
-function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe, workspace: string | undefined, validationOptions?: CompletionValidationOptions): DraftedCompletionSettlement | null {
+function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe, workspace: string | undefined, validationOptions?: CompletionValidationOptions, capability?: ReconcileSessionExitInput["completionCapability"], sourceCompletionRequired = false): DraftedCompletionSettlement | null {
   if (!evidence.worktreeExists) return null;
+  // Legacy/direct callers have no source-only contract. A caller that does
+  // present one must satisfy every host-derived binding; production supplies a
+  // deliberately unavailable transport when the exact probe was not observed.
+  if ((sourceCompletionRequired && !capability) || (capability && (!workspace || capability.sessionId !== session.id || capability.packetId !== session.packet_id
+    || capability.packetSha256 !== session.packet_sha256 || capability.freshHostValidationAtSettlement !== "required"
+    || capability.localAskTransport !== "ready"))) {
+    return { kind: "refused", reason: "Host-owned source completion capability is missing, mismatched, or not freshly ready; the local complete Ask remains preserved and unsettled." };
+  }
+  if (capability?.directWorkspaceWrite === "required") {
+    return { kind: "refused", reason: "The host completion contract requires direct workspace writes, but the source-only path records that capability unavailable." };
+  }
   const worktree = session.worktree_path;
   const plan = discoverDocs(worktree).docs.find(
     (doc): doc is PlanDoc => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug
@@ -792,6 +803,10 @@ export interface ReconcileSessionExitInput {
   suppressLeaseHandoff?: { reason: string };
   /** The workspace, so the Session's provider log can be read to name a provider sign-in failure. */
   workspace?: string;
+  /** Host-owned completion capability bound at launch; never supplied by the Session/model. */
+  completionCapability?: { sessionId: string; packetId: string; packetSha256: string; directWorkspaceWrite: "required" | "unavailable"; localAskTransport: "ready" | "unavailable"; freshHostValidationAtSettlement: "required" };
+  /** A trusted headless Codex/Claude launch requires its host capability even when its record is absent. */
+  sourceCompletionRequired?: boolean;
   /** Bounds and dependency root for the pre-acceptance validation of a drafted completion (Issue #1599); defaults apply when omitted. */
   completionValidation?: CompletionValidationOptions;
   /** Extra receipt accounting, committed atomically with terminal state and the receipt.
@@ -849,7 +864,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
     // Issue #1615: a completion the Session settled itself faces the same scope and named-test checks a host-settled draft does.
     const settledRefusal = settled ? selfSettledCompletionRefusal(db, session, settled, evidence, input.workspace, validationOptions) : null;
-    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, validationOptions);
+    const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, validationOptions, input.completionCapability, input.sourceCompletionRequired);
     const attempt = settledRefusal
       ? { completed: false, reason: settledRefusal }
       : settled

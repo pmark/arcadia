@@ -52,7 +52,6 @@ import {
   sessionTokenCeilingBreach
 } from "./sessionTokenCeiling.js";
 import { sessionLogPath } from "../sessions/sessionRecording.js";
-import { readSessionProbeNonce } from "../sessions/sessionProbeCommand.js";
 import {
   describeEnvironmentWalls,
   observeSessionCapability,
@@ -60,7 +59,8 @@ import {
   ENVIRONMENT_WALL_ESCALATION_KIND,
   SESSION_PROBE_TOKEN_BUDGET,
   sessionTokensFromLog,
-  type EnvironmentWall
+  type EnvironmentWall,
+  sourceCompletionCapability
 } from "./sessionCapability.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
@@ -2051,8 +2051,32 @@ export function runManagedProductionTick(
         }
         const continuation = getSessionContinuation(db, lease);
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
+        const issuedCompletionCapability = sourceCompletionCapability(workspace, lease);
+        // Provider and recording metadata were written at launch by the host.
+        // Their presence means an absent/corrupt contract is a refusal, never
+        // an implicit legacy/direct completion route.
+        const sourceCompletionRequired = existsSync(sessionLogPath(workspace, lease.id))
+          && (lease.provider === "codex-cli" || lease.provider === "claude-code-cli");
+        const providerLog = (() => {
+          try { return readFileSync(sessionLogPath(workspace, lease.id), "utf8"); } catch { return null; }
+        })();
+        const probeObservation = issuedCompletionCapability
+          ? observeSessionCapability(providerLog, {
+              command: issuedCompletionCapability.probeCommand,
+              contract: issuedCompletionCapability.probeContractDigest
+            })
+          : null;
+        const observedCompletionCapability = issuedCompletionCapability
+          && probeObservation?.provenance === "session_probe"
+          && probeObservation.status === "clear"
+          ? issuedCompletionCapability
+          : issuedCompletionCapability
+            ? { ...issuedCompletionCapability, localAskTransport: "unavailable" as const }
+            : undefined;
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot, workspace,
+          completionCapability: observedCompletionCapability,
+          sourceCompletionRequired,
           ...(options.handoff?.completionValidation ? { completionValidation: options.handoff.completionValidation } : {}),
           suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }
@@ -2948,7 +2972,7 @@ export function recordSessionExitAccounting(
   input: {
     workspace: string;
     projectSlug: string;
-    session: { id: string; action_id: string | null; worktree_path: string; launch_revision?: string | null; base_revision: string | null; provider?: string; model?: string };
+    session: { id: string; action_id: string | null; worktree_path: string; packet_id: string; packet_sha256: string; launch_revision?: string | null; base_revision: string | null; provider?: string; model?: string };
     outcome: string;
     candidateRevision: string | null;
     now: Date;
@@ -2971,7 +2995,10 @@ export function recordSessionExitAccounting(
   // Prefer the nonce-bound probe; otherwise only an attributable failed tool
   // operation can establish a wall. The creation callback retains this bounded
   // observation in the same new-receipt transaction.
-  const capability = observeSessionCapability(text, readSessionProbeNonce(input.workspace, input.session.id));
+  const completionCapability = sourceCompletionCapability(input.workspace, input.session);
+  const capability = observeSessionCapability(text, completionCapability
+    ? { command: completionCapability.probeCommand, contract: completionCapability.probeContractDigest }
+    : null);
   if (capability.provenance === "session_probe" && capability.status === "clear") {
     input.log(`Session probe passed for ${actionKey} (recorded probe budget ${SESSION_PROBE_TOKEN_BUDGET} tokens).`);
   }

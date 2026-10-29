@@ -1430,7 +1430,11 @@ function buildProviderLaunch(
   const continuation = getSessionContinuation(db, session);
   // Fails closed (named refusal) when the packaged probe script is missing.
   const probe = workspace
-    ? issueSessionProbe({ workspace, sessionId: session.id, worktreePath: session.worktree_path })
+    ? issueSessionProbe({ workspace, sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256,
+        worktreePath: session.worktree_path,
+        // Headless Codex and Claude sessions are deliberately source-only.
+        // Other existing launch modes retain their direct-write requirement.
+        directWorkspaceWrite: headless && (agent === "codex" || agent === "claude") ? "unavailable" : "required" })
     : null;
   const prompt = renderActionBrief({
     repoRoot: session.worktree_path,

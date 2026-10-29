@@ -5,11 +5,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parseSessionProbe, sessionProbeWalls, SESSION_PROBE_TOKEN_BUDGET } from "../src/production/sessionCapability.js";
 import { exactBashRule, headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
-import { issueSessionProbe, readSessionProbeNonce, SESSION_PROBE_SCRIPT_PATH } from "../src/sessions/sessionProbeCommand.js";
+import { issueSessionProbe, readSessionCompletionContract, readSessionProbeNonce, SESSION_PROBE_SCRIPT_PATH } from "../src/sessions/sessionProbeCommand.js";
 
-function runProbe(workspace: string, worktree: string) {
+function runProbe(workspace: string, worktree: string, workspaceWrite = "required") {
   const started = Date.now();
-  const result = spawnSync(process.execPath, [SESSION_PROBE_SCRIPT_PATH, "--workspace", workspace, "--worktree", worktree, "--nonce", "n1"], { encoding: "utf8", timeout: 10_000 });
+  const result = spawnSync(process.execPath, [SESSION_PROBE_SCRIPT_PATH, "--workspace", workspace, "--worktree", worktree, "--nonce", "n1", "--contract", "a".repeat(64), "--workspace-write", workspaceWrite], { encoding: "utf8", timeout: 10_000 });
   return { status: result.status, stdout: result.stdout, ms: Date.now() - started };
 }
 
@@ -24,7 +24,7 @@ describe("the in-Session capability probe script", () => {
       const lines = run.stdout.trim().split("\n");
       expect(lines).toHaveLength(1);
       const probe = JSON.parse(lines[0]);
-      expect(probe).toMatchObject({ probe: "session-capability/v1", ok: true });
+      expect(probe).toMatchObject({ probe: "session-capability/v2", contract: "a".repeat(64), ok: true });
       expect(probe.checks.map((c: { name: string }) => c.name)).toEqual(["workspace_write", "host_validation", "preservation"]);
       expect(readdirSync(path.join(workspace, "database"))).toEqual([]);
       expect(run.ms).toBeLessThan(10_000);
@@ -49,10 +49,7 @@ describe("the in-Session capability probe script", () => {
       expect(run.ms).toBeLessThan(10_000);
       expect(SESSION_PROBE_TOKEN_BUDGET).toBeLessThanOrEqual(5_000);
       // The parsed result becomes exactly one workspace_write wall carrying the probe JSON.
-      const walls = sessionProbeWalls(parseSessionProbe(run.stdout, "n1"));
-      expect(walls).toHaveLength(1);
-      expect(walls[0]).toMatchObject({ wallClass: "workspace_write" });
-      expect(walls[0]?.evidence).toContain("session-capability/v1");
+      expect(parseSessionProbe(run.stdout, "a".repeat(64))).toBeNull();
     } finally {
       chmodSync(database, 0o755);
       rmSync(root, { recursive: true, force: true });
@@ -64,38 +61,32 @@ describe("the in-Session capability probe script", () => {
     expect(run.status).toBe(1);
     expect(existsSync(path.join(tmpdir(), "no-such-workspace-probe"))).toBe(false);
   });
+
+  it("records unavailable direct workspace writes without passing them or stopping source-only completion", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-source-only-"));
+    try {
+      const run = runProbe(path.join(root, "missing-workspace"), root, "unavailable");
+      expect(run.status).toBe(0);
+      const probe = JSON.parse(run.stdout.trim());
+      expect(probe).toMatchObject({ ok: true, checks: expect.arrayContaining([{ name: "workspace_write", ok: false, required: false, unavailable: true }]) });
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
 });
 
 describe("parsing the probe from a Session log", () => {
-  const NONCE = "0123456789abcdef0123456789abcdef";
-  const bad = { probe: "session-capability/v1", nonce: NONCE, ok: false, checks: [{ name: "preservation", ok: false, error: "EACCES" }, { name: "host_validation", ok: true }], ms: 5 };
-  const good = { ...bad, ok: true, checks: [{ name: "preservation", ok: true }] };
-
-  it("finds a bare line and one nested in a provider event", () => {
-    expect(parseSessionProbe(`noise\n${JSON.stringify(bad)}\n`, NONCE)).toMatchObject({ ok: false });
-    const event = JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", content: `${JSON.stringify(bad)}\n` }] } });
-    expect(parseSessionProbe(event, NONCE)).toMatchObject({ ok: false });
-    expect(parseSessionProbe("no probe here", NONCE)).toBeNull();
-    expect(parseSessionProbe(null, NONCE)).toBeNull();
-  });
-
-  it("ignores a probe line with the wrong nonce, and every line when no nonce was issued", () => {
-    const forged = JSON.stringify({ ...bad, nonce: "ffffffffffffffffffffffffffffffff" });
-    expect(parseSessionProbe(forged, NONCE)).toBeNull();
-    expect(parseSessionProbe(JSON.stringify(bad), null)).toBeNull();
-    // A probe-looking line in a cat'd file (the repo's own test file) carries no valid nonce.
-    const catted = JSON.stringify({ type: "user", message: { content: `const probe = { probe: "session-capability/v1", ok: false, checks: [] }\n${forged}\n` } });
-    expect(sessionProbeWalls(parseSessionProbe(`${catted}\n${NONCE}`, NONCE))).toEqual([]);
-  });
-
-  it("lets the first failure win over a later spoofed passing line, and a pass stand when nothing failed", () => {
-    expect(parseSessionProbe(`${JSON.stringify(bad)}\n${JSON.stringify(good)}\n`, NONCE)).toMatchObject({ ok: false });
-    expect(parseSessionProbe(`${JSON.stringify(good)}\n`, NONCE)).toMatchObject({ ok: true });
-  });
-
-  it("names one wall per failed check class and none for a passing probe", () => {
-    expect(sessionProbeWalls(parseSessionProbe(JSON.stringify(bad), NONCE)).map((w) => w.wallClass)).toEqual(["preservation"]);
-    expect(sessionProbeWalls({ probe: "session-capability/v1", ok: true, checks: [{ name: "workspace_write", ok: true }] })).toEqual([]);
+  const contract = "a".repeat(64);
+  const command = "node /host/session-capability-probe.mjs --workspace-write unavailable";
+  const result = JSON.stringify({ probe: "session-capability/v2", contract, ok: true, checks: [
+    { name: "workspace_write", ok: false, required: false, unavailable: true },
+    { name: "host_validation", ok: true }, { name: "preservation", ok: true }
+  ] });
+  it("accepts only a result paired to the exact host-issued invocation", () => {
+    const log = JSON.stringify({ type: "item.completed", item: { type: "command_execution", command, exit_code: 0, aggregated_output: result } });
+    expect(parseSessionProbe(log, { command, contract })).toMatchObject({ ok: true });
+    expect(parseSessionProbe(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: `${command} --extra`, exit_code: 0, aggregated_output: result } }), { command, contract })).toBeNull();
+    expect(parseSessionProbe(JSON.stringify({ type: "item.completed", item: { type: "command_execution", command, exit_code: 0, aggregated_output: result.replace(contract, "b".repeat(64)) } }), { command, contract })).toBeNull();
+    expect(parseSessionProbe(result, { command, contract })).toBeNull();
+    expect(parseSessionProbe(`${log}\n${log}`, { command, contract })).toBeNull();
     expect(sessionProbeWalls(null)).toEqual([]);
   });
 });
@@ -105,21 +96,18 @@ describe("issuing the probe and pinning its allowance", () => {
     const root = mkdtempSync(path.join(tmpdir(), "probe-issue-"));
     try {
       const ws = path.join(root, "ws");
-      const issued = issueSessionProbe({ workspace: ws, sessionId: "s1", worktreePath: "/wt" });
+      const issued = issueSessionProbe({ workspace: ws, sessionId: "s1", packetId: "packet", packetSha256: "b".repeat(64), worktreePath: "/wt", directWorkspaceWrite: "unavailable" });
       expect(issued.nonce).toMatch(/^[0-9a-f]{32}$/);
       expect(issued.command).toContain(` --nonce ${issued.nonce}`);
       expect(readSessionProbeNonce(ws, "s1")).toBe(issued.nonce);
+      expect(readSessionCompletionContract(ws, "s1")).toMatchObject({ sessionId: "s1", packetId: "packet", packetSha256: "b".repeat(64), requirements: { directWorkspaceWrite: "unavailable", localAskTransport: "required" } });
       // Rotated per launch: a resume gets a fresh nonce, and the recorded one follows it.
-      const resumed = issueSessionProbe({ workspace: ws, sessionId: "s1", worktreePath: "/wt" });
+      const resumed = issueSessionProbe({ workspace: ws, sessionId: "s1", packetId: "packet", packetSha256: "b".repeat(64), worktreePath: "/wt", directWorkspaceWrite: "unavailable" });
       expect(resumed.nonce).not.toBe(issued.nonce);
       expect(readSessionProbeNonce(ws, "s1")).toBe(resumed.nonce);
-      const stale = JSON.stringify({ probe: "session-capability/v1", nonce: issued.nonce, ok: false, checks: [{ name: "workspace_write", ok: false }] });
-      const fresh = JSON.stringify({ probe: "session-capability/v1", nonce: resumed.nonce, ok: true, checks: [{ name: "workspace_write", ok: true }] });
-      // Launch 1 failed, the operator fixed the sandbox, launch 2 passed: no wall.
-      expect(sessionProbeWalls(parseSessionProbe(`${stale}\n${fresh}\n`, resumed.nonce))).toEqual([]);
-      expect(sessionProbeWalls(parseSessionProbe(`${stale}\n`, resumed.nonce))).toEqual([]);
-      expect(sessionProbeWalls(parseSessionProbe(`${stale}\n`, issued.nonce))).toHaveLength(1);
-      expect(issueSessionProbe({ workspace: ws, sessionId: "s2", worktreePath: "/wt" }).nonce).not.toBe(issued.nonce);
+      expect(resumed.contractDigest).not.toBe(issued.contractDigest);
+      expect(issued.command).not.toContain("--result");
+      expect(issued.command).toContain("--workspace-write unavailable");
       const allow = headlessClaudeAllowList(["pnpm test"], issued.command);
       expect(allow).toContain(exactBashRule(issued.command));
       expect(allow.filter((rule) => rule.includes("session-capability-probe"))).toEqual([exactBashRule(issued.command)]);
@@ -134,7 +122,7 @@ describe("issuing the probe and pinning its allowance", () => {
   it("refuses the launch with a named remedy when the probe script is missing (fail closed)", () => {
     const root = mkdtempSync(path.join(tmpdir(), "probe-missing-"));
     try {
-      expect(() => issueSessionProbe({ workspace: root, sessionId: "s", worktreePath: "/wt", scriptPath: path.join(root, "absent.mjs") }))
+      expect(() => issueSessionProbe({ workspace: root, sessionId: "s", packetId: "packet", packetSha256: "b".repeat(64), directWorkspaceWrite: "unavailable", worktreePath: "/wt", scriptPath: path.join(root, "absent.mjs") }))
         .toThrow(/probe script is missing/);
       expect(existsSync(SESSION_PROBE_SCRIPT_PATH)).toBe(true);
     } finally {

@@ -76,8 +76,7 @@ export interface ActionBriefInput {
   /**
    * The exact probe command (from `issueSessionProbe`). With it the brief
    * opens with the capability probe as the Session's first step; the host
-   * reads the probe's one JSON line (echoing the command's nonce) from the
-   * Session log and ends the attempt on a failed check.
+   * accepts only the provider-recorded result paired to this exact command.
    */
   probeCommand?: string;
 }
@@ -89,10 +88,12 @@ function renderProbeStep(input: ActionBriefInput): string[] {
     "",
     "First step — environment probe (do this before anything else, even reading files):",
     `  ${input.probeCommand}`,
-    "  Run it verbatim, with no other arguments. It prints one JSON line and exits non-zero when this Session's sandbox cannot write the workspace,",
-    "  run host validation or write a completion receipt. If it exits non-zero or prints \"ok\":false, STOP",
+    "  Run it verbatim, with no other arguments. It prints one JSON line and exits non-zero only when a required check fails.",
+    "  Source-only Sessions record direct workspace database writes as unavailable; that is not a pass, and the local Ask is the candidate receipt.",
+    "  If the probe exits non-zero or prints \"ok\":false, STOP",
     "  IMMEDIATELY: make no edits, run no other command, spend no more tokens, and exit. The host records",
-    "  the named environment wall from that line; retrying or working around it only wastes budget."
+    "  the named environment wall from the provider result; retrying or working around it only wastes budget.",
+    "  Do not narrate, copy, or fabricate probe JSON: only the provider's actual paired command result is evidence."
   ];
 }
 

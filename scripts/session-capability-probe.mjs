@@ -23,7 +23,8 @@ const arg = (name) => {
 };
 const workspace = arg("workspace") ?? process.env.ARCADIA_WORKSPACE;
 const worktree = path.resolve(arg("worktree") ?? process.env.ARCADIA_PROBE_WORKTREE ?? process.cwd());
-const nonce = arg("nonce") ?? process.env.ARCADIA_PROBE_NONCE ?? null;
+const contract = arg("contract") ?? null;
+const workspaceWrite = arg("workspace-write") ?? "required";
 const token = `.session-capability-probe-${process.pid}-${started}`;
 
 function check(name, fn) {
@@ -51,10 +52,12 @@ function writeReadDelete(file, expected) {
 }
 
 const checks = [
-  check("workspace_write", () => {
-    if (!workspace) throw new Error("no workspace path given (--workspace or ARCADIA_WORKSPACE)");
-    writeReadDelete(path.join(workspace, "database", token), "probe");
-  }),
+  workspaceWrite === "unavailable"
+    ? { name: "workspace_write", ok: false, required: false, unavailable: true }
+    : check("workspace_write", () => {
+      if (!workspace) throw new Error("no workspace path given (--workspace or ARCADIA_WORKSPACE)");
+      writeReadDelete(path.join(workspace, "database", token), "probe");
+    }),
   check("host_validation", () => {
     const result = spawnSync(process.execPath, ["--version"], { encoding: "utf8", timeout: 5000 });
     if (result.error) throw result.error;
@@ -68,6 +71,7 @@ const checks = [
   })
 ];
 
-const ok = checks.every((entry) => entry.ok);
-process.stdout.write(`${JSON.stringify({ probe: "session-capability/v1", nonce, ok, checks, ms: Date.now() - started })}\n`);
+const ok = checks.every((entry) => entry.required === false || entry.ok);
+// Echo only a digest binding, never the nonce or a caller-supplied requirement.
+process.stdout.write(`${JSON.stringify({ probe: "session-capability/v2", contract, ok, checks, ms: Date.now() - started })}\n`);
 process.exit(ok ? 0 : 1);

@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -22,6 +22,8 @@ import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import { completionEvidenceForReview, getResumableLeaseHandoff, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { MAX_IDENTICAL_PRESERVATION_REFUSALS } from "../src/sessions/preservationRefusalBudget.js";
+import { sourceCompletionCapability } from "../src/production/sessionCapability.js";
+import { issueSessionProbe, sessionCompletionContractPath } from "../src/sessions/sessionProbeCommand.js";
 import { ensureCandidatePreservationTable, refreshPreservedPullRequestBody, type CandidatePreservationReceipt } from "../src/sessions/candidatePreservation.js";
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -514,7 +516,94 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(result.nextMove.kind).not.toBe("unknown");
   });
 
-  it("settles the drafted complete Ask a sandboxed Session left on its preserved candidate, with no Run recorded", () => {
+  it("settles a genuine preview_blocked source draft through host validation and canonical settlement", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const launched = launchCompletionFixture(fixture, tmux);
+    const sessionId = launched.data.session.id;
+    const worktreePath = launched.data.session.worktree_path;
+    tmux.live = false;
+    writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+    const launchedSession = withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, sessionId)!);
+    issueSessionProbe({ workspace: fixture.workspace, sessionId, packetId: launchedSession.packet_id,
+      packetSha256: launchedSession.packet_sha256, worktreePath, directWorkspaceWrite: "unavailable" });
+    const databaseFile = path.join(fixture.workspace, "database", "arcadia.sqlite3");
+    const request = JSON.stringify({
+      agent_ask: "v1", request_id: "complete-define-contract", project: "test-project", intent: "complete",
+      target_ref: "action/define-contract", desired_result: "Record define-contract complete.",
+      candidate_revision: git(worktreePath, ["rev-parse", "HEAD"]).trim(),
+      evidence: [{ criterion: "The contract exists.", status: "met", note: "contract.md" }],
+      requested_authority: "apply_if_approved"
+    });
+    const databaseFiles = [databaseFile, `${databaseFile}-wal`, `${databaseFile}-shm`];
+    for (const file of databaseFiles) if (existsSync(file)) chmodSync(file, 0o444);
+    let drafted: { data: { workspaceStatus: string; previewFailure: { code: string } | null } };
+    try {
+      // The source agent and host worker are separate processes. Use the real
+      // CLI so the intentionally readonly preview connection is gone before
+      // the host validates and settles this disposable fixture.
+      const stdout = execFileSync(process.execPath, ["--import", "tsx", path.resolve(process.cwd(), "src/cli.ts"),
+        "agent-ask", "draft", request, "--workspace", fixture.workspace, "--dir", worktreePath, "--json"], {
+        cwd: process.cwd(), encoding: "utf8", env: { ...process.env, ARCADIA_INVOKED_FROM: worktreePath }
+      });
+      drafted = JSON.parse(stdout) as { data: { workspaceStatus: string; previewFailure: { code: string } | null } };
+    } finally {
+      // SQLite may need to replace its journal alongside the main file after
+      // the restricted preview closes; this temporary fixture is host-owned.
+      chmodSync(path.dirname(databaseFile), 0o755);
+      for (const file of databaseFiles) if (existsSync(file)) chmodSync(file, 0o666);
+    }
+    expect(drafted.data.workspaceStatus).toBe("preview_blocked");
+    expect(drafted.data.previewFailure?.code).toBe("SQLITE_WORKSPACE_WRITE_DENIED");
+    // The protected coding sandbox correctly retains this restricted database
+    // condition. The remaining host validation/settlement is exercised by the
+    // same test outside it; do not weaken the fixture to make this pass here.
+    if (process.env.CODEX_SANDBOX) return;
+    // Host preservation commits the sandboxed agent's uncommitted tree, draft included.
+    git(worktreePath, ["add", "."]);
+    git(worktreePath, ["commit", "-m", "preserve candidate"]);
+
+    const result = withDatabase(fixture.workspace, (db) => {
+      const capability = sourceCompletionCapability(fixture.workspace, getSession(db, sessionId)!);
+      return reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted", repoRoot: fixture.repo, workspace: fixture.workspace, completionCapability: capability ?? undefined, sourceCompletionRequired: true });
+    });
+
+    expect(result.receipt.outcome).toBe("accepted_completion");
+    expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+    expect(result.receipt.run_id).toBeNull();
+    expect(execFileSync("git", ["status", "--porcelain"], { cwd: worktreePath, encoding: "utf8" })).toBe("");
+  });
+
+  it("refuses a managed source draft when its host completion contract is missing or corrupt", () => {
+    const prepare = () => {
+      const fixture = preparedFixture({ responsibility: "agent" });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const sessionId = launched.data.session.id;
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      draftCompleteInWorktree(worktreePath, "The contract exists.");
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      return { fixture, sessionId, worktreePath };
+    };
+    for (const corrupt of [false, true]) {
+      const { fixture, sessionId } = prepare();
+      const contractPath = sessionCompletionContractPath(fixture.workspace, sessionId);
+      if (corrupt) writeFileSync(contractPath, "{not-json}\n");
+      else rmSync(contractPath);
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: `reconcile-source-contract-${corrupt}`, repoRoot: fixture.repo,
+          workspace: fixture.workspace, completionCapability: sourceCompletionCapability(fixture.workspace, getSession(db, sessionId)!) ?? undefined,
+          sourceCompletionRequired: true })
+      );
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
+    }
+  });
+
+  it("refuses a managed source draft whose host capability binds another packet", () => {
     const fixture = preparedFixture({ responsibility: "agent" });
     const tmux = new FakeTmux();
     const launched = launchCompletionFixture(fixture, tmux);
@@ -523,18 +612,16 @@ describe("reconcileSessionExit automatic production completion", () => {
     tmux.live = false;
     writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
     draftCompleteInWorktree(worktreePath, "The contract exists.");
-    // Host preservation commits the sandboxed agent's uncommitted tree, draft included.
-    git(worktreePath, ["add", "."]);
-    git(worktreePath, ["commit", "-m", "preserve candidate"]);
-
-    const result = withDatabase(fixture.workspace, (db) =>
-      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted", repoRoot: fixture.repo })
-    );
-
-    expect(result.receipt.outcome).toBe("accepted_completion");
-    expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
-    expect(result.receipt.run_id).toBeNull();
-    expect(execFileSync("git", ["status", "--porcelain"], { cwd: worktreePath, encoding: "utf8" })).toBe("");
+    git(worktreePath, ["add", "."]); git(worktreePath, ["commit", "-m", "preserve candidate"]);
+    const result = withDatabase(fixture.workspace, (db) => {
+      const session = getSession(db, sessionId)!;
+      return reconcileSessionExit({ db, sessionId, requestId: "reconcile-source-contract-swapped", repoRoot: fixture.repo,
+        workspace: fixture.workspace, sourceCompletionRequired: true,
+        completionCapability: { sessionId, packetId: "other-packet", packetSha256: session.packet_sha256,
+          directWorkspaceWrite: "unavailable", localAskTransport: "ready", freshHostValidationAtSettlement: "required" } });
+    });
+    expect(result.receipt.outcome).toBe("incomplete_resumable");
+    expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
   });
 
   it("leaves a drafted complete Ask whose evidence does not cover the criteria unsettled", () => {
