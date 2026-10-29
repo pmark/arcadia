@@ -2028,7 +2028,7 @@ describe("launch preflight and headless permission posture", () => {
           "Bash(arcadia agent-ask draft:*)",
           "Bash(pnpm arcadia agent-ask draft:*)",
           ...HEADLESS_ROLE_READ_RULES,
-          expect.stringMatching(/^Bash\(node .*session-capability-probe\.mjs --workspace .* --nonce [0-9a-f]{32}\)$/),
+          expect.stringMatching(/^Bash\(node .*session-capability-probe\.mjs --workspace .* --worktree .* --nonce [0-9a-f]{32} --contract [a-f0-9]{64} --workspace-write unavailable\)$/),
           "Agent"
         ]
       }

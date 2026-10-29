@@ -18,7 +18,10 @@ import { runWorkListCommand, runWorkPlanCommand } from "../../src/commands/work.
 import { withDatabase, withReadOnlyDatabase } from "../../src/db/connection.js";
 import { loadPhase3Registries } from "../../src/intent/registries.js";
 import { runManagedProductionTick, type ManagedProductionTickProjectResult } from "../../src/production/tick.js";
+import { sourceCompletionCapability } from "../../src/production/sessionCapability.js";
 import { getRepositoryLease, type AgentSession, type TmuxAdapter } from "../../src/sessions/index.js";
+import { readSessionProbeNonce, SESSION_PROBE_SCRIPT_PATH } from "../../src/sessions/sessionProbeCommand.js";
+import { sessionLogPath } from "../../src/sessions/sessionRecording.js";
 import { launchGuardedHostSession } from "../../src/sessions/launch.js";
 import { materializeCandidateTree, snapshotCandidate } from "../../src/sessions/candidateSnapshot.js";
 import { bindCheckDefinitions } from "../../src/sessions/preservationCheckBinding.js";
@@ -634,6 +637,7 @@ Disposable fixture plan.
    * `candidate_revision` is the worktree's HEAD, from inside the worktree.
    */
   agentFinish(session: AgentSession, criteria: string[]): void {
+    this.recordClearProbe(session);
     git(session.worktree_path, ["add", "-A"]);
     if (git(session.worktree_path, ["status", "--porcelain"]).trim()) commit(session.worktree_path, `Implement ${session.action_id}`);
     const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
@@ -670,6 +674,7 @@ Disposable fixture plan.
    * reports `preview_blocked`. Everything after that is the host's job.
    */
   agentFinishSandboxed(session: AgentSession, criteria: string[]): string {
+    this.recordClearProbe(session);
     const head = git(session.worktree_path, ["rev-parse", "HEAD"]).trim();
     const requestId = `complete-${session.action_id}-${session.id.replaceAll("_", "-")}`;
     const ask = JSON.stringify({
@@ -688,6 +693,24 @@ Disposable fixture plan.
     });
     if (drafted.data.workspaceStatus !== "not_available") throw new Error("The sandboxed draft unexpectedly reached a workspace.");
     return drafted.data.path;
+  }
+
+  /** Fixture provider evidence uses the exact host-issued command and real probe output. */
+  private recordClearProbe(session: AgentSession): void {
+    if (session.completion_capability_mode === "legacy") return;
+    const capability = sourceCompletionCapability(this.workspace, session);
+    const nonce = readSessionProbeNonce(this.workspace, session.id);
+    if (!capability || !nonce) throw new Error("fixture Session has no host completion contract");
+    const run = spawnSync(process.execPath, [SESSION_PROBE_SCRIPT_PATH, "--workspace", this.workspace, "--worktree", session.worktree_path,
+      "--nonce", nonce, "--contract", capability.probeContractDigest, "--workspace-write", capability.directWorkspaceWrite], { encoding: "utf8" });
+    if (run.status !== 0) throw new Error(`fixture probe failed: ${run.stdout}`);
+    const id = `probe-${session.id}`;
+    const log = [
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "tool_use", id, name: "Bash", input: { command: capability.probeCommand } }] } }),
+      JSON.stringify({ type: "user", message: { content: [{ type: "tool_result", tool_use_id: id, content: run.stdout }] } })
+    ].join("\n") + "\n";
+    const file = sessionLogPath(this.workspace, session.id);
+    mkdirSync(path.dirname(file), { recursive: true }); writeFileSync(file, log);
   }
 
   /**

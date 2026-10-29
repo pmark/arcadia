@@ -26,5 +26,5 @@
   ],
   "outcome": "stopped",
   "stop_reason": "R2 bounded repair complete; fresh protected-host reconciliation, launch-mode checks, build and rehearsal remain for Rowan.",
-  "notes": "R1 fixes optional unavailable probe wall. R2 persists host-selected Session mode before launch so missing source evidence cannot take legacy settlement. Sandbox evidence is partial; no live action."
+  "notes": "R1 fixes optional unavailable probe wall. R2 persists host-selected Session mode and repairs CI fixtures to use paired host-issued probe evidence. Sandbox evidence is partial; no live action."
 }
