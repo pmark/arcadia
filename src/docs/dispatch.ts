@@ -1,7 +1,7 @@
 import { GUIDANCE_INDEX, hasWayGuidance, inspectGuidanceDelivery } from "../projects/agentGuidance.js";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { isAbsolute, join, relative } from "node:path";
 
 import { validationError } from "../cli/errors.js";
 import { checkCapabilityRegistry } from "./capabilities.js";
@@ -239,25 +239,34 @@ export function resolveActivePlan(
  *
  * Every one of these blockers used to say `AGENTS.md`, which sent an agent to
  * rewrite a healthy bootstrap when the real defect was a stale or malformed
- * `docs/agent-guidance/index.json` entry. Root-instruction problems stay on
- * `AGENTS.md`; anything the message can name is reported as itself.
+ * `docs/agent-guidance/index.json` entry. Root-instruction problems name the
+ * file Codex actually selected; anything else the message names is reported as
+ * itself.
  */
-function guidanceDeliverySource(message: string): string {
+export function guidanceDeliverySource(repoRoot: string, message: string): string {
   if (message.startsWith("CLAUDE.md does not import")) return "CLAUDE.md";
+  // Codex prefers the override as the root, so its defects belong there.
+  const root = existsSync(join(repoRoot, "AGENTS.override.md")) ? "AGENTS.override.md" : "AGENTS.md";
   if (
     message.startsWith("Selected root instructions") ||
     message.startsWith("Missing mandatory bootstrap rule") ||
     message.startsWith("Missing mandatory retrieval reference") ||
     /instructions exceed|Combined guidance exceeds/.test(message)
-  ) return "AGENTS.md";
-  const named = message.match(/\b((?:docs\/[A-Za-z0-9/_-]+|CONSTITUTION|CLAUDE|AGENTS(?:\.override)?)\.(?:md|json))\b/);
+  ) return root;
+  // A repository-relative name must not be carved out of an absolute path.
+  const absolute = message.match(/(\/[^\s:]+?\.(?:md|json))(?=[\s.:]|$)/);
+  if (absolute) {
+    const relativePath = relative(repoRoot, absolute[1]);
+    if (!relativePath.startsWith("..") && !isAbsolute(relativePath)) return relativePath;
+  }
+  const named = message.match(/(?<![\w/.-])((?:docs\/[A-Za-z0-9/_-]+|CONSTITUTION|CLAUDE|AGENTS(?:\.override)?)\.(?:md|json))\b/);
   if (named) return named[1];
   // Index-contract errors ("Invalid guidance entry ...", missing triggers,
   // orphaned fingerprints) name no path but always belong to the index.
   if (/guidance (?:entry|trigger|index|fingerprints)|Invalid docs\/agent-guidance/.test(message)) {
     return GUIDANCE_INDEX;
   }
-  return "AGENTS.md";
+  return root;
 }
 
 /**
@@ -392,7 +401,7 @@ export function resolveDispatch(
   if (hasWayGuidance(repoRoot)) {
     const delivery = inspectGuidanceDelivery(repoRoot, { globalInstructions: "" });
     blockers.push(...delivery.problems.map((message) => ({
-      relativePath: guidanceDeliverySource(message), field: "guidance_delivery", message,
+      relativePath: guidanceDeliverySource(repoRoot, message), field: "guidance_delivery", message,
       remedy: "Repair the instruction budget or refresh the indexed guidance through authorized setup-context; do not bypass the gate."
     })));
   }

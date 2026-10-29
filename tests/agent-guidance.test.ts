@@ -7,7 +7,7 @@ import { BOOTSTRAP_MARKER, GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, INSTRUCTION_BU
 import { readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { computeWayPropagationPlan } from "../src/projects/wayPropagation.js";
 import { renderDispatchResolution } from "../src/commands/next.js";
-import { resolveDispatch } from "../src/docs/dispatch.js";
+import { guidanceDeliverySource, resolveDispatch } from "../src/docs/dispatch.js";
 import { renderActionBrief } from "../src/sessions/actionBrief.js";
 
 const roots: string[] = [];
@@ -205,6 +205,25 @@ describe("compact Way instruction delivery", () => {
     const blocker = resolveDispatch(root).blockers.find((candidate) => candidate.field === "guidance_delivery");
     expect(blocker?.relativePath).toBe(GUIDANCE_INDEX);
     expect(blocker?.message).toContain("Invalid guidance entry trigger");
+  });
+
+  it("maps each guidance-delivery problem to the file that must be repaired", () => {
+    const root = scratch();
+    const source = (message: string): string => guidanceDeliverySource(root, message);
+    expect(source("Missing mandatory guidance: docs/agent-guidance/git-identity.md.")).toBe("docs/agent-guidance/git-identity.md");
+    expect(source("Stale mandatory guidance: docs/agent-guidance/learning.md.")).toBe("docs/agent-guidance/learning.md");
+    expect(source("Invalid docs/agent-guidance/fingerprints.json: expected arcadia-agent-guidance-v1 fingerprints.")).toBe(GUIDANCE_FINGERPRINTS);
+    expect(source("Invalid guidance entry sha256.")).toBe(GUIDANCE_INDEX);
+    expect(source("Missing mandatory guidance trigger: working-copy.")).toBe(GUIDANCE_INDEX);
+    expect(source("CLAUDE.md does not import the mandatory AGENTS.md bootstrap.")).toBe("CLAUDE.md");
+    expect(source("Missing mandatory bootstrap rule: Authority.")).toBe("AGENTS.md");
+    expect(source("Missing mandatory retrieval reference: docs/agent-guidance/index.json")).toBe("AGENTS.md");
+    expect(source("Root instructions exceed 12288 bytes.")).toBe("AGENTS.md");
+    expect(source(`Unreadable instruction file: ${path.join(root, "docs/agent-guidance/learning.md")}`)).toBe("docs/agent-guidance/learning.md");
+    // An absolute path outside the repository must not yield a fabricated repo-relative file.
+    expect(source("Unreadable instruction file: /srv/docs/arcadia/AGENTS.md")).toBe("AGENTS.md");
+    put(root, "AGENTS.override.md", "# Override\n");
+    expect(source("Missing mandatory bootstrap rule: Authority.")).toBe("AGENTS.override.md");
   });
 
   it("refuses unknown automatic imports and still checks an adoption whose root markers were removed", () => {
