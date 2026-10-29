@@ -1,0 +1,31 @@
+{
+  "session_id": "01a18667-c693-7062-a59b-dcf59c38c99e",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "action_id": "operator-directed:pr1867-approval-preparation",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [
+    {
+      "class": "approval-clock-custody-not-automatic",
+      "caught_by": "independent-process-critic"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "candidate-decision-validator-base-scope",
+      "cost_min": null,
+      "fix_ref": "docs/reports/pr1867-bounded-repair-approval-preparation-2026-10-29.md"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Preparation only: open Decision 0147 and proof report. No repair/R7, authority answer or custody transfer. Approval/start gaps remain explicit."
+}
