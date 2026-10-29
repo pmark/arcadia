@@ -7,7 +7,7 @@ status: active
 milestone: Make Arcadia Go orient one caller truthfully before authorized work.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-28
+updated: 2026-10-29
 actions:
   - id: resolve-go-caller-context
     title: "Resolve the existing Go/advance/next orientation from one caller-bound read-only context. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
@@ -149,14 +149,33 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask implement-go-live-delivery-checklist
     clarification: clarified
     confidence: high
-    source: Agent Ask sequence-approved-go-probe-return-20261028
+    source: Agent Ask insert-approved-host-completion-repair-20261029-r3
     acceptance_criteria:
       - START_HERE.md contains a concise Go delivery checklist that separately names source revision and required checks, installed revision and adoption receipt, and actual workspace Session receipt, observed result and resulting delivery PR; it never describes planning-only output, storage, source tests or installation as real-delivery acceptance.
       - The checklist tells the operator to inspect the protected Continue preview target, owner, configured provider and limits, retain stable request and Session receipts, reconcile an unknown outcome before another press, and stop on changed facts or an existing approval gate; Production remains Off unless separately started.
       - The implementation changes only START_HERE.md apart from canonical Agent Ask completion records. The existing node scripts/preservation-self-check.mjs validation and git diff --check pass. Completion evidence describes this source checklist only and does not assert that its own future PR already exists.
-    depends_on: [reuse-go-context-through-authorized-continuation, project-go-orientation-for-the-operator, show-receipts-for-operator-directions]
+    depends_on: [reuse-go-context-through-authorized-continuation, project-go-orientation-for-the-operator, show-receipts-for-operator-directions, repair-host-owned-source-completion-capabilities]
     decisions: []
-    references: ["agentask_33a2ae289adae37e03", "agentask_c2535307f9d97b4915", "https://github.com/pmark/arcadia/pull/1851"]
+    references: ["decision/should-arcadia-add-the-bounded-host-completion-repair-before-retrying-r465", "https://github.com/pmark/arcadia/issues/1864", "agentask_33a2ae289adae37e03", "agentask_c2535307f9d97b4915", "https://github.com/pmark/arcadia/pull/1851"]
+  - id: repair-host-owned-source-completion-capabilities
+    title: Implement host-owned source completion capability requirements so a source-only managed Session can produce its local completion Ask without direct live-workspace writes.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Implement host-owned source completion capability requirements so a source-only managed Session can produce its local completion Ask without direct live-workspace writes.
+    expected_artifact: Evidence satisfying Agent Ask repair-host-owned-source-completion-capabilities
+    clarification: clarified
+    confidence: high
+    source: Agent Ask insert-approved-host-completion-repair-20261029-r3
+    why: "The required workspace-write probe currently stops a source-only Session before its supported local-Ask-to-host completion path."
+    acceptance_criteria:
+      - Host-derived completion capability requirements are bound to the Session, immutable packet and probe nonce. The model cannot choose weaker requirements. Source-only host-owned completion truthfully records unavailable direct workspace writes without treating them as passed, while genuinely required direct-write denial still refuses.
+      - A restricted-environment regression carries permitted source edits and a validated local complete Ask (including preview_blocked) through real host validation and settlement while the model cannot write the live database. Missing local Ask transport or fresh host readiness, malformed/mismatched/spoofed evidence, and incompatible requirements all refuse before completion.
+      - Existing sandbox protections, packet/custody/validation/preservation gates, default models, consumed attempts and failed R465 outcome remain intact. START_HERE.md documents the changed source-only completion flow and its separate review, adoption and fresh-live gates; Production remains Off.
+      - Focused behavioral regressions, TypeScript, lint, build, preservation-self-check and isolated fast-rehearsal pass. Source completion evidence records exact revisions and results without claiming a future PR, installed adoption or R465 live success; independent current-head review and required CI plus separately receipted adoption remain prerequisites to any fresh guarded R465 delivery.
+    depends_on: [reuse-go-context-through-authorized-continuation]
+    decisions: []
+    references: ["decision/should-arcadia-add-the-bounded-host-completion-repair-before-retrying-r465", "https://github.com/pmark/arcadia/issues/1864", "session_f5bd5319d14440c485", "exit_9b9babb972b444e59d"]
 questions: []
 decisions: []
 current_action: implement-go-live-delivery-checklist
