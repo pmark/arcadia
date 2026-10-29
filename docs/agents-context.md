@@ -40,7 +40,7 @@ Any agent promptly captures useful observation, idea, correction, hypothesis or 
 for uncertainty or external evidence use `--provenance inference --confidence low --evidence
 "<source>"`. No novelty search, model call, file or Ask is required. Capture is evidence, not
 authority; host, privacy and scope gates apply.
-Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate. Supervisors harvest when assigned; nobody waits.
+Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate (no semantic merge). Supervisors harvest when assigned; nobody waits.
 Retrieve lessons on demand; Notes is the bounded verified hot cache.
 
 **Read `docs/agent-guidance/index.json` now.** It names task/failure triggers,
