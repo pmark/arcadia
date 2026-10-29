@@ -66,3 +66,19 @@ pnpm fast-rehearsal
 ```
 
 Then obtain independent R4 delta review and current-head CI before any separately governed adoption.
+
+## R4 fixture producer correction — host rerun required
+
+Host focused reconciliation on `50888f5c50bdd843118306ca2d49400cad789354` found 12 lifecycle assertions blocked before their intended acceptance, validation, or scope behavior. The durable gate behaved correctly: older direct fixture calls omitted `workspace`, so canonical reconciliation could not read the host-owned Session contract/log and refused. The affected simulated completion helpers also need the real paired evidence before they ask reconciliation to settle.
+
+`tests/session-reconciliation.test.ts` now passes the fixture workspace for the acceptance-grant direct reconciliation and records the existing host-issued exact probe only after the named-test and scope helpers have created their actual completion draft and candidate revision. Generic FakeTmux launch remains unmodified; missing-evidence, malformed, spoofed, direct-required, and R3 public-CLI omitted-input regressions retain their refusal paths. The source-only contract is not changed.
+
+Sandbox evidence: grant plus scope selection `8 passed, 45 skipped`; capability/attribution `23 passed`; TypeScript and touched ESLint passed; ledger validation passed. The named-test validation cases reach the validator but it refuses its validation descendant in this coding sandbox, so they require host rerun and are not claimed locally.
+
+Rowan host rerun:
+
+```sh
+pnpm exec vitest run tests/session-reconciliation.test.ts tests/session-capability-attribution.test.ts tests/session-capability-probe.test.ts --no-file-parallelism
+```
+
+The current-head CI unit shards remain pending after the push. R4 review, isolated rehearsal, adoption, Production, and any R465 retry remain outside this repair.

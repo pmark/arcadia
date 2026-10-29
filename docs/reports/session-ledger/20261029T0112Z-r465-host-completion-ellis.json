@@ -41,9 +41,14 @@
       "id": "canonical-source-capability-bypass",
       "cost_min": null,
       "fix_ref": "/tmp/arcadia-pr1867-r3-direct-reconcile-repro.log"
+    },
+    {
+      "id": "managed-reconciliation-fixtures-omitted-workspace",
+      "cost_min": null,
+      "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
     }
   ],
   "outcome": "stopped",
-  "stop_reason": "R4 canonical reconciliation repair prepared; protected-host direct CLI/reconciliation, build, current-head CI, rehearsal, and independent R4 review remain for Rowan.",
-  "notes": "R1 optional-unavailable wall; R2 persisted host mode and paired fixture probe. R4 canonical reconciliation rejects omitted, false, or spoofed caller capability. Sandbox-only evidence; no live action."
+  "stop_reason": "R4 fixture producer correction prepared; protected-host reconciliation, CI, rehearsal, and independent R4 review remain for Rowan.",
+  "notes": "R1 optional wall; R2 persisted host mode; R4 canonical gate rejects omitted/false/spoofed capability. Fixture completion producers now use workspace plus paired probe evidence. Sandbox-only."
 }

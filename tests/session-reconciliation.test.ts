@@ -26,6 +26,7 @@ import { issueSessionProbe, sessionCompletionContractPath } from "../src/session
 import { ensureCandidatePreservationTable, refreshPreservedPullRequestBody, type CandidatePreservationReceipt } from "../src/sessions/candidatePreservation.js";
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
 
 const roots: string[] = [];
 
@@ -469,12 +470,13 @@ describe("reconcileSessionExit automatic production completion", () => {
     draftCompleteInWorktree(worktreePath, "The contract exists.");
     git(worktreePath, ["add", "."]);
     git(worktreePath, ["commit", "-m", "preserve contract and criterion evidence"]);
+    recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, sessionId)!));
     withDatabase(fixture.workspace, (db) => {
       const scope = productionScope();
       activateProduction(db, { requestId: "grant-drafted-completion", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
     });
     const result = withDatabase(fixture.workspace, (db) =>
-      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted-grant", repoRoot: fixture.repo })
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted-grant", repoRoot: fixture.repo, workspace: fixture.workspace })
     );
     expect(result.receipt.outcome).toBe("accepted_completion");
     expect(result.receipt.reason).toContain("drafted complete Ask");
@@ -486,7 +488,7 @@ describe("reconcileSessionExit automatic production completion", () => {
     expect(JSON.parse(receipts[0].receipt_json).authority.kind).toBe("deterministic_proof");
     expect(git(worktreePath, ["status", "--porcelain"])).toBe("");
     const replay = withDatabase(fixture.workspace, (db) =>
-      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted-grant-retry", repoRoot: fixture.repo })
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-drafted-grant-retry", repoRoot: fixture.repo, workspace: fixture.workspace })
     );
     expect(replay.receipt.id).toBe(result.receipt.id);
     expect(replay.created).toBe(false);
@@ -753,6 +755,9 @@ describe("reconcileSessionExit automatic production completion", () => {
       draftCompleteInWorktree(worktreePath, criterion);
       git(worktreePath, ["add", "."]);
       git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      // This helper has produced a complete Ask and candidate revision; pair
+      // the host-issued probe before exercising the later validation outcome.
+      recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, launched.data.session.id)!));
       return { fixture, sessionId: launched.data.session.id, worktreePath };
     }
 
@@ -952,6 +957,9 @@ it("asserts the contract", () => {
       draftCompleteInWorktree(worktreePath, criterion);
       git(worktreePath, ["add", "."]);
       git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      // Scope cases are genuine simulated completion points; their assertions
+      // must run after the exact host-issued probe, not fail earlier.
+      recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, launched.data.session.id)!));
       return { fixture, sessionId: launched.data.session.id, worktreePath };
     }
 
@@ -985,6 +993,7 @@ it("asserts the contract", () => {
       writeFileSync(path.join(worktreePath, "scratch-notes.txt"), "scratch\n");
       git(worktreePath, ["add", "."]);
       git(worktreePath, ["commit", "-m", "chore(candidate): preserve define-contract candidate for handoff\n\nArcadia-Preservation-Request: preserve-stray"]);
+      recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, launched.data.session.id)!));
 
       const result = withDatabase(fixture.workspace, (db) =>
         reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-stray-file", repoRoot: fixture.repo, workspace: fixture.workspace })
@@ -1068,6 +1077,7 @@ it("asserts the contract", () => {
       draftCompleteInWorktree(worktreePath, "contract.md exists.");
       git(worktreePath, ["add", "."]);
       git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, launched.data.session.id)!));
 
       const result = withDatabase(fixture.workspace, (db) =>
         reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-scope-plan-edited", repoRoot: fixture.repo, workspace: fixture.workspace })
