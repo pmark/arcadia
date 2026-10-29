@@ -27,6 +27,8 @@ for evidence, discoverability and channel boundaries.
 
 ## Drafts
 
+- [How Arcadia could guide design brainstorming](2026-10-28-how-arcadia-could-guide-design-brainstorming.md) — a proposal (not built) for a field-neutral design core, rehearsed on paper with simulated operators.
+
 - [Arcadia agent identities: who does what, and why](2026-10-23-agent-identities-roles-and-behaviors.md) — plain definitions and illustrative scenarios for named colleagues, roles, specializations, skills and behaviors.
 
 - [How an idea becomes governed work](2026-10-23-how-an-idea-becomes-governed-work.md): a short explainer of proposals, Agent Asks, Plans, Actions and Decisions, and how settlement connects them.
