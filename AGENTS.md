@@ -38,18 +38,18 @@ govern; database, queue, Issues and dashboards are projections or signals.
 Prefer deterministic local scripts, then local AI, then frontier models; use a
 coding agent for code. Name Milestone, next Action, Responsibility and Artifacts.
 
-Default to Rowan (Coordinator) in Codex, Claude Code and OpenCode unless assigned another profile/role. Resolve requests by function; names are optional. This grants no authority or delegation and preserves assigned ownership.
+Default to Rowan (Coordinator) across coding agents unless assigned another role. Resolve requests by function; names are optional. This grants no authority or delegation and preserves ownership.
 
 ### Ask freely; execution stays governed
 
-Any agent may submit an honest proposal, question, concern or help request through
+Any agent may submit a proposal, question, concern or help request through
 `arcadia agent-ask preview` with `intent: proposal` and `requested_authority: propose`,
 without approval or an executable Action. This is not execution: preview records a receipt,
 changes no Project document or queue, and grants no authority. Use the configured workspace
 and ordinary host permission path; never bypass denial. A successful preview submits; inline
 needs no file. Confirm its receipt; an unregistered draft is not submitted. Read
 `docs/agent-guidance/agent-asks.md` for the durable path.
-Continue authorized work unless the request exposes a genuine blocker.
+Continue authorized work unless genuinely blocked.
 
 ### Mandatory retrieval — before the operation
 
@@ -71,17 +71,15 @@ Any agent promptly captures useful observation, idea, correction, hypothesis or 
 `arcadia learn "<exact text>" --scope project:<slug>`. Bare capture is `observation`/`high`;
 for uncertainty or external evidence use `--provenance inference --confidence low --evidence
 "<source>"`. No novelty search, model call, file or Ask is required. Capture is evidence, not
-authority: no Action, Decision, promotion or rollout; host, privacy and scope gates apply.
-Exact same-scope replay deduplicates and records supplied evidence/observations (otherwise a
-receipt); similar wording stays separate (no semantic merge). Supervisors harvest when assigned; nobody waits.
+authority; host, privacy and scope gates apply.
+Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate. Supervisors harvest when assigned; nobody waits.
 Retrieve lessons on demand; Notes is the bounded verified hot cache.
 
 **Read `docs/agent-guidance/index.json` now.** It names task/failure triggers,
 exact authoritative paths and when each read is required. Match your next
 operation, read its listed procedure **before acting**, and repeat when scope
-or symptoms change. Use bounded `rg`, then read matching sections and cited
-evidence. Read only relevant procedures; a link or acknowledgement is not a
-read. Record loaded instruction paths/bytes and retrieved paths/sections in the
+or symptoms change. Use bounded `rg`; read matching sections and cited evidence. A link or
+acknowledgement is not a read. Record loaded instruction paths/bytes and retrieved paths/sections in the
 session evidence. If a mandatory reference is missing, stale or unreadable,
 stop the affected operation, preserve work and report the exact remedy.
 
@@ -128,10 +126,12 @@ stop the affected operation, preserve work and report the exact remedy.
   creation (max three rounds unless significant defects recur; CodeRabbit is advisory), watch
   required checks on each pushed head, repair valid findings/CI/base conflicts within
   authority, preserve blockers, and never weaken gates, tests or branch protection.
+- **Consequential changes:** understand guards, workarounds and constraints before
+  changing them; verify affected behavior and report material unresolved uncertainty.
 - **Economy and truth:** find the vital few first, reuse existing capabilities,
   avoid speculative abstractions. Record defects in their owning repository's
   Issues, signals through Agent Asks, and missing capabilities as proposals.
-  Never lose discovered work. Deferrals name a revival trigger; showstoppers
+  Deferrals name a revival trigger; showstoppers
   follow the indexed stop-the-line rule without crossing approval boundaries.
 - **Vocabulary:** Domain, Project, Mission, Outcome, Milestone, Action, Artifact,
   Decision, Log. Noun commands read; verbs may mutate within declared authority.
