@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderPlansSuccess, runPlansCommand } from "../src/commands/plans.js";
+import { discoverDocs, docsFingerprint } from "../src/docs/discover.js";
 
 const temporary: string[] = [];
 
@@ -175,5 +176,32 @@ describe("arcadia plans", () => {
     const root = loneRepo({ "README.md": "# nothing managed here\n" });
 
     expect(() => runPlansCommand({ repo: root })).toThrow(/No PROJECT\.md/);
+  });
+
+  it("reuses a caller's discovery and gives the same answer as its own walk", () => {
+    const root = loneRepo({ "PROJECT.md": PROJECT, "docs/plans/active-plan.md": ACTIVE_PLAN });
+    const discovered = discoverDocs(root);
+    expect(runPlansCommand({ repo: root, project: "lone", discovered }).data).toEqual(runPlansCommand({ repo: root, project: "lone" }).data);
+    // A supplied discovery is used as given, without walking again.
+    expect(runPlansCommand({ repo: root, project: "lone", discovered: { ...discovered, docs: discovered.docs.filter((doc) => doc.type === "project") } }).data.plans).toEqual([]);
+  });
+
+  it("fingerprints the documents discovery reads, changing only when one of them does", () => {
+    const root = loneRepo({ "PROJECT.md": PROJECT, "docs/plans/active-plan.md": ACTIVE_PLAN, "node_modules/x/README.md": "skip", "src/a.ts": "x" });
+    const before = docsFingerprint(root);
+    expect(docsFingerprint(root)).toBe(before);
+    writeFileSync(path.join(root, "node_modules/x/README.md"), "skipped directories never count");
+    writeFileSync(path.join(root, "src/a.ts"), "neither do non-Markdown files");
+    expect(docsFingerprint(root)).toBe(before);
+    const plan = path.join(root, "docs/plans/active-plan.md");
+    utimesSync(plan, new Date(2030, 0, 1), new Date(2030, 0, 1));
+    const touched = docsFingerprint(root);
+    expect(touched).not.toBe(before);
+    writeFileSync(path.join(root, "docs/notes.md"), "a new Markdown file may become managed");
+    expect(docsFingerprint(root)).not.toBe(touched);
+    // A permission change keeps size and mtime but moves ctime, so a file that becomes readable again is re-read.
+    const added = docsFingerprint(root);
+    chmodSync(plan, 0o600);
+    expect(docsFingerprint(root)).not.toBe(added);
   });
 });

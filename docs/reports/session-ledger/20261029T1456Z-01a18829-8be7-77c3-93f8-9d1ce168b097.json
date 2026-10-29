@@ -1,0 +1,40 @@
+{
+  "session_id": "01a18829-8be7-77c3-93f8-9d1ce168b097",
+  "role": "lead",
+  "model": "inherited-host-default-unmeasured",
+  "effort": null,
+  "configured_effort": null,
+  "effective_effort": null,
+  "effort_source": "unavailable",
+  "action_id": "repair-host-owned-source-completion-capabilities",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 0,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "successor-custody-approval-rejected",
+      "cost_min": null,
+      "fix_ref": "Outgoing905a4f and incomingd9bc1b custody receipts"
+    },
+    {
+      "id": "decision-document-not-on-base",
+      "cost_min": null,
+      "fix_ref": "lesson_f9c3ddd67cfee966d9e1"
+    },
+    {
+      "id": "protected-base-ordinary-merge-refusal",
+      "cost_min": null,
+      "fix_ref": "Primary preserved; verified linked-worktree Decision route"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Pre-publication snapshot: custody accepted and PR1879 merged; canonical A locally recorded. Answer-publication PR still needs independent governance review, CI and operator-owned merge. No source repair/R7/start.",
+  "notes": "Pre-publication snapshot; later governance review/CI receipts on PR. Product repair/R7 zero. Custody transferred; A recorded locally. Source63aaf6f and primaryf319 preserved; ProductionOff."
+}
