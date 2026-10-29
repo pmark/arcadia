@@ -4,7 +4,7 @@ type: decision
 id: "0147"
 slug: should-arcadia-authorize-one-bounded-r6-binding-repair-pass-and-exactly-one
 project: arcadia
-status: open
+status: approved
 question: Should Arcadia authorize one bounded R6 binding-repair pass and exactly one additional R7 review for PR 1867 before the existing expiry?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
 updated: 2026-10-29
+answer: Authorize one bounded binding repair and R7
+decided: 2026-10-29
 ---
 
 # Decision 0147: Should Arcadia authorize one bounded R6 binding-repair pass and exactly one additional R7 review for PR 1867 before the existing expiry?
