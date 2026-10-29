@@ -506,15 +506,89 @@ describe("reconcileSessionExit automatic production completion", () => {
     git(worktreePath, ["add", "contract.md"]);
     git(worktreePath, ["commit", "-m", "define the contract"]);
     settleCompleteFromWorktree(fixture, worktreePath, "self-settle-define-contract");
+    recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, sessionId)!));
 
     const result = withDatabase(fixture.workspace, (db) =>
-      reconcileSessionExit({ db, sessionId, requestId: "reconcile-self-settled", repoRoot: fixture.repo })
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-self-settled", repoRoot: fixture.repo, workspace: fixture.workspace })
     );
 
     expect(result.receipt.outcome).toBe("accepted_completion");
     expect(result.receipt.reason).toMatch(/settled its own governed completion on its candidate \(settlement /);
     expect(result.receipt.run_id).toBeNull();
     expect(result.nextMove.kind).not.toBe("unknown");
+  });
+
+  it("keeps an already-settled managed completion non-resumable when fresh host capability evidence is absent or malformed", () => {
+    const prepare = () => {
+      const fixture = preparedFixture({ responsibility: "agent" });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const session = launched.data.session;
+      tmux.live = false;
+      writeFileSync(path.join(session.worktree_path, "contract.md"), "The contract exists.\n");
+      git(session.worktree_path, ["add", "contract.md"]);
+      git(session.worktree_path, ["commit", "-m", "define the contract"]);
+      settleCompleteFromWorktree(fixture, session.worktree_path, `self-settle-capability-${session.id}`);
+      return { fixture, session };
+    };
+    for (const condition of ["missing", "corrupt", "swapped"] as const) {
+      const { fixture, session } = prepare();
+      const contractPath = sessionCompletionContractPath(fixture.workspace, session.id);
+      if (condition === "missing") rmSync(contractPath);
+      if (condition === "corrupt") writeFileSync(contractPath, "{not-json}\n");
+      if (condition === "swapped") {
+        const contract = JSON.parse(readFileSync(contractPath, "utf8")) as { packetId: string };
+        contract.packetId = "other-packet";
+        writeFileSync(contractPath, `${JSON.stringify(contract)}\n`);
+      }
+      const result = withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId: session.id, requestId: `reconcile-settled-${condition}`, repoRoot: fixture.repo, workspace: fixture.workspace })
+      );
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(0);
+      expect(result.receipt.reason).toContain("already settled");
+      expect(result.receipt.reason).toContain("Host-owned source completion capability is missing");
+      expect(result.receipt.evidence_json).toContain("self_settled_refused");
+    }
+  });
+
+  it("keeps an already-settled direct-required completion non-resumable even with paired probe output", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const session = launchCompletionFixture(fixture, tmux).data.session;
+    tmux.live = false;
+    writeFileSync(path.join(session.worktree_path, "contract.md"), "The contract exists.\n");
+    git(session.worktree_path, ["add", "contract.md"]);
+    git(session.worktree_path, ["commit", "-m", "define the contract"]);
+    settleCompleteFromWorktree(fixture, session.worktree_path, "self-settle-direct-required");
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE agent_sessions SET completion_capability_mode = 'direct_required' WHERE id = ?").run(session.id));
+    issueSessionProbe({ workspace: fixture.workspace, sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256,
+      worktreePath: session.worktree_path, directWorkspaceWrite: "required" });
+    recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, db => getSession(db, session.id)!));
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: session.id, requestId: "reconcile-settled-direct-required", repoRoot: fixture.repo, workspace: fixture.workspace })
+    );
+    expect(result.receipt.outcome).toBe("incomplete_resumable");
+    expect(result.receipt.lease_handoff).toBe(0);
+    expect(result.receipt.reason).toContain("already settled");
+    expect(result.receipt.reason).toContain("requires direct workspace writes");
+  });
+
+  it("keeps a legacy already-settled completion compatible without managed probe evidence", () => {
+    const fixture = preparedFixture({ responsibility: "agent" });
+    const tmux = new FakeTmux();
+    const session = launchCompletionFixture(fixture, tmux).data.session;
+    tmux.live = false;
+    writeFileSync(path.join(session.worktree_path, "contract.md"), "The contract exists.\n");
+    git(session.worktree_path, ["add", "contract.md"]);
+    git(session.worktree_path, ["commit", "-m", "define the contract"]);
+    settleCompleteFromWorktree(fixture, session.worktree_path, "self-settle-legacy");
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE agent_sessions SET completion_capability_mode = 'legacy' WHERE id = ?").run(session.id));
+    rmSync(sessionCompletionContractPath(fixture.workspace, session.id));
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId: session.id, requestId: "reconcile-settled-legacy", repoRoot: fixture.repo })
+    );
+    expect(result.receipt.outcome).toBe("accepted_completion");
   });
 
   it("settles a genuine preview_blocked source draft through host validation and canonical settlement", () => {
@@ -1025,6 +1099,7 @@ it("asserts the contract", () => {
       git(worktreePath, ["add", "."]);
       git(worktreePath, ["commit", "-m", "define the contract and more"]);
       settleCompleteFromWorktree(fixture, worktreePath, "self-settle-out-of-scope", criterion);
+      recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, launched.data.session.id)!));
 
       const result = withDatabase(fixture.workspace, (db) =>
         reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-self-settled-scope", repoRoot: fixture.repo, workspace: fixture.workspace })
@@ -1051,6 +1126,7 @@ it("asserts the contract", () => {
       git(worktreePath, ["add", "."]);
       git(worktreePath, ["commit", "-m", "define the contract"]);
       settleCompleteFromWorktree(fixture, worktreePath, "self-settle-in-scope", criterion);
+      recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, launched.data.session.id)!));
 
       const result = withDatabase(fixture.workspace, (db) =>
         reconcileSessionExit({ db, sessionId: launched.data.session.id, requestId: "reconcile-self-settled-in-scope", repoRoot: fixture.repo, workspace: fixture.workspace })

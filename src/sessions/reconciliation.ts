@@ -575,19 +575,25 @@ const isSettlementRecordPath = isGovernedRecordPath;
  * candidate's history, and settlement refuses a dirty candidate. Returns the
  * settlement id, or null to leave the exit classified as it was.
  */
-function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe, workspace: string | undefined, validationOptions?: CompletionValidationOptions, capability?: ReconcileSessionExitInput["completionCapability"], sourceCompletionRequired = false): DraftedCompletionSettlement | null {
-  if (!evidence.worktreeExists) return null;
-  // Legacy/direct callers have no source-only contract. A caller that does
-  // present one must satisfy every host-derived binding; production supplies a
-  // deliberately unavailable transport when the exact probe was not observed.
+function completionCapabilityRefusal(session: AgentSession, workspace: string | undefined, capability: ReconcileSessionExitInput["completionCapability"] | undefined, sourceCompletionRequired: boolean): string | null {
+  // Legacy callers have no source-only contract. A caller that does present
+  // one must satisfy every host-derived binding; missing evidence is never a
+  // downgrade for a persisted managed launch.
   if ((sourceCompletionRequired && !capability) || (capability && (!workspace || capability.sessionId !== session.id || capability.packetId !== session.packet_id
     || capability.packetSha256 !== session.packet_sha256 || capability.freshHostValidationAtSettlement !== "required"
     || capability.localAskTransport !== "ready"))) {
-    return { kind: "refused", reason: "Host-owned source completion capability is missing, mismatched, or not freshly ready; the local complete Ask remains preserved and unsettled." };
+    return "Host-owned source completion capability is missing, mismatched, or not freshly ready; the local complete Ask remains preserved and unsettled.";
   }
   if (capability?.directWorkspaceWrite === "required") {
-    return { kind: "refused", reason: "The host completion contract requires direct workspace writes, but the source-only path records that capability unavailable." };
+    return "The host completion contract requires direct workspace writes, but the source-only path records that capability unavailable.";
   }
+  return null;
+}
+
+function settleCandidateDraftedCompletion(db: Database.Database, session: AgentSession, evidence: ExitEvidenceProbe, workspace: string | undefined, validationOptions?: CompletionValidationOptions, capability?: ReconcileSessionExitInput["completionCapability"], sourceCompletionRequired = false): DraftedCompletionSettlement | null {
+  if (!evidence.worktreeExists) return null;
+  const capabilityRefusal = completionCapabilityRefusal(session, workspace, capability, sourceCompletionRequired);
+  if (capabilityRefusal) return { kind: "refused", reason: capabilityRefusal };
   const worktree = session.worktree_path;
   const plan = discoverDocs(worktree).docs.find(
     (doc): doc is PlanDoc => doc.type === "plan" && doc.project === session.project_slug && doc.slug === session.plan_slug
@@ -864,7 +870,6 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   if (outcome === "successful_exit" || outcome === "incomplete_resumable") {
     const settled = findCandidateSettledCompletion(db, session, evidence.candidateRevision);
     // Issue #1615: a completion the Session settled itself faces the same scope and named-test checks a host-settled draft does.
-    const settledRefusal = settled ? selfSettledCompletionRefusal(db, session, settled, evidence, input.workspace, validationOptions) : null;
     // Persisted managed launch mode is authoritative at the one canonical
     // settlement boundary. A public CLI caller can omit, falsify, or spoof its
     // optional transport fields, but cannot downgrade source_only/direct_required.
@@ -889,6 +894,10 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
     const completionCapability = durableCapability.sourceCompletionRequired
       ? (suppliedConflicts ? undefined : canonicalCapability)
       : suppliedCapability;
+    const settledRefusal = settled
+      ? completionCapabilityRefusal(session, input.workspace, completionCapability, sourceCompletionRequired)
+        ?? selfSettledCompletionRefusal(db, session, settled, evidence, input.workspace, validationOptions)
+      : null;
     const drafted = settled ? null : settleCandidateDraftedCompletion(db, session, evidence, input.workspace, validationOptions, completionCapability, sourceCompletionRequired);
     const attempt = settledRefusal
       ? { completed: false, reason: settledRefusal }

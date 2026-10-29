@@ -82,3 +82,16 @@ pnpm exec vitest run tests/session-reconciliation.test.ts tests/session-capabili
 ```
 
 The current-head CI unit shards remain pending after the push. R4 review, isolated rehearsal, adoption, Production, and any R465 retry remain outside this repair.
+
+## R5 final delta — settled-candidate capability gate
+
+R4-01 showed that a genuine already-settled candidate bypassed the canonical managed capability check because that check ran only while settling a draft. Canonical reconciliation now evaluates the same host-derived requirement before accepting either a draft settlement or an already-settled candidate. For persisted `source_only` and `direct_required` Sessions, missing, corrupt, swapped, unavailable, or direct-write-required evidence produces the existing non-resumable self-settled refusal/escalation. The previously recorded settlement is not changed or undone. Legacy Sessions retain their established path.
+
+Focused sandbox checks passed: settled-candidate capability/scope selection `5 passed, 50 skipped`; capability/attribution `23 passed`; touched ESLint, TypeScript, session-ledger validation, and scoped diff check passed. Host rerun is still required for the full reconciliation suite, including restricted-draft settlement and validation-descendant cases; no CI, R5 review, rehearsal, adoption, Production, or R465 success is claimed.
+
+```sh
+pnpm exec vitest run tests/session-reconciliation.test.ts tests/session-capability-attribution.test.ts tests/session-capability-probe.test.ts --no-file-parallelism
+pnpm build
+pnpm check:session-ledger
+pnpm fast-rehearsal
+```

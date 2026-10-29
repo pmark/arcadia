@@ -14,7 +14,7 @@
   "subagent_tokens_total": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 4,
+  "review_rounds": 5,
   "blocking_findings": [
     {
       "class": "host-only-fixture",
@@ -26,6 +26,10 @@
     },
     {
       "class": "R3-01 canonical reconciliation omitted-input bypass",
+      "caught_by": "independent current-head review"
+    },
+    {
+      "class": "R4-01 settled-candidate canonical capability bypass",
       "caught_by": "independent current-head review"
     }
   ],
@@ -46,9 +50,14 @@
       "id": "managed-reconciliation-fixtures-omitted-workspace",
       "cost_min": null,
       "fix_ref": "docs/reports/handoffs/20261029T0112Z-r465-host-completion-ellis.md"
+    },
+    {
+      "id": "settled-candidate-capability-gate",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1867#issuecomment-6488710678"
     }
   ],
   "outcome": "stopped",
-  "stop_reason": "R4 fixture producer correction prepared; protected-host reconciliation, CI, rehearsal, and independent R4 review remain for Rowan.",
-  "notes": "R1 optional wall; R2 persisted host mode; R4 canonical gate rejects omitted/false/spoofed capability. Fixture completion producers now use workspace plus paired probe evidence. Sandbox-only."
+  "stop_reason": "R5 final delta prepared; protected-host reconciliation, CI, rehearsal, and independent final review remain for Rowan.",
+  "notes": "R1 optional wall; R2 host mode; R4 canonical gate; R5 applies it to settled candidates. Missing/corrupt/swapped/direct-required evidence is non-resumable. Sandbox-only."
 }
