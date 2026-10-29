@@ -67,6 +67,6 @@
     }
   ],
   "outcome": "stopped",
-  "stop_reason": "R6-pending delta prepared; host reconciliation, CI, rehearsal, and the one final independent review remain for Rowan.",
-  "notes": "R1 optional wall; R2 host mode; R4/R5 canonical gates; R6-pending gates Plan-done public reconciliation. Direct providers require a clear required-write probe. Sandbox-only."
+  "stop_reason": "R6 direction-fixture correction prepared; host targeted checks, CI, rehearsal, and the one final independent review remain for Rowan.",
+  "notes": "R1 optional wall; R2 host mode; R4/R5 canonical gates; R6 gates Plan-done reconciliation. Direction emits the issued probe; direct providers need a clear write probe. Sandbox-only."
 }

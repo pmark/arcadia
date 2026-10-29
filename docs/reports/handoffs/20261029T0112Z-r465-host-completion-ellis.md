@@ -46,6 +46,20 @@ pnpm check:session-ledger
 pnpm fast-rehearsal
 ```
 
+### R6 focused follow-up — direction manual completion producer
+
+The host run of `tests/direction-managed.test.ts` on `3d819e2a333c44a00bc1a2a3f84c49565acffc09` reached reconciliation and returned `incomplete_resumable` at its accepted-completion assertion. The fixture manually drafts and settles its complete Ask, so it bypassed `Rehearsal.agentFinish`, the existing producer that records the genuine host-issued paired probe. It now calls `recordClearProbeEvidence` once at that explicit simulated completion point, after the candidate commit and before the manual Ask. The helper uses the issued Session contract and real probe script and appends idempotently; it does not seed every launch or alter production gates.
+
+The OpenCode two-action path already uses `Rehearsal.agentFinish`, which records that same probe. The R6 canonical settled path permits its direct-required Session only when its required-write probe is paired and clear; source-only drafts and missing or mismatched direct evidence remain refused. Sandbox reruns: settled canonical selection `5 passed, 52 skipped`; capability/attribution `23 passed`; touched ESLint, TypeScript, ledger validation and diff check passed. Host confirmation remains required; do not infer it from the sandbox.
+
+```sh
+pnpm exec vitest run tests/direction-managed.test.ts tests/rehearsal-two-action.test.ts --no-file-parallelism
+pnpm exec vitest run tests/session-reconciliation.test.ts tests/session-capability-attribution.test.ts tests/session-capability-probe.test.ts --no-file-parallelism
+pnpm build
+pnpm check:session-ledger
+pnpm fast-rehearsal
+```
+
 Then perform independent current-head review and separately governed adoption before any fresh R465 attempt. No live R465 success is claimed.
 
 ## R4 canonical reconciliation repair — pending host proof
