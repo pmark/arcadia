@@ -25,5 +25,5 @@
   ],
   "outcome": "stopped",
   "stop_reason": "Bounded implementation pass complete; protected-host reconciliation and build remain for Rowan.",
-  "notes": "Host regression exposed a same-process readonly SQLite fixture leak; child-CLI correction awaits fresh host proof. No live action."
+  "notes": "R1-01 fixes optional unavailable probe wall; child-CLI host settlement and full build await fresh host proof. No live action."
 }

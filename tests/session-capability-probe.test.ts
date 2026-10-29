@@ -1,11 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseSessionProbe, sessionProbeWalls, SESSION_PROBE_TOKEN_BUDGET } from "../src/production/sessionCapability.js";
+import { observeSessionCapability, parseSessionProbe, sessionProbeWalls, SESSION_PROBE_TOKEN_BUDGET } from "../src/production/sessionCapability.js";
+import { completionCapabilityForReconciliation } from "../src/production/tick.js";
 import { exactBashRule, headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
 import { issueSessionProbe, readSessionCompletionContract, readSessionProbeNonce, SESSION_PROBE_SCRIPT_PATH } from "../src/sessions/sessionProbeCommand.js";
+import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 
 function runProbe(workspace: string, worktree: string, workspaceWrite = "required") {
   const started = Date.now();
@@ -69,6 +71,7 @@ describe("the in-Session capability probe script", () => {
       expect(run.status).toBe(0);
       const probe = JSON.parse(run.stdout.trim());
       expect(probe).toMatchObject({ ok: true, checks: expect.arrayContaining([{ name: "workspace_write", ok: false, required: false, unavailable: true }]) });
+      expect(sessionProbeWalls(probe)).toEqual([]);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
@@ -88,6 +91,25 @@ describe("parsing the probe from a Session log", () => {
     expect(parseSessionProbe(result, { command, contract })).toBeNull();
     expect(parseSessionProbe(`${log}\n${log}`, { command, contract })).toBeNull();
     expect(sessionProbeWalls(null)).toEqual([]);
+  });
+
+  it("keeps an optional unavailable DB write clear through observation and managed-tick transport", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "probe-managed-source-"));
+    try {
+      const workspace = path.join(root, "ws");
+      const worktree = path.join(root, "worktree");
+      mkdirSync(path.join(worktree, ".arcadia", "asks"), { recursive: true });
+      const session = { id: "s1", packet_id: "packet", packet_sha256: "b".repeat(64), worktree_path: worktree, provider: "codex-cli" };
+      const issued = issueSessionProbe({ workspace, sessionId: session.id, packetId: session.packet_id, packetSha256: session.packet_sha256, worktreePath: worktree, directWorkspaceWrite: "unavailable" });
+      const output = JSON.stringify({ probe: "session-capability/v2", contract: issued.contractDigest, ok: true, checks: [
+        { name: "workspace_write", ok: false, required: false, unavailable: true },
+        { name: "host_validation", ok: true }, { name: "preservation", ok: true }
+      ] });
+      writeFileSync(sessionLogPath(workspace, session.id), JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: issued.command, exit_code: 0, aggregated_output: output } }) + "\n");
+      expect(observeSessionCapability(readFileSync(sessionLogPath(workspace, session.id), "utf8"), { command: issued.command, contract: issued.contractDigest }))
+        .toMatchObject({ provenance: "session_probe", status: "clear", walls: [] });
+      expect(completionCapabilityForReconciliation(workspace, session)).toMatchObject({ sourceCompletionRequired: true, completionCapability: { directWorkspaceWrite: "unavailable", localAskTransport: "ready" } });
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 });
 

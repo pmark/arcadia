@@ -60,7 +60,8 @@ import {
   SESSION_PROBE_TOKEN_BUDGET,
   sessionTokensFromLog,
   type EnvironmentWall,
-  sourceCompletionCapability
+  sourceCompletionCapability,
+  type SourceCompletionCapability
 } from "./sessionCapability.js";
 import { activateNextPlan } from "../dispatch/planActivationApply.js";
 import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaunchExit, retryOperatorLaunchPublications } from "./operatorLaunchHandoff.js";
@@ -1830,6 +1831,34 @@ function projectInActiveScope(db: Database.Database, projectSlug: string): boole
 }
 
 /**
+ * Carries only a host-issued source capability with fresh, exact provider
+ * evidence into reconciliation. A recorded headless Codex/Claude Session
+ * fails closed when that contract or evidence is absent.
+ */
+export function completionCapabilityForReconciliation(workspace: string, session: {
+  id: string; packet_id: string; packet_sha256: string; worktree_path: string; provider?: string | null;
+}): {
+  completionCapability?: SourceCompletionCapability;
+  sourceCompletionRequired: boolean;
+} {
+  const issued = sourceCompletionCapability(workspace, session);
+  const sourceCompletionRequired = existsSync(sessionLogPath(workspace, session.id))
+    && (session.provider === "codex-cli" || session.provider === "claude-code-cli");
+  const providerLog = (() => {
+    try { return readFileSync(sessionLogPath(workspace, session.id), "utf8"); } catch { return null; }
+  })();
+  const observation = issued
+    ? observeSessionCapability(providerLog, { command: issued.probeCommand, contract: issued.probeContractDigest })
+    : null;
+  const completionCapability = issued && observation?.provenance === "session_probe" && observation.status === "clear"
+    ? issued
+    : issued
+      ? { ...issued, localAskTransport: "unavailable" as const }
+      : undefined;
+  return { completionCapability, sourceCompletionRequired };
+}
+
+/**
  * Run one managed-production tick across every active Project. Never throws
  * for an individual repository's failure -- a broken or refused repository is
  * reported in its own result entry so one Project's trouble never stops the
@@ -2051,32 +2080,10 @@ export function runManagedProductionTick(
         }
         const continuation = getSessionContinuation(db, lease);
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
-        const issuedCompletionCapability = sourceCompletionCapability(workspace, lease);
-        // Provider and recording metadata were written at launch by the host.
-        // Their presence means an absent/corrupt contract is a refusal, never
-        // an implicit legacy/direct completion route.
-        const sourceCompletionRequired = existsSync(sessionLogPath(workspace, lease.id))
-          && (lease.provider === "codex-cli" || lease.provider === "claude-code-cli");
-        const providerLog = (() => {
-          try { return readFileSync(sessionLogPath(workspace, lease.id), "utf8"); } catch { return null; }
-        })();
-        const probeObservation = issuedCompletionCapability
-          ? observeSessionCapability(providerLog, {
-              command: issuedCompletionCapability.probeCommand,
-              contract: issuedCompletionCapability.probeContractDigest
-            })
-          : null;
-        const observedCompletionCapability = issuedCompletionCapability
-          && probeObservation?.provenance === "session_probe"
-          && probeObservation.status === "clear"
-          ? issuedCompletionCapability
-          : issuedCompletionCapability
-            ? { ...issuedCompletionCapability, localAskTransport: "unavailable" as const }
-            : undefined;
+        const sourceCompletion = completionCapabilityForReconciliation(workspace, lease);
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot, workspace,
-          completionCapability: observedCompletionCapability,
-          sourceCompletionRequired,
+          ...sourceCompletion,
           ...(options.handoff?.completionValidation ? { completionValidation: options.handoff.completionValidation } : {}),
           suppressLeaseHandoff: preservation.kind === "refused" && preservation.identicalRefusalLimitReached
             ? { reason: `Preservation refused an identical reason repeatedly (${preservation.reason}); not offered for automatic resumption.` }

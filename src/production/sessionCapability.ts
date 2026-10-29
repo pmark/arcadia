@@ -349,8 +349,11 @@ export function parseSessionProbe(log: string | null, expected: { command: strin
 
 /** Walls named by a failed session probe, one per failed check class; the probe JSON rides in the evidence. */
 export function sessionProbeWalls(result: SessionProbeResult | null): EnvironmentWall[] {
-  if (!result || !Array.isArray(result.checks) || !result.checks.every(isSessionProbeCheck) || (result.ok && result.checks.every((check) => check.ok))) return [];
-  const failed: SessionProbeCheck[] = result.checks.filter((check) => check && check.ok === false && typeof check.name === "string");
+  if (!result || !Array.isArray(result.checks) || !result.checks.every(isSessionProbeCheck)) return [];
+  // A source-only contract truthfully records protected DB writes as
+  // unavailable. It is evidence of an unavailable optional capability, not an
+  // environment wall; the remaining required checks still decide the probe.
+  const failed: SessionProbeCheck[] = result.checks.filter((check) => check.ok === false && check.required !== false && typeof check.name === "string");
   const evidenceJson = clip(JSON.stringify(result), 600);
   const known: ReadonlySet<string> = new Set<EnvironmentWallClass>(["workspace_write", "host_validation", "preservation"]);
   const walls = new Map<EnvironmentWallClass, EnvironmentWall>();
