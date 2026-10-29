@@ -152,6 +152,16 @@ just to get the preview/fingerprint; expect `USAGE_ERROR: required option
 '--proposal'` or `'--request-id'` or `'--disposition'` in some order if you
 guess the flag set instead of passing all three from the start.
 
+For `decision approve`, current `src/commands/decision.ts:778` also uses
+`projectCheckoutFor(repoPath, process.cwd())`: a registered linked worktree of
+the same repository receives the canonical answer and commit. The primary-only
+Issue1122 workaround in `arcadia-repository.md` is stale for this implementation.
+Verified by `tests/decision-command.test.ts`'s candidate-worktree regression and
+Decision0147 receipt `decisionanswer_789e8bace9b04c4183` (2026-10-29); primaryf319
+remained unchanged. Canonical answer recording, publication and operator-owned
+merge remain separate gates. Recheck this advice when Issue1122 closes or the
+resolver changes; details: `docs/reports/decision0147-a-publication-2026-10-29.md`.
+
 ## Publish a `/runs` action that settles an Agent Ask
 
 keys: operator script, runs, agent-ask, settlement, fingerprint, plan amendment, retry
