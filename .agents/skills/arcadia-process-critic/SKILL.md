@@ -1,6 +1,6 @@
 ---
 name: arcadia-process-critic
-description: Run a read-only process pre-mortem or post-mortem on an Arcadia live run or the system around it. Use after a live run stops, before a production press or merge batch when judgement, settlement, patch-check or tick code changed, before an authority Decision reaches the operator, or when a defect class recurs. A plan-critic specialization; grants no authority.
+description: Run a read-only process pre-mortem or post-mortem on an Arcadia live run. Use when a live run stops, before a production press or merge batch touching judgement, settlement, patch-check or tick code, before an authority Decision reaches the operator, or when a defect class recurs. No authority.
 ---
 
 # Arcadia Process Critic

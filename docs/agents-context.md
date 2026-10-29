@@ -106,10 +106,10 @@ stop the affected operation, preserve work and report the exact remedy.
 
 ### Instruction budget
 
-The generated bootstrap is limited to **8 KiB UTF-8**; a root AGENTS.md to
-**12 KiB**. Default-loading project guidance across root and relevant nested
-paths is limited to **24 KiB**, reserving **8 KiB** for global guidance inside a
-conservative **32 KiB combined** envelope. Root overrides must retain this bootstrap.
+Caps: generated bootstrap **8 KiB UTF-8**; root AGENTS.md **12 KiB**;
+default-loading project guidance across root and relevant nested paths
+**24 KiB**, reserving **8 KiB** for global guidance inside a conservative
+**32 KiB combined** envelope. Root overrides must retain this bootstrap.
 Do not raise provider limits or automatically import the procedural library.
 Setup, Way drift and dispatch check delivery; overflow or missing guidance is
 an explicit failure requiring a smaller file or repaired adoption, not silence.
