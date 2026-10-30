@@ -4,13 +4,13 @@
   "model": "unavailable",
   "effort": null,
   "action_id": "operator-directed:#1889; operator-directed:#1891",
-  "pr": null,
+  "pr": 1893,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 3,
+  "review_rounds": 4,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
@@ -22,5 +22,5 @@
     }
   ],
   "outcome": "complete",
-  "notes": "#1889 merged through PR1890; operator-directed #1891 adds Session permalinks and canonical reload lookup in a fresh worktree. Review/CI evidence on respective PRs; no live launch."
+  "notes": "#1889 landed via PR1890; operator-directed #1891/PR1893 adds exact Session links and canonical reload/focus lookup in a fresh worktree. No live launch or installation."
 }

@@ -22,17 +22,23 @@ export function WorkspaceActionSession({ projectId, plan, action, children }: {
     }).catch((cause: unknown) => { if (!disposed) setError(cause instanceof Error ? cause.message : String(cause)); });
     return () => { disposed = true; };
   }, [projectId, plan, action, retry]);
-  if (error) return <div className="workspace-continue"><p role="alert">Session lookup unavailable: {error} Check existing Sessions before continuing.</p><button onClick={() => { setError(null); setRead(null); setRetry(n => n + 1); }}>Check Sessions again</button></div>;
-  if (!read) return <p role="status">Checking this Action&apos;s Sessions…</p>;
+  useEffect(() => {
+    // Recheck on return without discarding an in-flight preview or unknown receipt.
+    const onFocus = () => setRetry(n => n + 1);
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, []);
+  const failure = error && <div className="workspace-continue"><p role="alert">Session lookup unavailable: {error} Check existing Sessions before continuing.</p><button onClick={() => setRetry(n => n + 1)}>Check Sessions again</button></div>;
+  if (!read) return failure || <p role="status">Checking this Action&apos;s Sessions…</p>;
   const session = read.session;
-  if (!session) return <>{children}</>;
+  if (!session) return <>{failure}<fieldset className="min-w-0 border-0 p-0" disabled={Boolean(error)}>{children}</fieldset></>;
   const active = session.status === "running" || session.status === "prepared";
-  return <section className="workspace-continue-feedback" aria-label="This Action's Session">
+  return <>{failure}<section className="workspace-continue-feedback" aria-label="This Action's Session">
     <h3>{active ? "This Action already has a Session" : "Latest Session for this Action"}</h3>
     <p>{plan} · {action}</p>
     <p>{session.statusLabel} · <code>{session.id}</code></p>
     <p><Link href={sessionHref(session.id)}>View Session</Link></p>
     <p className="workspace-muted">Recorded in Arcadia · checked {new Date(read.observedAt).toLocaleTimeString()}. View Session for current progress.</p>
-    {!active && children && <details><summary>Continue options for this Action</summary>{children}</details>}
-  </section>;
+    {!active && children && <details><summary>Continue options for this Action</summary><fieldset className="min-w-0 border-0 p-0" disabled={Boolean(error)}>{children}</fieldset></details>}
+  </section></>;
 }

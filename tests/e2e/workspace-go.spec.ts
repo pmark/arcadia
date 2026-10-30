@@ -62,7 +62,8 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
     const request = route.request(), endpoint = new URL(request.url()).pathname;
     if (endpoint === "/api/projects/garden/action-session") {
       if (lookupFailed) return route.fulfill({ status: 503, json: { error: "Recorded Sessions unavailable" } });
-      const matches = new URL(request.url()).searchParams.get("action") === durable.actionId;
+      const lookup = new URL(request.url()).searchParams;
+      const matches = lookup.get("action") === durable.actionId && lookup.get("plan") === durable.planSlug;
       return route.fulfill({ json: { known: true, observedAt: new Date().toISOString(), projectSlug: "moon-garden", session: restored && matches ? durable : null } });
     }
     if (endpoint === "/api/sessions/fixture-session") return route.fulfill({ json: { known: true, observedAt: new Date().toISOString(), projectSlug: "moon-garden", session: durable } });
@@ -148,6 +149,23 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
       await expect(control).toHaveCount(0);
       await expect(confirm).toHaveCount(0);
       await expect(direction(page).getByRole("button", { name: "Read Go again" })).toHaveCount(0);
+      if (state === "unknown") {
+        const checked = page.waitForResponse(response => response.url().includes("/action-session?"));
+        await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await checked;
+        await expect(heading("Launch outcome unknown")).toBeVisible();
+        await expect(direction(page)).toContainText(preview.requestId);
+        // A failed focus read must not erase the unknown request or enable another launch.
+        lookupFailed = true;
+        await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+        await expect(direction(page).getByRole("alert")).toContainText("Recorded Sessions unavailable");
+        await expect(heading("Launch outcome unknown")).toBeVisible();
+        await expect(direction(page)).toContainText(preview.requestId);
+        lookupFailed = false;
+        await direction(page).getByRole("button", { name: "Check Sessions again" }).click();
+        await expect(direction(page).getByRole("alert")).toHaveCount(0);
+        await expect(heading("Launch outcome unknown")).toBeVisible();
+      }
       await page.reload();
     }
     expect(writes).toBe(6);
@@ -160,6 +178,14 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
     await page.goBack();
     const card = page.getByRole("region", { name: "This Action's Session", exact: true });
     await expect(card.getByRole("link", { name: "View Session", exact: true })).toHaveAttribute("href", "/sessions/fixture-session");
+    await expect(control).toHaveCount(0);
+    // Returning focus also refreshes a previously empty observation.
+    restored = false;
+    await direction(page).getByRole("button", { name: "Read again", exact: true }).click();
+    await expect(control).toBeVisible();
+    restored = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect(card.getByRole("link", { name: "View Session", exact: true })).toBeVisible();
     await expect(control).toHaveCount(0);
     await card.getByRole("link", { name: "View Session", exact: true }).click();
     await expect(page).toHaveURL(`${url}/sessions/fixture-session`);
