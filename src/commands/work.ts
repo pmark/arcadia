@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { createCodexPacket, selectAgentProfileForWorkItem, selectPolicyPermittedProfileNameOrRefuse } from "../codex/packets.js";
@@ -29,6 +29,7 @@ import {
   mergeReviewItemContext,
   listArchivedWorkItems,
   listArtifacts,
+  listCodexInvocationsForWorkItem,
   listReviewItems,
   listWorkItems,
   unarchiveWorkItem,
@@ -381,6 +382,9 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
         }
         return { ...active, reused: true };
       }
+
+      const promoted = prepareAcceptedProjectIdeaBuild(db, workspacePath, workItem, options.agentProfile);
+      if (promoted) return promoted;
 
       const steps = planStepsForWorkItem(workItem);
       const isManagedPlanning = steps.length === 1 && steps[0]?.executorType === "codex_planning";
@@ -825,6 +829,89 @@ function assertRequiredPlanningContext(
   }
 }
 
+/** Reuse or replace a promoted build packet while preserving its accepted origin. */
+function prepareAcceptedProjectIdeaBuild(
+  db: Parameters<typeof getWorkItem>[0], workspace: string, workItem: WorkItemSummary, requestedProfile?: string
+): WorkPlanCommandData | null {
+  const decisions = listReviewItems(db, "all").filter((item) => {
+    const promotion = parseDecisionContext(item).planningPromotion as Record<string, unknown> | undefined;
+    return promotion?.actionId === workItem.id || (promotion?.actionDocRef && promotion.actionDocRef === workItem.doc_ref && promotion.buildPlanId);
+  });
+  const marker = /^\[planning-promotion:([^\]]+)\]$/.exec(workItem.clarification_source ?? "");
+  if (!decisions.length) {
+    if (marker) throw validationError("Promoted Action has no matching acceptance receipt; preserve its packet and investigate the missing binding.", { actionId: workItem.id, decisionId: marker[1] });
+    return null;
+  }
+  if (decisions.length !== 1) throw validationError("Promoted build has ambiguous acceptance Decisions.");
+  const decision = decisions[0];
+  const promotion = parseDecisionContext(decision).planningPromotion as Record<string, unknown>;
+  if (marker && marker[1] !== decision.id) throw validationError("Promoted Action acceptance receipt does not match its source marker.", { actionId: workItem.id });
+  const plan = typeof promotion.buildPlanId === "string" ? getExecutionPlan(db, promotion.buildPlanId) : null;
+  const invocation = typeof promotion.buildInvocationId === "string" ? getCodexInvocation(db, promotion.buildInvocationId) : null;
+  const artifact = typeof promotion.buildPacketArtifactId === "string" ? getArtifact(db, promotion.buildPacketArtifactId) : null;
+  const judged = parseDecisionContext(decision).judgedArtifact as Record<string, unknown> | undefined;
+  const planningArtifact = typeof promotion.planningArtifactId === "string" ? getArtifact(db, promotion.planningArtifactId) : null;
+  const repoPath = workItem.project_id ? getProjectMetadata(db, workItem.project_id)?.repo_path : null;
+  const packetPath = typeof promotion.buildPacketPath === "string" ? path.join(workspace, promotion.buildPacketPath) : "";
+  const planningPath = typeof promotion.planningArtifactPath === "string" ? path.join(workspace, promotion.planningArtifactPath) : "";
+  if (decision.status !== "approved" || decision.project_id !== workItem.project_id || promotion.acceptanceDecisionId !== decision.id ||
+      decision.artifact_id !== promotion.planningArtifactId || !planningArtifact || planningArtifact.path !== promotion.planningArtifactPath ||
+      judged?.artifactId !== promotion.planningArtifactId || judged?.artifactPath !== promotion.planningArtifactPath || judged?.sha256 !== promotion.planningArtifactSha256 ||
+      typeof promotion.sourceIdea !== "string" || typeof promotion.validationArtifactPath !== "string" ||
+      promotion.actionId !== workItem.id || promotion.actionDocRef !== workItem.doc_ref || promotion.repoPath !== repoPath ||
+      !plan || plan.work_item_id !== workItem.id || plan.steps.length !== 1 || plan.steps[0]?.executor_type !== "codex_build" ||
+      !invocation || invocation.work_item_id !== workItem.id || invocation.plan_id !== plan.id || invocation.plan_step_id !== plan.steps[0]?.id ||
+      invocation.purpose !== "build" || invocation.agent_profile !== promotion.buildProfile ||
+      invocation.prompt_path !== promotion.buildPacketPath || !artifact || artifact.work_item_id !== workItem.id ||
+      artifact.artifact_type !== "codex_prompt_packet" || artifact.path !== invocation.prompt_path ||
+      !existsSync(packetPath) || packetSha256(packetPath) !== promotion.buildPacketSha256 ||
+      !existsSync(planningPath) || packetSha256(planningPath) !== promotion.planningArtifactSha256 ||
+      ![promotion.sourceIdea, promotion.planningArtifactPath, promotion.validationArtifactPath, decision.id].every((value) =>
+        typeof value === "string" && readFileSync(packetPath, "utf8").includes(value))) {
+    throw validationError("Accepted project-idea build origin or its bindings are stale.", { actionId: workItem.id, decisionId: decision.id });
+  }
+  const latest = getLatestExecutionPlanForWorkItem(db, workItem.id);
+  const currentPlan = latest && latest.steps.length === 1 && latest.steps[0]?.executor_type === "codex_build" ? latest : null;
+  if (!currentPlan) throw validationError("Promoted Action's current build plan is not reusable.", { actionId: workItem.id });
+  const invocations = listCodexInvocationsForWorkItem(db, workItem.id).filter((item) => item.plan_id === currentPlan.id && item.purpose === "build");
+  if (invocations.length !== 1) throw validationError("Promoted Action's current build invocation is missing or ambiguous.", { actionId: workItem.id });
+  const current = invocations[0];
+  const run = db.prepare("SELECT id, status FROM execution_runs WHERE plan_id = ? ORDER BY created_at DESC LIMIT 1").get(currentPlan.id) as { id: string; status: string } | undefined;
+  const running = db.prepare("SELECT id FROM execution_runs WHERE work_item_id = ? AND status IN ('pending_execution', 'running') LIMIT 1").get(workItem.id) as { id: string } | undefined;
+  if (listCodexInvocationsForWorkItem(db, workItem.id).some((item) => item.purpose === "build" && item.status === "running") || running) throw validationError("A build attempt is running; wait for it to finish before preparing another packet.", { actionId: workItem.id, invocationId: current.id, runId: run?.id });
+  if (current.id === invocation.id && current.status === "packet_created" && !current.run_id && !run) {
+    if (requestedProfile && requestedProfile !== current.agent_profile) throw validationError("Existing packet is bound to a different coding agent profile.");
+    return { plan, planningDecision: null, codexInvocation: null, packetArtifact: null, buildApproval: null, buildInvocation: invocation, buildPacketArtifact: artifact, reused: true };
+  }
+  if (!["packet_created", "completed", "failed"].includes(current.status)) throw validationError("Build invocation has an unknown status; preserve it for investigation.", { invocationId: current.id });
+  if (currentPlan.id !== plan.id) {
+    const linked = listReviewItems(db, "all").filter((item) => item.codex_invocation_id === current.id && item.resolved_intent === "CodexBuildPacketApproval");
+    const binding = linked[0] ? parseDecisionContext(linked[0]).planningPromotion as Record<string, unknown> | undefined : undefined;
+    const currentPath = path.join(workspace, current.prompt_path);
+    if (!linked.length || !binding || binding.actionDocRef !== workItem.doc_ref || binding.repoPath !== repoPath ||
+        binding.buildInvocationId !== current.id || binding.buildProfile !== current.agent_profile || binding.buildPacketPath !== current.prompt_path ||
+        !existsSync(currentPath) || binding.buildPacketSha256 !== packetSha256(currentPath)) {
+      throw validationError("Current replacement build packet or its approval binding is stale.", { actionId: workItem.id, invocationId: current.id });
+    }
+  }
+  const registries = loadPhase3Registries(workspace);
+  validatePhase3Registries(registries);
+  const reusable = currentPlan.status === "planned" && current.status === "packet_created" && !current.run_id && !run;
+  const target = reusable ? currentPlan : createExecutionPlan(db, {
+    workItemId: workItem.id,
+    summary: `Execution plan for "${workItem.title}".`,
+    steps: [{ skillName: "codex_build", title: "Prepare Codex handoff", command: null, executorType: "codex_build", safeToRun: false, needsOperator: "Codex execution requires explicit review or invocation." }]
+  });
+  if (!target) throw validationError("Could not prepare replacement build plan.");
+  const profile = requestedProfile ?? current.agent_profile;
+  const prepared = ensureBuildPacketForPlan(db, workspace, workItem, target, registries, target.steps[0].id, profile, {
+    request: String(promotion.sourceIdea),
+    slots: { sourcePlanningArtifact: String(promotion.planningArtifactPath), planningValidationResult: String(promotion.validationArtifactPath), acceptanceDecision: decision.id }
+  });
+  return { plan: target, planningDecision: null, codexInvocation: null, packetArtifact: null,
+    buildApproval: prepared.approval, buildInvocation: prepared.invocation, buildPacketArtifact: prepared.packetArtifact, reused: reusable };
+}
+
 function reusableUnpreparedPlanningPlan(
   db: Parameters<typeof getWorkItem>[0],
   workItem: WorkItemSummary,
@@ -1263,14 +1350,15 @@ function ensureBuildPacketOnly(
   plan: ExecutionPlanSummary,
   registries: Phase3Registries,
   planStepId: string,
-  requestedProfile?: string
+  requestedProfile?: string,
+  origin?: { request: string; slots: Record<string, string> }
 ): {
   invocation: CodexInvocation;
   packetArtifact: ArtifactSummary;
 } {
   ensureCodexPacketsForPlan(db, workspacePath, workItem, plan, registries, {
     allowCodexBuild: true,
-    agentProfile: requestedProfile
+    agentProfile: requestedProfile, origin
   });
 
   const invocation = getCodexInvocationForPlan(db, {
@@ -1307,13 +1395,14 @@ function ensureBuildPacketForPlan(
   plan: ExecutionPlanSummary,
   registries: Phase3Registries,
   planStepId: string,
-  requestedProfile?: string
+  requestedProfile?: string,
+  origin?: { request: string; slots: Record<string, string> }
 ): {
   approval: ReviewItemSummary;
   invocation: CodexInvocation;
   packetArtifact: ArtifactSummary;
 } {
-  const { invocation, packetArtifact } = ensureBuildPacketOnly(db, workspacePath, workItem, plan, registries, planStepId, requestedProfile);
+  const { invocation, packetArtifact } = ensureBuildPacketOnly(db, workspacePath, workItem, plan, registries, planStepId, requestedProfile, origin);
   // The launch path trusts the newest promotion review for a packet, so the
   // newest one decides here too. Reuse it while it is open, deferred or
   // approved: opening a fresh one beside an approved one silently revoked the
@@ -1373,7 +1462,7 @@ function ensureCodexPacketsForPlan(
   workItem: WorkItemSummary,
   plan: ExecutionPlanSummary,
   registries: Phase3Registries,
-  permissions: { allowCodexPlanning?: boolean; allowCodexBuild?: boolean; agentProfile?: string }
+  permissions: { allowCodexPlanning?: boolean; allowCodexBuild?: boolean; agentProfile?: string; origin?: { request: string; slots: Record<string, string> } }
 ): void {
   for (const step of plan.steps) {
     const purpose = step.executor_type === "codex_build"
@@ -1411,8 +1500,8 @@ function ensureCodexPacketsForPlan(
     });
     const packet = createCodexPacket({
       workspace: workspacePath,
-      request: workItem.raw_input,
-      resolved: resolvedIntentForWorkPlan(workItem, plan, purpose),
+      request: permissions.origin?.request ?? workItem.raw_input,
+      resolved: { ...resolvedIntentForWorkPlan(workItem, plan, purpose), slots: permissions.origin?.slots ?? {} },
       workItem,
       planId: plan.id,
       projectContext: workItem.project_id ? getProjectContext(db, workItem.project_id) : null,

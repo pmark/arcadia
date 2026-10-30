@@ -916,7 +916,14 @@ no implementation Run. Its receipt prints the exact separate
 `arcadia work run ... --allow-codex-build --agent-profile ...` trigger that can
 start the build after the operator chooses to do so. Re-acceptance reuses the
 same Action and packet, while a changed or malformed planning Artifact fails
-closed before either managed pointer moves.
+closed before either managed pointer moves. Repeating `arcadia work plan` for
+that promoted Action returns the same unused packet when its acceptance and
+bindings still match. If the packet has been used, preparation preserves the attempt and creates a
+new packet with a separate open build approval. A running attempt blocks preparation.
+Replacement execution also depends on the current-packet and origin binding checks
+of PR #1905; do not use it for a live attempt until the combined changes are
+reviewed and adopted and the required fresh approval is granted.
+The separate build trigger and all other approval gates remain in force.
 
 Preparation refuses an already registered Project name or repository and any
 repository that already carries a `PROJECT.md` or managed plan. It never
