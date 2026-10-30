@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runProjectPrepareCommand } from "../src/commands/project.js";
 import { runReviewApproveCommand, runReviewDeferCommand, runReviewRejectCommand } from "../src/commands/review.js";
 import { runWorkerIteration } from "../src/commands/worker.js";
-import { runWorkPlanCommand } from "../src/commands/work.js";
+import { runWorkPlanCommand, runWorkUpdateCommand } from "../src/commands/work.js";
 import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -301,6 +301,27 @@ describe("project-idea planning promotion", () => {
       expect(authorization.authorized).toBe(false);
       expect(authorization.reason).toMatch(/stale canonical refinement feedback/);
     });
+  });
+
+  it("uses the latest rejection timestamp when an older-created acceptance is rejected later", () => {
+    const fixture = preparedProjectIdea();
+    const older = executePlanningRun(fixture);
+    runReviewDeferCommand({ workspace: fixture.workspace, id: older.id, trigger: "Await further clarification" });
+    runWorkUpdateCommand({ workspace: fixture.workspace, workId: fixture.planningWorkItemId, status: "open", queue: "work_queue", classification: "agent" });
+    const fresh = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.planningWorkItemId, agentProfile: "claude_planning" });
+    runReviewApproveCommand({ workspace: fixture.workspace, id: fresh.data.planningDecision!.id });
+    withDatabase(fixture.workspace, (db) => runWorkerIteration(db, fixture.workspace, process.pid));
+    const newer = withDatabase(fixture.workspace, (db) => listReviewItems(db, "open").find((item) =>
+      item.resolved_intent === "CodexPlanningArtifactAcceptance" && item.work_item_id === fixture.planningWorkItemId
+    ))!;
+    expect(newer.created_at > older.created_at).toBe(true);
+    runReviewRejectCommand({ workspace: fixture.workspace, id: newer.id, feedback: "Feedback on newer-created review." });
+    runReviewRejectCommand({ workspace: fixture.workspace, id: older.id, feedback: "Latest canonical operator feedback." });
+
+    const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: fixture.planningWorkItemId });
+    const prompt = readFileSync(path.join(fixture.workspace, prepared.data.codexInvocation!.prompt_path), "utf8");
+    expect(prompt).toContain("Latest canonical operator feedback.");
+    expect(prompt).not.toContain("Feedback on newer-created review.");
   });
 
   it("restores both managed pointers when build-packet persistence fails after document promotion", () => {
