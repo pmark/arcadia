@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { sessionHref } from "../../lib/session-link";
 import { useEffect, useRef, useState } from "react";
 import { SessionLog } from "../production-console";
 import type { GuardedSessionLaunchResponse, SessionLaunchPreviewResponse } from "../../lib/arcadia-cli";
@@ -83,7 +84,7 @@ export function WorkspaceContinue({ projectId, plan, action, resolutionId, readA
     {receipt && <section aria-label="Session receipt">
       <p>{receipt.reused ? "This request reused the already recorded Session; it did not create another." : "The protected launch returned this Session receipt. Launch does not mean the Action is complete."}</p>
       <dl className="workspace-facts"><dt>Request receipt identity</dt><dd>{receipt.requestId}</dd><dt>Session</dt><dd>{receipt.session.id}</dd><dt>Launch receipt status</dt><dd>{receipt.session.observedStatus}</dd></dl>
-      <p><Link href="/production">Follow this Session in Sessions and runs</Link> — find <code>{receipt.session.id}</code> for its current status, log and resulting pull request.</p>
+      <p><Link href={sessionHref(receipt.session.id)}>View Session</Link> for its current status, log and resulting pull request.</p>
       <SessionLog sessionId={receipt.session.id} live={receipt.session.observedStatus === "running" || receipt.session.observedStatus === "prepared"} />
     </section>}
     {message && !receipt && <p>{message}</p>}

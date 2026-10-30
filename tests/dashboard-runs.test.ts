@@ -1,7 +1,8 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { observeDashboardSession } from "../src/dashboard/sessionObservation.js";
 import { runDashboardRunsCommand } from "../src/commands/dashboard.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -102,5 +103,24 @@ describe("dashboard runs", () => {
       pullRequestUrl: "https://github.com/example/repo/pull/7"
     });
     expect(runs.recentAgentSessions[1]).toMatchObject({ exitStatus: 1, exitOutcome: null, pullRequestUrl: null });
+    const old = runs.recentAgentSessions[1];
+    const scope = { projectId: old.projectId, plan: old.planSlug, action: old.actionId };
+    const tmux = { hasSession: () => false };
+    // An exact permalink and Action lookup still find a Session excluded by the recent limit.
+    expect(runDashboardRunsCommand({ workspace: target, sessions: "1" }).data.runs.recentAgentSessions.map(s => s.id)).toEqual(["s_new"]);
+    const before = readFileSync(path.join(target, "database/arcadia.sqlite3"));
+    expect(observeDashboardSession(target, { id: old.id }, tmux).session?.id).toBe("s_old");
+    expect(observeDashboardSession(target, scope, tmux).session?.id).toBe("s_old");
+    expect(observeDashboardSession(target, { ...scope, projectId: "another-project" }, tmux).session).toBeNull();
+    expect(observeDashboardSession(target, { ...scope, plan: "another-plan" }, tmux).session).toBeNull();
+    expect(observeDashboardSession(target, { ...scope, action: "another-action" }, tmux).session).toBeNull();
+    expect(observeDashboardSession(target, { id: "missing" }, tmux)).toMatchObject({ known: true, session: null });
+    expect(observeDashboardSession(target, { ...scope, action: "a-old' OR 1=1 --" }, tmux).session).toBeNull();
+    expect(readFileSync(path.join(target, "database/arcadia.sqlite3"))).toEqual(before);
+    // Active ownership wins over newer finished attempts; finished history falls back deterministically.
+    withDatabase(target, db => { db.prepare("UPDATE agent_sessions SET action_id = ?").run(old.actionId); });
+    expect(observeDashboardSession(target, scope, tmux).session?.id).toBe("s_live");
+    withDatabase(target, db => { db.prepare("UPDATE agent_sessions SET status = 'completed' WHERE id = 's_live'").run(); });
+    expect(observeDashboardSession(target, scope, tmux).session?.id).toBe("s_live");
   });
 });

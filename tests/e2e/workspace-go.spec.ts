@@ -2,6 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { DashboardAgentSession } from "../../apps/dashboard/lib/types";
 import type { ProjectContinuationResponse } from "../../apps/dashboard/lib/arcadia-cli";
 import type { AllPlansResponse, PlanDetailResponse } from "../../apps/dashboard/lib/plans-types";
 import { freePort, startProcess, waitForHttp } from "./fixtures/processes";
@@ -45,7 +46,10 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
   const temp = await mkdtemp(path.join(os.tmpdir(), "arcadia-workspace-continue-"));
   const port = await freePort(), url = `http://127.0.0.1:${port}`;
   const server = startProcess(process.execPath, [path.join(repo, "apps/dashboard/node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: path.join(repo, "apps/dashboard"), env: { ...process.env, HOME: temp, ARCADIA_WORKSPACE: path.join(temp, "unconfigured") }, logPath: path.join(temp, "next.log") });
-  let writes = 0, gated = false;
+  let writes = 0, gated = false, restored = false, lookupFailed = false, pointerMoved = false;
+  const durable: DashboardAgentSession = {
+    id: "fixture-session", projectId: "garden", projectName: "Moon garden", actionId: "review-phone", actionTitle: "Review the page on a phone", planSlug: "first-website", packetPath: "fixture", provider: "codex-cli", model: "configured-model", effort: "medium", host: "host", worktreePath: "/fixture", branch: "codex/fixture", nativeSessionId: "native-fixture", tmuxSessionName: "fixture-tmux", status: "running", statusLabel: "Running", live: true, observedStatus: "running", preparedAt: new Date().toISOString(), startedAt: new Date().toISOString(), observedAt: new Date().toISOString(), reattachCommand: "tmux attach -t fixture", resumeCommand: null, resumeNotice: null, phoneLimitationNotice: "Use the log on a phone."
+  };
   let outcome: "drift" | "launched" | "reused" | "unknown" | "server-error" | "missing-receipt" = "drift";
   let release: (() => void) | null = null;
   let barrier: Promise<void> | null = null;
@@ -56,9 +60,16 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
     limits: { actions: 1, sessions: 1, automaticNextAction: false, authorizationHours: 24, timeLimit: "Existing Session limits apply.", tokenBudget: "one bounded pass" } };
   await page.route("**/api/**", async route => {
     const request = route.request(), endpoint = new URL(request.url()).pathname;
+    if (endpoint === "/api/projects/garden/action-session") {
+      if (lookupFailed) return route.fulfill({ status: 503, json: { error: "Recorded Sessions unavailable" } });
+      const matches = new URL(request.url()).searchParams.get("action") === durable.actionId;
+      return route.fulfill({ json: { known: true, observedAt: new Date().toISOString(), projectSlug: "moon-garden", session: restored && matches ? durable : null } });
+    }
+    if (endpoint === "/api/sessions/fixture-session") return route.fulfill({ json: { known: true, observedAt: new Date().toISOString(), projectSlug: "moon-garden", session: durable } });
+    if (endpoint === "/api/sessions/missing-session") return route.fulfill({ json: { known: true, observedAt: new Date().toISOString(), session: null } });
     if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
     if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: details["first-website"] });
-    if (endpoint === "/api/projects/garden/go-context") return route.fulfill({ json: { resolution: continuation(), resolutionId: "fixture-resolution", observedAt: new Date().toISOString(), error: null } });
+    if (endpoint === "/api/projects/garden/go-context") { const resolution = continuation(); if (pointerMoved && resolution.context) resolution.context.action.id = "write-copy"; return route.fulfill({ json: { resolution, resolutionId: "fixture-resolution", observedAt: new Date().toISOString(), error: null } }); }
     if (endpoint === "/api/sessions/fixture-session/log") return route.fulfill({ json: { available: true, text: "Implementing the phone review…", size: 31, reset: true, truncated: false } });
     if (endpoint === "/api/projects/garden/go-continue") {
       if (request.method() === "GET") {
@@ -121,7 +132,7 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
       await expect(heading(state === "launched" ? "Session launched" : "Reused existing Session")).toBeInViewport();
       const receipt = page.getByRole("region", { name: "Session receipt" });
       await expect(receipt).toContainText("fixture-session");
-      await expect(receipt.getByRole("link", { name: "Follow this Session in Sessions and runs" })).toHaveAttribute("href", "/production");
+      await expect(receipt.getByRole("link", { name: "View Session" })).toHaveAttribute("href", "/sessions/fixture-session");
       await expect(receipt.getByLabel("Log for Session fixture-session")).toContainText("Implementing the phone review…");
       if (state === "launched") await page.screenshot({ path: testInfo.outputPath("continue-session.png"), fullPage: true });
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
@@ -139,6 +150,45 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
       await expect(direction(page).getByRole("button", { name: "Read Go again" })).toHaveCount(0);
       await page.reload();
     }
+    expect(writes).toBe(6);
+    restored = true;
+    await page.reload();
+    const card = page.getByRole("region", { name: "This Action's Session", exact: true });
+    await expect(card.getByRole("link", { name: "View Session", exact: true })).toHaveAttribute("href", "/sessions/fixture-session");
+    await expect(control).toHaveCount(0);
+    await card.getByRole("link", { name: "View Session", exact: true }).click();
+    await expect(page).toHaveURL(`${url}/sessions/fixture-session`);
+    await expect(page.getByRole("heading", { name: "Session fixture-session", exact: true })).toBeFocused();
+    const selected = page.getByRole("region", { name: "Selected Session" });
+    await expect(selected).toContainText("fixture-session");
+    await expect(selected.getByLabel("Log for Session fixture-session")).toContainText("Implementing the phone review…");
+    await page.screenshot({ path: testInfo.outputPath("selected-session.png"), fullPage: true });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.reload();
+    await expect(selected.getByLabel("Log for Session fixture-session")).toBeVisible();
+    await page.getByRole("link", { name: "Back to this Action" }).click();
+    await expect(card.getByRole("link", { name: "View Session" })).toBeVisible();
+    pointerMoved = true;
+    await page.reload();
+    await expect(card.getByRole("link", { name: "View Session" })).toBeVisible();
+    await expect(card).toContainText("review-phone");
+    await page.screenshot({ path: testInfo.outputPath("restored-session.png"), fullPage: true });
+    pointerMoved = false;
+    durable.status = "completed"; durable.statusLabel = "Completed"; durable.observedStatus = "completed"; durable.live = false;
+    await page.reload();
+    await expect(card).toContainText("Latest Session for this Action");
+    await expect(control).toBeHidden();
+    await card.getByText("Continue options for this Action").click();
+    await expect(control).toBeVisible();
+    lookupFailed = true;
+    await page.reload();
+    await expect(direction(page).getByRole("alert")).toContainText("Recorded Sessions unavailable");
+    await expect(control).toHaveCount(0);
+    lookupFailed = false;
+    await direction(page).getByRole("button", { name: "Check Sessions again" }).click();
+    await expect(card.getByRole("link", { name: "View Session" })).toBeVisible();
+    await page.goto(`${url}/sessions/missing-session`);
+    await expect(page.getByText("No recorded Session matches this link.", { exact: false })).toBeVisible();
     expect(writes).toBe(6);
   } finally { resume(); await server.stop(); await rm(temp, { recursive: true, force: true }); }
 });
@@ -160,6 +210,7 @@ test("workspace renders Go's next move for the selected Project without choosing
     const request = route.request();
     const endpoint = new URL(request.url()).pathname;
     if (request.method() !== "GET") mutations.push(`${request.method()} ${endpoint}`);
+    if (endpoint === "/api/projects/garden/action-session") return route.fulfill({ json: { known: true, observedAt: new Date().toISOString(), session: null } });
     if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
     const plan = endpoint.match(/^\/api\/plans\/moon-garden\/([^/]+)$/)?.[1];
     if (plan && details[plan]) return route.fulfill({ json: details[plan] });

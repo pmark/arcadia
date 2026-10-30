@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { createGoReadGate, goMove, isContinuation, type GoBlocker, type GoMove, type GoRelation } from "../../lib/workspace-go";
 import { workspaceHref } from "../../lib/workspace-scope";
+import { WorkspaceActionSession } from "./workspace-action-session";
 import { WorkspaceContinue } from "./workspace-continue";
 
 export interface GoRead {
@@ -89,13 +90,14 @@ function announce(go: GoRead, project: boolean) {
   return `Go: ${STATE[move.kind]}${move.kind === "none" ? "" : `, ${move.action.title}`}.`;
 }
 
-export function WorkspaceNextMove({ go, project, relation }: { go: GoRead; project: { id: string; slug: string } | null; relation: GoRelation | null }) {
+export function WorkspaceNextMove({ go, project, relation, selectedAction }: { go: GoRead; project: { id: string; slug: string } | null; relation: GoRelation | null; selectedAction?: { plan: string; action: string } }) {
   const { last } = go;
   const busy = go.status === "loading" || go.status === "idle";
   return <section className="workspace-go" aria-labelledby="workspace-go-title">
     <div className="workspace-section-heading"><h2 id="workspace-go-title" tabIndex={-1}>Next move</h2>{project && <button type="button" aria-disabled={busy} onClick={() => { if (!busy) go.again(); }}>Read again</button>}</div>
     {/* Mounted before any result so each change is announced once, briefly. */}
     <p className="workspace-sr" aria-live="polite">{announce(go, Boolean(project))}</p>
+    {project && selectedAction && (last?.move.kind === "none" || !last || selectedAction.plan !== last.move.plan || selectedAction.action !== last.move.action.id) && <WorkspaceActionSession key={`${project.id}/${selectedAction.plan}/${selectedAction.action}`} projectId={project.id} plan={selectedAction.plan} action={selectedAction.action} />}
     {!project ? <p className="workspace-muted">Choose a Project to see Go&apos;s next move. Go resolves one Project at a time.</p> : <>
       {busy && <p>{last ? "Asking Go again…" : "Asking Go…"}</p>}
       {go.status === "error" && <p role="alert">Go could not be read: {go.error} {last ? "What follows is Go's last good read." : "Nothing is shown in its place."}</p>}
@@ -108,7 +110,9 @@ export function WorkspaceNextMove({ go, project, relation }: { go: GoRead; proje
         {last.move.kind === "none" && !last.move.question && !last.move.blockers.length && <p>Go found no current Action for this Project.</p>}
         {last.move.kind === "not-agent" && <p>{last.move.authorization}</p>}
         {where(last.move, relation, project.slug)}
-        {go.status === "ready" && last.move.kind === "ready" && last.resolutionId && <WorkspaceContinue key={`${project.id}/${last.at.toISOString()}`} projectId={project.id} plan={last.move.plan} action={last.move.action.id} resolutionId={last.resolutionId} readAgain={go.again} />}
+        {last.move.kind !== "none" && <WorkspaceActionSession key={`${project.id}/${last.move.plan}/${last.move.action.id}/${last.at.toISOString()}`} projectId={project.id} plan={last.move.plan} action={last.move.action.id}>
+          {go.status === "ready" && last.move.kind === "ready" && last.resolutionId && <WorkspaceContinue projectId={project.id} plan={last.move.plan} action={last.move.action.id} resolutionId={last.resolutionId} readAgain={go.again} />}
+        </WorkspaceActionSession>}
         <p className="workspace-muted">Continue previews this one Action and keeps the existing protected launch checks. You can also open <Link href={`/projects/${encodeURIComponent(project.id)}`}>this Project&apos;s page</Link>.</p>
       </div>}
     </>}
