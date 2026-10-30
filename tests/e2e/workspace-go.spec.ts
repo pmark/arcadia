@@ -39,60 +39,108 @@ const direction = (page: Page) => page.getByRole("region", { name: "Direction" }
 /** Go's rendered result, apart from the visually hidden announcement that repeats it for screen readers. */
 const result = (page: Page) => direction(page).locator(".workspace-go-result");
 
-test("workspace Continue previews one Action, requires confirmation and shows changed facts on a phone", async ({ page }) => {
+for (const width of [390, 1280]) test(`workspace Continue gives visible feedback and Session progress at ${width}px`, async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const repo = path.resolve(import.meta.dirname, "../..");
   const temp = await mkdtemp(path.join(os.tmpdir(), "arcadia-workspace-continue-"));
   const port = await freePort(), url = `http://127.0.0.1:${port}`;
-  // Share the immutable production build with the other workspace fixtures.
-  // A dev server would overwrite .next while their `next start` servers use it.
   const server = startProcess(process.execPath, [path.join(repo, "apps/dashboard/node_modules/next/dist/bin/next"), "start", "-H", "127.0.0.1", "-p", String(port)], { cwd: path.join(repo, "apps/dashboard"), env: { ...process.env, HOME: temp, ARCADIA_WORKSPACE: path.join(temp, "unconfigured") }, logPath: path.join(temp, "next.log") });
-  let writes = 0, gated = false, drift = true;
+  let writes = 0, gated = false;
+  let outcome: "drift" | "launched" | "reused" | "unknown" | "server-error" | "missing-receipt" = "drift";
+  let release: (() => void) | null = null;
+  let barrier: Promise<void> | null = null;
+  const hold = () => { barrier = new Promise<void>(resolve => { release = resolve; }); };
+  const resume = () => { release?.(); barrier = null; };
   const preview = { requestId: "workspace-continue:stable-fixture", resolutionId: "fixture-resolution", previewFingerprint: "fixture-preview", actionDocRef: "plan/first-website#review-phone", ready: true, prerequisites: [],
     selection: { provider: "codex", model: "configured-model", effort: "configured-effort" }, target: { projectId: "garden", plan: "first-website", action: "review-phone" }, owner: "agent",
     limits: { actions: 1, sessions: 1, automaticNextAction: false, authorizationHours: 24, timeLimit: "Existing Session limits apply.", tokenBudget: "one bounded pass" } };
   await page.route("**/api/**", async route => {
     const request = route.request(), endpoint = new URL(request.url()).pathname;
     if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
-    if (endpoint === "/api/projects/garden/go-context") return route.fulfill({ json: { resolution: gated ? continuation({ dispatchable: false, blockers: [{ relativePath: "Decision", field: "status", message: "Approval required", remedy: "Answer the Decision" }] }) : continuation(), resolutionId: "fixture-resolution", observedAt: new Date().toISOString(), error: null } });
+    if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: details["first-website"] });
+    if (endpoint === "/api/projects/garden/go-context") return route.fulfill({ json: { resolution: continuation(), resolutionId: "fixture-resolution", observedAt: new Date().toISOString(), error: null } });
+    if (endpoint === "/api/sessions/fixture-session/log") return route.fulfill({ json: { available: true, text: "Implementing the phone review…", size: 31, reset: true, truncated: false } });
     if (endpoint === "/api/projects/garden/go-continue") {
-      if (request.method() === "GET") return route.fulfill({ json: preview });
+      if (request.method() === "GET") {
+        if (barrier) await barrier;
+        return route.fulfill({ json: { ...preview, ready: !gated, prerequisites: gated ? ["Approval required"] : [] } });
+      }
       ++writes;
       expect(request.postDataJSON()).toMatchObject({ requestId: preview.requestId, previewFingerprint: preview.previewFingerprint, resolutionId: preview.resolutionId, confirmOperatorLaunch: true });
-      if (drift) return route.fulfill({ status: 409, json: { error: "Go's resolution changed.", details: { changedFacts: { provider: "changed-provider" }, freshRead: true } } });
-      return route.fulfill({ json: { message: "Session fixture-session launched.", result: { session: { id: "fixture-session" } } } });
+      if (barrier) await barrier;
+      if (outcome === "drift") return route.fulfill({ status: 409, json: { error: "Go's resolution changed.", details: { changedFacts: { provider: "changed-provider" }, freshRead: true } } });
+      if (outcome === "unknown") return route.abort("failed");
+      if (outcome === "server-error") return route.fulfill({ status: 500, json: { error: "Host response lost" } });
+      if (outcome === "missing-receipt") return route.fulfill({ json: { message: "No structured receipt" } });
+      return route.fulfill({ json: { result: { reused: outcome === "reused", session: { id: "fixture-session", observedStatus: "running", reattachCommand: "", worktree_path: "/fixture" } } } });
     }
     return route.abort();
   });
   try {
     await waitForHttp(`${url}/workspace`, server);
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.goto(`${url}/workspace/projects/moon-garden`);
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website/actions/review-phone`);
     const control = direction(page).getByRole("button", { name: "Continue", exact: true });
-    await expect(control).toBeVisible();
-    await control.focus(); await page.keyboard.press("Enter");
     const panel = page.getByRole("region", { name: "Continue preview" });
+    const confirm = panel.getByRole("button", { name: "Confirm Continue for this Action" });
+    const heading = (name: string) => direction(page).getByRole("heading", { name, exact: true });
+    hold();
+    await control.focus(); await page.keyboard.press("Enter");
+    await expect(direction(page).getByRole("button", { name: "Reading preview…" })).toBeDisabled();
+    await expect(heading("Reading the protected preview…")).toBeFocused();
+    await expect(heading("Reading the protected preview…")).toBeInViewport();
+    resume();
+    await expect(heading("Continue this one Action")).toBeFocused();
+    await expect(heading("Continue this one Action")).toBeInViewport();
     await expect(panel).toContainText("first-website · review-phone");
-    await expect(panel.getByText("agent", { exact: true })).toBeVisible();
     await expect(panel).toContainText("codex · configured-model · configured-effort");
     await expect(panel).toContainText("One Action and at most one Session");
     await expect(panel).toContainText("It never merges, integrates or turns production on");
+    await page.screenshot({ path: testInfo.outputPath("continue-preview.png"), fullPage: true });
     expect(writes).toBe(0);
-    await panel.getByRole("button", { name: "Confirm Continue for this Action" }).click();
-    await expect(direction(page).getByRole("status").filter({ hasText: "changed-provider" })).toBeVisible();
-    expect(writes).toBe(1);
+    hold(); await confirm.click();
+    await expect(heading("Requesting this Action…")).toBeFocused();
+    await expect(heading("Requesting this Action…")).toBeInViewport();
+    await expect(confirm).toHaveCount(0);
+    await expect.poll(() => writes).toBe(1);
+    resume();
+    await expect(heading("Continue needs attention")).toBeFocused();
+    await expect(direction(page)).toContainText("changed-provider");
     await direction(page).getByRole("button", { name: "Read Go again" }).click();
-    await expect(direction(page).getByText("Changed facts:", { exact: false })).toHaveCount(0);
-    drift = false;
-    await control.click();
-    await panel.getByRole("button", { name: "Confirm Continue for this Action" }).click();
-    await expect(direction(page).getByRole("status").filter({ hasText: "fixture-session" })).toBeVisible();
-    expect(writes).toBe(2);
     gated = true;
-    await direction(page).getByRole("button", { name: "Read again", exact: true }).click();
-    await expect(control).toHaveCount(0);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-  } finally { await server.stop(); await rm(temp, { recursive: true, force: true }); }
+    await control.click();
+    await expect(panel).toContainText("Approval required");
+    await expect(confirm).toBeDisabled();
+    await panel.getByRole("button", { name: "Cancel" }).click();
+    gated = false;
+    expect(writes).toBe(1);
+    for (const state of ["launched", "reused"] as const) {
+      outcome = state;
+      await control.click(); await confirm.click();
+      await expect(heading(state === "launched" ? "Session launched" : "Reused existing Session")).toBeFocused();
+      await expect(heading(state === "launched" ? "Session launched" : "Reused existing Session")).toBeInViewport();
+      const receipt = page.getByRole("region", { name: "Session receipt" });
+      await expect(receipt).toContainText("fixture-session");
+      await expect(receipt.getByRole("link", { name: "Follow this Session in Sessions and runs" })).toHaveAttribute("href", "/production");
+      await expect(receipt.getByLabel("Log for Session fixture-session")).toContainText("Implementing the phone review…");
+      if (state === "launched") await page.screenshot({ path: testInfo.outputPath("continue-session.png"), fullPage: true });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await direction(page).getByRole("button", { name: "Read Go again" }).click();
+    }
+    for (const state of ["unknown", "server-error", "missing-receipt"] as const) {
+      outcome = state;
+      await control.click(); await confirm.click();
+      await expect(heading("Launch outcome unknown")).toBeFocused();
+      await expect(heading("Launch outcome unknown")).toBeInViewport();
+      await expect(direction(page)).toContainText(preview.requestId);
+      await expect(direction(page).getByRole("link", { name: "Check Sessions and runs", exact: true })).toHaveAttribute("href", "/production");
+      await expect(control).toHaveCount(0);
+      await expect(confirm).toHaveCount(0);
+      await expect(direction(page).getByRole("button", { name: "Read Go again" })).toHaveCount(0);
+      await page.reload();
+    }
+    expect(writes).toBe(6);
+  } finally { resume(); await server.stop(); await rm(temp, { recursive: true, force: true }); }
 });
 
 test("workspace renders Go's next move for the selected Project without choosing work itself", async ({ page }, testInfo) => {

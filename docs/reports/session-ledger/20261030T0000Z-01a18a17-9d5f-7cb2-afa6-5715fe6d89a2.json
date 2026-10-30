@@ -1,0 +1,26 @@
+{
+  "session_id": "01a18a17-9d5f-7cb2-afa6-5715fe6d89a2",
+  "role": "lead",
+  "model": "unavailable",
+  "effort": null,
+  "action_id": "operator-directed:#1889",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "sandbox-git-fetch-denied",
+      "cost_min": null,
+      "fix_ref": "docs/reports/continue-feedback-1889-2026-10-29.md"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Source fix #1889; no governed Action settlement or live launch. PR review and check results retained on PR; operator requests ready-to-merge ping."
+}

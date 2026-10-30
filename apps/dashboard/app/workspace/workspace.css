@@ -120,3 +120,12 @@
 .workspace-summary-note.stale {color:#ffd9aa;}
 .workspace-reading-note {font-size:13px !important;border-left:3px solid #e4c8a9;padding-left:10px;color:#e1e4ed;}
 .workspace-context-panel .workspace-entities .workspace-slug {font-size:11px;color:#9aa3b8;font-family:ui-monospace,monospace;overflow-wrap:anywhere;}
+
+/* Continue keeps each transition visible at the control, including on a phone. */
+.workspace-continue {margin-top:16px;min-width:0;}
+.workspace-continue button {min-height:44px;padding:10px 14px;margin:4px 8px 4px 0;border:1px solid #8290a9;border-radius:10px;background:#273d61;color:inherit;font:inherit;font-size:13px;cursor:pointer;}
+.workspace-continue button:disabled {opacity:.55;cursor:default;}
+.workspace-continue-feedback {margin-top:12px;padding:16px;border:2px solid #e4c8a9;border-radius:12px;background:#101d35;overflow-wrap:anywhere;}
+.workspace-continue-feedback h3 {font-size:16px;margin:0 0 12px;scroll-margin:24px;}
+.workspace-continue-feedback h3:focus {outline:2px solid #ffd9aa;outline-offset:5px;}
+.workspace-continue-feedback code {overflow-wrap:anywhere;}
