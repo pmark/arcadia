@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-29
+updated: 2026-10-30
 ---
 
 # Mission Log: Arcadia
@@ -2809,3 +2809,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "Host-derived completion capability requirements are bound to the Session, immutable packet and probe nonce. The model cannot choose weaker requirements. Source-only host-owned completion truthfully records unavailable direct workspace writes without treating them as passed, while genuinely required direct-write denial still refuses."; "A restricted-environment regression carries permitted source edits and a validated local complete Ask (including preview_blocked) through real host validation and settlement while the model cannot write the live database. Missing local Ask transport or fresh host readiness, malformed/mismatched/spoofed evidence, and incompatible requirements all refuse before completion."; "Existing sandbox protections, packet/custody/validation/preservation gates, default models, consumed attempts and failed R465 outcome remain intact. START_HERE.md documents the changed source-only completion flow and its separate review, adoption and fresh-live gates; Production remains Off."; "Focused behavioral regressions, TypeScript, lint, build, preservation-self-check and isolated fast-rehearsal pass. Source completion evidence records exact revisions and results without claiming a future PR, installed adoption or R465 live success; independent current-head review and required CI plus separately receipted adoption remain prerequisites to any fresh guarded R465 delivery.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-host-completion-source-20261029-0148).
+
+## 2026-10-30 — Agent Ask activate-go-test-journal-749-20261029
+
+- **Did:** Activated bootstrap-managed-production-to-build-flight-deck at fix-tidy-torn-tail-byte-offset.
+- **Result:** Operator-settled Plan transition. Previous Plan make-arcadia-go-orient-one-caller-truthfully-before-authorized-work remains draft with completion state preserved. Operator approved screening and selecting another small Action after excluding exhausted Issue 1419, and suggested a small bug batch. Select only Issue 749 for the first real Go proof; Issues 1536 and 1763 are subsequent candidates, not launched work. Preserve all existing work and claims, Production Off, prior attempt counters and approval gates. No merge, deployment, runtime adoption or automatic successor launch is authorized by this test.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

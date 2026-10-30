@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: make-arcadia-go-orient-one-caller-truthfully-before-authorized-work
 project: arcadia
-status: active
+status: draft
 milestone: Make Arcadia Go orient one caller truthfully before authorized work.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-29
+updated: 2026-10-30
 actions:
   - id: resolve-go-caller-context
     title: "Resolve the existing Go/advance/next orientation from one caller-bound read-only context. Recommended role: implementer, standard tier. Size M; execute only after a named source assignment; no activation, installation or merge."
@@ -178,7 +178,6 @@ actions:
     references: ["decision/should-arcadia-add-the-bounded-host-completion-repair-before-retrying-r465", "https://github.com/pmark/arcadia/issues/1864", "session_f5bd5319d14440c485", "exit_9b9babb972b444e59d"]
 questions: []
 decisions: []
-current_action: implement-go-live-delivery-checklist
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
