@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import {
@@ -280,7 +281,9 @@ export function executePlan(
     updateWorkItem(db, workItem.id, {
       queue: "requires_review",
       workClassification: "requires_review",
-      nextAction: "Review the failed Validation and request a revised planning Run."
+      nextAction: !protectedPlanning && artifacts.some((artifact) => artifact.artifact_type === "build_execution_context")
+        ? "Obtain protected validation and preservation evidence, then complete the Action through the governed path."
+        : "Review the failed Validation and request a revised planning Run."
     });
   } else {
     updateWorkItem(db, workItem.id, {
@@ -389,7 +392,75 @@ function executeCodexStep(
     throw new Error(`Coding-agent invocation packet file is missing: ${invocation.prompt_path}`);
   }
 
-  const prompt = readFileSync(promptPath, "utf8");
+  const promptBytes = readFileSync(promptPath);
+  const prompt = promptBytes.toString("utf8");
+  let childPrompt = prompt;
+  let buildScopeArtifact: Artifact | null = null;
+  if (purpose === "build") {
+    if (invocation.status !== "packet_created" || invocation.work_item_id !== workItem.id ||
+        invocation.plan_id !== plan.id || (invocation.plan_step_id !== planStepId &&
+          !(invocation.plan_step_id === null && plan.steps.filter((step) => step.executor_type === "codex_build").length === 1)) ||
+        workItem.status === "done" || workItem.status === "blocked") {
+      throw new Error("Build invocation or Action is no longer eligible for this plan.");
+    }
+    if (!Buffer.from(prompt, "utf8").equals(promptBytes)) throw new Error("Build packet is not valid UTF-8.");
+    const packetSha256 = createHash("sha256").update(promptBytes).digest("hex");
+    const reviews = db.prepare("SELECT id, status, context_json, codex_invocation_id, resolved_intent FROM review_items WHERE project_id = ? ORDER BY created_at DESC, rowid DESC")
+      .all(workItem.project_id) as Array<{ id: string; status: string; context_json: string; codex_invocation_id: string | null; resolved_intent: string | null }>;
+    const promotionOrigin = /^\[planning-promotion:([^\]]+)\]$/.exec(workItem.clarification_source ?? "")?.[1];
+    const bindings: Array<{ id: string; status: string; intent: string | null; binding: Record<string, unknown>; linked: boolean }> = [];
+    for (const review of reviews) {
+      try {
+        const context = JSON.parse(review.context_json) as { planningPromotion?: Record<string, unknown> };
+        const linked = context.planningPromotion?.buildInvocationId === invocation.id ||
+          (review.codex_invocation_id === invocation.id && review.resolved_intent === "CodexBuildPacketApproval");
+        if (review.id === promotionOrigin || linked) {
+          bindings.push({ id: review.id, status: review.status, intent: review.resolved_intent, binding: context.planningPromotion ?? {}, linked });
+        }
+      } catch {
+        if (review.id === promotionOrigin || (review.codex_invocation_id === invocation.id && review.resolved_intent === "CodexBuildPacketApproval")) {
+          throw new Error("Build packet promotion binding is malformed.");
+        }
+      }
+    }
+    const origin = promotionOrigin ? bindings.find((entry) => entry.id === promotionOrigin) : null;
+    if (promotionOrigin && (!origin || origin.status !== "approved" || origin.binding.actionId !== workItem.id || origin.binding.actionDocRef !== (workItem.doc_ref?.trim() ?? ""))) {
+      throw new Error("Build packet promotion origin is missing or inconsistent.");
+    }
+    const promotion = bindings.find((entry) => entry.linked) ?? origin;
+    if (promotion) {
+      const expected = {
+        actionId: promotion.intent === "CodexBuildPacketApproval" ? (workItem.doc_ref?.split("#").at(-1) ?? workItem.id) : (promotionOrigin ? workItem.id : (workItem.doc_ref?.split("#").at(-1) ?? workItem.id)),
+        actionDocRef: workItem.doc_ref?.trim() ?? "",
+        repoPath: projectRepositoryPath?.trim() ?? "",
+        buildProfile: invocation.agent_profile,
+        buildInvocationId: invocation.id,
+        buildPacketPath: invocation.prompt_path,
+        buildPacketSha256: packetSha256
+      };
+      const allowedStatus = promotion.intent === "CodexBuildPacketApproval"
+        ? ["open", "approved"].includes(promotion.status) : promotion.status === "approved";
+      if (!allowedStatus || (promotion.id === promotionOrigin && promotion.binding.buildPlanId !== plan.id) ||
+          Object.entries(expected).some(([key, value]) => promotion.binding[key] !== value)) {
+        throw new Error("Build packet record is not eligible or does not match the current Action and packet.");
+      }
+    }
+    const scope = {
+      source: "manual_work_run", workItemId: workItem.id, planId: plan.id,
+      planStepId, invocationId: invocation.id, packetPath: invocation.prompt_path,
+      packetSha256, profile: invocation.agent_profile, repository: executionScope,
+      promotionRecordId: promotion?.id ?? null, promotionRecordStatus: promotion?.status ?? null,
+      promotionOriginId: promotionOrigin ?? null
+    };
+    const scopePath = path.join(path.dirname(invocation.prompt_path), `build-execution-context-${createId("artifact")}.json`);
+    writeFileSync(path.join(workspace, scopePath), `${JSON.stringify(scope, null, 2)}\n`, { flag: "wx" });
+    buildScopeArtifact = createArtifactRecord(db, {
+      projectId: workItem.project_id, workItemId: workItem.id,
+      title: `Build execution context: ${workItem.title}`,
+      artifactType: "build_execution_context", status: "drafted", path: scopePath
+    });
+    childPrompt = `${prompt}\n\nArcadia current manual execution context: ${JSON.stringify(scope)}\nThe CLI caller requested this current execution attempt of this packet${promotion ? "; the listed promotion record binds the prepared packet bytes" : "; no promotion Decision is attested"}. This context does not attest the caller identity or an external approval. This is not a canonical Session claim and does not override Go, enrollment, ownership, PR, credential, merge, deployment, or other external gates. Do not automatically start another attempt. Follow all remaining gates.\n`;
+  }
 
   if (purpose === "planning") {
     const authorization = authorizePlanningRunFromRepository(db, workspace, {
@@ -423,7 +494,7 @@ function executeCodexStep(
   updateCodexInvocationStatus(db, invocation.id, "running");
   const result = spawnSync(profile.command, args, {
     cwd: executionScope,
-    input: prompt,
+    input: childPrompt,
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
     timeout: 30 * 60 * 1000,
@@ -489,11 +560,11 @@ function executeCodexStep(
       // list, which fails run_artifacts' (run_id, artifact_id) unique
       // constraint the moment a codex_build step's executor invocation
       // fails (e.g. an expired provider auth session).
-      additionalArtifacts: [...(validation ? [diagnostic] : []), ...(partial ? [partial] : [])]
+      additionalArtifacts: [...(validation ? [diagnostic] : []), ...(partial ? [partial] : []), ...(buildScopeArtifact ? [buildScopeArtifact] : [])]
     };
   }
 
-  let validationOutput: string | null = null;
+  let validationOutput: string;
   let validationArtifact: Artifact | null = null;
   let status: CodexStepStatus = "completed";
   let error: string | null = null;
@@ -553,6 +624,11 @@ function executeCodexStep(
     };
   }
 
+  // A normal child exit proves only that the process ended. Protected
+  // validation and governed completion are separate evidence boundaries.
+  status = "requires_review";
+  validationOutput = "Build process exited successfully; protected validation, preservation and governed completion evidence are still required.";
+  error = validationOutput;
   updateCodexInvocationStatus(db, invocation.id, "completed");
   db.prepare("UPDATE codex_invocations SET plan_step_id = ?, updated_at = ? WHERE id = ?").run(
     planStepId,
@@ -571,7 +647,7 @@ function executeCodexStep(
     error,
     artifactPath: invocation.final_message_path,
     artifact: validationArtifact,
-    additionalArtifacts: []
+    additionalArtifacts: buildScopeArtifact ? [buildScopeArtifact] : []
   };
 }
 

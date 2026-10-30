@@ -4,6 +4,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { runWorkPlanCommand, runWorkRunCommand } from "../src/commands/work.js";
 import { runProjectPrepareCommand } from "../src/commands/project.js";
 import { runReviewApproveCommand, runReviewDeferCommand, runReviewRejectCommand } from "../src/commands/review.js";
 import { runWorkerIteration } from "../src/commands/worker.js";
@@ -114,6 +115,50 @@ describe("project-idea planning promotion", () => {
       const promoted = getWorkItemByDocRef(db, promotion!.actionDocRef)!;
       expect(listCodexInvocationsForWorkItem(db, promoted.id)).toHaveLength(1);
     });
+  });
+
+  it.each(["matching", "tampered", "missing", "wrong-plan", "reprepare-refused"] as const)("binds the real project-idea promotion before build execution: %s", (mode) => {
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+    const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
+    const capture = path.join(fixture.workspace, "build-child-input.txt");
+    const agent = path.join(fixture.workspace, "fake-build.cjs");
+    writeFileSync(agent, `const fs = require("node:fs"); let input = ""; process.stdin.setEncoding("utf8"); process.stdin.on("data", x => input += x); process.stdin.on("end", () => { fs.writeFileSync(${JSON.stringify(capture)}, input); process.stdout.write("blocked"); });`);
+    const paths = getWorkspacePaths(fixture.workspace);
+    const registry = JSON.parse(readFileSync(paths.codingAgentProfiles, "utf8")) as { profiles: Array<Record<string, unknown>> };
+    const profile = registry.profiles.find((entry) => entry.name === "codex_build")!;
+    profile.command = process.execPath;
+    profile.args = [agent];
+    writeFileSync(paths.codingAgentProfiles, JSON.stringify(registry));
+    const packetPath = path.join(fixture.workspace, promotion.buildPacketPath);
+    const packet = readFileSync(packetPath);
+    if (mode === "tampered") writeFileSync(packetPath, "tampered");
+    if (mode === "missing") withDatabase(fixture.workspace, (db) => db.prepare("UPDATE review_items SET context_json = ? WHERE id = ?").run("{}", acceptance.id));
+    if (mode === "wrong-plan") withDatabase(fixture.workspace, (db) => {
+      const context = JSON.parse(getReviewItem(db, acceptance.id)!.context_json);
+      context.planningPromotion.buildPlanId = "different-plan";
+      db.prepare("UPDATE review_items SET context_json = ? WHERE id = ?").run(JSON.stringify(context), acceptance.id);
+    });
+    if (mode === "reprepare-refused") {
+      expect(() => runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }))
+        .toThrow("Existing planned workflow is not a single managed Codex planning step.");
+    }
+    const planId = promotion.buildPlanId;
+    const run = runWorkRunCommand({ workspace: fixture.workspace, workId: promotion.actionId, plan: planId, allowCodexBuild: true, agentProfile: "codex_build" });
+    if (mode === "matching" || mode === "reprepare-refused") {
+      expect(run.data.run.status).toBe("requires_review");
+      expect(readFileSync(packetPath)).toEqual(packet);
+      const input = readFileSync(capture, "utf8");
+      expect(input).toContain(acceptance.id);
+      expect(input).toContain("current execution attempt");
+      expect(input).toContain("Do not automatically start another attempt");
+      const replay = runWorkRunCommand({ workspace: fixture.workspace, workId: promotion.actionId, plan: planId, allowCodexBuild: true, agentProfile: "codex_build" });
+      expect(replay.data.run.status).toBe("failed");
+      expect(readFileSync(capture, "utf8")).toBe(input);
+    } else {
+      expect(run.data.run.status).toBe("failed");
+      expect(existsSync(capture)).toBe(false);
+    }
   });
 
   it("projects a validated Artifact as a readable governed plan", () => {
