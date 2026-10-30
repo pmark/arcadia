@@ -1,6 +1,9 @@
 import path from "node:path";
+import { applyPromotionAssignment, matchesPromotionBase } from "./promotionAssignment.js";
+import { actionAcceptanceCriteria } from "./actionBrief.js";
 import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
+import { agentIdentityEnvironment, resolveSessionAgentIdentity } from "../codingAgents/agentIdentity.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import { checkProviderSignIn, type ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
@@ -300,7 +303,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         code: "stale_epoch", sessionId: existingLease.id, admittedEpoch: admission?.epoch ?? null, currentEpoch: input.expectedPolicyEpoch, conflict: true
       });
     }
-    if (!matchesPreview(existingLease, preview)) {
+    if (!matchesPreview(existingLease, preview, input.workspace)) {
       // Checked before any admission commit: an own lease for another packet
       // or Action is never resumed, and its issued slot is not consumed.
       throw validationError("This request's own Session no longer matches the governed Action and packet; it is not resumed.", {
@@ -322,7 +325,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     };
     return reusedLease(input, existingLease, preview, tmux, registry, providerSignIn, now, commitOwnAdmission);
   }
-  if (existingLease && matchesPreview(existingLease, preview)) {
+  if (existingLease && matchesPreview(existingLease, preview, input.workspace)) {
     return reusedLease(input, existingLease, preview, tmux, registry, providerSignIn, now);
   }
 
@@ -685,8 +688,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // right expectation the second time around.
   // A never-launched draft-only candidate carries no commits, so its own
   // branch tip is both its lineage start and the HEAD launch must observe.
-  const sessionBaseRevision = input.repair ? input.repair.baseRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
-  const sessionLaunchRevision = input.repair ? repairLaunchRevision ?? input.repair.startRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
+  let sessionBaseRevision = input.repair ? input.repair.baseRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
+  let sessionLaunchRevision = input.repair ? repairLaunchRevision ?? input.repair.startRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
 
   // Outside the `prepareSession` failure path below on purpose: a mismatch is
   // positive evidence that something is writing in the worktree, so the
@@ -704,6 +707,20 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
 
   let prepared: AgentSession;
   try {
+    if (!input.repair && !draftResume && !resumableStaleClaim) {
+      const assignmentRevision = applyPromotionAssignment({
+        repo: repoRoot, candidate: nextWorktree.path, packet: path.join(input.workspace, preview.packet.path),
+        packetHash: preview.packet.sha256, base: sessionBaseRevision,
+        projectHash: preview.documentRevisions.projectSha256, planHash: preview.documentRevisions.planSha256,
+        planPath: preview.planPath,
+        identityEnv: agent === "fixture" ? {} : agentIdentityEnvironment(resolveSessionAgentIdentity({ agent, model, effort, registry }))
+      });
+      if (assignmentRevision) sessionBaseRevision = sessionLaunchRevision = assignmentRevision;
+      if (actionAcceptanceCriteria({ repoRoot: nextWorktree.path, projectSlug: preview.projectSlug,
+        planSlug: preview.planSlug!, actionId: preview.actionId, baseRevision: sessionBaseRevision }).length === 0) {
+        throw validationError("The approved Action is absent from the immutable Session base; prepare a fresh build packet.");
+      }
+    }
     prepared = prepareSession({
       db: input.db,
       workspace: input.workspace,
@@ -779,7 +796,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         code: raced.action_id === preview.actionId ? "action_claimed" : "repository_leased", sessionId: raced.id, conflict: true
       });
     }
-    if (raced && matchesPreview(raced, preview)) {
+    if (raced && matchesPreview(raced, preview, input.workspace)) {
       // The winner's Session satisfies this request; this call's own reserved
       // admission (if any) never committed to a launch and would otherwise
       // hold a concurrency slot until it expires. Release it immediately
@@ -1081,12 +1098,15 @@ function resumeOrReturn(
   return launchPreparedSession(db, session, tmux, registry, workspace);
 }
 
-function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean {
+function matchesPreview(session: AgentSession, preview: LaunchPreview, workspace: string): boolean {
   return (
     session.project_slug === preview.projectSlug &&
     session.action_id === preview.actionId &&
     preview.packet !== null &&
-    session.packet_sha256 === preview.packet.sha256
+    session.packet_sha256 === preview.packet.sha256 &&
+    matchesPromotionBase({ packet: path.join(workspace, session.packet_path), packetHash: session.packet_sha256,
+      candidate: session.worktree_path, revision: session.base_revision, base: preview.baseRevision,
+      projectHash: preview.documentRevisions.projectSha256, planHash: preview.documentRevisions.planSha256, planPath: preview.planPath })
   );
 }
 

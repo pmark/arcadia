@@ -923,6 +923,13 @@ new packet with a separate open build approval. A running attempt blocks prepara
 Replacement execution also depends on the current-packet and origin binding checks
 of PR #1905; do not use it for a live attempt until the combined changes are
 reviewed and adopted and the required fresh approval is granted.
+For a promoted Action absent from its committed base whose older packet has no
+frozen assignment, `arcadia work plan <work-id>` reconstructs the accepted promotion from its original
+Artifact and committed base and prepares a new packet with its own approval.
+It preserves the earlier packet and attempts. If the records or base do not
+match, resolve the reported mismatch before preparing another packet. After
+approval, guarded launch places the accepted Project and Plan in the candidate's
+immutable starting revision; the source checkout remains untouched.
 The separate build trigger and all other approval gates remain in force.
 
 Preparation refuses an already registered Project name or repository and any
