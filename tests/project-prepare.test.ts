@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runProjectPrepareCommand } from "../src/commands/project.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -20,6 +20,7 @@ const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of temporaryRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -73,6 +74,31 @@ describe("project prepare", () => {
     expect(() => runProjectPrepareCommand({ workspace, name: "New Project", idea: "Build something useful.", path: repository }))
       .toThrow(/requires an independent, non-bare Git repository/);
     expectProjectPreparationUntouched(workspace, repository);
+  });
+
+  it("ignores inherited Git repository and config redirection before creating records or packets", () => {
+    const { workspace, repository } = fixture({ git: false });
+    const unrelated = path.join(path.dirname(repository), "unrelated");
+    mkdirSync(unrelated);
+    git(unrelated, ["init"]);
+    writeFileSync(path.join(unrelated, "README.md"), "# Unrelated repository\n", "utf8");
+    git(unrelated, ["add", "README.md"]);
+    git(unrelated, ["commit", "-m", "Unrelated baseline"]);
+
+    vi.stubEnv("GIT_DIR", path.join(unrelated, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", repository);
+    vi.stubEnv("GIT_INDEX_FILE", path.join(unrelated, ".git", "index"));
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "core.worktree");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", repository);
+
+    try {
+      expect(() => runProjectPrepareCommand({ workspace, name: "New Project", idea: "Build something useful.", path: repository }))
+        .toThrow(/requires an independent, non-bare Git repository/);
+      expectProjectPreparationUntouched(workspace, repository);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("refuses an unborn repository before creating Project records or packets", () => {
