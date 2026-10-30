@@ -28,3 +28,5 @@ Reused unchanged instructions loaded in this same chat and listed with byte coun
 Focused lint initially rejected one unnecessary non-null assertion in the Session page. Removed it; the final repository lint result is recorded on the PR. No gate or check was weakened.
 
 Principles source: 14124 UTF-8 file bytes.
+
+Supplemental same-Project navigation check: a Session appears after an initially empty read; navigate to another Action and back without a full reload. Existing runtime passed at both widths. The regression is retained; no runtime repair was needed. Final three browser scenarios passed (37.3 s). Round 1 independent static review had no blocking findings; the test-only delta receives round 2.

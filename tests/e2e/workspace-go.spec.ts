@@ -151,8 +151,13 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
       await page.reload();
     }
     expect(writes).toBe(6);
+    await expect(control).toBeVisible();
     restored = true;
-    await page.reload();
+    // A Session can appear while this workspace is open in another browser.
+    // Returning through same-Project navigation must re-read, even if Go is cached.
+    await page.getByRole("complementary", { name: "Context" }).getByRole("link", { name: /Write the welcome copy/ }).click();
+    await expect(page).toHaveURL(`${url}/workspace/projects/moon-garden/plans/first-website/actions/write-copy`);
+    await page.goBack();
     const card = page.getByRole("region", { name: "This Action's Session", exact: true });
     await expect(card.getByRole("link", { name: "View Session", exact: true })).toHaveAttribute("href", "/sessions/fixture-session");
     await expect(control).toHaveCount(0);
