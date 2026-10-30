@@ -22,7 +22,9 @@ unchanged recovery behavior, and passing `pnpm test`.
 
 The canonical selection commit is
 `06a2cf802ad77cb34f26b78cf725d11908825c36`. It selects the light tier at low
-effort; this is a configured recommendation, not evidence of a launched model.
+effort; this replaces the parent Plan-wide default `claude-sonnet-5 / high`,
+not an Action-local setting. It is a configured recommendation, not evidence
+of a launched model. Revalidate model suitability before any successor launch.
 It restores the parent Plan's 58 unfinished queue entries, selecting this
 Action at position 33, and preserves the former Go Plan as a draft without
 changing its Action completion state. No process is started by selection.
