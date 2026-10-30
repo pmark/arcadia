@@ -941,6 +941,11 @@ replaces another Project's work pointer.
    Action, and prepares—but does not run—its packet; **Defer** requires the named
    condition that revives it; or **Send back** requires refinement feedback,
    preserves the current Artifact, and reopens the planning Action for Codex.
+   The next planning packet carries that exact feedback with its source Decision
+   and judged Artifact revision; feedback asks for clarification and grants no
+   authority to change the original goal or approval gates. If an older
+   unapproved packet predates the feedback, withdraw its Decision before
+   preparing a fresh packet.
 
 Use the collapsed **Focus** control at the top of **Needs you** to choose a
 primary Project, an optional secondary Project, and Projects to park for now.
