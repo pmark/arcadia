@@ -3,14 +3,14 @@
   "role": "lead",
   "model": "unavailable",
   "effort": null,
-  "action_id": "operator-directed:#1889",
-  "pr": null,
+  "action_id": "operator-directed:#1889; operator-directed:#1891",
+  "pr": 1893,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 1,
+  "review_rounds": 4,
   "blocking_findings": [],
   "operator_touches": null,
   "host_touches": null,
@@ -22,5 +22,5 @@
     }
   ],
   "outcome": "complete",
-  "notes": "Source fix #1889; no governed Action settlement or live launch. PR review and check results retained on PR; operator requests ready-to-merge ping."
+  "notes": "#1889 landed via PR1890; operator-directed #1891/PR1893 adds exact Session links and canonical reload/focus lookup in a fresh worktree. No live launch or installation."
 }

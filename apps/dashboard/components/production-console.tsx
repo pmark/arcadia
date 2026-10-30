@@ -444,7 +444,7 @@ function RecentSessions({
   );
 }
 
-function SessionRow({
+export function SessionRow({
   session,
   now,
   pause,

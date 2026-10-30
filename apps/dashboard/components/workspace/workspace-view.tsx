@@ -149,7 +149,7 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
         </div>
       </section>
       <section className="workspace-direction workspace-panel" aria-label="Direction">
-        <WorkspaceNextMove go={go} project={goProject} relation={relation} />
+        <WorkspaceNextMove go={go} project={goProject} relation={relation} selectedAction={scope?.plan && scope.action && action ? { plan: scope.plan, action: scope.action } : undefined} />
         <WorkspaceAsk available={Boolean(scope && !loading && !failure && !missing)} target={{ projectId: project?.id, ...(scope?.plan ? { plan: scope.plan } : {}), ...(scope?.action ? { action: scope.action } : {}), label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
       </section>
       <aside className="workspace-context-panel workspace-panel" aria-label="Context">
