@@ -833,19 +833,26 @@ function assertRequiredPlanningContext(
 function prepareAcceptedProjectIdeaBuild(
   db: Parameters<typeof getWorkItem>[0], workspace: string, workItem: WorkItemSummary, requestedProfile?: string
 ): WorkPlanCommandData | null {
+  const marker = /^\[planning-promotion:([^\]]+)\]$/.exec(workItem.clarification_source ?? "");
   const decisions = listReviewItems(db, "all").filter((item) => {
     const promotion = parseDecisionContext(item).planningPromotion as Record<string, unknown> | undefined;
-    return promotion?.actionId === workItem.id || (promotion?.actionDocRef && promotion.actionDocRef === workItem.doc_ref && promotion.buildPlanId);
+    // Ordinary build approvals also contain planningPromotion, but only the
+    // project-idea receipt identifies the original build plan.
+    return item.id === marker?.[1] || (typeof promotion?.buildPlanId === "string" &&
+      (promotion.actionId === workItem.id || (promotion.actionDocRef && promotion.actionDocRef === workItem.doc_ref)));
   });
-  const marker = /^\[planning-promotion:([^\]]+)\]$/.exec(workItem.clarification_source ?? "");
   if (!decisions.length) {
     if (marker) throw validationError("Promoted Action has no matching acceptance receipt; preserve its packet and investigate the missing binding.", { actionId: workItem.id, decisionId: marker[1] });
     return null;
   }
   if (decisions.length !== 1) throw validationError("Promoted build has ambiguous acceptance Decisions.");
   const decision = decisions[0];
-  const promotion = parseDecisionContext(decision).planningPromotion as Record<string, unknown>;
-  if (marker && marker[1] !== decision.id) throw validationError("Promoted Action acceptance receipt does not match its source marker.", { actionId: workItem.id });
+  const promotionValue = parseDecisionContext(decision).planningPromotion;
+  if (!promotionValue || typeof promotionValue !== "object" || Array.isArray(promotionValue)) {
+    throw validationError("Promoted Action has no matching acceptance receipt; preserve its packet and investigate the missing binding.", { actionId: workItem.id, decisionId: decision.id });
+  }
+  const promotion = promotionValue as Record<string, unknown>;
+  if (!marker || marker[1] !== decision.id) throw validationError("Promoted Action acceptance receipt does not match its source marker.", { actionId: workItem.id });
   const plan = typeof promotion.buildPlanId === "string" ? getExecutionPlan(db, promotion.buildPlanId) : null;
   const invocation = typeof promotion.buildInvocationId === "string" ? getCodexInvocation(db, promotion.buildInvocationId) : null;
   const artifact = typeof promotion.buildPacketArtifactId === "string" ? getArtifact(db, promotion.buildPacketArtifactId) : null;

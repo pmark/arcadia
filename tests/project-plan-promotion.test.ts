@@ -140,7 +140,7 @@ describe("project-idea planning promotion", () => {
     });
   });
 
-  it.each(["packet", "planning-artifact", "binding", "missing-receipt", "profile", "running", "duplicate"] as const)(
+  it.each(["packet", "planning-artifact", "binding", "missing-receipt", "missing-marker", "profile", "running", "duplicate"] as const)(
     "refuses stale or spent promoted build preparation: %s", (mode) => {
       const fixture = preparedProjectIdea();
       const acceptance = executePlanningRun(fixture);
@@ -149,6 +149,7 @@ describe("project-idea planning promotion", () => {
       if (mode === "packet") writeFileSync(packetPath, "changed");
       if (mode === "planning-artifact") writeFileSync(path.join(fixture.workspace, promotion.planningArtifactPath), "changed");
       withDatabase(fixture.workspace, (db) => {
+        if (mode === "missing-marker") db.prepare("UPDATE work_items SET clarification_source = NULL WHERE id = ?").run(promotion.actionId);
         if (mode === "missing-receipt") db.prepare("UPDATE review_items SET context_json = ? WHERE id = ?").run("{}", acceptance.id);
         if (mode === "binding") {
           const context = JSON.parse(getReviewItem(db, acceptance.id)!.context_json);
@@ -159,7 +160,7 @@ describe("project-idea planning promotion", () => {
         if (mode === "duplicate") db.prepare("INSERT INTO codex_invocations SELECT 'duplicate', purpose, agent_profile, workspace_scope, command, prompt_path, jsonl_output_path, final_message_path, status, work_item_id, plan_id, plan_step_id, run_id, execution_profile_json, provider_mapping_id, provider_binding_id, created_at, updated_at FROM codex_invocations WHERE id = ?").run(promotion.buildInvocationId);
       });
       const before = withDatabase(fixture.workspace, (db) => ({ invocations: listCodexInvocationsForWorkItem(db, promotion.actionId), decisions: listReviewItems(db, "all"), runs: listExecutionRuns(db) }));
-      expect(() => runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: mode === "profile" ? "claude_build" : "codex_build" })).toThrow(mode === "running" ? /running/ : /./);
+      expect(() => runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: mode === "profile" ? "claude_build" : "codex_build" })).toThrow(mode === "missing-receipt" ? /Promoted Action has no matching acceptance receipt; preserve its packet and investigate the missing binding\./ : mode === "running" ? /running/ : /./);
       withDatabase(fixture.workspace, (db) => {
         expect(listCodexInvocationsForWorkItem(db, promotion.actionId)).toEqual(before.invocations);
         expect(listReviewItems(db, "all")).toEqual(before.decisions);
