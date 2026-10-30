@@ -400,7 +400,8 @@ function executeCodexStep(
     if (invocation.status !== "packet_created" || invocation.work_item_id !== workItem.id ||
         invocation.plan_id !== plan.id || (invocation.plan_step_id !== planStepId &&
           !(invocation.plan_step_id === null && plan.steps.filter((step) => step.executor_type === "codex_build").length === 1)) ||
-        workItem.status === "done" || workItem.status === "blocked") {
+        workItem.status === "done" || workItem.status === "blocked" ||
+        workItem.queue === "blocked" || workItem.work_classification === "blocked") {
       throw new Error("Build invocation or Action is no longer eligible for this plan.");
     }
     if (!Buffer.from(prompt, "utf8").equals(promptBytes)) throw new Error("Build packet is not valid UTF-8.");

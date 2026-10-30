@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -290,6 +290,20 @@ describe("legacy build evidence", () => {
     const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
     expect(result.data.run.status).toBe("requires_review");
     withDatabase(f.workspace, (db) => expect((db.prepare("SELECT status FROM work_items WHERE id = ?").get(f.workId) as { status: string }).status).not.toBe("done"));
+  });
+
+  it.each(["status", "queue", "work_classification"] as const)("refuses blocked %s before context or provider", (field) => {
+    const f = fixture();
+    withDatabase(f.workspace, (db) => db.prepare(`UPDATE work_items SET ${field} = ? WHERE id = ?`).run("blocked", f.workId));
+    const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
+    expect(result.data.run.status).toBe("failed");
+    expect(result.data.run.steps[0].error).toContain("no longer eligible");
+    expect(() => readFileSync(f.inputPath)).toThrow();
+    const packetDir = path.join(f.workspace, path.dirname(f.planned.data.buildInvocation!.prompt_path));
+    expect(readdirSync(packetDir).filter((name) => name.startsWith("build-execution-context-"))).toEqual([]);
+    withDatabase(f.workspace, (db) => {
+      expect(db.prepare("SELECT COUNT(*) AS count FROM artifacts WHERE artifact_type = 'build_execution_context' AND work_item_id = ?").get(f.workId)).toEqual({ count: 0 });
+    });
   });
 
   it("refuses a changed promoted packet before the provider", () => {
