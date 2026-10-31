@@ -62,6 +62,8 @@ import { getWorkspacePaths, resolveWorkspacePath, toWorkspaceRelativePath } from
 import { runWorkPlanCommand, type WorkPlanCommandData } from "./work.js";
 import { ensureBuiltInSkills } from "../execution/skills.js";
 import type { ApprovalGate, ExecutionPlanSummary, ReviewItemSummary } from "../domain/types.js";
+import { isolatedGitEnvironment } from "../git/isolatedGitEnvironment.js";
+import { tryGit } from "../git/worktrees.js";
 
 const DEFAULT_PROJECT_MISSION = "Mission needs definition.";
 const DEFAULT_PROJECT_MILESTONE = "Define the project direction.";
@@ -304,6 +306,7 @@ export function runProjectPrepareCommand(options: {
   const slug = slugify(name);
   const projectPath = resolveProjectFilesystemPath(workspacePath, slug, options.path);
   assertProjectPreparationTargetAvailable(workspacePath, name, slug, projectPath);
+  assertProjectPreparationGitReady(projectPath);
 
   const created = withDatabase(workspacePath, (db) => {
     const bundle = createProjectWithInitialWork(db, {
@@ -1043,6 +1046,49 @@ function resolveProjectFilesystemPath(workspacePath: string, slug: string, provi
   }
 
   return path.join(getWorkspacePaths(workspacePath).projects, slug);
+}
+
+/**
+ * Project preparation creates control documents and approval records that
+ * coding agents must be able to trust. Require the selected path to already be
+ * its own committed Git repository before writing any of them.
+ */
+function assertProjectPreparationGitReady(projectPath: string): void {
+  const remedy = "Initialize this directory as its own Git repository, add the intended starter files, create a local baseline commit, then retry project prepare. Do not bypass the Git repository trust check.";
+  const gitEnv = isolatedGitEnvironment();
+  if (!existsSync(projectPath) || !statSync(projectPath).isDirectory()) {
+    throw validationError("Project preparation requires an existing Git repository root with a committed baseline.", {
+      projectPath,
+      remedy
+    });
+  }
+
+  if (tryGit(projectPath, ["rev-parse", "--is-inside-work-tree"], gitEnv) !== "true") {
+    throw validationError("Project preparation requires an independent, non-bare Git repository at the selected path.", {
+      projectPath,
+      remedy
+    });
+  }
+
+  const topLevel = tryGit(projectPath, ["rev-parse", "--show-toplevel"], gitEnv);
+  if (!topLevel || realpathSync(topLevel) !== realpathSync(projectPath)) {
+    throw validationError("Project preparation requires the selected path to be the Git repository root, not a nested directory.", {
+      projectPath,
+      gitRoot: topLevel,
+      remedy
+    });
+  }
+
+  if (tryGit(projectPath, ["rev-parse", "--is-bare-repository"], gitEnv) !== "false") {
+    throw validationError("Project preparation requires a non-bare Git repository.", { projectPath, remedy });
+  }
+
+  if (!tryGit(projectPath, ["rev-parse", "--verify", "HEAD^{commit}"], gitEnv)) {
+    throw validationError("Project preparation requires a valid committed Git baseline; this repository has no valid HEAD commit.", {
+      projectPath,
+      remedy
+    });
+  }
 }
 
 function assertProjectPreparationTargetAvailable(

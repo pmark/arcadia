@@ -5,6 +5,7 @@ import type {
   LiteLlmExecutionResult,
   LiteLlmImageGenerationResult,
 } from "./client.js";
+import { validateOutput } from "../validation/validateOutput.js";
 
 /**
  * Thrown when the configured LiteLLM proxy cannot be reached or returns an
@@ -149,17 +150,17 @@ export function createLiteLlmHttpClient(options: LiteLlmHttpClientOptions): Lite
         throw new Error("LiteLLM response content was not valid JSON.");
       }
 
-      if (
-        envelope === null ||
-        typeof envelope !== "object" ||
-        Array.isArray(envelope) ||
-        !("result" in envelope)
-      ) {
+      // Some routes return the requested object directly despite the wrapper
+      // instruction. Accept that shape only when it satisfies the caller's
+      // contract; the worker validates the extracted value again before saving.
+      const wrapped = envelope !== null && typeof envelope === "object" &&
+        !Array.isArray(envelope) && "result" in envelope;
+      const output = wrapped ? (envelope as { result: JsonValue }).result : envelope;
+      if (!wrapped && !(await validateOutput(output, request.outputContract)).passed) {
         throw new Error(
-          'LiteLLM response JSON did not contain the required top-level "result" field.',
+          'LiteLLM response JSON did not contain the required top-level "result" field, and the direct value did not match the output contract.',
         );
       }
-      const output = (envelope as { result: JsonValue }).result;
 
       const usage: IntelligenceUsage | undefined = body.usage
         ? {

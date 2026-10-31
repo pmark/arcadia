@@ -110,6 +110,7 @@ export function createPlanningApprovalDecision(
     /** The plan document's `updated:` field at build time, for the approval-time
      *  staleness recheck. Null for Actions with no managed plan behind them. */
     planDocUpdated?: string | null;
+    planningRefinement?: NonNullable<CodexPacket["planningRefinement"]>;
   }
 ): ReviewItemSummary {
   const existingAction = input.existingAction === true;
@@ -137,6 +138,7 @@ export function createPlanningApprovalDecision(
       schemaVersion: 1,
       packetSha256: packetSha256(input.packet.promptPath),
       planDocUpdated: input.planDocUpdated ?? null,
+      ...(input.planningRefinement ? { planningRefinement: input.planningRefinement } : {}),
       interpretation: input.proposedAction,
       expectedArtifact: input.expectedArtifact,
       originatingActionId: input.workItem.id,
