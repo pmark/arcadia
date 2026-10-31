@@ -80,8 +80,11 @@ Every fix to the worker must pass the same chain: merge, adopt into the main
 checkout, install the broker, load the worker, then START. Each step is
 approved separately. The
 [10-31 continuation report](../reports/go-1921-claude-continuation-2026-10-31.md)
-shows the chain stalled after merge: PR #1921 is in source, but not installed
-or loaded.
+shows the chain stalled after merge. At 05:35 UTC on 10-31, PR #1921 was in
+source, but not installed or loaded. Later that day, the operator approved one
+reviewed one-shot action. It reloaded the broker and the worker at
+`24c4ee020`, which includes #1921
+([handoff in PR #1927](https://github.com/pmark/arcadia/pull/1927)).
 
 ### 4. A host-only credential wall
 
@@ -111,10 +114,9 @@ Since 10-13 these sizes grew (compared with commit `c256ee207`, dated 10-13):
 - `docs/agent-guidance/` grew from 183 KB to 253 KB.
 - Checked-in skill sources grew from 7 to 14.
 
-About 67 of the 262 PRs merged since 10-14 are record-type, by title. That is
+68 of the 258 PRs merged from 10-14 to 10-31 have record-type titles. That is
 a heuristic: a case-insensitive match on "settle", "record", "decision",
-"receipt", "handoff", "readiness" or "preserve". The count varies by one
-between runs of the match. All seven newest
+"receipt", "handoff", "readiness" or "preserve". All seven newest
 Decisions,
 [0149](../decisions/0149-how-far-should-arcadia-automate-persona-identity-in-generated-identity-text.md)
 to
@@ -138,10 +140,11 @@ the goal, the milestone, priority or the critical path.
 - **Unattended production.** Production is still Off. `first-unattended-run`
   is not accepted.
 - **The proposed changes.** None of the five changes below is built yet.
-- **The Go-probe runtime work is parked.** PR #1921 is merged, but the worker
-  has not been reloaded with it. The failed successor's recovery has also not
-  been done
-  ([10-31 report](../reports/go-1921-claude-continuation-2026-10-31.md)).
+- **The Go probe's recovery is parked.** PR #1921 is merged, and on 10-31 the
+  worker was reloaded with it at `24c4ee020`. That revision is inferred from
+  the worker's start time. The worker has not been reloaded at `1ac59bd`
+  (#1926, the failed-successor disposition fix). The probe's recovery is not
+  done ([handoff in PR #1927](https://github.com/pmark/arcadia/pull/1927)).
 
 Still unknown:
 
