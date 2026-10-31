@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # Mission Log: Arcadia
@@ -2816,3 +2816,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Operator-settled Plan transition. Previous Plan make-arcadia-go-orient-one-caller-truthfully-before-authorized-work remains draft with completion state preserved. Operator approved screening and selecting another small Action after excluding exhausted Issue 1419, and suggested a small bug batch. Select only Issue 749 for the first real Go proof; Issues 1536 and 1763 are subsequent candidates, not launched work. Preserve all existing work and claims, Production Off, prior attempt counters and approval gates. No merge, deployment, runtime adoption or automatic successor launch is authorized by this test.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-31 — Completed arcadia/open-naming-and-design-help-decisions
+
+- **Did:** Completed Action arcadia/open-naming-and-design-help-decisions from accepted evidence (Candidate 1ac59bdba53b05ecaae560dd7cf8223db9f7cc0e).
+- **Result:** Every declared acceptance criterion was accepted as met: "Decisions for persona automation, Iris, naming migration, Lead scope, design brief home and scope, design help depth, and the assurance wording are open, each as a lettered choice with consequences matching section 10 of the briefing."; "Each Decision document is on main before the operator is asked to answer it.".
+- **Next:** Next ready Action in this inactive Plan: standardize-agent-naming-vocabulary.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-open-naming-and-design-help-decisions-2026-10-31).

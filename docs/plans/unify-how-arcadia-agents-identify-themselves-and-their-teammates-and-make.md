@@ -7,14 +7,14 @@ status: draft
 milestone: Unify how Arcadia agents identify themselves and their teammates, and make design help available by function from any supported surface with visible provenance.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-29
+updated: 2026-10-31
 actions:
   - id: open-naming-and-design-help-decisions
     title: Open the briefing's operator choices as lettered Decisions once this Plan's records are on main.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Open the briefing's operator choices as lettered Decisions once this Plan's records are on main.
+    next_action: Completed via Agent Ask complete-open-naming-and-design-help-decisions-2026-10-31; no further action.
     expected_artifact: Evidence satisfying Agent Ask open-naming-and-design-help-decisions
     clarification: clarified
     confidence: high
