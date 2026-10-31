@@ -555,6 +555,10 @@ export function prepareSession(input: {
   /** Guarded launcher rechecks durable request consumption under the Session
    * insert's write lock, after every earlier observation and claim check. */
   assertLaunchRequest?: () => void;
+  /** Explicit recovery only: transfer custody after rechecking the approved
+   * generation, then persist its request and authorization with the insert. */
+  terminalRecovery?: { transfer: () => void; record: (session: AgentSession) => void };
+
   testHooks?: {
     /** Deterministic fault injection between the lease/handoff/competing-run checks and the insert, inside the same transaction. */
     afterChecksBeforeInsert?: () => void;
@@ -655,6 +659,7 @@ export function prepareSession(input: {
     }
     input.testHooks?.afterChecksBeforeInsert?.();
     input.assertLaunchRequest?.();
+    input.terminalRecovery?.transfer();
     const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z").toLowerCase();
     const shortAction = context.action.id.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 42);
     const tmuxName = `${MANAGED_SESSION_TMUX_PREFIX}${context.projectSlug}-${shortAction}-${stamp}`.slice(0, 100);
@@ -686,7 +691,8 @@ export function prepareSession(input: {
       completion_capability_mode: "legacy"
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
-    if (handoff) {
+    input.terminalRecovery?.record(row);
+    if (handoff && !input.terminalRecovery) {
       supersedeLeaseHandoff(input.db, handoff.receipt.id, id);
     }
     if (input.repair) bindRepairSession(input.db, { requestId: input.repair.requestId, sessionId: id, now: input.now });

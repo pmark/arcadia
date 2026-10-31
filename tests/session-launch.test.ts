@@ -32,7 +32,7 @@ import {
 import { getRepositoryLease, launchPreparedSession, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
 import { headlessClaudeAllowList, HEADLESS_ROLE_READ_RULES } from "../src/sessions/headlessPermissions.js";
 import { sessionLogPath, sessionSettingsPath, type SessionRecording } from "../src/sessions/sessionRecording.js";
-import { launchGuardedHostSession, type GuardedLaunchResult } from "../src/sessions/launch.js";
+import { launchGuardedHostSession, type GuardedLaunchInput, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { getSessionContinuation, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import { setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
@@ -69,6 +69,208 @@ class FakeTmux implements TmuxAdapter {
 }
 
 describe("launchGuardedHostSession", () => {
+  it("explicitly recovers a terminal no-op claim once without rewriting its receipt", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      expect(preview1(f.fixture, "noop-recovery", f.tmux).ready).toBe(false);
+      const recovery = f.preview("noop-recovery");
+      expect(recovery.ready).toBe(true);
+      const successor = f.launch("noop-recovery", recovery.previewFingerprint);
+      expect(successor.session.id).not.toBe(f.first.session.id);
+      expect(successor.session.worktree_path).toBe(f.first.session.worktree_path);
+      expect(successor.session.branch).toBe(f.first.session.branch);
+      expect(f.launch("noop-recovery", recovery.previewFingerprint).session.id).toBe(successor.session.id);
+      expect(() => f.launch("noop-other", recovery.previewFingerprint)).toThrow();
+      expect(f.tmux.launches).toHaveLength(2);
+      withReadOnlyDatabase(f.fixture.workspace, db => {
+        expect(db.prepare("SELECT * FROM operator_launch_authorizations WHERE session_id = ?").get(successor.session.id)).toBeUndefined();
+        expect(JSON.stringify(db.prepare("SELECT * FROM session_role_attempts").all())).toBe(f.originalAttempts);
+        expect(JSON.stringify(getSessionExitReceipt(db, f.first.session.id))).toBe(f.original);
+        expect(db.prepare("SELECT count(*) AS n FROM agent_sessions").get()).toEqual({ n: 2 });
+      });
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it.each(["running", "exit", "dirty", "head", "branch", "packet", "live", "process", "unknown", "foreign", "receipt"])("refuses terminal recovery with %s evidence", kind => {
+    const f = terminalRecoveryFixture();
+    try {
+      const before = f.preview("refusal");
+      expect(before.ready).toBe(true);
+      withDatabase(f.fixture.workspace, db => {
+        if (kind === "running") db.prepare("UPDATE agent_sessions SET status = 'running' WHERE id = ?").run(f.first.session.id);
+        if (kind === "exit") db.prepare("UPDATE agent_sessions SET exit_status = NULL WHERE id = ?").run(f.first.session.id);
+        if (kind === "packet") db.prepare("UPDATE agent_sessions SET packet_sha256 = 'changed' WHERE id = ?").run(f.first.session.id);
+        if (kind === "foreign") db.prepare("UPDATE agent_sessions SET project_slug = 'another-project' WHERE id = ?").run(f.first.session.id);
+        if (kind === "receipt") db.prepare("UPDATE session_exit_receipts SET outcome = 'accepted_completion' WHERE session_id = ?").run(f.first.session.id);
+      });
+      if (kind === "dirty" || kind === "head") {
+        writeFileSync(path.join(f.first.session.worktree_path, "change.txt"), "change");
+        if (kind === "head") { git(f.first.session.worktree_path, ["add", "change.txt"]); git(f.first.session.worktree_path, ["commit", "-m", "change"]); }
+      }
+      if (kind === "branch") git(f.first.session.worktree_path, ["switch", "-c", "codex/foreign"]);
+      if (kind === "live") f.tmux.live.add(f.first.session.tmux_session_name);
+      if (kind === "process") setWorktreeLivenessProbeForTests(() => ({ ok: true, processes: [{ pid: 42, command: "editor", cwd: f.first.session.worktree_path }] }));
+      if (kind === "unknown") setWorktreeLivenessProbeForTests(() => ({ ok: false, error: "cannot inspect" }));
+      expect(f.preview("refusal").ready).toBe(false);
+      expect(() => f.launch("refusal", before.previewFingerprint)).toThrow();
+      expect(f.tmux.launches).toHaveLength(1);
+      expect(f.claim()).toEqual(f.originalClaim);
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("requires fresh explicit recovery authority and fences changed approval facts", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const shown = f.preview("authority");
+      expect(() => f.launch("authority", shown.previewFingerprint, { standingPolicy: true, previewFingerprint: undefined })).toThrow(/fresh explicit/);
+      expect(() => f.launch("noop-original", shown.previewFingerprint)).toThrow();
+      withDatabase(f.fixture.workspace, db => db.prepare("UPDATE agent_worktree_reservations SET claim_generation = 'changed' WHERE action_id = 'define-contract'").run());
+      expect(() => f.launch("authority", shown.previewFingerprint)).toThrow(/stale/);
+      expect(f.tmux.launches).toHaveLength(1);
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("keeps the winning recovery claim in a deterministic two-request interleaving", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const a = f.preview("race-a");
+      const b = f.preview("race-b");
+      let winner: GuardedLaunchResult | undefined;
+      let winningClaim: unknown;
+      expect(() => f.launch("race-a", a.previewFingerprint, { testHooks: { beforeTerminalRecoveryPrepare: () => {
+        winner = f.launch("race-b", b.previewFingerprint);
+        winningClaim = f.claim();
+      } } })).toThrow(/lease/);
+      expect(winner?.session.status).toBe("running");
+      expect(f.claim()).toEqual(winningClaim);
+      expect(f.tmux.launches).toHaveLength(2);
+      expect(f.launch("race-b", b.previewFingerprint).session.id).toBe(winner?.session.id);
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("checks the expected claim generation inside the Session insert transaction", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const shown = f.preview("generation-race");
+      expect(() => withDatabase(f.fixture.workspace, db => f.launch("generation-race", shown.previewFingerprint, {
+        db, testHooks: { beforeSessionInsert: () => db.prepare("UPDATE agent_worktree_reservations SET claim_generation = 'other-owner' WHERE action_id = 'define-contract'").run() }
+      }))).toThrow(/changed before claim transfer/);
+      expect(f.claim()).toEqual(f.originalClaim);
+      expect(f.tmux.launches).toHaveLength(1);
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("rolls back claim rotation when the successor insert fails", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const shown = f.preview("insert-failure");
+      withDatabase(f.fixture.workspace, db => db.exec("CREATE TRIGGER refuse_successor BEFORE INSERT ON agent_sessions BEGIN SELECT RAISE(ABORT, 'synthetic insert failure'); END"));
+      expect(() => f.launch("insert-failure", shown.previewFingerprint)).toThrow(/synthetic insert failure/);
+      expect(f.claim()).toEqual(f.originalClaim);
+      withReadOnlyDatabase(f.fixture.workspace, db => {
+        expect(db.prepare("SELECT count(*) AS n FROM terminal_claim_recoveries").get()).toEqual({ n: 0 });
+        expect(JSON.stringify(getSessionExitReceipt(db, f.first.session.id))).toBe(f.original);
+      });
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("replays an unknown response after atomic recovery preparation without a second successor", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const shown = f.preview("workspace-continue:recovery-replay");
+      expect(() => f.launch("workspace-continue:recovery-replay", shown.previewFingerprint, { testHooks: {
+        afterSessionPreparedBeforeCommit: () => { throw new Error("lost response"); }
+      } })).toThrow(/lost response/);
+      expect(f.tmux.launches).toHaveLength(1);
+      expect(() => f.launch("workspace-continue:recovery-replay", shown.previewFingerprint, { recoverSessionId: undefined })).toThrow(/durable binding|explicit recovery/);
+      const preparedClaim = f.claim();
+      const resumed = f.launch("workspace-continue:recovery-replay", shown.previewFingerprint);
+      expect(resumed.reused).toBe(true);
+      expect(f.claim()).toEqual(preparedClaim);
+      expect(f.tmux.launches).toHaveLength(2);
+      expect(f.launch("workspace-continue:recovery-replay", shown.previewFingerprint).session.id).toBe(resumed.session.id);
+      withReadOnlyDatabase(f.fixture.workspace, db => {
+        expect(db.prepare("SELECT count(*) AS n FROM terminal_claim_recoveries").get()).toEqual({ n: 1 });
+        expect(JSON.stringify(getSessionExitReceipt(db, f.first.session.id))).toBe(f.original);
+      });
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it.each(["dirty", "generation", "documents", "liveness"])("refuses changed %s on an unknown-response prepared recovery replay", kind => {
+    const f = terminalRecoveryFixture();
+    try {
+      const shown = f.preview("prepared-change");
+      expect(() => f.launch("prepared-change", shown.previewFingerprint, { testHooks: {
+        afterSessionPreparedBeforeCommit: () => { throw new Error("lost response"); }
+      } })).toThrow(/lost response/);
+      if (kind === "dirty") writeFileSync(path.join(f.first.session.worktree_path, "changed.txt"), "changed");
+      if (kind === "generation") withDatabase(f.fixture.workspace, db => db.prepare("UPDATE agent_worktree_reservations SET claim_generation = 'new-owner' WHERE action_id = 'define-contract'").run());
+      if (kind === "documents") writeFileSync(path.join(f.fixture.repo, "PROJECT.md"), readFileSync(path.join(f.fixture.repo, "PROJECT.md"), "utf8") + "\nChanged facts.\n");
+      if (kind === "liveness") setWorktreeLivenessProbeForTests(() => ({ ok: false, error: "unknown" }));
+      const keptClaim = f.claim();
+      expect(() => f.launch("prepared-change", shown.previewFingerprint)).toThrow();
+      expect(f.claim()).toEqual(keptClaim);
+      expect(f.tmux.launches).toHaveLength(1);
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("retains the candidate and reports its consumed successor after recovery spawn failure", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const shown = f.preview("spawn-failure");
+      f.tmux.failLaunch = true;
+      expect(() => f.launch("spawn-failure", shown.previewFingerprint)).toThrow(/could not start/);
+      expect(f.claim()).toBeDefined();
+      expect(existsSync(f.first.session.worktree_path)).toBe(true);
+      expect(f.preview("new-recovery").prerequisites.join(" ")).toMatch(/inspect.*successor/);
+      expect(() => f.launch("spawn-failure", shown.previewFingerprint)).toThrow(/successor/);
+      withReadOnlyDatabase(f.fixture.workspace, db => {
+        expect(db.prepare("SELECT count(*) AS n FROM agent_sessions").get()).toEqual({ n: 2 });
+        expect(JSON.stringify(getSessionExitReceipt(db, f.first.session.id))).toBe(f.original);
+      });
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("reports a retained terminal claim before a new launch is approved", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const firstPreview = preview1(fixture, "claim-first", tmux);
+    const first = withDatabase(fixture.workspace, db => launchGuardedHostSession({
+      db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project",
+      requestId: "claim-first", previewFingerprint: firstPreview.previewFingerprint,
+      profiles, adapters, tmux, now: fixture.now, agentWorktreeRoot: path.join(fixture.root, "candidate"),
+      preflightEnv: stubProviders({ claude: {} })
+    }));
+    // The host-created assignment revision is unique to this candidate.
+    writeFileSync(path.join(first.session.worktree_path, "assignment.txt"), "assignment");
+    git(first.session.worktree_path, ["add", "assignment.txt"]);
+    git(first.session.worktree_path, ["commit", "-m", "assignment"]);
+    tmux.live.delete(first.session.tmux_session_name);
+    withDatabase(fixture.workspace, db => {
+      db.prepare("UPDATE agent_sessions SET status = 'completed', ended_at = ?, exit_status = 0 WHERE id = ?")
+        .run(fixture.now.toISOString(), first.session.id);
+      reconcileSessionExit({ db, sessionId: first.session.id, requestId: "claim-exit", repoRoot: fixture.repo });
+      // Reproduce a historical receipt that borrowed unrelated Run evidence.
+      db.prepare("UPDATE session_exit_receipts SET outcome = 'successful_exit', lease_handoff = 0 WHERE session_id = ?")
+        .run(first.session.id);
+    });
+    const next = preview1(fixture, "claim-next", tmux);
+    expect(next.ready).toBe(false);
+    expect(next.prerequisites.join(" ")).toMatch(/claim/i);
+    withDatabase(fixture.workspace, db => db.prepare(
+      "UPDATE agent_worktree_reservations SET claim_generation = ? WHERE project = ? AND action_id = ?"
+    ).run("new-generation", "test-project", "define-contract"));
+    const changed = preview1(fixture, "claim-next", tmux);
+    expect(changed.previewFingerprint).not.toBe(next.previewFingerprint);
+    expectArcadiaError(() => withDatabase(fixture.workspace, db => launchGuardedHostSession({
+      db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project",
+      requestId: "claim-next", previewFingerprint: next.previewFingerprint, profiles, adapters, tmux,
+      now: fixture.now, agentWorktreeRoot: path.join(fixture.root, "candidate"),
+      preflightEnv: stubProviders({ claude: {} })
+    })), "preview is stale");
+    expect(tmux.launches).toHaveLength(1);
+  });
+
   it.each([false, true])("refuses to alias a Continue request onto another request's live Session (foreign authorization: %s)", foreignAuthorization => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
@@ -102,7 +304,7 @@ describe("launchGuardedHostSession", () => {
     tmux.live.delete(other.session.tmux_session_name);
     withDatabase(fixture.workspace, db => reconcileSessionExit({ db, sessionId: other.session.id,
       requestId: "foreign-request-reconcile", repoRoot: fixture.repo }));
-    expect(preview1(fixture, continueId, tmux).previewFingerprint).toBe(shown.previewFingerprint);
+    expect(preview1(fixture, continueId, tmux).previewFingerprint).not.toBe(shown.previewFingerprint);
     expect(runGoContextCommand({ workspace: fixture.workspace, project: "test-project", now: fixture.now }).data.projects[0].resolution)
       .toEqual(observed.resolution);
     const own = launch(continueId, preview1(fixture, continueId, tmux).previewFingerprint);
@@ -153,7 +355,8 @@ describe("launchGuardedHostSession", () => {
       const exit = withDatabase(fixture.workspace, db => reconcileSessionExit({ db, sessionId: first!.session.id,
         requestId: "continue-post-exit-reconcile", repoRoot: fixture.repo }));
       expect(exit.receipt.outcome).toBe("incomplete_resumable");
-      expect(preview1(fixture, requestId, tmux)).toMatchObject({ ready: true, previewFingerprint: shown.previewFingerprint });
+      expect(preview1(fixture, requestId, tmux)).toMatchObject({ ready: true });
+      expect(preview1(fixture, requestId, tmux).previewFingerprint).not.toBe(shown.previewFingerprint);
       expect(readGo().resolution).toEqual(original.resolution);
       originalClaims = readClaims();
       return null;
@@ -594,16 +797,17 @@ describe("launchGuardedHostSession", () => {
     });
 
     const preview = preview1(fixture);
-    expectArcadiaError(
-      () => doLaunch(fixture, tmux, preview.previewFingerprint),
-      `candidate branch ${branch} is still unmerged`
-    );
+    expect(preview.ready).toBe(false);
+    expect(preview.prerequisites.join(" ")).toMatch(/claim/i);
+    expectArcadiaError(() => doLaunch(fixture, tmux, preview.previewFingerprint), "not ready");
     expect(tmux.launches).toHaveLength(0);
 
     // Explicitly abandoned: the candidate's worktree and branch are removed.
     git(fixture.repo, ["worktree", "remove", "--force", candidate]);
     git(fixture.repo, ["branch", "-D", branch]);
-    const launched = doLaunch(fixture, tmux, preview.previewFingerprint);
+    const freshPreview = preview1(fixture);
+    expect(freshPreview.previewFingerprint).not.toBe(preview.previewFingerprint);
+    const launched = doLaunch(fixture, tmux, freshPreview.previewFingerprint);
     expect(launched.session.action_id).toBe("define-contract");
     expect(tmux.launches).toHaveLength(1);
   });
@@ -2116,6 +2320,46 @@ function doLaunch(
       preflightEnv
     })
   );
+}
+
+function terminalRecoveryFixture() {
+  const fixture = preparedFixture();
+  fixture.now = new Date();
+  const tmux = new FakeTmux();
+  const preflightEnv = stubProviders({ claude: {} });
+  setWorktreeLivenessProbeForTests(() => ({ ok: true, processes: [] }));
+  const first = withDatabase(fixture.workspace, db => launchGuardedHostSession({
+    db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId: "noop-original",
+    previewFingerprint: preview1(fixture, "noop-original", tmux).previewFingerprint,
+    profiles, adapters, tmux, now: fixture.now, agentWorktreeRoot: path.join(fixture.root, "candidate"), preflightEnv,
+    operatorLaunch: { source: "dashboard", env: {} }
+  }));
+  // Host-created assignment revision, with no provider changes after launch.
+  writeFileSync(path.join(first.session.worktree_path, "assignment.txt"), "host assignment");
+  git(first.session.worktree_path, ["add", "assignment.txt"]);
+  git(first.session.worktree_path, ["commit", "-m", "host assignment"]);
+  tmux.live.delete(first.session.tmux_session_name);
+  const original = withDatabase(fixture.workspace, db => {
+    db.prepare("UPDATE agent_sessions SET launch_revision = ?, status = 'completed', ended_at = ?, exit_status = 0 WHERE id = ?")
+      .run(git(first.session.worktree_path, ["rev-parse", "HEAD"]).trim(), fixture.now.toISOString(), first.session.id);
+    reconcileSessionExit({ db, sessionId: first.session.id, requestId: "noop-exit", repoRoot: fixture.repo });
+    // Historical bug: successful_exit borrowed evidence from another Run.
+    db.prepare("UPDATE session_exit_receipts SET outcome = 'successful_exit', lease_handoff = 0 WHERE session_id = ?").run(first.session.id);
+    return JSON.stringify(getSessionExitReceipt(db, first.session.id));
+  });
+  const claim = () => withReadOnlyDatabase(fixture.workspace, db => db.prepare("SELECT * FROM agent_worktree_reservations WHERE action_id = 'define-contract'").get());
+  const preview = (requestId: string) => withReadOnlyDatabase(fixture.workspace, db => buildLaunchPreview({
+    db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId,
+    recoverSessionId: first.session.id, profiles, adapters, tmux
+  }));
+  const launch = (requestId: string, fingerprint: string, overrides: Partial<GuardedLaunchInput> = {}) => withDatabase(fixture.workspace, db => launchGuardedHostSession({
+    db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId,
+    previewFingerprint: fingerprint, recoverSessionId: first.session.id, profiles, adapters, tmux,
+    now: new Date(fixture.now.getTime() + 1000), agentWorktreeRoot: path.join(fixture.root, "candidate"), preflightEnv,
+    ...overrides
+  }));
+  const originalAttempts = withReadOnlyDatabase(fixture.workspace, db => JSON.stringify(db.prepare("SELECT * FROM session_role_attempts").all()));
+  return { fixture, first, tmux, original, originalAttempts, originalClaim: claim(), claim, preview, launch };
 }
 
 function preview1(fixture: ReturnType<typeof preparedFixture>, requestId = "req-1", tmux?: Pick<TmuxAdapter, "hasSession">) {

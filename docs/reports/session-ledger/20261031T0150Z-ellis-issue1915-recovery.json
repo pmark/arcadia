@@ -1,0 +1,21 @@
+{
+  "session_id": "ellis-issue1915-recovery",
+  "role": "driver",
+  "model": "gpt-6-astra",
+  "effort": "high",
+  "action_id": "operator-directed:issue-1915-terminal-claim-recovery",
+  "pr": null,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 0,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [],
+  "outcome": "stopped",
+  "stop_reason": "Implementation hand-back to Rowan for independent current-head review and required CI; adoption and live recovery require separate approval.",
+  "notes": "Source-only recovery; 86 launch tests, final 2-case replay delta, lint/build and preservation pass. Review, adoption and live launch remain separate."
+}

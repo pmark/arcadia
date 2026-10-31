@@ -198,6 +198,7 @@ export function renderSessionShowSuccess(response: ReturnType<typeof runSessionS
 }
 
 export function runSessionPreviewLaunchCommand(options: {
+  recoverSessionId?: string;
   workspace: string;
   repo: string;
   requestId: string;
@@ -216,6 +217,7 @@ export function runSessionPreviewLaunchCommand(options: {
       repoRoot,
       projectSlug: project.slug,
       requestId: options.requestId,
+      recoverSessionId: options.recoverSessionId,
       profiles: registries.codingAgents.profiles,
       adapters: registries.providerAdapters!
     })
@@ -238,6 +240,7 @@ export function renderSessionPreviewLaunchSuccess(response: CommandSuccess<Launc
   } else {
     lines.push("Selection: none resolved");
   }
+  if (data.recovery) lines.push(`Recovery: ${data.recovery.sessionId} → same candidate ${data.recovery.branch}; fresh explicit operator approval required.`);
   if (data.packet) lines.push(`Packet: ${data.packet.invocationId} · sha256 ${data.packet.sha256}`);
   if (data.packetLifecycle && data.packetLifecycle.kind !== "build_packet_ready") {
     lines.push(`Packet lifecycle: ${data.packetLifecycle.kind.replaceAll("_", " ")}`);
@@ -278,6 +281,7 @@ export interface SessionLaunchCommandData {
  * grant with no operator click for this specific Action.
  */
 export function runSessionLaunchCommand(options: {
+  recoverSessionId?: string;
   workspace: string;
   repo: string;
   requestId: string;
@@ -314,7 +318,7 @@ export function runSessionLaunchCommand(options: {
     // from under it -- fall through so `launchGuardedHostSession`'s own reuse
     // or conflict handling applies instead.
     const dispatch = resolveDispatch(repoRoot, project.slug);
-    if (dispatch.context && !getRepositoryLease(db, repoRoot)) {
+    if (!options.recoverSessionId && dispatch.context && !getRepositoryLease(db, repoRoot)) {
       const autoSettle = attemptAutoSettlePendingCompletion(db, {
         repoRoot,
         projectSlug: project.slug,
@@ -332,6 +336,7 @@ export function runSessionLaunchCommand(options: {
       projectSlug: project.slug,
       requestId: options.requestId,
       previewFingerprint: options.previewFingerprint,
+      recoverSessionId: options.recoverSessionId,
       standingPolicy: options.standingPolicy,
       ...(options.operatorLaunch ? { operatorLaunch: options.operatorLaunch } : {}),
       ...(options.timeLimitMinutes !== undefined ? { timeLimitMs: Math.round(options.timeLimitMinutes * 60_000) } : {}),

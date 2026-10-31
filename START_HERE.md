@@ -2592,6 +2592,28 @@ login`), or the installed provider lacks the headless flags
 `--interactive` to `go --launch`; that Session is not logged and records no
 exit code.
 
+**A retained terminal no-op candidate needs explicit recovery approval.** Ordinary
+launch preview reports its retained Action claim instead of promising a fresh
+launch. To inspect the supported recovery, use
+`arcadia session preview-launch --repo <repo> --request-id <fresh-id> --recover-session <session-id>`.
+The preview must be ready, and approval must name that fresh request and its
+fingerprint. Then use
+`arcadia session launch --repo <repo> --request-id <fresh-id> --recover-session <session-id> --preview-fingerprint <approved-hash>`.
+This grants one successor Session on the same candidate and branch; it does not
+turn Production on or grant post-exit preservation. Add `--operator-launch`
+only when its separate confirmation and exit authority below are intended.
+
+Recovery requires a positively terminal exit-zero Session with its retained
+successful-exit receipt, the same approved Action and packet, unchanged clean
+candidate HEAD equal to its launch revision, its exact claim generation, and
+no observed process in the candidate. Changed or uncertain facts refuse. The
+original receipt and attempt history stay intact. If a response is lost, replay
+the identical request, Session id and fingerprint to recover the one successor;
+never press a new request to guess the outcome. A successor that failed before
+starting remains a visible blocker with its candidate and claim retained:
+inspect that successor and receipt before authorizing any further repair.
+Review, required checks, adoption and any live recovery approval remain separate.
+
 **A confirmed Launch finishes its Session's work without production being
 Active (Decision 0096).** Confirming a Launch also authorizes Arcadia, once and
 for that one Action, to validate, commit and push the Session's branch when it
