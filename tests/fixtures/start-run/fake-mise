@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Stand-in for `mise exec -- pnpm -s arcadia ...` and `mise exec -- node scripts/run-plan-amendment.mjs ...`.
+[[ "$1" == exec && "$2" == -- ]] || { echo "unexpected mise call: $*" >&2; exit 97; }
+shift 2
+case "$1" in
+  pnpm) shift 3; exec node "$FAKE_BIN/fake-arcadia.mjs" "$@" ;;
+  node)
+    case "$2" in
+      */run-plan-amendment.mjs) shift 2; exec node "$FAKE_BIN/fake-plan-runner.mjs" "$@" ;;
+    esac ;;
+esac
+echo "unexpected mise call: $*" >&2
+exit 97

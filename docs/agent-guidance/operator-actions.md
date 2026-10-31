@@ -240,6 +240,38 @@ handoff until the script and descriptor match the final reviewed state.
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
 
+### Per-run START cards (Decisions 0156 and 0157)
+
+Do not hand-write a START card. One shared, independently reviewed executor,
+`scripts/start-run.sh`, runs every START; a card is only a thin launcher plus a
+pinned descriptor, so per-card review is small.
+
+- **The card** is `<id>.sh`, exactly `startRunLauncher(id)` (three lines, no logic;
+  `check:operator-scripts` refuses any other text), and `<id>.json`, a one-shot
+  `kind: "grant"` descriptor with `expires_at` and a `startRun` block
+  (`src/operatorActions/startRunPins.ts`: reviewed main sha, executor sha256,
+  workspace, Plan, ordered Actions, production revision and epoch, queue
+  revision, worker label, Decisions, files, preserved receipts). A Plan that is
+  still a draft embeds its `planActivation` block beside it (the only runner that
+  may). Get the pins from live state with
+  `arcadia start-run pins --plan <slug> --actions a,b,c --provider claude-code-cli --expires-hours <n>`;
+  it writes nothing and emits no script.
+- **What one press may do:** fast-forward the clean main checkout to the pinned sha
+  only, `go-broker ensure`, restart the worker after ensure succeeds and bind it,
+  activate the pinned Plan, then START production (every older START gate stays;
+  the installed-revision pin is now the reviewed-revision pin, checked by
+  `production runtime-check`). The allowance is consumed at the first mutation;
+  there is no rollback, a later failure leaves the runtime upgraded and an
+  activated Plan active, and only this Grant is returned to Off.
+- **Run it** with `<id>.sh preflight` first (phases P0 to P2, no mutation, no
+  /actions context, writes only `runs/<id>/<run>/`), then press the card. Every
+  phase rewrites `receipt.json` and `failure-handoff.md` there.
+- **Review of a card** is a mechanical diff of its `startRun` pins against the live
+  `start-run pins` output, plus an independent critic check of the reviewed-hash
+  manifest `reviewed/<id>.json` (`sh`, `json`, `executor` sha256). A change to
+  `scripts/start-run.sh` is reviewed once and invalidates the hash in every older
+  card, which then refuses.
+
 ### Pinging the operator (read-only)
 
 `arcadia ping "<message>"` queues one short Discord nudge. It is not an Agent

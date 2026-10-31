@@ -191,6 +191,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
     "Creates or edits a GitHub Project board and its fields.",
     `${FROM_LIVE_TERMINAL} Experiment fixture repositories have no remote to project to.`
   ),
+  "start-run pins": ALLOWED,
   "production status": ALLOWED,
   "production freeze-check": ALLOWED,
   "production runtime-check": exempt("Compares the installed broker release with a named repository's HEAD; reads no workspace and records nothing."),

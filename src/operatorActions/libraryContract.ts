@@ -1,5 +1,6 @@
 import path from "node:path";
 import { validatePlanActivationInput, validatePlanAmendmentInput, type PlanActivationInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
+import { startRunLauncher as sharedStartRunLauncher, StartRunPinsError, validateStartRunPins, type StartRunPins } from "./startRunPins.js";
 import { validateWorkspaceConfigEditInput, workspaceConfigEditLauncher, type WorkspaceConfigEditInput } from "./workspaceConfigEditContract.js";
 
 export interface OperatorScriptDescriptor {
@@ -32,6 +33,12 @@ export interface OperatorScriptDescriptor {
   planAmendment?: PlanAmendmentInput;
   /** A pinned one-shot activation of a draft Plan; it runs through the same shared runner. */
   planActivation?: PlanActivationInput;
+  /**
+   * A per-run START card (Decisions 0156 and 0157): the pins of one one-shot Grant that fast-forwards to its reviewed
+   * revision, installs and restarts the worker, optionally activates its Plan (the `planActivation` block beside it) and
+   * starts production. It runs only through the shared executor scripts/start-run.sh via `startRunLauncher`.
+   */
+  startRun?: StartRunPins;
   agentAsk?: { proposal: string; intent: string; targetRef: string | null };
   /** A pinned one-shot removal of one allowlisted workspace-config field; it runs only through the shared worker launcher. */
   workspaceConfigEdit?: WorkspaceConfigEditInput;
@@ -101,6 +108,34 @@ function validateCompletionSupplement(d: OperatorScriptDescriptor, id: string, s
   }
   if (script !== completionSupplementLauncher(id)) fail("COMPLETION_SUPPLEMENT_RUNNER_REQUIRED", "Completion supplements require exactly the canonical launcher.");
 }
+/** The exact three-line launcher of a per-run START card; every pin lives in its descriptor. */
+export function startRunLauncher(id: string): string {
+  if (!slug.test(id)) fail("INVALID_OPERATOR_CONTRACT", "Operator action id must be a lowercase slug.");
+  return sharedStartRunLauncher(id);
+}
+
+function validateStartRun(d: OperatorScriptDescriptor, id: string, script: string): void {
+  try { validateStartRunPins(d.startRun); }
+  catch (error) { return fail("INVALID_START_RUN", error instanceof StartRunPinsError ? error.message : String(error)); }
+  const pins = d.startRun!;
+  if (d.kind !== "grant" || d.repeatable === true || !d.expires_at || d.next_after !== undefined || d.completionSupplement !== undefined ||
+      d.planAmendment !== undefined || d.agentAsk !== undefined || d.agentAskSettlement !== undefined || d.agentAskRejections !== undefined ||
+      d.workspaceConfigEdit !== undefined) {
+    fail("INVALID_START_RUN", "A START card is a one-shot kind \"grant\" with an expires_at and no other capability; only planActivation may sit beside startRun.");
+  }
+  if (d.project !== undefined && d.project !== pins.project) fail("INVALID_START_RUN", "A START card's project must equal startRun.project.");
+  if (d.planActivation !== undefined) {
+    try { validatePlanActivationInput(d.planActivation); }
+    catch (error) { return fail("INVALID_START_RUN", error instanceof Error ? error.message : String(error)); }
+    const e = d.planActivation.envelope;
+    if (e.project !== pins.project || e.plan !== pins.plan || e.action !== pins.actions[0]) {
+      fail("INVALID_START_RUN", "The embedded planActivation must activate startRun.plan in startRun.project at the first pinned Action.");
+    }
+    if (!pins.requiredDecisions.includes("0157")) fail("INVALID_START_RUN", "A START card that activates its Plan must require Decision 0157.");
+  }
+  if (script.replace(/\r\n/g, "\n") !== startRunLauncher(id)) fail("START_RUN_RUNNER_REQUIRED", "A START card script must be exactly the shared start-run launcher; bespoke commands are refused.");
+}
+
 export interface AgentAskSettlementPin {
   schema: "arcadia-agent-ask-settlement-v1";
   project: string;
@@ -211,8 +246,8 @@ const isIsoInstant = (v: unknown): boolean => typeof v === "string" && /^\d{4}-\
 export function assertProjectLibraryEntry(value: unknown, project: string): void {
   const d = (value && typeof value === "object" ? value : {}) as Partial<OperatorScriptDescriptor>;
   if (d.project !== project) fail("UNPUBLISHED_PROJECT_ENTRY", `This entry does not declare project "${project}", so it is not published to /actions.`);
-  if (d.completionSupplement !== undefined || d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.next_after !== undefined) {
-    fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry cannot use planAmendment, planActivation, workspaceConfigEdit or next_after; those runners and hints exist only in Arcadia's library.");
+  if (d.completionSupplement !== undefined || d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.startRun !== undefined || d.next_after !== undefined) {
+    fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry cannot use planAmendment, planActivation, workspaceConfigEdit, startRun or next_after; those runners and hints exist only in Arcadia's library.");
   }
   if (d.agentAskRejections !== undefined || (d.agentAsk !== undefined && d.agentAskSettlement === undefined)) {
     fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry settles an Agent Ask only through a pinned agentAskSettlement (arcadia operator-action settle-ask); a plain agentAsk scope or agentAskRejections is refused there.");
@@ -246,6 +281,11 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
   if (d.agentAskSettlement !== undefined && d.agentAsk === undefined) {
     fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement must also declare its agentAsk proposal, intent and targetRef.");
   }
+  if (d.startRun !== undefined) {
+    validateStartRun(d, id, script);
+    return d;
+  }
+  if (script.includes("scripts/start-run.sh")) fail("START_RUN_RUNNER_REQUIRED", "The shared START executor requires a pinned startRun descriptor.");
   if (d.workspaceConfigEdit !== undefined) {
     if (d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined || d.agentAskRejections !== undefined) {
       fail("INVALID_OPERATOR_CONTRACT", "A workspace-config edit cannot be combined with a settlement scope.");
