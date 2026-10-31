@@ -2592,18 +2592,20 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .requiredOption("--project <project>", "Project id or slug that owns this Decision")
       .requiredOption("--answer <answer>", "What was actually decided")
       .option("--decided <YYYY-MM-DD>", "Date decided; defaults to today")
-      .option("--status <status>", "open, approved, rejected, or deferred", "approved")
+      .option("--status <status>", "open, approved, rejected, or deferred (default: approved; rejected with --superseded-by)")
       .option("--dry-run", "Report the consequence the answer would apply without writing anything")
       .option("--request-id <id>", "Idempotency key for the deferral's pointer transition")
       .option("--expect-status <status>", "Refuse, writing nothing, unless the Decision currently has this status")
       .option("--expect-updated <value>", "Refuse, writing nothing, unless the Decision's updated field equals this")
       .option("--expect-no-pointer-move", "Refuse, writing nothing, if a defer option's target is the current Action (it would move the active pointer)")
       .option("--expect-options <sha256>", "Refuse, writing nothing, unless sha256 of the Decision's question and options (label, consequence, effect, in order) equals this")
+      .option("--superseded-by <id>", "Close as rejected, superseded by this Decision, instead of choosing one of its options; the answer explains why")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: {
     workspace: string;
     project: string;
     answer: string;
+    supersededBy?: string;
     decided?: string;
     status?: string;
     dryRun?: boolean;
@@ -2629,7 +2631,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         expectStatus: options.expectStatus,
         expectUpdated: options.expectUpdated,
         expectOptions: options.expectOptions,
-        expectNoPointerMove: options.expectNoPointerMove
+        expectNoPointerMove: options.expectNoPointerMove,
+        supersededBy: options.supersededBy
       }),
       renderDecisionApproveSuccess
     )

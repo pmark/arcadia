@@ -1286,6 +1286,26 @@ prior agent wrote is left untouched, in the order it was written — and
 refuses to write if the result would fail validation, e.g. approving without
 `--answer`.
 
+A Decision that offers options records one of their labels. When the
+operator's real answer is an option the Decision did not offer, open a
+successor Decision that offers it, then close the original as superseded:
+
+```sh
+pnpm arcadia decision approve 0153 \
+  --project arcadia \
+  --superseded-by 0156 \
+  --answer "The operator's answer was an option this Decision did not offer." \
+  --json
+```
+
+`--superseded-by` records `status: rejected` and the answer
+`Superseded by Decision <id>: <answer>`, skips the option-label match and
+applies no option effect. Only an open Decision can be superseded, and the
+successor must exist in the same Project and still be open. It also refuses a
+Decision superseding itself and any `--status` other than `rejected`. The
+supersession text is not captured as an operator reply. The operator then answers
+the successor normally.
+
 A Decision that names the Action it governs (`action: <id>`) applies its
 answer's consequence in the same command. When the chosen option carries
 `effect: defer`, `approve` parks that Action (`status: deferred` in its Plan)
