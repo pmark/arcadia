@@ -55,7 +55,7 @@ export function assessRuntimeCurrency(input: {
     if (!gitSucceeds(repository, ["merge-base", "--is-ancestor", installedRevision, head])) {
       reasons.push(`installed revision ${installedRevision} is not an ancestor of HEAD ${head}`);
     }
-    const differing = git(repository, ["diff", "--name-only", installedRevision, head, "--", ...RUNTIME_PATHS])
+    const differing = git(repository, ["diff", "--name-only", installedRevision, head, "--", ...RUNTIME_PATHS.map((entry) => `:(top)${entry}`)])
       .split("\n")
       .filter(Boolean);
     if (differing.length > 0) {

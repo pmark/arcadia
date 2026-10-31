@@ -89,6 +89,15 @@ describe("assessRuntimeCurrency", () => {
     expect(result.reasons.join(" ")).toContain("not a full commit id");
   });
 
+  it("checks root runtime paths when given a subdirectory", () => {
+    const { repository, base } = gitRepository();
+    commitFile(repository, "docs/notes.md", "# notes\n");
+    commitFile(repository, "package.json", "{}\n");
+    const result = assessRuntimeCurrency({ repository: path.join(repository, "docs"), installedRevision: base });
+    expect(result.current).toBe(false);
+    expect(result.reasons.join(" ")).toContain("package.json");
+  });
+
   it("stays current across a docs-only difference", () => {
     const { repository, base } = gitRepository();
     commitFile(repository, "docs/notes.md", "# notes\n");

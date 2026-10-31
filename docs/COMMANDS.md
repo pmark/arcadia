@@ -1677,7 +1677,8 @@ pnpm arcadia production runtime-check [--repository <path>] [--json]
 
 Read-only report, no workspace needed: is the installed broker release an
 ancestor of the repository's `HEAD` with no differences in `src`, `scripts`,
-`apps`, `package.json`, `pnpm-lock.yaml` or `tsconfig.json`? Docs-only
+`apps`, `config`, `database`, `package.json`, `pnpm-lock.yaml` or
+`tsconfig.json`? Docs-only
 differences stay current. It prints `current`, `head`, `installedRevision` and
 the reasons (no installed revision, unknown revision, not an ancestor, differing
 runtime paths) and does not refuse when the result is stale.

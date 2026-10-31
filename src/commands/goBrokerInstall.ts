@@ -794,7 +794,8 @@ function readAgentAskSkillTemplate(repository: string): string {
 /** The release revision the installed broker launchers point at, or null when none is installed or the install is inconsistent. */
 export function readInstalledBrokerRevision(home?: string): string | null {
   const binDirectory = path.join(path.resolve(home ?? homedir()), ".local", "bin");
-  return inspectInstalledBroker(brokerExecutables(binDirectory)).revision;
+  const broker = inspectInstalledBroker(brokerExecutables(binDirectory));
+  return broker.issues.length === 0 ? broker.revision : null;
 }
 
 function inspectInstalledBroker(executables: BrokerExecutables): {
