@@ -39,6 +39,11 @@ interface LibraryResult { checked: number; failures: number; retired: string[]; 
  */
 function checkLibrary(library: string, project: string | null): LibraryResult {
   const result: LibraryResult = { checked: 0, failures: 0, retired: [], unpublished: [], staleExecutorPins: [] };
+  // The START executor's fixture-only wait shortening is keyed to this marker; it may exist only in a test's fake library.
+  if (existsSync(path.join(library, ".start-run-test-fixture"))) {
+    result.failures++;
+    process.stderr.write(JSON.stringify({ id: ".start-run-test-fixture", reason: "INVALID_OPERATOR_CONTRACT", message: "The START executor test-fixture marker must never exist in a real operator-script library." }) + "\n");
+  }
   for (const entry of readdirSync(library).filter(file => file.endsWith(".json")).sort()) {
     const id = entry.slice(0, -5);
     const label = project === null ? id : `${project}--${id}`;

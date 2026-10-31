@@ -33,12 +33,6 @@ WORKER_WAIT_SECONDS=120
 TRANSPORT_WAIT_SECONDS=180
 HEARTBEAT_FRESH_MS=15000
 ACTIVATION_RUNNER_TIMEOUT_SECONDS=300
-# Test-only shortening of the two bounded waits, honoured solely when the hermetic-test marker is set.
-if [[ -n "${START_RUN_TEST_FAKE:-}" && "${ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS:-}" =~ ^[0-9]+$ ]]; then
-  WORKER_WAIT_SECONDS="$ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS"
-  TRANSPORT_WAIT_SECONDS="$ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS"
-fi
-
 json_string() { jq -n --arg v "$1" '$v'; }
 arcadia_t() { local t="$1"; shift; (cd "$ARCADIA_REPO" && timeout "$t" mise exec -- pnpm -s arcadia "$@"); }
 arcadia() { arcadia_t 180 "$@"; }  # REF:L63
@@ -207,12 +201,11 @@ check_signin_evidence() {
   local out
   out="$(node -e '
 const fs=require("fs"),c=require("crypto");
-const [del,sig,handler]=process.argv.slice(1);
+const [sig,handler]=process.argv.slice(1);
 const h=x=>c.createHash("sha256").update(fs.readFileSync(x.path)).digest("hex");
 try{
   const need=(x,m)=>{if(!x)throw Error(m)};
-  const d=JSON.parse(del),s=JSON.parse(sig);
-  need(h(d)===d.sha256,"START/STOP delegation receipt drift");
+  const s=JSON.parse(sig);
   need(h(s)===s.sha256,"sign-in evidence receipt drift");
   const r=JSON.parse(fs.readFileSync(s.path,"utf8"));
   need(r.success===true&&r.httpStatus===200&&r.outcome==="ok","sign-in evidence is not a successful verification");
@@ -221,7 +214,7 @@ try{
   if(handler)need(r.handlerHash===handler,"sign-in evidence handlerHash is not the pre-restart worker handler");
   process.stdout.write(JSON.stringify({credentialExpiresAt:r.credentialExpiresAt,windows:r.windows,receiptHandlerHash:r.handlerHash??null}));
 }catch(e){process.stdout.write("REFUSED: "+e.message);process.exit(1)}
-' "$(pin_json delegationReceipt)" "$(pin_json signInEvidence)" "${1:-}")" || refuse "sign-in, credential-expiry and delegation evidence gate: ${out#REFUSED: }"
+' "$(pin_json signInEvidence)" "${1:-}")" || refuse "sign-in and credential-expiry evidence gate: ${out#REFUSED: }"
   rec signInEvidence "$out"
 }
 check_checkout_clean_on_main() {  # REF:L191, ADOPT:L74-75
@@ -323,6 +316,7 @@ phase_p0() {
   [[ ! -e "$ATTEMPT_FILE" ]] || refuse "the one-shot START allowance is consumed; never retry or reset"  # REF:L162
   check_expiry "this card expired at $CARD_EXPIRES_AT; ask for a fresh card"
   rec_str cardExpiresAt "$CARD_EXPIRES_AT"
+  [[ "$MODE" != run ]] || rec_str authority "The operator's own press of this per-run START card from /actions (launch context verified in P0), under Decisions 0156 and 0157, whose approval is verified at the reviewed revision in P1; no delegation to an agent is used or required"
   rec_str reviewedRevision "$PIN"
   rec_str executorSha256 "$EXECUTOR_SHA"
 }
@@ -678,6 +672,12 @@ main() {
   RECEIPT="$RUN_DIR/receipt.json"
   STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   ATTEMPT_FILE="$LIBRARY_DIR/$ID.consumed.json"
+  # Fixture-only shortening of the two bounded waits: honoured solely when this exact marker file exists inside the card's own library.
+  # check-operator-scripts fails if the marker exists in a real library, so a real run can never take this branch.
+  if [[ -f "$LIBRARY_DIR/.start-run-test-fixture" ]]; then
+    local fixture_wait; fixture_wait="$(<"$LIBRARY_DIR/.start-run-test-fixture")"
+    if [[ "$fixture_wait" =~ ^[0-9]+$ ]]; then WORKER_WAIT_SECONDS="$fixture_wait"; TRANSPORT_WAIT_SECONDS="$fixture_wait"; fi
+  fi
   mkdir -p "$RUN_DIR"
   # The phases run as a background stage whose output goes through a FIFO into tee -a run.log (no process substitution, so it also
   # works in a sandbox). The stage sets its own traps.

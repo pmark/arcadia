@@ -20,10 +20,10 @@ export const START_RUN_DEFAULTS = {
   provider: "claude-code-cli",
   transitions: ["validation", "acceptance", "pointer", "packet_approval"],
   packetApprovalHours: 24,
-  /** Decision 0130 spend ceiling, 0058 candidate integration, 0097 worker PR merge, 0134 amendment, 0156 install. 0157 is added for a draft Plan. */
+  /** Decision 0130 spend ceiling, 0058 candidate integration, 0097 worker PR merge, 0134 amendment, 0156 install, 0157 Plan activation (a card is always pressed by the operator, so no delegation receipt is pinned). */
   spendDecision: "0130",
   integrationDecision: "0058",
-  requiredDecisions: ["0130", "0058", "0097", "0134", "0156"],
+  requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"],
   requiredFiles: [START_RUN_EXECUTOR_PATH, "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
   gateCardId: "enable-capacity-gate-20261017",
   offId: "restore-off-production-bug-plan-first-supervised-run-2026-10-11"
@@ -140,7 +140,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   }
   if (planStatus === "draft") notes.push("The Plan is a draft: embed its pinned planActivation block in the descriptor (Decision 0157) before review.");
 
-  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(planStatus === "draft" ? ["0157"] : [])];
+  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions];
   const decisionFiles = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n");
   for (const decision of requiredDecisions) {
     const file = decisionFiles.find((entry) => new RegExp(`^docs/decisions/${decision}-.*\\.md$`).test(entry));
@@ -177,7 +177,6 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     if (!found) throw validationError(`No ${label} receipt (${filename}) was found under ${closeouts}; no pins were computed.`);
     return { path: found, sha256: deps.sha256File(found) };
   };
-  const delegationReceipt = discover("start-stop-daily-chat-delegation.json", "START/STOP delegation");
   const signInEvidence = discover("postrenewal-usage-worker-receipt.json", "sign-in evidence");
   try {
     const evidence = JSON.parse(deps.readText(signInEvidence.path)) as { success?: boolean; credentialExpiresAt?: string; windows?: Array<{ usedPercentage?: number }> };
@@ -214,9 +213,8 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     workerLabel: labels[0],
     gateCardId: START_RUN_DEFAULTS.gateCardId,
     offId: START_RUN_DEFAULTS.offId,
-    grantedBy: `Rowan under P. Mark Anderson START/STOP delegation through ${expiresAt}`,
+    grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
     consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) })),
-    delegationReceipt,
     signInEvidence
   };
   try { validateStartRunPins(startRun); }
