@@ -4,7 +4,7 @@ type: decision
 id: "0154"
 slug: how-deep-should-design-help-go-by-default
 project: arcadia
-status: open
+status: approved
 question: How deep should design help go by default?
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: Quick by default
+decided: 2026-10-31
 ---
 
 # Decision 0154: How deep should design help go by default?
