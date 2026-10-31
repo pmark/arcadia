@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -63,6 +63,8 @@ interface BoxOptions {
   executorPin?: string;
   tamper?: "descriptor" | "script" | "executor";
   historyDrift?: boolean;
+  /** The dashboard's run record for this press: absent, stale, for another card, not running, or already claimed. */
+  press?: "none" | "stale" | "other-card" | "not-running" | "claimed" | "other-parent";
   receiptDrift?: "signin";
   credentialExpiresAt?: string;
   windowPercent?: number;
@@ -211,10 +213,26 @@ function box(options: BoxOptions = {}) {
   writeFileSync(path.join(root, "state.json"), JSON.stringify(state, null, 2));
 
   const marker = path.join(library, `${ID}.consumed.json`);
+  /** Write the run record the dashboard writes before the runner execs the card; the runner adds its own pid (this process). */
+  const pressEnv = (): Record<string, string> => {
+    const kind = options.press;
+    if (kind === "none") return {};
+    const runId = `20261101000000000-${randomUUID()}`;
+    const dir = path.join(library, "runs", "operator", ID, runId);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "descriptor.json"), readFileSync(descriptorPath));
+    writeFileSync(path.join(dir, "run.json"), JSON.stringify({
+      schema: "arcadia-operator-script-run-v1", runId, scriptId: kind === "other-card" ? "some-other-card" : ID,
+      status: kind === "not-running" ? "failed" : "running", pid: kind === "other-parent" ? 1 : process.pid,
+      startedAt: new Date(Date.now() - (kind === "stale" ? 10 * 60_000 : 1000)).toISOString()
+    }));
+    if (kind === "claimed") writeFileSync(path.join(dir, "start-run.claimed"), "x\n");
+    return { ARCADIA_OPERATOR_SCRIPT_RUN_ID: runId, ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY: dir, ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR: path.join(dir, "descriptor.json") };
+  };
   const env = (overrides: Record<string, string | undefined> = {}, actions = true): NodeJS.ProcessEnv => {
     const base: NodeJS.ProcessEnv = {
       ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot,
-      ...(actions ? { ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptorPath } : {})
+      ...(actions ? { ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptorPath, ...pressEnv() } : {})
     };
     delete base.ANTHROPIC_API_KEY; delete base.CODEX_SANDBOX; delete base.ARCADIA_WORKSPACE; delete base.VITEST;
     for (const [key, value] of Object.entries(overrides)) { if (value === undefined) delete base[key]; else base[key] = value; }
@@ -239,7 +257,7 @@ function box(options: BoxOptions = {}) {
   const mutating = () => calls().filter((call) =>
     (call.tool === "launchctl" && call.args[0] === "kickstart") || call.tool === "plan-runner" ||
     (call.tool === "arcadia" && (["go-broker ensure", "production activate", "production deactivate"].includes(call.args.slice(0, 2).join(" ")))));
-  return { root, repo, origin, library, marker, pin, installed, descriptorPath, scriptPath, run, calls, mutating, readState, head: () => git(repo, "rev-parse", "HEAD"), status: () => git(repo, "status", "--porcelain"), state };
+  return { root, repo, origin, library, marker, pin, installed, descriptorPath, scriptPath, env, run, calls, mutating, readState, head: () => git(repo, "rev-parse", "HEAD"), status: () => git(repo, "status", "--porcelain"), state };
 }
 type Box = ReturnType<typeof box>;
 
@@ -274,6 +292,12 @@ describe("start-run executor: P0 context refusals consume nothing", () => {
   it.each<[string, BoxOptions, Record<string, string | undefined>, boolean, RegExp]>([
     ["not launched from /actions", {}, {}, false, /\/actions operator-action library/],
     ["a descriptor that is not this card's", {}, { ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: "/nonexistent.json" }, true, /\/actions operator-action library/],
+    ["the right env but no operator press record", { press: "none" }, {}, true, /no operator press record/],
+    ["a stale operator press record", { press: "stale" }, {}, true, /not fresh/],
+    ["an operator press record for another card", { press: "other-card" }, {}, true, /another card/],
+    ["an operator press record that is not running", { press: "not-running" }, {}, true, /not in running state/],
+    ["an operator press record parented by another process", { press: "other-parent" }, {}, true, /not parented/],
+    ["an already claimed operator press record", { press: "claimed" }, {}, true, /already claimed/],
     ["an agent sandbox", {}, { CODEX_SANDBOX: "seatbelt" }, true, /host-only/],
     ["ANTHROPIC_API_KEY set", {}, { ANTHROPIC_API_KEY: "sk-fixture" }, true, /ANTHROPIC_API_KEY is set/],
     ["ARCADIA_WORKSPACE set", {}, { ARCADIA_WORKSPACE: "/elsewhere" }, true, /ARCADIA_WORKSPACE is set/],
@@ -567,6 +591,15 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(result.receipt!.offCleanup).toBe("not_attempted");
   }, 120_000);
 
+  it("binds the operator run id into the receipt and claims the press record once", () => {
+    const b = box();
+    const result = b.run();
+    expect(result.status, result.stderr).toBe(0);
+    const runId = readdirSync(path.join(b.library, "runs", "operator", ID))[0];
+    expect(result.receipt!.record.operatorRunId).toBe(runId);
+    expect(existsSync(path.join(b.library, "runs", "operator", ID, runId, "start-run.claimed"))).toBe(true);
+  }, 120_000);
+
   it("records the pre- and post-restart handlers and a runtimeUpgraded flag on success", () => {
     const b = box();
     const result = b.run();
@@ -578,7 +611,7 @@ describe("start-run executor: failures after the first mutation", () => {
 
   it("forwards a TERM to the stage so an in-flight activation is returned to Off", async () => {
     const b = box({ state: (s) => { s.activate.mode = "slow"; } });
-    const child = spawn(b.scriptPath, ["run"], { env: { ...process.env, ...GIT_ENV, PATH: `${path.join(b.root, "bin")}:${process.env.PATH}`, HOME: path.join(b.root, "home"), FAKE_ROOT: b.root, FAKE_BIN: path.join(b.root, "bin"), FAKE_ARCADIA_ROOT: repoRoot, ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: b.descriptorPath } });
+    const child = spawn(b.scriptPath, ["run"], { env: b.env() });
     const exited = new Promise<number | null>((resolve) => child.on("close", resolve));
     const deadline = Date.now() + 100_000;
     while (!b.calls().some((call) => call.args.slice(0, 2).join(" ") === "production activate") && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));

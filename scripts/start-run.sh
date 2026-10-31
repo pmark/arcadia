@@ -33,6 +33,7 @@ WORKER_WAIT_SECONDS=120
 TRANSPORT_WAIT_SECONDS=180
 HEARTBEAT_FRESH_MS=15000
 ACTIVATION_RUNNER_TIMEOUT_SECONDS=300
+PRESS_RECORD_MAX_AGE_MS=120000
 json_string() { jq -n --arg v "$1" '$v'; }
 arcadia_t() { local t="$1"; shift; (cd "$ARCADIA_REPO" && timeout "$t" mise exec -- pnpm -s arcadia "$@"); }
 arcadia() { arcadia_t 180 "$@"; }  # REF:L63
@@ -295,6 +296,38 @@ check_runtime_current() {  # Decision 0156: the reviewed-revision pin, checked b
 # ---------------------------------------------------------------------------------------------------------------
 # P0 context
 # ---------------------------------------------------------------------------------------------------------------
+# The environment variables alone can be exported by any host shell. A live press also has the dashboard's run record, written
+# (status running, this card's id, a run id) before the runner execs this script, plus the runner's own pid. Require it to be this
+# card's, running, fresh, parented by that runner and not yet claimed. Reads only; the claim happens after every P0 check passed.
+OPERATOR_RUN_ID=""
+OPERATOR_RUN_DIR=""
+check_operator_press_record() {
+  local dir out
+  dir="${ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY:-}"
+  [[ -n "${ARCADIA_OPERATOR_SCRIPT_RUN_ID:-}" && -n "$dir" && -f "$dir/run.json" ]] || refuse "there is no operator press record for this run; launch this Grant from the /actions operator-action library"
+  out="$(node -e '
+const fs=require("fs"),p=require("path");
+const [dir,runId,id,ppid,maxAgeMs,descriptor]=process.argv.slice(1);
+const fail=(m)=>{console.log(m);process.exit(1)};
+let r;try{r=JSON.parse(fs.readFileSync(p.join(dir,"run.json"),"utf8"))}catch{fail("the operator press record is unreadable")}
+if(p.basename(dir)!==runId)fail("the operator press record directory is not this run");
+if(r.schema!=="arcadia-operator-script-run-v1"||r.runId!==runId)fail("the operator press record is not for this run id");
+if(r.scriptId!==id)fail("the operator press record belongs to another card");
+if(r.status!=="running")fail("the operator press record is not in running state");
+if(String(r.pid)!==ppid)fail("the operator press record is not parented by this process launcher");
+const t=Date.parse(r.startedAt),age=Date.now()-t;
+if(!Number.isFinite(t)||age<-5000||age>Number(maxAgeMs))fail("the operator press record is not fresh");
+if(descriptor!==p.join(dir,"descriptor.json"))fail("the operator press record does not bind the run descriptor");
+if(fs.existsSync(p.join(dir,"start-run.claimed")))fail("the operator press record is already claimed");
+' "$dir" "$ARCADIA_OPERATOR_SCRIPT_RUN_ID" "$ID" "$PPID" "$PRESS_RECORD_MAX_AGE_MS" "${ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR:-}")" || refuse "${out:-the operator press record could not be checked}"
+  OPERATOR_RUN_ID="$ARCADIA_OPERATOR_SCRIPT_RUN_ID"
+  OPERATOR_RUN_DIR="$dir"
+}
+claim_operator_press_record() {  # exclusive; called once every other P0 check has passed
+  [[ "$MODE" == run ]] || return 0
+  ( set -C; printf '%s\n' "$RUN_ID" > "$OPERATOR_RUN_DIR/start-run.claimed" ) 2>/dev/null || refuse "the operator press record was claimed concurrently"
+  rec_str operatorRunId "$OPERATOR_RUN_ID"
+}
 phase_p0() {
   local tool
   phase P0 context
@@ -302,6 +335,7 @@ phase_p0() {
     [[ "${ARCADIA_OPERATOR_SCRIPT_ID:-}" == "$ID" && -n "${ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR:-}" && -f "${ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR:-}" ]] || refuse "launch this Grant through the /actions operator-action library"
     [[ "$(cd "$(dirname "$ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR")" && pwd -P)/$(basename "$ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR")" == "$DESCRIPTOR" ]] || refuse "the launching descriptor is not this Grant's descriptor"
     [[ -z "${CODEX_SANDBOX:-}" ]] || refuse "host-only Grant: an agent sandbox may not run it"
+    check_operator_press_record
   fi
   # A set API key can bill paid API usage instead of the Claude subscription; its value is never read.  REF:L155
   [[ -z "${ANTHROPIC_API_KEY:-}" ]] || refuse "ANTHROPIC_API_KEY is set in this host environment, which can bill paid API usage; unset it (its value was not read)"
@@ -319,6 +353,7 @@ phase_p0() {
   [[ "$MODE" != run ]] || rec_str authority "The operator's own press of this per-run START card from /actions (launch context verified in P0), under Decisions 0156 and 0157, whose approval is verified at the reviewed revision in P1; no delegation to an agent is used or required"
   rec_str reviewedRevision "$PIN"
   rec_str executorSha256 "$EXECUTOR_SHA"
+  claim_operator_press_record
 }
 
 # ---------------------------------------------------------------------------------------------------------------
