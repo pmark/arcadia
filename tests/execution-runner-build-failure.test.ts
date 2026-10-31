@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -235,5 +235,106 @@ describe("executeCodexStep build-purpose failure", () => {
       work_item_id: workId,
       plan_id: planned.data.plan.id
     });
+  });
+});
+
+
+describe("legacy build evidence", () => {
+  function fixture(changed = true) {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-build-evidence-"));
+    temporaryRoots.push(root);
+    const workspace = path.join(root, "workspace");
+    const repository = path.join(root, "repository");
+    initWorkspace(workspace);
+    mkdirSync(repository, { recursive: true });
+    const inputPath = path.join(root, "child-input.txt");
+    const agentPath = path.join(root, "fake-build.cjs");
+    writeFileSync(agentPath, `const fs = require("node:fs"); let input = ""; process.stdin.setEncoding("utf8"); process.stdin.on("data", x => input += x); process.stdin.on("end", () => { fs.writeFileSync(${JSON.stringify(inputPath)}, input); ${changed ? `fs.writeFileSync(${JSON.stringify(path.join(repository, "changed.txt"))}, "changed");` : ""} process.stdout.write(${JSON.stringify(changed ? "Tests passed; implementation complete." : "Blocked: no implementation was performed.")}); });`);
+    const paths = getWorkspacePaths(workspace);
+    const registry = JSON.parse(readFileSync(paths.codingAgentProfiles, "utf8")) as { profiles: Array<Record<string, unknown>> };
+    const profile = registry.profiles.find((candidate) => candidate.name === "claude_build")!;
+    profile.command = process.execPath;
+    profile.args = [agentPath];
+    writeFileSync(paths.codingAgentProfiles, JSON.stringify(registry));
+    const imported = runProjectImportCommand({ workspace, name: "Build evidence fixture", mission: "Verify build evidence", status: "active", milestone: "Verify", nextAction: "Implement an exact marker file.", classification: "agent" });
+    const workId = imported.data.workItem.id;
+    withDatabase(workspace, (db) => upsertProjectMetadata(db, { projectId: imported.data.project.id, repoPath: repository, validationCommands: ["node -e \"process.exit(0)\""] }));
+    const planned = runWorkPlanCommand({ workspace, workId, agentProfile: "claude_build" });
+    return { workspace, repository, inputPath, workId, planned };
+  }
+
+  it("passes approved exact packet context while retaining packet bytes and requiring protected evidence", () => {
+    const f = fixture();
+    const invocation = f.planned.data.buildInvocation!;
+    const packetPath = path.join(f.workspace, invocation.prompt_path);
+    const packet = readFileSync(packetPath);
+    withDatabase(f.workspace, (db) => updateReviewItemStatus(db, f.planned.data.buildApproval!.id, { status: "approved", decisionNote: "Fixture approval." }));
+    const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
+    expect(result.data.run.status).toBe("requires_review");
+    expect(readFileSync(packetPath)).toEqual(packet);
+    const input = readFileSync(f.inputPath, "utf8");
+    expect(input).toContain(packet.toString());
+    expect(input).toContain(f.planned.data.buildApproval!.id);
+    expect(input).toContain("not a canonical Session claim");
+    withDatabase(f.workspace, (db) => {
+      const work = db.prepare("SELECT status, next_action FROM work_items WHERE id = ?").get(f.workId) as { status: string; next_action: string };
+      expect(work.status).not.toBe("done");
+      expect(work.next_action).toContain("protected validation");
+      expect(db.prepare("SELECT COUNT(*) AS count FROM artifacts WHERE artifact_type = 'build_execution_context' AND work_item_id = ?").get(f.workId)).toEqual({ count: 1 });
+    });
+  });
+
+  it("does not complete a no-op normal exit", () => {
+    const f = fixture(false);
+    withDatabase(f.workspace, (db) => updateReviewItemStatus(db, f.planned.data.buildApproval!.id, { status: "approved", decisionNote: "Fixture approval." }));
+    const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
+    expect(result.data.run.status).toBe("requires_review");
+    withDatabase(f.workspace, (db) => expect((db.prepare("SELECT status FROM work_items WHERE id = ?").get(f.workId) as { status: string }).status).not.toBe("done"));
+  });
+
+  it.each(["status", "queue", "work_classification"] as const)("refuses blocked %s before context or provider", (field) => {
+    const f = fixture();
+    withDatabase(f.workspace, (db) => db.prepare(`UPDATE work_items SET ${field} = ? WHERE id = ?`).run("blocked", f.workId));
+    const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
+    expect(result.data.run.status).toBe("failed");
+    expect(result.data.run.steps[0].error).toContain("no longer eligible");
+    expect(() => readFileSync(f.inputPath)).toThrow();
+    const packetDir = path.join(f.workspace, path.dirname(f.planned.data.buildInvocation!.prompt_path));
+    expect(readdirSync(packetDir).filter((name) => name.startsWith("build-execution-context-"))).toEqual([]);
+    withDatabase(f.workspace, (db) => {
+      expect(db.prepare("SELECT COUNT(*) AS count FROM artifacts WHERE artifact_type = 'build_execution_context' AND work_item_id = ?").get(f.workId)).toEqual({ count: 0 });
+    });
+  });
+
+  it("refuses a changed promoted packet before the provider", () => {
+    const f = fixture();
+    withDatabase(f.workspace, (db) => updateReviewItemStatus(db, f.planned.data.buildApproval!.id, { status: "approved", decisionNote: "Fixture approval." }));
+    writeFileSync(path.join(f.workspace, f.planned.data.buildInvocation!.prompt_path), "tampered");
+    const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
+    expect(result.data.run.status).toBe("failed");
+    expect(() => readFileSync(f.inputPath)).toThrow();
+  });
+
+  it("runs an explicitly requested generic build with an open packet record", () => {
+    const f = fixture();
+    const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
+    expect(result.data.run.status).toBe("requires_review");
+    expect(readFileSync(f.inputPath, "utf8")).toContain("does not attest the caller identity or an external approval");
+  });
+
+  it.each(["rejected", "deferred"] as const)("refuses a %s generic packet record before the provider", (status) => {
+    const f = fixture();
+    withDatabase(f.workspace, (db) => updateReviewItemStatus(db, f.planned.data.buildApproval!.id, { status, decisionNote: "Fixture decision." }));
+    const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
+    expect(result.data.run.status).toBe("failed");
+    expect(() => readFileSync(f.inputPath)).toThrow();
+  });
+
+  it("allows a generic nonpromotion build but does not attest approval or complete on normal exit", () => {
+    const f = fixture();
+    withDatabase(f.workspace, (db) => db.prepare("DELETE FROM review_items WHERE id = ?").run(f.planned.data.buildApproval!.id));
+    const result = runWorkRunCommand({ workspace: f.workspace, workId: f.workId, plan: f.planned.data.plan.id, allowCodexBuild: true, agentProfile: "claude_build" });
+    expect(result.data.run.status).toBe("requires_review");
+    expect(readFileSync(f.inputPath, "utf8")).toContain("no promotion Decision is attested");
   });
 });

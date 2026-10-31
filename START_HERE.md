@@ -927,6 +927,13 @@ start the build after the operator chooses to do so. Re-acceptance reuses the
 same Action and packet, while a changed or malformed planning Artifact fails
 closed before either managed pointer moves.
 
+A manual build Run records the packet and current execution context separately.
+A successful process exit alone leaves the Run in **Requires Review** and the
+Action unfinished, even if the child reports success or changed files. Use the
+existing protected validation and preservation path and governed completion
+evidence to establish completion; those are separate from process output and
+any later delivery, review, or merge gates.
+
 Preparation refuses an already registered Project name or repository and any
 repository that already carries a `PROJECT.md` or managed plan. It never
 replaces another Project's work pointer.
