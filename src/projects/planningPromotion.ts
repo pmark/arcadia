@@ -1,3 +1,6 @@
+import { isolatedGitEnvironment } from "../git/isolatedGitEnvironment.js";
+import { preservationProcessLimits, PRESERVATION_GIT_TIMEOUT_MS } from "../sessions/preservationStages.js";
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -32,6 +35,7 @@ import {
   validatePlanningArtifact,
   type PlanningPromotionFields
 } from "../stewardship/artifactValidator.js";
+import { promotionAssignmentBlock } from "../sessions/promotionAssignment.js";
 import { localDateStamp } from "../utils/time.js";
 import { slugify } from "../utils/slug.js";
 
@@ -206,6 +210,35 @@ export function writeProjectIdeaPromotionDocuments(
   const originalPlan = readRequiredFile(planPath, "active plan document");
   const projectBlock = parseFrontmatter(originalProject, "PROJECT.md");
   const planBlock = parseFrontmatter(originalPlan, relativePlanPath);
+  const existing = (Array.isArray(planBlock.data.actions) ? planBlock.data.actions as Array<Record<string, unknown>> : [])
+    .find(action => action.source === promotionMarker(prepared.decisionId));
+  if (existing) {
+    const actionId = String(existing.id ?? "");
+    if (!actionId || projectBlock.data.current_action !== actionId || planBlock.data.current_action !== actionId) throw validationError("Existing planning promotion has inconsistent Project or plan pointers.");
+    return { actionId, actionDocRef: actionDocRef(prepared.planSlug, actionId), planPath: relativePlanPath, projectPath, absolutePlanPath: planPath, originalProject, originalPlan, reused: true };
+  }
+  const { actionId, nextPlan, nextProject } = renderProjectIdeaPromotion(prepared, originalProject, originalPlan, localDateStamp());
+  assertManagedDocument(nextPlan, relativePlanPath, "plan");
+  assertManagedDocument(nextProject, "PROJECT.md", "project");
+  replaceTwoFilesAtomically({ planPath, projectPath, originalPlan, originalProject, nextPlan, nextProject });
+
+  return {
+    actionId,
+    actionDocRef: actionDocRef(prepared.planSlug, actionId),
+    planPath: relativePlanPath,
+    projectPath,
+    absolutePlanPath: planPath,
+    originalProject,
+    originalPlan,
+    reused: false
+  };
+}
+
+/** Pure renderer shared by initial acceptance and deterministic packet regeneration. */
+export function renderProjectIdeaPromotion(prepared: ProjectIdeaPromotionPreparation, originalProject: string, originalPlan: string, updated: string): { actionId: string; nextPlan: string; nextProject: string } {
+  const relativePlanPath = path.join("docs", "plans", `${prepared.planSlug}.md`);
+  const projectBlock = parseFrontmatter(originalProject, "PROJECT.md");
+  const planBlock = parseFrontmatter(originalPlan, relativePlanPath);
 
   if (projectBlock.data.active_plan !== prepared.planSlug) {
     throw validationError("Project active plan changed before planning promotion.", {
@@ -215,27 +248,6 @@ export function writeProjectIdeaPromotionDocuments(
   }
   const actions = Array.isArray(planBlock.data.actions) ? planBlock.data.actions as Array<Record<string, unknown>> : [];
   const marker = promotionMarker(prepared.decisionId);
-  const existing = actions.find((action) => action.source === marker);
-  if (existing) {
-    const actionId = String(existing.id ?? "");
-    if (!actionId || projectBlock.data.current_action !== actionId || planBlock.data.current_action !== actionId) {
-      throw validationError("Existing planning promotion has inconsistent Project or plan pointers.", {
-        decisionId: prepared.decisionId,
-        actionId: actionId || null
-      });
-    }
-    return {
-      actionId,
-      actionDocRef: actionDocRef(prepared.planSlug, actionId),
-      planPath: relativePlanPath,
-      projectPath,
-      absolutePlanPath: planPath,
-      originalProject,
-      originalPlan,
-      reused: true
-    };
-  }
-
   if (
     projectBlock.data.current_action !== prepared.planningActionId ||
     planBlock.data.current_action !== prepared.planningActionId
@@ -282,7 +294,7 @@ export function writeProjectIdeaPromotionDocuments(
   );
   updatedActions.splice(sourceIndex + 1, 0, promotedAction);
 
-  const updated = localDateStamp();
+
   const nextPlan = renderFrontmatter({
     ...planBlock.data,
     current_action: actionId,
@@ -297,20 +309,43 @@ export function writeProjectIdeaPromotionDocuments(
     updated
   }, projectBlock.body);
 
-  assertManagedDocument(nextPlan, relativePlanPath, "plan");
-  assertManagedDocument(nextProject, "PROJECT.md", "project");
-  replaceTwoFilesAtomically({ planPath, projectPath, originalPlan, originalProject, nextPlan, nextProject });
+  return { actionId, nextPlan, nextProject };
+}
 
-  return {
-    actionId,
-    actionDocRef: actionDocRef(prepared.planSlug, actionId),
-    planPath: relativePlanPath,
-    projectPath,
-    absolutePlanPath: planPath,
-    originalProject,
-    originalPlan,
-    reused: false
+/** Rebuild the assignment solely from the accepted Artifact and committed pre-promotion records. */
+export function replayAcceptedPromotionAssignment(db: Database.Database, workspace: string, decision: ReviewItemSummary): string {
+  const context = parseDecisionContext(decision);
+  const receipt = context.planningPromotion as ProjectIdeaPromotionReceipt | undefined;
+  const planning = decision.work_item_id ? getWorkItem(db, decision.work_item_id) : null;
+  const ref = planning?.doc_ref ? parseActionDocRef(planning.doc_ref) : null;
+  const project = decision.project_id ? getProject(db, decision.project_id) : null;
+  if (!receipt || !planning || !ref || !project || decision.status !== "approved") throw validationError("Accepted planning promotion cannot be reconstructed.");
+  const artifactText = readRequiredFile(path.join(workspace, receipt.planningArtifactPath), "accepted planning Artifact");
+  const fields = extractPlanningPromotionFields(artifactText);
+  if (!fields || !CONCRETE_VERB.test(fields.smallestFollowUpGoal) || packetSha256(path.join(workspace, receipt.planningArtifactPath)) !== receipt.planningArtifactSha256) throw validationError("Accepted planning Artifact changed.");
+  const prepared: ProjectIdeaPromotionPreparation = {
+    decisionId: decision.id, projectId: project.id, projectSlug: project.slug, repoPath: receipt.repoPath,
+    planSlug: ref.planSlug, planningActionId: ref.actionId, planningWorkItemId: planning.id,
+    sourceIdea: receipt.sourceIdea, planningArtifactId: receipt.planningArtifactId, planningArtifactPath: receipt.planningArtifactPath,
+    validationArtifactId: receipt.validationArtifactId, validationArtifactPath: receipt.validationArtifactPath,
+    buildProfile: receipt.buildProfile, fields
   };
+  const plan = path.join("docs", "plans", `${prepared.planSlug}.md`);
+  const git = (args: string[]) => execFileSync("git", args, { timeout: PRESERVATION_GIT_TIMEOUT_MS, ...preservationProcessLimits("git", args), env: isolatedGitEnvironment(), cwd: prepared.repoPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const base = git(["rev-parse", "HEAD"]).trim();
+  const originalProject = git(["show", `${base}:PROJECT.md`]);
+  const originalPlan = git(["show", `${base}:${plan}`]);
+  const projectText = readRequiredFile(path.join(prepared.repoPath, "PROJECT.md"), "Project document");
+  const planText = readRequiredFile(path.join(prepared.repoPath, plan), "active plan document");
+  const decided = decision.decided_at ? new Date(decision.decided_at) : null;
+  if (!decided || Number.isNaN(decided.getTime())) throw validationError("Promotion approval date is missing or invalid.");
+  const updated = localDateStamp(decided);
+  if (updated !== parseFrontmatter(projectText, "PROJECT.md").data.updated || updated !== parseFrontmatter(planText, plan).data.updated) throw validationError("Promotion record dates do not match the approval date.");
+  const rendered = renderProjectIdeaPromotion(prepared, originalProject, originalPlan, updated);
+  if (projectText !== rendered.nextProject || planText !== rendered.nextPlan) throw validationError("Canonical records differ from the accepted planning promotion; preserve unrelated changes.");
+  const block = promotionAssignmentBlock({ repo: prepared.repoPath, plan, originalProject, originalPlan });
+  if (!block) throw validationError("Cannot bind the accepted promotion to a Git base.");
+  return block;
 }
 
 interface ProjectIdeaPromotionDocumentWrite {
@@ -426,7 +461,8 @@ export function persistProjectIdeaPromotion(
     projectContext: getProjectContext(db, prepared.projectId),
     agentProfile: selection.profile,
     agentConfiguration: selection.configuration,
-    executionRequirement: selection.executionRequirement
+    executionRequirement: selection.executionRequirement,
+    promotionAssignment: promotionAssignmentBlock({ repo: prepared.repoPath, plan: written.planPath, originalProject: written.originalProject, originalPlan: written.originalPlan })
   });
   const persisted = persistCodexPacketRecords(db, {
     packet,

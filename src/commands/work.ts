@@ -1,3 +1,5 @@
+import { hasCommittedPromotionAssignment } from "../sessions/promotionAssignment.js";
+import { replayAcceptedPromotionAssignment } from "../projects/planningPromotion.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -892,7 +894,11 @@ function prepareAcceptedProjectIdeaBuild(
   const run = db.prepare("SELECT id, status FROM execution_runs WHERE plan_id = ? ORDER BY created_at DESC LIMIT 1").get(currentPlan.id) as { id: string; status: string } | undefined;
   const running = db.prepare("SELECT id FROM execution_runs WHERE work_item_id = ? AND status IN ('pending_execution', 'running') LIMIT 1").get(workItem.id) as { id: string } | undefined;
   if (listCodexInvocationsForWorkItem(db, workItem.id).some((item) => item.purpose === "build" && item.status === "running") || running) throw validationError("A build attempt is running; wait for it to finish before preparing another packet.", { actionId: workItem.id, invocationId: current.id, runId: run?.id });
-  if (current.id === invocation.id && current.status === "packet_created" && !current.run_id && !run) {
+  const currentPacketPath = path.join(workspace, current.prompt_path);
+  const actionRef = workItem.doc_ref ? parseActionDocRef(workItem.doc_ref) : null;
+  const committedAssignment = Boolean(repoPath && actionRef && hasCommittedPromotionAssignment({ repo: repoPath, planSlug: actionRef.planSlug, actionId: actionRef.actionId }));
+  const needsAssignment = Boolean(repoPath && existsSync(path.join(repoPath, ".git")) && !committedAssignment && existsSync(currentPacketPath) && !readFileSync(currentPacketPath, "utf8").includes("<!-- arcadia-promotion-assignment-v1:"));
+  if (!needsAssignment && current.id === invocation.id && current.status === "packet_created" && !current.run_id && !run) {
     if (requestedProfile && requestedProfile !== current.agent_profile) throw validationError("Existing packet is bound to a different coding agent profile.");
     return { plan, planningDecision: null, codexInvocation: null, packetArtifact: null, buildApproval: null, buildInvocation: invocation, buildPacketArtifact: artifact, reused: true };
   }
@@ -909,7 +915,7 @@ function prepareAcceptedProjectIdeaBuild(
   }
   const registries = loadPhase3Registries(workspace);
   validatePhase3Registries(registries);
-  const reusable = currentPlan.status === "planned" && current.status === "packet_created" && !current.run_id && !run;
+  const reusable = !needsAssignment && currentPlan.status === "planned" && current.status === "packet_created" && !current.run_id && !run;
   const target = reusable ? currentPlan : createExecutionPlan(db, {
     workItemId: workItem.id,
     summary: `Execution plan for "${workItem.title}".`,
@@ -919,7 +925,8 @@ function prepareAcceptedProjectIdeaBuild(
   const profile = requestedProfile ?? current.agent_profile;
   const prepared = ensureBuildPacketForPlan(db, workspace, workItem, target, registries, target.steps[0].id, profile, {
     request: String(promotion.sourceIdea),
-    slots: { sourcePlanningArtifact: String(promotion.planningArtifactPath), planningValidationResult: String(promotion.validationArtifactPath), acceptanceDecision: decision.id }
+    slots: { sourcePlanningArtifact: String(promotion.planningArtifactPath), planningValidationResult: String(promotion.validationArtifactPath), acceptanceDecision: decision.id },
+    promotionAssignment: repoPath && !committedAssignment && existsSync(path.join(repoPath, ".git")) ? replayAcceptedPromotionAssignment(db, workspace, decision) : null
   });
   return { plan: target, planningDecision: null, codexInvocation: null, packetArtifact: null,
     buildApproval: prepared.approval, buildInvocation: prepared.invocation, buildPacketArtifact: prepared.packetArtifact, reused: reusable };
@@ -1364,7 +1371,7 @@ function ensureBuildPacketOnly(
   registries: Phase3Registries,
   planStepId: string,
   requestedProfile?: string,
-  origin?: { request: string; slots: Record<string, string> }
+  origin?: { request: string; slots: Record<string, string>; promotionAssignment?: string | null }
 ): {
   invocation: CodexInvocation;
   packetArtifact: ArtifactSummary;
@@ -1409,7 +1416,7 @@ function ensureBuildPacketForPlan(
   registries: Phase3Registries,
   planStepId: string,
   requestedProfile?: string,
-  origin?: { request: string; slots: Record<string, string> }
+  origin?: { request: string; slots: Record<string, string>; promotionAssignment?: string | null }
 ): {
   approval: ReviewItemSummary;
   invocation: CodexInvocation;
@@ -1475,7 +1482,7 @@ function ensureCodexPacketsForPlan(
   workItem: WorkItemSummary,
   plan: ExecutionPlanSummary,
   registries: Phase3Registries,
-  permissions: { allowCodexPlanning?: boolean; allowCodexBuild?: boolean; agentProfile?: string; origin?: { request: string; slots: Record<string, string> } }
+  permissions: { allowCodexPlanning?: boolean; allowCodexBuild?: boolean; agentProfile?: string; origin?: { request: string; slots: Record<string, string>; promotionAssignment?: string | null } }
 ): void {
   for (const step of plan.steps) {
     const purpose = step.executor_type === "codex_build"
@@ -1520,7 +1527,8 @@ function ensureCodexPacketsForPlan(
       projectContext: workItem.project_id ? getProjectContext(db, workItem.project_id) : null,
       agentProfile: agentSelection.profile,
       agentConfiguration: agentSelection.configuration,
-      executionRequirement: agentSelection.executionRequirement
+      executionRequirement: agentSelection.executionRequirement,
+      promotionAssignment: permissions.origin?.promotionAssignment
     });
 
     const invocation = createCodexInvocation(db, {

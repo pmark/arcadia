@@ -1,4 +1,5 @@
-import { boundedExec as bounded, preservationProcessLimits, preservationTimeout } from "./preservationStages.js";
+import { isolatedGitEnvironment } from "../git/isolatedGitEnvironment.js";
+import { boundedExec as bounded, preservationProcessLimits, preservationTimeout, PRESERVATION_GIT_TIMEOUT_MS } from "./preservationStages.js";
 import { spawnSync } from "node:child_process";
 import { closeSync, constants, mkdirSync, mkdtempSync, openSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -203,16 +204,16 @@ export function commitTreeAt(repository: string, tree: string, parent: string, o
     "commit-tree", tree, "-p", parent, "-m", message
   ];
   const result = spawnSync("git", args, {
-    ...preservationProcessLimits("git", args), cwd: repository,
+    timeout: PRESERVATION_GIT_TIMEOUT_MS, ...preservationProcessLimits("git", args), cwd: repository,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     env: {
-      ...process.env,
+      ...isolatedGitEnvironment(),
       GIT_AUTHOR_NAME: "Arcadia Controller",
       GIT_AUTHOR_EMAIL: "controller@arcadia.local",
       GIT_COMMITTER_NAME: "Arcadia Controller",
       GIT_COMMITTER_EMAIL: "controller@arcadia.local",
-      ...options?.env
+      ...Object.fromEntries(Object.entries(options?.env ?? {}).filter(([key]) => /^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)$/.test(key)))
     }
   });
   const timeout = preservationTimeout(result.error, "git", args, repository);

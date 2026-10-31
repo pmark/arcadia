@@ -1,11 +1,16 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { runDocsSyncCommand } from "../src/commands/docs.js";
+import { runSessionPreviewLaunchCommand } from "../src/commands/advance.js";
+import * as assignment from "../src/sessions/promotionAssignment.js";
+import * as promotionOps from "../src/projects/planningPromotion.js";
+import { launchGuardedHostSession } from "../src/sessions/launch.js";
+import { loadPhase3Registries } from "../src/intent/registries.js";
 import { runProjectPrepareCommand } from "../src/commands/project.js";
 import { runReviewApproveCommand, runReviewDeferCommand, runReviewRejectCommand } from "../src/commands/review.js";
 import { runWorkerIteration } from "../src/commands/worker.js";
@@ -237,6 +242,112 @@ describe("project-idea planning promotion", () => {
       expect(repeated.buildApproval?.status).toBe(status);
     }
     expect(withDatabase(fixture.workspace, (db) => listExecutionRuns(db))).toEqual(runs);
+  });
+
+  it.each(["unchanged", "committed legacy", "source changed", "source symlink", "unrelated change", "concurrent change", "packet tampered", "replay altered", "replay unrelated", "replay date"])("binds the accepted promoted Action to a candidate (%s)", scenario => {
+    const fixture = preparedProjectIdea();
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: fixture.repository, encoding: "utf8" }).trim();
+    writeFileSync(path.join(fixture.workspace, "fake-planning-output.md"), completePlanningArtifact.replace(
+      "Implement the deterministic planning artifact validator module, read-only artifact validation command, and fixture-driven tests only, with no dashboard or Discord redesign.",
+      "Implement the deterministic artifact validator module and fixture-driven tests only, with no dashboard or Discord redesign."
+    ));
+    const acceptance = executePlanningRun(fixture);
+    const legacy = vi.spyOn(assignment, "promotionAssignmentBlock").mockReturnValueOnce(null);
+    const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
+    legacy.mockRestore();
+    const oldPacket = readFileSync(path.join(fixture.workspace, promotion.buildPacketPath));
+    // Emulate a previously prepared legacy replacement packet, as in R476.
+    const oldReprepare = vi.spyOn(promotionOps, "replayAcceptedPromotionAssignment").mockReturnValueOnce("");
+    const prior = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId });
+    oldReprepare.mockRestore();
+    runReviewApproveCommand({ workspace: fixture.workspace, id: prior.data.buildApproval!.id, execute: false });
+    const priorPacketPath = path.join(fixture.workspace, prior.data.buildInvocation!.prompt_path);
+    const priorPacket = readFileSync(priorPacketPath);
+    if (scenario === "committed legacy") {
+      git("add", "--", "PROJECT.md", promotion.planPath);
+      git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "fixture accepted records");
+    }
+    const approvedBase = git("rev-parse", "HEAD");
+    if (scenario === "replay altered") writeFileSync(path.join(fixture.repository, promotion.planPath), `${readFileSync(path.join(fixture.repository, promotion.planPath), "utf8")}\nchanged\n`);
+    if (scenario === "replay date") {
+      for (const file of ["PROJECT.md", promotion.planPath]) {
+        const absolute = path.join(fixture.repository, file);
+        writeFileSync(absolute, readFileSync(absolute, "utf8").replace(/^updated: .+$/m, "updated: 2001-01-01"));
+      }
+    }
+    if (scenario === "replay unrelated") writeFileSync(path.join(fixture.repository, "unrelated.txt"), "unrelated");
+    if (scenario.startsWith("replay ")) {
+      expect(() => runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId })).toThrow();
+      expect(readFileSync(priorPacketPath)).toEqual(priorPacket);
+      return;
+    }
+    const reviewCountBefore = withDatabase(fixture.workspace, db => listReviewItems(db, "all").length);
+    const planned = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId });
+    expect(readFileSync(priorPacketPath)).toEqual(priorPacket);
+    if (scenario === "committed legacy") {
+      expect(withDatabase(fixture.workspace, db => listReviewItems(db, "all").length)).toBe(reviewCountBefore);
+      expect(planned.data.buildInvocation!.id).toBe(prior.data.buildInvocation!.id);
+      expect(planned.data.buildApproval!.id).toBe(prior.data.buildApproval!.id);
+    } else {
+      expect(planned.data.buildApproval).toBeTruthy();
+      expect(planned.data.buildInvocation!.id).not.toBe(prior.data.buildInvocation!.id);
+      runReviewApproveCommand({ workspace: fixture.workspace, id: planned.data.buildApproval!.id, execute: false });
+    }
+    expect(readFileSync(path.join(fixture.workspace, promotion.buildPacketPath))).toEqual(oldPacket);
+    const preview = runSessionPreviewLaunchCommand({ workspace: fixture.workspace, repo: fixture.repository, requestId: "promoted-candidate" }).data;
+    expect(preview.prerequisites).toEqual([]);
+    expect(preview.actionDocRef).toBe(promotion.actionDocRef);
+    expect(preview.baseRevision).toBe(approvedBase);
+    const packetPath = path.join(fixture.workspace, planned.data.buildInvocation!.prompt_path);
+    const packetBefore = readFileSync(packetPath);
+    const sourceProject = readFileSync(path.join(fixture.repository, "PROJECT.md"));
+    const sourcePlan = readFileSync(path.join(fixture.repository, promotion.planPath));
+    const sourceStatus = git("status", "--porcelain");
+    const registries = loadPhase3Registries(fixture.workspace);
+    const launches: Array<{ cwd: string; args: string[] }> = [];
+    const tmux = {
+      available: () => true,
+      hasSession: () => false,
+      launch: (input: { cwd: string; args: string[] }) => { launches.push(input); }
+    };
+    const mutate = () => {
+      const file = path.join(fixture.repository, promotion.planPath);
+      if (scenario === "source changed" || scenario === "concurrent change") writeFileSync(file, `${sourcePlan.toString()}\nchanged\n`);
+      if (scenario === "packet tampered") writeFileSync(packetPath, "tampered packet");
+      if (scenario === "unrelated change") writeFileSync(path.join(fixture.repository, "unrelated.txt"), "unrelated");
+      if (scenario === "source symlink") { rmSync(file); symlinkSync(path.join(fixture.repository, "PROJECT.md"), file); }
+    };
+    const run = () => withDatabase(fixture.workspace, db => launchGuardedHostSession({
+      db, workspace: fixture.workspace, repoRoot: fixture.repository, projectSlug: fixture.projectSlug,
+      requestId: "promoted-candidate", previewFingerprint: preview.previewFingerprint,
+      profiles: registries.codingAgents.profiles, adapters: registries.providerAdapters!, tmux,
+      providerSignIn: () => null, agentWorktreeRoot: path.join(path.dirname(fixture.repository), "candidates"),
+      testHooks: scenario === "concurrent change" ? { beforeSessionInsert: mutate } : { afterWorktreeCreatedBeforeReservationCommit: mutate }
+    }));
+    if (scenario !== "unchanged" && scenario !== "committed legacy") {
+      expect(run).toThrow();
+      expect(launches).toHaveLength(0);
+      return;
+    }
+    const launched = run();
+    expect(launches).toHaveLength(1);
+    const replay = run();
+    expect(replay.reused).toBe(true);
+    expect(replay.session.id).toBe(launched.session.id);
+    expect(launches).toHaveLength(1);
+    expect(launched.session.action_id).toBe(preview.actionId);
+    expect(readFileSync(path.join(launched.session.worktree_path, promotion.planPath), "utf8"))
+      .toBe(readFileSync(path.join(fixture.repository, promotion.planPath), "utf8"));
+    expect(git("rev-parse", "HEAD")).toBe(approvedBase);
+    expect(git("status", "--porcelain")).toBe(sourceStatus);
+    expect(readFileSync(packetPath)).toEqual(packetBefore);
+    expect(readFileSync(path.join(fixture.repository, "PROJECT.md"))).toEqual(sourceProject);
+    expect(readFileSync(path.join(fixture.repository, promotion.planPath))).toEqual(sourcePlan);
+    withDatabase(fixture.workspace, db => {
+      expect(db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get()).toEqual({ n: 1 });
+      expect(db.prepare("SELECT COUNT(*) AS n FROM session_role_attempts WHERE role = 'development'").get()).toEqual({ n: 1 });
+      expect(db.prepare("SELECT COUNT(*) AS n FROM agent_worktree_reservations").get()).toEqual({ n: 1 });
+    });
   });
 
   it.each(["matching", "tampered", "missing", "wrong-plan", "reprepare-reuses-packet"] as const)("binds the real project-idea promotion before build execution: %s", (mode) => {
@@ -521,7 +632,7 @@ function preparedProjectIdea(): {
   planningWorkItemId: string;
   planningDecisionId: string;
 } {
-  const root = mkdtempSync(path.join(tmpdir(), "arcadia-project-promotion-"));
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-project-promotion-")));
   temporaryRoots.push(root);
   const workspace = path.join(root, "workspace");
   const repository = path.join(root, "repository");
@@ -537,6 +648,7 @@ function preparedProjectIdea(): {
     path: repository,
     agentProfile: "claude_planning"
   });
+  commitFixtureRepository(repository, "Prepared Project");
   withDatabase(workspace, (db) => {
     // upsertProjectMetadata resets repo_path (and aliases) to empty when
     // omitted rather than preserving the existing value, so repoPath must be
@@ -560,6 +672,12 @@ function preparedProjectIdea(): {
 }
 
 function initializeFixtureRepository(repository: string): void {
+  execFileSync("git", ["init", "-q"], { cwd: repository });
+  writeFileSync(path.join(repository, "README.md"), "# Fixture repository\n", "utf8");
+  commitFixtureRepository(repository, "Fixture baseline");
+}
+
+function commitFixtureRepository(repository: string, message: string): void {
   const env = {
     ...process.env,
     GIT_AUTHOR_NAME: "Cody Swift",
@@ -571,10 +689,8 @@ function initializeFixtureRepository(repository: string): void {
     const result = spawnSync("git", args, { cwd: repository, env, encoding: "utf8" });
     if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
   };
-  run(["init", "-q"]);
-  writeFileSync(path.join(repository, "README.md"), "# Fixture repository\n", "utf8");
-  run(["add", "README.md"]);
-  run(["commit", "-m", "Fixture baseline"]);
+  run(["add", "."]);
+  run(["commit", "-m", message]);
 }
 
 function executePlanningRun(fixture: ReturnType<typeof preparedProjectIdea>) {

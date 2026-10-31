@@ -92,6 +92,7 @@ export function createCodexPacket(input: {
   agentConfiguration?: SelectedCodingAgentConfiguration | null;
   executionRequirement?: ResolvedExecutionRequirement | null;
   stewardship?: GoalStewardshipResult | null;
+  promotionAssignment?: string | null;
   planningRefinement?: PlanningRefinementBinding | null;
 }): CodexPacket {
   if (input.projectContext && !input.projectContext.metadata?.repo_path) {
@@ -117,7 +118,7 @@ export function createCodexPacket(input: {
     finalMessagePath,
     input.agentConfiguration?.args
   ).displayCommand;
-  const promptText = renderPrompt(input);
+  const promptText = renderPrompt(input) + (input.promotionAssignment ?? "");
   const stewardship = input.stewardship ?? defaultStewardshipForPacket(input);
   const critique = createStewardshipCritic("deterministic_critic").critique({
     targetKind: input.agentProfile.purpose === "build" ? "codex_build_packet" : "codex_planning_packet",

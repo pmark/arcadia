@@ -30,6 +30,7 @@ import { releaseAdmission } from "../production/policy.js";
 import { createId } from "../utils/id.js";
 import { isAncestor, isPatchEquivalent, mergedPullRequests, refExists, resolveBaseBranch, tryGit, uncommittedChanges } from "../git/worktrees.js";
 import { actionAcceptanceCriteria, renderActionBrief } from "./actionBrief.js";
+import { verifyMaterializedPromotion } from "./promotionAssignment.js";
 import { bindRepairSession, getSessionRepair } from "./reviewRepair.js";
 import { sessionDevelopedForSupersededInput } from "./roleLineage.js";
 import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff } from "./reconciliation.js";
@@ -833,6 +834,8 @@ export function launchPreparedSession(
   }
   let launch: { command: string; args: string[] };
   try {
+    if (workspace) verifyMaterializedPromotion({ repo: session.repository_path, candidate: session.worktree_path,
+      packet: path.join(workspace, session.packet_path), packetHash: session.packet_sha256, revision: expected });
     launch = buildSessionLaunch(db, session, registry, workspace, headless);
   } catch (error) {
     // An unresolvable agent identity is a launch refusal, not a silent fall
