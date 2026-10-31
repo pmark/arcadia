@@ -316,6 +316,8 @@ describe("renderActionBrief", () => {
       const base = { repoRoot: repo, projectSlug: "test-project", planSlug: "copy-proof", actionId: "define-contract", worktreePath: repo, branch: "claude/define-contract", agent: "claude" as const, baseRevision: head(repo), headless: true };
       const brief = renderActionBrief({ ...base, probeCommand: "node /arcadia/scripts/session-capability-probe.mjs --workspace '/ws/martianrover' --worktree '/wt' --nonce abc123" });
       expect(brief).toContain("First step — environment probe");
+      expect(brief).toContain("If the probe succeeds, continue the same authorized Action now");
+      expect(brief).toContain('If the probe exits non-zero or prints "ok":false, STOP');
       expect(brief).toContain("session-capability-probe.mjs --workspace '/ws/martianrover' --worktree");
       expect(brief).toContain("STOP");
       expect(brief.indexOf("First step")).toBeLessThan(brief.indexOf("Next action:"));
