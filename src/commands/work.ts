@@ -68,6 +68,8 @@ import {
 import {
   packetSha256,
   parseDecisionContext,
+  latestPlanningRefinement,
+  assertPlanningRefinementFresh,
   queueApprovedPlanningRun
 } from "../execution/planningAuthorization.js";
 import {
@@ -470,6 +472,7 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
       const registries = loadPhase3Registries(workspacePath);
       validatePhase3Registries(registries);
       const projectContext = getProjectContext(db, workItem.project_id as string);
+      const planningRefinement = latestPlanningRefinement(db, workspacePath, workItem);
       const agentSelection = selectAgentProfileForWorkItem({
         profiles: registries.codingAgents.profiles,
         adapters: registries.providerAdapters,
@@ -494,7 +497,8 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
         projectContext,
         agentProfile: agentSelection.profile,
         agentConfiguration: agentSelection.configuration,
-        executionRequirement: agentSelection.executionRequirement
+        executionRequirement: agentSelection.executionRequirement,
+        planningRefinement
       });
       const persisted = persistCodexPacketRecords(db, {
         packet,
@@ -511,7 +515,8 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
         proposedAction: `Prepare the expected planning Artifact for existing Action "${workItem.title}".`,
         expectedArtifact: workItem.expected_artifact as string,
         existingAction: true,
-        planDocUpdated: readinessSnapshot?.docRef === workItem.doc_ref ? readinessSnapshot.planUpdated : null
+        planDocUpdated: readinessSnapshot?.docRef === workItem.doc_ref ? readinessSnapshot.planUpdated : null,
+        planningRefinement: planningRefinement ?? undefined
       });
       return {
         plan,
@@ -728,6 +733,7 @@ function existingActivePlanningPreparation(
       promptPath: codexInvocation.prompt_path
     });
   }
+  assertPlanningRefinementFresh(db, workspacePath, workItem, context, readFileSync(promptPath, "utf8"));
 
   return {
     plan,
