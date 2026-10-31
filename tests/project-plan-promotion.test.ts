@@ -189,6 +189,9 @@ describe("project-idea planning promotion", () => {
     const attempted = runWorkRunCommand({ workspace: fixture.workspace, workId: promotion.actionId, plan: promotion.buildPlanId, allowCodexBuild: true, agentProfile: "codex_build" });
     expect(attempted.data.run.status).toBe("failed");
     runDocsSyncCommand({ workspace: fixture.workspace, project: fixture.projectSlug, apply: true });
+    // A day-stale fixture document may be skipped by sync; set the blocked
+    // state through the supported command so this guard is deterministic.
+    runWorkUpdateCommand({ workspace: fixture.workspace, workId: promotion.actionId, status: "blocked", queue: "blocked", classification: "blocked" });
     expect(() => runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }))
       .toThrow("Blocked Action cannot be prepared for planning.");
     runWorkUpdateCommand({ workspace: fixture.workspace, workId: promotion.actionId, status: "open", queue: "work_queue", classification: "agent" });
