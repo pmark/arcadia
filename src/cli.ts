@@ -69,6 +69,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
+import { renderStartRunPinsSuccess, runStartRunPinsCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -1151,6 +1152,18 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { project: string; proposal: string; fingerprint: string; disposition: string; top?: boolean; id?: string; dir: string; workspace: string; json?: boolean }) =>
     runCliAction("operator-action.settle-ask", options, () => runOperatorActionSettleAskCommand(options), renderOperatorActionSettleAskSuccess));
+
+  const startRun = program.command("start-run").description("Prepare per-run START cards (Decisions 0156, 0157); preparing one grants nothing");
+  addJsonOption(startRun.command("pins")
+    .description("Print the pins JSON of one per-run START card from live read-only state; writes nothing, emits no script or manifest")
+    .requiredOption("--plan <slug>", "Plan the run executes")
+    .requiredOption("--actions <list>", "Comma-separated Action slugs, in queue order")
+    .requiredOption("--provider <id>", "Coding-agent provider (claude-code-cli)")
+    .requiredOption("--expires-hours <n>", "Hours until the card expires (at most 24)")
+    .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; json?: boolean }) =>
+    runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
 
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })

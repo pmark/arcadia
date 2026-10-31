@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { accessSync, constants, existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { assertProjectLibraryEntry, OperatorScriptContractError, validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
@@ -29,7 +30,7 @@ try {
   process.exit(1);
 }
 
-interface LibraryResult { checked: number; failures: number; retired: string[]; unpublished: string[] }
+interface LibraryResult { checked: number; failures: number; retired: string[]; unpublished: string[]; staleExecutorPins: string[] }
 
 /**
  * Validate one library. Arcadia's library validates every pair. A Project's library validates exactly the
@@ -37,7 +38,7 @@ interface LibraryResult { checked: number; failures: number; retired: string[]; 
  * unpublished, because /actions never lists them. The retirement manifest applies to Arcadia's library only.
  */
 function checkLibrary(library: string, project: string | null): LibraryResult {
-  const result: LibraryResult = { checked: 0, failures: 0, retired: [], unpublished: [] };
+  const result: LibraryResult = { checked: 0, failures: 0, retired: [], unpublished: [], staleExecutorPins: [] };
   for (const entry of readdirSync(library).filter(file => file.endsWith(".json")).sort()) {
     const id = entry.slice(0, -5);
     const label = project === null ? id : `${project}--${id}`;
@@ -66,6 +67,14 @@ function checkLibrary(library: string, project: string | null): LibraryResult {
         scriptText += "\n" + readFileSync(resolved, "utf8");
       }
       const descriptor = validateOperatorScriptContract(JSON.parse(descriptorBytes.toString("utf8")), id, scriptText);
+      // A per-run START card (Decisions 0156/0157) is a thin launcher (its exact text is validated above) over the one shared,
+      // reviewed executor. The executor must exist and be executable; a card whose pinned executor hash no longer matches this
+      // checkout is reported (it would refuse at press time), not failed, because executor edits legitimately outlive old cards.
+      if (descriptor.startRun) {
+        const executor = path.resolve(import.meta.dirname, "../scripts/start-run.sh");
+        accessSync(executor, constants.X_OK);
+        if (createHash("sha256").update(readFileSync(executor)).digest("hex") !== descriptor.startRun.executorSha256) result.staleExecutorPins.push(id);
+      }
       // A "Do this next" hint must name a published prerequisite; voided_by may name host-local entries.
       if (descriptor.next_after && !existsSync(path.join(library, `${descriptor.next_after.id}.json`))) {
         throw new OperatorScriptContractError("UNKNOWN_NEXT_AFTER_PREREQUISITE", `next_after names ${descriptor.next_after.id}, which is not in this library.`);
@@ -101,6 +110,7 @@ if (projectOnly !== undefined) {
   const failures = own.failures + projects.reduce((sum, project) => sum + project.failures, 0);
   process.stdout.write(JSON.stringify({
     checked: own.checked, retired: own.retired.length, retiredIds: own.retired, failures,
+    ...(own.staleExecutorPins.length ? { staleExecutorPins: own.staleExecutorPins } : {}),
     ...(args[0] === undefined ? { projects, ...(discovery.unavailable ? { projectLibraries: discovery.unavailable } : {}) } : {})
   }) + "\n");
   process.exitCode = failures ? 1 : 0;
