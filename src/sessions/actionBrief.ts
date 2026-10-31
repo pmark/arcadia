@@ -89,11 +89,12 @@ function renderProbeStep(input: ActionBriefInput): string[] {
     "First step — environment probe (do this before anything else, even reading files):",
     `  ${input.probeCommand}`,
     "  Run it verbatim, with no other arguments. It prints one JSON line and exits non-zero only when a required check fails.",
-    "  Source-only Sessions record direct workspace database writes as unavailable; that is not a pass, and the local Ask is the candidate receipt.",
+    "  In source-only Sessions, unavailable direct workspace database writes are optional and do not stop a successful overall probe. Record completion later through the local Ask under the completion protocol.",
     "  If the probe exits non-zero or prints \"ok\":false, STOP",
     "  IMMEDIATELY: make no edits, run no other command, spend no more tokens, and exit. The host records",
     "  the named environment wall from the provider result; retrying or working around it only wastes budget.",
-    "  Do not narrate, copy, or fabricate probe JSON: only the provider's actual paired command result is evidence."
+    "  Do not narrate, copy, or fabricate probe JSON: only the provider's actual paired command result is evidence.",
+    "  If the probe succeeds, continue the same authorized Action now; do not end the turn after the probe or a promise to continue."
   ];
 }
 

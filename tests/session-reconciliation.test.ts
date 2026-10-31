@@ -10,7 +10,7 @@ import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapte
 import { runSessionReconcileCommand } from "../src/commands/advance.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
-import { createCodexInvocation, createReviewExecutionRun, createReviewItem, getWorkItemByDocRef, updateExecutionRunStatus, upsertProject, upsertProjectMetadata, updateReviewItemStatus } from "../src/db/repositories.js";
+import { attachArtifactToExecutionRun, createArtifactRecord, createCodexInvocation, createReviewExecutionRun, createReviewItem, getWorkItemByDocRef, updateExecutionRunStatus, upsertProject, upsertProjectMetadata, updateReviewItemStatus } from "../src/db/repositories.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { packetSha256 } from "../src/execution/planningAuthorization.js";
@@ -185,7 +185,7 @@ describe("reconcileSessionExit", () => {
     expect(result.receipt.outcome).toBe("needs_input");
   });
 
-  it("treats a deliberately failed or unreviewed Run as failed execution, never as evidence of success (contract 20)", () => {
+  it.each(["completed", "failed", "requires_review"] as const)("does not attribute an unrelated %s Run or approval to a no-op Session", (status) => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
     const launched = launch(fixture, tmux);
@@ -204,7 +204,7 @@ describe("reconcileSessionExit", () => {
         confidenceLabel: "high",
         confidence: 1,
         missingFields: [],
-        context: {}
+        context: { actionId: session.action_id }
       });
       const run = createReviewExecutionRun(db, {
         reviewItemId: reviewItem.id,
@@ -212,17 +212,25 @@ describe("reconcileSessionExit", () => {
         workItemId: session.work_item_id,
         summary: "Deliberately failing test suite."
       });
-      updateExecutionRunStatus(db, run.id, "failed", { summary: "1 test failed." });
+      const artifact = createArtifactRecord(db, { projectId: session.project_id, workItemId: session.work_item_id, title: "Prior artifact", artifactType: "report" });
+      attachArtifactToExecutionRun(db, run.id, artifact.id);
+      updateExecutionRunStatus(db, run.id, status, { summary: "Unrelated prior run." });
+      updateReviewItemStatus(db, reviewItem.id, { status: "approved", decisionNote: "Unrelated approval." });
     });
 
     const result = withDatabase(fixture.workspace, (db) =>
       reconcileSessionExit({ db, sessionId, requestId: "reconcile-fail-run", repoRoot: fixture.repo })
     );
 
-    expect(result.receipt.outcome).toBe("failed_execution");
-    // The failed Run is still linked for audit purposes -- only its status,
-    // not its existence, disqualifies it as evidence of successful work.
-    expect(result.receipt.run_id).not.toBeNull();
+    expect(result.receipt.outcome).toBe("missing_evidence");
+    expect(result.receipt.run_id).toBeNull();
+    expect(result.receipt.artifact_id).toBeNull();
+    expect(result.receipt.decision_id).toBeNull();
+    const replay = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-fail-run-replay", repoRoot: fixture.repo })
+    );
+    expect(replay.created).toBe(false);
+    expect(replay.receipt).toEqual(result.receipt);
   });
 
   it("classifies a nonzero exit with no candidate changes as failed execution", () => {

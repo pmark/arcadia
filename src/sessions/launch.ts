@@ -1,6 +1,10 @@
+import { getTerminalClaimRecovery, getRecoveryForSuccessor, inspectTerminalClaimRecovery } from "./terminalClaimRecovery.js";
 import path from "node:path";
+import { applyPromotionAssignment, matchesPromotionBase } from "./promotionAssignment.js";
+import { actionAcceptanceCriteria } from "./actionBrief.js";
 import type Database from "better-sqlite3";
 import { ArcadiaError, validationError } from "../cli/errors.js";
+import { agentIdentityEnvironment, resolveSessionAgentIdentity } from "../codingAgents/agentIdentity.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import { checkProviderSignIn, type ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
@@ -64,6 +68,8 @@ export interface GuardedLaunchInput {
    * `standingPolicy` must be given.
    */
   previewFingerprint?: string;
+  /** Explicit terminal no-op recovery, requiring a fresh explicit operator-approved fingerprint. */
+  recoverSessionId?: string;
   /**
    * Launch under a standing managed-production policy grant instead of a
    * fresh human click: admits against the Active policy's current epoch and
@@ -162,6 +168,8 @@ export interface GuardedLaunchInput {
   now?: Date;
   tmux?: TmuxAdapter;
   testHooks?: {
+    /** Deterministic interleaving before the recovery Session transaction. */
+    beforeTerminalRecoveryPrepare?: () => void;
     /** Deterministic fault injection between worktree creation and reservation commit. */
     afterWorktreeCreatedBeforeReservationCommit?: () => void;
     /** Deterministic fault injection between admission issuance and its launch-time commit recheck. */
@@ -210,6 +218,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     );
   }
 
+  if (input.recoverSessionId && (input.standingPolicy || input.repair
+    || input.operatorLaunch?.source === "fixture_standing" || !input.previewFingerprint)) {
+    throw validationError("Terminal candidate recovery requires a fresh explicit operator-approved preview and request; standing authority cannot recover it.");
+  }
   if (input.repair && (!input.standingPolicy || input.operatorLaunch)) {
     throw validationError("A review repair Session is launched only under the standing production policy.", { code: "repair_requires_standing_policy" });
   }
@@ -238,7 +250,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // request's still-leased Session may be returned; no post-exit replay mints
   // a second principal, even if Go and its preview are unchanged.
   const requestRepository = canonicalPath(repoRoot);
-  assertOperatorLaunchRequestAvailable(input.db, requestRepository, input.requestId, getRepositoryLease(input.db, repoRoot)?.id);
+  assertGuardedRequestAvailable(input, getRepositoryLease(input.db, repoRoot)?.id);
   const assertFreshRequest = () => assertOperatorLaunchRequestAvailable(input.db, requestRepository, input.requestId);
   const now = input.now ?? new Date();
   const tmux = input.tmux ?? systemTmux;
@@ -260,6 +272,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     repoRoot,
     projectSlug: input.projectSlug,
     requestId: input.requestId,
+    recoverSessionId: input.recoverSessionId,
+    reviewRepairRequestId: input.repair?.requestId,
     profiles: input.profiles,
     adapters: input.adapters,
     tmux,
@@ -285,6 +299,22 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // it is not creating anything, only handing back what this exact request
   // already caused.
   const existingLease = getRepositoryLease(input.db, repoRoot);
+  if (input.recoverSessionId) {
+    const recovered = getTerminalClaimRecovery(input.db, input.recoverSessionId);
+    if (recovered || existingLease) {
+      if (!recovered || recovered.request_id !== input.requestId || recovered.preview_fingerprint !== input.previewFingerprint
+        || recovered.repository_path !== canonicalPath(repoRoot) || existingLease?.id !== recovered.successor_session_id
+        || existingLease.project_slug !== input.projectSlug) {
+        throw validationError("Terminal candidate recovery already has a successor or a foreign Session; this request cannot launch it.");
+      }
+      return reusedLease(input, existingLease, preview, tmux, registry, providerSignIn, now,
+        () => { if (existingLease.status === "prepared") assertRecoveryReadyToStart(input, existingLease, tmux, now); });
+    }
+  }
+  if (existingLease && !input.recoverSessionId && getRecoveryForSuccessor(input.db, existingLease.id)) {
+    throw validationError("This Session belongs to an explicit recovery request; replay its recovery Session id, request and fingerprint.");
+  }
+
   if (existingLease && input.reuseOwnLeaseOnly) {
     const ownAdmission = `${input.requestId}:admission`;
     if (existingLease.admission_request_id !== ownAdmission) {
@@ -300,7 +330,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         code: "stale_epoch", sessionId: existingLease.id, admittedEpoch: admission?.epoch ?? null, currentEpoch: input.expectedPolicyEpoch, conflict: true
       });
     }
-    if (!matchesPreview(existingLease, preview)) {
+    if (!matchesPreview(existingLease, preview, input.workspace)) {
       // Checked before any admission commit: an own lease for another packet
       // or Action is never resumed, and its issued slot is not consumed.
       throw validationError("This request's own Session no longer matches the governed Action and packet; it is not resumed.", {
@@ -322,7 +352,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     };
     return reusedLease(input, existingLease, preview, tmux, registry, providerSignIn, now, commitOwnAdmission);
   }
-  if (existingLease && matchesPreview(existingLease, preview)) {
+  if (existingLease && matchesPreview(existingLease, preview, input.workspace)) {
     return reusedLease(input, existingLease, preview, tmux, registry, providerSignIn, now);
   }
 
@@ -341,7 +371,11 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     });
   }
 
-  if (!preview.ready || !preview.actionId || !preview.selection || !preview.packet) {
+  // A draft-only refusal is re-evaluated below under its existing transaction
+  // solely to persist the disposition receipt; it still cannot launch. Other
+  // prerequisites refuse before that path and before any admission.
+  const draftDispositionOnly = preview.draftClaimBlocked && preview.prerequisites.length === 1;
+  if ((!preview.ready && !draftDispositionOnly) || !preview.actionId || !preview.selection || !preview.packet) {
     throw validationError("The previewed Action is not ready to launch.", {
       prerequisites: preview.prerequisites,
       conflict: true,
@@ -468,7 +502,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // and nothing left to release it (CodeRabbit, PR #696).
   // A review repair never resumes an incomplete handoff or a draft-only candidate: it
   // always starts its own branch from the failed candidate's pre-settlement work.
-  const staleHandoff = input.repair ? null : getResumableLeaseHandoff(input.db, repoRoot);
+  const recovery = preview.recovery;
+  const staleHandoff = input.repair || recovery ? null : getResumableLeaseHandoff(input.db, repoRoot);
   let resumableStaleClaim: { session: NonNullable<typeof staleHandoff>["session"]; receiptId: string; branch: string; headRevision: string } | null = null;
   if (staleHandoff && staleHandoff.session.action_id === preview.actionId && !tmux.hasSession(staleHandoff.session.tmux_session_name)) {
     const expectedBranch = staleHandoff.session.branch.replace(/^refs\/heads\//, "");
@@ -519,13 +554,16 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // handoff (handled above) decides first; only with none at all is an
   // undescribed candidate considered.
   let draftResume: { path: string; branch: string; receipt: DraftRecoveryReceipt } | null = null;
-  if (!staleHandoff && !input.repair) {
+  if (!staleHandoff && !input.repair && !recovery) {
     const lookup = { repositoryPath: repoRoot, projectSlug: preview.projectSlug, actionId: preview.actionId, agent, baseBranch, now };
     try {
       const decision = writeTransaction(input.db, () => {
         assertFreshRequest();
         const evaluated = evaluateDraftOnlyCandidate(input.db, lookup);
         if (evaluated.kind === "refuse" && evaluated.receipt) recordDraftRecoveryReceipt(input.db, evaluated.receipt, now);
+        if (draftDispositionOnly && evaluated.kind !== "refuse") {
+          throw validationError("The blocked draft preview changed; obtain a fresh ready preview before launch.");
+        }
         // Refreshed at the same path, never a second claim. The claim is not
         // this call's to release afterwards: it held this candidate before.
         if (evaluated.kind === "resume") {
@@ -549,7 +587,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     }
   }
   // A worktree this call did not create: never removed or unreserved here.
-  const resumedInPlace = resumableStaleClaim !== null || draftResume !== null;
+  const resumedInPlace = recovery !== null || resumableStaleClaim !== null || draftResume !== null;
 
   const reservationCommitCleanup: { candidate: PreparedAgentWorktree | null } = { candidate: null };
   // The generation this launch claimed, so a Session preparation that fails
@@ -574,7 +612,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   };
   let repairLaunchRevision: string | null = null;
   let nextWorktree: PreparedAgentWorktree;
-  if (draftResume) {
+  if (recovery) {
+    nextWorktree = { agent, path: recovery.worktreePath, branch: recovery.branch, model, effort,
+      command: buildAgentLaunchCommand(agent, recovery.worktreePath, model, effort) };
+  } else if (draftResume) {
     nextWorktree = {
       agent,
       path: draftResume.path,
@@ -685,8 +726,8 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // right expectation the second time around.
   // A never-launched draft-only candidate carries no commits, so its own
   // branch tip is both its lineage start and the HEAD launch must observe.
-  const sessionBaseRevision = input.repair ? input.repair.baseRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
-  const sessionLaunchRevision = input.repair ? repairLaunchRevision ?? input.repair.startRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
+  let sessionBaseRevision = recovery ? recovery.baseRevision : input.repair ? input.repair.baseRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.session.base_revision : baseRevision;
+  let sessionLaunchRevision = recovery ? recovery.launchRevision : input.repair ? repairLaunchRevision ?? input.repair.startRevision : draftResume ? draftResume.receipt.baseSha : resumableStaleClaim ? resumableStaleClaim.headRevision : baseRevision;
 
   // Outside the `prepareSession` failure path below on purpose: a mismatch is
   // positive evidence that something is writing in the worktree, so the
@@ -704,6 +745,21 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
 
   let prepared: AgentSession;
   try {
+    if (!input.repair && !draftResume && !resumableStaleClaim && !recovery) {
+      const assignmentRevision = applyPromotionAssignment({
+        repo: repoRoot, candidate: nextWorktree.path, packet: path.join(input.workspace, preview.packet.path),
+        packetHash: preview.packet.sha256, base: sessionBaseRevision,
+        projectHash: preview.documentRevisions.projectSha256, planHash: preview.documentRevisions.planSha256,
+        planPath: preview.planPath,
+        identityEnv: agent === "fixture" ? {} : agentIdentityEnvironment(resolveSessionAgentIdentity({ agent, model, effort, registry }))
+      });
+      if (assignmentRevision) sessionBaseRevision = sessionLaunchRevision = assignmentRevision;
+      if (actionAcceptanceCriteria({ repoRoot: nextWorktree.path, projectSlug: preview.projectSlug,
+        planSlug: preview.planSlug!, actionId: preview.actionId, baseRevision: sessionBaseRevision }).length === 0) {
+        throw validationError("The approved Action is absent from the immutable Session base; prepare a fresh build packet.");
+      }
+    }
+    if (recovery) input.testHooks?.beforeTerminalRecoveryPrepare?.();
     prepared = prepareSession({
       db: input.db,
       workspace: input.workspace,
@@ -721,6 +777,30 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       tmux,
       ...(input.repair ? { repair: { requestId: input.repair.requestId } } : {}),
       testHooks: { afterChecksBeforeInsert: input.testHooks?.beforeSessionInsert },
+      ...(recovery ? { terminalRecovery: {
+        transfer: () => {
+          // Inside prepareSession's BEGIN IMMEDIATE: no stale pre-lock read may
+          // rotate the claim, and no failed insert can lose the original row.
+          const current = buildLaunchPreview({ db: input.db, workspace: input.workspace, repoRoot,
+            projectSlug: input.projectSlug, requestId: input.requestId, recoverSessionId: input.recoverSessionId,
+            profiles: input.profiles, adapters: input.adapters, tmux, now });
+          if (!current.ready || current.previewFingerprint !== input.previewFingerprint) {
+            throw validationError("The terminal recovery preview changed before claim transfer; re-preview.");
+          }
+          reserveAgentWorktree(input.db, { repositoryPath: repoRoot, worktreePath: recovery.worktreePath,
+            branch: recovery.branch, project: preview.projectSlug, actionId: preview.actionId!, now });
+        },
+        record: (session: AgentSession) => {
+          input.db.prepare(`INSERT INTO terminal_claim_recoveries
+            (original_session_id, successor_session_id, repository_path, request_id, preview_fingerprint, binding_json)
+            VALUES (?, ?, ?, ?, ?, ?)`).run(recovery.sessionId, session.id, canonicalPath(repoRoot),
+              input.requestId, preview.previewFingerprint, JSON.stringify({ recovery,
+                successorClaimGeneration: getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId!, now)?.claim_generation,
+                documentRevisions: preview.documentRevisions, queueRevision: preview.queueRevision, baseRevision: preview.baseRevision }));
+          if (input.operatorLaunch) mintOperatorLaunchAuthorization(input.db, { session, source: input.operatorLaunch.source,
+            requestId: input.requestId, env: input.operatorLaunch.env, now });
+        }
+      } } : {}),
       assertLaunchRequest: assertFreshRequest
     });
     if (input.reuseOwnLeaseOnly && admission) {
@@ -779,7 +859,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
         code: raced.action_id === preview.actionId ? "action_claimed" : "repository_leased", sessionId: raced.id, conflict: true
       });
     }
-    if (raced && matchesPreview(raced, preview)) {
+    if (raced && !recovery && matchesPreview(raced, preview, input.workspace)) {
       // The winner's Session satisfies this request; this call's own reserved
       // admission (if any) never committed to a launch and would otherwise
       // hold a concurrency slot until it expires. Release it immediately
@@ -805,6 +885,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   /** Abandon the prepared, never-started Session and everything this call reserved for it. */
   const abandonPrepared = () => {
     failPreparedSession(input.db, prepared.id);
+    if (recovery) voidOperatorLaunchAuthorization(input.db, prepared.id, "recovery Session never started", now);
     if (input.repair) releaseRepairSession(input.db, { requestId: input.repair.requestId, sessionId: prepared.id, now });
     // See the same guard above: a resumed stale claim's worktree is prior
     // real work, never this call's to delete.
@@ -877,7 +958,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
 
   // The confirmed Launch's one-shot authorization is bound to this exact
   // Session (and so its Action) and recorded before the process may start.
-  if (input.operatorLaunch) {
+  if (input.operatorLaunch && !recovery) {
     mintOperatorLaunchAuthorization(input.db, {
       session: prepared, source: input.operatorLaunch.source, requestId: input.requestId,
       ...(standingBasis ? { standing: standingBasis } : {}), env: input.operatorLaunch.env, now
@@ -886,8 +967,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
 
   let launched: AgentSession;
   try {
+    if (recovery) assertRecoveryReadyToStart(input, launching, tmux, now);
     launched = launchPreparedSession(input.db, launching, tmux, registry, input.workspace);
   } catch (error) {
+    if (recovery && !tmux.hasSession(prepared.tmux_session_name)) failPreparedSession(input.db, prepared.id);
     // A Session that never started carries no authorization.
     if (input.operatorLaunch) {
       voidOperatorLaunchAuthorization(input.db, prepared.id, `the Session never started: ${error instanceof Error ? error.message : String(error)}`, now);
@@ -946,6 +1029,37 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   return { reused: false, session: launched, preview, admission };
 }
 
+/** Recovery's own receipt binds replay even without optional exit authority. */
+function assertGuardedRequestAvailable(input: GuardedLaunchInput, ownSessionId?: string): void {
+  const recovery = input.recoverSessionId ? getTerminalClaimRecovery(input.db, input.recoverSessionId) : null;
+  if (ownSessionId && recovery?.successor_session_id === ownSessionId && recovery.request_id === input.requestId
+    && recovery.preview_fingerprint === input.previewFingerprint && recovery.repository_path === canonicalPath(input.repoRoot)) return;
+  assertOperatorLaunchRequestAvailable(input.db, canonicalPath(input.repoRoot), input.requestId, ownSessionId);
+}
+
+/** Replays may start only the still-unchanged, durably approved candidate. */
+function assertRecoveryReadyToStart(input: GuardedLaunchInput, session: AgentSession, tmux: TmuxAdapter, now: Date): void {
+  const receipt = input.recoverSessionId ? getTerminalClaimRecovery(input.db, input.recoverSessionId) : null;
+  if (!receipt || receipt.successor_session_id !== session.id || receipt.request_id !== input.requestId
+    || receipt.preview_fingerprint !== input.previewFingerprint) throw validationError("The recovery request has no binding to this successor.");
+  const bound = JSON.parse(receipt.binding_json) as {
+    recovery: NonNullable<LaunchPreview["recovery"]>; successorClaimGeneration: string;
+    documentRevisions: LaunchPreview["documentRevisions"]; queueRevision: number; baseRevision: string | null;
+  };
+  const current = buildLaunchPreview({ db: input.db, workspace: input.workspace, repoRoot: input.repoRoot,
+    projectSlug: input.projectSlug, requestId: input.requestId, profiles: input.profiles, adapters: input.adapters, tmux, now });
+  const blockers = current.prerequisites.filter(entry => !entry.startsWith("conflicting execution:") && !entry.startsWith("Action claim retained:"));
+  if (blockers.length) throw validationError("Recovery launch prerequisites changed.", { prerequisites: blockers });
+  const observed = inspectTerminalClaimRecovery({ db: input.db, repoRoot: input.repoRoot, projectSlug: input.projectSlug,
+    planSlug: current.planSlug, actionId: current.actionId, sessionId: bound.recovery.sessionId,
+    successorSessionId: session.id, packet: current.packet, tmux, now });
+  if (JSON.stringify(observed) !== JSON.stringify({ ...bound.recovery, claimGeneration: bound.successorClaimGeneration })
+    || JSON.stringify(current.documentRevisions) !== JSON.stringify(bound.documentRevisions)
+    || current.queueRevision !== bound.queueRevision || current.baseRevision !== bound.baseRevision) {
+    throw validationError("The approved recovery facts changed before launch; inspect the retained successor and claim before a separately authorized repair.");
+  }
+}
+
 /** The process is already running; a failed marker write leaves the attempt pending, which exit reconciliation treats identically. */
 function markAttemptRunning(db: Database.Database, attempt: SessionRoleAttempt | null, now: Date): void {
   if (!attempt || attempt.status === "running") return;
@@ -976,7 +1090,7 @@ function reusedLease(
 ): GuardedLaunchResult {
   // Also fences a lease that won the race after the initial read. A Continue
   // response may return only a principal its durable request actually owns.
-  assertOperatorLaunchRequestAvailable(input.db, canonicalPath(input.repoRoot), input.requestId, lease.id);
+  assertGuardedRequestAvailable(input, lease.id);
   // A lease prepared before a crash may have no development attempt yet (the
   // launcher allocates it only after the admission cutoff). After any own
   // admission commit, and before the process may start, bind the requirement's
@@ -1081,12 +1195,15 @@ function resumeOrReturn(
   return launchPreparedSession(db, session, tmux, registry, workspace);
 }
 
-function matchesPreview(session: AgentSession, preview: LaunchPreview): boolean {
+function matchesPreview(session: AgentSession, preview: LaunchPreview, workspace: string): boolean {
   return (
     session.project_slug === preview.projectSlug &&
     session.action_id === preview.actionId &&
     preview.packet !== null &&
-    session.packet_sha256 === preview.packet.sha256
+    session.packet_sha256 === preview.packet.sha256 &&
+    matchesPromotionBase({ packet: path.join(workspace, session.packet_path), packetHash: session.packet_sha256,
+      candidate: session.worktree_path, revision: session.base_revision, base: preview.baseRevision,
+      projectHash: preview.documentRevisions.projectSha256, planHash: preview.documentRevisions.planSha256, planPath: preview.planPath })
   );
 }
 

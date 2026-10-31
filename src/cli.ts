@@ -2353,20 +2353,22 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
   addJsonOption(
     session.command("preview-launch")
+      .option("--recover-session <id>", "Preview explicit recovery of a terminal no-op candidate; transfers nothing")
       .description("Preview the next Session launch's automatic agent selection and bound identity; starts no process and mutates nothing")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
       .option("--request-id <id>", "Idempotent request id for this preview", randomUUID())
-  ).action((options: { workspace: string; repo: string; requestId: string; json?: boolean }) =>
+  ).action((options: { workspace: string; repo: string; requestId: string; recoverSession?: string; json?: boolean }) =>
     runCliAction(
       "session.previewLaunch",
       options,
-      () => runSessionPreviewLaunchCommand({ workspace: options.workspace, repo: options.repo, requestId: options.requestId }),
+      () => runSessionPreviewLaunchCommand({ workspace: options.workspace, repo: options.repo, requestId: options.requestId, recoverSessionId: options.recoverSession }),
       renderSessionPreviewLaunchSuccess
     )
   );
   addJsonOption(
     session.command("launch")
+      .option("--recover-session <id>", "Recover the exact terminal no-op candidate under fresh explicit approval; optional --operator-launch separately grants exit preservation")
       .description("Launch the previewed Session on this host; the only operation that starts a coding-agent process from a preview")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
@@ -2391,7 +2393,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         if (!Number.isFinite(minutes) || minutes <= 0) throw new Error("--time-limit-minutes must be a positive number.");
         return minutes;
       })
-  ).action((options: { workspace: string; repo: string; requestId: string; previewFingerprint?: string; standingPolicy?: boolean; operatorLaunch?: boolean; operatorLaunchDashboard?: boolean; fixtureStanding?: boolean; agentIdentity?: string; timeLimitMinutes?: number; json?: boolean }) =>
+  ).action((options: { workspace: string; repo: string; requestId: string; recoverSession?: string; previewFingerprint?: string; standingPolicy?: boolean; operatorLaunch?: boolean; operatorLaunchDashboard?: boolean; fixtureStanding?: boolean; agentIdentity?: string; timeLimitMinutes?: number; json?: boolean }) =>
     runCliAction(
       "session.launch",
       options,
@@ -2419,7 +2421,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
           // The Action is named in the prompt, read only after the terminal is known to be interactive.
           operatorLaunch = {
             source: confirmOperatorLaunchAtTerminal({
-              actionLabel: () => runSessionPreviewLaunchCommand({ workspace: options.workspace, repo: options.repo, requestId: options.requestId })
+              actionLabel: () => runSessionPreviewLaunchCommand({ workspace: options.workspace, repo: options.repo, requestId: options.requestId, recoverSessionId: options.recoverSession })
                 .data.actionDocRef ?? "the previewed Action"
             })
           };
@@ -2429,6 +2431,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
           repo: options.repo,
           requestId: options.requestId,
           previewFingerprint: options.previewFingerprint,
+          recoverSessionId: options.recoverSession,
           standingPolicy: options.standingPolicy,
           timeLimitMinutes: options.timeLimitMinutes,
           ...(operatorLaunch ? { operatorLaunch } : {})

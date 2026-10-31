@@ -1,3 +1,7 @@
+import { evaluateDraftOnlyCandidate } from "./draftOnlyCandidate.js";
+import { resolveBaseBranch } from "../git/worktrees.js";
+import { getReviewRepair } from "./reviewRepair.js";
+import { inspectTerminalClaimRecovery, type TerminalClaimRecovery } from "./terminalClaimRecovery.js";
 import { localBrowserAuditBlocker } from "./localBrowserAuditReadiness.js";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -28,7 +32,8 @@ import { parseExecutionRequirement } from "../execution/profiles.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { readProductionPolicySafely } from "../production/policy.js";
-import { resolveProjectTransition, sessionAgentForProvider, type TmuxAdapter } from "./index.js";
+import { canReleaseSupersededActionClaim, canonicalPath, getActiveActionClaim, getSession, resolveProjectTransition, sessionAgentForProvider, systemTmux, type TmuxAdapter } from "./index.js";
+import { getResumableLeaseHandoff } from "./reconciliation.js";
 import { TIER_AGENTS, describeSessionStart, loadModelTierRegistry, type TierAgent } from "../codingAgents/modelTiers.js";
 import { resolvePacketLifecycle, type PacketLifecycleState } from "./packetLifecycle.js";
 
@@ -39,6 +44,9 @@ export interface LaunchPreviewPacket {
 }
 
 export interface LaunchPreview {
+  recovery: TerminalClaimRecovery | null;
+  /** A blocked draft candidate whose existing launch evaluator records disposition. */
+  draftClaimBlocked: boolean;
   requestId: string;
   previewFingerprint: string;
   projectSlug: string;
@@ -81,6 +89,10 @@ export function buildLaunchPreview(input: {
   now?: Date;
   /** A review repair launch only: the failed candidate's own completion Ask ids that must not gate it. */
   supersededCompletionAskIds?: ReadonlySet<string>;
+  /** Explicit terminal no-op recovery; never inferred by ordinary launch. */
+  recoverSessionId?: string;
+  /** Existing standing-policy review repair; validated against its pending row. */
+  reviewRepairRequestId?: string;
 }): LaunchPreview {
   const prerequisites: string[] = [];
   const repoRoot = path.resolve(input.repoRoot);
@@ -99,6 +111,16 @@ export function buildLaunchPreview(input: {
   const queueRevision = buildAgentQueue(input.db).revision;
   const baseRevision = resolveHead(repoRoot);
   const documentRevisions = resolveDocumentRevisions(repoRoot, input.projectSlug, context?.activePlan ?? null);
+
+  // An existing resumable handoff is already supported by the launch path.
+  // Every other retained claim needs explicit disposition before a new launch.
+  const claim = actionId ? getActiveActionClaim(input.db, repoRoot, input.projectSlug, actionId, now) : null;
+  const supersededClaim = claim && canReleaseSupersededActionClaim(input.db, claim);
+  const handoff = claim ? getResumableLeaseHandoff(input.db, repoRoot) : null;
+  const repair = input.reviewRepairRequestId ? getReviewRepair(input.db, input.reviewRepairRequestId) : null;
+  const failed = repair ? getSession(input.db, repair.failed_session_id) : null;
+  const supportedRepair = claim && repair?.outcome === "pending" && repair.action_key === `${input.projectSlug}/${actionId}`
+    && failed && canonicalPath(failed.worktree_path) === canonicalPath(claim.worktree_path);
 
   let packet: LaunchPreviewPacket | null = null;
   let packetLifecycle: PacketLifecycleState | null = null;
@@ -321,6 +343,40 @@ export function buildLaunchPreview(input: {
     };
   }
 
+  let draftClaimBlocked = false;
+  let supportedDraft = false;
+  if (claim && !input.recoverSessionId && !supportedRepair
+    && !input.db.prepare("SELECT 1 FROM agent_sessions WHERE worktree_path = ? LIMIT 1").get(claim.worktree_path)) {
+    const agent = selection && sessionAgentForProvider(selection.provider);
+    if (agent && actionId) {
+      try {
+        const draft = evaluateDraftOnlyCandidate(input.db, { repositoryPath: repoRoot, projectSlug: input.projectSlug,
+          actionId, agent, baseBranch: resolveBaseBranch(repoRoot), now });
+        supportedDraft = draft.kind === "resume" && canonicalPath(draft.path) === canonicalPath(claim.worktree_path);
+        if (draft.kind === "refuse") {
+          draftClaimBlocked = true;
+          prerequisites.push(draft.reason);
+        }
+      } catch (error) {
+        prerequisites.push(`Candidate readiness could not be verified: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+  if (claim && !input.recoverSessionId && !supportedRepair && !supersededClaim && !supportedDraft && !draftClaimBlocked
+    && !(handoff && handoff.session.project_slug === input.projectSlug && handoff.session.action_id === actionId
+      && canonicalPath(handoff.session.worktree_path) === canonicalPath(claim.worktree_path))) {
+    prerequisites.push("Action claim retained: inspect and resolve the existing candidate before launching another Session.");
+  }
+
+  let recovery: TerminalClaimRecovery | null = null;
+  if (input.recoverSessionId) {
+    try {
+      recovery = inspectTerminalClaimRecovery({ db: input.db, repoRoot, projectSlug: input.projectSlug,
+        planSlug: context?.activePlan ?? null, actionId, packet, sessionId: input.recoverSessionId,
+        tmux: input.tmux ?? systemTmux, now });
+    } catch (error) { prerequisites.push(error instanceof Error ? error.message : String(error)); }
+  }
+
   const previewFingerprint = sha256(
     JSON.stringify({
       requestId: input.requestId,
@@ -331,11 +387,16 @@ export function buildLaunchPreview(input: {
       baseRevision,
       packet,
       selection,
-      prerequisites
+      prerequisites,
+      recovery,
+      recoverSessionId: input.recoverSessionId ?? null,
+      claim: claim && { generation: claim.claim_generation, worktreePath: claim.worktree_path, branch: claim.branch }
     })
   );
 
   return {
+    draftClaimBlocked,
+    recovery,
     requestId: input.requestId,
     previewFingerprint,
     projectSlug: input.projectSlug,

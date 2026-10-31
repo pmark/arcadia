@@ -77,7 +77,7 @@ A failed read keeps the last good one, labelled with its time in Direction and W
 
 For a dispatchable Action, **Continue** shows **Reading preview…** immediately, then focuses a bordered protected preview of its target, owner, configured provider/model/effort and limits. It does not start work. The preview keeps the existing planning, packet approval, credential and launch gates; a gated preview cannot be confirmed. **Confirm Continue for this Action** uses the same protected Session launch as the Project page and the same explicit browser confirmation under Decision 0096. It covers one Action and at most one Session, never an automatic next Action, merge or Production start. The preview states the existing exit-time validation, commit, push and draft-PR authorization and its 24-hour/first-exit expiry. There is no per-launch time-limit override; the existing Session/provider limits and recorded Plan budget apply.
 
-Repeated presses and tabs use the same request identity for the same governed resolution. Changed Go facts or a changed launch preview refuse with the current facts; choose **Read Go again** and inspect a fresh preview. A successful confirmation keeps a **Session launched** or **Reused existing Session** receipt visible, with the actual Session identity, its log and a **View Session** link opening that exact Session at `/sessions/<id>` with its details and log expanded. Returning to, reloading, or refocusing the workspace on an Action reads its recorded Session from Arcadia and makes **View Session** the primary control; an active Session hides Continue. A finished Session keeps further Continue options collapsed. Missing or unreadable Session evidence is shown explicitly, never treated as proof that a fresh launch is safe. The selected Action retains its Session link even after Go selects another Action. An uncertain network or server outcome keeps the request identity visible and disables further launch attempts in this control; use **Check Sessions and runs** to reconcile it through the existing Session receipts before trying again. Source tests, installed adoption and a real operator-assisted delivery are separate evidence stages; a source change alone proves no live delivery.
+Repeated presses and tabs use the same request identity for the same governed resolution. Changed Go facts or a changed launch preview refuse with the current facts; choose **Read Go again** and inspect a fresh preview. A successful confirmation keeps a **Session launched** or **Reused existing Session** receipt visible, with the actual Session identity, its log and a **View Session** link opening that exact Session at `/sessions/<id>` with its details and log expanded. Returning to, reloading, or refocusing the workspace on an Action reads its recorded Session from Arcadia and makes **View Session** the primary control; an active Session hides Continue. A finished Session keeps further Continue options collapsed. Missing or unreadable Session evidence is shown explicitly, never treated as proof that a fresh launch is safe. The selected Action retains its Session link even after Go selects another Action. An uncertain network or server outcome keeps the request identity visible and disables further launch attempts in this control; use **Check Sessions and runs** to reconcile it through the existing Session receipts before trying again. Source tests, installed adoption and a real operator-assisted delivery are separate evidence stages; a source change alone proves no live delivery. After a successful required environment probe, a Session continues the same authorized Action. An exit without current Session evidence remains missing evidence; earlier Runs for the Action are not proof of that Session. This does not authorize an automatic retry or relax any launch gate.
 
 On a phone, Work comes first, then Direction, then Context, and **Go's next move and your Ask ↓** jumps to Direction.
 
@@ -651,6 +651,12 @@ backs off — never faster than once every two minutes — while the snapshot
 source is unreachable, always labeling the view as showing the last known
 state rather than silently going quiet.
 
+A **prepared** Session still holds its lease while its launcher checks and starts
+the provider. The worker waits; a missing terminal at this stage is not an exit.
+If preparation is interrupted, inspect the original request and its receipt
+before an explicitly authorized continuation. A failed recovery successor remains
+protected and does not grant permission for another attempt.
+
 The phone dashboard redesign is an accepted, inactive three-slice Plan; the
 new `/actions` and judgment item routes are not live yet. Its
 [information architecture](docs/proposals/runs-page-information-architecture.md)
@@ -897,7 +903,16 @@ pnpm arcadia project prepare "Teacher Commons" \
   --path /path/to/teacher-commons
 ```
 
-Omit `--path` to create the repository directory under the Arcadia workspace's
+Before running it, make the selected directory an independent Git repository
+and create a local baseline commit. If you omit `--path`, initialize the
+default Projects directory for this Project before running preparation.
+Preparation refuses non-Git directories,
+unborn repositories, and nested paths before it creates Project records or a
+planning packet. If preparation refuses for Git readiness, establish the
+baseline locally and retry the same preparation; it does not initialize Git,
+create a commit, or change agent trust settings for you.
+
+Omit `--path` to select the repository directory under the Arcadia workspace's
 Projects directory. The command classifies the request as **Project Work → Plan
 First → Codex**, preserves the idea verbatim, creates an Active Project and its
 first Milestone and planning Action, writes the `PROJECT.md` → active plan →
@@ -916,7 +931,27 @@ no implementation Run. Its receipt prints the exact separate
 `arcadia work run ... --allow-codex-build --agent-profile ...` trigger that can
 start the build after the operator chooses to do so. Re-acceptance reuses the
 same Action and packet, while a changed or malformed planning Artifact fails
-closed before either managed pointer moves.
+closed before either managed pointer moves. Repeating `arcadia work plan` for
+that promoted Action returns the same unused packet when its acceptance and
+bindings still match. If the packet has been used, preparation preserves the attempt and creates a
+new packet with a separate open build approval. A running attempt blocks preparation.
+Replacement execution also depends on the current-packet and origin binding checks
+of PR #1905; do not use it for a live attempt until the combined changes are
+reviewed and adopted and the required fresh approval is granted.
+For a promoted Action absent from its committed base whose older packet has no
+frozen assignment, `arcadia work plan <work-id>` reconstructs the accepted promotion from its original
+Artifact and committed base and prepares a new packet with its own approval.
+It preserves the earlier packet and attempts. If the records or base do not
+match, resolve the reported mismatch before preparing another packet. After
+approval, guarded launch places the accepted Project and Plan in the candidate's
+immutable starting revision; the source checkout remains untouched.
+The separate build trigger and all other approval gates remain in force.
+A manual build Run records the packet and current execution context separately.
+A successful process exit alone leaves the Run in **Requires Review** and the
+Action unfinished, even if the child reports success or changed files. Use the
+existing protected validation and preservation path and governed completion
+evidence to establish completion; those are separate from process output and
+any later delivery, review, or merge gates.
 
 Preparation refuses an already registered Project name or repository and any
 repository that already carries a `PROJECT.md` or managed plan. It never
@@ -941,6 +976,11 @@ replaces another Project's work pointer.
    Action, and prepares—but does not run—its packet; **Defer** requires the named
    condition that revives it; or **Send back** requires refinement feedback,
    preserves the current Artifact, and reopens the planning Action for Codex.
+   The next planning packet carries that exact feedback with its source Decision
+   and judged Artifact revision; feedback asks for clarification and grants no
+   authority to change the original goal or approval gates. If an older
+   unapproved packet predates the feedback, withdraw its Decision before
+   preparing a fresh packet.
 
 Use the collapsed **Focus** control at the top of **Needs you** to choose a
 primary Project, an optional secondary Project, and Projects to park for now.
@@ -2577,6 +2617,28 @@ login`), or the installed provider lacks the headless flags
 (`permission_posture_missing`). To work in the provider's TUI instead, add
 `--interactive` to `go --launch`; that Session is not logged and records no
 exit code.
+
+**A retained terminal no-op candidate needs explicit recovery approval.** Ordinary
+launch preview reports its retained Action claim instead of promising a fresh
+launch. To inspect the supported recovery, use
+`arcadia session preview-launch --repo <repo> --request-id <fresh-id> --recover-session <session-id>`.
+The preview must be ready, and approval must name that fresh request and its
+fingerprint. Then use
+`arcadia session launch --repo <repo> --request-id <fresh-id> --recover-session <session-id> --preview-fingerprint <approved-hash>`.
+This grants one successor Session on the same candidate and branch; it does not
+turn Production on or grant post-exit preservation. Add `--operator-launch`
+only when its separate confirmation and exit authority below are intended.
+
+Recovery requires a positively terminal exit-zero Session with its retained
+successful-exit receipt, the same approved Action and packet, unchanged clean
+candidate HEAD equal to its launch revision, its exact claim generation, and
+no observed process in the candidate. Changed or uncertain facts refuse. The
+original receipt and attempt history stay intact. If a response is lost, replay
+the identical request, Session id and fingerprint to recover the one successor;
+never press a new request to guess the outcome. A successor that failed before
+starting remains a visible blocker with its candidate and claim retained:
+inspect that successor and receipt before authorizing any further repair.
+Review, required checks, adoption and any live recovery approval remain separate.
 
 **A confirmed Launch finishes its Session's work without production being
 Active (Decision 0096).** Confirming a Launch also authorizes Arcadia, once and

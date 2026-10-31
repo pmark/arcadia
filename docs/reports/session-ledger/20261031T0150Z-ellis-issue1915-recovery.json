@@ -1,0 +1,30 @@
+{
+  "session_id": "ellis-issue1915-recovery",
+  "role": "driver",
+  "model": "gpt-6-astra",
+  "effort": "high",
+  "action_id": "operator-directed:issue-1915-terminal-claim-recovery",
+  "pr": 1917,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 2,
+  "blocking_findings": [
+    {
+      "class": "partial-macos-liveness-coverage",
+      "caught_by": "independent R1-01"
+    },
+    {
+      "class": "unusable-macos-cwd-evidence",
+      "caught_by": "independent R2-01"
+    }
+  ],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [],
+  "outcome": "stopped",
+  "stop_reason": "Implementation hand-back to Rowan for independent current-head review and required CI; adoption and live recovery require separate approval.",
+  "notes": "PR1917 source recovery with bounded R1/R2 lsof and CI superseded-input repairs. Old receipt preserved; final review/CI, adoption and live launch remain separate."
+}
