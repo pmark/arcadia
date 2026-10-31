@@ -4,7 +4,7 @@ type: decision
 id: "0151"
 slug: how-far-should-the-naming-cleanup-reach
 project: arcadia
-status: open
+status: approved
 question: How far should the naming cleanup reach?
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: Display and guidance only
+decided: 2026-10-31
 ---
 
 # Decision 0151: How far should the naming cleanup reach?

@@ -4,7 +4,7 @@ type: decision
 id: "0160"
 slug: where-should-sustained-design-briefs-live
 project: arcadia
-status: open
+status: approved
 question: Where should sustained design briefs live?
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: Existing Projects only
+decided: 2026-10-31
 ---
 
 # Decision 0160: Where should sustained design briefs live?

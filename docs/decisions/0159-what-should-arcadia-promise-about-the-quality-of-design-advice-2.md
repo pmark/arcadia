@@ -4,7 +4,7 @@ type: decision
 id: "0159"
 slug: what-should-arcadia-promise-about-the-quality-of-design-advice-2
 project: arcadia
-status: open
+status: approved
 question: What should Arcadia promise about the quality of design advice?
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: Reviewed guides first, never limited
+decided: 2026-10-31
 ---
 
 # Decision 0159: What should Arcadia promise about the quality of design advice?
