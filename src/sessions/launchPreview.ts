@@ -32,7 +32,7 @@ import { parseExecutionRequirement } from "../execution/profiles.js";
 import { packetSha256 } from "../execution/planningAuthorization.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { readProductionPolicySafely } from "../production/policy.js";
-import { canonicalPath, getActiveActionClaim, getSession, resolveProjectTransition, sessionAgentForProvider, systemTmux, type TmuxAdapter } from "./index.js";
+import { canReleaseSupersededActionClaim, canonicalPath, getActiveActionClaim, getSession, resolveProjectTransition, sessionAgentForProvider, systemTmux, type TmuxAdapter } from "./index.js";
 import { getResumableLeaseHandoff } from "./reconciliation.js";
 import { TIER_AGENTS, describeSessionStart, loadModelTierRegistry, type TierAgent } from "../codingAgents/modelTiers.js";
 import { resolvePacketLifecycle, type PacketLifecycleState } from "./packetLifecycle.js";
@@ -115,6 +115,7 @@ export function buildLaunchPreview(input: {
   // An existing resumable handoff is already supported by the launch path.
   // Every other retained claim needs explicit disposition before a new launch.
   const claim = actionId ? getActiveActionClaim(input.db, repoRoot, input.projectSlug, actionId, now) : null;
+  const supersededClaim = claim && canReleaseSupersededActionClaim(input.db, claim);
   const handoff = claim ? getResumableLeaseHandoff(input.db, repoRoot) : null;
   const repair = input.reviewRepairRequestId ? getReviewRepair(input.db, input.reviewRepairRequestId) : null;
   const failed = repair ? getSession(input.db, repair.failed_session_id) : null;
@@ -361,7 +362,7 @@ export function buildLaunchPreview(input: {
       }
     }
   }
-  if (claim && !input.recoverSessionId && !supportedRepair && !supportedDraft && !draftClaimBlocked
+  if (claim && !input.recoverSessionId && !supportedRepair && !supersededClaim && !supportedDraft && !draftClaimBlocked
     && !(handoff && handoff.session.project_slug === input.projectSlug && handoff.session.action_id === actionId
       && canonicalPath(handoff.session.worktree_path) === canonicalPath(claim.worktree_path))) {
     prerequisites.push("Action claim retained: inspect and resolve the existing candidate before launching another Session.");

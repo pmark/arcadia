@@ -4,18 +4,23 @@
   "model": "gpt-6-astra",
   "effort": "high",
   "action_id": "operator-directed:issue-1915-terminal-claim-recovery",
-  "pr": null,
+  "pr": 1917,
   "tokens_in_uncached": null,
   "tokens_in_cached": null,
   "tokens_out": null,
   "wall_min": null,
   "attempts": 1,
-  "review_rounds": 0,
-  "blocking_findings": [],
+  "review_rounds": 1,
+  "blocking_findings": [
+    {
+      "class": "partial-macos-liveness-coverage",
+      "caught_by": "independent R1-01"
+    }
+  ],
   "operator_touches": null,
   "host_touches": null,
   "frictions": [],
   "outcome": "stopped",
   "stop_reason": "Implementation hand-back to Rowan for independent current-head review and required CI; adoption and live recovery require separate approval.",
-  "notes": "Source-only recovery; 86 launch tests, final 2-case replay delta, lint/build and preservation pass. Review, adoption and live launch remain separate."
+  "notes": "PR1917 source recovery and bounded R1 lsof repair. Old receipt preserved; review/CI, adoption and live launch remain separate."
 }

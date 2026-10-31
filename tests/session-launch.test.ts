@@ -35,7 +35,7 @@ import { sessionLogPath, sessionSettingsPath, type SessionRecording } from "../s
 import { launchGuardedHostSession, type GuardedLaunchInput, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
 import { getSessionContinuation, getSessionExitReceipt, reconcileSessionExit } from "../src/sessions/reconciliation.js";
-import { setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
+import { lsofProbe, setWorktreeLivenessProbeForTests, type WorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 import { runGoContextCommand } from "../src/commands/goContext.js";
@@ -115,6 +115,21 @@ describe("launchGuardedHostSession", () => {
       expect(() => f.launch("refusal", before.previewFingerprint)).toThrow();
       expect(f.tmux.launches).toHaveLength(1);
       expect(f.claim()).toEqual(f.originalClaim);
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it.each([{ status: 1, stderr: "" }, { status: 0, stderr: "lsof: WARNING: incomplete scan" }])("refuses terminal recovery when macOS process coverage is partial: %j", partial => {
+    const f = terminalRecoveryFixture();
+    try {
+      const shown = f.preview("partial-lsof");
+      expect(shown.ready).toBe(true);
+      setWorktreeLivenessProbeForTests((root, options) => lsofProbe(root, options, () => ({
+        ...partial, stdout: "p123\ncother\nfcwd\nn/tmp/elsewhere\n"
+      })));
+      expect(f.preview("partial-lsof").ready).toBe(false);
+      expect(() => f.launch("partial-lsof", shown.previewFingerprint)).toThrow();
+      expect(f.claim()).toEqual(f.originalClaim);
+      expect(f.tmux.launches).toHaveLength(1);
     } finally { setWorktreeLivenessProbeForTests(null); }
   });
 

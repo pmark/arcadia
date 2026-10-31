@@ -90,7 +90,7 @@ export function inspectTerminalClaimRecovery(input: {
     || !common || !repositoryCommon || canonicalPath(common.trim()) !== canonicalPath(repositoryCommon.trim())) {
     return refuse("the candidate is changed, dirty, foreign or unreadable; HEAD must equal its launch revision.");
   }
-  const liveness = probeWorktreeLiveness(candidate);
+  const liveness = probeWorktreeLiveness(candidate, { requireCompleteScan: true });
   if (!liveness.ok || liveness.processes.length) return refuse("candidate process liveness is active or uncertain.");
   return {
     sessionId: session.id, receiptSha256: createHash("sha256").update(JSON.stringify(receipt)).digest("hex"),

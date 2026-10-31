@@ -10,7 +10,7 @@ import type { PlanActionDoc } from "../src/docs/types.js";
 import { pendingTerminalCandidateFor } from "../src/production/terminalCandidates.js";
 import { developmentLineageRemedy } from "../src/production/tick.js";
 import { allocateSessionRoleAttempt, latestRoleAttempt, recordSessionRoleAttemptTerminal } from "../src/sessions/enrollment.js";
-import { getActiveActionClaim, releaseSupersededActionClaim, type AgentSession } from "../src/sessions/index.js";
+import { canReleaseSupersededActionClaim, getActiveActionClaim, releaseSupersededActionClaim, type AgentSession } from "../src/sessions/index.js";
 import { beginDevelopmentAttempt, planDevelopmentAttempt, requirementIdentity, sessionDevelopedForSupersededInput } from "../src/sessions/roleLineage.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
@@ -241,21 +241,25 @@ describe("the worker tick dispatches the amended Action past run 1's unmerged ca
     const { rehearsal, run1 } = afterRun1();
     const held = () => withDatabase(rehearsal.workspace, (db) => getActiveActionClaim(db, rehearsal.repo, rehearsal.projectSlug, "write-marker-a", rehearsal.now));
     const superseded = () => withDatabase(rehearsal.workspace, (db) => sessionDevelopedForSupersededInput(db, run1, rehearsal.repo));
+    const canRelease = () => withReadOnlyDatabase(rehearsal.workspace, (db) => canReleaseSupersededActionClaim(db, held()!));
     const tryRelease = () => withDatabase(rehearsal.workspace, (db) => releaseSupersededActionClaim(db, held()!));
     expect(held()).not.toBeNull();
     // The current input: its candidate still claims both.
     expect(superseded()).toBe(false);
+    expect(canRelease()).toBe(false);
     expect(tryRelease()).toBe(false);
     amend(rehearsal);
     const sql = (statement: string, ...args: unknown[]) => withDatabase(rehearsal.workspace, (db) => db.prepare(statement).run(...args));
     // A live holder keeps the claim.
     sql("UPDATE agent_sessions SET status = 'running' WHERE id = ?", run1.id);
+    expect(canRelease()).toBe(false);
     expect(tryRelease()).toBe(false);
     sql("UPDATE agent_sessions SET status = ? WHERE id = ?", run1.status, run1.id);
     // A passed attempt settled by another Session is not this candidate's own.
     const attempt = rehearsal.attempts("write-marker-a")[0];
     sql("UPDATE session_role_attempts SET terminal_receipt_json = ? WHERE id = ?", JSON.stringify({ ...JSON.parse(attempt.terminal_receipt_json ?? "{}"), sessionId: "session_other" }), attempt.id);
     expect(superseded()).toBe(false);
+    expect(canRelease()).toBe(false);
     expect(tryRelease()).toBe(false);
     sql("UPDATE session_role_attempts SET terminal_receipt_json = ? WHERE id = ?", attempt.terminal_receipt_json, attempt.id);
     // An unpreserved candidate gets its preservation first.
@@ -263,15 +267,20 @@ describe("the worker tick dispatches the amended Action past run 1's unmerged ca
     expect(preserved).toBeTruthy();
     sql("UPDATE candidate_preservation_receipts SET request_id = ? WHERE request_id = ?", `moved-${run1.id}`, `worker-tick-preserve-${run1.id}`);
     expect(superseded()).toBe(false);
+    expect(canRelease()).toBe(false);
     expect(tryRelease()).toBe(false);
     sql("UPDATE candidate_preservation_receipts SET request_id = ? WHERE request_id = ?", `worker-tick-preserve-${run1.id}`, `moved-${run1.id}`);
     // A dirty worktree keeps the claim.
     writeFileSync(path.join(run1.worktree_path, "unsaved.md"), "uncommitted\n");
     expect(superseded()).toBe(true);
+    expect(canRelease()).toBe(false);
     expect(tryRelease()).toBe(false);
     rmSync(path.join(run1.worktree_path, "unsaved.md"));
     expect(held()).not.toBeNull();
     // Finished, clean, preserved and superseded: released, fenced on its generation.
+    const beforePreviewProof = held();
+    expect(canRelease()).toBe(true);
+    expect(held()).toEqual(beforePreviewProof);
     expect(tryRelease()).toBe(true);
     expect(held()).toBeNull();
     expect(git(rehearsal.repo, ["rev-parse", `refs/heads/${run1.branch}`]).trim()).toBeTruthy();
@@ -304,8 +313,14 @@ describe("the worker tick dispatches the amended Action past run 1's unmerged ca
     rehearsal.activate("run-2-grant");
     const results = [rehearsal.tick(), rehearsal.tick()];
     expect(results.some((r) => r.launch?.outcome === "launched")).toBe(false);
-    // The prepared-worktree guard refuses first; the claim is the backstop behind it.
-    expect(results.map((r) => r.launch?.reason ?? "").join("\n")).toMatch(/already holds uncommitted changes|already claimed by a live worktree/);
+    // Claim-aware preview refuses before the later prepared-worktree guard.
+    expect(results.map((r) => r.launch?.reason)).toEqual([
+      "The previewed Action is not ready to launch.", "The previewed Action is not ready to launch."
+    ]);
+    expect(withReadOnlyDatabase(rehearsal.workspace, (db) => {
+      const claim = getActiveActionClaim(db, rehearsal.repo, rehearsal.projectSlug, "write-marker-a");
+      return claim && canReleaseSupersededActionClaim(db, claim);
+    })).toBe(false);
     expect(rehearsal.attempts("write-marker-a").map((x) => [x.ordinal, x.status])).toEqual([[1, "passed"]]);
     expect(claimOf(rehearsal, run1.worktree_path)?.action_id).toBe("write-marker-a");
     expect(readFileSync(path.join(run1.worktree_path, "notes", "unsaved.md"), "utf8")).toBe("uncommitted\n");

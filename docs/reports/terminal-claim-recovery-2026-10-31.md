@@ -8,7 +8,8 @@ installation, service restart or production start is part of this evidence.
 ## Behavior and boundaries
 
 Ordinary preview now reports a retained Action claim. Existing resumable
-handoffs, pending review repairs and never-launched draft-only candidates use
+handoffs, safely preserved superseded-input candidates, pending review repairs
+and never-launched draft-only candidates use
 their established routes; draft readiness uses the complete read-only evaluator.
 An unsafe draft remains not ready. Its launch path may record the existing
 refusal disposition, but cannot turn an improved blocked preview into authority.
@@ -88,6 +89,54 @@ using the existing request lookup restored the supported repair path.
 Rowan's read-only feedback also separated explicit recovery approval from the
 optional post-exit authority, required the failed-successor blocker, and replaced
 a draft-dirt-only preview exemption with the full existing evaluator.
+
+## Independent review R1 and bounded repair
+
+An independent read-only Codex gpt-6.1-terra/high reviewer inspected
+`fd6d0b4ac09f45d2be5cb41a4aa1115bcb995781` against
+`bde2f65d1a71f3ae11799f315a3df14f674fac49`. R1 ran no tests; its macOS lsof
+sample exited zero. R1-01 was its only blocking finding: the shared cwd probe
+accepted lsof status 1 or diagnostics as an empty result, allowing partial
+process coverage to authorize terminal recovery.
+
+The recovery-only complete-scan option now rejects nonzero macOS lsof status,
+any stderr, missing cwd records and malformed output. Its option is passed
+through the real recovery evaluator, including prepared-successor replay.
+Existing non-recovery callers retain their default behavior. Tests inject the
+lsof runner so status 1, status-zero warnings, complete clear output, live
+candidate processes and incomplete records are deterministic on every CI host.
+
+- Baseline with the injected runner but no strict behavior: 3 failing partial-
+  coverage cases, 2 passing controls, exit 1.
+- Fixed focused recovery/liveness run: 15 passed, 84 skipped, exit 0 (11.54s).
+- Complete recovery and liveness files: 99 passed, exit 0 (143.26s).
+- Whole-repository `pnpm build`: exit 0.
+- Final retained-claim/no-op composition delta after compatibility repair:
+  2 passed, 86 skipped, exit 0 (8.56s).
+- Final focused ESLint and `tsc --noEmit`: exit 0.
+- Complete run-2, run-3 and run-4 amended-Action rehearsal files: 14 passed,
+  exit 0 (41.88s). The prior run preserved its 1-failed/13-passed receipt.
+- Session-ledger, preservation self-check and `git diff --check`: exit 0.
+
+CI on the first head also exposed two amended-Action rehearsal failures: preview
+blocked the existing superseded-input release route. Preview now shares the
+exact existing read-only holder, clean-worktree and preserved superseded-input
+proof. Actual release still rechecks that proof and fences the claim generation.
+Tests verify preview proof cannot change the claim and still rejects live,
+foreign, unpreserved, current-input and dirty candidates. The broader run-2
+check initially failed only on its old late-refusal wording; it now pins the
+early not-ready refusal and directly proves the dirty claim is ineligible,
+while retaining all no-dispatch, attempts, claim and unsaved-file assertions.
+
+Latest source checkpoint is `e444fe02a04675c8d853ecad52cdc006c696f157`;
+the stacked base remains `bde2f65d1a71f3ae11799f315a3df14f674fac49`.
+The four new main commits include draft planning and a tidy-log bootstrap
+Action activation. Their Project pointer/current Action were read; neither
+overlaps this directly authorized source repair. No governed pointer changed
+in this candidate.
+
+The finding is addressed in source, pending independent delta review and CI;
+no installed-runtime or live-recovery proof is claimed.
 
 ## Operator and end-user QA
 

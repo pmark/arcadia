@@ -1131,15 +1131,14 @@ export function releaseLandedActionClaim(db: Database.Database, claim: AgentWork
 }
 
 /**
- * Release `claim` when it is held by a finished Session (neither prepared nor
+ * Read-only eligibility proof for releasing a claim held by a finished Session (neither prepared nor
  * running) whose worktree holds no uncommitted work and whose every passed
  * development attempt was for an earlier input revision of the Action than
  * the checked-in Plan now carries (see {@link developedForSupersededInput}).
- * Only the claim columns are cleared, fenced on the exact generation: the
- * worktree reservation row, the worktree, its branch and any pull request
- * stay exactly as they are. Anything short of that proof keeps the claim.
+ * Shared by preview and the actual fenced release. This predicate changes
+ * nothing; anything short of the existing holder/dirt/input proof keeps the claim.
  */
-export function releaseSupersededActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
+export function canReleaseSupersededActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
   if (!claim.project || !claim.action_id || !claim.claim_generation) return false;
   const holders = (db.prepare("SELECT * FROM agent_sessions WHERE project_slug = ? AND action_id = ? ORDER BY created_at DESC, rowid DESC")
     .all(claim.project, claim.action_id) as AgentSession[])
@@ -1153,6 +1152,12 @@ export function releaseSupersededActionClaim(db: Database.Database, claim: Agent
   } catch {
     return false;
   }
+  return true;
+}
+
+/** Recheck the shared proof, then release only the expected claim generation. */
+export function releaseSupersededActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
+  if (!claim.project || !claim.action_id || !claim.claim_generation || !canReleaseSupersededActionClaim(db, claim)) return false;
   return releaseActionClaim(db, {
     repositoryPath: claim.repository_path,
     project: claim.project,

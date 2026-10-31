@@ -21,7 +21,11 @@ export type WorktreeLiveness =
   | { ok: true; processes: Array<{ pid: number; command: string | null; cwd: string }> }
   | { ok: false; error: string };
 
-export type WorktreeLivenessProbe = (worktreeRealpath: string) => WorktreeLiveness;
+export interface WorktreeLivenessOptions {
+  /** Terminal claim recovery: partial macOS lsof coverage cannot prove no writer. */
+  requireCompleteScan?: boolean;
+}
+export type WorktreeLivenessProbe = (worktreeRealpath: string, options?: WorktreeLivenessOptions) => WorktreeLiveness;
 
 let probeOverride: WorktreeLivenessProbe | null = null;
 
@@ -30,7 +34,7 @@ export function setWorktreeLivenessProbeForTests(probe: WorktreeLivenessProbe | 
   probeOverride = probe;
 }
 
-export function probeWorktreeLiveness(worktreePath: string): WorktreeLiveness {
+export function probeWorktreeLiveness(worktreePath: string, options: WorktreeLivenessOptions = {}): WorktreeLiveness {
   let root: string;
   try {
     root = realpathSync(worktreePath);
@@ -38,14 +42,14 @@ export function probeWorktreeLiveness(worktreePath: string): WorktreeLiveness {
     return { ok: false, error: `The worktree path could not be resolved: ${(error as Error).message}` };
   }
   try {
-    return (probeOverride ?? hostProbe)(root);
+    return (probeOverride ?? hostProbe)(root, options);
   } catch (error) {
     return { ok: false, error: `The liveness probe failed: ${(error as Error).message}` };
   }
 }
 
-function hostProbe(root: string): WorktreeLiveness {
-  return existsSync("/proc/self/cwd") ? procProbe(root) : lsofProbe(root);
+function hostProbe(root: string, options: WorktreeLivenessOptions = {}): WorktreeLiveness {
+  return existsSync("/proc/self/cwd") ? procProbe(root) : lsofProbe(root, options);
 }
 
 function inside(cwd: string, root: string): boolean {
@@ -93,33 +97,46 @@ function procCommand(pid: string): string | null {
 }
 
 /** macOS and other hosts without /proc: `lsof` field output of every process's cwd. Exported for tests. */
-export function lsofProbe(root: string): WorktreeLiveness {
+export function lsofProbe(root: string, options: WorktreeLivenessOptions = {},
+  run: () => { error?: Error; status: number | null; stdout: string; stderr: string } = () =>
+    spawnSync("lsof", ["-a", "-d", "cwd", "-F", "pcn"], { encoding: "utf8", timeout: 5000, maxBuffer: 32 * 1024 * 1024 })
+): WorktreeLiveness {
   // lsof escapes non-printable and non-ASCII bytes in names (`\xc3\xa9`), so
   // such a path could never match and would silently read as "nothing here".
   if (/[^\x20-\x7e]/.test(root)) {
     return { ok: false, error: "lsof cannot be matched against a worktree path containing non-ASCII or non-printable characters." };
   }
-  const result = spawnSync("lsof", ["-a", "-d", "cwd", "-F", "pcn"], { encoding: "utf8", timeout: 5000, maxBuffer: 32 * 1024 * 1024 });
+  const result = run();
   if (result.error) return { ok: false, error: `lsof could not run: ${result.error.message}` };
+  if (options.requireCompleteScan && (result.status !== 0 || result.stderr.length > 0)) {
+    return { ok: false, error: `lsof did not provide a complete scan (status ${String(result.status)}${result.stderr ? "; diagnostics were reported" : ""}).` };
+  }
   // Status 1 is lsof's ordinary "some processes could not be inspected".
   if (result.status !== 0 && result.status !== 1) return { ok: false, error: `lsof exited with status ${String(result.status)}.` };
   const processes: Array<{ pid: number; command: string | null; cwd: string }> = [];
   let pid: number | null = null;
   let command: string | null = null;
   let sawProcess = false;
+  let sawCwd = false;
   for (const line of (result.stdout ?? "").split("\n")) {
     if (line.startsWith("p")) {
+      if (options.requireCompleteScan && pid !== null && !sawCwd) return { ok: false, error: "lsof omitted a process working directory." };
+      sawCwd = false;
       pid = Number(line.slice(1));
       command = null;
       sawProcess = Number.isInteger(pid) && pid > 0;
       if (!sawProcess) return { ok: false, error: "lsof output was not parseable." };
     } else if (line.startsWith("c")) {
       command = line.slice(1) || null;
-    } else if (line.startsWith("n") && pid !== null && pid !== process.pid) {
+    } else if (line.startsWith("n") && pid !== null) {
       const cwd = line.slice(1);
-      if (cwd && inside(cwd, root)) processes.push({ pid, command, cwd });
+      sawCwd = cwd.length > 0;
+      if (pid !== process.pid && cwd && inside(cwd, root)) processes.push({ pid, command, cwd });
+    } else if (options.requireCompleteScan && line && line !== "fcwd") {
+      return { ok: false, error: "lsof output was not parseable." };
     }
   }
+  if (options.requireCompleteScan && sawProcess && !sawCwd) return { ok: false, error: "lsof omitted a process working directory." };
   if (!sawProcess) return { ok: false, error: "lsof reported no processes at all." };
   return { ok: true, processes };
 }
