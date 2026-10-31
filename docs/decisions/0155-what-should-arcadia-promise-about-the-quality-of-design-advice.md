@@ -4,7 +4,7 @@ type: decision
 id: "0155"
 slug: what-should-arcadia-promise-about-the-quality-of-design-advice
 project: arcadia
-status: open
+status: rejected
 question: What should Arcadia promise about the quality of design advice?
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: "Superseded by Decision 0159: The operator's answer on 2026-10-31 was an option this Decision did not offer; Decision 0159 carries it."
+decided: 2026-10-31
 ---
 
 # Decision 0155: What should Arcadia promise about the quality of design advice?
