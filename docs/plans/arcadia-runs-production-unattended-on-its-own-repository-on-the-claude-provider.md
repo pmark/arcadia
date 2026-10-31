@@ -279,10 +279,10 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1570", "https://github.com/pmark/arcadia/issues/1574"]
   - id: cover-mail-ack-receipt-kind-collision
     title: "Add a native-mail test that a self-report and a disposal reusing an acknowledged message's own acknowledgment receipt id are refused by the receipt-kind collision guards, closing Issue #1470."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Implement a native-mail test that a self-report and a disposal reusing an acknowledged message's own acknowledgment receipt id are refused by the receipt-kind collision guards, closing Issue #1470."
+    next_action: Completed via Agent Ask complete-cover-mail-ack-receipt-kind-collision-2026-10-31-b; no further action.
     expected_artifact: Evidence satisfying Agent Ask cover-mail-ack-receipt-kind-collision
     clarification: clarified
     confidence: high
