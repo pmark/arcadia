@@ -33,6 +33,11 @@ WORKER_WAIT_SECONDS=120
 TRANSPORT_WAIT_SECONDS=180
 HEARTBEAT_FRESH_MS=15000
 ACTIVATION_RUNNER_TIMEOUT_SECONDS=300
+# Test-only shortening of the two bounded waits, honoured solely when the hermetic-test marker is set.
+if [[ -n "${START_RUN_TEST_FAKE:-}" && "${ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS:-}" =~ ^[0-9]+$ ]]; then
+  WORKER_WAIT_SECONDS="$ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS"
+  TRANSPORT_WAIT_SECONDS="$ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS"
+fi
 
 json_string() { jq -n --arg v "$1" '$v'; }
 arcadia_t() { local t="$1"; shift; (cd "$ARCADIA_REPO" && timeout "$t" mise exec -- pnpm -s arcadia "$@"); }
@@ -76,10 +81,10 @@ write_receipt() {  # REF:L57 (receipt shape), extended with phase, allowance and
   jq -n --arg id "${ID:-unknown}" --arg runId "${RUN_ID:-unknown}" --arg mode "${MODE:-unknown}" --arg started "${STARTED_AT:-}" \
     --arg updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg outcome "$outcome" --arg phase "$PHASE" --arg phaseName "$PHASE_NAME" \
     --argjson consumed "$CONSUMED" --argjson mutations "$MUTATIONS" --arg reason "$REASON" --argjson record "$RECORD" --arg log "${LOG:-}" \
-    --arg off "$OFF_RESULT" --argjson activated "$ACTIVATED" --argjson planActivated "$PLAN_ACTIVATED" \
+    --arg off "$OFF_RESULT" --argjson activated "$ACTIVATED" --argjson planActivated "$PLAN_ACTIVATED" --argjson runtimeUpgraded "$ENSURE_ATTEMPTED" \
     '{schema: "arcadia-start-run-receipt-v1", id: $id, runId: $runId, mode: $mode, startedAt: $started, updatedAt: $updated,
       outcome: $outcome, phase: $phase, phaseName: $phaseName, allowanceConsumed: $consumed, mutations: $mutations,
-      reason: $reason, productionActivated: $activated, planActivatedByThisCard: $planActivated, offCleanup: $off, runLog: $log, record: $record}' \
+      reason: $reason, runtimeUpgraded: $runtimeUpgraded, productionActivated: $activated, planActivatedByThisCard: $planActivated, offCleanup: $off, runLog: $log, record: $record}' \
     > "${RECEIPT}.tmp" 2>/dev/null && mv "${RECEIPT}.tmp" "$RECEIPT" || true
 }
 
@@ -113,7 +118,7 @@ write_handoff() {  # REF:L111 (handoff), extended: phase, allowance, every mutat
       if [[ "$FF_DONE" == true ]]; then echo "The main checkout was fast-forwarded to the pinned revision; this is not rolled back."; fi
       if [[ "$ENSURE_ATTEMPTED" == true ]]; then echo "go-broker ensure ran (or began to run): the broker may be installed at the pinned revision or partially installed. The runtime stays upgraded; there is no rollback to the previous release."; fi
       if [[ "$RESTART_ATTEMPTED" == true ]]; then echo "The worker restart was attempted: the worker may be on its new release, still on its old one, or not running. Read the worker status before anything else."; fi
-      if [[ "$PLAN_ACTIVATION_ATTEMPTED" == true ]]; then echo "The Plan-activation runner was invoked; its own one-shot allowance is consumed and never reset. If it succeeded the Plan stays active: there is no automatic deactivation."; fi
+      if [[ "$PLAN_ACTIVATION_ATTEMPTED" == true ]]; then echo "The Plan-activation runner was invoked. It is replay-safe (it verifies and recovers an existing settlement without applying twice) and this card's START marker is the only allowance, already consumed. If it succeeded the Plan stays active: there is no automatic deactivation."; fi
       if [[ "$PLAN_ACTIVATED" == true ]]; then echo "The Plan stays active (activated by this card)."; fi
     fi
     case "$OFF_RESULT" in  # REF:L121
@@ -190,6 +195,34 @@ check_expiry() {  # REF:L163, L362
 }
 check_preserved_history() {  # REF:L158, L364
   node -e 'const f=require("fs"),c=require("crypto");for(const x of JSON.parse(process.argv[1]))if(c.createHash("sha256").update(f.readFileSync(x.path)).digest("hex")!==x.sha256)throw Error("preserved receipt/authority drift")' "$(pin_json consumedHistory)" || refuse "consumed history or authority receipt changed"
+}
+check_reviewed_hashes() {  # REF:L161: the card pair and this executor against the independent review's manifest
+  node -e 'const f=require("fs"),c=require("crypto"),p=require("path"),[lib,id,exe]=process.argv.slice(1);const m=JSON.parse(f.readFileSync(p.join(lib,"reviewed",id+".json")));const h=x=>c.createHash("sha256").update(f.readFileSync(x)).digest("hex");if(h(p.join(lib,id+".sh"))!==m.sh||h(p.join(lib,id+".json"))!==m.json||h(exe)!==m.executor)process.exit(1)' "$LIBRARY_DIR" "$ID" "$SELF" \
+    || refuse "START pair or executor differs from the independently reviewed hashes"
+}
+# REF:L158 (receipt hashes), L245-L248 (sign-in evidence), L364. Read-only: never a new probe, refresh or credential read beyond the pinned
+# receipts. $1 is the pre-restart worker's handler hash to require (the receipt's handlerHash must be that worker's, as in the reference),
+# or empty after the restart, when the handler may legitimately change.
+check_signin_evidence() {
+  local out
+  out="$(node -e '
+const fs=require("fs"),c=require("crypto");
+const [del,sig,handler]=process.argv.slice(1);
+const h=x=>c.createHash("sha256").update(fs.readFileSync(x.path)).digest("hex");
+try{
+  const need=(x,m)=>{if(!x)throw Error(m)};
+  const d=JSON.parse(del),s=JSON.parse(sig);
+  need(h(d)===d.sha256,"START/STOP delegation receipt drift");
+  need(h(s)===s.sha256,"sign-in evidence receipt drift");
+  const r=JSON.parse(fs.readFileSync(s.path,"utf8"));
+  need(r.success===true&&r.httpStatus===200&&r.outcome==="ok","sign-in evidence is not a successful verification");
+  need(Date.parse(r.credentialExpiresAt)>Date.now()+5*60000,"credential expiry: the verified sign-in has expired or is within 5 minutes of expiry");
+  need(Array.isArray(r.windows)&&r.windows.length===2&&r.windows.every(w=>Number.isFinite(w.usedPercentage)&&w.usedPercentage>=0&&w.usedPercentage<100),"usage window unknown or at 100%");
+  if(handler)need(r.handlerHash===handler,"sign-in evidence handlerHash is not the pre-restart worker handler");
+  process.stdout.write(JSON.stringify({credentialExpiresAt:r.credentialExpiresAt,windows:r.windows,receiptHandlerHash:r.handlerHash??null}));
+}catch(e){process.stdout.write("REFUSED: "+e.message);process.exit(1)}
+' "$(pin_json delegationReceipt)" "$(pin_json signInEvidence)" "${1:-}")" || refuse "sign-in, credential-expiry and delegation evidence gate: ${out#REFUSED: }"
+  rec signInEvidence "$out"
 }
 check_checkout_clean_on_main() {  # REF:L191, ADOPT:L74-75
   [[ "$(git_repo branch --show-current)" == main ]] || refuse "the Arcadia checkout must be on main"
@@ -285,8 +318,7 @@ phase_p0() {
   jq -e '.schema == "arcadia-operator-script-v1" and .kind == "grant" and (.startRun.schema == "arcadia-start-run-v1")' "$DESCRIPTOR" >/dev/null || refuse "the descriptor is not a START grant with a startRun block"
   check_preserved_history
   # Hashes are pinned in the independent final review's host-local manifest: the card pair and this executor.  REF:L161
-  node -e 'const f=require("fs"),c=require("crypto"),p=require("path"),[lib,id,exe]=process.argv.slice(1);const m=JSON.parse(f.readFileSync(p.join(lib,"reviewed",id+".json")));const h=x=>c.createHash("sha256").update(f.readFileSync(x)).digest("hex");if(h(p.join(lib,id+".sh"))!==m.sh||h(p.join(lib,id+".json"))!==m.json||h(exe)!==m.executor)process.exit(1)' "$LIBRARY_DIR" "$ID" "$SELF" \
-    || refuse "START pair or executor differs from the independently reviewed hashes"
+  check_reviewed_hashes
   [[ "$(sha256_file "$SELF")" == "$EXECUTOR_SHA" ]] || refuse "this executor is not the one the card pins (startRun.executorSha256)"
   [[ ! -e "$ATTEMPT_FILE" ]] || refuse "the one-shot START allowance is consumed; never retry or reset"  # REF:L162
   check_expiry "this card expired at $CARD_EXPIRES_AT; ask for a fresh card"
@@ -305,7 +337,7 @@ phase_p1() {
   check_origin_is_pin
   if ! git_repo cat-file -e "$PIN^{commit}" 2>/dev/null; then
     if [[ "$MODE" == run ]]; then
-      # Only objects and remote-tracking refs change; the working tree and HEAD do not. It is not a mutation the allowance covers.
+      # N2 (deliberate): the fetch happens before the allowance is consumed. Only objects and remote-tracking refs change; the working tree and HEAD do not. It is not a mutation the allowance covers.
       timeout 120 git -C "$ARCADIA_REPO" fetch origin main || refuse "the reviewed revision $PIN is not present locally and could not be fetched"
     else
       refuse "the reviewed revision $PIN is not present locally; fetch origin in the checkout (git fetch origin main) and run preflight again"
@@ -374,6 +406,12 @@ phase_p2() {
   OLD_PID="$(worker_pid)"
   [[ -n "$OLD_PID" ]] || refuse "worker job $WORKER_LABEL has no running PID"  # ADOPT:L98
   rec oldWorkerPid "$OLD_PID"
+  # REF:L236-L250: the pre-restart worker is live and fresh; its handler is what the retained sign-in evidence must name.
+  PRE_BINDING="$(read_worker_binding)" || refuse "the pre-restart worker binding could not be read"
+  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" --argjson pid "$OLD_PID" '.ageMs >= 0 and .ageMs < $fresh and .binding.pid == $pid and .workerPid == $pid' <<<"$PRE_BINDING" >/dev/null || refuse "stale or mismatched pre-restart worker heartbeat"
+  PRE_HANDLER="$(jq -r '.binding.handlerHash' <<<"$PRE_BINDING")"
+  rec_str preRestartHandlerHash "$PRE_HANDLER"
+  check_signin_evidence "$PRE_HANDLER"
   check_capacity
   check_queue before
   # Decision 0156: ensure refuses during a rehearsal freeze; ask first (read-only).
@@ -390,6 +428,7 @@ phase_p3() {
   # Last pre-mutation re-check: the cheap gates whose answer can change while the preflight ran.
   check_expiry "START card expired during preflight; no allowance consumed"  # REF:L362
   check_preserved_history
+  check_signin_evidence "$PRE_HANDLER"
   [[ ! -e "$ATTEMPT_FILE" ]] || refuse "the one-shot START allowance is consumed; never retry or reset"
   check_checkout_clean_on_main
   check_origin_is_pin
@@ -463,6 +502,8 @@ phase_p4() {
   [[ "$(worker_pid)" == "$NEW_PID" ]] || refuse "worker PID changed again after the restart"
   jq -n --argjson b "$binding" --argjson oldPid "$OLD_PID" --argjson restartAtMs "$restart_at_ms" --arg label "$WORKER_LABEL" --arg observed "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     '$b + {oldPid: $oldPid, restartAtMs: $restartAtMs, workerLabel: $label, observedAt: $observed}' > "$RUN_DIR/worker-binding.json"
+  # The handler may legitimately change at the restart: bind the new one live and record both.
+  rec_str postRestartHandlerHash "$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
   rec workerBinding "$(jq -c '{pid: .binding.pid, instance: .binding.instance, release: .binding.release, handlerHash: .binding.handlerHash, repository: .binding.repository, heartbeatAt}' "$RUN_DIR/worker-binding.json")"
   [[ "$(git_repo rev-parse HEAD)" == "$PIN" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout moved or changed after the worker restart; the loaded revision is unknown"
   check_runtime_current
@@ -480,8 +521,9 @@ phase_p5() {
     return 0
   fi
   [[ "$(git_repo rev-parse HEAD)" == "$PIN" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main moved or became dirty before the Plan activation"
+  check_reviewed_hashes  # the descriptor the runner will read is still the reviewed one
   PLAN_ACTIVATION_ATTEMPTED=true
-  mutated "Plan activation runner invoked for $PROJECT/$PLAN (its one-shot allowance is consumed when it runs; the Plan stays active if it succeeds; no automatic deactivation)"
+  mutated "Plan activation runner invoked for $PROJECT/$PLAN (replay-safe; this card's START marker is the only allowance; the Plan stays active if it succeeds; no automatic deactivation)"
   checkpoint
   out="$(timeout "$ACTIVATION_RUNNER_TIMEOUT_SECONDS" mise exec -- node "$ARCADIA_REPO/scripts/run-plan-amendment.mjs" "$DESCRIPTOR" run)" || { printf '%s\n' "$out" > "$RUN_DIR/plan-activation.json"; refuse "the Plan-activation runner failed: $(jq -r '[.reason, .message] | join(": ")' <<<"$out" 2>/dev/null || echo 'no receipt')"; }
   printf '%s\n' "$out" > "$RUN_DIR/plan-activation.json"
@@ -509,6 +551,7 @@ phase_p6() {
   git_repo merge-base --is-ancestor "$PIN" "$head_now" || refuse "main does not descend from the reviewed revision"
   [[ -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout is dirty before the START"
   check_runtime_current
+  check_signin_evidence ""  # REF:L245-L248, L364 again at the START: expiry, windows and receipt hashes (the handler legitimately changed at the restart)
   check_production_off  # REF:L274-L284 (fresh)
   check_capacity        # REF:L254-L272 (fresh)
   check_queue after     # REF:L286-L289 (fresh)
@@ -516,7 +559,7 @@ phase_p6() {
   # The worker recorded in P4 must still be the live worker (REF:L361): pid, instance and handler read live, compared with the record.
   bound="$(cat "$RUN_DIR/worker-binding.json")"
   binding="$(read_worker_binding)" || refuse "the worker binding could not be read live"
-  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" --argjson b "$bound" '.ageMs >= 0 and .ageMs < $fresh and .binding.pid == $b.binding.pid and .binding.instance == $b.binding.instance and .binding.handlerHash == $b.binding.handlerHash and .binding.release == $b.binding.release and .workerPid == $b.binding.pid' <<<"$binding" >/dev/null \
+  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" --argjson b "$bound" '.ageMs >= 0 and .ageMs < $fresh and .binding.pid == $b.binding.pid and .binding.instance == $b.binding.instance and .binding.handlerHash == $b.binding.handlerHash and .binding.release == $b.binding.release and .workerPid == $b.binding.pid and .ownerSha256 == $b.ownerSha256' <<<"$binding" >/dev/null \
     || refuse "the worker changed or its heartbeat went stale after the restart; no activation"
   # REF:L291-L299
   expires="$(node -e 'process.stdout.write(new Date(Date.now() + Number(process.argv[1]) * 3600e3).toISOString())' "$PACKET_APPROVAL_HOURS")"
@@ -577,7 +620,7 @@ process.stdout.write(require("crypto").createHash("sha256").update(canonical).di
   check_queue after
   [[ "$QUEUE_REVISION_OBSERVED" == "$first_queue_revision" ]] || refuse "queue moved after preview; no activation"  # REF:L360
   binding="$(read_worker_binding)" || refuse "the worker binding could not be read live after the preview"
-  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" --argjson b "$bound" '.ageMs >= 0 and .ageMs < $fresh and .binding.pid == $b.binding.pid and .workerPid == $b.binding.pid' <<<"$binding" >/dev/null || refuse "worker changed after preview; no activation"
+  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" --argjson b "$bound" '.ageMs >= 0 and .ageMs < $fresh and .binding.pid == $b.binding.pid and .binding.instance == $b.binding.instance and .binding.handlerHash == $b.binding.handlerHash and .workerPid == $b.binding.pid and .ownerSha256 == $b.ownerSha256' <<<"$binding" >/dev/null || refuse "worker changed after preview; no activation"
   check_expiry "START card expired during preflight; no activation"
   check_runtime_current
   # REF:L367-L374. The allowance was consumed at the first mutation (P3); an uncertain or failed activation never resets it.
@@ -636,11 +679,26 @@ main() {
   STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   ATTEMPT_FILE="$LIBRARY_DIR/$ID.consumed.json"
   mkdir -p "$RUN_DIR"
-  # Everything runs in one pipeline stage whose output is teed into run.log (no process substitution, so it also works in a
-  # sandbox). The stage sets its own traps; the pipeline's status is the stage's, since pipefail is on.
-  local code=0
+  # The phases run as a background stage whose output goes through a FIFO into tee -a run.log (no process substitution, so it also
+  # works in a sandbox). The stage sets its own traps.
+  # N1: a TERM or INT sent to this process is forwarded to the stage, whose own handler reconciles any activation attempt (returns
+  # only this Grant to Off) before exiting; this process then waits for the stage to finish and returns the stage's status.
   trap - ERR
-  run_phases 2>&1 | tee -a "$LOG" || code=$?
+  mkfifo "$RUN_DIR/.out"
+  tee -a "$LOG" < "$RUN_DIR/.out" &
+  local tee_pid=$!
+  run_phases > "$RUN_DIR/.out" 2>&1 &
+  local stage=$!
+  trap 'kill -TERM "$stage" 2>/dev/null || true' TERM INT
+  local code=0
+  while :; do
+    code=0
+    wait "$stage" || code=$?
+    kill -0 "$stage" 2>/dev/null || break
+  done
+  trap - TERM INT
+  wait "$tee_pid" 2>/dev/null || true
+  rm -f "$RUN_DIR/.out"
   return "$code"
 }
 

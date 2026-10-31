@@ -131,6 +131,10 @@ function validateStartRun(d: OperatorScriptDescriptor, id: string, script: strin
     if (e.project !== pins.project || e.plan !== pins.plan || e.action !== pins.actions[0]) {
       fail("INVALID_START_RUN", "The embedded planActivation must activate startRun.plan in startRun.project at the first pinned Action.");
     }
+    const scoped = pins.actions.map((action) => `${pins.project}/${action}`);
+    if (JSON.stringify(e.queueSegment.slice(0, scoped.length)) !== JSON.stringify(scoped)) {
+      fail("INVALID_START_RUN", "The embedded planActivation queueSegment must begin with the pinned project/action list, in order.");
+    }
     if (!pins.requiredDecisions.includes("0157")) fail("INVALID_START_RUN", "A START card that activates its Plan must require Decision 0157.");
   }
   if (script.replace(/\r\n/g, "\n") !== startRunLauncher(id)) fail("START_RUN_RUNNER_REQUIRED", "A START card script must be exactly the shared start-run launcher; bespoke commands are refused.");

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, realpathSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
@@ -58,6 +58,9 @@ export interface StartRunPinsDeps {
   queue(workspacePath: string): { revision: number; orderValid: boolean; unpositionedCount: number; ordered: Array<{ orderKey?: string | null }> };
   listFiles(directory: string): string[];
   sha256File(file: string): string;
+  /** Files named `filename` anywhere under `root`, newest first (read-only discovery of live receipts). */
+  findFiles(root: string, filename: string): string[];
+  readText(file: string): string;
 }
 
 export const realStartRunPinsDeps: StartRunPinsDeps = {
@@ -72,7 +75,14 @@ export const realStartRunPinsDeps: StartRunPinsDeps = {
   },
   queue: (workspacePath) => withReadOnlyDatabase(workspacePath, (db) => buildAgentQueue(db)),
   listFiles: (directory) => { try { return readdirSync(directory); } catch { return []; } },
-  sha256File: (file) => createHash("sha256").update(readFileSync(file)).digest("hex")
+  sha256File: (file) => createHash("sha256").update(readFileSync(file)).digest("hex"),
+  readText: (file) => readFileSync(file, "utf8"),
+  findFiles: (root, filename) => {
+    try {
+      return (readdirSync(root, { recursive: true }) as string[]).filter((entry) => path.basename(entry) === filename).map((entry) => path.join(root, entry))
+        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
+    } catch { return []; }
+  }
 };
 
 const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -153,7 +163,29 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   const labels = deps.launchctlList().split("\n").map((line) => line.trim().split(/\s+/).pop() ?? "").filter((label) => /^com\.arcadia\.local\.[A-Za-z0-9._-]+\.worker$/.test(label));
   if (labels.length !== 1) throw validationError(`Expected exactly one com.arcadia.local.*.worker launchd job, found ${labels.length}; no worker label was guessed.`);
 
-  const library = path.join(mainCheckout(toplevel, deps), "artifacts", "generated", "operator-scripts");
+  const main = mainCheckout(toplevel, deps);
+  const library = path.join(main, "artifacts", "generated", "operator-scripts");
+  // N6: the gate and STOP cards the handoffs and refusals name must exist in the library.
+  const entries = new Set(deps.listFiles(library));
+  for (const card of [START_RUN_DEFAULTS.gateCardId, START_RUN_DEFAULTS.offId]) {
+    if (!entries.has(`${card}.json`)) throw validationError(`Operator card ${card} is not in the library ${library}; no pins were computed.`);
+  }
+  // Evidence receipts are discovered, never defaulted: refuse when a live receipt cannot be found.
+  const closeouts = path.join(main, "artifacts", "generated", "session-closeouts");
+  const discover = (filename: string, label: string): { path: string; sha256: string } => {
+    const found = deps.findFiles(closeouts, filename)[0];
+    if (!found) throw validationError(`No ${label} receipt (${filename}) was found under ${closeouts}; no pins were computed.`);
+    return { path: found, sha256: deps.sha256File(found) };
+  };
+  const delegationReceipt = discover("start-stop-daily-chat-delegation.json", "START/STOP delegation");
+  const signInEvidence = discover("postrenewal-usage-worker-receipt.json", "sign-in evidence");
+  try {
+    const evidence = JSON.parse(deps.readText(signInEvidence.path)) as { success?: boolean; credentialExpiresAt?: string; windows?: Array<{ usedPercentage?: number }> };
+    if (evidence.success !== true || !(Date.parse(String(evidence.credentialExpiresAt)) > deps.now().getTime() + 5 * 60_000) ||
+        !Array.isArray(evidence.windows) || evidence.windows.length !== 2 || !evidence.windows.every((w) => Number.isFinite(w.usedPercentage) && (w.usedPercentage as number) >= 0 && (w.usedPercentage as number) < 100)) {
+      throw new Error("not usable");
+    }
+  } catch { throw validationError(`The sign-in evidence ${signInEvidence.path} is unreadable, unsuccessful, expiring within 5 minutes or shows a usage window at 100%.`); }
   const receipts = [
     ...deps.listFiles(library).filter((file) => file.endsWith(".consumed.json")).map((file) => path.join(library, file)),
     ...deps.listFiles(path.join(library, "runs", "markers")).filter((file) => file.endsWith(".consumed")).map((file) => path.join(library, "runs", "markers", file))
@@ -183,7 +215,9 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     gateCardId: START_RUN_DEFAULTS.gateCardId,
     offId: START_RUN_DEFAULTS.offId,
     grantedBy: `Rowan under P. Mark Anderson START/STOP delegation through ${expiresAt}`,
-    consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) }))
+    consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) })),
+    delegationReceipt,
+    signInEvidence
   };
   try { validateStartRunPins(startRun); }
   catch (error) { throw validationError(error instanceof StartRunPinsError ? error.message : String(error)); }

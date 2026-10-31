@@ -78,12 +78,15 @@ switch (key2) {
       const diff = git("diff", "--name-only", state.broker.revision, head, "--", ":(top)src", ":(top)scripts", ":(top)package.json");
       if (diff) reasons.push(`runtime paths differ: ${diff.split("\n").join(", ")}`);
     }
+    if (state.runtimeStale) reasons.push("forced stale");
     ok({ current: reasons.length === 0, head, installedRevision: state.broker.revision, reasons });
     break;
   }
   case "production preview": {
     const { scope, fingerprint } = realScope();
     const mismatch = state.preview?.fingerprint ?? null;
+    if (state.breakOnPreview === "owner") writeFileSync(path.join(state.workspace, ".arcadia", "worker.pid"), JSON.stringify({ pid: state.worker.pid, owner: "intruder" }));
+    if (state.breakOnPreview === "handler") { const beat = JSON.parse(readFileSync(heartbeatFile, "utf8")); beat.binding.handlerHash = "swapped"; writeFileSync(heartbeatFile, JSON.stringify(beat)); }
     ok({ preview: { expectedRevision: state.production.revision, scope, scopeFingerprint: mismatch ?? fingerprint, orderedActions: scope.actions.map((actionKey) => ({ actionKey, state: "ready" })), unmatched: { projects: [], plans: [] } } });
     break;
   }
@@ -91,6 +94,7 @@ switch (key2) {
     const { fingerprint } = realScope();
     if (!args.includes("--require-current-runtime")) { process.stderr.write("missing --require-current-runtime\n"); process.exit(95); }
     const mode = state.activate.mode;
+    if (mode === "slow") { state.production = { ...state.production, desiredState: "active", revision: state.production.revision + 1, authority: { requestId: get("--request-id"), scopeFingerprint: fingerprint } }; save(); Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 4000); ok({ result: { policy: { desiredState: "active", revision: state.production.revision, authority: state.production.authority } } }); break; }
     if (mode === "crash") { process.stderr.write("activate crashed\n"); process.exit(1); }
     if (mode === "committed_then_crash" || mode === "ok" || mode === "wrong_fingerprint") {
       state.production = { ...state.production, desiredState: "active", revision: state.production.revision + 1, authority: { requestId: get("--request-id"), scopeFingerprint: mode === "wrong_fingerprint" ? "f".repeat(32) : fingerprint } };

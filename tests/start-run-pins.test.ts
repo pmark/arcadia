@@ -38,10 +38,13 @@ export function validPins(overrides: Partial<StartRunPins> = {}): StartRunPins {
     offId: "restore-off-production",
     grantedBy: "Rowan under a fixture delegation",
     consumedHistory: [{ path: "/abs/one.consumed.json", sha256: "c".repeat(64) }],
+    delegationReceipt: { path: "/abs/delegation.json", sha256: "d".repeat(64) },
+    signInEvidence: { path: "/abs/signin.json", sha256: "e".repeat(64) },
     ...overrides
   };
 }
 
+const segmentActions = (e: { project: string; queueSegment: string[] }) => e.queueSegment.slice(0, 2).map((key) => key.slice(e.project.length + 1));
 function activationInput() {
   const d = JSON.parse(readFileSync(path.join(root, "artifacts/generated/operator-scripts/activate-production-claude-plan-20261017.json"), "utf8")) as OperatorScriptDescriptor;
   return structuredClone(d.planActivation!);
@@ -82,7 +85,11 @@ describe("startRun pins validator", () => {
     ["a relative history path", (p) => { p.consumedHistory = [{ path: "one.json", sha256: "c".repeat(64) }]; }],
     ["a history entry with an extra key", (p) => { p.consumedHistory = [{ path: "/a", sha256: "c".repeat(64), extra: 1 }]; }],
     ["a fractional revision", (p) => { p.production = { revision: 1.5, epoch: 1 }; }],
-    ["a multi-line intent", (p) => { p.intent = "a\nb"; }]
+    ["a multi-line intent", (p) => { p.intent = "a\nb"; }],
+    ["no delegation receipt", (p) => { delete p.delegationReceipt; }],
+    ["no sign-in evidence", (p) => { delete p.signInEvidence; }],
+    ["a relative sign-in path", (p) => { p.signInEvidence = { path: "s.json", sha256: "e".repeat(64) }; }],
+    ["an empty authority list", (p) => { p.consumedHistory = []; }]
   ])("refuses %s", (_label, mutate) => {
     const pins = structuredClone(validPins()) as unknown as Record<string, unknown>;
     mutate(pins);
@@ -104,7 +111,7 @@ describe("startRun descriptor contract", () => {
     const d = cardDescriptor();
     expect(validateOperatorScriptContract(d, ID, startRunLauncher(ID))).toBe(d);
     const e = activationInput().envelope;
-    const withActivation = cardDescriptor({ planActivation: activationInput() }, { project: e.project, plan: e.plan, actions: [e.action, "second-action"], requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"] });
+    const withActivation = cardDescriptor({ planActivation: activationInput() }, { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"] });
     expect(validateOperatorScriptContract(withActivation, ID, startRunLauncher(ID))).toBe(withActivation);
   });
   it.each<[string, (d: OperatorScriptDescriptor) => void, string]>([
@@ -120,11 +127,17 @@ describe("startRun descriptor contract", () => {
     mutate(d);
     expect(() => validateOperatorScriptContract(d, ID, startRunLauncher(ID))).toThrow(message);
   });
+  it("refuses a planActivation whose queue segment does not begin with the pinned Actions", () => {
+    const e = activationInput().envelope;
+    const input = activationInput();
+    input.envelope.queueSegment = [...e.queueSegment.slice(1), e.queueSegment[0]];
+    expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: input }, { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"] }), ID, startRunLauncher(ID))).toThrow();
+  });
   it("refuses a planActivation for another Plan, a different first Action, or without Decision 0157", () => {
     const e = activationInput().envelope;
-    const base = { project: e.project, plan: e.plan, actions: [e.action, "second-action"], requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"] };
+    const base = { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"] };
     expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: activationInput() }, { ...base, plan: "another-plan" }), ID, startRunLauncher(ID))).toThrow("must activate startRun.plan");
-    expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: activationInput() }, { ...base, actions: ["second-action", e.action] }), ID, startRunLauncher(ID))).toThrow("first pinned Action");
+    expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: activationInput() }, { ...base, actions: segmentActions(e).reverse() }), ID, startRunLauncher(ID))).toThrow("first pinned Action");
     expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: activationInput() }, { ...base, requiredDecisions: ["0130", "0058", "0097", "0134", "0156"] }), ID, startRunLauncher(ID))).toThrow("Decision 0157");
   });
   it.each([
@@ -155,7 +168,7 @@ describe("arcadia start-run pins", () => {
   const planDoc = (status: string, doneAction = "") => `---\nslug: fixture-plan\nproject: arcadia\nstatus: ${status}\nactions:\n  - id: first-action\n    status: ${doneAction === "first-action" ? "done" : "open"}\n  - id: second-action\n    status: open\n---\nbody\n`;
   const decision = (status = "approved", answer = "Yes") => `---\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
 
-  function fixture(options: { planStatus?: string; origin?: string; decisions?: Record<string, string>; files?: Record<string, string>; production?: Partial<ReturnType<StartRunPinsDeps["production"]>>; queueTop?: string[]; workers?: string; done?: string } = {}) {
+  function fixture(options: { planStatus?: string; origin?: string; decisions?: Record<string, string>; files?: Record<string, string>; production?: Partial<ReturnType<StartRunPinsDeps["production"]>>; queueTop?: string[]; workers?: string; done?: string; cards?: string[]; receipts?: string[]; credentialExpiresAt?: string; windowPercent?: number } = {}) {
     const repository = mkdtempSync(path.join(os.tmpdir(), "arcadia-start-run-pins-"));
     directories.push(repository);
     const library = path.join(repository, "artifacts", "generated", "operator-scripts");
@@ -188,8 +201,10 @@ describe("arcadia start-run pins", () => {
       launchctlList: () => options.workers ?? "PID\tStatus\tLabel\n123\t0\tcom.arcadia.local.742852621.worker\n-\t0\tcom.apple.other\n",
       production: () => ({ workspacePath: "/w/martianrover", desiredState: "inactive", revision: 83, epoch: 46, liveAdmissions: 0, ...options.production }),
       queue: () => ({ revision: 290, orderValid: true, unpositionedCount: 0, ordered: (options.queueTop ?? ["arcadia/first-action", "arcadia/second-action"]).map((orderKey) => ({ orderKey })) }),
-      listFiles: (directory) => directory === library ? ["earlier.consumed.json", "ignored.txt"] : directory === path.join(library, "runs", "markers") ? ["adopt.consumed"] : [],
-      sha256File: (file) => sha(path.basename(file))
+      listFiles: (directory) => directory === library ? ["earlier.consumed.json", "ignored.txt", ...(options.cards ?? ["enable-capacity-gate-20261017.json", "restore-off-production-bug-plan-first-supervised-run-2026-10-11.json"])] : directory === path.join(library, "runs", "markers") ? ["adopt.consumed"] : [],
+      sha256File: (file) => sha(path.basename(file)),
+      findFiles: (_root, filename) => (options.receipts ?? [filename]).filter((name) => name === filename).map((name) => `/closeouts/${name}`),
+      readText: () => JSON.stringify({ success: true, credentialExpiresAt: options.credentialExpiresAt ?? "2026-11-01T06:00:00Z", windows: [{ usedPercentage: options.windowPercent ?? 10 }, { usedPercentage: 20 }] })
     };
     const args: StartRunPinsOptions = { plan: "fixture-plan", actions: "first-action,second-action", provider: "claude-code-cli", expiresHours: 12, repository };
     return { deps, args, repository, library, calls };
@@ -230,7 +245,13 @@ describe("arcadia start-run pins", () => {
     ["a queue that does not start with the pinned Actions", { queueTop: ["arcadia/second-action", "arcadia/first-action"] }, {}, "queue entries"],
     ["no worker job", { workers: "PID\tStatus\tLabel\n" }, {}, "exactly one"],
     ["two worker jobs", { workers: "1\t0\tcom.arcadia.local.1.worker\n2\t0\tcom.arcadia.local.2.worker\n" }, {}, "exactly one"],
-    ["a retired Plan", { planStatus: "done" }, {}, "active Plan or a draft"]
+    ["a retired Plan", { planStatus: "done" }, {}, "active Plan or a draft"],
+    ["a missing gate card", { cards: ["restore-off-production-bug-plan-first-supervised-run-2026-10-11.json"] }, {}, "enable-capacity-gate-20261017"],
+    ["a missing STOP card", { cards: ["enable-capacity-gate-20261017.json"] }, {}, "restore-off-production"],
+    ["no delegation receipt", { receipts: ["postrenewal-usage-worker-receipt.json"] }, {}, "delegation"],
+    ["no sign-in evidence", { receipts: ["start-stop-daily-chat-delegation.json"] }, {}, "sign-in evidence"],
+    ["an expiring credential", { credentialExpiresAt: "2026-11-01T00:03:00Z" }, {}, "expiring within 5 minutes"],
+    ["a window at 100%", { windowPercent: 100 }, {}, "100%"]
   ])("refuses %s", (_label, fixtureOptions, argOverrides, message) => {
     const f = fixture(fixtureOptions);
     expect(() => buildStartRunPins({ ...f.args, ...argOverrides }, f.deps)).toThrow(message);

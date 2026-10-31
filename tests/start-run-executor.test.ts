@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
@@ -63,6 +63,10 @@ interface BoxOptions {
   executorPin?: string;
   tamper?: "descriptor" | "script" | "executor";
   historyDrift?: boolean;
+  receiptDrift?: "delegation" | "signin";
+  credentialExpiresAt?: string;
+  windowPercent?: number;
+  receiptHandler?: string;
   plist?: boolean;
   tmuxSessions?: boolean;
   config?: unknown;
@@ -136,6 +140,16 @@ function box(options: BoxOptions = {}) {
   mkdirSync(library, { recursive: true });
   const history = path.join(library, "earlier.consumed.json");
   writeFileSync(history, '{"state":"CONSUMED"}\n');
+  const delegation = path.join(root, "delegation.json");
+  const signIn = path.join(root, "signin.json");
+  const delegationBody = '{"delegation":"daily START/STOP"}\n';
+  const signInBody = JSON.stringify({
+    success: true, httpStatus: 200, outcome: "ok", handlerHash: options.receiptHandler ?? "handler-1111",
+    credentialExpiresAt: options.credentialExpiresAt ?? new Date(Date.now() + 3 * 3_600_000).toISOString(),
+    windows: [{ usedPercentage: options.windowPercent ?? 20 }, { usedPercentage: 30 }]
+  });
+  writeFileSync(delegation, delegationBody);
+  writeFileSync(signIn, signInBody);
   const pins: StartRunPins = {
     schema: "arcadia-start-run-v1", reviewedRevision: pin, executorSha256: options.executorPin ?? sha(EXECUTOR_SOURCE),
     workspace: "martianrover", project: "arcadia", plan: PLAN, actions: ACTIONS, provider: "claude-code-cli",
@@ -143,7 +157,8 @@ function box(options: BoxOptions = {}) {
     spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", ...(options.activation ? ["0157"] : [])],
     requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
     production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
-    grantedBy: "Rowan under a fixture delegation", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }]
+    grantedBy: "Rowan under a fixture delegation", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }],
+    delegationReceipt: { path: delegation, sha256: sha(delegationBody) }, signInEvidence: { path: signIn, sha256: sha(signInBody) }
   };
   const descriptor: OperatorScriptDescriptor = {
     schema: "arcadia-operator-script-v1", id: ID, kind: "grant", title: "START: fixture", script: `${ID}.sh`, repeatable: false,
@@ -163,6 +178,8 @@ function box(options: BoxOptions = {}) {
   if (options.tamper === "script") writeFileSync(scriptPath, script + "# tampered\n");
   if (options.tamper === "executor") writeFileSync(path.join(repo, "scripts", "start-run.sh"), EXECUTOR_SOURCE + "\n# tampered\n");
   if (options.historyDrift) writeFileSync(history, '{"state":"EDITED"}\n');
+  if (options.receiptDrift === "delegation") writeFileSync(delegation, delegationBody + " ");
+  if (options.receiptDrift === "signin") writeFileSync(signIn, signInBody + " ");
 
   mkdirSync(bin, { recursive: true });
   mkdirSync(path.join(workspace, "config"), { recursive: true });
@@ -198,7 +215,7 @@ function box(options: BoxOptions = {}) {
   const marker = path.join(library, `${ID}.consumed.json`);
   const env = (overrides: Record<string, string | undefined> = {}, actions = true): NodeJS.ProcessEnv => {
     const base: NodeJS.ProcessEnv = {
-      ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot,
+      ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot, START_RUN_TEST_FAKE: "1", ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS: "4",
       ...(actions ? { ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptorPath } : {})
     };
     delete base.ANTHROPIC_API_KEY; delete base.CODEX_SANDBOX; delete base.ARCADIA_WORKSPACE; delete base.VITEST;
@@ -333,7 +350,13 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     ["a moved queue revision", { state: (s) => { s.queue.revision = 291; } }, /queue revision changed/],
     ["pinned Actions out of order in the queue", { state: (s) => { s.queue.ordered.reverse(); } }, /pinned order/],
     ["an invalid queue", { state: (s) => { s.queue.orderValid = false; } }, /invalid/],
-    ["a rehearsal freeze", { state: (s) => { s.freeze = "refuse"; } }, /rehearsal freeze/]
+    ["a rehearsal freeze", { state: (s) => { s.freeze = "refuse"; } }, /rehearsal freeze/],
+    ["an expired credential", { credentialExpiresAt: "2020-01-01T00:00:00Z" }, /credential expiry/],
+    ["a credential within 5 minutes of expiry", { credentialExpiresAt: new Date(Date.now() + 120_000).toISOString() }, /credential expiry/],
+    ["a usage window at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/],
+    ["delegation receipt hash drift", { receiptDrift: "delegation" }, /delegation receipt drift/],
+    ["sign-in receipt hash drift", { receiptDrift: "signin" }, /sign-in evidence receipt drift/],
+    ["sign-in evidence naming another worker handler", { receiptHandler: "handler-other" }, /pre-restart worker handler/]
   ])("refuses %s", (_label, options, reason) => {
     const b = box(options);
     const headBefore = b.head();
@@ -482,7 +505,7 @@ describe("start-run executor: failures after the first mutation", () => {
     const b = box({ planStatus: "draft", activation: true, state: (s) => { s.planRunner.mode = "fail"; } });
     const result = b.run();
     consumed(b, result, "P5", /Plan-activation runner did not succeed|runner failed/);
-    expect(result.handoff).toContain("Plan-activation runner was invoked; its own one-shot allowance is consumed");
+    expect(result.handoff).toContain("Plan-activation runner was invoked. It is replay-safe");
     expect(result.receipt!.planActivatedByThisCard).toBe(false);
     expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "production activate")).toBe(false);
     expect(b.readState().production.desiredState).toBe("inactive");
@@ -530,4 +553,46 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(result.receipt!.offCleanup).toBe("OFF_FAILED");
     expect(result.handoff).toContain("Press the STOP button (restore-off-production) NOW");
   }, 120_000);
+
+  it("refuses when runtime-check reports the installed runtime is not current, after the restart", () => {
+    const b = box({ state: (s) => { s.runtimeStale = true; } });
+    const result = b.run();
+    consumed(b, result, "P4", /installed runtime is not current/);
+    expect(result.receipt!.runtimeUpgraded).toBe(true);
+    expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "production activate")).toBe(false);
+  }, 60_000);
+
+  it.each([["owner"], ["handler"]])("refuses with no activation when the worker %s changes between the previews", (kind) => {
+    const b = box({ state: (s) => { s.breakOnPreview = kind; } });
+    const result = b.run();
+    consumed(b, result, "P6", /worker changed after preview; no activation/);
+    expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "production activate")).toBe(false);
+    expect(result.receipt!.offCleanup).toBe("not_attempted");
+  }, 120_000);
+
+  it("records the pre- and post-restart handlers and a runtimeUpgraded flag on success", () => {
+    const b = box();
+    const result = b.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt!.runtimeUpgraded).toBe(true);
+    expect(result.receipt!.record).toMatchObject({ preRestartHandlerHash: "handler-1111", postRestartHandlerHash: `handler-${process.pid}` });
+    expect(result.receipt!.record.signInEvidence.windows).toHaveLength(2);
+  }, 120_000);
+
+  it("forwards a TERM to the stage so an in-flight activation is returned to Off", async () => {
+    const b = box({ state: (s) => { s.activate.mode = "slow"; } });
+    const child = spawn(b.scriptPath, ["run"], { env: { ...process.env, ...GIT_ENV, PATH: `${path.join(b.root, "bin")}:${process.env.PATH}`, HOME: path.join(b.root, "home"), FAKE_ROOT: b.root, FAKE_BIN: path.join(b.root, "bin"), FAKE_ARCADIA_ROOT: repoRoot, START_RUN_TEST_FAKE: "1", ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS: "4", ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: b.descriptorPath } });
+    const exited = new Promise<number | null>((resolve) => child.on("close", resolve));
+    const deadline = Date.now() + 100_000;
+    while (!b.calls().some((call) => call.args.slice(0, 2).join(" ") === "production activate") && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));
+    child.kill("SIGTERM");
+    const code = await exited;
+    expect(code).not.toBe(0);
+    const dir = path.join(b.library, "runs", ID);
+    const run = path.join(dir, readdirSync(dir)[0]);
+    const receipt = JSON.parse(readFileSync(path.join(run, "receipt.json"), "utf8"));
+    expect(receipt).toMatchObject({ outcome: "refused", allowanceConsumed: true, offCleanup: "returned_off" });
+    expect(receipt.reason).toMatch(/interrupted by a signal/);
+    expect(b.readState().production.desiredState).toBe("inactive");
+  }, 150_000);
 });

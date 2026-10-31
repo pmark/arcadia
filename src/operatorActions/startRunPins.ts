@@ -48,6 +48,10 @@ export interface StartRunPins {
   grantedBy: string;
   /** Receipts whose bytes must be unchanged (consumed markers of earlier runs, authority evidence). */
   consumedHistory: Array<{ path: string; sha256: string }>;
+  /** The START/STOP delegation receipt (REF L158 authority evidence); path plus sha256, never defaulted. */
+  delegationReceipt: { path: string; sha256: string };
+  /** The retained sign-in/usage evidence (REF L245-248): credential expiry, usage windows and the pre-restart worker handler. */
+  signInEvidence: { path: string; sha256: string };
 }
 
 export class StartRunPinsError extends Error {
@@ -60,9 +64,9 @@ const sha256 = /^[0-9a-f]{64}$/;
 const decisionId = /^\d{4}$/;
 const TRANSITIONS = ["validation", "acceptance", "pointer", "packet_approval"];
 export const START_RUN_KEYS = [
-  "actions", "concurrency", "consumedHistory", "executorSha256", "gateCardId", "grantedBy", "integrationDecision", "intent", "offId",
+  "actions", "concurrency", "consumedHistory", "delegationReceipt", "executorSha256", "gateCardId", "grantedBy", "integrationDecision", "intent", "offId",
   "packetApprovalHours", "plan", "production", "project", "provider", "queueRevision", "requiredDecisions", "requiredFiles",
-  "reviewedRevision", "schema", "spendDecision", "transitions", "workerLabel", "workspace"
+  "reviewedRevision", "schema", "signInEvidence", "spendDecision", "transitions", "workerLabel", "workspace"
 ];
 /** The repository path of the shared executor; every card pins its hash. */
 export const START_RUN_EXECUTOR_PATH = "scripts/start-run.sh";
@@ -116,12 +120,16 @@ export function validateStartRunPins(value: unknown): StartRunPins {
   if (!int(p.production.revision, 0) || !int(p.production.epoch, 0)) fail("startRun.production needs whole-number revision and epoch.");
   if (!int(p.queueRevision, 0)) fail("startRun.queueRevision must be a whole number.");
   if (typeof p.workerLabel !== "string" || !/^com\.arcadia\.[A-Za-z0-9._-]+\.worker$/.test(p.workerLabel)) fail("startRun.workerLabel must be a com.arcadia.*.worker launchd label.");
-  if (!Array.isArray(p.consumedHistory) || p.consumedHistory.length > 200) fail("startRun.consumedHistory must be a list of at most 200 receipts.");
+  if (!Array.isArray(p.consumedHistory) || p.consumedHistory.length < 1 || p.consumedHistory.length > 200) fail("startRun.consumedHistory must list 1 to 200 receipts (an empty authority list is refused).");
   for (const entry of p.consumedHistory) {
     exactKeys(entry, ["path", "sha256"], "startRun.consumedHistory entry");
     if (!text(entry.path, 1000) || !path.isAbsolute(entry.path) || typeof entry.sha256 !== "string" || !sha256.test(entry.sha256)) fail("Each consumedHistory entry needs an absolute path and a 64-hex sha256.");
   }
   if (!distinct(p.consumedHistory.map((entry) => entry.path))) fail("startRun.consumedHistory paths must be distinct.");
+  for (const [name, entry] of [["delegationReceipt", p.delegationReceipt], ["signInEvidence", p.signInEvidence]] as const) {
+    exactKeys(entry, ["path", "sha256"], `startRun.${name}`);
+    if (!text(entry.path, 1000) || !path.isAbsolute(entry.path) || typeof entry.sha256 !== "string" || !sha256.test(entry.sha256)) fail(`startRun.${name} needs an absolute path and a 64-hex sha256.`);
+  }
   return p;
 }
 
