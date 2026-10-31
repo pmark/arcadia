@@ -168,13 +168,20 @@ describe("executeCodexStep build-purpose failure", () => {
 
     const planned = runWorkPlanCommand({ workspace, workId });
     const approvalId = planned.data.buildApproval!.id;
+    // Generic build approvals have a promotion binding but no project-idea receipt.
+    expect(JSON.parse(planned.data.buildApproval!.context_json).planningPromotion).toMatchObject({
+      actionId: workId, buildInvocationId: planned.data.buildInvocation!.id
+    });
+    expect(JSON.parse(planned.data.buildApproval!.context_json).planningPromotion.buildPlanId).toBeUndefined();
     withDatabase(workspace, (db) => updateReviewItemStatus(db, approvalId, { status: "approved", decisionNote: "Operator approved the packet." }));
 
     // The launch path trusts the newest promotion review for the packet, so a
     // fresh open review opened here would silently de-authorize it.
     const replanned = runWorkPlanCommand({ workspace, workId });
+    expect(replanned.data.plan.id).toBe(planned.data.plan.id);
     expect(replanned.data.buildInvocation?.id).toBe(planned.data.buildInvocation?.id);
     expect(replanned.data.buildApproval?.id).toBe(approvalId);
+    expect(withDatabase(workspace, (db) => db.prepare("SELECT COUNT(*) AS count FROM execution_runs").get())).toEqual({ count: 0 });
     expect(replanned.data.buildApproval?.status).toBe("approved");
     const approvals = withDatabase(workspace, (db) =>
       db.prepare(

@@ -5,11 +5,11 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { runWorkPlanCommand, runWorkRunCommand } from "../src/commands/work.js";
+import { runDocsSyncCommand } from "../src/commands/docs.js";
 import { runProjectPrepareCommand } from "../src/commands/project.js";
 import { runReviewApproveCommand, runReviewDeferCommand, runReviewRejectCommand } from "../src/commands/review.js";
 import { runWorkerIteration } from "../src/commands/worker.js";
-import { runWorkPlanCommand, runWorkUpdateCommand } from "../src/commands/work.js";
+import { runWorkPlanCommand, runWorkRunCommand, runWorkUpdateCommand } from "../src/commands/work.js";
 import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -122,7 +122,124 @@ describe("project-idea planning promotion", () => {
     });
   });
 
-  it.each(["matching", "tampered", "missing", "wrong-plan", "reprepare-refused"] as const)("binds the real project-idea promotion before build execution: %s", (mode) => {
+  it("reuses the accepted promotion when preparing the promoted Action again", () => {
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+    const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
+    const packetPath = path.join(fixture.workspace, promotion.buildPacketPath);
+    const packet = readFileSync(packetPath);
+    const before = withDatabase(fixture.workspace, (db) => ({
+      invocations: listCodexInvocationsForWorkItem(db, promotion.actionId),
+      decisions: listReviewItems(db, "all"),
+      runs: listExecutionRuns(db)
+    }));
+    const result = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" });
+    expect(result.data.plan.id).toBe(promotion.buildPlanId);
+    expect(result.data.buildInvocation?.id).toBe(promotion.buildInvocationId);
+    expect(readFileSync(packetPath)).toEqual(packet);
+    withDatabase(fixture.workspace, (db) => {
+      expect(listCodexInvocationsForWorkItem(db, promotion.actionId)).toEqual(before.invocations);
+      expect(listReviewItems(db, "all")).toEqual(before.decisions);
+      expect(listExecutionRuns(db)).toEqual(before.runs);
+    });
+  });
+
+  it.each(["packet", "planning-artifact", "binding", "missing-receipt", "missing-marker", "profile", "running", "duplicate"] as const)(
+    "refuses stale or spent promoted build preparation: %s", (mode) => {
+      const fixture = preparedProjectIdea();
+      const acceptance = executePlanningRun(fixture);
+      const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
+      const packetPath = path.join(fixture.workspace, promotion.buildPacketPath);
+      if (mode === "packet") writeFileSync(packetPath, "changed");
+      if (mode === "planning-artifact") writeFileSync(path.join(fixture.workspace, promotion.planningArtifactPath), "changed");
+      withDatabase(fixture.workspace, (db) => {
+        if (mode === "missing-marker") db.prepare("UPDATE work_items SET clarification_source = NULL WHERE id = ?").run(promotion.actionId);
+        if (mode === "missing-receipt") db.prepare("UPDATE review_items SET context_json = ? WHERE id = ?").run("{}", acceptance.id);
+        if (mode === "binding") {
+          const context = JSON.parse(getReviewItem(db, acceptance.id)!.context_json);
+          context.planningPromotion.buildPlanId = "wrong";
+          db.prepare("UPDATE review_items SET context_json = ? WHERE id = ?").run(JSON.stringify(context), acceptance.id);
+        }
+        if (mode === "running") db.prepare("UPDATE codex_invocations SET status = ? WHERE id = ?").run("running", promotion.buildInvocationId);
+        if (mode === "duplicate") db.prepare("INSERT INTO codex_invocations SELECT 'duplicate', purpose, agent_profile, workspace_scope, command, prompt_path, jsonl_output_path, final_message_path, status, work_item_id, plan_id, plan_step_id, run_id, execution_profile_json, provider_mapping_id, provider_binding_id, created_at, updated_at FROM codex_invocations WHERE id = ?").run(promotion.buildInvocationId);
+      });
+      const before = withDatabase(fixture.workspace, (db) => ({ invocations: listCodexInvocationsForWorkItem(db, promotion.actionId), decisions: listReviewItems(db, "all"), runs: listExecutionRuns(db) }));
+      expect(() => runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: mode === "profile" ? "claude_build" : "codex_build" })).toThrow(mode === "missing-receipt" ? /Promoted Action has no matching acceptance receipt; preserve its packet and investigate the missing binding\./ : mode === "running" ? /running/ : /./);
+      withDatabase(fixture.workspace, (db) => {
+        expect(listCodexInvocationsForWorkItem(db, promotion.actionId)).toEqual(before.invocations);
+        expect(listReviewItems(db, "all")).toEqual(before.decisions);
+        expect(listExecutionRuns(db)).toEqual(before.runs);
+      });
+    }
+  );
+
+  it("prepares one separately approved replacement after a consumed attempt", () => {
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+    const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
+    const packet = readFileSync(path.join(fixture.workspace, promotion.buildPacketPath));
+    const registryPath = getWorkspacePaths(fixture.workspace).codingAgentProfiles;
+    const registry = JSON.parse(readFileSync(registryPath, "utf8")) as { profiles: Array<Record<string, unknown>> };
+    const profile = registry.profiles.find((item) => item.name === "codex_build")!;
+    const fake = path.join(fixture.workspace, "fake-build.cjs");
+    writeFileSync(fake, 'process.stdin.resume(); process.stdin.on("end", () => process.exit(1));');
+    profile.command = process.execPath;
+    profile.args = [fake];
+    writeFileSync(registryPath, JSON.stringify(registry));
+    const attempted = runWorkRunCommand({ workspace: fixture.workspace, workId: promotion.actionId, plan: promotion.buildPlanId, allowCodexBuild: true, agentProfile: "codex_build" });
+    expect(attempted.data.run.status).toBe("failed");
+    runDocsSyncCommand({ workspace: fixture.workspace, project: fixture.projectSlug, apply: true });
+    // A day-stale fixture document may be skipped by sync; set the blocked
+    // state through the supported command so this guard is deterministic.
+    runWorkUpdateCommand({ workspace: fixture.workspace, workId: promotion.actionId, status: "blocked", queue: "blocked", classification: "blocked" });
+    expect(() => runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }))
+      .toThrow("Blocked Action cannot be prepared for planning.");
+    runWorkUpdateCommand({ workspace: fixture.workspace, workId: promotion.actionId, status: "open", queue: "work_queue", classification: "agent" });
+    const before = withDatabase(fixture.workspace, (db) => ({ original: listCodexInvocationsForWorkItem(db, promotion.actionId), runs: listExecutionRuns(db), acceptance: getReviewItem(db, acceptance.id) }));
+    const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    expect(prepared.plan.id).not.toBe(promotion.buildPlanId);
+    expect(prepared.buildInvocation?.id).not.toBe(promotion.buildInvocationId);
+    expect(prepared.buildApproval?.status).toBe("open");
+    const replacement = readFileSync(path.join(fixture.workspace, prepared.buildInvocation!.prompt_path), "utf8");
+    expect(replacement).toContain(fixture.idea);
+    expect(replacement).toContain(promotion.planningArtifactPath);
+    expect(replacement).toContain(promotion.validationArtifactPath);
+    expect(replacement).toContain(acceptance.id);
+    expect(readFileSync(path.join(fixture.workspace, promotion.buildPacketPath))).toEqual(packet);
+    const repeated = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    expect(repeated.plan.id).toBe(prepared.plan.id);
+    expect(repeated.buildInvocation?.id).toBe(prepared.buildInvocation?.id);
+    expect(repeated.buildApproval?.id).toBe(prepared.buildApproval?.id);
+    withDatabase(fixture.workspace, (db) => {
+      const invocations = listCodexInvocationsForWorkItem(db, promotion.actionId);
+      expect(invocations).toHaveLength(2);
+      expect(invocations.find((item) => item.id === promotion.buildInvocationId)).toEqual(before.original[0]);
+      expect(listExecutionRuns(db)).toEqual(before.runs);
+      expect(getReviewItem(db, acceptance.id)).toEqual(before.acceptance);
+    });
+  });
+
+  it.each(["deferred", "approved", "rejected"] as const)("respects the current replacement approval state: %s", (status) => {
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+    const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE codex_invocations SET status = 'completed' WHERE id = ?").run(promotion.buildInvocationId));
+    const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE review_items SET status = ? WHERE id = ?").run(status, prepared.buildApproval!.id));
+    const runs = withDatabase(fixture.workspace, (db) => listExecutionRuns(db));
+    const repeated = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    expect(repeated.buildInvocation?.id).toBe(prepared.buildInvocation?.id);
+    if (status === "rejected") {
+      expect(repeated.buildApproval?.id).not.toBe(prepared.buildApproval?.id);
+      expect(repeated.buildApproval?.status).toBe("open");
+    } else {
+      expect(repeated.buildApproval?.id).toBe(prepared.buildApproval?.id);
+      expect(repeated.buildApproval?.status).toBe(status);
+    }
+    expect(withDatabase(fixture.workspace, (db) => listExecutionRuns(db))).toEqual(runs);
+  });
+
+  it.each(["matching", "tampered", "missing", "wrong-plan", "reprepare-reuses-packet"] as const)("binds the real project-idea promotion before build execution: %s", (mode) => {
     const fixture = preparedProjectIdea();
     const acceptance = executePlanningRun(fixture);
     const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
@@ -144,13 +261,15 @@ describe("project-idea planning promotion", () => {
       context.planningPromotion.buildPlanId = "different-plan";
       db.prepare("UPDATE review_items SET context_json = ? WHERE id = ?").run(JSON.stringify(context), acceptance.id);
     });
-    if (mode === "reprepare-refused") {
-      expect(() => runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }))
-        .toThrow("Existing planned workflow is not a single managed Codex planning step.");
+    if (mode === "reprepare-reuses-packet") {
+      const replanned = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+      expect(replanned.plan.id).toBe(promotion.buildPlanId);
+      expect(replanned.buildInvocation?.id).toBe(promotion.buildInvocationId);
+      expect(readFileSync(packetPath)).toEqual(packet);
     }
     const planId = promotion.buildPlanId;
     const run = runWorkRunCommand({ workspace: fixture.workspace, workId: promotion.actionId, plan: planId, allowCodexBuild: true, agentProfile: "codex_build" });
-    if (mode === "matching" || mode === "reprepare-refused") {
+    if (mode === "matching" || mode === "reprepare-reuses-packet") {
       expect(run.data.run.status).toBe("requires_review");
       expect(readFileSync(packetPath)).toEqual(packet);
       const input = readFileSync(capture, "utf8");
