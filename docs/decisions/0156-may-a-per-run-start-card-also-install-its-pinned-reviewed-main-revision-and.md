@@ -4,7 +4,7 @@ type: decision
 id: "0156"
 slug: may-a-per-run-start-card-also-install-its-pinned-reviewed-main-revision-and
 project: arcadia
-status: open
+status: approved
 question: May a per-run START card also install its pinned, reviewed main revision and restart the worker before starting production?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: "Yes: START installs its pinned reviewed main (recommended)"
+decided: 2026-10-31
 ---
 
 # Decision 0156: May a per-run START card also install its pinned, reviewed main revision and restart the worker before starting production?
