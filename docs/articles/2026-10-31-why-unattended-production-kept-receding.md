@@ -73,8 +73,8 @@ The acceptance record credits one of three jobs:
 [PR #1787](https://github.com/pmark/arcadia/pull/1787), was merged on 10-27,
 after the checklist's last refresh. The checklist still lists it as held.
 
-Of 287 PRs opened since 10-14, about 25 came from worker Sessions (by branch
-name pattern; a heuristic).
+Of 287 PRs opened since 10-14, 21 have titles beginning "Candidate:". That is
+the worker's naming for a Session-produced candidate.
 
 Every fix to the worker must pass the same chain: merge, adopt into the main
 checkout, install the broker, load the worker, then START. Each step is
@@ -99,19 +99,22 @@ Even the standing daily allowance can't be used safely. No authoritative
 daily ledger shows whether the day's attempt was already spent
 ([checklist](../managed-production-readiness.md)). Decision 0144 approved
 useful side work through Codex while Claude was blocked. Nothing in it
-returned the pointer to the goal afterward. Production has stayed Off since,
-at revision 83, epoch 46, with zero admissions.
+returned the pointer to the goal afterward. Production has stayed Off since.
+It was last observed on 10-31 at revision 83, epoch 46, with zero admissions
+([10-31 report](../reports/go-1921-claude-continuation-2026-10-31.md)).
 
 ### 5. Records outweigh priority
 
-Since 10-14 these sizes grew (compared with commit `c256ee207`):
+Since 10-13 these sizes grew (compared with commit `c256ee207`, dated 10-13):
 
 - The readiness checklist grew from 61 KB to 133 KB.
 - `docs/agent-guidance/` grew from 183 KB to 253 KB.
 - Checked-in skill sources grew from 7 to 14.
 
-About 68 of the 262 merged PR titles mention settlements, records, Decisions,
-receipts, handoffs or preservation (a keyword heuristic). All seven newest
+About 67 of the 262 PRs merged since 10-14 are record-type, by title. That is
+a heuristic: a case-insensitive match on "settle", "record", "decision",
+"receipt", "handoff", "readiness" or "preserve". The count varies by one
+between runs of the match. All seven newest
 Decisions,
 [0149](../decisions/0149-how-far-should-arcadia-automate-persona-identity-in-generated-identity-text.md)
 to
@@ -130,7 +133,17 @@ carefully preserve custody, pins and cautions. The shared
 [handoff skill](../../.agents/skills/arcadia-handoff/SKILL.md) never mentions
 the goal, the milestone, priority or the critical path.
 
-## What we don't know yet
+## What is not done
+
+- **Unattended production.** Production is still Off. `first-unattended-run`
+  is not accepted.
+- **The proposed changes.** None of the five changes below is built yet.
+- **The Go-probe runtime work is parked.** PR #1921 is merged, but the worker
+  has not been reloaded with it. The failed successor's recovery has also not
+  been done
+  ([10-31 report](../reports/go-1921-claude-continuation-2026-10-31.md)).
+
+Still unknown:
 
 - **Why Go on 10-27.** PR #1821 quotes the operator's instruction, but not the
   reason. One likely reason is that Go was the only route still moving while
