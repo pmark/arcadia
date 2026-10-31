@@ -41,6 +41,7 @@ import { getWorkspacePaths } from "../src/workspace/paths.js";
 import { runGoContextCommand } from "../src/commands/goContext.js";
 import { goResolutionIdentity } from "../apps/dashboard/lib/go-continue.js";
 import { runManagedProductionTick } from "../src/production/tick.js";
+import { applyRecoverySuccessorDisposition, previewRecoverySuccessorDisposition } from "../src/sessions/recoverySuccessorDisposition.js";
 
 const roots: string[] = [];
 
@@ -101,6 +102,121 @@ describe("launchGuardedHostSession", () => {
         expect(db.prepare("SELECT count(*) AS n FROM terminal_claim_recoveries").get()).toEqual({ n: 1 });
         expect(db.prepare("SELECT count(*) AS n FROM agent_sessions").get()).toEqual({ n: 2 });
       });
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("disposes a recovery successor that failed before start, then admits only a fresh recovery request (Issue #1920)", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const failed = failedRecoverySuccessor(f);
+      const fresh = f.preview("recovery-fresh");
+      expect(fresh.ready).toBe(false);
+      expect(fresh.prerequisites.join("\n")).toMatch(/already has a recovery successor/);
+
+      const shown = f.disposition.preview(failed.successorId);
+      expect(shown.refusals).toEqual([]);
+      expect(shown.ready).toBe(true);
+      expect(shown.binding).toMatchObject({
+        originalSessionId: f.first.session.id, successorSessionId: failed.successorId, consumedRequestId: "recovery-after-1917",
+        falseReceipt: { id: failed.receiptId, requestId: `worker-tick-reconcile-${failed.successorId}`, runId: "run_unrelated" },
+        candidate: { head: f.first.launchRevision }, claimGeneration: (f.claim() as { claim_generation: string }).claim_generation,
+        noProviderStart: { status: "failed", startedAt: null, exitStatus: null, tmuxLive: false, candidateProcesses: 0, sessionLogPresent: false }
+      });
+      const before = f.disposition.snapshot();
+      const applied = f.disposition.apply(failed.successorId, shown.fingerprint!);
+      expect(applied.created).toBe(true);
+      expect(applied.disposition).toMatchObject({ original_session_id: f.first.session.id, successor_session_id: failed.successorId,
+        consumed_request_id: "recovery-after-1917", false_receipt_id: failed.receiptId, candidate_head: f.first.launchRevision });
+      // Append-only: every Session, receipt, attempt, claim and recovery row is unchanged.
+      expect(f.disposition.snapshot()).toEqual(before);
+      withDatabase(f.fixture.workspace, db => {
+        expect(() => db.prepare("UPDATE terminal_claim_recovery_dispositions SET fingerprint = 'x'").run()).toThrow(/append-only/);
+        expect(() => db.prepare("DELETE FROM terminal_claim_recovery_dispositions").run()).toThrow(/append-only/);
+      });
+
+      // The consumed request is never reused; a fresh one can be previewed and launched once.
+      expect(f.preview("recovery-after-1917").ready).toBe(false);
+      expect(() => f.launch("recovery-after-1917", failed.fingerprint)).toThrow(/already consumed/);
+      const ready = f.preview("recovery-fresh");
+      expect(ready.prerequisites).toEqual([]);
+      // A later wall clock, as on the host: tmux names carry the launch timestamp.
+      const successor = f.launch("recovery-fresh", ready.previewFingerprint, { now: new Date(f.fixture.now.getTime() + 60_000) });
+      expect(successor.session.status).toBe("running");
+      expect(successor.session.id).not.toBe(failed.successorId);
+      expect(successor.session.worktree_path).toBe(f.first.session.worktree_path);
+      expect(f.launch("recovery-fresh", ready.previewFingerprint).session.id).toBe(successor.session.id);
+      expect(f.tmux.launches).toHaveLength(2);
+      expect(f.preview("recovery-third").ready).toBe(false);
+      withReadOnlyDatabase(f.fixture.workspace, db => {
+        expect(db.prepare("SELECT count(*) AS n FROM terminal_claim_recoveries").get()).toEqual({ n: 1 });
+        expect(db.prepare("SELECT successor_session_id FROM terminal_claim_recovery_reattempts").all()).toEqual([{ successor_session_id: successor.session.id }]);
+        expect(JSON.stringify(getSessionExitReceipt(db, f.first.session.id))).toBe(f.original);
+        expect(getSessionExitReceipt(db, failed.successorId)?.id).toBe(failed.receiptId);
+      });
+      withDatabase(f.fixture.workspace, db => {
+        expect(() => db.prepare("UPDATE terminal_claim_recovery_reattempts SET request_id = 'x'").run()).toThrow(/append-only/);
+        expect(() => db.prepare("DELETE FROM terminal_claim_recovery_reattempts").run()).toThrow(/append-only/);
+      });
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it("returns the same disposition receipt for a duplicate apply and refuses a different fingerprint", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const failed = failedRecoverySuccessor(f);
+      const shown = f.disposition.preview(failed.successorId);
+      const first = f.disposition.apply(failed.successorId, shown.fingerprint!);
+      const second = f.disposition.apply(failed.successorId, shown.fingerprint!);
+      expect(second.created).toBe(false);
+      expect(second.disposition).toEqual(first.disposition);
+      expect(f.disposition.preview(failed.successorId).disposition?.id).toBe(first.disposition.id);
+      expect(f.disposition.refusal(() => f.disposition.apply(failed.successorId, "0".repeat(64)))).toBe("already_disposed");
+      withReadOnlyDatabase(f.fixture.workspace, db =>
+        expect(db.prepare("SELECT count(*) AS n FROM terminal_claim_recovery_dispositions").get()).toEqual({ n: 1 }));
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
+  it.each([
+    ["foreign", "foreign_pair"], ["live", "successor_live"], ["started", "successor_started"], ["exited", "successor_exited"],
+    ["dirty", "candidate_dirty"], ["moved", "candidate_moved"], ["claim generation", "stale_preview"], ["production", "production_active"],
+    ["recording", "successor_recording_present"], ["process", "candidate_process_live"], ["uncertain liveness", "candidate_process_live"],
+    ["receipt", "stale_preview"]
+  ])("refuses a recovery successor disposition with %s evidence", (kind, code) => {
+    const f = terminalRecoveryFixture();
+    try {
+      const failed = failedRecoverySuccessor(f);
+      const shown = f.disposition.preview(failed.successorId);
+      expect(shown.ready).toBe(true);
+      const worktree = f.first.session.worktree_path;
+      withDatabase(f.fixture.workspace, db => {
+        if (kind === "started") db.prepare("UPDATE agent_sessions SET started_at = ? WHERE id = ?").run(new Date().toISOString(), failed.successorId);
+        if (kind === "exited") db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(failed.successorId);
+        if (kind === "claim generation") db.prepare("UPDATE agent_worktree_reservations SET claim_generation = 'changed' WHERE action_id = 'define-contract'").run();
+        if (kind === "production") db.prepare("UPDATE production_policy SET desired_state = 'active' WHERE id = 'workspace'").run();
+        // A field outside the binding's named ids still changes the bound receipt hash.
+        if (kind === "receipt") db.prepare("UPDATE session_exit_receipts SET reason = 'rewritten' WHERE session_id = ?").run(failed.successorId);
+      });
+      if (kind === "live") f.tmux.live.add(failed.successorTmux);
+      // The recording wrapper creates this log before the provider runs; started_at may still be null after a crash.
+      if (kind === "recording") {
+        mkdirSync(path.dirname(sessionLogPath(f.fixture.workspace, failed.successorId)), { recursive: true });
+        writeFileSync(sessionLogPath(f.fixture.workspace, failed.successorId), "");
+      }
+      if (kind === "process") setWorktreeLivenessProbeForTests(() => ({ ok: true, processes: [{ pid: 42, command: "claude", cwd: worktree }] }));
+      if (kind === "uncertain liveness") setWorktreeLivenessProbeForTests(() => ({ ok: false, error: "cannot inspect" }));
+      if (kind === "dirty" || kind === "moved") {
+        writeFileSync(path.join(worktree, "change.txt"), "change");
+        if (kind === "moved") { git(worktree, ["add", "change.txt"]); git(worktree, ["commit", "-m", "change"]); }
+      }
+      const before = f.disposition.snapshot();
+      const apply = kind === "foreign"
+        ? () => f.disposition.apply(failed.successorId, shown.fingerprint!, failed.successorId)
+        : () => f.disposition.apply(failed.successorId, shown.fingerprint!);
+      expect(f.disposition.refusal(apply)).toBe(code);
+      expect(f.disposition.snapshot()).toEqual(before);
+      withReadOnlyDatabase(f.fixture.workspace, db =>
+        expect(db.prepare("SELECT count(*) AS n FROM terminal_claim_recovery_dispositions").get()).toEqual({ n: 0 }));
+      expect(f.preview("recovery-fresh").ready).toBe(false);
     } finally { setWorktreeLivenessProbeForTests(null); }
   });
 
@@ -2414,7 +2530,48 @@ function terminalRecoveryFixture() {
     ...overrides
   }));
   const originalAttempts = withReadOnlyDatabase(fixture.workspace, db => JSON.stringify(db.prepare("SELECT * FROM session_role_attempts").all()));
-  return { fixture, first, tmux, original, originalAttempts, originalClaim: claim(), claim, preview, launch };
+  const dispositionInput = (successorSessionId: string, originalSessionId = first.session.id) =>
+    ({ repoRoot: fixture.repo, workspace: fixture.workspace, originalSessionId, successorSessionId, tmux, now: new Date(fixture.now.getTime() + 2000) });
+  const disposition = {
+    preview: (successorSessionId: string) => withReadOnlyDatabase(fixture.workspace, db =>
+      previewRecoverySuccessorDisposition({ db, ...dispositionInput(successorSessionId) })),
+    apply: (successorSessionId: string, fingerprint: string, originalSessionId?: string) => withDatabase(fixture.workspace, db =>
+      applyRecoverySuccessorDisposition({ db, ...dispositionInput(successorSessionId, originalSessionId), fingerprint })),
+    refusal: (run: () => unknown): string | undefined => {
+      try { run(); } catch (error) { return error instanceof ArcadiaError ? String(error.details?.code) : String(error); }
+      return undefined;
+    },
+    snapshot: () => withReadOnlyDatabase(fixture.workspace, db => Object.fromEntries(
+      ["agent_sessions", "session_exit_receipts", "session_role_attempts", "agent_worktree_reservations", "terminal_claim_recoveries", "operator_launch_authorizations"]
+        .map(table => [table, db.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all()])))
+  };
+  const launchRevision = git(first.session.worktree_path, ["rev-parse", "HEAD"]).trim();
+  return { fixture, first: { ...first, launchRevision }, tmux, original, originalAttempts, originalClaim: claim(), claim, preview, launch, disposition };
+}
+
+/**
+ * The live #1920 shape: an explicit recovery prepares its successor, a
+ * pre-#1921 worker tick reconciles the still-prepared lease into an exit
+ * receipt borrowed from an unrelated Run, and the launcher then refuses and
+ * fails its own never-started successor.
+ */
+function failedRecoverySuccessor(f: ReturnType<typeof terminalRecoveryFixture>) {
+  const shown = f.preview("recovery-after-1917");
+  expect(shown.ready).toBe(true);
+  let successorId = "";
+  expect(() => f.launch("recovery-after-1917", shown.previewFingerprint, { testHooks: {
+    afterSessionPreparedBeforeCommit: () => withDatabase(f.fixture.workspace, db => {
+      successorId = getRepositoryLease(db, f.fixture.repo)!.id;
+      reconcileSessionExit({ db, sessionId: successorId, requestId: `worker-tick-reconcile-${successorId}`, repoRoot: f.fixture.repo });
+      db.prepare("UPDATE session_exit_receipts SET outcome = 'successful_exit', run_id = 'run_unrelated' WHERE session_id = ?").run(successorId);
+    })
+  } })).toThrow(/already has a recovery successor/);
+  expect(f.tmux.launches).toHaveLength(1);
+  return withReadOnlyDatabase(f.fixture.workspace, db => {
+    const successor = db.prepare("SELECT * FROM agent_sessions WHERE id = ?").get(successorId) as { status: string; started_at: string | null; exit_status: number | null; tmux_session_name: string };
+    expect(successor).toMatchObject({ status: "failed", started_at: null, exit_status: null });
+    return { successorId, successorTmux: successor.tmux_session_name, receiptId: getSessionExitReceipt(db, successorId)!.id, fingerprint: shown.previewFingerprint };
+  });
 }
 
 function preview1(fixture: ReturnType<typeof preparedFixture>, requestId = "req-1", tmux?: Pick<TmuxAdapter, "hasSession">) {

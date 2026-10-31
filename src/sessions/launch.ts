@@ -1,4 +1,7 @@
-import { getTerminalClaimRecovery, getRecoveryForSuccessor, inspectTerminalClaimRecovery } from "./terminalClaimRecovery.js";
+import {
+  findTerminalClaimRecoveryByRequest, getRecoveryForSuccessor, getRecoverySuccessorDisposition, getTerminalClaimRecovery,
+  inspectTerminalClaimRecovery, recordTerminalClaimRecovery
+} from "./terminalClaimRecovery.js";
 import path from "node:path";
 import { applyPromotionAssignment, matchesPromotionBase } from "./promotionAssignment.js";
 import { actionAcceptanceCriteria } from "./actionBrief.js";
@@ -250,6 +253,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // request's still-leased Session may be returned; no post-exit replay mints
   // a second principal, even if Go and its preview are unchanged.
   const requestRepository = canonicalPath(repoRoot);
+  if (input.recoverSessionId) assertRecoveryRequestNotConsumed(input.db, requestRepository, input.requestId, input.recoverSessionId);
   assertGuardedRequestAvailable(input, getRepositoryLease(input.db, repoRoot)?.id);
   const assertFreshRequest = () => assertOperatorLaunchRequestAvailable(input.db, requestRepository, input.requestId);
   const now = input.now ?? new Date();
@@ -791,12 +795,11 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
             branch: recovery.branch, project: preview.projectSlug, actionId: preview.actionId!, now });
         },
         record: (session: AgentSession) => {
-          input.db.prepare(`INSERT INTO terminal_claim_recoveries
-            (original_session_id, successor_session_id, repository_path, request_id, preview_fingerprint, binding_json)
-            VALUES (?, ?, ?, ?, ?, ?)`).run(recovery.sessionId, session.id, canonicalPath(repoRoot),
-              input.requestId, preview.previewFingerprint, JSON.stringify({ recovery,
-                successorClaimGeneration: getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId!, now)?.claim_generation,
-                documentRevisions: preview.documentRevisions, queueRevision: preview.queueRevision, baseRevision: preview.baseRevision }));
+          recordTerminalClaimRecovery(input.db, { original_session_id: recovery.sessionId, successor_session_id: session.id,
+            repository_path: canonicalPath(repoRoot), request_id: input.requestId, preview_fingerprint: preview.previewFingerprint,
+            binding_json: JSON.stringify({ recovery,
+              successorClaimGeneration: getActiveActionClaim(input.db, repoRoot, preview.projectSlug, preview.actionId!, now)?.claim_generation,
+              documentRevisions: preview.documentRevisions, queueRevision: preview.queueRevision, baseRevision: preview.baseRevision }) });
           if (input.operatorLaunch) mintOperatorLaunchAuthorization(input.db, { session, source: input.operatorLaunch.source,
             requestId: input.requestId, env: input.operatorLaunch.env, now });
         }
@@ -1027,6 +1030,16 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   }
   markAttemptRunning(input.db, development, now);
   return { reused: false, session: launched, preview, admission };
+}
+
+/** A recovery request is single-use: a disposed successor's request, or another original's, never launches again. */
+function assertRecoveryRequestNotConsumed(db: Database.Database, repositoryPath: string, requestId: string, originalSessionId: string): void {
+  const consumed = findTerminalClaimRecoveryByRequest(db, repositoryPath, requestId);
+  if (consumed && (consumed.original_session_id !== originalSessionId || getRecoverySuccessorDisposition(db, consumed.successor_session_id))) {
+    throw validationError("Terminal candidate recovery refused: this request id is already consumed by an earlier recovery; preview a fresh request.", {
+      code: "recovery_request_consumed", successorSessionId: consumed.successor_session_id
+    });
+  }
 }
 
 /** Recovery's own receipt binds replay even without optional exit authority. */

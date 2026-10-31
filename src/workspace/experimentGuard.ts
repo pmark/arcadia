@@ -238,6 +238,12 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "session title": exempt("Formats a chat title from its arguments; reads no workspace."),
   "session launch": ALLOWED,
   "session reconcile": ALLOWED,
+  "session preview-dispose-recovery": ALLOWED,
+  // Allowed, not guarded: like `session launch`/`reconcile`, its only write is
+  // one append-only row in the resolved workspace's own database (an
+  // experiment's isolated store there); it reads --repo with read-only Git,
+  // launches nothing and touches no host or live state.
+  "session dispose-recovery": ALLOWED,
   "pr assess-blast-radius": ALLOWED,
   "pr code-review": exempt("Reads a pull request's advisory review from GitHub for the named repository; reads no workspace."),
   "pr decline-finding": guarded(

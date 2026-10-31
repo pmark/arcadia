@@ -210,6 +210,12 @@ import {
   runSessionPreviewLaunchCommand,
   runSessionLaunchCommand
 } from "./commands/advance.js";
+import {
+  renderSessionDisposeRecoverySuccess,
+  renderSessionPreviewDisposeRecoverySuccess,
+  runSessionDisposeRecoveryCommand,
+  runSessionPreviewDisposeRecoveryCommand
+} from "./commands/recoveryDisposition.js";
 import { confirmOperatorLaunchAtTerminal, refuseInsideArcadiaSession, type OperatorLaunchSource } from "./sessions/operatorLaunch.js";
 import { runAssessPrBlastRadiusCommand, renderAssessPrBlastRadiusSuccess } from "./commands/prBlastRadius.js";
 import { renderPrCodeReviewSuccess, renderPrDeclineFindingSuccess, runPrCodeReviewCommand, runPrDeclineFindingCommand } from "./commands/prCodeReview.js";
@@ -2439,6 +2445,27 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       },
       renderSessionLaunchSuccess
     )
+  );
+  addJsonOption(
+    session.command("preview-dispose-recovery")
+      .description("Preview the append-only disposition of an explicit recovery successor that failed with no recorded provider start (Issue #1920); writes only the CLI activity entry")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
+      .requiredOption("--original <id>", "The recovered original Session id")
+      .requiredOption("--successor <id>", "The failed recovery successor Session id")
+  ).action((options: { workspace: string; repo: string; original: string; successor: string; json?: boolean }) =>
+    runCliAction("session.previewDisposeRecovery", options, () => runSessionPreviewDisposeRecoveryCommand(options), renderSessionPreviewDisposeRecoverySuccess)
+  );
+  addJsonOption(
+    session.command("dispose-recovery")
+      .description("Append the previewed disposition of a failed recovery successor with no recorded provider start; rewrites, releases and launches nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
+      .requiredOption("--original <id>", "The recovered original Session id")
+      .requiredOption("--successor <id>", "The failed recovery successor Session id")
+      .requiredOption("--fingerprint <sha256>", "The exact disposition fingerprint from session preview-dispose-recovery")
+  ).action((options: { workspace: string; repo: string; original: string; successor: string; fingerprint: string; json?: boolean }) =>
+    runCliAction("session.disposeRecovery", options, () => runSessionDisposeRecoveryCommand(options), renderSessionDisposeRecoverySuccess)
   );
   addJsonOption(
     session.command("reconcile <id>")
