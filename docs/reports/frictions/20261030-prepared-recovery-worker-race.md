@@ -2,9 +2,11 @@
 id: prepared-recovery-worker-race
 cost: unknown
 fix: PR 1921 running-only worker exit guard and deterministic interleaving regression
-status: source-fixed-live-disposition-pending
+status: source-merged-runtime-and-disposition-pending
 ---
 # Issue #1920: worker reconciled a recovery before provider start
+
+**Post-merge update, 2026-10-31:** PR #1921 merged as `42ecdeeb1ce3ee0345fbb77074c4d32316f45ca1` after independent exact-head review and all 15 CI jobs passed. The broker and worker remain at earlier installed revision `eb15d32cb3820caa649d532d4847fa3835d53ffa`; the false exit receipt and failed successor remain protected. See [the Claude Code continuation](../go-1921-claude-continuation-2026-10-31.md) for the pinned adoption and append-only disposition preparation. This update is not installed or live recovery proof; Production remains Off.
 
 Operator-directed repair for [Issue #1920](https://github.com/pmark/arcadia/issues/1920), requested October 30, 2026 (Pacific). Rowan remains the operator contact in chat `01a18f8f-0e69-7642-8762-0b5bee402f27`; this bounded implementer is `01a1904e-2e49-77a1-835a-36ca3142d865`. No governed Action was assigned. The selected `fix-tidy-torn-tail-byte-offset` Action is unrelated and untouched.
 
