@@ -3,7 +3,6 @@ import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync } from 
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
-import { isRequiresReviewValue } from "../domain/constants.js";
 import { discoverDocs } from "../docs/discover.js";
 import { resolveDispatch, type DispatchResolution } from "../docs/dispatch.js";
 import type { PlanDoc } from "../docs/types.js";
@@ -198,12 +197,11 @@ interface ExitEvidenceProbe {
   candidateHasChanges: boolean;
   candidateRevision: string | null;
   runId: string | null;
-  runFailed: boolean;
   artifactId: string | null;
   decisionId: string | null;
 }
 
-function probeExitEvidence(db: Database.Database, session: AgentSession, repoRoot: string): ExitEvidenceProbe {
+function probeExitEvidence(session: AgentSession, repoRoot: string): ExitEvidenceProbe {
   let actionDoneInPlan = false;
   const discovered = discoverDocs(repoRoot);
   const plan = discovered.docs.find(
@@ -225,35 +223,17 @@ function probeExitEvidence(db: Database.Database, session: AgentSession, repoRoo
     }
   }
 
-  const run = db.prepare(
-    "SELECT id, status FROM execution_runs WHERE work_item_id = ? ORDER BY updated_at DESC LIMIT 1"
-  ).get(session.work_item_id) as { id: string; status: string } | undefined;
-  // The most recent Run is always linked for audit purposes, whatever its
-  // status -- but a deliberately failed or unreviewed Run must not count as
-  // evidence of successful work, so `runFailed` gates classification
-  // separately from `runId`, which callers use for the receipt's link.
-  const runFailed = run?.status === "failed" || isRequiresReviewValue(run?.status);
-  let artifactId: string | null = null;
-  if (run) {
-    const artifact = db.prepare(
-      "SELECT artifact_id FROM run_artifacts WHERE run_id = ? ORDER BY rowid DESC LIMIT 1"
-    ).get(run.id) as { artifact_id: string } | undefined;
-    artifactId = artifact?.artifact_id ?? null;
-  }
-
-  const decision = db.prepare(
-    "SELECT id FROM review_items WHERE project_id = ? AND status = 'approved' AND context_json LIKE ? ORDER BY created_at DESC LIMIT 1"
-  ).get(session.project_id, `%"actionId":"${session.action_id}"%`) as { id: string } | undefined;
-
+  // Execution Runs and approvals are not bound to a managed Session producer.
+  // A work item or reused packet alone cannot establish that this Session made
+  // them. Historical records stay intact; do not present them as exit evidence.
   return {
     actionDoneInPlan,
     worktreeExists,
     candidateHasChanges,
     candidateRevision,
-    runId: run?.id ?? null,
-    runFailed,
-    artifactId,
-    decisionId: decision?.id ?? null
+    runId: null,
+    artifactId: null,
+    decisionId: null
   };
 }
 
@@ -322,7 +302,7 @@ export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenc
   if (!evidence.worktreeExists) {
     return evidence.runId
       ? { outcome: "failed_execution", reason: "The Session's worktree is gone and no candidate can be resumed." }
-      : { outcome: "missing_evidence", reason: "The Session's worktree is gone and no Run evidence was ever recorded." };
+      : { outcome: "missing_evidence", reason: "The Session's worktree is gone and no Session-bound Run evidence was recorded." };
   }
   if (evidence.candidateHasChanges) {
     return { outcome: "incomplete_resumable", reason: "The Session exited with an unfinished candidate that can be resumed." };
@@ -336,11 +316,8 @@ export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenc
   if (session.exit_status !== null && session.exit_status !== 0) {
     return { outcome: "failed_execution", reason: `The Session exited with a nonzero status (${session.exit_status}).` };
   }
-  if (evidence.runFailed) {
-    return { outcome: "failed_execution", reason: "The most recently recorded Run did not pass; a failed or unreviewed Run is not evidence of successful work." };
-  }
   if (!evidence.runId) {
-    return { outcome: "missing_evidence", reason: "A zero exit status alone is not evidence of completed work; no Run was recorded." };
+    return { outcome: "missing_evidence", reason: "A zero exit status alone is not evidence of completed work; no Session-bound Run evidence was recorded." };
   }
   return { outcome: "successful_exit", reason: "The Session exited cleanly with recorded Run evidence, awaiting acceptance." };
 }
@@ -582,7 +559,7 @@ function completionCapabilityRefusal(session: AgentSession, workspace: string | 
   if ((sourceCompletionRequired && !capability) || (capability && (!workspace || capability.sessionId !== session.id || capability.packetId !== session.packet_id
     || capability.packetSha256 !== session.packet_sha256 || capability.freshHostValidationAtSettlement !== "required"
     || capability.localAskTransport !== "ready"))) {
-    return "Host-owned source completion capability is missing, mismatched, or not freshly ready; the local complete Ask remains preserved and unsettled.";
+    return "Host-owned source completion capability is missing, mismatched, or not freshly ready; completion cannot be settled.";
   }
   if (capability?.directWorkspaceWrite === "required" && !allowDirectWorkspaceWrite) {
     return "The host completion contract requires direct workspace writes, but the source-only path records that capability unavailable.";
@@ -853,7 +830,7 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   }
 
   const repoRoot = path.resolve(input.repoRoot);
-  const evidence = probeExitEvidence(db, session, repoRoot);
+  const evidence = probeExitEvidence(session, repoRoot);
   const signInFailure = detectProviderSignInFailure(session, input.workspace);
   let { outcome, reason } = classifyExitOutcome(session, evidence, signInFailure);
   // A Plan already marked done is historic evidence for legacy Sessions only.
