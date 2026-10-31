@@ -193,6 +193,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   ),
   "production status": ALLOWED,
   "production freeze-check": ALLOWED,
+  "production runtime-check": exempt("Compares the installed broker release with a named repository's HEAD; reads no workspace and records nothing."),
   "production preview": ALLOWED,
   "production activate": guarded("Grants the standing production authorization and its Grants.", PRODUCTION_ALTERNATIVE),
   "production reactivate-preview": ALLOWED,

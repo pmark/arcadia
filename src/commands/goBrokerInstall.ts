@@ -791,6 +791,13 @@ function readAgentAskSkillTemplate(repository: string): string {
   return readFileSync(path.join(repository, "src", "agentSetup", "arcadia-agent-ask.SKILL.md"), "utf8");
 }
 
+/** The release revision the installed broker launchers point at, or null when none is installed or the install is inconsistent. */
+export function readInstalledBrokerRevision(home?: string): string | null {
+  const binDirectory = path.join(path.resolve(home ?? homedir()), ".local", "bin");
+  const broker = inspectInstalledBroker(brokerExecutables(binDirectory));
+  return broker.issues.length === 0 ? broker.revision : null;
+}
+
 function inspectInstalledBroker(executables: BrokerExecutables): {
   revision: string | null;
   releaseDirectory: string | null;
