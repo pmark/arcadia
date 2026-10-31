@@ -6,10 +6,10 @@ title: Posts
 <ul class="posts">
 {% for post in site.posts %}
   <li>
-    <a href="{{ post.url | relative_url }}">{{ post.title }}</a>
+    <a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
     <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %B %Y" }}</time>
     {% if post.status == "draft" %}<span class="badge">draft</span>{% endif %}
-    {% if post.summary %}<p>{{ post.summary }}</p>{% endif %}
+    {% if post.summary %}<p>{{ post.summary | escape }}</p>{% endif %}
   </li>
 {% endfor %}
 </ul>

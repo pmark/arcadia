@@ -2,7 +2,7 @@
 // Stage the blog source: copies site/ plus dated docs/articles/*.md posts into
 // <outDir>, normalising each post for Jekyll. Never modifies docs/articles/.
 // Usage: node site/stage.mjs <outDir>
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,8 +20,18 @@ rmSync(outDir, { recursive: true, force: true });
 mkdirSync(path.join(outDir, "_posts"), { recursive: true });
 cpSync(siteDir, outDir, { recursive: true });
 
-// Relative links would 404 on the site: point sibling posts at their post page
-// and everything else at the repository file on main.
+// Defensive privacy sanitising: agent e-mail addresses, local home paths and
+// tailnet hosts must never reach the public site.
+function sanitize(text) {
+  return text
+    .replace(/\s*<[^<>\s@]+@[^<>\s]+>/g, "")
+    .replace(/[\w.+-]+@agents\.arcadia\.local/g, "")
+    .replace(/\/Users\/[^\s)"'`]*/g, "[local path]")
+    .replace(/[\w.-]+\.ts\.net/g, "[tailnet host]");
+}
+
+// Relative links would 404 on the site: point sibling posts at their post page,
+// copy referenced images into the build, and send other files to the repo on main.
 function rewriteLinks(body, dir) {
   let fenced = false;
   return body
@@ -29,13 +39,24 @@ function rewriteLinks(body, dir) {
     .map((line) => {
       if (/^\s*(```|~~~)/.test(line)) fenced = !fenced;
       if (fenced) return line;
-      return line.replace(/(!?)\]\((?!https?:|mailto:|#)([^)\s]+)\)/g, (m, bang, target) => {
+      return line.replace(/(!?)\[([^\]]*)\]\(([^)\s]+)\)/g, (m, bang, label, target) => {
+        if (/^([a-z][a-z0-9+.-]*:|#|\/)/i.test(target)) return m; // absolute, anchor, root-absolute, //host
         const [file, hash = ""] = target.split(/(?=#)/);
         const sibling = POST.exec(file);
-        if (!bang && sibling) return `](../${sibling[2]}/${hash})`;
+        if (!bang && sibling) return `[${label}](../${sibling[2]}/${hash})`;
         const repoPath = path.posix.normalize(path.posix.join(dir, file));
         if (repoPath.startsWith("..")) return m;
-        return `](${bang ? RAW : `${REPO}/blob/main`}/${repoPath}${hash})`;
+        if (bang) {
+          const src = path.join(repoRoot, repoPath);
+          if (existsSync(src)) {
+            const name = repoPath.replace(/[^\w.-]+/g, "-");
+            mkdirSync(path.join(outDir, "assets", "articles"), { recursive: true });
+            cpSync(src, path.join(outDir, "assets", "articles", name));
+            return `![${label}](../../assets/articles/${name})`;
+          }
+          return `![${label}](${RAW}/${repoPath})`;
+        }
+        return `[${label}](${REPO}/blob/main/${repoPath}${hash})`;
       });
     })
     .join("\n");
@@ -45,6 +66,7 @@ let count = 0;
 for (const name of readdirSync(articlesDir).sort()) {
   if (!POST.test(name)) continue; // README.md, templates/ and receipts/ are not posts
   let text = readFileSync(path.join(articlesDir, name), "utf8").replace(/\r\n/g, "\n");
+  text = sanitize(text);
   let front = "";
   const fm = /^---\n([\s\S]*?)\n---\n/.exec(text);
   if (fm) {
@@ -53,7 +75,7 @@ for (const name of readdirSync(articlesDir).sort()) {
   }
   const h1 = /^# +(.+)$/m.exec(text);
   if (!/^title:/m.test(front)) {
-    const title = (h1 ? h1[1] : name.replace(POST, "$2")).replace(/"/g, '\\"');
+    const title = (h1 ? h1[1] : name.replace(POST, "$2")).replace(/[\\"]/g, (c) => "\\" + c);
     front = `title: "${title}"\n${front}`;
   }
   if (h1) text = text.replace(h1[0] + "\n", ""); // the layout renders the title
