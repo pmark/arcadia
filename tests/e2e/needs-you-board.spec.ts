@@ -1,4 +1,5 @@
-import { mkdirSync, readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { expect, test as base, type Page } from "@playwright/test";
 import { runProjectPrepareCommand } from "../../src/commands/project.js";
@@ -133,6 +134,7 @@ test("a deferral without a trigger is refused and one with a trigger is persiste
 test("a prepared plan is readable at phone width and requires feedback before it is sent back", async ({ page, arcadia }) => {
   const repository = path.join(arcadia.root, "repos", "prepared-plan");
   mkdirSync(repository, { recursive: true });
+  initializeFixtureRepository(repository);
   const idea = "A calm local tool that turns workshop observations into a prioritized improvement queue.";
   const prepared = runProjectPrepareCommand({
     workspace: arcadia.root,
@@ -182,6 +184,24 @@ test("a prepared plan is readable at phone width and requires feedback before it
   });
   expect(state.action).toMatchObject({ status: "open", queue: "work_queue", work_classification: "agent" });
 });
+
+function initializeFixtureRepository(repository: string): void {
+  const env = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "Cody Swift",
+    GIT_AUTHOR_EMAIL: "cody.swift@agents.arcadia.local",
+    GIT_COMMITTER_NAME: "Cody Swift",
+    GIT_COMMITTER_EMAIL: "cody.swift@agents.arcadia.local"
+  };
+  const run = (args: string[]) => {
+    const result = spawnSync("git", args, { cwd: repository, env, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+  };
+  run(["init", "-q"]);
+  writeFileSync(path.join(repository, "README.md"), "# Prepared-plan fixture\n", "utf8");
+  run(["add", "README.md"]);
+  run(["commit", "-m", "Fixture baseline"]);
+}
 
 test("the dashboard's own quick-defer keeps working without collecting a trigger", async ({ page, arcadia }) => {
   await submitAsk(page, arcadia, CANONICAL_REQUEST);
