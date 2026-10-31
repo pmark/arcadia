@@ -1,0 +1,30 @@
+{
+  "session_id": "01a1904e-2e49-77a1-835a-36ca3142d865",
+  "role": "driver",
+  "model": "gpt-6 (exact runtime model unavailable)",
+  "effort": null,
+  "configured_effort": "high",
+  "effective_effort": null,
+  "effort_source": "Handoff requested Codex Astra/high; actual binding unavailable",
+  "action_id": "operator-directed:#1920",
+  "pr": 1921,
+  "tokens_in_uncached": null,
+  "tokens_in_cached": null,
+  "tokens_out": null,
+  "wall_min": null,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [],
+  "operator_touches": null,
+  "host_touches": null,
+  "frictions": [
+    {
+      "id": "prepared-recovery-worker-race",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/pull/1921"
+    }
+  ],
+  "outcome": "stopped",
+  "stop_reason": "Source PR handoff; merge, install, live failed-successor disposition and new provider attempt remain separate approval boundaries.",
+  "notes": "Snapshot after independent review round 1; final delta review and CI are recorded on PR 1921. Production Off; no live retry."
+}

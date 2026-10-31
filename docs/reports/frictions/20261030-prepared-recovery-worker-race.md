@@ -1,3 +1,9 @@
+---
+id: prepared-recovery-worker-race
+cost: unknown
+fix: PR 1921 running-only worker exit guard and deterministic interleaving regression
+status: source-fixed-live-disposition-pending
+---
 # Issue #1920: worker reconciled a recovery before provider start
 
 Operator-directed repair for [Issue #1920](https://github.com/pmark/arcadia/issues/1920), requested October 30, 2026 (Pacific). Rowan remains the operator contact in chat `01a18f8f-0e69-7642-8762-0b5bee402f27`; this bounded implementer is `01a1904e-2e49-77a1-835a-36ca3142d865`. No governed Action was assigned. The selected `fix-tidy-torn-tail-byte-offset` Action is unrelated and untouched.
@@ -31,3 +37,14 @@ Candidate: `codex/fix-1920-recovery-successor`, isolated at `/private/tmp/arcadi
 Local receipts, failing-first and passing logs, instruction paths/byte counts and targeted retrieval sections are retained in the implementer's `issue-1920-evidence` artifact directory. Durable lesson `lesson_575e98c85b9e7f8d7032` records the verified cause. Prevention is the source guard and interleaving regression, rather than another workaround in Notes To Self.
 
 Host friction: the first Git fetch was sandbox-denied on FETCH_HEAD; the first pinned-runtime invocation was denied its mise trust link; lesson capture was denied workspace writes. Each proceeded through ordinary host escalation on the same target. No automatic approval rejection or workspace substitution occurred.
+
+## Validation and review snapshot
+
+- Focused failing-first regression: exit 1 with the exact live refusal; unchanged test after the predicate repair: exit 0.
+- Combined launch/worker/preview suites: 190 passed, five Go-parity failures at the inherited sandbox host-controller guard. Ordinary host execution of that seven-case subgroup passed all seven, without unsetting markers or weakening tests.
+- `mise exec -- pnpm build`: exit 0 (repository lint, core and Discord builds).
+- Independent review round 1 of `8b3ca3b549545ee9fc8bcc16c39f84a08c3c3694`: no actionable findings. [Signed published report](https://github.com/pmark/arcadia/pull/1921#issuecomment-6539369203). Primary reflog unchanged.
+- Initial sandbox rehearsal: exit 1, 31 scenario reports retained. Failures included unavailable validation-descendant terminal proof and a real-tmux stub timeout. This was the wrong environment for the documented host rehearsal; the supported host run is separate evidence.
+- Initial CI lint job passed ESLint but rejected this report's missing friction frontmatter. Added the required id/cost/fix/status metadata and ran `check:session-ledger` before the follow-up push; no validation rule was weakened.
+- Final host-rehearsal, exact-head delta-review and CI results are recorded on [PR #1921](https://github.com/pmark/arcadia/pull/1921); this snapshot does not claim those pending results.
+- Read-only production check at `2026-10-31T05:01:18.701Z`: inactive revision 83, epoch 46, zero live admissions.
