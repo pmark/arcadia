@@ -63,7 +63,7 @@ interface BoxOptions {
   executorPin?: string;
   tamper?: "descriptor" | "script" | "executor";
   historyDrift?: boolean;
-  receiptDrift?: "delegation" | "signin";
+  receiptDrift?: "signin";
   credentialExpiresAt?: string;
   windowPercent?: number;
   receiptHandler?: string;
@@ -140,25 +140,22 @@ function box(options: BoxOptions = {}) {
   mkdirSync(library, { recursive: true });
   const history = path.join(library, "earlier.consumed.json");
   writeFileSync(history, '{"state":"CONSUMED"}\n');
-  const delegation = path.join(root, "delegation.json");
   const signIn = path.join(root, "signin.json");
-  const delegationBody = '{"delegation":"daily START/STOP"}\n';
   const signInBody = JSON.stringify({
     success: true, httpStatus: 200, outcome: "ok", handlerHash: options.receiptHandler ?? "handler-1111",
     credentialExpiresAt: options.credentialExpiresAt ?? new Date(Date.now() + 3 * 3_600_000).toISOString(),
     windows: [{ usedPercentage: options.windowPercent ?? 20 }, { usedPercentage: 30 }]
   });
-  writeFileSync(delegation, delegationBody);
   writeFileSync(signIn, signInBody);
   const pins: StartRunPins = {
     schema: "arcadia-start-run-v1", reviewedRevision: pin, executorSha256: options.executorPin ?? sha(EXECUTOR_SOURCE),
     workspace: "martianrover", project: "arcadia", plan: PLAN, actions: ACTIONS, provider: "claude-code-cli",
     transitions: ["validation", "acceptance", "pointer", "packet_approval"], concurrency: 1, packetApprovalHours: 24, intent: "A fixture run on the claude-code provider.",
-    spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", ...(options.activation ? ["0157"] : [])],
+    spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"],
     requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
     production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
-    grantedBy: "Rowan under a fixture delegation", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }],
-    delegationReceipt: { path: delegation, sha256: sha(delegationBody) }, signInEvidence: { path: signIn, sha256: sha(signInBody) }
+    grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }],
+    signInEvidence: { path: signIn, sha256: sha(signInBody) }
   };
   const descriptor: OperatorScriptDescriptor = {
     schema: "arcadia-operator-script-v1", id: ID, kind: "grant", title: "START: fixture", script: `${ID}.sh`, repeatable: false,
@@ -172,13 +169,14 @@ function box(options: BoxOptions = {}) {
   const descriptorPath = path.join(library, `${ID}.json`);
   writeFileSync(scriptPath, script, { mode: 0o755 });
   writeFileSync(descriptorPath, JSON.stringify(descriptor, null, 2) + "\n");
+  // Fixture-only wait shortening, honoured by the executor only because this marker sits in the fake library.
+  writeFileSync(path.join(library, ".start-run-test-fixture"), "4");
   mkdirSync(path.join(library, "reviewed"));
   writeFileSync(path.join(library, "reviewed", `${ID}.json`), JSON.stringify({ sh: sha(readFileSync(scriptPath)), json: sha(readFileSync(descriptorPath)), executor: sha(EXECUTOR_SOURCE) }));
   if (options.tamper === "descriptor") writeFileSync(descriptorPath, readFileSync(descriptorPath, "utf8") + "\n");
   if (options.tamper === "script") writeFileSync(scriptPath, script + "# tampered\n");
   if (options.tamper === "executor") writeFileSync(path.join(repo, "scripts", "start-run.sh"), EXECUTOR_SOURCE + "\n# tampered\n");
   if (options.historyDrift) writeFileSync(history, '{"state":"EDITED"}\n');
-  if (options.receiptDrift === "delegation") writeFileSync(delegation, delegationBody + " ");
   if (options.receiptDrift === "signin") writeFileSync(signIn, signInBody + " ");
 
   mkdirSync(bin, { recursive: true });
@@ -215,7 +213,7 @@ function box(options: BoxOptions = {}) {
   const marker = path.join(library, `${ID}.consumed.json`);
   const env = (overrides: Record<string, string | undefined> = {}, actions = true): NodeJS.ProcessEnv => {
     const base: NodeJS.ProcessEnv = {
-      ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot, START_RUN_TEST_FAKE: "1", ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS: "4",
+      ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot,
       ...(actions ? { ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptorPath } : {})
     };
     delete base.ANTHROPIC_API_KEY; delete base.CODEX_SANDBOX; delete base.ARCADIA_WORKSPACE; delete base.VITEST;
@@ -354,7 +352,6 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     ["an expired credential", { credentialExpiresAt: "2020-01-01T00:00:00Z" }, /credential expiry/],
     ["a credential within 5 minutes of expiry", { credentialExpiresAt: new Date(Date.now() + 120_000).toISOString() }, /credential expiry/],
     ["a usage window at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/],
-    ["delegation receipt hash drift", { receiptDrift: "delegation" }, /delegation receipt drift/],
     ["sign-in receipt hash drift", { receiptDrift: "signin" }, /sign-in evidence receipt drift/],
     ["sign-in evidence naming another worker handler", { receiptHandler: "handler-other" }, /pre-restart worker handler/]
   ])("refuses %s", (_label, options, reason) => {
@@ -581,7 +578,7 @@ describe("start-run executor: failures after the first mutation", () => {
 
   it("forwards a TERM to the stage so an in-flight activation is returned to Off", async () => {
     const b = box({ state: (s) => { s.activate.mode = "slow"; } });
-    const child = spawn(b.scriptPath, ["run"], { env: { ...process.env, ...GIT_ENV, PATH: `${path.join(b.root, "bin")}:${process.env.PATH}`, HOME: path.join(b.root, "home"), FAKE_ROOT: b.root, FAKE_BIN: path.join(b.root, "bin"), FAKE_ARCADIA_ROOT: repoRoot, START_RUN_TEST_FAKE: "1", ARCADIA_START_RUN_TEST_HEARTBEAT_SECONDS: "4", ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: b.descriptorPath } });
+    const child = spawn(b.scriptPath, ["run"], { env: { ...process.env, ...GIT_ENV, PATH: `${path.join(b.root, "bin")}:${process.env.PATH}`, HOME: path.join(b.root, "home"), FAKE_ROOT: b.root, FAKE_BIN: path.join(b.root, "bin"), FAKE_ARCADIA_ROOT: repoRoot, ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: b.descriptorPath } });
     const exited = new Promise<number | null>((resolve) => child.on("close", resolve));
     const deadline = Date.now() + 100_000;
     while (!b.calls().some((call) => call.args.slice(0, 2).join(" ") === "production activate") && Date.now() < deadline) await new Promise((r) => setTimeout(r, 100));

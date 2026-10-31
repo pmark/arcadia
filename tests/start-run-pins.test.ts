@@ -29,16 +29,15 @@ export function validPins(overrides: Partial<StartRunPins> = {}): StartRunPins {
     intent: "A fixture run.",
     spendDecision: "0130",
     integrationDecision: "0058",
-    requiredDecisions: ["0130", "0058", "0097", "0134", "0156"],
+    requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"],
     requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts"],
     production: { revision: 83, epoch: 46 },
     queueRevision: 290,
     workerLabel: "com.arcadia.local.1.worker",
     gateCardId: "enable-capacity-gate-20261017",
     offId: "restore-off-production",
-    grantedBy: "Rowan under a fixture delegation",
+    grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
     consumedHistory: [{ path: "/abs/one.consumed.json", sha256: "c".repeat(64) }],
-    delegationReceipt: { path: "/abs/delegation.json", sha256: "d".repeat(64) },
     signInEvidence: { path: "/abs/signin.json", sha256: "e".repeat(64) },
     ...overrides
   };
@@ -86,7 +85,8 @@ describe("startRun pins validator", () => {
     ["a history entry with an extra key", (p) => { p.consumedHistory = [{ path: "/a", sha256: "c".repeat(64), extra: 1 }]; }],
     ["a fractional revision", (p) => { p.production = { revision: 1.5, epoch: 1 }; }],
     ["a multi-line intent", (p) => { p.intent = "a\nb"; }],
-    ["no delegation receipt", (p) => { delete p.delegationReceipt; }],
+    ["a leftover delegation receipt", (p) => { (p as any).delegationReceipt = { path: "/abs/d.json", sha256: "d".repeat(64) }; }],
+    ["Decision 0157 not required", (p) => { p.requiredDecisions = p.requiredDecisions.filter((d: string) => d !== "0157"); }],
     ["no sign-in evidence", (p) => { delete p.signInEvidence; }],
     ["a relative sign-in path", (p) => { p.signInEvidence = { path: "s.json", sha256: "e".repeat(64) }; }],
     ["an empty authority list", (p) => { p.consumedHistory = []; }]
@@ -219,7 +219,7 @@ describe("arcadia start-run pins", () => {
       actions: ["first-action", "second-action"], production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: "com.arcadia.local.742852621.worker"
     });
     expect(result.expires_at).toBe("2026-11-01T12:00:00Z");
-    expect(result.startRun.requiredDecisions).not.toContain("0157");
+    expect(result.startRun.requiredDecisions).toContain("0157");
     expect(result.startRun.consumedHistory.map((entry) => entry.path)).toEqual([
       path.join(f.library, "earlier.consumed.json"), path.join(f.library, "runs", "markers", "adopt.consumed")
     ].sort());
@@ -248,8 +248,7 @@ describe("arcadia start-run pins", () => {
     ["a retired Plan", { planStatus: "done" }, {}, "active Plan or a draft"],
     ["a missing gate card", { cards: ["restore-off-production-bug-plan-first-supervised-run-2026-10-11.json"] }, {}, "enable-capacity-gate-20261017"],
     ["a missing STOP card", { cards: ["enable-capacity-gate-20261017.json"] }, {}, "restore-off-production"],
-    ["no delegation receipt", { receipts: ["postrenewal-usage-worker-receipt.json"] }, {}, "delegation"],
-    ["no sign-in evidence", { receipts: ["start-stop-daily-chat-delegation.json"] }, {}, "sign-in evidence"],
+    ["no sign-in evidence", { receipts: [] }, {}, "sign-in evidence"],
     ["an expiring credential", { credentialExpiresAt: "2026-11-01T00:03:00Z" }, {}, "expiring within 5 minutes"],
     ["a window at 100%", { windowPercent: 100 }, {}, "100%"]
   ])("refuses %s", (_label, fixtureOptions, argOverrides, message) => {
