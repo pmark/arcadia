@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: bootstrap-managed-production-to-build-flight-deck
 project: arcadia
-status: draft
+status: active
 milestone: Bootstrap managed production to run unattended from the GitHub board
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-28
+updated: 2026-10-30
 actions:
   - id: implement-evidence-bound-action-completion
     title: Implement the operator-settled managed-Action completion routine so bootstrap work can advance from accepted evidence without hand-editing governance.
@@ -4277,8 +4277,9 @@ actions:
     references: ["docs/autonomous-production-rehearsal-runbook.md", "src/operatorActions/rehearsalChain.ts", "scripts/render-rehearsal-chain-operator-scripts.ts", "docs/reports/rehearsal-reviewer-smoke/README.md", "https://github.com/pmark/arcadia/issues/1031"]
 questions: []
 decisions: []
-recommended_model: claude-sonnet-5
-recommended_reasoning_effort: high
+recommended_model: light
+recommended_reasoning_effort: low
+current_action: fix-tidy-torn-tail-byte-offset
 ---
 
 # Bootstrap managed production to run unattended from the GitHub board
