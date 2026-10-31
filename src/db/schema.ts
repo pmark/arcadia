@@ -1,3 +1,4 @@
+import { ensureTerminalClaimRecoveryTable } from "../sessions/terminalClaimRecovery.js";
 import { ensureRecurringScheduleTables } from "../recurring/store.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -105,6 +106,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureManualPreservationTable(db);
   ensureCandidatePreservationTable(db);
   ensureSessionExitReceiptsTable(db);
+  ensureTerminalClaimRecoveryTable(db);
   ensureAgentResponsibilityValue(db);
   ensureDeferredWorkItemStatus(db);
   ensureDecisionDeferralReceiptsTable(db);

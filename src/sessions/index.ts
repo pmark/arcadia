@@ -555,6 +555,10 @@ export function prepareSession(input: {
   /** Guarded launcher rechecks durable request consumption under the Session
    * insert's write lock, after every earlier observation and claim check. */
   assertLaunchRequest?: () => void;
+  /** Explicit recovery only: transfer custody after rechecking the approved
+   * generation, then persist its request and authorization with the insert. */
+  terminalRecovery?: { transfer: () => void; record: (session: AgentSession) => void };
+
   testHooks?: {
     /** Deterministic fault injection between the lease/handoff/competing-run checks and the insert, inside the same transaction. */
     afterChecksBeforeInsert?: () => void;
@@ -655,6 +659,7 @@ export function prepareSession(input: {
     }
     input.testHooks?.afterChecksBeforeInsert?.();
     input.assertLaunchRequest?.();
+    input.terminalRecovery?.transfer();
     const stamp = input.now.toISOString().replaceAll(/[-:.]/g, "").replace(/Z$/, "Z").toLowerCase();
     const shortAction = context.action.id.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 42);
     const tmuxName = `${MANAGED_SESSION_TMUX_PREFIX}${context.projectSlug}-${shortAction}-${stamp}`.slice(0, 100);
@@ -686,7 +691,8 @@ export function prepareSession(input: {
       completion_capability_mode: "legacy"
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
-    if (handoff) {
+    input.terminalRecovery?.record(row);
+    if (handoff && !input.terminalRecovery) {
       supersedeLeaseHandoff(input.db, handoff.receipt.id, id);
     }
     if (input.repair) bindRepairSession(input.db, { requestId: input.repair.requestId, sessionId: id, now: input.now });
@@ -1125,15 +1131,14 @@ export function releaseLandedActionClaim(db: Database.Database, claim: AgentWork
 }
 
 /**
- * Release `claim` when it is held by a finished Session (neither prepared nor
+ * Read-only eligibility proof for releasing a claim held by a finished Session (neither prepared nor
  * running) whose worktree holds no uncommitted work and whose every passed
  * development attempt was for an earlier input revision of the Action than
  * the checked-in Plan now carries (see {@link developedForSupersededInput}).
- * Only the claim columns are cleared, fenced on the exact generation: the
- * worktree reservation row, the worktree, its branch and any pull request
- * stay exactly as they are. Anything short of that proof keeps the claim.
+ * Shared by preview and the actual fenced release. This predicate changes
+ * nothing; anything short of the existing holder/dirt/input proof keeps the claim.
  */
-export function releaseSupersededActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
+export function canReleaseSupersededActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
   if (!claim.project || !claim.action_id || !claim.claim_generation) return false;
   const holders = (db.prepare("SELECT * FROM agent_sessions WHERE project_slug = ? AND action_id = ? ORDER BY created_at DESC, rowid DESC")
     .all(claim.project, claim.action_id) as AgentSession[])
@@ -1147,6 +1152,12 @@ export function releaseSupersededActionClaim(db: Database.Database, claim: Agent
   } catch {
     return false;
   }
+  return true;
+}
+
+/** Recheck the shared proof, then release only the expected claim generation. */
+export function releaseSupersededActionClaim(db: Database.Database, claim: AgentWorktreeReservation): boolean {
+  if (!claim.project || !claim.action_id || !claim.claim_generation || !canReleaseSupersededActionClaim(db, claim)) return false;
   return releaseActionClaim(db, {
     repositoryPath: claim.repository_path,
     project: claim.project,
