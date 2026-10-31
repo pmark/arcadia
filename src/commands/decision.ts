@@ -351,8 +351,15 @@ export function prepareDecisionAnswer(
   let chosen: DecisionOptionDoc | null = null;
   if (supersededBy !== null) {
     // Superseding chooses none of this Decision's options, so it skips the
-    // label match below and applies no option effect. The successor must be a
-    // different Decision of the same Project that is still answerable.
+    // label match below and applies no option effect. Only an open Decision can
+    // be superseded (an answered one may already have applied a deferral), and
+    // the successor must be a different, still-open Decision of the same Project.
+    if (decisionDoc === null || decisionDoc.status !== "open") {
+      throw validationError("Only an open Decision can be superseded; reverse or re-open an answered one first.", {
+        decision: input.decisionRef,
+        status: decisionDoc?.status ?? null
+      });
+    }
     const successorPath = findDecisionFile(decisionsDir, supersededBy);
     const successorRelative = successorPath ? path.relative(repoRoot, successorPath) : null;
     const successor = successorPath && successorRelative
@@ -367,8 +374,8 @@ export function prepareDecisionAnswer(
     if (successorPath === absolutePath) {
       throw validationError("A Decision cannot supersede itself.", { decision: input.decisionRef, supersededBy });
     }
-    if (successor.status === "rejected") {
-      throw validationError("The superseding Decision is itself rejected; name the Decision that carries the answer.", {
+    if (successor.status !== "open") {
+      throw validationError("The superseding Decision must still be open; name the Decision that carries the answer.", {
         decision: input.decisionRef,
         supersededBy: successor.id
       });
@@ -448,7 +455,8 @@ function applyDecisionApprove(
     });
     const { relativePath, absolutePath, after: updatedContent, chosen } = prepared;
     reply.entityId = prepared.decisionId ?? relativePath;
-    reply.freeText = chosen === null;
+    // A supersession explains why no option was chosen; it is not the operator's answer to this Decision.
+    reply.freeText = chosen === null && !options.supersededBy;
     const parsedDecision = parseDoc(relativePath, absolutePath, prepared.before).doc;
     const decisionDoc = parsedDecision && parsedDecision.type === "decision" ? parsedDecision : null;
 

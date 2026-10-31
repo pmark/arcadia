@@ -549,13 +549,24 @@ describe("decision approve --superseded-by (Issue #1940)", () => {
     ).toThrow(/recorded as rejected/);
   });
 
-  it("refuses a successor that is itself rejected", () => {
+  it("refuses a successor that is no longer open", () => {
     const { workspace, projectSlug } = twoDecisions();
     runDecisionApproveCommand({ workspace, project: projectSlug, id: "0002", answer: "Hold", status: "rejected" });
 
     expect(() =>
       runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Replaced.", supersededBy: "0002" })
-    ).toThrow(/is itself rejected/);
+    ).toThrow(/must still be open/);
+  });
+
+  it("refuses to supersede a Decision that is already answered, writing nothing", () => {
+    const { workspace, repoRoot, projectSlug } = twoDecisions();
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Merge now" });
+    const before = readFileSync(path.join(repoRoot, "docs/decisions/0001-old-question.md"), "utf8");
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Replaced.", supersededBy: "0002" })
+    ).toThrow(/Only an open Decision can be superseded/);
+    expect(readFileSync(path.join(repoRoot, "docs/decisions/0001-old-question.md"), "utf8")).toBe(before);
   });
 
   it("the spawned CLI forwards --superseded-by and defaults the status to rejected", () => {

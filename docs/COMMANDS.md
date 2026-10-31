@@ -1300,9 +1300,10 @@ pnpm arcadia decision approve 0153 \
 
 `--superseded-by` records `status: rejected` and the answer
 `Superseded by Decision <id>: <answer>`, skips the option-label match and
-applies no option effect. It refuses a successor that does not exist in the
-same Project, a Decision superseding itself, a successor that is already
-rejected, and any `--status` other than `rejected`. The operator then answers
+applies no option effect. Only an open Decision can be superseded, and the
+successor must exist in the same Project and still be open. It also refuses a
+Decision superseding itself and any `--status` other than `rejected`. The
+supersession text is not captured as an operator reply. The operator then answers
 the successor normally.
 
 A Decision that names the Action it governs (`action: <id>`) applies its
