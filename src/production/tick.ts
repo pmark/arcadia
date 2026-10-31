@@ -2018,7 +2018,10 @@ export function runManagedProductionTick(
           }
         }
       }
-      if (lease && !stoppedThisTick && !tmux.hasSession(lease.tmux_session_name)) {
+      // A prepared lease can be between its durable insert and provider start.
+      // Absence of tmux is not exit evidence until the launcher records running;
+      // reconciling here would consume the launcher's own recovery successor.
+      if (lease?.status === "running" && !stoppedThisTick && !tmux.hasSession(lease.tmux_session_name)) {
         alertLease = lease;
         // Preserve the dead Session's candidate before reconciliation marks it
         // terminal (validation runs against the still-active lease), then

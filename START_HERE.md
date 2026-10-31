@@ -651,6 +651,12 @@ backs off — never faster than once every two minutes — while the snapshot
 source is unreachable, always labeling the view as showing the last known
 state rather than silently going quiet.
 
+A **prepared** Session still holds its lease while its launcher checks and starts
+the provider. The worker waits; a missing terminal at this stage is not an exit.
+If preparation is interrupted, inspect the original request and its receipt
+before an explicitly authorized continuation. A failed recovery successor remains
+protected and does not grant permission for another attempt.
+
 The phone dashboard redesign is an accepted, inactive three-slice Plan; the
 new `/actions` and judgment item routes are not live yet. Its
 [information architecture](docs/proposals/runs-page-information-architecture.md)

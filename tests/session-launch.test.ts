@@ -40,6 +40,7 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 import { runGoContextCommand } from "../src/commands/goContext.js";
 import { goResolutionIdentity } from "../apps/dashboard/lib/go-continue.js";
+import { runManagedProductionTick } from "../src/production/tick.js";
 
 const roots: string[] = [];
 
@@ -69,6 +70,40 @@ class FakeTmux implements TmuxAdapter {
 }
 
 describe("launchGuardedHostSession", () => {
+  it("starts its prepared recovery exactly once when a worker tick observes it before provider start", () => {
+    const f = terminalRecoveryFixture();
+    try {
+      const shown = f.preview("recovery-worker-race");
+      expect(shown.ready).toBe(true);
+      let successorId: string | undefined;
+      let tickReconciled: unknown;
+      const successor = f.launch("recovery-worker-race", shown.previewFingerprint, { testHooks: {
+        afterSessionPreparedBeforeCommit: () => withDatabase(f.fixture.workspace, db => {
+          successorId = getRepositoryLease(db, f.fixture.repo)!.id;
+          const tick = runManagedProductionTick(db, f.fixture.workspace, {
+            profiles, adapters, tmux: f.tmux, now: new Date(f.fixture.now.getTime() + 20_000),
+            agentWorktreeRoot: path.join(f.fixture.root, "worker-candidates")
+          });
+          tickReconciled = tick.projects.flatMap(project => project.reconciled);
+        })
+      } });
+      expect(tickReconciled).toEqual([]);
+      expect(successor.session.id).toBe(successorId);
+      expect(successor.session.status).toBe("running");
+      expect(f.launch("recovery-worker-race", shown.previewFingerprint).session.id).toBe(successorId);
+      expect(() => f.launch("another-recovery", shown.previewFingerprint)).toThrow();
+      expect(f.tmux.launches).toHaveLength(2);
+      expect(f.claim()).not.toEqual(f.originalClaim);
+      expect(git(f.first.session.worktree_path, ["status", "--porcelain"])).toBe("");
+      withReadOnlyDatabase(f.fixture.workspace, db => {
+        expect(getSessionExitReceipt(db, successorId!)).toBeNull();
+        expect(JSON.stringify(getSessionExitReceipt(db, f.first.session.id))).toBe(f.original);
+        expect(db.prepare("SELECT count(*) AS n FROM terminal_claim_recoveries").get()).toEqual({ n: 1 });
+        expect(db.prepare("SELECT count(*) AS n FROM agent_sessions").get()).toEqual({ n: 2 });
+      });
+    } finally { setWorktreeLivenessProbeForTests(null); }
+  });
+
   it("explicitly recovers a terminal no-op claim once without rewriting its receipt", () => {
     const f = terminalRecoveryFixture();
     try {
