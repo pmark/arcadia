@@ -2,7 +2,37 @@
 
 This is the **single canonical checklist** for the remaining unattended-production acceptance gap. It is derived evidence, not an authority store: the [unattended-production acceptance Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md), the [current coordination Plan](plans/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions.md), Decisions and canonical runtime receipts govern. Handoffs and coordinator wakeups point here rather than maintaining another checklist. Rowan is the sole release-manager contact; helper assignments do not transfer that custody.
 
-**2026-10-31 adjacent Go delivery probe:** [PR #1921](https://github.com/pmark/arcadia/pull/1921) is source-merged, but the local primary checkout, installed broker and worker have not adopted it; the failed-before-start successor remains protected. This is a separate operator-directed Go probe, not proof of the unattended three-job acceptance record below. The [Claude Code continuation and exact approval-preparation sequence](reports/go-1921-claude-continuation-2026-10-31.md) records the current source/installed/session split, main divergence, missing supported disposition and friction reductions. Production was freshly observed Off revision 83, epoch 46, zero live admissions; no START, install, restart or new recovery is authorized by the merge or this note.
+**2026-10-31 adjacent Go delivery probe (parked):** [PR #1921](https://github.com/pmark/arcadia/pull/1921) and [PR #1926](https://github.com/pmark/arcadia/pull/1926) are source-merged; the guarded Off adoption (receipt `runs/20261031T181357Z-67869`) installed broker/worker at `24c4ee0`, and the failed-before-start successor was disposed append-only (receipt `runs/20261031T182448Z-92315`). The probe is parked per operator direction; its handoff is [PR #1927](https://github.com/pmark/arcadia/pull/1927). It is not evidence for the acceptance record below.
+
+## Operator view: the rover's route from here
+
+**Production is Off. The original three-job acceptance record can no longer close as written.** Of its three jobs, one was delivered by the worker ([PR1779](https://github.com/pmark/arcadia/pull/1779)), one was finished by hand-assisted repair ([PR1787](https://github.com/pmark/arcadia/pull/1787), merged 2026-10-27 by the operator after assisted R2 review and source completion), and one was rejected ([PR1783](https://github.com/pmark/arcadia/pull/1783), closed 2026-10-29 after its review found the test did not exercise the real teardown and its three repair rounds were exhausted). `first-unattended-run` requires one run in which **every** in-scope Action reaches a merged PR with touches limited to activation and authority-adjacent merges, so it needs a **fresh run** of at least three ready Claude Actions. Choosing that scope is your decision; nothing below starts it.
+
+Derived **2026-10-31** from fresh read-only observation and exact merged source. Production observed **2026-10-31T18:47:59Z**: **Off (`inactive_idle`) revision83 / epoch46 / zero live admissions**, scope and authority absent. This refresh performs no runtime operation.
+
+| State | Evidence and remaining gate |
+| --- | --- |
+| Delivered by the worker | [PR1779](https://github.com/pmark/arcadia/pull/1779) (`isolate-launch-preview-tmux-name`, done) under the October25 START. A fresh run cannot reuse it; it remains evidence that the worker path can deliver. |
+| Delivered, not unattended | [PR1787](https://github.com/pmark/arcadia/pull/1787) merged at `8d9ca9fb` by the operator; canonical `rebuild-cover-mail-ack-receipt-kind-collision` is done via `complete-mail-ack-source-concurrent-20261027-01a17e94`. It closes Issue1470's work but cannot count as an unattended delivery. The original Action `cover-mail-ack-receipt-kind-collision` (held PR1662, now **closed** 2026-10-29) is still `open` in the acceptance Plan although its work is delivered: it needs a governed supersession, not a rebuild. |
+| Rejected; Action open | [PR1783](https://github.com/pmark/arcadia/pull/1783) closed without merge; `bound-guidance-test-teardown-retries` stays open and Issue1419 open. Its Plan criteria are satisfiable by the rejected shape (they only require the rmSync options), so a fresh candidate would meet the letter but fail review again. The criteria need a regression-detecting test before it is a credible run job. |
+| Adopted | Broker and worker run `24c4ee020` (receipt `runs/20261031T181357Z-67869`: broker before `eb15d32c`, worker PID 72812 started 11:16PDT, loaded source inferred, production unchanged). That revision **contains** [PR1794](https://github.com/pmark/arcadia/pull/1794) (`76457a99` is an ancestor), so the 10-26 "merged, not installed" gate for PR1794 is **satisfied**. |
+| Source ahead of runtime | Main is `1ac59bd`; [PR1926](https://github.com/pmark/arcadia/pull/1926) changes `src/sessions/launch.ts`, `launchPreview.ts`, `terminalClaimRecovery.ts` and adds recovery disposition (8 `src` files, +447/−15) after the installed revision. The Off disposition script already ran from the main checkout at `1ac59bd`; the worker still runs `24c4ee0`. Whether a fresh run needs `1ac59bd` adopted is unassessed; decide before START, and adopt only through an exact one-shot card. |
+| Capacity unknown | Decisions0141/0143 permit one bounded renewal-and-worker-verification per America/Los_Angeles day within their class; Decision0144 (2026-10-26) recorded Claude as blocked. No fresh actual-worker capacity reading exists after 2026-10-26. Required before any START; no credential probe was made by this refresh. |
+| Unproved | `first-unattended-run`: needs a fresh activation preview of at least three ready Claude Actions, one START card, every Action merged through the worker, and this document re-derived from that run. |
+
+**Smallest route to closing `first-unattended-run`** (each step a separate gate; none is authorized by this refresh):
+
+1. **Re-scope (your decision).** Pick at least three small, independent, self-checking Claude Actions for one fresh run: a tightened `bound-guidance-test-teardown-retries` whose test fails when the `afterEach` retries are removed, plus at least two further ready Actions. In the same governed amendment, supersede the delivered `cover-mail-ack-receipt-kind-collision` and update `first-unattended-run`'s dependencies. Prepared by Rowan as one reviewed Plan-amendment card.
+2. **Runtime and capacity.** Assess whether `1ac59bd` must be adopted; run the Decision0141/0143 bounded capacity check for the day of START. Agent-run where a standing Decision covers it; otherwise one pinned card each.
+3. **Activation preview + START (your press).** One card pinning the exact scope, Claude only, concurrency1, policy revision83 and expiry.
+4. **Unattended delivery and acceptance.** Worker delivers; Rowan re-derives this document from the ledger and settles `first-unattended-run` only if every criterion is met.
+
+Every press and host step on this route is recorded as friction toward one-click whole-Plan continuation ([Issue1929](https://github.com/pmark/arcadia/issues/1929)); the cheapest, checklist drift, is fixed by this refresh.
+
+Evidence custody: the `runs/` receipts named above (main checkout, ignored, host-local), GitHub PR records and canonical Decisions. Rowan retains sole coordination.
+
+<details>
+<summary>Superseded October26 operator view — PR1783/PR1787 described as held</summary>
 
 ## Operator view: the rover’s route from here
 
@@ -22,6 +52,8 @@ Derived **2026-10-26** from the coordinator's retained receipts and exact merged
 **The next operator gate is a concrete reviewed adoption/continuation package, not an old START button.** Runtime adoption, supplemental validation, Artifact-pinned Active reviews and a new two-Action START each retain their exact authority and evidence requirements. No new START is authorized by this status refresh. Failures and uncertain attempts remain consumed; no reset, reused nonce, credential inference or automatic retry is implied.
 
 Evidence custody remains `artifacts/generated/session-closeouts/20261023-rowan-offline/READINESS-HANDOFF.md`, its retained renewal/verification and runtime receipts, canonical Decisions and the named PR records. Generated evidence is host-local and ignored; a repository link does not make it portable. Rowan retains sole coordination; no new watch or live operation is created here.
+
+</details>
 
 <details>
 <summary>Superseded October25 executive readiness — historical source pins, consumed allowances and expired START advice</summary>
