@@ -4,7 +4,7 @@ type: decision
 id: "0153"
 slug: where-should-sustained-design-briefs-live-before-a-project-exists
 project: arcadia
-status: rejected
+status: open
 question: Where should sustained design briefs live before a Project exists?
 gap_type: missing-decision
 gate_question: resists_reversal
@@ -19,8 +19,6 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
-answer: "Superseded by Decision 0158: The operator's answer on 2026-10-31 was an option this Decision did not offer; Decision 0158 carries it."
-decided: 2026-10-31
 ---
 
 # Decision 0153: Where should sustained design briefs live before a Project exists?
