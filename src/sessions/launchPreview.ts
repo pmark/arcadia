@@ -1,7 +1,7 @@
 import { evaluateDraftOnlyCandidate } from "./draftOnlyCandidate.js";
 import { resolveBaseBranch } from "../git/worktrees.js";
 import { getReviewRepair } from "./reviewRepair.js";
-import { inspectTerminalClaimRecovery, type TerminalClaimRecovery } from "./terminalClaimRecovery.js";
+import { findTerminalClaimRecoveryByRequest, getRecoverySuccessorDisposition, inspectTerminalClaimRecovery, type TerminalClaimRecovery } from "./terminalClaimRecovery.js";
 import { localBrowserAuditBlocker } from "./localBrowserAuditReadiness.js";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
@@ -375,6 +375,10 @@ export function buildLaunchPreview(input: {
         planSlug: context?.activePlan ?? null, actionId, packet, sessionId: input.recoverSessionId,
         tmux: input.tmux ?? systemTmux, now });
     } catch (error) { prerequisites.push(error instanceof Error ? error.message : String(error)); }
+    const consumed = findTerminalClaimRecoveryByRequest(input.db, canonicalPath(repoRoot), input.requestId);
+    if (consumed && (consumed.original_session_id !== input.recoverSessionId || getRecoverySuccessorDisposition(input.db, consumed.successor_session_id))) {
+      prerequisites.push("Terminal candidate recovery refused: this request id is already consumed by an earlier recovery; preview a fresh request.");
+    }
   }
 
   const previewFingerprint = sha256(

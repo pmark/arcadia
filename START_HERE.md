@@ -2637,7 +2637,12 @@ original receipt and attempt history stay intact. If a response is lost, replay
 the identical request, Session id and fingerprint to recover the one successor;
 never press a new request to guess the outcome. A successor that failed before
 starting remains a visible blocker with its candidate and claim retained:
-inspect that successor and receipt before authorizing any further repair.
+inspect that successor and receipt before authorizing any further repair. The
+supported repair is the append-only disposition
+`arcadia session preview-dispose-recovery --original <id> --successor <id>`,
+then `arcadia session dispose-recovery ... --fingerprint <previewed-hash>`
+(see `docs/COMMANDS.md`); it launches nothing, and only a fresh request may
+then be previewed for recovery.
 Review, required checks, adoption and any live recovery approval remain separate.
 
 **A confirmed Launch finishes its Session's work without production being

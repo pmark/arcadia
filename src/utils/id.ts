@@ -43,6 +43,7 @@ const PREFIXES = {
   productionAdmission: "padm",
   preservationReceipt: "presv",
   sessionExitReceipt: "exit",
+  recoverySuccessorDisposition: "rdisp",
   operatorLaunchAuthorization: "olauth",
   nativeMailMessage: "nmail",
   nativeMailReceipt: "nmrcpt"
