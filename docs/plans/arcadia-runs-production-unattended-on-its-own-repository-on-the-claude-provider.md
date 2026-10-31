@@ -7,7 +7,7 @@ status: draft
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-10-27
+updated: 2026-10-31
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -146,13 +146,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
-    source: Agent Ask replace-held-action-dependency-20261022
+    source: Agent Ask rescope-first-unattended-run-20261031-v3
     why: "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision."
     acceptance_criteria:
       - A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.
       - The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.
       - docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.
-    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, rebuild-cover-mail-ack-receipt-kind-collision, isolate-launch-preview-tmux-name, bound-guidance-test-teardown-retries]
+    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change]
     decisions: []
     references: []
   - id: implement-a-hermetic-test-that-an
@@ -318,14 +318,15 @@ actions:
     status: open
     responsibility: agent
     effort: session
-    next_action: "Implement bounded retries in the agent-guidance test's scratch-directory teardown so a transient ENOTEMPTY no longer fails the shard, closing Issue #1419."
+    next_action: "Make the agent-guidance test's scratch-directory teardown retry a transient ENOTEMPTY, with a test that fails if the retries are removed, closing Issue #1419."
     expected_artifact: Evidence satisfying Agent Ask bound-guidance-test-teardown-retries
     clarification: clarified
     confidence: high
-    source: Agent Ask retitle-clean-run-actions-implement-20261021
-    why: "Issue #1419: the suite failed CI in afterEach with ENOTEMPTY from an unbounded rmSync while a concurrent writer was still active."
+    source: Agent Ask rescope-first-unattended-run-20261031-v3
+    why: "PR1783 was rejected because its test passed without exercising the real cleanup; the tightened criteria make that shape fail."
     acceptance_criteria:
-      - In tests/agent-guidance.test.ts, the afterEach rmSync of the scratch roots passes recursive true, force true, maxRetries of at least 3 and retryDelay of at least 50 milliseconds.
+      - "tests/agent-guidance.test.ts defines removeScratchRoots(roots: string[], remove = rmSync), which calls remove(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }) (or larger maxRetries and retryDelay values) for each root and then empties the array; the afterEach body is exactly one call to removeScratchRoots(roots) and contains no rmSync literal."
+      - A new test calls removeScratchRoots with a vi.fn() as remove and two paths and asserts each call's options object has recursive true, force true, maxRetries of at least 3 and retryDelay of at least 50; it also asserts the default is the real rmSync by removing a real mkdtemp directory with no remove argument.
       - Every existing assertion in that file remains unchanged and no test in it is marked skip or todo.
       - The change touches only tests/agent-guidance.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
     depends_on: []
@@ -367,6 +368,43 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1800", "src/agentSetup/goBrokerAgentSetup.ts", "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md"]
+  - id: assert-tmux-temp-launcher-removed
+    title: "Make the no-launcherDirectory tmux long-command test prove its temporary launcher directory is removed, closing Issue #1536."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Make the no-launcherDirectory tmux long-command test prove its temporary launcher directory is removed, closing Issue #1536."
+    expected_artifact: Evidence satisfying Agent Ask assert-tmux-temp-launcher-removed
+    clarification: clarified
+    confidence: high
+    source: Agent Ask rescope-first-unattended-run-20261031-v3
+    why: "The test is named for temporary-directory removal but never checks it, so a cleanup regression would pass."
+    acceptance_criteria:
+      - In tests/system-tmux-long-command.test.ts, the test named 'delivers the brief byte-identical with no launcherDirectory (temporary directory removed)' points TMPDIR at a directory the test owns for the launch, and after the provider has written its argv asserts that no entry starting with arcadia-launch- remains in that directory.
+      - TMPDIR is set before systemTmux.launch is called and restored in a finally block (deleted if it was originally unset); the PR body reports that temporarily removing the launcher's rm -rf cleanup in writeSessionLauncher makes this test fail, and that it passes again once reverted, while the final diff touches only the test file.
+      - The same test still asserts argv equals ['--print', LONG_BRIEF], and every other test in the file passes unchanged.
+      - The change touches only tests/system-tmux-long-command.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1536"]
+  - id: cover-retired-descriptor-byte-change
+    title: "Cover a pinned retired operator-script entry whose descriptor bytes changed while its script bytes did not, closing the first item of Issue #1262."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Cover a pinned retired operator-script entry whose descriptor bytes changed while its script bytes did not, closing the first item of Issue #1262."
+    expected_artifact: Evidence satisfying Agent Ask cover-retired-descriptor-byte-change
+    clarification: clarified
+    confidence: high
+    source: Agent Ask rescope-first-unattended-run-20261031-v3
+    why: "The retirement rule requires both hashes to match, but only the changed-script case is covered."
+    acceptance_criteria:
+      - apps/dashboard/app/api/operator-script/retired-entries.test.ts gains a test in which the retirement pins the sha256 of the original descriptor and the original script, only the written descriptor bytes differ (for example a trailing newline) while the script bytes equal the pinned bytes, the changed descriptor stays invalid, and GET returns no scripts with console.error called exactly once.
+      - Every other test in that file passes unchanged.
+      - The change touches only apps/dashboard/app/api/operator-script/retired-entries.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1262"]
 questions: []
 decisions: []
 recommended_model: standard
