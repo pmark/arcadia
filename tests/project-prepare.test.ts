@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { runProjectPrepareCommand } from "../src/commands/project.js";
 import { withDatabase } from "../src/db/connection.js";
 import {
@@ -20,6 +20,7 @@ const tsxBin = path.join(repoRoot, "node_modules", ".bin", "tsx");
 const temporaryRoots: string[] = [];
 
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of temporaryRoots.splice(0)) {
     rmSync(root, { recursive: true, force: true });
   }
@@ -66,6 +67,54 @@ describe("project prepare", () => {
 
     const packetPath = path.join(workspace, response.data.planning.packetArtifact!.path!);
     expect(readFileSync(packetPath, "utf8")).toContain(idea);
+  });
+
+  it("refuses a non-Git directory before creating Project records or packets", () => {
+    const { workspace, repository } = fixture({ git: false });
+    expect(() => runProjectPrepareCommand({ workspace, name: "New Project", idea: "Build something useful.", path: repository }))
+      .toThrow(/requires an independent, non-bare Git repository/);
+    expectProjectPreparationUntouched(workspace, repository);
+  });
+
+  it("ignores inherited Git repository and config redirection before creating records or packets", () => {
+    const { workspace, repository } = fixture({ git: false });
+    const unrelated = path.join(path.dirname(repository), "unrelated");
+    mkdirSync(unrelated);
+    git(unrelated, ["init"]);
+    writeFileSync(path.join(unrelated, "README.md"), "# Unrelated repository\n", "utf8");
+    git(unrelated, ["add", "README.md"]);
+    git(unrelated, ["commit", "-m", "Unrelated baseline"]);
+
+    vi.stubEnv("GIT_DIR", path.join(unrelated, ".git"));
+    vi.stubEnv("GIT_WORK_TREE", repository);
+    vi.stubEnv("GIT_INDEX_FILE", path.join(unrelated, ".git", "index"));
+    vi.stubEnv("GIT_CONFIG_COUNT", "1");
+    vi.stubEnv("GIT_CONFIG_KEY_0", "core.worktree");
+    vi.stubEnv("GIT_CONFIG_VALUE_0", repository);
+
+    try {
+      expect(() => runProjectPrepareCommand({ workspace, name: "New Project", idea: "Build something useful.", path: repository }))
+        .toThrow(/requires an independent, non-bare Git repository/);
+      expectProjectPreparationUntouched(workspace, repository);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("refuses an unborn repository before creating Project records or packets", () => {
+    const { workspace, repository } = fixture({ commit: false });
+    expect(() => runProjectPrepareCommand({ workspace, name: "New Project", idea: "Build something useful.", path: repository }))
+      .toThrow(/requires a valid committed Git baseline/);
+    expectProjectPreparationUntouched(workspace, repository);
+  });
+
+  it("refuses a nested directory inside another repository before creating Project records or packets", () => {
+    const { workspace, repository } = fixture();
+    const nested = path.join(repository, "nested");
+    mkdirSync(nested);
+    expect(() => runProjectPrepareCommand({ workspace, name: "New Project", idea: "Build something useful.", path: nested }))
+      .toThrow(/selected path to be the Git repository root/);
+    expectProjectPreparationUntouched(workspace, nested);
   });
 
   it("refuses an occupied name or governed repository before creating another Project", () => {
@@ -127,12 +176,43 @@ describe("project prepare", () => {
   });
 });
 
-function fixture(): { workspace: string; repository: string } {
+function fixture(options: { git?: boolean; commit?: boolean } = {}): { workspace: string; repository: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-project-prepare-"));
   temporaryRoots.push(root);
   const workspace = path.join(root, "workspace");
   const repository = path.join(root, "repository");
   initWorkspace(workspace);
   mkdirSync(repository, { recursive: true });
+  if (options.git !== false) {
+    git(repository, ["init"]);
+    writeFileSync(path.join(repository, "README.md"), "# Fixture repository\n", "utf8");
+    git(repository, ["add", "README.md"]);
+    if (options.commit !== false) git(repository, ["commit", "-m", "Fixture baseline"]);
+  }
   return { workspace, repository };
+}
+
+function git(cwd: string, args: string[]): void {
+  const result = spawnSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "Cody Swift",
+      GIT_AUTHOR_EMAIL: "cody.swift@agents.arcadia.local",
+      GIT_COMMITTER_NAME: "Cody Swift",
+      GIT_COMMITTER_EMAIL: "cody.swift@agents.arcadia.local"
+    }
+  });
+  if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+}
+
+function expectProjectPreparationUntouched(workspace: string, repository: string): void {
+  withDatabase(workspace, (db) => {
+    for (const table of ["projects", "milestones", "work_items", "artifacts", "execution_plans", "review_items", "codex_invocations"]) {
+      expect(db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get()).toEqual({ count: 0 });
+    }
+  });
+  expect(existsSync(path.join(repository, "PROJECT.md"))).toBe(false);
+  expect(existsSync(path.join(repository, "docs", "plans"))).toBe(false);
 }

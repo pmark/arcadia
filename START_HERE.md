@@ -897,7 +897,16 @@ pnpm arcadia project prepare "Teacher Commons" \
   --path /path/to/teacher-commons
 ```
 
-Omit `--path` to create the repository directory under the Arcadia workspace's
+Before running it, make the selected directory an independent Git repository
+and create a local baseline commit. If you omit `--path`, initialize the
+default Projects directory for this Project before running preparation.
+Preparation refuses non-Git directories,
+unborn repositories, and nested paths before it creates Project records or a
+planning packet. If preparation refuses for Git readiness, establish the
+baseline locally and retry the same preparation; it does not initialize Git,
+create a commit, or change agent trust settings for you.
+
+Omit `--path` to select the repository directory under the Arcadia workspace's
 Projects directory. The command classifies the request as **Project Work → Plan
 First → Codex**, preserves the idea verbatim, creates an Active Project and its
 first Milestone and planning Action, writes the `PROJECT.md` → active plan →

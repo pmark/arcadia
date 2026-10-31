@@ -1,4 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -248,6 +249,7 @@ function preparedProjectIdea(): {
   const repository = path.join(root, "repository");
   initWorkspace(workspace);
   mkdirSync(repository, { recursive: true });
+  initializeFixtureRepository(repository);
   installFakePlanningAgent(workspace);
   const idea = "A local tool that turns workshop observations into a prioritized improvement queue.";
   const prepared = runProjectPrepareCommand({
@@ -277,6 +279,24 @@ function preparedProjectIdea(): {
     planningWorkItemId: prepared.data.workItem.id,
     planningDecisionId: prepared.data.planning.planningDecision!.id
   };
+}
+
+function initializeFixtureRepository(repository: string): void {
+  const env = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "Cody Swift",
+    GIT_AUTHOR_EMAIL: "cody.swift@agents.arcadia.local",
+    GIT_COMMITTER_NAME: "Cody Swift",
+    GIT_COMMITTER_EMAIL: "cody.swift@agents.arcadia.local"
+  };
+  const run = (args: string[]) => {
+    const result = spawnSync("git", args, { cwd: repository, env, encoding: "utf8" });
+    if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`);
+  };
+  run(["init", "-q"]);
+  writeFileSync(path.join(repository, "README.md"), "# Fixture repository\n", "utf8");
+  run(["add", "README.md"]);
+  run(["commit", "-m", "Fixture baseline"]);
 }
 
 function executePlanningRun(fixture: ReturnType<typeof preparedProjectIdea>) {

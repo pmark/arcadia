@@ -248,8 +248,8 @@ function gitFailureCause(error: unknown): string {
 }
 
 /** Null only for a genuine non-zero exit; a timeout throws its typed error. */
-export function tryGit(cwd: string, args: string[]): string | null {
-  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+export function tryGit(cwd: string, args: string[], env: NodeJS.ProcessEnv = process.env): string | null {
+  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const timeout = preservationTimeout(result.error, "git", args, cwd);
   if (timeout) throw timeout;
   return result.status === 0 ? result.stdout.trim() : null;
