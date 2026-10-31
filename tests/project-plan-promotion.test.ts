@@ -265,7 +265,7 @@ describe("project-idea planning promotion", () => {
     const priorPacket = readFileSync(priorPacketPath);
     if (scenario === "committed legacy") {
       git("add", "--", "PROJECT.md", promotion.planPath);
-      git("commit", "-qm", "fixture accepted records");
+      git("-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "fixture accepted records");
     }
     const approvedBase = git("rev-parse", "HEAD");
     if (scenario === "replay altered") writeFileSync(path.join(fixture.repository, promotion.planPath), `${readFileSync(path.join(fixture.repository, promotion.planPath), "utf8")}\nchanged\n`);
