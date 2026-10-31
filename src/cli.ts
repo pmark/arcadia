@@ -2448,7 +2448,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
   addJsonOption(
     session.command("preview-dispose-recovery")
-      .description("Preview the append-only disposition of an explicit recovery successor that failed before provider start (Issue #1920); writes nothing")
+      .description("Preview the append-only disposition of an explicit recovery successor that failed with no recorded provider start (Issue #1920); writes only the CLI activity entry")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
       .requiredOption("--original <id>", "The recovered original Session id")
@@ -2458,7 +2458,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
   addJsonOption(
     session.command("dispose-recovery")
-      .description("Append the previewed disposition of a failed-before-start recovery successor; rewrites, releases and launches nothing")
+      .description("Append the previewed disposition of a failed recovery successor with no recorded provider start; rewrites, releases and launches nothing")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--repo <path>", "Project repository", resolveInvocationPath, invocationRoot())
       .requiredOption("--original <id>", "The recovered original Session id")

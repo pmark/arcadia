@@ -120,7 +120,7 @@ describe("launchGuardedHostSession", () => {
         originalSessionId: f.first.session.id, successorSessionId: failed.successorId, consumedRequestId: "recovery-after-1917",
         falseReceipt: { id: failed.receiptId, requestId: `worker-tick-reconcile-${failed.successorId}`, runId: "run_unrelated" },
         candidate: { head: f.first.launchRevision }, claimGeneration: (f.claim() as { claim_generation: string }).claim_generation,
-        noProviderStart: { status: "failed", startedAt: null, exitStatus: null, tmuxLive: false, candidateProcesses: 0 }
+        noProviderStart: { status: "failed", startedAt: null, exitStatus: null, tmuxLive: false, candidateProcesses: 0, sessionLogPresent: false }
       });
       const before = f.disposition.snapshot();
       const applied = f.disposition.apply(failed.successorId, shown.fingerprint!);
@@ -153,6 +153,10 @@ describe("launchGuardedHostSession", () => {
         expect(JSON.stringify(getSessionExitReceipt(db, f.first.session.id))).toBe(f.original);
         expect(getSessionExitReceipt(db, failed.successorId)?.id).toBe(failed.receiptId);
       });
+      withDatabase(f.fixture.workspace, db => {
+        expect(() => db.prepare("UPDATE terminal_claim_recovery_reattempts SET request_id = 'x'").run()).toThrow(/append-only/);
+        expect(() => db.prepare("DELETE FROM terminal_claim_recovery_reattempts").run()).toThrow(/append-only/);
+      });
     } finally { setWorktreeLivenessProbeForTests(null); }
   });
 
@@ -174,7 +178,9 @@ describe("launchGuardedHostSession", () => {
 
   it.each([
     ["foreign", "foreign_pair"], ["live", "successor_live"], ["started", "successor_started"], ["exited", "successor_exited"],
-    ["dirty", "candidate_dirty"], ["moved", "candidate_moved"], ["claim generation", "stale_preview"], ["production", "production_active"]
+    ["dirty", "candidate_dirty"], ["moved", "candidate_moved"], ["claim generation", "stale_preview"], ["production", "production_active"],
+    ["recording", "successor_recording_present"], ["process", "candidate_process_live"], ["uncertain liveness", "candidate_process_live"],
+    ["receipt", "stale_preview"]
   ])("refuses a recovery successor disposition with %s evidence", (kind, code) => {
     const f = terminalRecoveryFixture();
     try {
@@ -187,8 +193,17 @@ describe("launchGuardedHostSession", () => {
         if (kind === "exited") db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(failed.successorId);
         if (kind === "claim generation") db.prepare("UPDATE agent_worktree_reservations SET claim_generation = 'changed' WHERE action_id = 'define-contract'").run();
         if (kind === "production") db.prepare("UPDATE production_policy SET desired_state = 'active' WHERE id = 'workspace'").run();
+        // A field outside the binding's named ids still changes the bound receipt hash.
+        if (kind === "receipt") db.prepare("UPDATE session_exit_receipts SET reason = 'rewritten' WHERE session_id = ?").run(failed.successorId);
       });
       if (kind === "live") f.tmux.live.add(failed.successorTmux);
+      // The recording wrapper creates this log before the provider runs; started_at may still be null after a crash.
+      if (kind === "recording") {
+        mkdirSync(path.dirname(sessionLogPath(f.fixture.workspace, failed.successorId)), { recursive: true });
+        writeFileSync(sessionLogPath(f.fixture.workspace, failed.successorId), "");
+      }
+      if (kind === "process") setWorktreeLivenessProbeForTests(() => ({ ok: true, processes: [{ pid: 42, command: "claude", cwd: worktree }] }));
+      if (kind === "uncertain liveness") setWorktreeLivenessProbeForTests(() => ({ ok: false, error: "cannot inspect" }));
       if (kind === "dirty" || kind === "moved") {
         writeFileSync(path.join(worktree, "change.txt"), "change");
         if (kind === "moved") { git(worktree, ["add", "change.txt"]); git(worktree, ["commit", "-m", "change"]); }
@@ -2516,7 +2531,7 @@ function terminalRecoveryFixture() {
   }));
   const originalAttempts = withReadOnlyDatabase(fixture.workspace, db => JSON.stringify(db.prepare("SELECT * FROM session_role_attempts").all()));
   const dispositionInput = (successorSessionId: string, originalSessionId = first.session.id) =>
-    ({ repoRoot: fixture.repo, originalSessionId, successorSessionId, tmux, now: new Date(fixture.now.getTime() + 2000) });
+    ({ repoRoot: fixture.repo, workspace: fixture.workspace, originalSessionId, successorSessionId, tmux, now: new Date(fixture.now.getTime() + 2000) });
   const disposition = {
     preview: (successorSessionId: string) => withReadOnlyDatabase(fixture.workspace, db =>
       previewRecoverySuccessorDisposition({ db, ...dispositionInput(successorSessionId) })),

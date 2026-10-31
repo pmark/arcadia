@@ -45,7 +45,11 @@ export function ensureTerminalClaimRecoveryTable(db: Database.Database): void {
     preview_fingerprint TEXT NOT NULL,
     binding_json TEXT NOT NULL,
     UNIQUE(repository_path, request_id)
-  )`);
+  );
+  CREATE TRIGGER IF NOT EXISTS terminal_claim_recovery_reattempts_no_update BEFORE UPDATE ON terminal_claim_recovery_reattempts
+  BEGIN SELECT RAISE(ABORT, 'terminal claim recovery reattempts are append-only'); END;
+  CREATE TRIGGER IF NOT EXISTS terminal_claim_recovery_reattempts_no_delete BEFORE DELETE ON terminal_claim_recovery_reattempts
+  BEGIN SELECT RAISE(ABORT, 'terminal claim recovery reattempts are append-only'); END;`);
   db.exec(`CREATE TABLE IF NOT EXISTS ${DISPOSITION_TABLE} (
     id TEXT PRIMARY KEY,
     successor_session_id TEXT NOT NULL UNIQUE REFERENCES agent_sessions(id),

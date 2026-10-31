@@ -18,7 +18,7 @@ export function runSessionPreviewDisposeRecoveryCommand(options: DispositionComm
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = existingDirectory(options.repo, "repository");
   const data = withReadOnlyDatabase(workspacePath, db => previewRecoverySuccessorDisposition({
-    db, repoRoot, originalSessionId: options.original, successorSessionId: options.successor, tmux: options.tmux ?? systemTmux
+    db, repoRoot, workspace: workspacePath, originalSessionId: options.original, successorSessionId: options.successor, tmux: options.tmux ?? systemTmux
   }));
   return createSuccess({ command: "session.previewDisposeRecovery", workspace: workspacePath, data });
 }
@@ -28,7 +28,7 @@ export function runSessionDisposeRecoveryCommand(options: DispositionCommandOpti
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = existingDirectory(options.repo, "repository");
   const data = withDatabase(workspacePath, db => applyRecoverySuccessorDisposition({
-    db, repoRoot, originalSessionId: options.original, successorSessionId: options.successor,
+    db, repoRoot, workspace: workspacePath, originalSessionId: options.original, successorSessionId: options.successor,
     fingerprint: options.fingerprint, tmux: options.tmux ?? systemTmux
   }));
   return createSuccess({ command: "session.disposeRecovery", workspace: workspacePath, data });
@@ -54,7 +54,7 @@ export function renderSessionDisposeRecoverySuccess(response: CommandSuccess<Rec
   const { disposition, created } = response.data;
   return [
     `Disposition: ${disposition.id}${created ? "" : " (already recorded)"}`,
-    `Successor ${disposition.successor_session_id} of ${disposition.original_session_id} is recorded as failed before provider start.`,
+    `Successor ${disposition.successor_session_id} of ${disposition.original_session_id} is recorded as failed with no recorded provider start.`,
     "Nothing was launched, released or rewritten. Preview a fresh request with `arcadia session preview-launch --recover-session` before any separately approved launch."
   ];
 }

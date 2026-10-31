@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
@@ -7,6 +8,7 @@ import { readProductionPolicySafely } from "../production/policy.js";
 import { createId } from "../utils/id.js";
 import { canonicalPath, getActiveActionClaim, getSession, type TmuxAdapter } from "./index.js";
 import { getSessionExitReceipt } from "./reconciliation.js";
+import { sessionLogPath } from "./sessionRecording.js";
 import {
   getRecoverySuccessorDisposition,
   getRecoveryForSuccessor,
@@ -30,6 +32,7 @@ export type RecoverySuccessorDispositionRefusalCode =
   | "successor_started"
   | "successor_exited"
   | "successor_not_failed"
+  | "successor_recording_present"
   | "candidate_reused"
   | "candidate_dirty"
   | "candidate_moved"
@@ -52,7 +55,8 @@ export interface RecoverySuccessorDispositionBinding {
   falseReceipt: { id: string; requestId: string; runId: string | null; outcome: string; sha256: string } | null;
   candidate: { worktreePath: string; branch: string; head: string | null };
   claimGeneration: string | null;
-  noProviderStart: { status: string; startedAt: string | null; exitStatus: number | null; tmuxLive: boolean; candidateProcesses: number | null };
+  /** No recorded provider start: no start time, exit status, live terminal, candidate process or Session log. */
+  noProviderStart: { status: string; startedAt: string | null; exitStatus: number | null; tmuxLive: boolean; candidateProcesses: number | null; sessionLogPresent: boolean };
 }
 
 export interface RecoverySuccessorDispositionPreview {
@@ -69,6 +73,8 @@ export interface RecoverySuccessorDispositionInput {
   repoRoot: string;
   originalSessionId: string;
   successorSessionId: string;
+  /** The workspace whose `.arcadia/sessions` holds Session logs. */
+  workspace: string;
   tmux: Pick<TmuxAdapter, "hasSession">;
   now?: Date;
 }
@@ -110,6 +116,13 @@ export function previewRecoverySuccessorDisposition(input: RecoverySuccessorDisp
   if (successor.started_at) refuse("successor_started", "The successor records a provider start.");
   if (successor.exit_status !== null) refuse("successor_exited", "The successor records an exit status.");
   if (successor.status !== "failed") refuse("successor_not_failed", `The successor is ${successor.status}, not failed.`);
+  // `started_at` is written only after tmux.launch returns, so a crash in that
+  // window leaves it null. The recording wrapper tmux runs creates the
+  // Session log before the provider starts; any log means a start may have
+  // happened, so the absence of a recorded start is not enough.
+  const successorLog = sessionLogPath(input.workspace, successor.id);
+  const sessionLogPresent = existsSync(successorLog);
+  if (sessionLogPresent) refuse("successor_recording_present", `The successor's Session log exists (${successorLog}); its provider may have started.`);
 
   const later = undisposedLaterCandidateSessions(input.db, original).filter(id => id !== successor.id);
   if (later.length) refuse("candidate_reused", `Another Session has used this candidate since: ${later.join(", ")}.`);
@@ -143,7 +156,7 @@ export function previewRecoverySuccessorDisposition(input: RecoverySuccessorDisp
     claimGeneration: claim?.claim_generation ?? null,
     noProviderStart: {
       status: successor.status, startedAt: successor.started_at, exitStatus: successor.exit_status, tmuxLive: successorLive,
-      candidateProcesses: liveness.ok ? liveness.processes.length : null
+      candidateProcesses: liveness.ok ? liveness.processes.length : null, sessionLogPresent
     }
   };
   const fingerprint = sha256(JSON.stringify(binding));

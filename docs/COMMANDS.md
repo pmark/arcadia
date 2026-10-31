@@ -1669,24 +1669,29 @@ Operator QA steps:
 
 This command is normally invoked automatically as part of Session-exit handling; running it by hand is for diagnosing a specific stuck or ambiguous Session, or for the QA steps above.
 
-## Dispose A Recovery Successor That Failed Before Start
+## Dispose A Failed Recovery Successor With No Recorded Start
 
-An explicit `--recover-session` successor can fail before its provider starts
-(Issue #1920: a worker exit receipt borrowed from an unrelated Run made the
-launcher refuse its own successor). Every later recovery of the original then
-refuses. The supported disposition appends one record and changes nothing else:
+An explicit `--recover-session` successor can fail with no recorded provider
+start (Issue #1920: a worker exit receipt borrowed from an unrelated Run made
+the launcher refuse its own successor). Every later recovery of the original
+then refuses. The supported disposition appends one record and changes nothing
+else:
 
 ```sh
-pnpm arcadia session preview-dispose-recovery --original <session-id> --successor <session-id> --repo "$REPO" --json
-pnpm arcadia session dispose-recovery --original <session-id> --successor <session-id> --repo "$REPO" --fingerprint <previewed-sha256> --json
+pnpm arcadia session preview-dispose-recovery --original <session-id> --successor <session-id> --workspace "$WORKSPACE" --repo "$REPO" --json
+pnpm arcadia session dispose-recovery --original <session-id> --successor <session-id> --workspace "$WORKSPACE" --repo "$REPO" --fingerprint <previewed-sha256> --json
 ```
 
-The preview is read-only. The record binds the original, successor, consumed
-request, the successor's exit receipt (if any), candidate HEAD, claim generation
-and the no-start proof. It never rewrites or deletes a Session, receipt, attempt
-or claim, never releases a claim and launches nothing. Refusal codes:
+The preview writes only the CLI activity entry. The record binds the original,
+successor, consumed request, the successor's exit receipt (if any), candidate
+HEAD, claim generation and the evidence of no recorded provider start: no
+start time, exit status, live terminal, candidate process or Session log (the
+recording wrapper creates that log before the provider runs). It never
+rewrites or deletes a Session, receipt, attempt or claim, never releases a
+claim and launches nothing. Refusal codes:
 `foreign_pair`, `original_not_terminal`, `successor_live`, `successor_started`,
-`successor_exited`, `successor_not_failed`, `candidate_reused`,
+`successor_exited`, `successor_not_failed`, `successor_recording_present`,
+`candidate_reused`,
 `candidate_dirty`, `candidate_moved`, `candidate_process_live`,
 `claim_missing`, `production_active`, `production_unknown`,
 `already_disposed`, `stale_preview` (any bound fact, such as the claim
