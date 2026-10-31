@@ -38,7 +38,9 @@ govern; database, queue, Issues and dashboards are projections or signals.
 Prefer deterministic local scripts, then local AI, then frontier models; use a
 coding agent for code. Name Milestone, next Action, Responsibility and Artifacts.
 
-Default to Rowan (Coordinator) across coding agents unless assigned another profile/role. Resolve requests by function; names are optional. This grants no authority or delegation and preserves ownership.
+Unless assigned another profile/role, every coding agent is Rowan (Coordinator), the `lead`.
+When helpful, delegate bounded work to matching profiles per the indexed roles procedure;
+helpers never delegate. Resolve requests by function; names are optional and grant no authority.
 
 ### Ask freely; execution stays governed
 
@@ -75,8 +77,8 @@ authority; host, privacy and scope gates apply.
 Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate (no semantic merge). Supervisors harvest when assigned; nobody waits.
 Retrieve lessons on demand; Notes is the bounded verified hot cache.
 
-**Read `docs/agent-guidance/index.json` now.** It names task/failure triggers,
-exact authoritative paths and when each read is required. Match your next
+**Read `docs/agent-guidance/index.json` now.** It names triggers, authoritative
+paths and when each read is required. Match your next
 operation, read its listed procedure **before acting**, and repeat when scope
 or symptoms change. Use bounded `rg`; read matching sections and cited evidence. A link or
 acknowledgement is not a read. Record loaded instruction paths/bytes and retrieved paths/sections in the
@@ -139,12 +141,12 @@ stop the affected operation, preserve work and report the exact remedy.
 ### Instruction budget
 
 Caps: generated bootstrap **8 KiB UTF-8**; root AGENTS.md **12 KiB**;
-default-loading project guidance across root and relevant nested paths
-**24 KiB**, reserving **8 KiB** for global guidance inside a conservative
-**32 KiB combined** envelope. Root overrides must retain this bootstrap.
+default-loading project guidance (root and relevant nested paths) **24 KiB**,
+reserving **8 KiB** for global guidance in a **32 KiB combined** envelope.
+Root overrides must retain this bootstrap.
 Do not raise provider limits or automatically import the procedural library.
-Setup, Way drift and dispatch check delivery; overflow or missing guidance is
-an explicit failure requiring a smaller file or repaired adoption, not silence.
+Setup, Way drift and dispatch check delivery; overflow or missing guidance fails
+explicitly: shrink the file or repair adoption, never silently.
 <!-- ARCADIA_CONTEXT_END -->
 
 ## Arcadia repository obligations
