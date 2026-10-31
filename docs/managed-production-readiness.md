@@ -20,12 +20,22 @@ Derived **2026-10-31** from fresh read-only observation and exact merged source.
 | Capacity unknown | Decision0141 permits at most one needed bounded renewal-and-worker-verification per America/Los_Angeles day within its class; Decision0143 records the small-usage class, requires each sequence to be needed and does not replenish0141's allowance. Decision0144 (2026-10-26) approved assisted Codex delivery while Claude was blocked and left strict acceptance unchanged. No fresh actual-worker capacity reading exists after 2026-10-26. Required before any START; no credential probe was made by this refresh. |
 | Unproved | `first-unattended-run`: needs a fresh activation preview of at least three ready Claude Actions, one START card, every Action merged through the worker, and this document re-derived from that run. |
 
-**Smallest route to closing `first-unattended-run`** (each step a separate gate; none is authorized by this refresh):
+**Route to closing `first-unattended-run`, updated 2026-10-31 late** (route B, operator-chosen):
 
-1. **Re-scope (your decision).** Pick at least three small, independent, self-checking Claude Actions for one fresh run: a tightened `bound-guidance-test-teardown-retries` whose test fails when the `afterEach` retries are removed, plus at least two further ready Actions. In the same governed amendment, supersede the delivered `cover-mail-ack-receipt-kind-collision` and update `first-unattended-run`'s dependencies. Prepared by Rowan as one reviewed Plan-amendment card.
-2. **Runtime and capacity.** Assess whether `1ac59bd` must be adopted; run the Decision0141/0143 bounded capacity check for the day of START. Agent-run where a standing Decision covers it; otherwise one pinned card each.
-3. **Activation preview + START (your press).** One card pinning the exact scope, Claude only, concurrency1, policy revision83 and expiry.
-4. **Unattended delivery and acceptance.** Worker delivers; Rowan re-derives this document from the ledger and settles `first-unattended-run` only if every criterion is met.
+1. [x] **Re-scope.** This was settled and merged in [PR1937](https://github.com/pmark/arcadia/pull/1937) (`d89b857`). The run scope is three self-checking Actions, each graded GO by an independent critic:
+   - `bound-guidance-test-teardown-retries`, tightened so that `afterEach` must call an injectable `removeScratchRoots`;
+   - `assert-tmux-temp-launcher-removed` (Issue1536);
+   - `cover-retired-descriptor-byte-change` (Issue1262 item 1).
+   The duplicate `cover-mail-ack-receipt-kind-collision` was completed with evidence from PR1787. The Plan stays inactive.
+2. [x] **One-press authority.** Decisions [0156](decisions/0156-may-a-per-run-start-card-also-install-its-pinned-reviewed-main-revision-and.md) and [0157](decisions/0157-may-a-per-run-start-card-also-activate-its-named-plan-through-the-pinned-plan.md) were answered A/A ([PR1936](https://github.com/pmark/arcadia/pull/1936)). A per-run card may install its pinned reviewed main, restart and bind the worker, activate its Plan, and START.
+3. [x] **One-press machinery.** [PR1934](https://github.com/pmark/arcadia/pull/1934) added `production runtime-check` and `activate --require-current-runtime`. [PR1944](https://github.com/pmark/arcadia/pull/1944) (`d65457f`) added the reviewed-once `scripts/start-run.sh` executor, thin pinned cards, `arcadia start-run pins` and a no-mutation `preflight`, after independent review R1 NO-GO and then R2 GO. It was proved only against fakes.
+4. [ ] **Before minting the first card (agent work, no press):**
+   - fix [Issue1943](https://github.com/pmark/arcadia/issues/1943): the emitter must check the delegation receipt's validity window, and the test seam must move out of the executor;
+   - establish what `delegationReceipt` means when the operator presses the card themselves, since the daily START/STOP delegation expired 2026-10-26;
+   - obtain fresh sign-in/usage evidence under Decision 0141/0143's bounded class;
+   - pass a host `preflight` and get an independent critic check of the pins.
+5. [ ] **One press (operator).** Run the card from `/actions`. It installs, activates and STARTs.
+6. [ ] **Unattended delivery and acceptance.** The worker delivers. Rowan re-derives this document from the ledger, and settles `first-unattended-run` only if every criterion is met.
 
 Every press and host step on this route is recorded as friction toward one-click whole-Plan continuation ([Issue1929](https://github.com/pmark/arcadia/issues/1929)); the cheapest, checklist drift, is fixed by this refresh.
 
