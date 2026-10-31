@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-30
+updated: 2026-10-31
 ---
 
 # Mission Log: Arcadia
@@ -2816,3 +2816,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Operator-settled Plan transition. Previous Plan make-arcadia-go-orient-one-caller-truthfully-before-authorized-work remains draft with completion state preserved. Operator approved screening and selecting another small Action after excluding exhausted Issue 1419, and suggested a small bug batch. Select only Issue 749 for the first real Go proof; Issues 1536 and 1763 are subsequent candidates, not launched work. Preserve all existing work and claims, Production Off, prior attempt counters and approval gates. No merge, deployment, runtime adoption or automatic successor launch is authorized by this test.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-10-31 — Completed arcadia/cover-mail-ack-receipt-kind-collision
+
+- **Did:** Completed Action arcadia/cover-mail-ack-receipt-kind-collision from accepted evidence (Candidate bea0ae23de42a902d37cfb92fe0d5eb36449029b).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/native-mail.test.ts gains a test that acknowledges a message without disposing it, then calls reportMailResult and disposeMailMessage with the request id message.id plus ':acknowledgment', and asserts both throw an error whose message contains the substring 'already recorded as a different operation (acknowledgment)'."; "The same test asserts the message status is still acknowledged afterwards, and every other test in the file passes unchanged."; "The change touches only tests/native-mail.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
+- **Next:** Next ready Action in this inactive Plan: bound-guidance-test-teardown-retries.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-cover-mail-ack-receipt-kind-collision-2026-10-31-b).
