@@ -134,7 +134,9 @@ import {
   runProductionResetRepairBudgetCommand,
   runProductionStatusCommand,
   runProductionFreezeCheckCommand,
-  renderProductionFreezeCheckSuccess
+  renderProductionFreezeCheckSuccess,
+  runProductionRuntimeCheckCommand,
+  renderProductionRuntimeCheckSuccess
 } from "./commands/production.js";
 import {
   renderScheduleClassifySuccess,
@@ -1488,6 +1490,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
   addJsonOption(
     production
+      .command("runtime-check")
+      .description("Read-only: is the installed broker release current against the repository HEAD? Reports; never refuses on a stale result")
+      .option("--repository <path>", "Repository to compare against (default: git toplevel of the current directory)")
+  ).action((options: { repository?: string; json?: boolean }) =>
+    runCliAction("production.runtime-check", options, () => runProductionRuntimeCheckCommand({ repository: options.repository }), renderProductionRuntimeCheckSuccess)
+  );
+  addJsonOption(
+    production
       .command("preview")
       .description("Preview exactly what activation would authorize; writes nothing")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -1531,9 +1541,11 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .requiredOption("--granted-by <who>", "Operator granting the authorization")
       .option("--decision <ref>", "Authorizing Decision reference")
       .option("--expected-revision <n>", "Policy revision the preview showed (its expectedRevision)")
+      .option("--require-current-runtime", "Refuse a new grant unless the installed broker release is current against the repository HEAD (replays still replay)")
+      .option("--repository <path>", "Repository for --require-current-runtime (default: git toplevel of the current directory)")
       // The flag's earlier spelling, kept so existing callers keep working (Issue #609).
       .addOption(new Option("--expect-revision <n>").hideHelp())
-  ).action((options: ProductionCliOptions & { requestId: string; grantedBy: string; decision?: string; expectedRevision?: string; expectRevision?: string }) =>
+  ).action((options: ProductionCliOptions & { requestId: string; grantedBy: string; decision?: string; expectedRevision?: string; expectRevision?: string; requireCurrentRuntime?: boolean; repository?: string }) =>
     runCliAction("production.activate", options, () => runProductionActivateCommand(options), renderProductionTransitionSuccess)
   );
   addJsonOption(
@@ -5942,7 +5954,7 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
-  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget"].includes(second ?? "")) {
+  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check"].includes(second ?? "")) {
     return `production.${second}`;
   }
 
