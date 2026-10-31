@@ -43,7 +43,7 @@ Rowan (Claude Code, `claude/go-1926-rowan-handoff-20261031`) is the coordinator 
 ## Next action
 
 1. Prepare one Off-only button that reloads the broker and worker at `1ac59bd`.
-2. With the operator's separate approval, take a fresh read-only `arcadia session preview-launch --recover-session session_0bc6dbe2bf4c43f4b4` with a new request id.
+2. With the operator's separate approval, take a fresh read-only `arcadia session preview-launch --workspace /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover --repo /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/projects/go-agent-delivery-probe-20261029 --request-id <new id> --recover-session session_0bc6dbe2bf4c43f4b4 --json`. `--repo` must name the Go probe Project checkout; the default is the invocation directory.
 3. Present a package with:
    - the preview fingerprint;
    - the candidate;
