@@ -1,0 +1,70 @@
+name: Blog
+
+# Builds the Arcadia project blog (site/ + docs/articles/) on pull requests as a
+# check, and deploys to GitHub Pages only on pushes to main. Deployment needs the
+# operator's one-time repository setting Pages > Source = "GitHub Actions"; until
+# then the deploy is skipped and the build still passes. See site/README.md.
+
+on:
+  pull_request:
+    paths:
+      - "docs/articles/**"
+      - "site/**"
+      - ".github/workflows/blog.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/articles/**"
+      - "site/**"
+      - ".github/workflows/blog.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: blog-${{ github.event.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      deploy: ${{ steps.pages.outcome == 'success' }}
+    permissions:
+      contents: read
+      pages: write # configure-pages only; runs on main pushes
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Check GitHub Pages is enabled (main only)
+        id: pages
+        if: github.event_name == 'push'
+        continue-on-error: true
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+      - name: Stage posts
+        run: node site/stage.mjs "$GITHUB_WORKSPACE/_blog-src"
+      - uses: actions/jekyll-build-pages@44a6e6beabd48582f863aeeb6cb2151cc1716697 # v1.0.13
+        with:
+          source: ./_blog-src
+          destination: ./_blog-site
+      - name: Upload Pages artifact
+        if: steps.pages.outcome == 'success'
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3.0.1
+        with:
+          path: _blog-site
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' && needs.build.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

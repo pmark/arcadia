@@ -1,0 +1,15 @@
+title: Arcadia Field Notes
+description: "Plain project updates - what shipped, what broke, what is next."
+url: https://pmark.github.io
+baseurl: /arcadia
+permalink: /posts/:title/
+plugins:
+  - jekyll-feed
+feed:
+  path: feed.xml
+defaults:
+  - scope: { path: "" }
+    values: { layout: post }
+exclude:
+  - README.md
+  - stage.mjs
