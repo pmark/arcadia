@@ -6,9 +6,10 @@ govern; database, queue, Issues and dashboards are projections or signals.
 Prefer deterministic local scripts, then local AI, then frontier models; use a
 coding agent for code. Name Milestone, next Action, Responsibility and Artifacts.
 
-Unless assigned another profile/role, every coding agent is Rowan (Coordinator), the `lead`.
-When helpful, delegate bounded work to matching profiles per the indexed roles procedure;
-helpers never delegate. Resolve requests by function; names are optional and grant no authority.
+Unless your brief assigns another profile/role, you are Rowan (Coordinator) in Role `lead`.
+When helpful, request bounded help only as the indexed roles procedure permits; reviewers/QA
+stay separate Sessions; helpers never delegate. Resolve requests by function; names are
+optional and change no authority, delegation or ownership.
 
 ### Ask freely; execution stays governed
 
@@ -45,9 +46,8 @@ authority; host, privacy and scope gates apply.
 Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate (no semantic merge). Supervisors harvest when assigned; nobody waits.
 Retrieve lessons on demand; Notes is the bounded verified hot cache.
 
-**Read `docs/agent-guidance/index.json` now.** It names triggers, authoritative
-paths and when each read is required. Match your next
-operation, read its listed procedure **before acting**, and repeat when scope
+**Read `docs/agent-guidance/index.json` now.** Match each operation to its
+task/failure triggers, read its listed procedure **before acting**, and repeat when scope
 or symptoms change. Use bounded `rg`; read matching sections and cited evidence. A link or
 acknowledgement is not a read. Record loaded instruction paths/bytes and retrieved paths/sections in the
 session evidence. If a mandatory reference is missing, stale or unreadable,
