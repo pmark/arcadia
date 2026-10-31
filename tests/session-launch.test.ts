@@ -118,13 +118,18 @@ describe("launchGuardedHostSession", () => {
     } finally { setWorktreeLivenessProbeForTests(null); }
   });
 
-  it.each([{ status: 1, stderr: "" }, { status: 0, stderr: "lsof: WARNING: incomplete scan" }])("refuses terminal recovery when macOS process coverage is partial: %j", partial => {
+  it.each([
+    { status: 1, stderr: "", cwd: "/tmp" },
+    { status: 0, stderr: "lsof: WARNING: incomplete scan", cwd: "/tmp" },
+    { status: 0, stderr: "", cwd: "unknown" },
+    { status: 0, stderr: "", cwd: "/arcadia-missing-cwd-does-not-exist" }
+  ])("refuses terminal recovery when macOS process coverage is partial or unusable: %j", partial => {
     const f = terminalRecoveryFixture();
     try {
       const shown = f.preview("partial-lsof");
       expect(shown.ready).toBe(true);
       setWorktreeLivenessProbeForTests((root, options) => lsofProbe(root, options, () => ({
-        ...partial, stdout: "p123\ncother\nfcwd\nn/tmp/elsewhere\n"
+        ...partial, stdout: `p123\ncother\nfcwd\nn${partial.cwd}\n`
       })));
       expect(f.preview("partial-lsof").ready).toBe(false);
       expect(() => f.launch("partial-lsof", shown.previewFingerprint)).toThrow();

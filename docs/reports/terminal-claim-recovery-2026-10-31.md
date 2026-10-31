@@ -138,6 +138,30 @@ in this candidate.
 The finding is addressed in source, pending independent delta review and CI;
 no installed-runtime or live-recovery proof is claimed.
 
+## Independent review R2 and bounded cwd repair
+
+R2 reviewed `c318beb6625eb0328f6adcf0d8370a9edbfca0c4` against the first
+head. It confirmed the R1 and superseded-input repairs, then found one blocker,
+R2-01: a status-zero `nunknown` cwd record was treated as outside the candidate.
+The strict recovery parser now requires ordered process/command/cwd-field/name
+records and an absolute cwd that resolves to a directory. Matching uses that
+resolved path directly; an unknown, missing, deleted or unreadable cwd refuses.
+Default non-recovery callers retain their existing behavior.
+
+- Failing-first cwd/record regressions: 10 failed, 2 passed, 97 skipped, exit 1.
+- Initial focused fix: 21 passed, 88 skipped, exit 0 (10.05s).
+- Final complete liveness file: 19 passed, exit 0 (1.19s).
+- Final recovery composition and macOS refusal cases: 5 passed, 85 skipped,
+  exit 0 (11.41s).
+- Focused ESLint and root TypeScript: exit 0. The earlier full build remains
+  the broad baseline; this bounded parser delta received the focused checks.
+- Coordinator-authorized read-only strict probe of the retained host candidate:
+  exit 0, `ok: true`, no process observed. This is a point-in-time observation,
+  not approval of live recovery or proof that later launch preconditions hold.
+
+Independent final delta review and required CI remain pending. No live recovery,
+claim transfer or installed-runtime change occurred.
+
 ## Operator and end-user QA
 
 No new UI or service is published. The operator procedure is the end-user

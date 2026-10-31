@@ -2,7 +2,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { lsofProbe, probeWorktreeLiveness } from "../src/sessions/worktreeLiveness.js";
 
 const roots: string[] = [];
@@ -50,8 +50,14 @@ describe("probeWorktreeLiveness against the real host process table (Issue #884)
 
 
 describe("terminal recovery's complete macOS lsof scan", () => {
-  const root = "/tmp/arcadia-recovery-candidate";
-  const clear = "p123\ncother\nfcwd\nn/tmp/elsewhere\n";
+  let root: string;
+  let clear: string;
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-strict-lsof-")));
+    roots.push(root);
+    mkdirSync(path.join(root, "nested"));
+    clear = `p123\ncother\nfcwd\nn${realpathSync(tmpdir())}\n`;
+  });
   it.each([
     { status: 1, stdout: clear, stderr: "" },
     { status: 0, stdout: clear, stderr: "lsof: WARNING: cannot stat a filesystem" },
@@ -66,6 +72,13 @@ describe("terminal recovery's complete macOS lsof scan", () => {
       .toEqual({ ok: true, processes: [{ pid: 123, command: "writer", cwd: `${root}/nested` }] });
   });
   it.each(["p123\ncother\n", "p123\ncother\nn\n", "unparseable\np123\ncother\nn/tmp/elsewhere\n"])("refuses incomplete or malformed records despite status zero: %j", stdout => {
+    expect(lsofProbe(root, { requireCompleteScan: true }, () => ({ status: 0, stdout, stderr: "" }))).toMatchObject({ ok: false });
+  });
+  it.each(["unknown", "relative/cwd", "/arcadia-missing-cwd-does-not-exist", "/tmp/deleted (deleted)"])("refuses unusable cwd despite status zero: %s", cwd => {
+    expect(lsofProbe(root, { requireCompleteScan: true }, () => ({ status: 0, stdout: `p123\ncother\nfcwd\nn${cwd}\n`, stderr: "" })))
+      .toMatchObject({ ok: false });
+  });
+  it.each(["cother\np123\nfcwd\nn/\n", "p123\ncother\nn/\n", "p123\ncother\nfcwd\nn/\nn/\n", "p123\ncother\nfcwd\nn/\ncother\n"])("refuses invalid cwd record structure: %j", stdout => {
     expect(lsofProbe(root, { requireCompleteScan: true }, () => ({ status: 0, stdout, stderr: "" }))).toMatchObject({ ok: false });
   });
   it("preserves the existing non-recovery caller behavior", () => {

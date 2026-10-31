@@ -118,21 +118,46 @@ export function lsofProbe(root: string, options: WorktreeLivenessOptions = {},
   let command: string | null = null;
   let sawProcess = false;
   let sawCwd = false;
+  let sawCommand = false;
+  let sawCwdField = false;
   for (const line of (result.stdout ?? "").split("\n")) {
     if (line.startsWith("p")) {
       if (options.requireCompleteScan && pid !== null && !sawCwd) return { ok: false, error: "lsof omitted a process working directory." };
       sawCwd = false;
+      sawCommand = false;
+      sawCwdField = false;
+      if (options.requireCompleteScan && !/^p[1-9]\d*$/.test(line)) return { ok: false, error: "lsof output was not parseable." };
       pid = Number(line.slice(1));
       command = null;
-      sawProcess = Number.isInteger(pid) && pid > 0;
+      sawProcess = Number.isSafeInteger(pid) && pid > 0;
       if (!sawProcess) return { ok: false, error: "lsof output was not parseable." };
     } else if (line.startsWith("c")) {
+      if (options.requireCompleteScan && (pid === null || sawCommand || sawCwdField || sawCwd)) return { ok: false, error: "lsof output was not parseable." };
+      sawCommand = true;
       command = line.slice(1) || null;
+    } else if (line === "fcwd") {
+      if (options.requireCompleteScan && (pid === null || !sawCommand || sawCwdField || sawCwd)) return { ok: false, error: "lsof output was not parseable." };
+      sawCwdField = true;
     } else if (line.startsWith("n") && pid !== null) {
       const cwd = line.slice(1);
+      let resolvedCwd: string | null = null;
+      if (options.requireCompleteScan) {
+        if (!sawCwdField || sawCwd) return { ok: false, error: "lsof output was not parseable." };
+        if (!path.isAbsolute(cwd)) return { ok: false, error: "lsof reported an unusable process working directory." };
+        try {
+          // A literal unknown/deleted/escaped or unreadable cwd cannot prove absence.
+          resolvedCwd = realpathSync(cwd);
+          if (!statSync(resolvedCwd).isDirectory()) throw new Error("not a directory");
+        } catch {
+          return { ok: false, error: "lsof reported an unresolvable process working directory." };
+        }
+      }
       sawCwd = cwd.length > 0;
-      if (pid !== process.pid && cwd && inside(cwd, root)) processes.push({ pid, command, cwd });
-    } else if (options.requireCompleteScan && line && line !== "fcwd") {
+      const inCandidate = resolvedCwd !== null
+        ? resolvedCwd === root || resolvedCwd.startsWith(`${root}${path.sep}`)
+        : cwd && inside(cwd, root);
+      if (pid !== process.pid && inCandidate) processes.push({ pid, command, cwd });
+    } else if (options.requireCompleteScan && line) {
       return { ok: false, error: "lsof output was not parseable." };
     }
   }
