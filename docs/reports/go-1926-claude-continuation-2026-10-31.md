@@ -42,15 +42,13 @@ Rowan (Claude Code, `claude/go-1926-rowan-handoff-20261031`) is the coordinator 
 
 ## Next action
 
-1. Prepare one Off-only button that reloads the broker and worker at `1ac59bd`.
-2. With the operator's separate approval, take a fresh read-only `arcadia session preview-launch --workspace /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover --repo /Users/pmark/Dev/MR/Arcadia/workspaces/martianrover/projects/go-agent-delivery-probe-20261029 --request-id <new id> --recover-session session_0bc6dbe2bf4c43f4b4 --json`. `--repo` must name the Go probe Project checkout; the default is the invocation directory.
-3. Present a package with:
-   - the preview fingerprint;
-   - the candidate;
-   - the configured Codex provider, model and effort;
-   - the ten-minute bound, stop conditions and one-attempt consequence.
+**Parked by operator direction, 2026-10-31.** The operator's only goal is unattended production through one-click whole-Plan continuation, and [the readiness checklist](../managed-production-readiness.md) does not treat this probe as acceptance evidence. Do not continue this probe. Work the readiness critical path instead.
 
-Do not launch, START or reset anything without that approval.
+Revival trigger: an unattended whole-Plan run needs Go recovery of a terminal candidate. When that happens, resume from the steps below:
+
+1. Reload the worker at current main.
+2. Take a fresh recovery preview with a new request id.
+3. Publish the launch package for separate approval.
 
 ## Stop condition
 
