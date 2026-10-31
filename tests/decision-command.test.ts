@@ -493,6 +493,87 @@ describe("decision approve", () => {
   });
 });
 
+describe("decision approve --superseded-by (Issue #1940)", () => {
+  function twoDecisions() {
+    const setup = workspaceWithProject();
+    const options = [
+      { label: "Merge now", consequence: "Ships immediately.", recommended: true },
+      { label: "Hold", consequence: "Delays the fix by a day." }
+    ];
+    runDecisionNewCommand({ workspace: setup.workspace, project: setup.projectSlug, slug: "old-question", question: "Merge now or hold?", options });
+    runDecisionNewCommand({ workspace: setup.workspace, project: setup.projectSlug, slug: "new-question", question: "Merge, hold, or stage it?", options });
+    return setup;
+  }
+
+  it("closes the Decision as rejected with an explanatory answer instead of an option label", () => {
+    const { workspace, repoRoot, projectSlug } = twoDecisions();
+
+    runDecisionApproveCommand({
+      workspace,
+      project: projectSlug,
+      id: "0001",
+      answer: "The operator's answer was an option this Decision did not offer.",
+      supersededBy: "0002"
+    });
+
+    const content = readFileSync(path.join(repoRoot, "docs/decisions/0001-old-question.md"), "utf8");
+    expect(content).toContain("status: rejected");
+    expect(content).toContain("Superseded by Decision 0002: The operator's answer was an option this Decision did not offer.");
+    const successor = readFileSync(path.join(repoRoot, "docs/decisions/0002-new-question.md"), "utf8");
+    expect(successor).toContain("status: open");
+  });
+
+  it("refuses a successor that does not exist, writing nothing", () => {
+    const { workspace, repoRoot, projectSlug } = twoDecisions();
+    const before = readFileSync(path.join(repoRoot, "docs/decisions/0001-old-question.md"), "utf8");
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Replaced.", supersededBy: "0099" })
+    ).toThrow(/superseding Decision does not exist/);
+    expect(readFileSync(path.join(repoRoot, "docs/decisions/0001-old-question.md"), "utf8")).toBe(before);
+  });
+
+  it("refuses a Decision superseding itself", () => {
+    const { workspace, projectSlug } = twoDecisions();
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Replaced.", supersededBy: "old-question" })
+    ).toThrow(/cannot supersede itself/);
+  });
+
+  it("refuses any status other than rejected", () => {
+    const { workspace, projectSlug } = twoDecisions();
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Replaced.", status: "approved", supersededBy: "0002" })
+    ).toThrow(/recorded as rejected/);
+  });
+
+  it("refuses a successor that is itself rejected", () => {
+    const { workspace, projectSlug } = twoDecisions();
+    runDecisionApproveCommand({ workspace, project: projectSlug, id: "0002", answer: "Hold", status: "rejected" });
+
+    expect(() =>
+      runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Replaced.", supersededBy: "0002" })
+    ).toThrow(/is itself rejected/);
+  });
+
+  it("the spawned CLI forwards --superseded-by and defaults the status to rejected", () => {
+    const { workspace, repoRoot, projectSlug } = twoDecisions();
+    const cli = path.resolve(import.meta.dirname, "../src/cli.ts");
+    const run = spawnSync(
+      process.execPath,
+      ["--import", "tsx", cli, "decision", "approve", "0001", "--project", projectSlug, "--answer", "Replaced by a wider question.", "--superseded-by", "0002", "--workspace", workspace, "--json"],
+      { encoding: "utf8", timeout: 60_000 }
+    );
+
+    expect(run.status, `${run.stdout}${run.stderr}`).toBe(0);
+    const content = readFileSync(path.join(repoRoot, "docs/decisions/0001-old-question.md"), "utf8");
+    expect(content).toContain("status: rejected");
+    expect(content).toContain("Superseded by Decision 0002: Replaced by a wider question.");
+  });
+});
+
 describe("decision validate", () => {
   it("reports errors for a hand-edited document without writing anything", () => {
     const { workspace, repoRoot, projectSlug } = workspaceWithProject();

@@ -163,6 +163,8 @@ export interface DecisionApproveOptions {
   expectNoPointerMove?: boolean;
   /** The caller already holds a capture id for this answer; no new envelope is made. */
   captureId?: string | null;
+  /** Close this Decision as superseded by another Decision (id, slug, or filename); see `prepareDecisionAnswer`. */
+  supersededBy?: string;
 }
 
 export interface DecisionApproveData {
@@ -272,6 +274,12 @@ export function prepareDecisionAnswer(
     expectStatus?: string;
     expectUpdated?: string;
     expectOptions?: string;
+    /**
+     * Close the Decision as superseded by this successor Decision (id, slug, or filename) instead of choosing one of
+     * its options. Records `status: rejected` with the answer `Superseded by Decision <id>: <answer>`, so the
+     * operator's actual answer can live in a successor that offers it (Issue #1940). No option effect is applied.
+     */
+    supersededBy?: string;
   }
 ): PreparedDecisionAnswer {
   const recorded = input.answer.trim();
@@ -279,7 +287,14 @@ export function prepareDecisionAnswer(
     throw validationError("Recording a Decision answer requires the answer text.", { decision: input.decisionRef });
   }
 
-  const status = input.status ?? "approved";
+  const supersededBy = input.supersededBy?.trim() || null;
+  if (supersededBy !== null && input.status !== undefined && input.status !== "rejected") {
+    throw validationError("A superseded Decision is recorded as rejected; omit --status or pass --status rejected.", {
+      decision: input.decisionRef,
+      status: input.status
+    });
+  }
+  const status = supersededBy !== null ? "rejected" : input.status ?? "approved";
   if (!(DECISION_DOC_STATUSES as readonly string[]).includes(status)) {
     throw validationError(`status must be one of: ${DECISION_DOC_STATUSES.join(", ")}`, { status });
   }
@@ -334,7 +349,32 @@ export function prepareDecisionAnswer(
   // future reader makes from free text.
   let answer = recorded;
   let chosen: DecisionOptionDoc | null = null;
-  if (decisionDoc && decisionDoc.options.length > 0) {
+  if (supersededBy !== null) {
+    // Superseding chooses none of this Decision's options, so it skips the
+    // label match below and applies no option effect. The successor must be a
+    // different Decision of the same Project that is still answerable.
+    const successorPath = findDecisionFile(decisionsDir, supersededBy);
+    const successorRelative = successorPath ? path.relative(repoRoot, successorPath) : null;
+    const successor = successorPath && successorRelative
+      ? parseDoc(successorRelative, successorPath, readFileSync(successorPath, "utf8")).doc
+      : null;
+    if (!successor || successor.type !== "decision") {
+      throw validationError("The superseding Decision does not exist in this Project.", {
+        decision: input.decisionRef,
+        supersededBy
+      });
+    }
+    if (successorPath === absolutePath) {
+      throw validationError("A Decision cannot supersede itself.", { decision: input.decisionRef, supersededBy });
+    }
+    if (successor.status === "rejected") {
+      throw validationError("The superseding Decision is itself rejected; name the Decision that carries the answer.", {
+        decision: input.decisionRef,
+        supersededBy: successor.id
+      });
+    }
+    answer = `Superseded by Decision ${successor.id}: ${recorded}`;
+  } else if (decisionDoc && decisionDoc.options.length > 0) {
     chosen = decisionDoc.options.find(
       (option) => option.label.trim().toLowerCase() === recorded.toLowerCase()
     ) ?? null;
@@ -393,7 +433,8 @@ function applyDecisionApprove(
 ): CommandSuccess<DecisionApproveData> {
   return withDatabase(workspacePath, (db) => {
     const repoRoot = resolveProjectRepoFromDb(db, options.project);
-    const status = options.status ?? "approved";
+    // Superseding records `rejected`; an explicit other status is refused by prepareDecisionAnswer.
+    const status = options.status ?? (options.supersededBy ? "rejected" : "approved");
     const prepared = prepareDecisionAnswer(db, {
       projectIdOrSlug: options.project,
       decisionRef: options.id,
@@ -402,7 +443,8 @@ function applyDecisionApprove(
       decided: options.decided,
       expectStatus: options.expectStatus,
       expectUpdated: options.expectUpdated,
-      expectOptions: options.expectOptions
+      expectOptions: options.expectOptions,
+      supersededBy: options.supersededBy
     });
     const { relativePath, absolutePath, after: updatedContent, chosen } = prepared;
     reply.entityId = prepared.decisionId ?? relativePath;
