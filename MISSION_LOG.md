@@ -2823,3 +2823,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/native-mail.test.ts gains a test that acknowledges a message without disposing it, then calls reportMailResult and disposeMailMessage with the request id message.id plus ':acknowledgment', and asserts both throw an error whose message contains the substring 'already recorded as a different operation (acknowledgment)'."; "The same test asserts the message status is still acknowledged afterwards, and every other test in the file passes unchanged."; "The change touches only tests/native-mail.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
 - **Next:** Next ready Action in this inactive Plan: bound-guidance-test-teardown-retries.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-cover-mail-ack-receipt-kind-collision-2026-10-31-b).
+
+## 2026-10-31 — Completed arcadia/open-naming-and-design-help-decisions
+
+- **Did:** Completed Action arcadia/open-naming-and-design-help-decisions from accepted evidence (Candidate 33ab4921b067c601e07c8e40a9d369be4c9eae21).
+- **Result:** Every declared acceptance criterion was accepted as met: "Decisions for persona automation, Iris, naming migration, Lead scope, design brief home and scope, design help depth, and the assurance wording are open, each as a lettered choice with consequences matching section 10 of the briefing."; "Each Decision document is on main before the operator is asked to answer it.".
+- **Next:** Next ready Action in this inactive Plan: standardize-agent-naming-vocabulary.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-open-naming-and-design-help-decisions-v2-2026-10-31).
