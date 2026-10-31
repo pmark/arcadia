@@ -4,7 +4,7 @@ type: decision
 id: "0149"
 slug: how-far-should-arcadia-automate-persona-identity-in-generated-identity-text
 project: arcadia
-status: open
+status: approved
 question: How far should Arcadia automate persona identity in generated identity text?
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: Explicit binding only
+decided: 2026-10-31
 ---
 
 # Decision 0149: How far should Arcadia automate persona identity in generated identity text?
