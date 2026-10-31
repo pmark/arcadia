@@ -71,6 +71,24 @@ describe("assessRuntimeCurrency", () => {
     expect(result.reasons.join(" ")).toContain("src/index.ts");
   });
 
+  it.each(["config/defaults/agent-roles.json", "database/schema.sql"])(
+    "is stale when %s, which the install stages, changed",
+    (relative) => {
+      const { repository, base } = gitRepository();
+      commitFile(repository, relative, "changed\n");
+      const result = assessRuntimeCurrency({ repository, installedRevision: base });
+      expect(result.current).toBe(false);
+      expect(result.reasons.join(" ")).toContain(relative);
+    }
+  );
+
+  it("is stale when the installed revision is not a full commit id", () => {
+    const { repository } = gitRepository();
+    const result = assessRuntimeCurrency({ repository, installedRevision: "--output=/tmp/x" });
+    expect(result.current).toBe(false);
+    expect(result.reasons.join(" ")).toContain("not a full commit id");
+  });
+
   it("stays current across a docs-only difference", () => {
     const { repository, base } = gitRepository();
     commitFile(repository, "docs/notes.md", "# notes\n");

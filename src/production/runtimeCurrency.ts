@@ -1,7 +1,13 @@
 import { execFileSync } from "node:child_process";
 
-/** Paths whose changes alter what the installed broker runs; docs-only differences do not. */
-export const RUNTIME_PATHS = ["src", "scripts", "apps", "package.json", "pnpm-lock.yaml", "tsconfig.json"] as const;
+/**
+ * Paths whose changes alter what the installed broker runs; docs-only differences do not.
+ * `config` and `database` are staged into the release by `go-broker install` (role registry,
+ * worker defaults and schema), so they count too.
+ */
+export const RUNTIME_PATHS = ["src", "scripts", "apps", "config", "database", "package.json", "pnpm-lock.yaml", "tsconfig.json"] as const;
+
+const FULL_SHA = /^[0-9a-f]{40}$/;
 
 const MAX_NAMED_PATHS = 10;
 
@@ -41,6 +47,8 @@ export function assessRuntimeCurrency(input: {
 
   if (!installedRevision) {
     reasons.push("no installed broker revision was found");
+  } else if (!FULL_SHA.test(installedRevision)) {
+    reasons.push(`installed revision ${installedRevision} is not a full commit id`);
   } else if (!gitSucceeds(repository, ["cat-file", "-e", `${installedRevision}^{commit}`])) {
     reasons.push(`installed revision ${installedRevision} is unknown to this repository`);
   } else {
