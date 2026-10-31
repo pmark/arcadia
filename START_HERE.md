@@ -897,7 +897,16 @@ pnpm arcadia project prepare "Teacher Commons" \
   --path /path/to/teacher-commons
 ```
 
-Omit `--path` to create the repository directory under the Arcadia workspace's
+Before running it, make the selected directory an independent Git repository
+and create a local baseline commit. If you omit `--path`, initialize the
+default Projects directory for this Project before running preparation.
+Preparation refuses non-Git directories,
+unborn repositories, and nested paths before it creates Project records or a
+planning packet. If preparation refuses for Git readiness, establish the
+baseline locally and retry the same preparation; it does not initialize Git,
+create a commit, or change agent trust settings for you.
+
+Omit `--path` to select the repository directory under the Arcadia workspace's
 Projects directory. The command classifies the request as **Project Work → Plan
 First → Codex**, preserves the idea verbatim, creates an Active Project and its
 first Milestone and planning Action, writes the `PROJECT.md` → active plan →
@@ -931,6 +940,12 @@ match, resolve the reported mismatch before preparing another packet. After
 approval, guarded launch places the accepted Project and Plan in the candidate's
 immutable starting revision; the source checkout remains untouched.
 The separate build trigger and all other approval gates remain in force.
+A manual build Run records the packet and current execution context separately.
+A successful process exit alone leaves the Run in **Requires Review** and the
+Action unfinished, even if the child reports success or changed files. Use the
+existing protected validation and preservation path and governed completion
+evidence to establish completion; those are separate from process output and
+any later delivery, review, or merge gates.
 
 Preparation refuses an already registered Project name or repository and any
 repository that already carries a `PROJECT.md` or managed plan. It never
@@ -955,6 +970,11 @@ replaces another Project's work pointer.
    Action, and prepares—but does not run—its packet; **Defer** requires the named
    condition that revives it; or **Send back** requires refinement feedback,
    preserves the current Artifact, and reopens the planning Action for Codex.
+   The next planning packet carries that exact feedback with its source Decision
+   and judged Artifact revision; feedback asks for clarification and grants no
+   authority to change the original goal or approval gates. If an older
+   unapproved packet predates the feedback, withdraw its Decision before
+   preparing a fresh packet.
 
 Use the collapsed **Focus** control at the top of **Needs you** to choose a
 primary Project, an optional secondary Project, and Projects to park for now.

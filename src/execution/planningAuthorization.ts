@@ -16,6 +16,7 @@ import {
   getReviewItemBySlug,
   getWorkItem,
   listApprovalGatesForWorkItem,
+  listReviewItems,
   updateWorkItem
 } from "../db/repositories.js";
 import { writeTransaction } from "../db/connection.js";
@@ -30,6 +31,7 @@ import type {
   ReviewItemSummary,
   WorkItemSummary
 } from "../domain/types.js";
+import type { PlanningRefinementBinding } from "../codex/packets.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 
@@ -63,6 +65,76 @@ export interface PlanningAuthorizationResult {
 
 export function packetSha256(filePath: string): string {
   return createHash("sha256").update(readFileSync(filePath)).digest("hex");
+}
+
+export function latestPlanningRefinement(
+  db: Database.Database,
+  workspace: string,
+  action: WorkItemSummary
+): PlanningRefinementBinding | null {
+  const rejectedItems = listReviewItems(db, "all").filter((item) =>
+    item.resolved_intent === "CodexPlanningArtifactAcceptance" &&
+    item.status === "rejected" && item.work_item_id === action.id && item.project_id === action.project_id
+  );
+  if (rejectedItems.length === 0) return null;
+  const ordered = rejectedItems.map((item) => {
+    const timestamp = item.decided_at ? Date.parse(item.decided_at) : NaN;
+    if (!Number.isFinite(timestamp)) {
+      throw new Error(`Rejected planning Decision ${item.id} has no valid rejection timestamp; reconcile its preserved review evidence before preparing a packet.`);
+    }
+    return { item, timestamp };
+  }).sort((left, right) => right.timestamp - left.timestamp);
+  if (ordered.length > 1 && ordered[0].timestamp === ordered[1].timestamp) {
+    throw new Error(`Rejected planning Decisions ${ordered[0].item.id} and ${ordered[1].item.id} have the same rejection timestamp; reconcile their preserved review evidence before preparing a packet.`);
+  }
+  const rejected = ordered[0].item;
+  let context: Record<string, unknown>;
+  try { context = JSON.parse(rejected.context_json) as Record<string, unknown>; }
+  catch { throw new Error(`Rejected planning Decision ${rejected.id} has invalid refinement context; reconcile its preserved review evidence before preparing a packet.`); }
+  const judged = context.judgedArtifact as Record<string, unknown> | undefined;
+  const feedback = context.refinementFeedback;
+  if (!rejected.artifact_id || !rejected.artifact_path || !judged ||
+      judged.artifactId !== rejected.artifact_id || judged.artifactPath !== rejected.artifact_path ||
+      typeof judged.sha256 !== "string" || !/^[a-f0-9]{64}$/.test(judged.sha256) ||
+      typeof feedback !== "string" || !feedback.trim()) {
+    throw new Error(`Rejected planning Decision ${rejected.id} has incomplete refinement evidence; reconcile its preserved review evidence before preparing a packet.`);
+  }
+  const artifactPath = path.join(workspace, rejected.artifact_path);
+  if (!existsSync(artifactPath) || packetSha256(artifactPath) !== judged.sha256) {
+    throw new Error(`Judged planning Artifact for rejected Decision ${rejected.id} changed or is missing; restore or reconcile the preserved Artifact and its recorded hash before preparing a packet.`);
+  }
+  return {
+    reviewDecisionId: rejected.id,
+    artifactId: rejected.artifact_id,
+    artifactPath: rejected.artifact_path,
+    artifactSha256: judged.sha256,
+    feedback,
+    feedbackSha256: createHash("sha256").update(feedback, "utf8").digest("hex")
+  };
+}
+
+export function assertPlanningRefinementFresh(
+  db: Database.Database,
+  workspace: string,
+  action: WorkItemSummary,
+  decisionContext: PlanningDecisionContext,
+  packetText?: string
+): void {
+  const current = latestPlanningRefinement(db, workspace, action);
+  const bound = decisionContext.planningRefinement as PlanningRefinementBinding | undefined;
+  if (!current && !bound) return;
+  if (!current || !bound ||
+      bound.reviewDecisionId !== current.reviewDecisionId ||
+      bound.artifactId !== current.artifactId ||
+      bound.artifactPath !== current.artifactPath ||
+      bound.artifactSha256 !== current.artifactSha256 ||
+      bound.feedback !== current.feedback ||
+      bound.feedbackSha256 !== current.feedbackSha256) {
+    throw new Error("Planning packet is missing or has stale canonical refinement feedback; withdraw the unapproved Decision and prepare a fresh packet.");
+  }
+  if (packetText !== undefined && (!packetText.includes(JSON.stringify(current.feedback)) || !packetText.includes(current.reviewDecisionId) || !packetText.includes(current.artifactSha256))) {
+    throw new Error("Planning packet does not contain its bound canonical refinement feedback; withdraw the unapproved Decision and prepare a fresh packet.");
+  }
 }
 
 export function authorizePlanningRun(input: PlanningAuthorizationInput): PlanningAuthorizationResult {
@@ -128,6 +200,15 @@ export function authorizePlanningRunFromRepository(
   const result = authorizePlanningRun({ workspace, run, plan, decision, invocation, packetArtifact });
   if (!result.authorized) {
     return result;
+  }
+  const action = getWorkItem(db, plan.work_item_id);
+  const context = decision ? parseDecisionContext(decision) : {};
+  const packetText = invocation ? readFileSync(path.join(workspace, invocation.prompt_path), "utf8") : undefined;
+  if (!action) return refused("Planning Action is missing.");
+  try {
+    assertPlanningRefinementFresh(db, workspace, action, context, packetText);
+  } catch (error) {
+    return refused(error instanceof Error ? error.message : String(error));
   }
   const gates = listApprovalGatesForWorkItem(db, plan.work_item_id).filter((gate) =>
     gate.plan_id === plan.id && (!gate.plan_step_id || plan.steps.some((step) => step.id === gate.plan_step_id))
@@ -279,6 +360,7 @@ export function queueApprovedPlanningRun(
     if (!existsSync(packetPath) || !context.packetSha256 || packetSha256(packetPath) !== context.packetSha256) {
       throw new Error("Planning packet is missing or changed; regenerate it before approval.");
     }
+    assertPlanningRefinementFresh(db, workspace, action, context, readFileSync(packetPath, "utf8"));
 
     if (decision.resolved_intent === "CodexPlanningRetryApproval" && decision.status !== "approved") {
       const newInvocationId = createId("codexInvocation");

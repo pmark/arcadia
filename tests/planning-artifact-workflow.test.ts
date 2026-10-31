@@ -243,7 +243,7 @@ describe("Codex planning artifact validation workflow", () => {
       allowCodexBuild: true
     });
 
-    expect(result.data.run.status).toBe("completed");
+    expect(result.data.run.status).toBe("requires_review");
     expect(result.data.run.steps[0].output).not.toContain("Planning artifact validation");
     expect(existsSync(path.join(workspace, fixture.validationRelativePath))).toBe(false);
     expect(withDatabase(workspace, (db) => listReviewItems(db, "all"))).toHaveLength(0);

@@ -1278,7 +1278,8 @@ describe("arcadia ask command", () => {
       agentProfile: "fake_build"
     });
 
-    expect(run.data.run.status).toBe("completed");
+    expect(run.data.run.status, JSON.stringify(run.data.run.steps)).toBe("requires_review");
+    expect(withDatabase(workspace, (db) => (db.prepare("SELECT status FROM work_items WHERE id = ?").get(asked.workItem!.id) as { status: string }).status)).not.toBe("done");
     const invocation = withDatabase(workspace, (db) =>
       listCodexInvocationsForWorkItem(db, asked.workItem.id)[0]
     );
