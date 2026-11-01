@@ -115,6 +115,8 @@ function inScopePresses(library: string, excludeCard: string | null): Press[] {
   for (const card of listDirectory(operatorRuns)) {
     if (card === excludeCard || !slug.test(card)) continue;
     const receipts = listDirectory(path.join(library, "runs", card)).map((run) => ({ run, r: readJson<Receipt>(path.join(library, "runs", card, run, "receipt.json")) }));
+    // The consumed marker names the run that consumed the card, even when a crash left its receipt one step behind.
+    const consumedRun = readJson<{ runId?: string }>(path.join(library, `${card}.consumed.json`))?.runId;
     for (const pressRunId of listDirectory(path.join(operatorRuns, card))) {
       const dir = path.join(operatorRuns, card, pressRunId);
       const run = readJson<{ schema?: string; scriptId?: string; runId?: string; startedAt?: string; press?: unknown }>(path.join(dir, "run.json"));
@@ -123,9 +125,9 @@ function inScopePresses(library: string, excludeCard: string | null): Press[] {
       const startedAt = Date.parse(String(run.startedAt));
       if (!Number.isFinite(startedAt)) continue;
       const match = receipts.find(({ r }) => r?.mode === "run" && r.record?.operatorRunId === pressRunId) ?? null;
-      // An attempt consumed its card's one-shot allowance: its receipt says so, or (receipt missing or unreadable) the
-      // press was claimed and the card is consumed. A press refused before P3 consumed nothing and is no attempt.
-      const attempt = match?.r?.allowanceConsumed === true || (!match?.r && existsSync(path.join(dir, "start-run.claimed")) && existsSync(path.join(library, `${card}.consumed.json`)));
+      // An attempt consumed its card's one-shot allowance: its receipt says so, the card's consumed marker names its run,
+      // or (receipt missing or unreadable) the press was claimed and the card is consumed. A press refused before P3 consumed nothing and is no attempt.
+      const attempt = match?.r?.allowanceConsumed === true || (!!match && consumedRun === match.run) || (!match?.r && existsSync(path.join(dir, "start-run.claimed")) && existsSync(path.join(library, `${card}.consumed.json`)));
       presses.push({ card, pressRunId, startedAt, startedAtText: String(run.startedAt), delegated: run.press !== undefined || startRun!.delegation !== undefined, attempt, receipt: match?.r ?? null, receiptRun: match?.run ?? null, policyRevision: (startRun!.production as { revision?: unknown } | undefined)?.revision });
     }
   }

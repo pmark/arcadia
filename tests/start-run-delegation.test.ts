@@ -29,9 +29,9 @@ function writePress(root: string, spec: PressSpec, n: number) {
   writeFileSync(path.join(dir, "run.json"), JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: pressId, scriptId: spec.card, startedAt: spec.at, ...(spec.delegated ? { press: { kind: "delegated" } } : {}) }));
   writeFileSync(path.join(dir, "descriptor.json"), JSON.stringify({ startRun: { ...DELEGATION_SCOPE, actions: [...DELEGATION_SCOPE.actions], production: { revision: 83, epoch: 46 }, ...(spec.delegated ? { delegation: block({ attempt: n }) } : {}), ...spec.scope } }));
   if (spec.claimed !== false) writeFileSync(path.join(dir, "start-run.claimed"), "x\n");
-  if (spec.receipt?.allowanceConsumed !== false) writeFileSync(path.join(root, `${spec.card}.consumed.json`), "{}");
-  if (spec.receipt === null) return;
   const run = `20261101T1${n}0000Z-${n}`;
+  if (spec.receipt?.allowanceConsumed !== false || spec.card === "lagging-card") writeFileSync(path.join(root, `${spec.card}.consumed.json`), JSON.stringify({ runId: run }));
+  if (spec.receipt === null) return;
   mkdirSync(path.join(root, "runs", spec.card, run), { recursive: true });
   writeFileSync(path.join(root, "runs", spec.card, run, "receipt.json"), JSON.stringify({ id: spec.card, runId: run, mode: "run", startedAt: spec.at, outcome: "refused", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted", record: { operatorRunId: pressId }, ...spec.receipt }));
 }
@@ -72,6 +72,7 @@ describe("Decision 0163 delegation chain", () => {
     ["an origin that is not the operator's first press after Decision 0163", { others: [{ card: "earlier-operator-card", at: "2026-11-01T05:00:00Z" }] }, null, "ORIGIN_NOT_FIRST"],
     ["a newer operator press that STARTed, outside the chain", { others: [{ card: "later-operator-card", at: "2026-11-01T11:00:00Z", receipt: { outcome: "succeeded", productionActivated: true, offCleanup: "not_attempted" } }] }, null, "NOT_A_TRIGGER"],
     ["five attempts counted across cards, one with no receipt", { successors: 2, others: [{ card: "later-operator-card", at: "2026-11-01T11:00:00Z" }, { card: "lost-receipt-card", at: "2026-11-01T11:30:00Z", receipt: null }] }, null, "ATTEMPTS_EXHAUSTED"],
+    ["a consumed card whose receipt lags its consumed marker still counts", { successors: 3, others: [{ card: "lagging-card", at: "2026-11-01T11:00:00Z", receipt: { allowanceConsumed: false, outcome: "in_progress" } }] }, null, "ATTEMPTS_EXHAUSTED"],
     ["a press refused before P3 (consumed nothing) is no attempt and never the first press", { successors: 3, others: [{ card: "unconsumed-card", at: "2026-11-01T05:00:00Z", receipt: { allowanceConsumed: false } }] }, null, "none"],
     ["a claimed latest press whose receipt is missing", { others: [{ card: "lost-receipt-card", at: "2026-11-01T11:30:00Z", receipt: null }] }, null, "NOT_A_TRIGGER"]
   ])("refuses %s", (_label, options, receiptSha, expected) => {

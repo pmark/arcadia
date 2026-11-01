@@ -493,6 +493,7 @@ describe("start-run executor: Decision 0163 delegated presses", () => {
     expect(result.receipt).toMatchObject({ outcome: "succeeded", productionActivated: true });
     expect(result.receipt!.record.authority).toContain("Rowan's delegated press of this successor START card from /actions under Decision 0163, delegated from the operator's originating press start-run-origin-20261101/20261101T010000Z-111 (the one activation touch); attempt 2 of at most 5");
     expect(result.receipt!.record.delegation).toMatchObject({ originatingRun: `${ORIGIN}/${ORIGIN_RUN}`, attempt: 2, attemptsBefore: 1, trigger: "refused-before-start" });
+    expect(readFileSync(path.join(b.library, "runs", "delegation", `${ORIGIN}--${ORIGIN_RUN}`, "attempt-2.claimed"), "utf8")).toContain(b.descriptorPath.split("/").at(-1)!.replace(/\.json$/, ""));
   }, 120_000);
   it("accepts the trigger where the latest attempt's own executor returned its Grant to Off", () => {
     const result = box({ delegation: "returned-off" }).run("preflight");
@@ -523,8 +524,19 @@ describe("start-run executor: Decision 0163 delegated presses", () => {
     mkdirSync(chain, { recursive: true });
     writeFileSync(path.join(chain, "attempt-2.claimed"), "another-card 20261101T060000Z-1\n");
     const headBefore = b.head();
-    expectRefusedClean(b, b.run(), "P0", /attempt 2 of this delegation was already claimed by another card/, headBefore);
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P3", allowanceConsumed: false });
+    expect(result.receipt!.reason).toMatch(/attempt 2 of this delegation was already claimed by another card; nothing was changed/);
+    expect(existsSync(b.marker)).toBe(false);
+    expect(b.head()).toBe(headBefore);
   });
+  it("leaves the attempt free when a delegated card refuses before P3, and claims it with the allowance", () => {
+    const refused = box({ delegation: "ok", decisions: { "0097": null } });
+    const refusedResult = refused.run();
+    expect(refusedResult.receipt).toMatchObject({ outcome: "refused", phase: "P1", allowanceConsumed: false });
+    expect(existsSync(path.join(refused.library, "runs", "delegation", `${ORIGIN}--${ORIGIN_RUN}`, "attempt-2.claimed"))).toBe(false);
+  }, 120_000);
   it("refuses a delegated card pressed without the delegated marker, and an ordinary card carrying one", () => {
     for (const [options, reason] of [[{ delegation: "ok" as const, pressMarker: "omit" as const }, /must be pressed through \/actions as Rowan delegated press/], [{ pressMarker: "forge" as const }, /only a Decision 0163 delegated card may carry a delegated press record/]] as const) {
       const b = box(options);

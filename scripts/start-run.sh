@@ -400,12 +400,12 @@ if(o.id!==d.originatingCard||o.runId!==d.originatingRun||o.mode!=="run"||o.allow
 // Every /actions press of an in-scope START card (any card but this one), from the runner press directories.
 const presses=[];const ops=p.join(lib,"runs","operator");
 for(const card of ls(ops)){if(card===id||!SLUG.test(card))continue;
-  const receipts=ls(p.join(lib,"runs",card)).map((run)=>({run,r:rj(p.join(lib,"runs",card,run,"receipt.json"))}));
+  const receipts=ls(p.join(lib,"runs",card)).map((run)=>({run,r:rj(p.join(lib,"runs",card,run,"receipt.json"))}));const consumedRun=(rj(p.join(lib,card+".consumed.json"))||{}).runId;
   for(const pr of ls(p.join(ops,card))){const dir=p.join(ops,card,pr),run=rj(p.join(dir,"run.json")),sr=(rj(p.join(dir,"descriptor.json"))||{}).startRun;
     if(!run||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==pr||!same(sr))continue;
     const t=Date.parse(run.startedAt);if(!Number.isFinite(t))continue;
     const m=receipts.find((x)=>x.r&&x.r.mode==="run"&&(x.r.record||{}).operatorRunId===pr)||null;
-    presses.push({card,pr,t,at:run.startedAt,sr,delegated:run.press!==undefined||sr.delegation!==undefined,attempt:(m&&m.r.allowanceConsumed===true)||(!(m&&m.r)&&fs.existsSync(p.join(dir,"start-run.claimed"))&&fs.existsSync(p.join(lib,card+".consumed.json"))),r:m&&m.r,run:m&&m.run});}}
+    presses.push({card,pr,t,at:run.startedAt,sr,delegated:run.press!==undefined||sr.delegation!==undefined,attempt:(m&&m.r.allowanceConsumed===true)||(!!m&&consumedRun===m.run)||(!(m&&m.r)&&fs.existsSync(p.join(dir,"start-run.claimed"))&&fs.existsSync(p.join(lib,card+".consumed.json"))),r:m&&m.r,run:m&&m.run});}}
 presses.sort((a,b)=>a.t-b.t);
 const origin=presses.find((x)=>x.card===d.originatingCard&&x.pr===o.record.operatorRunId);
 if(!origin)fail("the originating run has no /actions press record of the delegated scope");
@@ -434,12 +434,6 @@ process.stdout.write(JSON.stringify({originatingRun:d.originatingCard+"/"+d.orig
 }
 claim_operator_press_record() {  # exclusive; called once every other P0 check has passed
   [[ "$MODE" == run ]] || return 0
-  if [[ "$DELEGATION" != null ]]; then  # Decision 0163: one card per attempt of the chain, claimed exclusively
-    local chain_dir="$LIBRARY_DIR/runs/delegation/$(jq -r '.originatingCard + "--" + .originatingRun' <<<"$DELEGATION")"
-    mkdir -p "$chain_dir" || refuse "the Decision 0163 attempt claim directory could not be created"
-    ( set -C; printf '%s %s\n' "$ID" "$RUN_ID" > "$chain_dir/attempt-$(jq -r '.attempt' <<<"$DELEGATION").claimed" ) 2>/dev/null \
-      || refuse "Decision 0163 attempt $(jq -r '.attempt' <<<"$DELEGATION") of this delegation was already claimed by another card"
-  fi
   ( set -C; printf '%s\n' "$RUN_ID" > "$OPERATOR_RUN_DIR/start-run.claimed" ) 2>/dev/null || refuse "the operator press record was claimed concurrently"
   rec_str operatorRunId "$OPERATOR_RUN_ID"
 }
@@ -594,9 +588,19 @@ phase_p3() {
   check_checkout_clean_on_main
   check_origin_is_pin
   [[ "$(git_repo rev-parse HEAD)" == "$HEAD_BEFORE" ]] || refuse "main moved between the preconditions and the allowance"
+  # Decision 0163: one card per attempt of the chain, claimed exclusively together with the allowance (a refusal before
+  # here consumed nothing and leaves the attempt free for the next card).
+  local attempt_claim=""
+  if [[ "$DELEGATION" != null ]]; then
+    local chain_dir="$LIBRARY_DIR/runs/delegation/$(jq -r '.originatingCard + "--" + .originatingRun' <<<"$DELEGATION")"
+    attempt_claim="$chain_dir/attempt-$(jq -r '.attempt' <<<"$DELEGATION").claimed"
+    mkdir -p "$chain_dir" || refuse "the Decision 0163 attempt claim directory could not be created; nothing was changed"
+    ( set -C; printf '%s %s\n' "$ID" "$RUN_ID" > "$attempt_claim" ) 2>/dev/null \
+      || refuse "Decision 0163 attempt $(jq -r '.attempt' <<<"$DELEGATION") of this delegation was already claimed by another card; nothing was changed"
+  fi
   # REF:L366: exclusive creation (wx) and fsync; ANY later failure keeps this consumed.
   node -e 'const fs=require("fs"),p=require("path"),[file,id,run,pinSha,head]=process.argv.slice(1);const fd=fs.openSync(file,"wx",0o600);try{fs.writeFileSync(fd,JSON.stringify({state:"CONSUMED",at:new Date().toISOString(),requestId:id,runId:run,reviewedRevision:pinSha,headBefore:head,policyRevision:Number(process.env.START_RUN_POLICY_REVISION)})+"\n");fs.fsyncSync(fd)}finally{fs.closeSync(fd)}const d=fs.openSync(p.dirname(file),"r");try{fs.fsyncSync(d)}finally{fs.closeSync(d)}' \
-    "$ATTEMPT_FILE" "$ID" "$RUN_ID" "$PIN" "$HEAD_BEFORE" || refuse "could not exclusively consume the START allowance; nothing was changed"
+    "$ATTEMPT_FILE" "$ID" "$RUN_ID" "$PIN" "$HEAD_BEFORE" || { [[ -z "$attempt_claim" ]] || rm -f "$attempt_claim"; refuse "could not exclusively consume the START allowance; nothing was changed"; }
   CONSUMED=true
   mutated "one-shot START allowance consumed: $ATTEMPT_FILE"
   checkpoint
