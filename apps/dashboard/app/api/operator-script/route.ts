@@ -13,6 +13,7 @@ import { loadOperatorScriptReceipt } from "../../../lib/operatorScriptReceipt";
 import { loadLatestRunReceipts, type RunReceiptSummary } from "../../../lib/operatorRunReceipts";
 import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
 import { discoverProjectOperatorLibraries, parseOperatorScriptKey, projectLibraryKey, projectLibraryStateDir } from "../../../../../src/operatorActions/projectLibraries.js";
+import { delegatedPressMarker, StartRunDelegationError, type DelegatedPress } from "../../../../../src/operatorActions/startRunDelegation.js";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -67,6 +68,8 @@ export interface OperatorScriptRun {
   schema: "arcadia-operator-script-run-v1";
   runId: string;
   scriptId: string;
+  /** Decision 0163: present only on Rowan's delegated press; an operator press carries no marker. */
+  press?: DelegatedPress;
   status: "running" | "succeeded" | "failed";
   startedAt: string;
   finishedAt?: string;
@@ -247,12 +250,12 @@ export async function POST(request: Request) {
   if (!isSameOriginRequest(request)) {
     return NextResponse.json({ error: "Cross-origin operator-script requests are refused." }, { status: 403 });
   }
-  let body: { id?: unknown };
+  let body: { id?: unknown; delegation?: unknown };
   let lockPath: string | null = null;
   let runRecordPath: string | null = null;
   let initialRun: OperatorScriptRun | null = null;
   try {
-    body = await request.json() as { id?: unknown };
+    body = await request.json() as { id?: unknown; delegation?: unknown };
   } catch {
     return NextResponse.json({ error: "A valid JSON body is required." }, { status: 400 });
   }
@@ -265,6 +268,13 @@ export async function POST(request: Request) {
     const loaded = await loadDescriptor(id);
     const { descriptor, scriptPath } = loaded;
     entry = loaded.entry;
+    // Decision 0163: Rowan's press of a delegated START card is recorded as delegated, never as the operator's.
+    let press: DelegatedPress | null;
+    try { press = delegatedPressMarker(descriptor, body.delegation); }
+    catch (error) {
+      if (error instanceof StartRunDelegationError) return NextResponse.json({ error: error.message, reason: error.code }, { status: 409 });
+      throw error;
+    }
     const state = await loadState(id);
     const receipt = await loadOperatorScriptReceipt(entry.stateLibrary, entry.id);
     if ((state?.status === "running" && processIsRunning(state.pid)) || (receipt?.status === "running" && processIsRunning(receipt.pid))) {
@@ -306,6 +316,7 @@ export async function POST(request: Request) {
       schema: "arcadia-operator-script-run-v1",
       runId,
       scriptId: id,
+      ...(press ? { press } : {}),
       status: "running",
       startedAt,
       runDirectory: relativeRunDirectory,

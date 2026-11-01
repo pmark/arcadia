@@ -1162,7 +1162,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--expires-hours <n>", "Hours until the card expires (at most 24)")
     .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; json?: boolean }) =>
+    .option("--delegated-from <card/run>", "Decision 0163: pin Rowan's successor card, delegated from the operator's originating press (card id / executor run id)")
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; json?: boolean }) =>
     runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
   addJsonOption(startRun.command("sign-in")
     .description("Run only by a per-run START card: the Decision 0161 / 0143 sign-in renewal and bound-worker usage check, once (or --check-only)")
