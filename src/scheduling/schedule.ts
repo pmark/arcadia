@@ -228,7 +228,11 @@ export function buildProjectSchedule(db: Database.Database, project: Project): P
   // Readiness already excludes anything depending on it (directly,
   // transitively or across Plans); when nothing else is eligible the held
   // Action stays next, as before. Without an Active scope nothing is held.
-  const heldInScope = (key: string): boolean => inScope !== null && inScope(key) && operatorHeldEscalation(db, key) !== null;
+  // Issue #1929: a stop recorded for a candidate of a superseded Action input
+  // holds nothing; an epoch change alone never releases it.
+  const planActions = new Map(plan.actions.map((action) => [actionKeyOf(project.slug, action.id), action]));
+  const heldInScope = (key: string): boolean => inScope !== null && inScope(key)
+    && operatorHeldEscalation(db, key, { planSlug: base.planSlug, action: planActions.get(key) }) !== null;
   base.next = record.pausedReason
     ? null
     : base.queue.find((key) => eligible(key) && !heldInScope(key)) ?? base.queue.find(eligible) ?? null;

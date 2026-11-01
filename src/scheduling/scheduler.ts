@@ -5,7 +5,7 @@ import { transitionActionPointer } from "../dispatch/pointer.js";
 import type { Project } from "../domain/types.js";
 import { getRepositoryLease } from "../sessions/index.js";
 import { activeActionScopeGate } from "../production/policy.js";
-import { operatorHeldEscalation, pendingTerminalCandidateFor } from "../production/terminalCandidates.js";
+import { operatorHeldEscalation, pendingTerminalCandidateFor, reviewRepairEscalationState } from "../production/terminalCandidates.js";
 import { findOutstandingCandidate } from "../sessions/candidatePreservation.js";
 import { resolveBatch, type BatchResolution } from "../docs/batch.js";
 import { loadActionOrder } from "../dispatch/order.js";
@@ -298,7 +298,7 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
   const unchanged = (reason: string) => ({ moved: false, from, to: from, reason });
   // A held row for an Action that is now done is stale: drop it.
   for (const action of schedule.actions) {
-    if (action.status === "done" && operatorHeldEscalation(db, action.key)) {
+    if (action.status === "done" && reviewRepairEscalationState(db, action.key)) {
       db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(action.key);
     }
   }
@@ -329,7 +329,8 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
   // (no policy, Off, or rescoped) a stale hold never lets the pointer pass.
   const fromKey = from ? `${schedule.projectSlug}/${from}` : null;
   const inScope = schedule.actionScoped ? activeActionScopeGate(db, schedule.projectSlug, schedule.planSlug) : null;
-  const held = fromKey && inScope && inScope(fromKey) ? operatorHeldEscalation(db, fromKey) : null;
+  const held = fromKey && inScope && inScope(fromKey)
+    ? operatorHeldEscalation(db, fromKey, { repoRoot: schedule.repositoryRoot, planSlug: schedule.planSlug }) : null;
   if (from && held) {
     const logKey = `${schedule.projectSlug}/${from}\u0000${held.kind}\u0000${held.firstDetectedAt}`;
     if (!loggedHeldSkips.has(logKey)) {

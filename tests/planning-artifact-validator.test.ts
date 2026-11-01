@@ -95,6 +95,78 @@ describe("validation-execution claim detection", () => {
   );
 });
 
+describe("implementation claim detection ignores disclaimers and plan-file writes (R494)", () => {
+  const codesFor = (extraLine: string): string[] =>
+    issueCodesBySeverity(
+      validatePlanningArtifact({
+        packetText: completePlanningPacket,
+        artifactText: `${completePlanningArtifact}\n${extraLine}\n`
+      }).failures,
+      "failure"
+    );
+
+  it.each([
+    // The exact live line from review item R494.
+    "I changed no repository files, only the plan file. That's why I didn't run tests or lint, as the packet allows.",
+    "I changed nothing in the repository.",
+    "We modified no source files; no changes were made to tests.",
+    "No implementation changes made.",
+    "We have not modified files outside the plan.",
+    "I have never modified files in src/.",
+    "I updated only the plan file.",
+    "I created the plan file at docs/plans/example.md.",
+    "I wrote the planning artifact.",
+    "I changed no files except the plan file.",
+    "I changed no repository files other than the plan file at docs/plans/example.md.",
+    "I changed no repository files and updated the plan file.",
+    "I read the launcher, then wrote the plan file.",
+    "Phase 2, then add the assertion and replace the stale comment.",
+    // Participles used as adjectives after a split are not claims (live planning artifacts).
+    "- Reject changed request content and changed resolution; display current facts.",
+    "- Any change to authority: a versioned decision, updated constitution and migration notes."
+  ])("does not treat a disclaimer or plan-file write as a claim: %s", (line) => {
+    expect(codesFor(line)).not.toContain("implementation_claim_in_planning_artifact");
+  });
+
+  it.each([
+    "Codex implemented src/stewardship/artifactValidator.ts and updated tests.",
+    "I changed no repository files, but I modified src/cli.ts.",
+    "I changed no other files and modified src/cli.ts.",
+    // R1 review: each passed on the first fix but fails on main.
+    "I changed no files except src/cli.ts",
+    "I modified no fewer than three files in src/",
+    "I fixed nothing less than the parser in src/parser.ts",
+    "I updated none of the docs; I rewrote src/cli.ts",
+    "I modified the plan file at src/cli.ts",
+    "I updated the planning doc in src/planner.ts",
+    "I changed nothing other than tests/system-tmux-long-command.test.ts.",
+    "I edited the launcher.",
+    "Then fixed src/cli.ts and fixed tests/cli.test.ts.",
+    "I updated only the plan file and then modified src/cli.ts.",
+    "I updated only the plan file and modified the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and fixed the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and changed the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and implemented the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and added the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and updated the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and edited the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and wrote the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and refactored the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and removed the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and deleted the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and created the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and patched the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file, then I fixed the launcher in src/sessions/tmuxLauncher.ts.",
+    "I changed the launcher to remove its temporary directory.",
+    "I fixed no-op handling in the worker.",
+    "Implementation completed.",
+    "Modified tests/system-tmux-long-command.test.ts.",
+    "## Files Changed"
+  ])("still flags an affirmative claim: %s", (line) => {
+    expect(codesFor(line)).toContain("implementation_claim_in_planning_artifact");
+  });
+});
+
 describe("approval contradiction is judged per sentence (Issue #1277)", () => {
   const failureCodes = (extraLine: string): string[] =>
     validatePlanningArtifact({

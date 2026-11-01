@@ -27,6 +27,8 @@ for evidence, discoverability and channel boundaries.
 
 ## Drafts
 
+- [One press](2026-11-01-one-press.md) — Field Notes ship note: how a START card that could not be made on 31 October started the unattended run on 1 November, and the four-hour admission gap after it.
+
 - [How Arcadia could guide design brainstorming](2026-10-28-how-arcadia-could-guide-design-brainstorming.md) — a proposal (not built) for a field-neutral design core, rehearsed on paper with simulated operators.
 
 - [Arcadia agent identities: who does what, and why](2026-10-23-agent-identities-roles-and-behaviors.md) — plain definitions and illustrative scenarios for named colleagues, roles, specializations, skills and behaviors.
@@ -61,4 +63,4 @@ Decision 0120 Field Notes packages; general AMC guides adapt agent-oriented
 sources under AMC's authoring contract. Legacy package metadata and receipts
 remain intact.
 
-[Decision 0120](../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md) governs automatic Field Notes publication: a fact-check with no blocking issue and a PR or receipt link for every claim, the stated cadence and milestone eligibility, the operator's site and RSS only, and observable publication and unpublish paths. A requested idea draft need not meet publication eligibility yet. Record a verified delivery receipt before claiming it was posted; drafting, committing, or merging an article does not publish it.
+[Decision 0120](../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md) governs automatic Field Notes publication: a fact-check with no blocking issue and a PR or receipt link for every claim, the stated cadence and milestone eligibility, the operator's sites and their feeds only, and observable publication and unpublish paths. [Decision 0165](../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md) adds the Arcadia Field Notes blog on GitHub Pages (https://pmark.github.io/arcadia/, feed `/feed.xml`) as a destination alongside the Mission Control site, and keeps every Decision 0120 condition. A requested idea draft need not meet publication eligibility yet. Record a verified delivery receipt before claiming it was posted; drafting, committing, or merging an article does not publish it.

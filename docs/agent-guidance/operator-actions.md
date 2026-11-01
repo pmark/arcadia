@@ -313,6 +313,35 @@ pinned descriptor, so per-card review is small.
   manifest `reviewed/<id>.json` (`sh`, `json`, `executor` sha256). A change to
   `scripts/start-run.sh` is reviewed once and invalidates the hash in every older
   card, which then refuses.
+- **Pre-mortem before every START card (operator, 2026-11-01).** Before minting
+  or pinging any START card (operator or delegated successor), run one
+  independent, read-only pre-mortem with the
+  [arcadia-process-critic](../../.agents/skills/arcadia-process-critic/SKILL.md)
+  skill and its [standing brief](process-critic-brief.md). It must be a separate
+  session from the card's author. An agent without that skill runs the same
+  checklist read-only and records it. For every pinned Action, it must:
+  - predict the route: the declared `execution`, or else the keyword guess in
+    `planStepsForWorkItem`. Name every gate that route will hit: a planning
+    run, packet approval, validation, review, repair and merge. An Action
+    without a declared route, whose text lacks "implement", "code" or
+    "prototype", goes to a Decision-gated planning run. A declared `build`
+    route deliberately skips that planning-run Decision gate, so check that
+    the route is appropriate for the Action, not only that one is declared.
+  - list pending Agent Asks and open Decisions or review items that name the
+    Action;
+  - find stale escalations, open repair escalations and spent repair budgets;
+  - check queue eligibility: status, dependencies, position, claims and
+    `current_action`.
+
+  It also checks the card's own phases (P0 to P2, install, bind, sign-in and
+  usage, activation, START) against live pins and the expected refusals. Fix
+  everything fixable inside authority before the ping. Name in the ping what
+  is left and who it waits on. After START, watch admission with a deadline,
+  not only START itself: the first Action must reach a launched Session within
+  the card's stated deadline, or 15 minutes if it states none. A missed
+  deadline is a new blocker: send it to the configured Discord blocker alert
+  and verify delivery. The pre-mortem grants no authority and never presses a
+  card.
 
 ### Pinging the operator (read-only)
 

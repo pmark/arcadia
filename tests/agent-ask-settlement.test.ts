@@ -1263,6 +1263,76 @@ describe("Agent Ask settlement", () => {
     expect(whyOf("existing")).toBe("Nothing downstream can start without it.");
   });
 
+  it("declares an execution route through a Plan Action amendment, leaving acceptance alone, and keeps it when a later amendment omits it", () => {
+    const { workspace, repo } = fixture();
+    const actionOf = () => discoverDocs(repo).docs
+      .find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!
+      .actions.find((action) => action.id === "existing")!;
+    const before = actionOf();
+    const amend = (requestId: string, execution: string | null): string => [
+      "agent_ask: v1", `request_id: ${requestId}`, "project: demo", "intent: plan", "target_ref: plan/demo-plan",
+      "desired_result: Route existing work to build", "actions:", "  - target_ref: action/existing",
+      `    desired_result: ${JSON.stringify(before.nextAction ?? before.title)}`,
+      ...(execution ? [`    execution: ${execution}`] : []),
+      "    acceptance:", ...before.acceptanceCriteria.map((criterion) => `      - ${JSON.stringify(criterion)}`),
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const apply = (requestId: string, request: string, revision: number) => {
+      const proposal = runAgentAskPreviewCommand({ workspace, request });
+      const preview = runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: `settle-${requestId}`, disposition: "accepted", revision
+      });
+      runAgentAskSettleCommand({
+        workspace, proposal: proposal.data.proposal.id, requestId: `settle-${requestId}`, disposition: "accepted", revision,
+        preview: preview.data.receipt.previewFingerprint, apply: true
+      });
+      return preview.data.receipt.effects.join(" ");
+    };
+
+    expect(before.executionRoute).toBeNull();
+    const effects = apply("route-build", amend("route-build", "build"), 1);
+    expect(effects).toContain("execution route: none \u2192 build");
+    expect(effects).toContain("acceptance unchanged");
+    expect(effects).not.toContain("next_action changed");
+    const routed = actionOf();
+    expect(routed.executionRoute).toBe("build");
+    expect(routed.acceptanceCriteria).toEqual(before.acceptanceCriteria);
+    expect(routed.responsibility).toBe(before.responsibility);
+    expect(discoverDocs(repo).errors.filter((error) => error.relativePath === "docs/plans/demo-plan.md")).toEqual([]);
+
+    const later = apply("route-omitted", amend("route-omitted", null), 1);
+    expect(later).not.toContain("execution route");
+    expect(actionOf().executionRoute).toBe("build");
+  });
+
+  it("writes a declared execution route on a created Action and refuses an unknown route", () => {
+    const { workspace, repo } = fixture();
+    const request = [
+      "agent_ask: v1", "request_id: ask-route-create", "project: demo", "intent: action",
+      "desired_result: Add routed proof", "actions:",
+      "  - id: routed-proof", "    desired_result: Add a test-only proof", "    execution: build",
+      "    acceptance:", "      - The routed proof exists.",
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-route-create",
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-route-create",
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
+    expect(plan.actions.find((action) => action.id === "routed-proof")?.executionRoute).toBe("build");
+
+    expect(() => normalizeAgentAsk({ request: request.replace("execution: build", "execution: implement") }))
+      .toThrow(/execution must be exactly build or plan-run/);
+    // An Ask that declares no route keeps its earlier fingerprint shape.
+    expect(normalizeAgentAsk({ request: request.replace("    execution: build\n", "") }).actions[0]).not.toHaveProperty("execution");
+  });
+
   it("round-trips a why that bare YAML would turn into a non-string (create, amend, draft Plan)", () => {
     const { workspace, repo } = fixture();
     const values = ["[x] done", "{a}", "true", "null", "123"];
