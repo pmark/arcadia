@@ -27,6 +27,8 @@ for evidence, discoverability and channel boundaries.
 
 ## Drafts
 
+- [One press](2026-11-01-one-press.md) — Field Notes ship note: how a START card that could not be made on 31 October started the unattended run on 1 November, and the four-hour admission gap after it.
+
 - [How Arcadia could guide design brainstorming](2026-10-28-how-arcadia-could-guide-design-brainstorming.md) — a proposal (not built) for a field-neutral design core, rehearsed on paper with simulated operators.
 
 - [Arcadia agent identities: who does what, and why](2026-10-23-agent-identities-roles-and-behaviors.md) — plain definitions and illustrative scenarios for named colleagues, roles, specializations, skills and behaviors.
