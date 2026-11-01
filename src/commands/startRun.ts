@@ -271,6 +271,8 @@ export function realStartRunSignInDeps(repository: string, release: string, work
     cli: (args, timeoutMs) => {
       command ??= pinnedReleaseCli(release);
       const run = spawnSync(command[0], [...command.slice(1), ...args, "--json"], { cwd: repository, env, encoding: "utf8", timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 });
+      // Like the executor: a non-zero exit is a failure whatever stdout holds.
+      if (run.status !== 0) return { ok: false, error: `exit ${String(run.status ?? run.signal)}: ${(run.stderr || "no output").slice(0, 2000)}` };
       try { return parseJsonEnvelope(run.stdout) as { ok: boolean; data?: unknown }; }
       catch { return { ok: false, error: (run.stderr || "no JSON output").slice(0, 2000) }; }
     },

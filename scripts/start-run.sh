@@ -46,9 +46,10 @@ WORKER_INSTALL_TIMEOUT_SECONDS=180
 # CLI start-up and journal writes about 20 s. Total 150 + 61 + 300 + 330 + 20 = 861 s < 1200 s (339 s margin).
 SIGN_IN_TIMEOUT_SECONDS=1200
 json_string() { jq -n --arg v "$1" '$v'; }
-# The CLI writes its --json failure envelope to stderr (after any tool warnings): message, refusal code and dayClaimed.
+# The CLI writes its --json failure envelope to stderr after any tool warnings and moved child output (which may itself
+# contain lines starting with "{"): take the last line-start "{" whose remainder parses, as json_envelope does.
 cli_failure() {
-  node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8");const i=s.search(/^\{/m);let e;try{e=JSON.parse(s.slice(i)).error}catch{}
+  node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8");let e;for(const i of [...s.matchAll(/^\{/gm)].map(m=>m.index).reverse()){try{e=JSON.parse(s.slice(i)).error;break}catch{}}
 process.stdout.write(e?`${e.message} [code ${e.details?.code??e.code}; dayClaimed ${e.details?.dayClaimed??"unknown"}]`:"no readable result")' "$1" 2>/dev/null || echo "no readable result"
 }
 # Every call passes --json, whose stdout must be exactly one JSON envelope. Defense in depth for Issue #1956 (a child

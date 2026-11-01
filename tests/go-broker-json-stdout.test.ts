@@ -39,6 +39,28 @@ process.stdout.write(JSON.stringify({ ok: true, command: "go-broker.ensure", dat
     expect(() => parseJsonEnvelope("Bridged 4 dependency trees.\n")).toThrow(/no JSON envelope/);
   });
 
+  it("the sign-in CLI refuses a non-zero exit even when stdout holds an ok envelope, and accepts noise ahead of a clean one", async () => {
+    const { realStartRunSignInDeps } = await import("../src/commands/startRun.js");
+    const home = mkdtempSync(path.join(os.tmpdir(), "arcadia-signin-cli-"));
+    directories.push(home);
+    const release = "a".repeat(40);
+    const directory = path.join(home, ".local", "share", "arcadia", "go-broker", "releases", release);
+    const { mkdirSync, writeFileSync } = await import("node:fs");
+    mkdirSync(path.join(directory, "dist", "src"), { recursive: true });
+    writeFileSync(path.join(directory, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", revision: release, runtimeExecutable: "/bin/sh" }));
+    const cli = path.join(directory, "dist", "src", "cli.js");
+    const previousHome = process.env.HOME;
+    process.env.HOME = home;
+    try {
+      writeFileSync(cli, `echo 'Bridged 4 dependency trees.'\nprintf '{\\n  "ok": true,\\n  "data": {}\\n}\\n'\nexit "\${EXIT:-0}"\n`);
+      expect(realStartRunSignInDeps(home, release, home).cli(["review"], 10_000)).toEqual({ ok: true, data: {} });
+      writeFileSync(cli, `printf '{\\n  "ok": true,\\n  "data": {}\\n}\\n'\nexit 3\n`);
+      expect(realStartRunSignInDeps(home, release, home).cli(["review"], 10_000)).toMatchObject({ ok: false, error: expect.stringMatching(/^exit 3/) });
+    } finally {
+      process.env.HOME = previousHome;
+    }
+  });
+
   it("leaves no child of the install/ensure path writing to the inherited stdout", () => {
     for (const file of ["src/commands/goBrokerInstall.ts", "src/sessions/worktreeRuntimeProbe.ts"]) {
       const source = readFileSync(path.join(repoRoot, file), "utf8");

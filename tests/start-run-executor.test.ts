@@ -512,6 +512,18 @@ describe("start-run executor: the START itself", () => {
     }
   }, 240_000);
 
+  it.each<[string, string, RegExp]>([
+    ["exits non-zero after printing an ok envelope", "nonzero", /go-broker ensure failed; no worker restart was attempted/],
+    ["exits zero with ok:false", "notOk", /go-broker ensure did not report success; no worker restart was attempted/]
+  ])("refuses, with noise on stdout, when go-broker ensure %s", (_label, ensureResult, reason) => {
+    const b = box({ state: (s) => { s.ensure.stdoutNoise = true; s.ensure.result = ensureResult; } });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true });
+    expect(result.receipt!.reason).toMatch(reason);
+    expect(b.sequence()).toEqual(["go-broker ensure"]);
+  }, 60_000);
+
   it("reuses a fresh receipt of the bound worker: no renewal, no day claimed, no Decision, then starts", () => {
     const b = box({ state: (s) => { s.signin = { mode: "reused" }; } });
     const result = b.run();
