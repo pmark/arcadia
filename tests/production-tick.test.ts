@@ -990,6 +990,49 @@ describe("runManagedProductionTick", () => {
     expect(escalations[0]).toMatchObject({ actionKey: "test-project/define-contract", kind: "planning_required" });
   });
 
+  it("replaces a build packet prepared for an earlier Action input through the same automatic preparation", () => {
+    const codexProfiles: CodingAgentProfile[] = [profile("codex_build", "codex-cli")];
+    const codexCapacity: ProviderCapacityObservation = {
+      generatedAt: "2026-08-30T12:34:56.000Z",
+      providers: [{ ...provenCapacity(), providerId: "codex-cli", receipt: { ...provenCapacity().receipt, providerId: "codex-cli", providerLabel: "codex-cli" } }]
+    };
+    const fixture = preparedFixture({ buildAction: true, staleInputRevision: true });
+    const tmux = new FakeTmux();
+    const codexScope = normalizeProductionScope({ ...productionScope, providers: ["codex-cli"] });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-codex-stale",
+        scope: codexScope,
+        scopeFingerprint: fingerprintProductionScope(codexScope),
+        grantedBy: "operator"
+      })
+    );
+    const log = vi.fn();
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles: codexProfiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        log,
+        capacityObservation: codexCapacity,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(tmux.launches).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/Automatically prepared a build packet for test-project\/define-contract/));
+    const packets = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT id, status FROM codex_invocations WHERE purpose = 'build' ORDER BY created_at").all() as Array<{ id: string; status: string }>);
+    // The stale packet stays as history; a fresh one now carries the Action.
+    expect(packets).toHaveLength(2);
+    expect(packets[0]).toEqual({ id: "production_tick_fixture_define-contract", status: "packet_created" });
+    expect(packets[1].id).not.toBe(packets[0].id);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+  });
+
   it("automatically prepares a build packet deterministically when the Action needs no Decision-gated planning run, and reaches launch within a bounded number of ticks", () => {
     // `runWorkPlanCommand` selects the workspace's own registry default build
     // profile (`codex_build`/codex-cli) when the Action carries no execution
@@ -3273,6 +3316,8 @@ function preparedFixture(
     buildAction?: boolean;
     noValidationCommands?: boolean;
     dependsOnUnresolved?: boolean;
+    /** Record a packet input revision that no longer matches the Action. */
+    staleInputRevision?: boolean;
   } = {}
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-production-tick-"));
@@ -3309,7 +3354,7 @@ function preparedFixture(
       JSON.stringify({
         invocationId: packetId,
         workItemId: workItem.id,
-        actionInputRevision: workItemInputRevision(workItem),
+        actionInputRevision: options.staleInputRevision ? "0".repeat(64) : workItemInputRevision(workItem),
         promptPath,
         baseRevision,
         providerSelection: { provider, model, mappingId: "fixture-map", bindingId: "fixture-binding" }
