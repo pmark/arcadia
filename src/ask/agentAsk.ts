@@ -4,6 +4,7 @@ import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
 import { PROJECT_STATUSES } from "../domain/constants.js";
 import { TOKEN_IMPACTS, type TokenImpact } from "../docs/types.js";
+import type { ExecutionRoute } from "../domain/types.js";
 import { parseDirectionCorrelation, type DirectionCorrelation } from "./directions.js";
 
 export const AGENT_ASK_INTENTS = ["auto", "outcome", "milestone", "plan", "proposal", "decision", "action", "artifact", "log", "project_update", "complete", "split"] as const;
@@ -43,6 +44,13 @@ export interface NormalizedAgentAskAction {
    * unchanged. An amendment that omits it leaves the checked-in `why` alone.
    */
   why?: string;
+  /**
+   * The Action's declared route (`execution: build | plan-run`), which the
+   * worker honours before its keyword guess. Present only when the Ask declared
+   * one, so the fingerprint of every earlier Ask is unchanged. An amendment
+   * that omits it leaves the checked-in route alone.
+   */
+  execution?: ExecutionRoute;
   /** Lists the Ask left out entirely; always present on new proposals (empty when none), absent only on proposals recorded before #1079/#1092. */
   omittedLists?: AgentAskListField[];
 }
@@ -80,7 +88,8 @@ export interface AgentAskProposal { id: string; captureId: string; normalized: N
 export const STRICT_FIELDS = new Set(["agent_ask", "request_id", "project", "intent", "desired_result", "rationale", "acceptance", "dependencies", "references", "actions", "options", "target_ref", "plan_metadata", "requested_authority", "candidate_revision", "evidence", "gate_question", "why", "direction"]);
 export const STRICT_PLAN_METADATA_FIELDS = new Set(["token_impact", "token_budget"]);
 export const STRICT_OPTION_FIELDS = new Set(["label", "consequence", "recommended"]);
-export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref", "why"]);
+export const STRICT_ACTION_FIELDS = new Set(["id", "desired_result", "acceptance", "dependencies", "references", "target_ref", "why", "execution"]);
+export const AGENT_ASK_EXECUTION_ROUTES = ["build", "plan-run"] as const;
 export const ACTION_WHY_MAX_LENGTH = 300;
 export const STRICT_EVIDENCE_FIELDS = new Set(["criterion", "status", "note"]);
 export const AGENT_ASK_EVIDENCE_STATUSES = ["met", "failed", "skipped"] as const;
@@ -363,9 +372,18 @@ function actionList(value: unknown): NormalizedAgentAskAction[] {
       references: referenceList(item.references, `actions[${index}].references`),
       targetRef: optionalText(item.target_ref),
       ...actionWhyField(item.why, index),
+      ...actionExecutionField(item.execution, index),
       ...omittedListsField(item)
     };
   });
+}
+/** `{ execution }` when the Ask declared a route, `{}` otherwise; only `build` or `plan-run`. */
+function actionExecutionField(value: unknown, index: number): { execution?: ExecutionRoute } {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "string" || !(AGENT_ASK_EXECUTION_ROUTES as readonly string[]).includes(value)) {
+    throw validationError(`Agent Ask actions[${index}].execution must be exactly build or plan-run.`, { index, supported: AGENT_ASK_EXECUTION_ROUTES });
+  }
+  return { execution: value as ExecutionRoute };
 }
 /** `{ why }` when the Ask declared a non-empty one, `{}` otherwise; one sentence, so never multi-line. */
 function actionWhyField(value: unknown, index: number | null): { why?: string } {
