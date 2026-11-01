@@ -240,7 +240,7 @@ handoff until the script and descriptor match the final reviewed state.
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
 
-### Per-run START cards (Decisions 0156 and 0157)
+### Per-run START cards (Decisions 0156, 0157 and 0161)
 
 Do not hand-write a START card. One shared, independently reviewed executor,
 `scripts/start-run.sh`, runs every START; a card is only a thin launcher plus a
@@ -257,12 +257,23 @@ pinned descriptor, so per-card review is small.
   `arcadia start-run pins --plan <slug> --actions a,b,c --provider claude-code-cli --expires-hours <n>`;
   it writes nothing and emits no script.
 - **What one press may do:** fast-forward the clean main checkout to the pinned sha
-  only, `go-broker ensure`, restart the worker after ensure succeeds and bind it,
-  activate the pinned Plan, then START production (every older START gate stays;
+  only, `go-broker ensure`, then reinstall the pinned worker label from that
+  compiled release (`worker install --replace-label`, run by the release itself,
+  so the plist is protected) and restart it so the worker is bound to the pinned
+  release and handler; then (Decision 0161) reuse a fresh usage receipt of that
+  bound worker or run the Decision 0143 sequence once: claim today's Decision
+  0141 sequence (America/Los_Angeles), one Haiku renewal, and only on its success
+  one diagnostic Decision published to main through the Agent Ask route and one
+  bound-worker usage check. START needs that check to succeed, the credential to
+  expire more than 5 minutes later and both usage windows below 100%. Then
+  activate the pinned Plan and START production (every older START gate stays;
   the installed-revision pin is now the reviewed-revision pin, checked by
-  `production runtime-check`). The allowance is consumed at the first mutation;
-  there is no rollback, a later failure leaves the runtime upgraded and an
-  activated Plan active, and only this Grant is returned to Off.
+  `production runtime-check`; the retained pre-press sign-in receipt pin is
+  gone). Preflight refuses, before any mutation, when today's sequence is
+  already in the ledger. The allowance is consumed at the first mutation; there
+  is no rollback, a later failure leaves the runtime upgraded and an activated
+  Plan active, a renewal or check failure also consumes that day (no retry), and
+  only this Grant is returned to Off.
 - **Run it** with `<id>.sh preflight` first (phases P0 to P2, no mutation, no
   /actions context, writes only `runs/<id>/<run>/`), then press the card. Every
   phase rewrites `receipt.json` and `failure-handoff.md` there.

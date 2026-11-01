@@ -136,6 +136,12 @@ const BEACON_HEALTH_RESET_MS = 5 * 60_000;
 
 export interface WorkerOptions {
   workspace: string;
+  /**
+   * Decision 0161: reinstall this existing `com.arcadia.local.<key>.worker` launch agent (the label
+   * scripts/restart-services-impl.sh writes) as a protected compiled worker and restart it. Honoured only when this
+   * command itself runs from a registered compiled release.
+   */
+  replaceLabel?: string;
 }
 
 /**
@@ -148,6 +154,8 @@ export interface WorkerInstallDependencies extends ProcessAncestryDependencies {
   waitForRoutes?: typeof waitForWorkerRoutes;
   auditLaunchAgents?: typeof auditArcadiaLaunchAgents;
   now?: () => number;
+  /** Fixture seam for the compiled-release check; the CLI never sets it. */
+  resolveProtectedLaunch?: () => ProtectedWorkerLaunch | undefined;
 }
 
 /**
@@ -1301,6 +1309,8 @@ export interface WorkerPlistInput {
   logPath: string;
   home: string;
   protectedRelease?: ProtectedWorkerLaunch;
+  /** The launchd label; defaults to WORKER_PLIST_LABEL. A protected replacement keeps the live agent's own label. */
+  label?: string;
 }
 
 export interface ProtectedWorkerLaunch {
@@ -1378,7 +1388,7 @@ export function buildWorkerPlist(input: WorkerPlistInput): string {
   // plist exists to take out of the picture.
   const tsxBin = path.join(repositoryRoot, "node_modules", "tsx", "dist", "cli.mjs");
   const cliPath = path.join(repositoryRoot, "src", "cli.ts");
-  const plistLabel = WORKER_PLIST_LABEL;
+  const plistLabel = input.label ?? WORKER_PLIST_LABEL;
   const launchRoot = input.protectedRelease?.directory ?? repositoryRoot;
   const argv = input.protectedRelease
     ? [input.protectedRelease.runtimeExecutable, input.protectedRelease.cliPath]
@@ -1434,6 +1444,7 @@ export function waitForWorkerRoutes(workspacePath: string, timeoutMs: number, no
 }
 
 export function runWorkerInstallCommand(options: WorkerOptions, dependencies: WorkerInstallDependencies = {}): void {
+  if (options.replaceLabel !== undefined) { runProtectedWorkerReplacement(options, options.replaceLabel, dependencies); return; }
   refuseIfManagedSession("install", dependencies);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   refuseInExperimentWorkspace("launchd.plist-write", workspacePath);
@@ -1469,6 +1480,70 @@ export function runWorkerInstallCommand(options: WorkerOptions, dependencies: Wo
   }
   process.stdout.write(`Worker installed and started via launchd; preservation and go heartbeats are fresh.\nPlist: ${plistPath}\n`);
 
+}
+
+/** The label family scripts/restart-services-impl.sh writes for a checkout's worker. */
+export const REPLACEABLE_WORKER_LABEL = /^com\.arcadia\.local\.[A-Za-z0-9._-]+\.worker$/;
+
+/**
+ * Decision 0161: the only custody a protected replacement may take over is the named live worker agent's own. Every
+ * other agent must be readable, and no other worker agent serving this workspace may be running (an installed but idle
+ * one, such as a stale com.arcadia.worker, cannot start on its own and is reported, not touched).
+ */
+export function assertWorkerReplacementCustody(workspace: string, label: string, agents: LaunchAgentAudit[], running: (label: string) => boolean): string[] {
+  if (!REPLACEABLE_WORKER_LABEL.test(label)) throw validationError(`--replace-label must be a com.arcadia.local.<key>.worker label, not ${label}.`);
+  const target = canonicalWorkspaceIdentity(workspace);
+  const serves = (agent: LaunchAgentAudit) => !agent.workspace || canonicalWorkspaceIdentity(agent.workspace) === target;
+  const own = agents.filter((agent) => agent.label === label);
+  if (own.length !== 1 || own[0].verdict === "unreadable" || own[0].role !== "worker" || !serves(own[0])) {
+    throw validationError(`The launch agent ${label} is not one readable worker agent for this workspace; nothing was replaced.`);
+  }
+  const idle: string[] = [];
+  for (const agent of agents) {
+    if (agent.label === label) continue;
+    if (agent.verdict === "unreadable") throw validationError(`The launch agent ${agent.label} is unreadable; worker custody is ambiguous and nothing was replaced.`);
+    if ((agent.role === "worker" || agent.label.endsWith(".worker")) && serves(agent)) {
+      if (running(agent.label)) throw validationError(`Another worker agent ${agent.label} is running for this workspace; worker custody is ambiguous and nothing was replaced.`);
+      idle.push(agent.label);
+    }
+  }
+  return idle;
+}
+
+/**
+ * `arcadia worker install --replace-label <label>`, run from the registered compiled release by a START card: rewrite
+ * that live agent as the protected plist (release runtime and CLI) and restart it through launchd, so the restarted
+ * worker binds its diagnostic identity to this release. Fails closed: the worker may then be down or still source-run.
+ */
+function runProtectedWorkerReplacement(options: WorkerOptions, label: string, dependencies: WorkerInstallDependencies): void {
+  refuseIfManagedSession("install", dependencies);
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  refuseInExperimentWorkspace("launchd.plist-write", workspacePath);
+  const protectedRelease = (dependencies.resolveProtectedLaunch ?? resolveProtectedWorkerLaunch)();
+  if (!protectedRelease) throw validationError("A replacement install writes only a protected worker: run worker install --replace-label from the registered compiled release.");
+  const exec = dependencies.execFileSync ?? execFileSync;
+  const home = process.env["HOME"] ?? "/tmp";
+  const running = (job: string) => {
+    try { return /"PID" = \d+;/.test(String(exec("launchctl", ["list", job], { encoding: "utf8", stdio: "pipe" }))); }
+    catch { return false; }
+  };
+  const idle = assertWorkerReplacementCustody(workspacePath, label, (dependencies.auditLaunchAgents ?? auditArcadiaLaunchAgents)(home).agents, running);
+  const plistPath = path.join(home, "Library", "LaunchAgents", `${label}.plist`);
+  const plist = buildWorkerPlist({ workspacePath, repositoryRoot: protectedRelease.sourceRepository, protectedRelease, miseBin: resolveMiseExecutable(), logPath: logPath(workspacePath), home, label });
+  writeFileSync(`${plistPath}.tmp`, plist, "utf8");
+  renameSync(`${plistPath}.tmp`, plistPath);
+  const domain = `gui/${process.getuid?.() ?? 0}`;
+  const notBefore = (dependencies.now ?? Date.now)();
+  // bootout stops the running worker (it releases its pidfile on SIGTERM); bootstrap loads the protected plist.
+  try { exec("launchctl", ["bootout", `${domain}/${label}`], { stdio: "pipe" }); } catch { /* not loaded: nothing to stop */ }
+  try { exec("launchctl", ["bootstrap", domain, plistPath], { stdio: "pipe" }); }
+  catch (error) {
+    throw validationError(`launchctl bootstrap failed for ${plistPath}: ${error instanceof Error ? error.message : String(error)}. The worker may be down.`);
+  }
+  if (!(dependencies.waitForRoutes ?? waitForWorkerRoutes)(workspacePath, WORKER_READINESS_TIMEOUT_MS, notBefore)) {
+    throw validationError(`The protected worker ${label} was loaded but did not publish fresh heartbeats. ${transportHeartbeatDiagnostic(workspacePath, "go")}`);
+  }
+  process.stdout.write(`Protected worker installed under ${label} from release ${protectedRelease.directory} and restarted; preservation and go heartbeats are fresh.\nPlist: ${plistPath}\n${idle.length ? `Idle worker agents left untouched: ${idle.join(", ")}\n` : ""}`);
 }
 
 export function runWorkerUninstallCommand(_options: WorkerOptions): void {

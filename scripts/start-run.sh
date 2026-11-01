@@ -11,13 +11,17 @@
 # Phases (each writes receipt.json and failure-handoff.md in its run directory):
 #   P0 context   P1 repo   P2 state                (read-only; a refusal consumes and changes nothing)
 #   P3 consume   write <id>.consumed.json exclusively (the first mutation), fast-forward the clean checkout to the pin only
-#   P4 install   go-broker ensure; verify; only then restart the pinned worker label; observe and bind the new worker
+#   P4 install   go-broker ensure; verify; only then reinstall the pinned worker label from the pinned compiled release
+#                (protected) and restart it; observe and bind the new worker; then (Decision 0161) the sign-in sequence:
+#                reuse a fresh receipt of this bound worker, or claim today's Decision 0141 sequence, renew once and
+#                have the bound worker check usage once
 #   P5 plan      activate the pinned Plan through the shared planActivation runner (only when the Plan is a draft)
 #   P6 start     the retained START tail: fresh capacity/queue, scope previewed twice, `production activate`, verification
 #
 # Gate lineage. "REF:Ln" cites a line of the reviewed reference card start-fixed-three-claude-actions-20261026.sh and
-# "ADOPT:Ln" of adopt-go-1921-runtime-off-20261031.sh; a gate lifted verbatim keeps its message. The only gate replaced
-# is REF:L193 (installed-revision pin) which becomes the reviewed-revision pin checked by `production runtime-check`.
+# "ADOPT:Ln" of adopt-go-1921-runtime-off-20261031.sh; a gate lifted verbatim keeps its message. The gates replaced are
+# REF:L193 (installed-revision pin), which becomes the reviewed-revision pin checked by `production runtime-check`, and
+# (Decision 0161) REF:L245-L248, the retained pre-press sign-in receipt, which becomes the in-card renewal and check.
 #
 # The whole body is a set of functions and the last line runs `main`: bash reads a script incrementally, and P3
 # fast-forwards the checkout this file lives in, so nothing may be read from the file after main starts.
@@ -34,6 +38,9 @@ TRANSPORT_WAIT_SECONDS=180
 HEARTBEAT_FRESH_MS=15000
 ACTIVATION_RUNNER_TIMEOUT_SECONDS=300
 PRESS_RECORD_MAX_AGE_MS=120000
+WORKER_INSTALL_TIMEOUT_SECONDS=180
+# Decision 0143 bounds inside: 60 s renewal, records and publication, a 5-minute grant, a 30 s check and a 55 s receipt wait.
+SIGN_IN_TIMEOUT_SECONDS=600
 json_string() { jq -n --arg v "$1" '$v'; }
 arcadia_t() { local t="$1"; shift; (cd "$ARCADIA_REPO" && timeout "$t" mise exec -- pnpm -s arcadia "$@"); }
 arcadia() { arcadia_t 180 "$@"; }  # REF:L63
@@ -61,6 +68,9 @@ REASON=""
 FF_DONE=false
 ENSURE_ATTEMPTED=false
 RESTART_ATTEMPTED=false
+SIGN_IN_ATTEMPTED=false
+SIGN_IN_RECEIPT=""
+EXPECTED_HEAD=""
 PLAN_ACTIVATION_ATTEMPTED=false
 PLAN_ACTIVATED=false
 ACTIVATION_ATTEMPTED=false
@@ -112,7 +122,12 @@ write_handoff() {  # REF:L111 (handoff), extended: phase, allowance, every mutat
       echo "The one-shot allowance is consumed forever, from the first mutation on. Preserve the receipt; never reset or repeat it."
       if [[ "$FF_DONE" == true ]]; then echo "The main checkout was fast-forwarded to the pinned revision; this is not rolled back."; fi
       if [[ "$ENSURE_ATTEMPTED" == true ]]; then echo "go-broker ensure ran (or began to run): the broker may be installed at the pinned revision or partially installed. The runtime stays upgraded; there is no rollback to the previous release."; fi
-      if [[ "$RESTART_ATTEMPTED" == true ]]; then echo "The worker restart was attempted: the worker may be on its new release, still on its old one, or not running. Read the worker status before anything else."; fi
+      if [[ "$RESTART_ATTEMPTED" == true ]]; then echo "The protected worker install and restart was attempted: the worker may be on its new release, still source-run on its old one, or not running. Read the worker status before anything else."; fi
+      if [[ "$SIGN_IN_ATTEMPTED" == true ]]; then
+        echo "The Decision 0161 sign-in sequence was invoked; its journal is $RUN_DIR/sign-in.json. If it claimed today's Decision 0141 sequence (America/Los_Angeles), that day is consumed: the sign-in may have rotated, a diagnostic Decision may be published on main, and there is no retry or START; the next attempt needs a new card on a later day."
+      else
+        echo "No sign-in renewal ran and today's Decision 0141 sequence was not claimed by this run."
+      fi
       if [[ "$PLAN_ACTIVATION_ATTEMPTED" == true ]]; then echo "The Plan-activation runner was invoked. It is replay-safe (it verifies and recovers an existing settlement without applying twice) and this card's START marker is the only allowance, already consumed. If it succeeded the Plan stays active: there is no automatic deactivation."; fi
       if [[ "$PLAN_ACTIVATED" == true ]]; then echo "The Plan stays active (activated by this card)."; fi
     fi
@@ -195,28 +210,45 @@ check_reviewed_hashes() {  # REF:L161: the card pair and this executor against t
   node -e 'const f=require("fs"),c=require("crypto"),p=require("path"),[lib,id,exe]=process.argv.slice(1);const m=JSON.parse(f.readFileSync(p.join(lib,"reviewed",id+".json")));const h=x=>c.createHash("sha256").update(f.readFileSync(x)).digest("hex");if(h(p.join(lib,id+".sh"))!==m.sh||h(p.join(lib,id+".json"))!==m.json||h(exe)!==m.executor)process.exit(1)' "$LIBRARY_DIR" "$ID" "$SELF" \
     || refuse "START pair or executor differs from the independently reviewed hashes"
 }
-# REF:L158 (receipt hashes), L245-L248 (sign-in evidence), L364. Read-only: never a new probe, refresh or credential read beyond the pinned
-# receipts. $1 is the pre-restart worker's handler hash to require (the receipt's handlerHash must be that worker's, as in the reference),
-# or empty after the restart, when the handler may legitimately change.
-check_signin_evidence() {
+# Decision 0161: the card's sign-in sequence counts against Decision 0141's one-per-America/Los_Angeles-day ceiling. Read the daily
+# ledger read-only: any entry for today (a claim, a renewal result, a history record) means today's sequence is used.
+check_day_unused() {
+  local out
+  out="$(node -e '
+const fs=require("fs"),p=require("path");
+const date=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
+const dir=p.join(process.argv[1],".arcadia","claude-renewal-days");
+let used=[];
+try{used=fs.readdirSync(dir).filter(n=>n===date+".json"||n.startsWith(date+"."))}catch(e){if(e.code!=="ENOENT"){process.stdout.write("the daily ledger "+dir+" is unreadable");process.exit(1)}}
+if(used.length){process.stdout.write("the Decision 0141 sign-in sequence for today ("+date+", America/Los_Angeles) is already used ("+used.join(", ")+"); this card cannot be pressed until the next day");process.exit(1)}
+process.stdout.write(date);
+' "$WORKSPACE")" || refuse "$out"
+  rec_str signInDay "$out"
+}
+# REF:L245-L248 and L364 as replaced by Decision 0161: START needs the bound worker's own usage receipt from this card's sequence (or a
+# fresh reused one of the same bound worker): its bytes unchanged, a successful approved live check, the credential expiring more than
+# 5 minutes from now and both usage windows below 100%. Read-only; never a new probe.
+check_signin_receipt() {
   local out
   out="$(node -e '
 const fs=require("fs"),c=require("crypto");
-const [sig,handler]=process.argv.slice(1);
-const h=x=>c.createHash("sha256").update(fs.readFileSync(x.path)).digest("hex");
+const [sig,release,handler]=process.argv.slice(1);
 try{
   const need=(x,m)=>{if(!x)throw Error(m)};
-  const s=JSON.parse(sig);
-  need(h(s)===s.sha256,"sign-in evidence receipt drift");
+  const s=JSON.parse(sig||"null");
+  need(s&&typeof s.path==="string"&&typeof s.sha256==="string","no worker usage receipt");
+  need(c.createHash("sha256").update(fs.readFileSync(s.path)).digest("hex")===s.sha256,"worker usage receipt drift");
   const r=JSON.parse(fs.readFileSync(s.path,"utf8"));
-  need(r.success===true&&r.httpStatus===200&&r.outcome==="ok","sign-in evidence is not a successful verification");
-  need(Date.parse(r.credentialExpiresAt)>Date.now()+5*60000,"credential expiry: the verified sign-in has expired or is within 5 minutes of expiry");
-  need(Array.isArray(r.windows)&&r.windows.length===2&&r.windows.every(w=>Number.isFinite(w.usedPercentage)&&w.usedPercentage>=0&&w.usedPercentage<100),"usage window unknown or at 100%");
-  if(handler)need(r.handlerHash===handler,"sign-in evidence handlerHash is not the pre-restart worker handler");
-  process.stdout.write(JSON.stringify({credentialExpiresAt:r.credentialExpiresAt,windows:r.windows,receiptHandlerHash:r.handlerHash??null}));
+  need(r.schema==="arcadia-worker-claude-usage-receipt-v1"&&r.release===release&&r.handlerHash===handler,"the usage receipt is not from the bound worker (release and handler)");
+  need(r.approval&&typeof r.approval.digest==="string","the usage receipt carries no approved grant");
+  need(r.success===true&&r.httpStatus===200&&r.outcome==="ok"&&r.requestAttempted===true,"the worker usage check did not succeed");
+  need(Date.parse(r.credentialExpiresAt)>Date.now()+5*60000,"credential expiry: the sign-in has expired or expires within 5 minutes");
+  const w=l=>(Array.isArray(r.windows)?r.windows:[]).filter(x=>x.label===l);
+  need(["5h","7d"].every(l=>w(l).length===1&&Number.isFinite(w(l)[0].usedPercentage)&&w(l)[0].usedPercentage>=0&&w(l)[0].usedPercentage<100),"usage window unknown or at 100%");
+  process.stdout.write(JSON.stringify({path:s.path,sha256:s.sha256,credentialExpiresAt:r.credentialExpiresAt,windows:r.windows,release:r.release,handlerHash:r.handlerHash,finishedAt:r.finishedAt??null}));
 }catch(e){process.stdout.write("REFUSED: "+e.message);process.exit(1)}
-' "$(pin_json signInEvidence)" "${1:-}")" || refuse "sign-in and credential-expiry evidence gate: ${out#REFUSED: }"
-  rec signInEvidence "$out"
+' "$SIGN_IN_RECEIPT" "$PIN" "$BOUND_HANDLER")" || refuse "sign-in and credential-expiry gate: ${out#REFUSED: }"
+  rec signInReceipt "$out"
 }
 check_checkout_clean_on_main() {  # REF:L191, ADOPT:L74-75
   [[ "$(git_repo branch --show-current)" == main ]] || refuse "the Arcadia checkout must be on main"
@@ -350,7 +382,7 @@ phase_p0() {
   [[ ! -e "$ATTEMPT_FILE" ]] || refuse "the one-shot START allowance is consumed; never retry or reset"  # REF:L162
   check_expiry "this card expired at $CARD_EXPIRES_AT; ask for a fresh card"
   rec_str cardExpiresAt "$CARD_EXPIRES_AT"
-  [[ "$MODE" != run ]] || rec_str authority "The operator's own press of this per-run START card from /actions (launch context verified in P0), under Decisions 0156 and 0157, whose approval is verified at the reviewed revision in P1; no delegation to an agent is used or required"
+  [[ "$MODE" != run ]] || rec_str authority "The operator's own press of this per-run START card from /actions (launch context verified in P0), under Decisions 0156, 0157 and 0161, whose approval is verified at the reviewed revision in P1; no delegation to an agent is used or required"
   rec_str reviewedRevision "$PIN"
   rec_str executorSha256 "$EXECUTOR_SHA"
   claim_operator_press_record
@@ -435,12 +467,18 @@ phase_p2() {
   OLD_PID="$(worker_pid)"
   [[ -n "$OLD_PID" ]] || refuse "worker job $WORKER_LABEL has no running PID"  # ADOPT:L98
   rec oldWorkerPid "$OLD_PID"
-  # REF:L236-L250: the pre-restart worker is live and fresh; its handler is what the retained sign-in evidence must name.
-  PRE_BINDING="$(read_worker_binding)" || refuse "the pre-restart worker binding could not be read"
-  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" --argjson pid "$OLD_PID" '.ageMs >= 0 and .ageMs < $fresh and .binding.pid == $pid and .workerPid == $pid' <<<"$PRE_BINDING" >/dev/null || refuse "stale or mismatched pre-restart worker heartbeat"
-  PRE_HANDLER="$(jq -r '.binding.handlerHash' <<<"$PRE_BINDING")"
-  rec_str preRestartHandlerHash "$PRE_HANDLER"
-  check_signin_evidence "$PRE_HANDLER"
+  # Decision 0161: the pre-restart worker need only be live and fresh (its heartbeat fresh and its pidfile the launchd PID); it may be
+  # unbound (source-run). The card binds the worker itself in P4 and no longer reads a retained pre-press sign-in receipt.
+  PRE_BINDING="$(read_worker_binding)" || refuse "the pre-restart worker heartbeat could not be read"
+  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" --argjson pid "$OLD_PID" '.ageMs >= 0 and .ageMs < $fresh and .workerPid == $pid' <<<"$PRE_BINDING" >/dev/null || refuse "stale or mismatched pre-restart worker heartbeat"
+  rec preRestartBinding "$(jq -c '.binding' <<<"$PRE_BINDING")"
+  check_day_unused
+  # The read-only checks that must hold before the sign-in sequence may claim the day (grant and request slots, request ignored by Git).
+  SIGN_IN_ARGS=(start-run sign-in --repository "$ARCADIA_REPO" --workspace "$WORKSPACE" --project "$PROJECT" --card "$ID" --run-id "$RUN_ID"
+    --run-directory "$RUN_DIR" --release "$PIN" --policy-revision "$PROD_REVISION" --policy-epoch "$PROD_EPOCH")
+  arcadia "${SIGN_IN_ARGS[@]}" --check-only --json > "$RUN_DIR/sign-in-check.json" 2> "$RUN_DIR/sign-in-check.stderr" \
+    && jq -e '.ok == true and .data.mode == "check-only"' "$RUN_DIR/sign-in-check.json" >/dev/null \
+    || refuse "the sign-in sequence preconditions fail: $(jq -r '.error.message // "unreadable result"' "$RUN_DIR/sign-in-check.json" 2>/dev/null || echo 'unreadable result')"
   check_capacity
   check_queue before
   # Decision 0156: ensure refuses during a rehearsal freeze; ask first (read-only).
@@ -457,7 +495,7 @@ phase_p3() {
   # Last pre-mutation re-check: the cheap gates whose answer can change while the preflight ran.
   check_expiry "START card expired during preflight; no allowance consumed"  # REF:L362
   check_preserved_history
-  check_signin_evidence "$PRE_HANDLER"
+  check_day_unused
   [[ ! -e "$ATTEMPT_FILE" ]] || refuse "the one-shot START allowance is consumed; never retry or reset"
   check_checkout_clean_on_main
   check_origin_is_pin
@@ -484,7 +522,7 @@ phase_p3() {
 # P4 install, restart, observe and bind the worker
 # ---------------------------------------------------------------------------------------------------------------
 phase_p4() {
-  local ensure broker restart_at_ms new_pid i ready binding
+  local ensure broker restart_at_ms new_pid i ready binding release runtime install_out
   phase P4 install_and_worker
   ENSURE_ATTEMPTED=true
   mutated "go-broker ensure attempted: installs the pinned revision $PIN unless the ready installed broker already equals it; the runtime stays upgraded, there is no rollback"
@@ -498,13 +536,21 @@ phase_p4() {
   jq -e --arg pin "$PIN" '.ok == true and .data.ready == true and .data.revision == $pin' <<<"$broker" >/dev/null || refuse "the installed broker is not the reviewed revision $PIN and ready; no worker restart was attempted"
   [[ "$(git_repo rev-parse HEAD)" == "$PIN" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout moved or changed during the install; no worker restart was attempted"
   check_production_off  # ADOPT:L124
-  # Only now restart the pinned worker label (ADOPT:L126-L137).
-  echo "==> Restarting only $WORKER_LABEL through launchd"
+  # Decision 0161: only now reinstall the pinned worker label from the pinned compiled release, through the supported
+  # `worker install --replace-label` run by that release itself (so it writes the protected plist), and restart it.
+  release="$HOME/.local/share/arcadia/go-broker/releases/$PIN"
+  [[ -f "$release/broker-manifest.json" ]] || refuse "the installed release $release has no broker manifest; no worker install was attempted"
+  jq -e --arg pin "$PIN" '.schema == "arcadia-go-broker-install-v1" and .revision == $pin' "$release/broker-manifest.json" >/dev/null || refuse "the installed release manifest is not the reviewed revision $PIN; no worker install was attempted"
+  runtime="$(jq -er '.runtimeExecutable' "$release/broker-manifest.json")" || refuse "the installed release manifest names no runtime; no worker install was attempted"
+  [[ -x "$runtime" && -f "$release/dist/src/cli.js" ]] || refuse "the installed release runtime or CLI is missing; no worker install was attempted"
+  echo "==> Installing $WORKER_LABEL as the protected worker of release $PIN and restarting it through launchd"
   restart_at_ms="$(( $(date +%s) * 1000 ))"
   RESTART_ATTEMPTED=true
-  mutated "worker $WORKER_LABEL restart attempted (launchctl kickstart -k; old pid $OLD_PID)"
+  mutated "protected worker install and restart of $WORKER_LABEL attempted from release $PIN (old pid $OLD_PID); the plist stays rewritten, there is no rollback"
   checkpoint
-  launchctl kickstart -k "gui/$(id -u)/$WORKER_LABEL"
+  install_out="$(cd "$release" && timeout "$WORKER_INSTALL_TIMEOUT_SECONDS" "$runtime" "$release/dist/src/cli.js" worker install --replace-label "$WORKER_LABEL" --workspace "$WORKSPACE" 2>&1)" \
+    || { printf '%s\n' "$install_out" > "$RUN_DIR/worker-install.log"; refuse "the protected worker install or restart failed: the worker may be down or still source-run; production stays Off and no renewal ran"; }
+  printf '%s\n' "$install_out" > "$RUN_DIR/worker-install.log"
   new_pid=""
   for _ in $(seq 1 "$WORKER_WAIT_SECONDS"); do
     new_pid="$(worker_pid)"
@@ -535,6 +581,40 @@ phase_p4() {
   rec_str postRestartHandlerHash "$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
   rec workerBinding "$(jq -c '{pid: .binding.pid, instance: .binding.instance, release: .binding.release, handlerHash: .binding.handlerHash, repository: .binding.repository, heartbeatAt}' "$RUN_DIR/worker-binding.json")"
   [[ "$(git_repo rev-parse HEAD)" == "$PIN" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout moved or changed after the worker restart; the loaded revision is unknown"
+  EXPECTED_HEAD="$PIN"
+  check_runtime_current
+  check_production_off
+}
+
+# Decision 0161 (option A), after the bound restart: reuse a fresh receipt of this bound worker, or run the Decision 0143
+# sequence exactly once (claim today's Decision 0141 sequence, one Haiku renewal, one bound-worker usage check). No retry.
+phase_p4_sign_in() {
+  local out decision changed
+  phase P4 sign_in
+  BOUND_HANDLER="$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
+  check_day_unused  # read-only; the sequence claims the day exclusively itself
+  SIGN_IN_ATTEMPTED=true
+  mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims today's Decision 0141 sequence before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes the day, with no retry"
+  checkpoint
+  out="$(arcadia_t "$SIGN_IN_TIMEOUT_SECONDS" "${SIGN_IN_ARGS[@]}" --json 2> "$RUN_DIR/sign-in.stderr")" \
+    || { printf '%s\n' "$out" > "$RUN_DIR/sign-in-result.json"; refuse "the sign-in sequence did not succeed, so there is no START: $(jq -r '.error.message // "no result"' <<<"$out" 2>/dev/null || echo 'no result')"; }
+  printf '%s\n' "$out" > "$RUN_DIR/sign-in-result.json"
+  jq -e '.ok == true and .data.mode == "run" and (.data.outcome == "reused" or .data.outcome == "checked")' <<<"$out" >/dev/null || refuse "the sign-in sequence returned no usable result; there is no START"
+  rec signIn "$(jq -c '.data | {outcome, date, dayClaimed, decision, digest, nonce, publicationHead}' <<<"$out")"
+  SIGN_IN_RECEIPT="$(jq -c '.data.receipt' <<<"$out")"
+  check_signin_receipt
+  # The only change the sequence may make to the checkout is its published diagnostic Decision (two commits, checked by the sequence).
+  if [[ "$(jq -r '.data.outcome' <<<"$out")" == checked ]]; then
+    decision="$(jq -er '.data.decision' <<<"$out")" || refuse "the sign-in sequence named no diagnostic Decision"
+    EXPECTED_HEAD="$(jq -er '.data.publicationHead' <<<"$out")" || refuse "the sign-in sequence named no publication head"
+    changed="$(git_repo diff --name-only "$PIN" "$EXPECTED_HEAD")"
+    [[ "$changed" == "docs/decisions/$decision.md" ]] || refuse "the sign-in records changed more than the diagnostic Decision: $changed"
+    mutated "today's Decision 0141 sequence consumed; one Haiku renewal ran; diagnostic Decision docs/decisions/$decision.md published to main at $EXPECTED_HEAD; one bound-worker usage check ran"
+  else
+    mutated "no renewal: a fresh usage receipt of the bound worker was reused; today's Decision 0141 sequence was not claimed"
+  fi
+  [[ "$(git_repo rev-parse HEAD)" == "$EXPECTED_HEAD" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout moved or changed during the sign-in sequence"
+  [[ "$(timeout 30 git -C "$ARCADIA_REPO" ls-remote origin refs/heads/main | cut -f1)" == "$EXPECTED_HEAD" ]] || refuse "origin main is not the checkout after the sign-in sequence"
   check_runtime_current
   check_production_off
 }
@@ -549,7 +629,7 @@ phase_p5() {
     rec_str planActivation "skipped: the Plan was already active at the reviewed revision"
     return 0
   fi
-  [[ "$(git_repo rev-parse HEAD)" == "$PIN" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main moved or became dirty before the Plan activation"
+  [[ "$(git_repo rev-parse HEAD)" == "$EXPECTED_HEAD" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main moved or became dirty before the Plan activation"
   check_reviewed_hashes  # the descriptor the runner will read is still the reviewed one
   PLAN_ACTIVATION_ATTEMPTED=true
   mutated "Plan activation runner invoked for $PROJECT/$PLAN (replay-safe; this card's START marker is the only allowance; the Plan stays active if it succeeds; no automatic deactivation)"
@@ -580,7 +660,7 @@ phase_p6() {
   git_repo merge-base --is-ancestor "$PIN" "$head_now" || refuse "main does not descend from the reviewed revision"
   [[ -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout is dirty before the START"
   check_runtime_current
-  check_signin_evidence ""  # REF:L245-L248, L364 again at the START: expiry, windows and receipt hashes (the handler legitimately changed at the restart)
+  check_signin_receipt  # REF:L245-L248, L364 as replaced by Decision 0161, again at the START: receipt bytes, bound worker, expiry and windows
   check_production_off  # REF:L274-L284 (fresh)
   check_capacity        # REF:L254-L272 (fresh)
   check_queue after     # REF:L286-L289 (fresh)
@@ -770,6 +850,7 @@ run_phases() {
   fi
   phase_p3
   phase_p4
+  phase_p4_sign_in
   phase_p5
   phase_p6
   return 0

@@ -69,7 +69,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
-import { renderStartRunPinsSuccess, runStartRunPinsCommand } from "./commands/startRun.js";
+import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunPinsCommand, runStartRunSignInCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -1164,6 +1164,20 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; json?: boolean }) =>
     runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
+  addJsonOption(startRun.command("sign-in")
+    .description("Run only by a per-run START card: the Decision 0161 / 0143 sign-in renewal and bound-worker usage check, once (or --check-only)")
+    .requiredOption("--repository <path>", "The Arcadia main checkout the bound worker serves")
+    .requiredOption("--workspace <path>", "The configured live workspace")
+    .requiredOption("--project <slug>", "Project whose repository holds the diagnostic Decision")
+    .requiredOption("--card <id>", "The START card id")
+    .requiredOption("--run-id <id>", "The card's run id")
+    .requiredOption("--run-directory <path>", "The card's run directory")
+    .requiredOption("--release <sha>", "The reviewed revision the bound worker must run")
+    .requiredOption("--policy-revision <n>", "Production policy revision (Off)")
+    .requiredOption("--policy-epoch <n>", "Production policy epoch")
+    .option("--check-only", "Only the read-only checks that precede the daily claim; claims and changes nothing")
+  ).action((options: { repository: string; workspace: string; project: string; card: string; runId: string; runDirectory: string; release: string; policyRevision: string; policyEpoch: string; checkOnly?: boolean; json?: boolean }) =>
+    runCliAction("start-run.sign-in", options, () => runStartRunSignInCommand(options), renderStartRunSignInSuccess));
 
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })
@@ -4801,7 +4815,8 @@ Origin: every item has "origin" (a string from a field its source records, else 
     .command("install")
     .description("Install worker as a launchd service (macOS) that starts on login")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-    .action((options: { workspace: string }) => runWorkerInstallCommand(options));
+    .option("--replace-label <label>", "Decision 0161 (START card only): rewrite this live com.arcadia.local.<key>.worker agent as the protected compiled worker of the release running this command, and restart it")
+    .action((options: { workspace: string; replaceLabel?: string }) => runWorkerInstallCommand(options));
 
   worker
     .command("uninstall")
