@@ -16,7 +16,8 @@ import { runReviewApproveCommand, runReviewDeferCommand, runReviewRejectCommand 
 import { runWorkerIteration } from "../src/commands/worker.js";
 import { runWorkPlanCommand, runWorkRunCommand, runWorkUpdateCommand } from "../src/commands/work.js";
 import { buildDashboardSnapshot } from "../src/dashboard/snapshot.js";
-import { withDatabase } from "../src/db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
+import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
 import {
   getReviewItem,
   getWorkItem,
@@ -147,6 +148,82 @@ describe("project-idea planning promotion", () => {
       expect(listReviewItems(db, "all")).toEqual(before.decisions);
       expect(listExecutionRuns(db)).toEqual(before.runs);
     });
+  });
+
+  it("replaces a promoted build packet prepared for an earlier Action input instead of reusing it", () => {
+    // The live shape: an approved, never-launched promoted build packet whose
+    // metadata records no input revision (it predates the revision), so it is
+    // stale and the launch path refuses it.
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+    const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
+    const original = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    expect(original.buildInvocation?.id).toBe(promotion.buildInvocationId);
+    const metadataPath = path.join(fixture.workspace, path.dirname(promotion.buildPacketPath), "metadata.json");
+    const metadata = JSON.parse(readFileSync(metadataPath, "utf8")) as Record<string, unknown>;
+    expect(metadata.actionInputRevision).toEqual(expect.stringMatching(/^[a-f0-9]{64}$/));
+    delete metadata.actionInputRevision;
+    writeFileSync(metadataPath, JSON.stringify(metadata));
+    const packet = readFileSync(path.join(fixture.workspace, promotion.buildPacketPath));
+    const lifecycleOf = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolvePacketLifecycle(db, getWorkItem(db, promotion.actionId)!, { workspace: fixture.workspace }));
+    expect(lifecycleOf()).toMatchObject({ kind: "stale_packet", invocationId: promotion.buildInvocationId, supersededInput: true });
+    const before = withDatabase(fixture.workspace, (db) => ({ original: listCodexInvocationsForWorkItem(db, promotion.actionId), runs: listExecutionRuns(db), acceptance: getReviewItem(db, acceptance.id) }));
+
+    const replaced = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    expect(replaced.reused).toBe(false);
+    expect(replaced.plan.id).not.toBe(promotion.buildPlanId);
+    expect(replaced.buildInvocation?.id).not.toBe(promotion.buildInvocationId);
+    // The replacement needs its own build-packet approval.
+    expect(replaced.buildApproval).toMatchObject({ status: "open", resolved_intent: "CodexBuildPacketApproval", codex_invocation_id: replaced.buildInvocation!.id });
+    const replacement = readFileSync(path.join(fixture.workspace, replaced.buildInvocation!.prompt_path), "utf8");
+    expect(replacement).toContain(fixture.idea);
+    expect(replacement).toContain(acceptance.id);
+    // The launch path no longer sees a stale packet, so the tick cannot loop on it.
+    expect(lifecycleOf()).toMatchObject({ kind: "build_packet_ready", invocationId: replaced.buildInvocation!.id });
+
+    const repeated = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    expect(repeated.plan.id).toBe(replaced.plan.id);
+    expect(repeated.buildInvocation?.id).toBe(replaced.buildInvocation?.id);
+    expect(repeated.buildApproval?.id).toBe(replaced.buildApproval?.id);
+    withDatabase(fixture.workspace, (db) => {
+      const invocations = listCodexInvocationsForWorkItem(db, promotion.actionId);
+      expect(invocations).toHaveLength(2);
+      // The superseded packet stays as history, unchanged.
+      expect(invocations.find((item) => item.id === promotion.buildInvocationId)).toEqual(before.original[0]);
+      expect(listExecutionRuns(db)).toEqual(before.runs);
+      expect(getReviewItem(db, acceptance.id)).toEqual(before.acceptance);
+    });
+    expect(readFileSync(path.join(fixture.workspace, promotion.buildPacketPath))).toEqual(packet);
+  });
+
+  it("replaces a promoted replacement packet once the Action input changes again", () => {
+    const fixture = preparedProjectIdea();
+    const acceptance = executePlanningRun(fixture);
+    const promotion = runReviewApproveCommand({ workspace: fixture.workspace, id: acceptance.id }).data.promotion!;
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE codex_invocations SET status = 'completed' WHERE id = ?").run(promotion.buildInvocationId));
+    const first = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    expect(first.buildInvocation?.id).not.toBe(promotion.buildInvocationId);
+    withDatabase(fixture.workspace, (db) => db.prepare("UPDATE review_items SET status = 'approved' WHERE id = ?").run(first.buildApproval!.id));
+    // A governed amendment of the criteria changes the Action's input revision.
+    withDatabase(fixture.workspace, (db) => {
+      const row = db.prepare("SELECT acceptance_criteria_json FROM work_items WHERE id = ?").get(promotion.actionId) as { acceptance_criteria_json: string };
+      const criteria = JSON.parse(row.acceptance_criteria_json) as unknown[];
+      db.prepare("UPDATE work_items SET acceptance_criteria_json = ? WHERE id = ?").run(JSON.stringify([...criteria, "The queue names its owner."]), promotion.actionId);
+    });
+    const lifecycleOf = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolvePacketLifecycle(db, getWorkItem(db, promotion.actionId)!, { workspace: fixture.workspace }));
+    expect(lifecycleOf()).toMatchObject({ kind: "stale_packet", invocationId: first.buildInvocation!.id, supersededInput: true });
+
+    const second = runWorkPlanCommand({ workspace: fixture.workspace, workId: promotion.actionId, agentProfile: "codex_build" }).data;
+    expect(second.reused).toBe(false);
+    expect(second.plan.id).not.toBe(first.plan.id);
+    expect(second.buildInvocation?.id).not.toBe(first.buildInvocation?.id);
+    // The approval of the superseded replacement does not carry over.
+    expect(second.buildApproval?.id).not.toBe(first.buildApproval?.id);
+    expect(second.buildApproval?.status).toBe("open");
+    expect(lifecycleOf()).toMatchObject({ kind: "build_packet_ready", invocationId: second.buildInvocation!.id });
+    withReadOnlyDatabase(fixture.workspace, (db) => expect(getReviewItem(db, first.buildApproval!.id)?.status).toBe("approved"));
   });
 
   it.each(["packet", "planning-artifact", "binding", "missing-receipt", "missing-marker", "profile", "running", "duplicate"] as const)(

@@ -65,6 +65,7 @@ import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
+import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
 
 const roots: string[] = [];
 
@@ -1031,6 +1032,53 @@ describe("runManagedProductionTick", () => {
     expect(packets[0]).toEqual({ id: "production_tick_fixture_define-contract", status: "packet_created" });
     expect(packets[1].id).not.toBe(packets[0].id);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
+  });
+
+  it("does not loop on a superseded build packet: later ticks wait on the replacement's own approval", () => {
+    const codexProfiles: CodingAgentProfile[] = [profile("codex_build", "codex-cli")];
+    const codexCapacity: ProviderCapacityObservation = {
+      generatedAt: "2026-08-30T12:34:56.000Z",
+      providers: [{ ...provenCapacity(), providerId: "codex-cli", receipt: { ...provenCapacity().receipt, providerId: "codex-cli", providerLabel: "codex-cli" } }]
+    };
+    const fixture = preparedFixture({ buildAction: true, staleInputRevision: true });
+    const tmux = new FakeTmux();
+    const codexScope = normalizeProductionScope({ ...productionScope, providers: ["codex-cli"] });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, {
+        requestId: "policy-grant-codex-stale-loop",
+        scope: codexScope,
+        scopeFingerprint: fingerprintProductionScope(codexScope),
+        grantedBy: "operator"
+      })
+    );
+    const log = vi.fn();
+    const tick = (minutes: number) => withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles: codexProfiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + minutes * 60_000),
+        log,
+        capacityObservation: codexCapacity,
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    for (const minutes of [0, 1, 2, 3]) tick(minutes);
+
+    expect(tmux.launches).toHaveLength(0);
+    const preparations = log.mock.calls.filter(([message]) => /Automatically prepared a build packet/.test(String(message)));
+    expect(preparations).toHaveLength(1);
+    const packets = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT id FROM codex_invocations WHERE purpose = 'build' ORDER BY created_at").all() as Array<{ id: string }>);
+    expect(packets).toHaveLength(2);
+    const approvals = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT status FROM review_items WHERE codex_invocation_id = ? AND resolved_intent = 'CodexBuildPacketApproval'").all(packets[1].id) as Array<{ status: string }>);
+    expect(approvals).toEqual([{ status: "open" }]);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db)).map((entry) => entry.kind)).not.toContain("stale_packet");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!, { workspace: fixture.workspace })))
+      .toMatchObject({ kind: "build_packet_ready", invocationId: packets[1].id });
   });
 
   it("automatically prepares a build packet deterministically when the Action needs no Decision-gated planning run, and reaches launch within a bounded number of ticks", () => {

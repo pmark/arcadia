@@ -910,7 +910,11 @@ function prepareAcceptedProjectIdeaBuild(
   const actionRef = workItem.doc_ref ? parseActionDocRef(workItem.doc_ref) : null;
   const committedAssignment = Boolean(repoPath && actionRef && hasCommittedPromotionAssignment({ repo: repoPath, planSlug: actionRef.planSlug, actionId: actionRef.actionId }));
   const needsAssignment = Boolean(repoPath && existsSync(path.join(repoPath, ".git")) && !committedAssignment && existsSync(currentPacketPath) && !readFileSync(currentPacketPath, "utf8").includes("<!-- arcadia-promotion-assignment-v1:"));
-  if (!needsAssignment && current.id === invocation.id && current.status === "packet_created" && !current.run_id && !run) {
+  // A packet prepared for an earlier Action input is never handed back: the
+  // launch path refuses it as stale, so reusing it would loop on stale_packet.
+  // It stays as history and a fresh plan, packet and approval replace it.
+  const currentIsFresh = packetIsForCurrentInput(workspace, current.prompt_path, workItem);
+  if (!needsAssignment && current.id === invocation.id && current.status === "packet_created" && !current.run_id && !run && currentIsFresh) {
     if (requestedProfile && requestedProfile !== current.agent_profile) throw validationError("Existing packet is bound to a different coding agent profile.");
     return { plan, planningDecision: null, codexInvocation: null, packetArtifact: null, buildApproval: null, buildInvocation: invocation, buildPacketArtifact: artifact, reused: true };
   }
@@ -927,7 +931,7 @@ function prepareAcceptedProjectIdeaBuild(
   }
   const registries = loadPhase3Registries(workspace);
   validatePhase3Registries(registries);
-  const reusable = !needsAssignment && currentPlan.status === "planned" && current.status === "packet_created" && !current.run_id && !run;
+  const reusable = !needsAssignment && currentPlan.status === "planned" && current.status === "packet_created" && !current.run_id && !run && currentIsFresh;
   const target = reusable ? currentPlan : createExecutionPlan(db, {
     workItemId: workItem.id,
     summary: `Execution plan for "${workItem.title}".`,
