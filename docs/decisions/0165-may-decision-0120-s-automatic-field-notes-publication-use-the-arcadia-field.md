@@ -4,7 +4,7 @@ type: decision
 id: "0165"
 slug: may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field
 project: arcadia
-status: open
+status: approved
 question: "May Decision 0120's automatic Field Notes publication use the Arcadia Field Notes blog on GitHub Pages (https://pmark.github.io/arcadia/, built from docs/articles by .github/workflows/blog.yml) as a destination, in addition to the Mission Control site?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-11-01
+answer: "Yes: Field Notes may publish on the GitHub Pages blog (recommended)"
+decided: 2026-11-01
 ---
 
 # Decision 0165: May Decision 0120's automatic Field Notes publication use the Arcadia Field Notes blog on GitHub Pages (https://pmark.github.io/arcadia/, built from docs/articles by .github/workflows/blog.yml) as a destination, in addition to the Mission Control site?
