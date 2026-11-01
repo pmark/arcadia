@@ -8,9 +8,16 @@ GitHub Pages; AMC ([arcadiamissioncontrol.com](https://arcadiamissioncontrol.com
 
 ## How posts are published
 
-- Any `docs/articles/YYYY-MM-DD-slug.md` becomes a post at `/posts/slug/`, newest
-  first, with an Atom feed at `/feed.xml`. `README.md`, `templates/` and
-  `receipts/` are not posts. Articles are never edited by the build.
+- A `docs/articles/YYYY-MM-DD-slug.md` becomes a post at `/posts/slug/`, newest
+  first, with an Atom feed at `/feed.xml`, **only if** it is an approved Field
+  Note under Decision 0120: `status: approved`, `type: ship|essay`,
+  `channels: [site, rss]`, `not_done: true`, and a `claims_receipt` under
+  `docs/articles/receipts/` that records `- Verdict: PASS` from an independent
+  fact-check. Every other article (drafts included) is skipped and listed in the
+  build log. `README.md`, `templates/` and `receipts/` are not posts. Articles are
+  never edited by the build.
+- **Unpublish:** set the post's `status: withdrawn` (keep the file and receipt)
+  and merge; the next deploy removes the page and its feed item.
 - `node site/stage.mjs <dir>` copies this directory and the posts into `<dir>`,
   adds a title from the first H1 when front matter lacks one, drops that H1 (the
   layout renders it), and rewrites relative links (sibling posts to post pages,
@@ -22,10 +29,10 @@ GitHub Pages; AMC ([arcadiamissioncontrol.com](https://arcadiamissioncontrol.com
 ## One-time operator setup (not done by the build)
 
 Settings > Pages > Source = "GitHub Actions". Until then the deploy job is
-skipped and the build still passes. Public publication needs the operator's
-explicit approval (Constitution), and Decision 0120 names the Mission Control
-site as the Field Notes destination, so this destination needs a Decision
-amendment first. Front-matter `status: draft` posts show a "draft" badge.
+skipped and the build still passes. After enabling it, run the Blog workflow on
+`main` once (Actions > Blog > Run workflow) to deploy what is already merged.
+Publication here is governed by Decision 0120 and the destination Decision that
+names this site; no social posts, email, accounts or spending follow from it.
 
 ## Local build
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Stage the blog source: copies site/ plus dated docs/articles/*.md posts into
+// Stage the blog source: copies site/ plus approved dated docs/articles/*.md posts into
 // <outDir>, normalising each post for Jekyll. Never modifies docs/articles/.
 // Usage: node site/stage.mjs <outDir>
 import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -62,6 +62,27 @@ function rewriteLinks(body, dir) {
     .join("\n");
 }
 
+// Decision 0120 gate: only an approved Field Note whose claims receipt records an
+// independent PASS is published. Anything else (draft, reviewed, withdrawn, no
+// receipt) is skipped, so setting `status: withdrawn` and merging unpublishes.
+function field(front, key) {
+  const m = new RegExp(`^${key}:\\s*(.*)$`, "m").exec(front);
+  return m ? m[1].trim().replace(/^["']|["']$/g, "") : "";
+}
+function publicationRefusal(name, front) {
+  if (field(front, "status") !== "approved") return `status is "${field(front, "status") || "missing"}", not approved`;
+  if (!/^(ship|essay)$/.test(field(front, "type"))) return "type is not ship or essay";
+  if (field(front, "channels").replace(/\s+/g, "") !== "[site,rss]") return "channels are not exactly [site, rss]";
+  if (field(front, "not_done") !== "true") return "not_done is not true";
+  const receipt = field(front, "claims_receipt");
+  if (!/^docs\/articles\/receipts\/[\w.-]+\.md$/.test(receipt)) return "no claims receipt path";
+  const receiptPath = path.join(repoRoot, receipt);
+  if (!existsSync(receiptPath)) return `receipt ${receipt} is missing`;
+  if (!/^- Verdict: PASS\b/m.test(readFileSync(receiptPath, "utf8"))) return "receipt records no independent PASS";
+  return "";
+}
+
+const skipped = [];
 let count = 0;
 for (const name of readdirSync(articlesDir).sort()) {
   if (!POST.test(name)) continue; // README.md, templates/ and receipts/ are not posts
@@ -72,6 +93,11 @@ for (const name of readdirSync(articlesDir).sort()) {
   if (fm) {
     front = fm[1];
     text = text.slice(fm[0].length);
+  }
+  const why = publicationRefusal(name, front);
+  if (why) {
+    skipped.push(`${name}: ${why}`);
+    continue;
   }
   const h1 = /^# +(.+)$/m.exec(text);
   if (!/^title:/m.test(front)) {
@@ -87,4 +113,5 @@ for (const name of readdirSync(articlesDir).sort()) {
   );
   count++;
 }
+for (const line of skipped) console.log(`not published: ${line}`);
 console.log(`staged ${count} posts into ${outDir}`);
