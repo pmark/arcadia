@@ -297,10 +297,12 @@ pinned descriptor, so per-card review is small.
   `POST /api/operator-script {"id": "<card>", "delegation": {"decision": "0163", "agent": "rowan"}}`.
   The runner records the press as Rowan's delegated press, never an operator
   press. P0 refuses unless the originating receipt is unchanged and was the
-  operator's own /actions press of the delegated scope, the scope is identical,
-  fewer than 5 attempts ran in 72 hours, and the latest attempt refused before
-  START or its executor returned its own Grant to Off (any other Off, such as a
-  STOP card, a Decision or a stop-the-line, ends the delegation).
+  operator's own /actions press of the delegated scope and their first such
+  press after Decision 0163 reached main, the scope is identical, fewer than 5
+  in-scope attempts (every claimed or consumed /actions press of any card) ran
+  since it, within 72 hours, and the latest of them refused with no activation
+  attempted or its executor returned its own Grant to Off (any other Off, such
+  as a STOP card, a Decision or a stop-the-line, ends the delegation).
 - **Run it** with `<id>.sh preflight` first (phases P0 to P2, no mutation, no
   /actions context, writes only `runs/<id>/<run>/`), then press the card. Every
   phase rewrites `receipt.json` and `failure-handoff.md` there.

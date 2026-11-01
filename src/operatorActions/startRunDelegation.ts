@@ -22,6 +22,8 @@ export const DELEGATION_DECISION = "0163";
 export const DELEGATION_MAX_ATTEMPTS = 5;
 export const DELEGATION_WINDOW_MS = 72 * 3_600_000;
 export const DELEGATION_AGENT = "rowan";
+/** Decision 0163 reached main at 29c8e37 (2026-11-01T04:35:38Z); only the operator's first in-scope press after it delegates. */
+export const DELEGATION_EARLIEST_ORIGIN = "2026-11-01T04:35:38Z";
 /** The exact scope Decision 0163 names. */
 export const DELEGATION_SCOPE = {
   plan: "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
@@ -86,6 +88,7 @@ export function delegatedPressMarker(descriptor: { startRun?: { delegation?: Sta
 
 interface Receipt { id?: string; runId?: string; mode?: string; startedAt?: string; outcome?: string; allowanceConsumed?: boolean; productionActivated?: unknown; offCleanup?: string; record?: { operatorRunId?: string } }
 const readJson = <T>(file: string): T | null => { try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return null; } };
+const listDirectory = (directory: string): string[] => { try { return readdirSync(directory); } catch { return []; } };
 
 export interface DelegationChain {
   originatingStartedAt: string;
@@ -94,11 +97,48 @@ export interface DelegationChain {
   trigger: "refused-before-start" | "returned-off-after-failed-activation";
 }
 
+/** One /actions press of an in-scope START card, read from the runner's own press directory. */
+interface Press { card: string; pressRunId: string; startedAt: number; startedAtText: string; delegated: boolean; attempt: boolean; receipt: Receipt | null; receiptRun: string | null }
+
+const inDelegatedScope = (s: Record<string, unknown> | undefined): boolean => !!s && s.plan === DELEGATION_SCOPE.plan
+  && JSON.stringify(s.actions) === JSON.stringify(DELEGATION_SCOPE.actions) && s.provider === DELEGATION_SCOPE.provider
+  && s.concurrency === DELEGATION_SCOPE.concurrency && s.spendDecision === DELEGATION_SCOPE.spendDecision;
+
 /**
- * Read-only verification of the chain behind a delegation, from the library on disk: the operator's originating press,
- * the delegated attempts since, the attempt and time bounds and the trigger. Throws StartRunDelegationError.
+ * Every /actions press of an in-scope START card, from `runs/operator/<card>/<press>/` (run.json and the descriptor the
+ * runner snapshotted), with the executor receipt that names it. A press is an attempt once its press record was claimed
+ * (P0 passed) or its receipt consumed the allowance; a missing or unreadable receipt never hides a claimed press.
  */
-export function inspectDelegationChain(library: string, originatingCard: string, originatingRun: string, receiptSha256: string | null, now: Date): DelegationChain & { receiptSha256: string } {
+function inScopePresses(library: string, excludeCard: string | null): Press[] {
+  const presses: Press[] = [];
+  const operatorRuns = path.join(library, "runs", "operator");
+  for (const card of listDirectory(operatorRuns)) {
+    if (card === excludeCard || !slug.test(card)) continue;
+    const receipts = listDirectory(path.join(library, "runs", card)).map((run) => ({ run, r: readJson<Receipt>(path.join(library, "runs", card, run, "receipt.json")) }));
+    for (const pressRunId of listDirectory(path.join(operatorRuns, card))) {
+      const dir = path.join(operatorRuns, card, pressRunId);
+      const run = readJson<{ schema?: string; scriptId?: string; runId?: string; startedAt?: string; press?: unknown }>(path.join(dir, "run.json"));
+      const startRun = readJson<{ startRun?: Record<string, unknown> }>(path.join(dir, "descriptor.json"))?.startRun;
+      if (!run || run.schema !== "arcadia-operator-script-run-v1" || run.scriptId !== card || run.runId !== pressRunId || !inDelegatedScope(startRun)) continue;
+      const startedAt = Date.parse(String(run.startedAt));
+      if (!Number.isFinite(startedAt)) continue;
+      const match = receipts.find(({ r }) => r?.mode === "run" && r.record?.operatorRunId === pressRunId) ?? null;
+      const attempt = existsSync(path.join(dir, "start-run.claimed")) || match?.r?.allowanceConsumed === true;
+      presses.push({ card, pressRunId, startedAt, startedAtText: String(run.startedAt), delegated: run.press !== undefined || startRun!.delegation !== undefined, attempt, receipt: match?.r ?? null, receiptRun: match?.run ?? null });
+    }
+  }
+  return presses.sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/**
+ * Read-only verification of the chain behind a delegation, from the library on disk. The originating press must be the
+ * operator's own consumed /actions press of the delegated scope and the first such press after Decision 0163 reached
+ * main; every in-scope press since it (any card, delegated or not) counts toward the 5-attempt bound, and the trigger is
+ * judged on the latest of them. `excludeCard` is the card being checked (its own press is not an earlier attempt).
+ * Throws StartRunDelegationError.
+ */
+export function inspectDelegationChain(library: string, originatingCard: string, originatingRun: string, receiptSha256: string | null, now: Date, excludeCard: string | null = null): DelegationChain & { receiptSha256: string } {
+  if (!slug.test(originatingCard) || !runIdPattern.test(originatingRun)) refuse("INVALID_DELEGATION", "the originating card or run id is malformed");
   const receiptPath = path.join(library, "runs", originatingCard, originatingRun, "receipt.json");
   if (!existsSync(receiptPath)) refuse("ORIGIN_MISSING", `the originating run's receipt ${receiptPath} does not exist`);
   const bytes = readFileSync(receiptPath);
@@ -108,52 +148,40 @@ export function inspectDelegationChain(library: string, originatingCard: string,
   if (receipt.id !== originatingCard || receipt.runId !== originatingRun || receipt.mode !== "run" || receipt.allowanceConsumed !== true || typeof receipt.record?.operatorRunId !== "string") {
     refuse("ORIGIN_NOT_PRESSED", "the originating run is not a consumed /actions press of that card");
   }
-  const pressDir = path.join(library, "runs", "operator", originatingCard, receipt.record!.operatorRunId!);
-  const press = readJson<{ schema?: string; scriptId?: string; runId?: string; startedAt?: string; press?: { kind?: string } }>(path.join(pressDir, "run.json"));
-  if (!press || press.schema !== "arcadia-operator-script-run-v1" || press.scriptId !== originatingCard || press.runId !== receipt.record!.operatorRunId || press.press !== undefined) {
-    refuse("ORIGIN_NOT_OPERATOR", "the originating run was not pressed by the operator through /actions");
+  const presses = inScopePresses(library, excludeCard);
+  const origin = presses.find((p) => p.card === originatingCard && p.pressRunId === receipt.record!.operatorRunId);
+  if (!origin) {
+    const raw = readJson<{ startRun?: Record<string, unknown> }>(path.join(library, "runs", "operator", originatingCard, receipt.record!.operatorRunId!, "descriptor.json"));
+    if (raw?.startRun && !inDelegatedScope(raw.startRun)) refuse("SCOPE_NOT_DELEGATED", "the originating card's scope is not the one Decision 0163 delegates");
+    refuse("ORIGIN_NOT_OPERATOR", "the originating run has no /actions press record of the delegated scope");
   }
-  const originDescriptor = readJson<{ startRun?: Record<string, unknown> & { delegation?: unknown } }>(path.join(pressDir, "descriptor.json"));
-  const s = originDescriptor?.startRun;
-  if (!s || s.delegation !== undefined) refuse("ORIGIN_NOT_OPERATOR", "the originating card is not the operator's own START card");
-  if (s!.plan !== DELEGATION_SCOPE.plan || JSON.stringify(s!.actions) !== JSON.stringify(DELEGATION_SCOPE.actions) || s!.provider !== DELEGATION_SCOPE.provider
-    || s!.concurrency !== DELEGATION_SCOPE.concurrency || s!.spendDecision !== DELEGATION_SCOPE.spendDecision) {
-    refuse("SCOPE_NOT_DELEGATED", "the originating card's scope is not the one Decision 0163 delegates");
-  }
-  const startedAt = Date.parse(String(press!.startedAt));
-  if (!Number.isFinite(startedAt) || now.getTime() - startedAt > DELEGATION_WINDOW_MS || now.getTime() < startedAt) refuse("WINDOW_EXPIRED", "more than 72 hours have passed since the operator's originating press");
+  if (origin!.delegated) refuse("ORIGIN_NOT_OPERATOR", "the originating run was not pressed by the operator through /actions (it is a delegated press or card)");
+  if (now.getTime() - origin!.startedAt > DELEGATION_WINDOW_MS || now.getTime() < origin!.startedAt) refuse("WINDOW_EXPIRED", "more than 72 hours have passed since the operator's originating press");
+  if (origin!.startedAt < Date.parse(DELEGATION_EARLIEST_ORIGIN)) refuse("ORIGIN_BEFORE_DECISION", `the originating press predates Decision 0163 on main (${DELEGATION_EARLIEST_ORIGIN}); only the operator's next press delegates`);
+  const first = presses.find((p) => !p.delegated && p.attempt && p.startedAt >= Date.parse(DELEGATION_EARLIEST_ORIGIN));
+  if (first !== origin) refuse("ORIGIN_NOT_FIRST", `the operator's first press after Decision 0163 is ${first!.card}/${first!.pressRunId}; only that press delegates`);
 
-  // Attempts: the operator's own, plus every consumed delegated card of this chain.
-  const attempts: Array<{ card: string; run: string; receipt: Receipt }> = [{ card: originatingCard, run: originatingRun, receipt }];
-  for (const name of readdirSync(library).filter((file) => file.endsWith(".json") && !file.endsWith(".consumed.json"))) {
-    const id = name.slice(0, -".json".length);
-    const descriptor = readJson<{ startRun?: { delegation?: StartRunDelegation } }>(path.join(library, name));
-    const d = descriptor?.startRun?.delegation;
-    if (!d || d.originatingCard !== originatingCard || d.originatingRun !== originatingRun || !existsSync(path.join(library, `${id}.consumed.json`))) continue;
-    const runsDir = path.join(library, "runs", id);
-    for (const run of existsSync(runsDir) ? readdirSync(runsDir) : []) {
-      const r = readJson<Receipt>(path.join(runsDir, run, "receipt.json"));
-      if (r?.mode === "run" && r.allowanceConsumed === true) attempts.push({ card: id, run, receipt: r });
-    }
-  }
+  const attempts = presses.filter((p) => p.attempt && p.startedAt >= origin!.startedAt);
   const attemptsSoFar = attempts.length;
-  if (attemptsSoFar >= DELEGATION_MAX_ATTEMPTS) refuse("ATTEMPTS_EXHAUSTED", `${attemptsSoFar} START attempts already ran under this delegation; Decision 0163 allows at most ${DELEGATION_MAX_ATTEMPTS}`);
-  const latest = attempts.sort((a, b) => String(a.receipt.startedAt).localeCompare(String(b.receipt.startedAt))).at(-1)!;
-  const trigger = delegationTrigger(latest.receipt);
+  if (attemptsSoFar >= DELEGATION_MAX_ATTEMPTS) refuse("ATTEMPTS_EXHAUSTED", `${attemptsSoFar} START attempts already ran since the operator's originating press; Decision 0163 allows at most ${DELEGATION_MAX_ATTEMPTS}`);
+  const latest = attempts.at(-1)!;
+  if (!latest.receipt) refuse("NOT_A_TRIGGER", `the latest attempt ${latest.card}/${latest.pressRunId} has no readable executor receipt`);
+  const trigger = delegationTrigger(latest.receipt!);
   return {
-    receiptSha256: actualSha, originatingStartedAt: press!.startedAt!, attemptsSoFar, trigger,
-    latest: { card: latest.card, run: latest.run, outcome: String(latest.receipt.outcome), productionActivated: latest.receipt.productionActivated ?? null, offCleanup: String(latest.receipt.offCleanup) }
+    receiptSha256: actualSha, originatingStartedAt: origin!.startedAtText, attemptsSoFar, trigger,
+    latest: { card: latest.card, run: latest.receiptRun!, outcome: String(latest.receipt!.outcome), productionActivated: latest.receipt!.productionActivated ?? null, offCleanup: String(latest.receipt!.offCleanup) }
   };
 }
 
 /**
- * Decision 0163's trigger, explicit: a successor only after the latest attempt refused before START, or after it was
- * activated and its own executor returned only its Grant to Off. A run still in progress, a successful START, or any Off
- * the chain did not issue (an operator STOP card, a Decision, a stop-the-line or any manual deactivate) is not a trigger.
+ * Decision 0163's trigger, explicit: a successor only after the latest attempt refused with no activation attempted
+ * (`offCleanup: not_attempted`), or after it was activated and its own executor returned only its Grant to Off. A run
+ * still in progress, a successful START, an activation found inactive or under another Grant (an operator STOP card, a
+ * Decision or a stop-the-line may have turned it Off), or an unconfirmed Off is never a trigger.
  */
 export function delegationTrigger(latest: Pick<Receipt, "outcome" | "productionActivated" | "offCleanup">): DelegationChain["trigger"] {
   if (latest.outcome !== "refused") refuse("NOT_A_TRIGGER", `the latest attempt's outcome is ${String(latest.outcome)}; only a refused attempt can be followed by a successor`);
-  if (latest.productionActivated === false) return "refused-before-start";
+  if (latest.productionActivated === false && latest.offCleanup === "not_attempted") return "refused-before-start";
   if (latest.productionActivated === true && latest.offCleanup === "returned_off") return "returned-off-after-failed-activation";
   return refuse("NOT_A_TRIGGER", `the latest attempt left production ${JSON.stringify(latest.productionActivated)} with Off cleanup ${String(latest.offCleanup)}; an Off this chain did not issue never triggers a successor`);
 }

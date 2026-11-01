@@ -370,9 +370,10 @@ else if(r.press!==undefined)fail("only a Decision 0163 delegated card may carry 
 }
 # Decision 0163: a successor card Rowan presses, delegated from the operator's originating press. Read-only, from the library on
 # disk: the originating receipt is unchanged and was a consumed /actions press by the operator of a non-delegated card with the
-# delegated scope; this card keeps that scope; fewer than 5 attempts so far (the operator's plus consumed delegated cards of the
-# same chain) and this card's attempt number follows them; within 72 hours of the originating press; and the trigger holds: the
-# latest attempt refused before START, or its own executor returned only its Grant to Off. Decision 0163's approval at the
+# delegated scope, and the operator's first such press after Decision 0163 reached main; this card keeps that scope; fewer than
+# 5 attempts since it (every claimed or consumed /actions press of any in-scope card, read from runs/operator) and this card's
+# attempt number follows them; within 72 hours of the originating press; and the trigger holds on the latest of them: it
+# refused with no activation attempted, or its own executor returned only its Grant to Off. Decision 0163's approval at the
 # reviewed revision is checked in P1 (it is in startRun.requiredDecisions; the descriptor contract requires it).
 # src/operatorActions/startRunDelegation.ts computes the same chain for `start-run pins --delegated-from`.
 check_delegation() {
@@ -384,39 +385,46 @@ const [lib,id,dj,descriptorPath]=process.argv.slice(1);
 const d=JSON.parse(dj),me=JSON.parse(fs.readFileSync(descriptorPath,"utf8")).startRun;
 const fail=(m)=>{process.stdout.write(m);process.exit(1)};
 const rj=(f)=>{try{return JSON.parse(fs.readFileSync(f,"utf8"))}catch{return null}};
+const ls=(f)=>{try{return fs.readdirSync(f)}catch{return []}};
+const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,EARLIEST=Date.parse("2026-11-01T04:35:38Z"),MAX=5,WINDOW=72*3600e3;
 const SCOPE={plan:"arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",actions:["bound-guidance-test-teardown-retries","assert-tmux-temp-launcher-removed","cover-retired-descriptor-byte-change"],provider:"claude-code-cli",concurrency:1,spendDecision:"0130"};
+const same=(x)=>!!x&&x.plan===SCOPE.plan&&JSON.stringify(x.actions)===JSON.stringify(SCOPE.actions)&&x.provider===SCOPE.provider&&x.concurrency===SCOPE.concurrency&&x.spendDecision===SCOPE.spendDecision;
 if(d.decision!=="0163")fail("the delegation does not name Decision 0163");
+if(typeof d.originatingCard!=="string"||!SLUG.test(d.originatingCard)||typeof d.originatingRun!=="string"||!RUN.test(d.originatingRun))fail("the delegation names a malformed originating card or run");
 const rp=p.join(lib,"runs",d.originatingCard,d.originatingRun,"receipt.json");
 if(!fs.existsSync(rp))fail("the originating press receipt "+rp+" does not exist");
 const bytes=fs.readFileSync(rp);
 if(c.createHash("sha256").update(bytes).digest("hex")!==d.originatingReceiptSha256)fail("the originating press receipt changed since the delegation was pinned");
 const o=JSON.parse(bytes);
 if(o.id!==d.originatingCard||o.runId!==d.originatingRun||o.mode!=="run"||o.allowanceConsumed!==true||typeof (o.record||{}).operatorRunId!=="string")fail("the originating run is not a consumed /actions press of its card");
-const pd=p.join(lib,"runs","operator",d.originatingCard,o.record.operatorRunId);
-const press=rj(p.join(pd,"run.json")),od=(rj(p.join(pd,"descriptor.json"))||{}).startRun;
-if(!press||press.schema!=="arcadia-operator-script-run-v1"||press.scriptId!==d.originatingCard||press.runId!==o.record.operatorRunId||press.press!==undefined)fail("the originating run was not pressed by the operator through /actions");
-if(!od||od.delegation!==undefined)fail("the originating card is not the operator own START card");
-const same=(x)=>x.plan===SCOPE.plan&&JSON.stringify(x.actions)===JSON.stringify(SCOPE.actions)&&x.provider===SCOPE.provider&&x.concurrency===SCOPE.concurrency&&x.spendDecision===SCOPE.spendDecision;
-if(!same(od))fail("the originating card scope is not the one Decision 0163 delegates");
-if(!same(me)||me.project!==od.project||JSON.stringify(me.transitions)!==JSON.stringify(od.transitions))fail("this card scope (Plan, Actions in order, provider, concurrency, spend Decision, transitions) differs from the originating press");
-const t=Date.parse(press.startedAt);
-if(!Number.isFinite(t)||Date.now()-t>72*3600e3||Date.now()<t)fail("more than 72 hours have passed since the operator originating press");
-const attempts=[{card:d.originatingCard,run:d.originatingRun,r:o}];
-for(const name of fs.readdirSync(lib).filter(f=>f.endsWith(".json")&&!f.endsWith(".consumed.json"))){
-  const cid=name.slice(0,-5);if(cid===id)continue;
-  const x=((rj(p.join(lib,name))||{}).startRun||{}).delegation;
-  if(!x||x.originatingCard!==d.originatingCard||x.originatingRun!==d.originatingRun||!fs.existsSync(p.join(lib,cid+".consumed.json")))continue;
-  const rd=p.join(lib,"runs",cid);
-  for(const run of fs.existsSync(rd)?fs.readdirSync(rd):[]){const r=rj(p.join(rd,run,"receipt.json"));if(r&&r.mode==="run"&&r.allowanceConsumed===true)attempts.push({card:cid,run,r});}
-}
-if(attempts.length>=5)fail(attempts.length+" START attempts already ran under this delegation; Decision 0163 allows at most 5");
+// Every /actions press of an in-scope START card (any card but this one), from the runner press directories.
+const presses=[];const ops=p.join(lib,"runs","operator");
+for(const card of ls(ops)){if(card===id||!SLUG.test(card))continue;
+  const receipts=ls(p.join(lib,"runs",card)).map((run)=>({run,r:rj(p.join(lib,"runs",card,run,"receipt.json"))}));
+  for(const pr of ls(p.join(ops,card))){const dir=p.join(ops,card,pr),run=rj(p.join(dir,"run.json")),sr=(rj(p.join(dir,"descriptor.json"))||{}).startRun;
+    if(!run||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==pr||!same(sr))continue;
+    const t=Date.parse(run.startedAt);if(!Number.isFinite(t))continue;
+    const m=receipts.find((x)=>x.r&&x.r.mode==="run"&&(x.r.record||{}).operatorRunId===pr)||null;
+    presses.push({card,pr,t,at:run.startedAt,sr,delegated:run.press!==undefined||sr.delegation!==undefined,attempt:fs.existsSync(p.join(dir,"start-run.claimed"))||(m&&m.r.allowanceConsumed===true),r:m&&m.r,run:m&&m.run});}}
+presses.sort((a,b)=>a.t-b.t);
+const origin=presses.find((x)=>x.card===d.originatingCard&&x.pr===o.record.operatorRunId);
+if(!origin)fail("the originating run has no /actions press record of the delegated scope");
+if(origin.delegated)fail("the originating run was not pressed by the operator through /actions");
+if(!same(me)||me.project!==origin.sr.project||JSON.stringify(me.transitions)!==JSON.stringify(origin.sr.transitions))fail("this card scope (Plan, Actions in order, provider, concurrency, spend Decision, transitions) differs from the originating press");
+if(Date.now()-origin.t>WINDOW||Date.now()<origin.t)fail("more than 72 hours have passed since the operator originating press");
+if(origin.t<EARLIEST)fail("the originating press predates Decision 0163 on main; only the operator next press delegates");
+const first=presses.find((x)=>!x.delegated&&x.attempt&&x.t>=EARLIEST);
+if(first!==origin)fail("the operator first press after Decision 0163 is "+first.card+"/"+first.pr+"; only that press delegates");
+const attempts=presses.filter((x)=>x.attempt&&x.t>=origin.t);
+if(attempts.length>=MAX)fail(attempts.length+" START attempts already ran since the operator originating press; Decision 0163 allows at most 5");
 if(d.attempt!==attempts.length+1)fail("this card is pinned as attempt "+d.attempt+" but "+attempts.length+" attempts already ran");
-const latest=attempts.sort((a,b)=>String(a.r.startedAt).localeCompare(String(b.r.startedAt))).at(-1);
+const latest=attempts.at(-1),r=latest.r;
+if(!r)fail("no Decision 0163 trigger: the latest attempt "+latest.card+"/"+latest.pr+" has no readable executor receipt");
 let trigger;
-if(latest.r.outcome==="refused"&&latest.r.productionActivated===false)trigger="refused-before-start";
-else if(latest.r.outcome==="refused"&&latest.r.productionActivated===true&&latest.r.offCleanup==="returned_off")trigger="returned-off-after-failed-activation";
-else fail("no Decision 0163 trigger: the latest attempt "+latest.card+"/"+latest.run+" has outcome "+latest.r.outcome+", production activated "+JSON.stringify(latest.r.productionActivated)+", Off cleanup "+latest.r.offCleanup+"; an Off this chain did not issue (a STOP card, a Decision, a stop-the-line) never triggers a successor");
-process.stdout.write(JSON.stringify({originatingRun:d.originatingCard+"/"+d.originatingRun,operatorRunId:o.record.operatorRunId,originatingPressAt:press.startedAt,attempt:d.attempt,attemptsBefore:attempts.length,latest:latest.card+"/"+latest.run,trigger}));
+if(r.outcome==="refused"&&r.productionActivated===false&&r.offCleanup==="not_attempted")trigger="refused-before-start";
+else if(r.outcome==="refused"&&r.productionActivated===true&&r.offCleanup==="returned_off")trigger="returned-off-after-failed-activation";
+else fail("no Decision 0163 trigger: the latest attempt "+latest.card+"/"+latest.run+" has outcome "+r.outcome+", production activated "+JSON.stringify(r.productionActivated)+", Off cleanup "+r.offCleanup+"; an Off this chain did not issue (a STOP card, a Decision, a stop-the-line) never triggers a successor");
+process.stdout.write(JSON.stringify({originatingRun:d.originatingCard+"/"+d.originatingRun,operatorRunId:o.record.operatorRunId,originatingPressAt:origin.at,attempt:d.attempt,attemptsBefore:attempts.length,latest:latest.card+"/"+latest.run,trigger}));
 ' "$LIBRARY_DIR" "$ID" "$DELEGATION" "$DESCRIPTOR")" || refuse "Decision 0163 delegation: $out"
   rec delegation "$out"
 }
