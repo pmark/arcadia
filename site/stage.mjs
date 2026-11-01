@@ -66,8 +66,22 @@ function rewriteLinks(body, dir) {
 // independent PASS is published. Anything else (draft, reviewed, withdrawn, no
 // receipt) is skipped, so setting `status: withdrawn` and merging unpublishes.
 function field(front, key) {
-  const m = new RegExp(`^${key}:\\s*(.*)$`, "m").exec(front);
-  return m ? m[1].trim().replace(/^["']|["']$/g, "") : "";
+  const all = [...front.matchAll(new RegExp(`^${key}:\\s*(.*)$`, "gm"))];
+  if (all.length > 1) return "<duplicate>"; // fail closed: YAML would take the last
+  return all.length ? all[0][1].trim().replace(/^["']|["']$/g, "") : "";
+}
+// The verdict counts only inside "## Independent review", and the last one wins.
+function reviewVerdict(receiptText) {
+  const lines = receiptText.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.indexOf("## Independent review");
+  if (start < 0) return "";
+  let verdict = "";
+  for (const line of lines.slice(start + 1)) {
+    if (/^## /.test(line)) break;
+    const m = /^- Verdict:\s*(.*?)\s*$/.exec(line);
+    if (m) verdict = m[1];
+  }
+  return verdict;
 }
 function publicationRefusal(name, front) {
   if (field(front, "status") !== "approved") return `status is "${field(front, "status") || "missing"}", not approved`;
@@ -78,7 +92,7 @@ function publicationRefusal(name, front) {
   if (!/^docs\/articles\/receipts\/[\w.-]+\.md$/.test(receipt)) return "no claims receipt path";
   const receiptPath = path.join(repoRoot, receipt);
   if (!existsSync(receiptPath)) return `receipt ${receipt} is missing`;
-  if (!/^- Verdict: PASS\b/m.test(readFileSync(receiptPath, "utf8"))) return "receipt records no independent PASS";
+  if (reviewVerdict(readFileSync(receiptPath, "utf8")) !== "PASS") return "receipt's Independent review records no final PASS";
   return "";
 }
 
