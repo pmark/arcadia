@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { normalizeAgentAsk, type NormalizedAgentAsk } from "../ask/agentAsk.js";
@@ -83,6 +84,8 @@ export interface StartRunSignInDeps {
   git(args: string[]): string;
   /** The repositories the production worker polls for diagnostic requests (active Projects' repo_path, read-only). */
   polledRepositories(): string[];
+  /** Fixture seam: in-flight marker process liveness (default: the real process table). */
+  markerProbe?: MarkerProcessProbe;
 }
 
 export interface RetainedReceipt { path: string; sha256: string }
@@ -113,21 +116,114 @@ export function signInDay(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: SIGN_IN_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
-/** The in-flight marker: present only while one sequence runs (Decision 0162 keeps the ledger an exclusive claim). */
+/**
+ * The in-flight marker: present only while one renewal-and-check sequence runs. Decision 0162 keeps the ledger an
+ * exclusive claim for EVERY sequence in the class, a START card's and Rowan's manual Decision 0143 sequence alike: each
+ * takes this marker with `acquireSequenceMarker` before its claim and releases it with `releaseSequenceMarker`.
+ */
 export const IN_FLIGHT_MARKER = "in-flight.json";
+/** Claim records of this class: the card sequence's and the manual daily-0141 controllers' (live ledger). */
+export const CLAIM_SCHEMAS = ["arcadia-renewal-sequence-claim-v2", "arcadia-daily-0141-claim-v1"];
 
-export interface InFlightSequence { pid: number; cardId: string; runId: string; at: string; path: string }
-/** The live in-flight sequence, or null. A marker whose process is gone is stale, not in flight. Read-only. */
-export function inFlightSequence(workspace: string): InFlightSequence | null {
-  const file = path.join(workspace, DAILY_LEDGER_DIRECTORY, IN_FLIGHT_MARKER);
-  let marker: Omit<InFlightSequence, "path">;
-  try { marker = JSON.parse(readFileSync(file, "utf8")); } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
-    return { pid: -1, cardId: "unknown", runId: "unknown", at: "unknown", path: file }; // unreadable: treat as in flight, never guess
+export interface SequenceMarker { pid: number; pidStartedAt: string | null; token: string; owner: string; at: string }
+export interface InFlightSequence extends Partial<SequenceMarker> { path: string; reason: string }
+
+/** When a live process started (ps), to tell a reused pid from the marker's own process; null when unknown. */
+export function processStartTime(pid: number): string | null {
+  try {
+    const out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", env: { ...process.env, LC_ALL: "C" }, timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const at = Date.parse(out);
+    return out && Number.isFinite(at) ? new Date(at).toISOString() : null;
+  } catch { return null; }
+}
+
+/** Seams for fixtures: the liveness of a marker's process. */
+export interface MarkerProcessProbe { alive(pid: number): boolean; startTime(pid: number): string | null }
+export const realMarkerProbe: MarkerProcessProbe = {
+  alive: (pid) => { try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code !== "ESRCH"; } },
+  startTime: processStartTime
+};
+
+/** Whether a marker's process is gone: its pid is not alive, or a live pid started at another time (pid reuse). */
+function markerProcessGone(marker: Partial<SequenceMarker>, probe: MarkerProcessProbe): boolean {
+  if (!Number.isSafeInteger(marker.pid) || (marker.pid as number) < 1) return false; // unknown: never guess
+  if (!probe.alive(marker.pid as number)) return true;
+  if (!marker.pidStartedAt) return false;
+  const now = probe.startTime(marker.pid as number);
+  return now !== null && Math.abs(Date.parse(now) - Date.parse(marker.pidStartedAt)) > 2_000;
+}
+
+/**
+ * Claim records with no terminal record: a claim whose `<claim>.renewal.json` does not exist. A sequence that claimed and
+ * has not recorded its renewal is in flight (or stopped without a result); there is no staleness rule, so it refuses
+ * until resolved. History records (a retrospective consumption) are terminal themselves.
+ */
+export function unterminatedClaims(workspace: string): string[] {
+  const directory = path.join(workspace, DAILY_LEDGER_DIRECTORY);
+  if (!existsSync(directory)) return [];
+  const open: string[] = [];
+  for (const name of readdirSync(directory).sort()) {
+    if (!name.endsWith(".json") || name.endsWith(".renewal.json") || name.startsWith("in-flight")) continue;
+    let record: { schema?: unknown } | null;
+    try { record = JSON.parse(readFileSync(path.join(directory, name), "utf8")); } catch { open.push(name); continue; } // unreadable: never guess
+    if (!CLAIM_SCHEMAS.includes(String(record?.schema))) continue;
+    if (!existsSync(path.join(directory, `${name.slice(0, -".json".length)}.renewal.json`))) open.push(name);
   }
-  if (!Number.isSafeInteger(marker.pid) || marker.pid < 1) return { ...marker, path: file };
-  try { process.kill(marker.pid, 0); return { ...marker, path: file }; }
-  catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? null : { ...marker, path: file }; }
+  return open;
+}
+
+/** The live in-flight sequence, or null: a held marker whose process is not gone, or an unterminated claim. Read-only. */
+export function inFlightSequence(workspace: string, probe: MarkerProcessProbe = realMarkerProbe): InFlightSequence | null {
+  const file = path.join(workspace, DAILY_LEDGER_DIRECTORY, IN_FLIGHT_MARKER);
+  let marker: Partial<SequenceMarker> | null = null;
+  try { marker = JSON.parse(readFileSync(file, "utf8")); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return { path: file, reason: "the in-flight marker is unreadable" };
+  }
+  if (marker && !markerProcessGone(marker, probe)) return { ...marker, path: file, reason: `held by ${String(marker.owner)} (pid ${String(marker.pid)})` };
+  const open = unterminatedClaims(workspace);
+  if (open.length) return { path: path.join(workspace, DAILY_LEDGER_DIRECTORY, open[0]), reason: `claim ${open.join(", ")} has no renewal result` };
+  return null;
+}
+
+/**
+ * Take the class-wide in-flight marker (Decision 0162): exclusive, durable, with this process's pid, its start time and a
+ * fresh token. A marker whose process is gone is moved aside (preserved) only if it is still exactly the one judged
+ * gone; otherwise it is restored and the acquisition refuses. Returns the token, or throws with the reason.
+ */
+export function acquireSequenceMarker(workspace: string, owner: string, token: string, now: Date, probe: MarkerProcessProbe = realMarkerProbe): SequenceMarker {
+  const ledger = path.join(workspace, DAILY_LEDGER_DIRECTORY);
+  mkdirSync(ledger, { recursive: true, mode: 0o700 });
+  const markerPath = path.join(ledger, IN_FLIGHT_MARKER);
+  let held: Partial<SequenceMarker> | null = null;
+  try { held = JSON.parse(readFileSync(markerPath, "utf8")); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw new Error("the in-flight marker is unreadable; preserve it", { cause: error });
+  }
+  if (held) {
+    if (!markerProcessGone(held, probe)) throw new Error(`another renewal and check sequence holds the in-flight marker (${String(held.owner)}, pid ${String(held.pid)})`);
+    const aside = path.join(ledger, `in-flight.stale-${String(held.token ?? held.pid)}-${now.getTime()}.json`);
+    archiveExclusive(markerPath, aside);
+    let moved: Partial<SequenceMarker> | null;
+    try { moved = JSON.parse(readFileSync(aside, "utf8")); } catch { moved = null; }
+    if (!moved || moved.pid !== held.pid || moved.token !== held.token || moved.pidStartedAt !== held.pidStartedAt) {
+      // Another process replaced the marker between our read and the move: put it back and refuse.
+      try { linkSync(aside, markerPath); unlinkSync(aside); } catch { /* the concurrent holder already re-published one */ }
+      throw new Error("the in-flight marker changed while a stale one was being moved aside; another sequence is starting");
+    }
+  }
+  const marker: SequenceMarker = { pid: process.pid, pidStartedAt: probe.startTime(process.pid), token, owner, at: now.toISOString() };
+  if (!publishExclusive(markerPath, marker)) throw new Error("another renewal and check sequence took the in-flight marker concurrently");
+  return marker;
+}
+
+/** Release the marker only when it is still the one this sequence published (its token). */
+export function releaseSequenceMarker(workspace: string, token: string): boolean {
+  const markerPath = path.join(workspace, DAILY_LEDGER_DIRECTORY, IN_FLIGHT_MARKER);
+  try {
+    const held = JSON.parse(readFileSync(markerPath, "utf8")) as Partial<SequenceMarker>;
+    if (held.token !== token) return false;
+    unlinkSync(markerPath);
+    return true;
+  } catch { return false; }
 }
 
 /** The record names of one press's sequence: unique per card and run, never per day. */
@@ -227,11 +323,11 @@ export interface StaticSignInState {
  * empty or holding only a terminal diagnostic (archived later), the request path ignored by Git (so the checkout stays
  * clean for START), and the checkout clean on main at origin main.
  */
-export function staticSignInChecks(context: Pick<StartRunSignInContext, "workspace" | "repository">, deps: Pick<StartRunSignInDeps, "now" | "git" | "polledRepositories">): StaticSignInState {
+export function staticSignInChecks(context: Pick<StartRunSignInContext, "workspace" | "repository">, deps: Pick<StartRunSignInDeps, "now" | "git" | "polledRepositories" | "markerProbe">): StaticSignInState {
   const date = signInDay(deps.now());
   // Decision 0162: never a calendar-day or earlier-sequence refusal; only an overlapping in-flight sequence refuses.
-  const live = inFlightSequence(context.workspace);
-  if (live) throw new StartRunSignInRefusal("SEQUENCE_IN_FLIGHT", `another renewal and check sequence is in flight (card ${live.cardId}, run ${live.runId}, pid ${live.pid}, ${live.path}); nothing was claimed`, false);
+  const live = inFlightSequence(context.workspace, deps.markerProbe ?? realMarkerProbe);
+  if (live) throw new StartRunSignInRefusal("SEQUENCE_IN_FLIGHT", `another renewal and check sequence is in flight: ${live.reason} (${live.path}); nothing was claimed`, false);
   const grantSlot = slotState(diagnosticGrantPath(context.workspace), context.workspace, true);
   if (grantSlot && !grantSlot.terminal) throw new StartRunSignInRefusal("GRANT_SLOT_BUSY", `the worker diagnostic grant slot ${grantSlot.path} holds a non-terminal or unreadable grant; preserve it`, false);
   const requestSlot = slotState(path.join(context.repository, CLAUDE_DIAGNOSTIC_REQUEST), context.workspace, false);
@@ -316,7 +412,7 @@ export function buildDiagnosticAsk(input: {
       rationale: `Mechanical record under Decisions 0141, 0143 and 0161 for START card ${context.cardId} run ${context.runId}: the card's one Haiku renewal of ${date} succeeded, so the bound worker (release ${binding.release}, handler ${binding.handlerHash}) may run exactly one usage check. No retry, no second nonce, no START by this record.`,
       options: [
         { label: answer, recommended: true, consequence: `Authorizes only the worker grant with SHA-256 ${digest}: nonce ${nonce}, expiring ${expiresAt}, policy revision ${context.policyRevision} epoch ${context.policyEpoch}, the fixed usage endpoint and a ${WORKER_CHECK_DEADLINE_MS} ms deadline; one check by the bound worker, no refresh, no retry.` },
-        { label: "Do not authorize the check", recommended: false, consequence: "No usage check runs; the card and today's sequence stay consumed." }
+        { label: "Do not authorize the check", recommended: false, consequence: "No usage check runs; this press's sequence and card stay consumed, and a new card may run at once (Decision 0162: no calendar-day ceiling)." }
       ],
       references
     }
@@ -361,7 +457,7 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
   const journal: Record<string, unknown> = { schema: "arcadia-start-run-sign-in-v1", cardId: context.cardId, runId: context.runId, startedAt: deps.now().toISOString(), stages: [] as string[] };
   const stage = (name: string, data: Record<string, unknown> = {}) => { (journal.stages as string[]).push(name); Object.assign(journal, data, { updatedAt: deps.now().toISOString() }); atomicJournal(journalPath, journal); };
   let sequenceClaimed = false;
-  let inFlightClaimed: string | null = null;
+  let inFlightToken: string | null = null;
   // From the settlement apply until the push is confirmed, local main may carry unpublished Controller commits.
   let unpublishedRecords = false;
   const refuse = (code: string, message: string): never => {
@@ -408,13 +504,11 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     const ledger = path.join(context.workspace, DAILY_LEDGER_DIRECTORY);
     let recordName = "";
     try { recordName = sequenceRecordName(slots.date, context.cardId, context.runId); } catch (error) { refuse("SEQUENCE_RECORD", errorText(error)); }
-    const inFlightPath = path.join(ledger, IN_FLIGHT_MARKER);
-    const stale = existsSync(inFlightPath) && !inFlightSequence(context.workspace);
-    if (stale) archiveExclusive(inFlightPath, path.join(ledger, `in-flight.stale-before-${recordName}.json`)); // preserved, never deleted
-    if (!publishExclusive(inFlightPath, { pid: process.pid, cardId: context.cardId, runId: context.runId, at: deps.now().toISOString() })) {
-      refuse("SEQUENCE_IN_FLIGHT", "another renewal and check sequence started concurrently; nothing was claimed or renewed");
-    }
-    inFlightClaimed = inFlightPath;
+    try { inFlightToken = acquireSequenceMarker(context.workspace, `START card ${context.cardId} run ${context.runId}`, randomUUID(), deps.now(), deps.markerProbe ?? realMarkerProbe).token; }
+    catch (error) { refuse("SEQUENCE_IN_FLIGHT", `${errorText(error)}; nothing was claimed or renewed`); }
+    // Every sequence of the class takes the marker before claiming, so no claim may now be open; check once more.
+    const open = unterminatedClaims(context.workspace);
+    if (open.length) refuse("SEQUENCE_IN_FLIGHT", `another renewal and check sequence is in flight (claim ${open.join(", ")} has no renewal result); nothing was claimed or renewed`);
     const claimPath = path.join(ledger, `${recordName}.json`);
     const claim = { schema: "arcadia-renewal-sequence-claim-v2", date: slots.date, timeZone: SIGN_IN_TIME_ZONE, decisions: ["0141", "0143", "0161", "0162"], at: deps.now().toISOString(), cardId: context.cardId, runId: context.runId, binding, status: "consumed-before-renewal" };
     if (!publishExclusive(claimPath, claim)) refuse("SEQUENCE_CONSUMED", `this press's sequence record ${claimPath} already exists; one press runs at most one sequence, with no retry`);
@@ -574,6 +668,7 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     throw refusal;
   } finally {
     // The sequence is over (succeeded, refused or failed): it is no longer in flight. Its own record stays consumed.
-    if (inFlightClaimed) { try { unlinkSync(inFlightClaimed); } catch { /* a marker whose process is gone counts as stale */ } }
+    // Only the marker this run published (its token) is released; any other holder's marker is left alone.
+    if (inFlightToken) releaseSequenceMarker(context.workspace, inFlightToken);
   }
 }

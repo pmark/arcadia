@@ -69,7 +69,11 @@ function fixture(options: FixtureOptions = {}) {
   }));
   heartbeat();
   const date = signInDay(new Date(clock));
-  if (options.dayUsed) { mkdirSync(path.join(workspace, ".arcadia", "claude-renewal-days"), { recursive: true }); writeFileSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${date}.json`), "{}"); }
+  if (options.dayUsed) {
+    mkdirSync(path.join(workspace, ".arcadia", "claude-renewal-days"), { recursive: true });
+    writeFileSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${date}.json`), JSON.stringify({ schema: "arcadia-daily-0141-claim-v1", date, status: "consumed-before-renewal" }));
+    writeFileSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${date}.renewal.json`), JSON.stringify({ schema: "arcadia-daily-0141-renewal-v1", ok: false }));
+  }
   const slots = options.previousSlots ?? "terminal";
   if (slots !== "none") {
     writeFileSync(diagnosticGrantPath(workspace), JSON.stringify({ nonce: OLD_NONCE }), { mode: 0o600 });
@@ -187,7 +191,7 @@ describe("start-run sign-in: Decision 0162 (no calendar-day ceiling; the ledger 
     const result = await runStartRunSignIn(f.context, f.deps);
     expect(result).toMatchObject({ outcome: "checked", sequenceClaimed: true });
     expect(f.calls.claude).toHaveLength(1);
-    expect(readdirSync(f.ledger).sort()).toEqual([`${f.date}.json`, `${f.date}.start-card.run-1.json`, `${f.date}.start-card.run-1.renewal.json`]);
+    expect(readdirSync(f.ledger).sort()).toEqual([`${f.date}.json`, `${f.date}.renewal.json`, `${f.date}.start-card.run-1.json`, `${f.date}.start-card.run-1.renewal.json`]);
     expect(JSON.parse(readFileSync(path.join(f.ledger, `${f.date}.start-card.run-1.json`), "utf8"))).toMatchObject({ cardId: "start-card", runId: "run-1", decisions: ["0141", "0143", "0161", "0162"] });
   });
   it("lets a second card proceed on the same date after the first card's sequence finished", async () => {
@@ -208,15 +212,55 @@ describe("start-run sign-in: Decision 0162 (no calendar-day ceiling; the ledger 
   it("refuses, claiming nothing, while another sequence is in flight; a stale marker is preserved and does not block", async () => {
     const live = fixture();
     mkdirSync(live.ledger, { recursive: true });
-    writeFileSync(path.join(live.ledger, "in-flight.json"), JSON.stringify({ pid: process.pid, cardId: "other", runId: "r", at: "x" }));
+    writeFileSync(path.join(live.ledger, "in-flight.json"), JSON.stringify({ pid: process.pid, pidStartedAt: null, token: "t-live", owner: "other", at: "x" }));
     expect(await refusal(live)).toMatchObject({ code: "SEQUENCE_IN_FLIGHT", sequenceClaimed: false });
     expect(live.calls.claude).toEqual([]);
     const stale = fixture();
     mkdirSync(stale.ledger, { recursive: true });
-    writeFileSync(path.join(stale.ledger, "in-flight.json"), JSON.stringify({ pid: 2 ** 30, cardId: "crashed", runId: "r", at: "x" }));
+    writeFileSync(path.join(stale.ledger, "in-flight.json"), JSON.stringify({ pid: 2 ** 30, pidStartedAt: null, token: "t-crashed", owner: "crashed", at: "x" }));
     expect(await runStartRunSignIn(stale.context, stale.deps)).toMatchObject({ outcome: "checked" });
-    expect(readdirSync(stale.ledger)).toContain(`in-flight.stale-before-${stale.date}.start-card.run-1.json`);
+    expect(readdirSync(stale.ledger).some((name) => name.startsWith("in-flight.stale-t-crashed-"))).toBe(true);
     expect(existsSync(path.join(stale.ledger, "in-flight.json"))).toBe(false);
+  });
+  it("an unterminated manual Decision 0143 claim (no renewal result) blocks a card, naming the record", async () => {
+    const f = fixture();
+    mkdirSync(f.ledger, { recursive: true });
+    writeFileSync(path.join(f.ledger, `${f.date}.json`), JSON.stringify({ schema: "arcadia-daily-0141-claim-v1", date: f.date, status: "consumed-before-renewal" }));
+    const error = await refusal(f);
+    expect(error).toMatchObject({ code: "SEQUENCE_IN_FLIGHT", sequenceClaimed: false });
+    expect(error.message).toContain(`claim ${f.date}.json has no renewal result`);
+    expect(f.calls.claude).toEqual([]);
+    expect(readdirSync(f.ledger)).toEqual([`${f.date}.json`]);
+  });
+  it("treats a marker whose pid was reused (another start time) as stale", async () => {
+    const f = fixture();
+    mkdirSync(f.ledger, { recursive: true });
+    writeFileSync(path.join(f.ledger, "in-flight.json"), JSON.stringify({ pid: process.pid, pidStartedAt: "2020-01-01T00:00:00.000Z", token: "t-old", owner: "old", at: "x" }));
+    f.deps.markerProbe = { alive: () => true, startTime: () => "2026-11-01T16:00:00.000Z" };
+    expect(await runStartRunSignIn(f.context, f.deps)).toMatchObject({ outcome: "checked" });
+    expect(readdirSync(f.ledger).some((name) => name.startsWith("in-flight.stale-t-old-"))).toBe(true);
+  });
+  it("restores a marker that changed while a stale one was moved aside, and refuses", async () => {
+    const f = fixture();
+    mkdirSync(f.ledger, { recursive: true });
+    const marker = path.join(f.ledger, "in-flight.json");
+    writeFileSync(marker, JSON.stringify({ pid: 2 ** 30, pidStartedAt: null, token: "t-gone", owner: "gone", at: "x" }));
+    let calls = 0;
+    // The static check judges it gone; at the claim, another process replaces it right after it is judged gone.
+    f.deps.markerProbe = { alive: () => { calls += 1; if (calls === 2) writeFileSync(marker, JSON.stringify({ pid: 2 ** 30, pidStartedAt: null, token: "t-new", owner: "new", at: "y" })); return false; }, startTime: () => null };
+    expect(await refusal(f)).toMatchObject({ code: "SEQUENCE_IN_FLIGHT", sequenceClaimed: false });
+    expect(JSON.parse(readFileSync(marker, "utf8")).token).toBe("t-new");
+    expect(f.calls.claude).toEqual([]);
+  });
+  it("releases only the marker this run published", async () => {
+    const f = fixture();
+    const renew = f.deps.runClaude;
+    f.deps.runClaude = async (args, timeout) => {
+      writeFileSync(path.join(f.ledger, "in-flight.json"), JSON.stringify({ pid: process.pid, pidStartedAt: null, token: "t-someone-else", owner: "x", at: "z" }));
+      return renew(args, timeout);
+    };
+    await runStartRunSignIn(f.context, f.deps);
+    expect(JSON.parse(readFileSync(path.join(f.ledger, "in-flight.json"), "utf8")).token).toBe("t-someone-else");
   });
   it.each<[string, FixtureOptions["binding"]]>([["unbound (source-run)", "unbound"], ["stale", "stale"]])("refuses a %s worker heartbeat without claiming", async (_label, binding) => {
     const f = fixture({ binding });

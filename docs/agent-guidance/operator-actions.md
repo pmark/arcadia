@@ -273,7 +273,14 @@ pinned descriptor, so per-card review is small.
   because of the date or an earlier sequence, only while another renewal and
   check sequence is in flight. Do not add a calendar-day or cool-down limit on
   renewal and check sequences (cards or Rowan's Decision 0143 sequences)
-  without a new Decision. The allowance is consumed at the first mutation;
+  without a new Decision. Every sequence of the class, Rowan's manual Decision
+  0143 sequences included, takes the one in-flight marker
+  (`<workspace>/.arcadia/claude-renewal-days/in-flight.json`) with
+  `acquireSequenceMarker` before writing its claim, writes its claim's
+  `<claim>.renewal.json` result, and releases the marker with
+  `releaseSequenceMarker` (src/production/startRunSignIn.ts). A claim with no
+  renewal result counts as in flight and blocks every other sequence until it
+  is resolved; there is no staleness rule for it. The allowance is consumed at the first mutation;
   there is no rollback, a later failure leaves the runtime upgraded and an
   activated Plan active, a renewal or check failure consumes this press's own
   sequence (no retry within the press; a new card may run at once), and only
