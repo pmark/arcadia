@@ -566,6 +566,17 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
   }, 60_000);
 
+  it("passes the real press check against the shell-made press layout, and refuses a press claimed by another run", () => {
+    const ok = box();
+    const good = ok.run();
+    expect(good.status, good.stderr).toBe(0);
+    expect(ok.calls().filter((call) => call.tool === "press-check").map((call) => call.args[0])).toEqual(["0"]);
+    const bad = box({ state: (s) => { s.tamperClaimed = true; } });
+    const result = bad.run();
+    consumed(bad, result, "P4", /start-run sign-in runs only inside a pressed START card: the press record's start-run\.claimed marker is not this run.*\[code NOT_A_CARD_PRESS; dayClaimed false\]/);
+    expect(existsSync(path.join(bad.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+  }, 180_000);
+
   it("re-checks capacity and production Off in the sign-in phase and refuses before the day is claimed", () => {
     const b = box({ state: (s) => { s.exhaustCapacityAfterInstall = true; } });
     const result = b.run();

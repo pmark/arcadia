@@ -37,6 +37,8 @@ interface FixtureOptions {
   requestIgnored?: boolean;
   /** The identity the fake settlement and answer commits carry (default: the Arcadia Controller). */
   commitIdentity?: string;
+  /** Advance the clock by a day right after the day claim is published (midnight between the claim and the renewal). */
+  midnightAfterClaim?: boolean;
   /** The repositories the worker polls (default: the fixture repository). */
   polled?: (repository: string) => string[];
 }
@@ -83,8 +85,12 @@ function fixture(options: FixtureOptions = {}) {
     "confidence: high", "plan: fixture-plan", "updated: 2026-11-01", ...(withAnswer ? [`answer: ${answer}`, "decided: 2026-11-01"] : []), "---", "", `# Decision: ${question}`, ""
   ].join("\n");
 
+  let jumped = false;
   const deps: StartRunSignInDeps = {
-    now: () => new Date(clock),
+    now: () => {
+      if (options.midnightAfterClaim && !jumped && existsSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${date}.json`))) { clock += 24 * 3_600_000; jumped = true; }
+      return new Date(clock);
+    },
     randomUUID: () => NONCE,
     sleep: async (ms) => {
       clock += ms;
@@ -264,8 +270,7 @@ describe("start-run sign-in: the sequence", () => {
     // The Decision id is settlement's: max frontmatter id (0160) + 1, not the filename prefix (0099).
     expect(result.decision).toMatch(/^0161-authorize-one-start-card-worker-claude-usage-diagnostic-/);
     // Read-only calls are bounded by the grant time above the reserve; the two committing calls get the whole window.
-    expect(f.calls.cliTimeouts[2]).toBe(300_000);
-    expect(f.calls.cliTimeouts[4]).toBe(300_000);
+    for (const i of [2, 4]) { expect(f.calls.cliTimeouts[i]).toBeGreaterThan(60_000); expect(f.calls.cliTimeouts[i]).toBeLessThanOrEqual(300_000); }
     expect(Math.max(f.calls.cliTimeouts[0], f.calls.cliTimeouts[1], f.calls.cliTimeouts[3])).toBeLessThanOrEqual(60_000);
     expect(f.calls.git.find((args) => args[0] === "log")).toBeDefined();
     expect(existsSync(path.join(f.runDirectory, `archived-worker-claude-usage-request-${OLD_NONCE}.json`))).toBe(true);
@@ -325,9 +330,21 @@ describe("start-run sign-in: the sequence", () => {
     expect(await refusal(f)).toMatchObject({ code: "CHECK_TIMEOUT", dayClaimed: true });
   });
 
+  it("refuses without renewing when midnight passes after the claim, leaving that day consumed", async () => {
+    const f = fixture({ midnightAfterClaim: true });
+    expect(await refusal(f)).toMatchObject({ code: "DAY_CHANGED", dayClaimed: true });
+    expect(f.calls.claude).toEqual([]);
+    expect(existsSync(path.join(f.ledger, `${f.date}.json`))).toBe(true);
+    expect(existsSync(path.join(f.ledger, `${f.date}.renewal.json`))).toBe(false);
+  });
+
   it("publishes no grant when the canonical records leave under 60 seconds of the 5-minute window", async () => {
     const f = fixture({ cliDelayMs: 60_000 });
-    expect(await refusal(f)).toMatchObject({ code: "GRANT_WINDOW", dayClaimed: true });
+    const error = await refusal(f);
+    expect(error).toMatchObject({ code: "GRANT_WINDOW", dayClaimed: true });
+    // The answer was committed locally but never pushed: the refusal says so.
+    expect(error.message).toContain("main may hold unpublished local Controller diagnostic commits, and START refuses until they are reconciled");
+    expect(f.git.pushes).toBe(0);
     expect(JSON.parse(readFileSync(diagnosticGrantPath(f.workspace), "utf8"))).toEqual({ nonce: OLD_NONCE });
     expect(existsSync(diagnosticResponsePath(f.workspace, NONCE))).toBe(false);
   });

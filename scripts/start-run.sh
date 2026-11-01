@@ -39,8 +39,12 @@ HEARTBEAT_FRESH_MS=15000
 ACTIVATION_RUNNER_TIMEOUT_SECONDS=300
 PRESS_RECORD_MAX_AGE_MS=120000
 WORKER_INSTALL_TIMEOUT_SECONDS=180
-# Decision 0143 bounds inside: 60 s renewal, records and publication, a 5-minute grant, a 30 s check and a 55 s receipt wait.
-SIGN_IN_TIMEOUT_SECONDS=600
+# Outer bound of `start-run sign-in`; it must exceed the sequence's worst case so the card never kills it mid-commit.
+# Worst case (src/production/startRunSignIn.ts): before the nonce, 5 git calls x 30 s = 150 s, plus the renewal 60 s
+# (+0.25 s drain); within the grant, every CLI call is capped at the time left until expiresAt, so they total at most
+# 300 s, plus 11 git calls x 30 s = 330 s and the receipt wait (capped at expiresAt, already inside the 300 s);
+# CLI start-up and journal writes about 20 s. Total 150 + 61 + 300 + 330 + 20 = 861 s < 1200 s (339 s margin).
+SIGN_IN_TIMEOUT_SECONDS=1200
 json_string() { jq -n --arg v "$1" '$v'; }
 # The CLI writes its --json failure envelope to stderr (after any tool warnings): message, refusal code and dayClaimed.
 cli_failure() {

@@ -265,7 +265,12 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
   const journal: Record<string, unknown> = { schema: "arcadia-start-run-sign-in-v1", cardId: context.cardId, runId: context.runId, startedAt: deps.now().toISOString(), stages: [] as string[] };
   const stage = (name: string, data: Record<string, unknown> = {}) => { (journal.stages as string[]).push(name); Object.assign(journal, data, { updatedAt: deps.now().toISOString() }); atomicJournal(journalPath, journal); };
   let dayClaimed = false;
-  const refuse = (code: string, message: string): never => { throw new StartRunSignInRefusal(code, message, dayClaimed); };
+  // From the settlement apply until the push is confirmed, local main may carry unpublished Controller commits.
+  let unpublishedRecords = false;
+  const refuse = (code: string, message: string): never => {
+    const local = unpublishedRecords ? "; main may hold unpublished local Controller diagnostic commits, and START refuses until they are reconciled" : "";
+    throw new StartRunSignInRefusal(code, message + local, dayClaimed);
+  };
   try {
     const binding = readBoundWorker(context, deps.now());
     stage("bound", { binding });
@@ -288,6 +293,8 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     if (!publishExclusive(claimPath, claim)) refuse("DAY_USED", `today's (${slots.date}) Decision 0141 sequence was claimed concurrently; nothing was renewed`);
     dayClaimed = true;
     stage("day-claimed", { date: slots.date, claim: claimPath });
+    // Midnight may pass between the claim and the call: the claimed day stays consumed and nothing is renewed.
+    if (signInDay(deps.now()) !== slots.date) refuse("DAY_CHANGED", `the America/Los_Angeles day changed after ${slots.date} was claimed; that day stays consumed and nothing was renewed`);
 
     // 2. One reviewed Haiku call; its redacted result is durable before any branch.
     const callStartedAt = deps.now();
@@ -341,6 +348,8 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     // given the whole grant window: they are started only with at least the reserve left and are never killed mid-commit;
     // one that finishes late is refused by the next reserve() check instead.
     const readTimeout = () => Math.max(1_000, Math.min(READ_CLI_TIMEOUT_MS, Date.parse(expiresAt) - deps.now().getTime() - GRANT_RESERVE_MS));
+    // The committing calls may use the rest of the grant, never beyond it (a commit after expiry could not be used anyway).
+    const commitTimeout = () => Math.max(1_000, Date.parse(expiresAt) - deps.now().getTime());
     reserve("before the Agent Ask preview");
     if (deps.git(["ls-remote", "--exit-code", "origin", "refs/heads/main"]).split(/\s+/)[0] !== headBefore || deps.git(["rev-parse", "HEAD"]) !== headBefore) {
       refuse("ORIGIN_MOVED", "origin main or the checkout moved before the diagnostic Agent Ask; nothing was recorded");
@@ -356,7 +365,8 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       refuse("RECORDS_FAILED", `the settlement preview does not create exactly ${decisionRelative} with the exact grant answer`);
     }
     reserve("before the settlement");
-    const applied = deps.cli([...settleBase, "--preview", receipt.previewFingerprint, "--apply"], GRANT_WINDOW_MS);
+    unpublishedRecords = true;
+    const applied = deps.cli([...settleBase, "--preview", receipt.previewFingerprint, "--apply"], commitTimeout());
     if (!applied.ok || applied.data?.receipt?.applied !== true || !/^[a-f0-9]{40}$/.test(String(applied.data?.receipt?.documentsCommit))) refuse("RECORDS_FAILED", "the diagnostic Decision settlement did not apply and commit");
     reserve("after the settlement");
     const review = deps.cli(["review", "--workspace", context.workspace], readTimeout());
@@ -367,7 +377,7 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       refuse("RECORDS_FAILED", "the unique open diagnostic Decision with the exact grant answer as option A was not found");
     }
     reserve("before recording the answer");
-    const answered = deps.cli(["review", "answer", item.id, "A", "--workspace", context.workspace], GRANT_WINDOW_MS);
+    const answered = deps.cli(["review", "answer", item.id, "A", "--workspace", context.workspace], commitTimeout());
     if (!answered.ok) refuse("RECORDS_FAILED", "the diagnostic Decision answer was not recorded");
     const recordHead = deps.git(["rev-parse", "HEAD"]);
     const changed = deps.git(["diff", "--name-only", headBefore, recordHead]).split("\n").filter(Boolean);
@@ -388,6 +398,7 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     if (deps.git(["ls-remote", "--exit-code", "origin", "refs/heads/main"]).split(/\s+/)[0] !== headBefore) refuse("RECORDS_FAILED", "origin main moved before the Decision-only publication");
     deps.git(["push", "origin", "HEAD:refs/heads/main"]);
     if (deps.git(["ls-remote", "--exit-code", "origin", "refs/heads/main"]).split(/\s+/)[0] !== recordHead) refuse("RECORDS_FAILED", "the Decision-only publication could not be confirmed on origin main");
+    unpublishedRecords = false;
     stage("records-published", { publicationHead: recordHead, headBefore });
 
     // 5. Archive only the terminal previous grant and request, then publish the grant and the nonce-only request.

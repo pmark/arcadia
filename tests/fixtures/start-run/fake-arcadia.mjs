@@ -89,6 +89,14 @@ switch (key2) {
       ok({ mode: "check-only", static: { date: laDate(), grantSlot: null, requestSlot: null } });
       break;
     }
+    // The real press check runs against the press directory the dashboard runner and this executor actually made.
+    if (state.tamperClaimed) writeFileSync(path.join(process.env.ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY, "start-run.claimed"), "another-run\n");
+    const check = 'import { assertStartCardPress } from ' + JSON.stringify(path.join(process.env.FAKE_ARCADIA_ROOT, "src", "commands", "startRun.ts")) + ';'
+      + 'try { assertStartCardPress(JSON.parse(process.argv[1])); } catch (e) { process.stdout.write(e.message); process.exit(3); }';
+    const checkEnv = { ...process.env }; delete checkEnv.VITEST;
+    const pressCheck = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", check, JSON.stringify({ card: get("--card"), runId: get("--run-id"), runDirectory: get("--run-directory") })], { cwd: process.env.FAKE_ARCADIA_ROOT, env: checkEnv, encoding: "utf8", timeout: 60000 });
+    appendFileSync(path.join(root, "calls.log"), JSON.stringify({ tool: "press-check", args: [String(pressCheck.status)] }) + "\n");
+    if (pressCheck.status !== 0) fail("NOT_A_CARD_PRESS", pressCheck.stdout || pressCheck.stderr, false);
     const workspace = get("--workspace");
     const date = laDate();
     const ledger = path.join(workspace, ".arcadia", "claude-renewal-days");
