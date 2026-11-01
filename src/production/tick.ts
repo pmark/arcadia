@@ -2879,9 +2879,13 @@ function attemptProjectLaunch(
       // identical condition) -- so this takes precedence over attempting it,
       // rather than wasting a tick's `arcadia work plan` attempt on a
       // refusal that is already fully diagnosed.
+      // A build packet prepared for an earlier Action input is replaced through
+      // the same `arcadia work plan` preparation as a missing one; its fresh
+      // packet still needs its own build-packet approval.
+      const supersededPacket = packetLifecycleKind === "stale_packet" && error.details?.packetLifecycleSupersededInput === true;
       const resolvedLifecycleKind = rawCode === "no_validation_commands"
         ? null
-        : packetLifecycleKind === "planning_required"
+        : packetLifecycleKind === "planning_required" || supersededPacket
           ? attemptAutomaticPlanningResolution(
               db,
               { workspace: input.workspace, profiles: input.options.profiles },
@@ -2906,7 +2910,8 @@ function attemptProjectLaunch(
         ? rawCode
         : resolvedLifecycleKind === PLANNER_ATTEMPTS_EXHAUSTED
           ? PLANNER_ATTEMPTS_EXHAUSTED
-          : resolvedLifecycleKind && NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
+          : resolvedLifecycleKind && (NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
+              || (supersededPacket && resolvedLifecycleKind === "stale_packet"))
             ? resolvedLifecycleKind
             : null;
       if (escalationKind) {

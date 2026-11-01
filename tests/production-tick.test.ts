@@ -64,6 +64,7 @@ import { getRepositoryLease, systemTmux, type TmuxAdapter } from "../src/session
 import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
 
 const roots: string[] = [];
 
@@ -3308,6 +3309,7 @@ function preparedFixture(
       JSON.stringify({
         invocationId: packetId,
         workItemId: workItem.id,
+        actionInputRevision: workItemInputRevision(workItem),
         promptPath,
         baseRevision,
         providerSelection: { provider, model, mappingId: "fixture-map", bindingId: "fixture-binding" }

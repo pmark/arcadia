@@ -42,6 +42,7 @@ import { runGoContextCommand } from "../src/commands/goContext.js";
 import { goResolutionIdentity } from "../apps/dashboard/lib/go-continue.js";
 import { runManagedProductionTick } from "../src/production/tick.js";
 import { applyRecoverySuccessorDisposition, previewRecoverySuccessorDisposition } from "../src/sessions/recoverySuccessorDisposition.js";
+import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
 
 const roots: string[] = [];
 
@@ -2644,6 +2645,7 @@ function preparedFixture(selection: FixtureSelection = CLAUDE_SELECTION) {
     writeFileSync(path.join(workspace, path.dirname(promptPath), "metadata.json"), JSON.stringify({
       invocationId: packetId,
       workItemId: workItem.id,
+      actionInputRevision: workItemInputRevision(getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!),
       promptPath,
       baseRevision,
       providerSelection: { provider, model, mappingId, bindingId, ...(selection.effort ? { effort: selection.effort } : {}) }

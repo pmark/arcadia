@@ -151,7 +151,7 @@ export function buildLaunchPreview(input: {
         );
       }
 
-      packetLifecycle = resolvePacketLifecycle(input.db, workItem);
+      packetLifecycle = resolvePacketLifecycle(input.db, workItem, { workspace: input.workspace });
       const launchRefusals = launchAdapterRefusals(input.adapters);
 
       if (workItem.execution_requirement_json) {
@@ -202,7 +202,9 @@ export function buildLaunchPreview(input: {
       const invocation = listCodexInvocationsForWorkItem(input.db, workItem.id)
         .filter((candidate) => candidate.purpose === "build" && candidate.status === "packet_created")
         .at(-1);
-      if (!invocation) {
+      // A packet prepared for an earlier Action input is never launched or
+      // re-authorized; its replacement is prepared instead.
+      if (!invocation || (packetLifecycle.kind === "stale_packet" && packetLifecycle.supersededInput)) {
         prerequisites.push(`${packetLifecycle.kind.replaceAll("_", " ")}: ${packetLifecycle.remedy}`);
       } else {
         const absolutePacket = path.join(input.workspace, invocation.prompt_path);

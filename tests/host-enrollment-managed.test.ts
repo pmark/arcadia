@@ -34,6 +34,7 @@ import { executeHostEnrollment, type HostEnrollmentInput } from "../src/sessions
 import { launchGuardedHostSession } from "../src/sessions/launch.js";
 import type { TmuxAdapter } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
 
 /**
  * The real host enrollment path: host-derived context, strict `arcadia go`
@@ -95,7 +96,7 @@ function fixture(options: { approvePacket?: boolean } = {}) {
     mkdirSync(path.join(workspace, path.dirname(promptPath)), { recursive: true });
     writeFileSync(path.join(workspace, promptPath), "immutable build packet\n");
     writeFileSync(path.join(workspace, path.dirname(promptPath), "metadata.json"), JSON.stringify({
-      invocationId: packetId, workItemId: workItem.id, promptPath, baseRevision: git(repo, ["rev-parse", "HEAD"]).trim(),
+      invocationId: packetId, workItemId: workItem.id, actionInputRevision: workItemInputRevision(workItem), promptPath, baseRevision: git(repo, ["rev-parse", "HEAD"]).trim(),
       providerSelection: { provider: "claude-code-cli", model: "sonnet", mappingId: "fixture-map", bindingId: "fixture-binding" }
     }));
     createCodexInvocation(db, {
