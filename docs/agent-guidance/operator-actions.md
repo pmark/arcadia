@@ -322,8 +322,11 @@ pinned descriptor, so per-card review is small.
   checklist read-only and records it. For every pinned Action, it must:
   - predict the route: the declared `execution`, or else the keyword guess in
     `planStepsForWorkItem`. Name every gate that route will hit: a planning
-    run, packet approval, validation, review, repair and merge. A test-only
-    Action without a declared route goes to a Decision-gated planning run.
+    run, packet approval, validation, review, repair and merge. An Action
+    without a declared route, whose text lacks "implement", "code" or
+    "prototype", goes to a Decision-gated planning run. A declared `build`
+    route deliberately skips that planning-run Decision gate, so check that
+    the route is appropriate for the Action, not only that one is declared.
   - list pending Agent Asks and open Decisions or review items that name the
     Action;
   - find stale escalations, open repair escalations and spent repair budgets;
@@ -335,8 +338,10 @@ pinned descriptor, so per-card review is small.
   everything fixable inside authority before the ping. Name in the ping what
   is left and who it waits on. After START, watch admission with a deadline,
   not only START itself: the first Action must reach a launched Session within
-  the stated window. Otherwise, report the blocker as a new blocker. The
-  pre-mortem grants no authority and never presses a card.
+  the card's stated deadline, or 15 minutes if it states none. A missed
+  deadline is a new blocker: send it to the configured Discord blocker alert
+  and verify delivery. The pre-mortem grants no authority and never presses a
+  card.
 
 ### Pinging the operator (read-only)
 

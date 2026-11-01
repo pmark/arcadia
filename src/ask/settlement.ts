@@ -22,6 +22,7 @@ import { arrangeActionOrder, loadActionOrder } from "../dispatch/order.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { writePointerPairWithCompareAndSet } from "../dispatch/pointer.js";
 import type { GateQuestion, WorkClassification } from "../domain/constants.js";
+import type { ExecutionRoute } from "../domain/types.js";
 import { reserveAskGitIndex, askGit as git, tryAskGit as tryGit, type AskGitCleanupFailure } from "../git/askIsolation.js";
 import { assertClean, projectCheckoutFor, untrackedDraftAskPaths } from "../git/worktrees.js";
 import {
@@ -390,7 +391,7 @@ export function settleAgentAsk(db: Database.Database, input: {
     let criteriaRepair = proposal.normalized.intent === "plan" && !!proposal.normalized.targetRef &&
       proposal.normalized.actions.length > 0 && proposal.normalized.actions.every((action) =>
         !!action.targetRef && action.omittedLists?.includes("dependencies") &&
-        action.omittedLists?.includes("references") && action.why === undefined) &&
+        action.omittedLists?.includes("references") && action.why === undefined && action.execution === undefined) &&
       proposal.normalized.references.length === 0 && !input.activate && !input.placement &&
       !input.anchor && !input.responsibility;
     if (criteriaRepair) {
@@ -519,11 +520,11 @@ export function settleAgentAsk(db: Database.Database, input: {
               const amendedDependencies = (action.omittedLists ?? []).includes("dependencies") ? null : action.dependencies;
               const amendedReferences = (action.omittedLists ?? []).includes("references") ? null : action.references;
               planAfter = amendAction(planAfter, action.id, action.desiredResult, action.acceptance, amendedDependencies,
-                amendedReferences, proposal.normalized.requestId, undefined, action.why);
+                amendedReferences, proposal.normalized.requestId, undefined, action.why, false, action.execution);
               effects.push(`Amended Action ${project.slug}/${action.id} in active Plan ${plan.slug}.`);
               effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(plan.actions.find((candidate) => candidate.id === action.id)!, {
                 desiredResult: action.desiredResult, acceptance: action.acceptance,
-                dependencies: amendedDependencies, references: amendedReferences, why: action.why
+                dependencies: amendedDependencies, references: amendedReferences, why: action.why, execution: action.execution
               })}.`);
               if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
             } else {
@@ -531,7 +532,7 @@ export function settleAgentAsk(db: Database.Database, input: {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
                 acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
                 source: `Agent Ask ${proposal.normalized.requestId}`,
-                why: action.why
+                why: action.why, execution: action.execution
               });
               effects.push(`Created Action ${project.slug}/${action.id} in active Plan ${plan.slug} with Responsibility ${input.responsibility}.`);
             }
@@ -791,11 +792,11 @@ export function settleAgentAsk(db: Database.Database, input: {
           for (const action of normalizedActions) {
             if (action.existing) {
               after = amendAction(after, action.id, action.desiredResult, action.acceptance, action.amendedDependencies,
-                action.amendedReferences, proposal.normalized.requestId, undefined, action.why, criteriaRepair);
+                action.amendedReferences, proposal.normalized.requestId, undefined, action.why, criteriaRepair, action.execution);
               effects.push(`Amended Action ${project.slug}/${action.id} in Plan ${target.slug}.`);
               effects.push(`Field changes for ${project.slug}/${action.id}: ${describeActionAmendment(target.actions.find((candidate) => candidate.id === action.id)!, {
                 desiredResult: action.desiredResult, acceptance: action.acceptance,
-                dependencies: action.amendedDependencies, references: action.amendedReferences, why: action.why
+                dependencies: action.amendedDependencies, references: action.amendedReferences, why: action.why, execution: action.execution
               })}.`);
               if (legacyListFallback && !effects.includes(LEGACY_LIST_FALLBACK_EFFECT)) effects.push(LEGACY_LIST_FALLBACK_EFFECT);
               if (!criteriaRepair) actionIdsToValidate.push(action.id);
@@ -804,7 +805,7 @@ export function settleAgentAsk(db: Database.Database, input: {
                 id: action.id, title: action.desiredResult, responsibility: input.responsibility!,
                 acceptance: action.acceptance, dependencies: action.dependencies, references: action.references,
                 source: `Agent Ask ${proposal.normalized.requestId}`,
-                why: action.why
+                why: action.why, execution: action.execution
               });
               effects.push(`Created Action ${project.slug}/${action.id} in Plan ${target.slug} with Responsibility ${input.responsibility}.`);
               actionIdsToValidate.push(action.id);
@@ -2310,6 +2311,8 @@ export function appendPlanAction(content: string, action: {
   id: string; title: string; responsibility: AgentAskResponsibility; acceptance: string[]; dependencies: string[]; references: string[]; source: string;
   /** One sentence on why the Action matters; omitted from the block when absent. */
   why?: string | null;
+  /** The declared route; omitted from the block when absent. */
+  execution?: ExecutionRoute;
 }): string {
   const end = content.indexOf("\n---", 4);
   if (end < 0) throw validationError("Managed Plan has no closing frontmatter marker.");
@@ -2328,6 +2331,7 @@ export function appendPlanAction(content: string, action: {
     `    title: ${yamlScalar(action.title)}`,
     "    status: open",
     `    responsibility: ${action.responsibility}`,
+    ...(action.execution ? [`    execution: ${action.execution}`] : []),
     "    effort: session",
     `    next_action: ${yamlScalar(action.title)}`,
     `    expected_artifact: ${yamlScalar(`Evidence satisfying Agent Ask ${action.id}`)}`,
@@ -2342,6 +2346,28 @@ export function appendPlanAction(content: string, action: {
     `    references: [${action.references.map((reference) => JSON.stringify(reference)).join(", ")}]`
   ];
   return `${content.slice(0, insertAt)}\n${lines.join("\n")}${content.slice(insertAt)}`;
+}
+
+/**
+ * Set an Action block's declared route. The worker honours it only for an
+ * agent or autonomous Action, so an operator-owned Action is refused here
+ * rather than at the next document parse. A block whose `execution` is the
+ * vendor-neutral requirement mapping keeps it: a route never replaces it.
+ */
+function withDeclaredRoute(block: string, actionId: string, execution: ExecutionRoute): string {
+  // `codex` is the pre-rename spelling of `agent`; the document parser reads it so.
+  const responsibility = /^ {4}responsibility:\s*(\S+)\s*$/m.exec(block)?.[1];
+  if (responsibility !== "agent" && responsibility !== "autonomous" && responsibility !== "codex") {
+    throw validationError("A declared execution route is only valid on an agent or autonomous Action.", { actionId, responsibility: responsibility ?? null });
+  }
+  const existing = /^ {4}execution:(.*)$/m.exec(block);
+  if (existing) {
+    if (!/^\s*(?:build|plan-run)\s*$/.test(existing[1])) {
+      throw validationError("This Action declares an execution requirement mapping; an Ask route cannot replace it.", { actionId });
+    }
+    return block.replace(/^ {4}execution:.*$/m, () => `    execution: ${execution}`);
+  }
+  return block.replace(/^ {4}responsibility:.*$/m, (line) => `${line}\n    execution: ${execution}`);
 }
 
 // The derived id is the handle an operator types into `advance queue reorder`,
@@ -2725,7 +2751,7 @@ function newDraftPlan(
  */
 function describeActionAmendment(
   existing: PlanActionDoc,
-  next: { desiredResult: string; acceptance: string[]; dependencies: string[] | null; references: string[] | null; why?: string | null }
+  next: { desiredResult: string; acceptance: string[]; dependencies: string[] | null; references: string[] | null; why?: string | null; execution?: ExecutionRoute }
 ): string {
   const fields: string[] = [];
   const list = (items: string[]): string => `[${items.join(", ")}]`;
@@ -2742,6 +2768,11 @@ function describeActionAmendment(
   else if (next.references.length === 0) fields.push("references cleared");
   else fields.push(`references: ${list(existing.references)} \u2192 ${list(next.references)}`);
   if (next.why && next.why !== existing.why) fields.push("why changed");
+  if (next.execution !== undefined) {
+    fields.push(next.execution === existing.executionRoute
+      ? "execution route unchanged"
+      : `execution route: ${existing.executionRoute ?? "none"} \u2192 ${next.execution}`);
+  }
   return fields.join("; ");
 }
 
@@ -2798,7 +2829,8 @@ function amendAction(
   requestId: string,
   responsibility?: AgentAskResponsibility,
   why?: string | null,
-  criteriaOnly = false
+  criteriaOnly = false,
+  execution?: ExecutionRoute
 ): string {
   const pattern = new RegExp(`(^  - id: ${escapeRegex(actionId)}\\r?$[\\s\\S]*?)(?=^  - id: |^---\\r?$)`, "m");
   const match = content.match(pattern);
@@ -2816,6 +2848,7 @@ function amendAction(
     if (!/^ {4}responsibility:/m.test(block)) throw validationError("Managed Plan Action has no responsibility field to amend.", { actionId });
     block = block.replace(/^ {4}responsibility:.*$/m, `    responsibility: ${responsibility}`);
   }
+  if (execution) block = withDeclaredRoute(block, actionId, execution);
   if (acceptance.length > 0) {
     const replacement = ["    acceptance_criteria:", ...acceptance.map((criterion) => `      - ${amendmentScalar(criterion)}`)].join("\n");
     if (/^ {4}acceptance_criteria:/m.test(block)) {
