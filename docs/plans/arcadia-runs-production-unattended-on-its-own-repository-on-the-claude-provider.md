@@ -317,12 +317,13 @@ actions:
     title: "Make the scratch-directory teardown in the agent-guidance test retry a transient ENOTEMPTY instead of failing the shard, closing Issue #1419."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Make the agent-guidance test's scratch-directory teardown retry a transient ENOTEMPTY, with a test that fails if the retries are removed, closing Issue #1419."
     expected_artifact: Evidence satisfying Agent Ask bound-guidance-test-teardown-retries
     clarification: clarified
     confidence: high
-    source: Agent Ask rescope-first-unattended-run-20261031-v3
+    source: Agent Ask route-test-only-actions-to-build-20261101
     why: "PR1783 was rejected because its test passed without exercising the real cleanup; the tightened criteria make that shape fail."
     acceptance_criteria:
       - "tests/agent-guidance.test.ts defines removeScratchRoots(roots: string[], remove = rmSync), which calls remove(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }) (or larger maxRetries and retryDelay values) for each root and then empties the array; the afterEach body is exactly one call to removeScratchRoots(roots) and contains no rmSync literal."
@@ -372,12 +373,13 @@ actions:
     title: "Make the no-launcherDirectory tmux long-command test prove its temporary launcher directory is removed, closing Issue #1536."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Make the no-launcherDirectory tmux long-command test prove its temporary launcher directory is removed, closing Issue #1536."
     expected_artifact: Evidence satisfying Agent Ask assert-tmux-temp-launcher-removed
     clarification: clarified
     confidence: high
-    source: Agent Ask rescope-first-unattended-run-20261031-v3
+    source: Agent Ask route-test-only-actions-to-build-20261101
     why: "The test is named for temporary-directory removal but never checks it, so a cleanup regression would pass."
     acceptance_criteria:
       - In tests/system-tmux-long-command.test.ts, the test named 'delivers the brief byte-identical with no launcherDirectory (temporary directory removed)' points TMPDIR at a directory the test owns for the launch, and after the provider has written its argv asserts that no entry starting with arcadia-launch- remains in that directory.
@@ -391,12 +393,13 @@ actions:
     title: "Cover a pinned retired operator-script entry whose descriptor bytes changed while its script bytes did not, closing the first item of Issue #1262."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Cover a pinned retired operator-script entry whose descriptor bytes changed while its script bytes did not, closing the first item of Issue #1262."
     expected_artifact: Evidence satisfying Agent Ask cover-retired-descriptor-byte-change
     clarification: clarified
     confidence: high
-    source: Agent Ask rescope-first-unattended-run-20261031-v3
+    source: Agent Ask route-test-only-actions-to-build-20261101
     why: "The retirement rule requires both hashes to match, but only the changed-script case is covered."
     acceptance_criteria:
       - apps/dashboard/app/api/operator-script/retired-entries.test.ts gains a test in which the retirement pins the sha256 of the original descriptor and the original script, only the written descriptor bytes differ (for example a trailing newline) while the script bytes equal the pinned bytes, the changed descriptor stays invalid, and GET returns no scripts with console.error called exactly once.
@@ -409,7 +412,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: bound-guidance-test-teardown-retries
+current_action: assert-tmux-temp-launcher-removed
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
