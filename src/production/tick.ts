@@ -20,7 +20,7 @@ import { git, isAncestor, projectCheckoutFor, resolveBaseBranch, tryGit } from "
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { latestCandidateSettlementCommit, listPendingTerminalCandidates, operatorHeldEscalation, pendingTerminalCandidateFor } from "./terminalCandidates.js";
+import { latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
 import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
@@ -185,6 +185,9 @@ export interface ManagedProductionTickProjectResult {
 /** Superseded terminal candidates already reported by this worker process (Issue #1158). */
 const reportedSupersededTerminalCandidates = new Set<string>();
 
+/** Stale review repair stops already reported by this worker process (Issue #1929). */
+const reportedStaleRepairStops = new Set<string>();
+
 /**
  * A terminal Session no longer holds the repository lease. Rediscover its
  * unfinished handoff from the existing exit, preservation and settlement
@@ -218,6 +221,14 @@ function recoverTerminalHandoff(
       if (!reportedSupersededTerminalCandidates.has(reportKey)) {
         reportedSupersededTerminalCandidates.add(reportKey);
         log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
+      }
+    },
+    onStaleRepairStop: (session, reason) => {
+      // Issue #1929: reported once per worker process per (Session, reason).
+      const reportKey = `${session.id}\u0000${reason}`;
+      if (!reportedStaleRepairStops.has(reportKey)) {
+        reportedStaleRepairStops.add(reportKey);
+        log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) stopped its review repair loop, but ${reason}; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
       }
     }
   });
@@ -2573,11 +2584,21 @@ function attemptProjectLaunch(
   // Operator decision 2026-10-21: an Action held by its operator escalation is
   // never relaunched or re-escalated here (a settlement of another Action can
   // leave the pointer on it); the scheduler moves the pointer to the next
-  // independent in-scope Action on its next pass.
+  // independent in-scope Action on its next pass. Issue #1929: a stop recorded
+  // for a candidate of a superseded Action input, or rounds spent in an
+  // earlier production epoch, no longer holds it; the row stays for history.
   if (selected) {
-    const held = operatorHeldEscalation(db, `${input.projectSlug}/${selected.action.id}`);
-    if (held) {
-      return { attempted: false, outcome: "skipped", reason: `${input.projectSlug}/${selected.action.id} is held by its operator escalation (${held.kind}); production does not relaunch it.`, actionKey: null };
+    const selectedKey = `${input.projectSlug}/${selected.action.id}`;
+    const state = reviewRepairEscalationState(db, selectedKey, { repoRoot: input.repoRoot, planSlug: selected.activePlan, action: selected.action });
+    if (state && state.staleReason === null) {
+      return { attempted: false, outcome: "skipped", reason: `${selectedKey} is held by its operator escalation (${state.kind}); production does not relaunch it.`, actionKey: null };
+    }
+    if (state) {
+      const logKey = `${selectedKey}\u0000${state.kind}\u0000${state.firstDetectedAt}`;
+      if (!reportedStaleRepairStops.has(logKey)) {
+        reportedStaleRepairStops.add(logKey);
+        input.log(`The ${state.kind} escalation of ${selectedKey} (since ${state.firstDetectedAt}) no longer holds it: ${state.staleReason}. It stays recorded; a fresh attempt may be admitted.`);
+      }
     }
   }
   if (transition.kind !== "launch" || !transition.dispatch.context) {
