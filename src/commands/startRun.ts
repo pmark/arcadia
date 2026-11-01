@@ -272,7 +272,12 @@ export function realStartRunSignInDeps(repository: string, release: string, work
       command ??= pinnedReleaseCli(release);
       const run = spawnSync(command[0], [...command.slice(1), ...args, "--json"], { cwd: repository, env, encoding: "utf8", timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 });
       // Like the executor: a non-zero exit is a failure whatever stdout holds.
-      if (run.status !== 0) return { ok: false, error: `exit ${String(run.status ?? run.signal)}: ${(run.stderr || "no output").slice(0, 2000)}` };
+      if (run.status !== 0) {
+        // The CLI writes its --json failure envelope to stderr: keep its { code, message, details } for the refusal (Issue #1958).
+        let envelope: { error?: unknown } | null;
+        try { envelope = parseJsonEnvelope(run.stderr ?? "") as { error?: unknown }; } catch { envelope = null; }
+        return { ok: false, error: envelope?.error ?? `exit ${String(run.status ?? run.signal)}: ${(run.stderr || "no output").slice(0, 2000)}` };
+      }
       try { return parseJsonEnvelope(run.stdout) as { ok: boolean; data?: unknown }; }
       catch { return { ok: false, error: (run.stderr || "no JSON output").slice(0, 2000) }; }
     },

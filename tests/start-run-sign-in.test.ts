@@ -10,6 +10,7 @@ import {
 } from "../src/production/startRunSignIn.js";
 import { diagnosticGrantAnswer, diagnosticGrantPath, diagnosticResponsePath, type ClaudeDiagnosticGrant } from "../src/production/workerClaudeUsageDiagnostic.js";
 import { slugify } from "../src/utils/slug.js";
+import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import { assertStartCardPress } from "../src/commands/startRun.js";
 
 /**
@@ -33,6 +34,10 @@ interface FixtureOptions {
   /** Milliseconds the fake clock advances on each CLI call (slow canonical records). */
   cliDelayMs?: number;
   previousSlots?: "terminal" | "busy-request" | "none";
+  /** Omit one governing Decision file (0141, 0143 or 0161) from the fixture repository. */
+  withoutGoverning?: string;
+  /** Make the fake `agent-ask preview` fail with this CLI error envelope. */
+  previewError?: { code: string; message: string; details?: Record<string, unknown> };
   receipts?: Array<Record<string, unknown>>;
   requestIgnored?: boolean;
   /** The identity the fake settlement and answer commits carry (default: the Arcadia Controller). */
@@ -51,6 +56,8 @@ function fixture(options: FixtureOptions = {}) {
   const runDirectory = path.join(repository, "artifacts", "generated", "operator-scripts", "runs", "card", "run-1");
   for (const dir of [path.join(repository, "docs", "decisions"), path.join(repository, ".arcadia"), path.join(workspace, ".arcadia"), path.join(workspace, "artifacts", "worker-claude-usage")]) mkdirSync(dir, { recursive: true });
   chmodSync(path.join(workspace, "artifacts", "worker-claude-usage"), 0o700);
+  // The standing authorities the diagnostic Ask cites, repository-relative (Issue #1958). Plain text: no managed frontmatter.
+  for (const id of ["0141", "0143", "0161"]) if (options.withoutGoverning !== id) writeFileSync(path.join(repository, "docs", "decisions", `${id}-governing-fixture.md`), `# Decision ${id} fixture\n`);
   writeFileSync(path.join(repository, "docs", "decisions", "0099-renumbered-earlier.md"), [
     "---", "arcadia: v1", "type: decision", 'id: "0160"', "slug: renumbered-earlier", "project: arcadia", "status: approved", "question: Earlier?",
     "gap_type: missing-decision", "gate_question: approval_boundary", "confidence: high", "plan: fixture-plan", "updated: 2026-10-31", "answer: Yes", "decided: 2026-10-31", "---", "", "# Decision 0160: Earlier?", ""
@@ -124,6 +131,7 @@ function fixture(options: FixtureOptions = {}) {
       calls.cliTimeouts.push(timeoutMs);
       clock += options.cliDelayMs ?? 1000;
       const key = args.slice(0, 2).join(" ");
+      if (key === "agent-ask preview" && options.previewError) return { ok: false, error: options.previewError };
       if (key === "agent-ask preview") {
         const ask = JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"));
         question = ask.desired_result; answer = ask.options[0].label; slug = slugify(question);
@@ -323,6 +331,33 @@ describe("start-run sign-in: the sequence", () => {
     f.deps.runClaude = async (args, timeout) => { f.git.remote = "e".repeat(40); return renew(args, timeout); };
     expect(await refusal(f)).toMatchObject({ code: "ORIGIN_MOVED", dayClaimed: true });
     expect(f.calls.cli).toEqual([]);
+  });
+
+  it("refuses before the claim when the diagnostic Ask would fail the real validator (a governing Decision is missing)", async () => {
+    const f = fixture({ withoutGoverning: "0143" });
+    const error = await refusal(f);
+    expect(error).toMatchObject({ code: "ASK_INVALID", dayClaimed: false });
+    expect(error.message).toMatch(/would be refused, so nothing was claimed or renewed: Decision 0143/);
+    expect(existsSync(f.ledger)).toBe(false);
+    expect(f.calls.claude).toEqual([]);
+  });
+
+  it("writes an Ask the real validator accepts, citing the governing Decisions repository-relative and no absolute path", async () => {
+    const f = fixture();
+    await runStartRunSignIn(f.context, f.deps);
+    const askFile = readdirSync(f.runDirectory).find((name) => name.startsWith("start-run-signin-"))!;
+    const ask = JSON.parse(readFileSync(path.join(f.runDirectory, askFile), "utf8"));
+    expect(ask.references).toEqual(["0141", "0143", "0161"].map((id) => `docs/decisions/${id}-governing-fixture.md`));
+    expect(() => normalizeAgentAsk({ request: JSON.stringify(ask) })).not.toThrow();
+  });
+
+  it("surfaces the CLI's error code, message and details when the preview refuses", async () => {
+    const f = fixture({ previewError: { code: "VALIDATION_ERROR", message: "Agent Ask references must not contain absolute filesystem paths.", details: { references: ["/abs/sign-in.json"] } } });
+    const error = await refusal(f);
+    expect(error).toMatchObject({ code: "RECORDS_FAILED", dayClaimed: true });
+    expect(error.message).toContain("the diagnostic Agent Ask preview failed: VALIDATION_ERROR: Agent Ask references must not contain absolute filesystem paths.");
+    expect(error.message).toContain("/abs/sign-in.json");
+    expect(journal(f).refusal.message).toContain("VALIDATION_ERROR");
   });
 
   it("consumes the day when the bound worker never answers", async () => {

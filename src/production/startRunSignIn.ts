@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { normalizeAgentAsk, type NormalizedAgentAsk } from "../ask/agentAsk.js";
 import { discoverDocs } from "../docs/discover.js";
 import { parseDoc } from "../docs/parse.js";
 import { slugify } from "../utils/slug.js";
@@ -255,6 +256,78 @@ export function buildSignInGrant(input: { nonce: string; repository: string; wor
   };
 }
 
+/** The standing authorities the diagnostic Decision records itself under (Issue #1958: cited repository-relative). */
+export const GOVERNING_DECISIONS = ["0141", "0143", "0161"] as const;
+
+/** Repository-relative paths of the governing Decisions; an Ask never cites an absolute path (normalizeAgentAsk refuses it). */
+export function governingDecisionReferences(repository: string): string[] {
+  const files = readdirSync(path.join(repository, "docs", "decisions"));
+  return GOVERNING_DECISIONS.map((id) => {
+    const matches = files.filter((name) => name.startsWith(`${id}-`) && name.endsWith(".md"));
+    if (matches.length !== 1) throw new Error(`Decision ${id} is not exactly one file in docs/decisions`);
+    return `docs/decisions/${matches[0]}`;
+  });
+}
+
+export const diagnosticQuestion = (date: string, nonce: string) => `Authorize one START card worker Claude usage diagnostic ${date} ${nonce.slice(0, 8)}`;
+
+export interface DiagnosticAsk {
+  ask: Record<string, unknown>;
+  requestId: string;
+  settlementRequestId: string;
+  answerLetter: "A";
+}
+
+/** The exact diagnostic Agent Ask. Every value is derived; the run id lives in the rationale, never as a file path. */
+export function buildDiagnosticAsk(input: {
+  context: Pick<StartRunSignInContext, "project" | "cardId" | "runId" | "policyRevision" | "policyEpoch">;
+  date: string; nonce: string; binding: Pick<DiagnosticWorkerBinding, "release" | "handlerHash">; answer: string; digest: string; expiresAt: string; references: string[];
+}): DiagnosticAsk {
+  const { context, date, nonce, binding, answer, digest, expiresAt, references } = input;
+  const requestId = `start-run-signin-${date}-${nonce.slice(0, 8)}`;
+  return {
+    requestId, settlementRequestId: `settle-${requestId}`, answerLetter: "A",
+    ask: {
+      agent_ask: "v1", request_id: requestId, project: context.project, intent: "decision", requested_authority: "propose", gate_question: "resists_reversal",
+      desired_result: diagnosticQuestion(date, nonce),
+      rationale: `Mechanical record under Decisions 0141, 0143 and 0161 for START card ${context.cardId} run ${context.runId}: the card's one Haiku renewal of ${date} succeeded, so the bound worker (release ${binding.release}, handler ${binding.handlerHash}) may run exactly one usage check. No retry, no second nonce, no START by this record.`,
+      options: [
+        { label: answer, recommended: true, consequence: `Authorizes only the worker grant with SHA-256 ${digest}: nonce ${nonce}, expiring ${expiresAt}, policy revision ${context.policyRevision} epoch ${context.policyEpoch}, the fixed usage endpoint and a ${WORKER_CHECK_DEADLINE_MS} ms deadline; one check by the bound worker, no refresh, no retry.` },
+        { label: "Do not authorize the check", recommended: false, consequence: "No usage check runs; the card and today's sequence stay consumed." }
+      ],
+      references
+    }
+  };
+}
+
+/**
+ * Run the real Agent Ask validator (`normalizeAgentAsk`, the one `agent-ask preview` applies) on the exact Ask, and check
+ * the derived settlement request id and answer letter. Throws with the validator's own message and details.
+ */
+export function validateDiagnosticAsk(diagnostic: DiagnosticAsk): NormalizedAgentAsk {
+  const normalized = normalizeAgentAsk({ request: JSON.stringify(diagnostic.ask) });
+  const fail = (message: string): never => { throw new Error(message); };
+  if (normalized.format !== "strict" || normalized.intent !== "decision" || normalized.requestId !== diagnostic.requestId) fail("the Ask did not normalize as the exact strict decision Ask");
+  if (normalized.options.length !== 2 || !normalized.options[0].recommended || normalized.options[0].label !== (diagnostic.ask.options as Array<{ label: string }>)[0].label) fail("the Ask's options did not normalize unchanged");
+  for (const id of [diagnostic.requestId, diagnostic.settlementRequestId]) if (!/^[a-z0-9][a-z0-9-]*$/.test(id)) fail(`${id} is not a valid request id`);
+  if (!/^[A-Z]$/.test(diagnostic.answerLetter)) fail("the answer is not a single choice letter");
+  return normalized;
+}
+
+/** A validator or CLI failure as `CODE: message (details)`, for refusals and the journal. */
+export function errorText(error: unknown): string {
+  const e = error as { code?: unknown; message?: unknown; details?: unknown };
+  const details = e && typeof e === "object" && e.details && Object.keys(e.details).length ? ` ${JSON.stringify(e.details).slice(0, 600)}` : "";
+  return `${typeof e?.code === "string" ? `${e.code}: ` : ""}${error instanceof Error ? error.message : typeof e?.message === "string" ? e.message : String(error)}${details}`;
+}
+
+/** The failure a CLI envelope reports (`{ ok: false, error: { code, message, details } }`, or the raw stderr text). */
+export function cliFailureText(result: { ok: boolean; error?: unknown }): string {
+  const error = result.error;
+  if (error && typeof error === "object") return errorText(error);
+  return typeof error === "string" && error.trim() ? error.trim().slice(0, 600) : "no error detail";
+}
+
 /**
  * Run the sequence once. Throws StartRunSignInRefusal on every refusal or failure; `dayClaimed` says whether today's
  * Decision 0141 sequence was consumed by this call.
@@ -285,6 +358,26 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     const headBefore = deps.git(["rev-parse", "HEAD"]);
     if (deps.git(["ls-remote", "--exit-code", "origin", "refs/heads/main"]).split(/\s+/)[0] !== headBefore) refuse("ORIGIN_MOVED", "origin main is not the checkout HEAD; the diagnostic Decision could not be published fast-forward");
     const decisionId = nextDecisionId(context.repository);
+    // Everything the sequence submits is checked with the real validator before the day can be claimed: an Ask of exactly
+    // the same shape, with placeholder nonce and digest (the real ones exist only after the renewal), and the
+    // settlement and answer inputs derived from it. The real Ask is validated again before it is written.
+    let references: string[] = [];
+    try {
+      references = governingDecisionReferences(context.repository);
+      const placeholderNonce = "00000000-0000-4000-8000-000000000000";
+      const placeholderGrant = buildSignInGrant({
+        nonce: placeholderNonce, repository: context.repository, workspace: context.workspace, binding,
+        decision: `${decisionId}-${slugify(diagnosticQuestion(slots.date, placeholderNonce))}`, policyRevision: context.policyRevision,
+        policyEpoch: context.policyEpoch, expiresAt: new Date(deps.now().getTime() + GRANT_WINDOW_MS).toISOString()
+      });
+      const placeholderAnswer = diagnosticGrantAnswer(placeholderGrant);
+      validateDiagnosticAsk(buildDiagnosticAsk({
+        context, date: slots.date, nonce: placeholderNonce, binding, answer: placeholderAnswer, digest: placeholderAnswer.split(" ").at(-1)!,
+        expiresAt: placeholderGrant.expiresAt, references
+      }));
+    } catch (error) {
+      refuse("ASK_INVALID", `the diagnostic Agent Ask would be refused, so nothing was claimed or renewed: ${errorText(error)}`);
+    }
 
     if (signInDay(deps.now()) !== slots.date) refuse("DAY_CHANGED", `the America/Los_Angeles day changed after ${slots.date} was checked; nothing was claimed or renewed`);
     // 1. Claim the day: exclusive and durable, before the renewal.
@@ -321,8 +414,7 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       const left = Date.parse(expiresAt) - deps.now().getTime();
       if (!(left >= GRANT_RESERVE_MS && left <= GRANT_WINDOW_MS)) refuse("GRANT_WINDOW", `less than 60 seconds of the 5-minute grant remain ${what}; no new nonce or retry`);
     };
-    const question = `Authorize one START card worker Claude usage diagnostic ${slots.date} ${nonce.slice(0, 8)}`;
-    const slug = slugify(question);
+    const slug = slugify(diagnosticQuestion(slots.date, nonce));
     const decision = `${decisionId}-${slug}`;
     const decisionRelative = `docs/decisions/${decision}.md`;
     if (existsSync(path.join(context.repository, decisionRelative))) refuse("DECISION_EXISTS", `${decisionRelative} already exists`);
@@ -332,18 +424,12 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     stage("prepared", { nonce, preparedAt: preparedAt.toISOString(), expiresAt, decision, digest, grant });
 
     // 4. The exact canonical diagnostic Decision through the existing Agent Ask route, then a Decision-only publication.
-    const requestId = `start-run-signin-${slots.date}-${nonce.slice(0, 8)}`;
+    const diagnostic = buildDiagnosticAsk({ context, date: slots.date, nonce, binding, answer, digest, expiresAt, references });
+    const requestId = diagnostic.requestId;
+    try { validateDiagnosticAsk(diagnostic); }
+    catch (error) { refuse("ASK_INVALID", `the diagnostic Agent Ask is invalid: ${errorText(error)}`); }
     const askPath = path.join(context.runDirectory, `${requestId}.json`);
-    writeFileSync(askPath, JSON.stringify({
-      agent_ask: "v1", request_id: requestId, project: context.project, intent: "decision", requested_authority: "propose", gate_question: "resists_reversal",
-      desired_result: question,
-      rationale: `Mechanical record under Decisions 0141, 0143 and 0161 for START card ${context.cardId} run ${context.runId}: the card's one Haiku renewal of ${slots.date} succeeded, so the bound worker (release ${binding.release}, handler ${binding.handlerHash}) may run exactly one usage check. No retry, no second nonce, no START by this record.`,
-      options: [
-        { label: answer, recommended: true, consequence: `Authorizes only the worker grant with SHA-256 ${digest}: nonce ${nonce}, expiring ${expiresAt}, policy revision ${context.policyRevision} epoch ${context.policyEpoch}, the fixed usage endpoint and a ${WORKER_CHECK_DEADLINE_MS} ms deadline; one check by the bound worker, no refresh, no retry.` },
-        { label: "Do not authorize the check", recommended: false, consequence: "No usage check runs; the card and today's sequence stay consumed." }
-      ],
-      references: [journalPath]
-    }, null, 2) + "\n");
+    writeFileSync(askPath, JSON.stringify(diagnostic.ask, null, 2) + "\n");
     // Read-only calls are bounded by the grant time left above the reserve. The two committing calls (apply and answer) are
     // given the whole grant window: they are started only with at least the reserve left and are never killed mid-commit;
     // one that finishes late is refused by the next reserve() check instead.
@@ -355,30 +441,30 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       refuse("ORIGIN_MOVED", "origin main or the checkout moved before the diagnostic Agent Ask; nothing was recorded");
     }
     const preview = deps.cli(["agent-ask", "preview", "--file", askPath, "--dir", context.repository, "--workspace", context.workspace], readTimeout());
-    if (!preview.ok) refuse("RECORDS_FAILED", "the diagnostic Agent Ask preview failed");
-    const settleBase = ["agent-ask", "settle", "--proposal", requestId, "--request-id", `settle-${requestId}`, "--disposition", "accepted", "--workspace", context.workspace];
+    if (!preview.ok) refuse("RECORDS_FAILED", `the diagnostic Agent Ask preview failed: ${cliFailureText(preview)}`);
+    const settleBase = ["agent-ask", "settle", "--proposal", requestId, "--request-id", diagnostic.settlementRequestId, "--disposition", "accepted", "--workspace", context.workspace];
     const settlement = deps.cli(settleBase, readTimeout());
     const receipt = settlement.data?.receipt;
     const created = (receipt?.review?.documents ?? []) as Array<{ path: string; before: string | null; after: string | null }>;
     if (!settlement.ok || !receipt?.previewFingerprint || created.length !== 1 || created[0].before !== null || path.resolve(context.repository, created[0].path) !== path.join(context.repository, decisionRelative)
       || !String(created[0].after).includes(answer)) {
-      refuse("RECORDS_FAILED", `the settlement preview does not create exactly ${decisionRelative} with the exact grant answer`);
+      refuse("RECORDS_FAILED", `the settlement preview does not create exactly ${decisionRelative} with the exact grant answer${settlement.ok ? "" : `: ${cliFailureText(settlement)}`}`);
     }
     reserve("before the settlement");
     unpublishedRecords = true;
     const applied = deps.cli([...settleBase, "--preview", receipt.previewFingerprint, "--apply"], commitTimeout());
-    if (!applied.ok || applied.data?.receipt?.applied !== true || !/^[a-f0-9]{40}$/.test(String(applied.data?.receipt?.documentsCommit))) refuse("RECORDS_FAILED", "the diagnostic Decision settlement did not apply and commit");
+    if (!applied.ok || applied.data?.receipt?.applied !== true || !/^[a-f0-9]{40}$/.test(String(applied.data?.receipt?.documentsCommit))) refuse("RECORDS_FAILED", `the diagnostic Decision settlement did not apply and commit${applied.ok ? "" : `: ${cliFailureText(applied)}`}`);
     reserve("after the settlement");
     const review = deps.cli(["review", "--workspace", context.workspace], readTimeout());
     const items = ((review.data?.items ?? []) as Array<{ id: string; docRef?: string | null; status?: string; answerMenu?: { answerable?: boolean; options?: Array<{ letter?: string; label?: string }> } | null }>)
       .filter((item) => item.docRef === `decision/${slug}`);
     const item = items[0];
     if (items.length !== 1 || item.answerMenu?.answerable !== true || item.answerMenu.options?.[0]?.letter !== "A" || item.answerMenu.options[0].label !== answer) {
-      refuse("RECORDS_FAILED", "the unique open diagnostic Decision with the exact grant answer as option A was not found");
+      refuse("RECORDS_FAILED", `the unique open diagnostic Decision with the exact grant answer as option A was not found${review.ok ? "" : `: ${cliFailureText(review)}`}`);
     }
     reserve("before recording the answer");
-    const answered = deps.cli(["review", "answer", item.id, "A", "--workspace", context.workspace], commitTimeout());
-    if (!answered.ok) refuse("RECORDS_FAILED", "the diagnostic Decision answer was not recorded");
+    const answered = deps.cli(["review", "answer", item.id, diagnostic.answerLetter, "--workspace", context.workspace], commitTimeout());
+    if (!answered.ok) refuse("RECORDS_FAILED", `the diagnostic Decision answer was not recorded: ${cliFailureText(answered)}`);
     const recordHead = deps.git(["rev-parse", "HEAD"]);
     const changed = deps.git(["diff", "--name-only", headBefore, recordHead]).split("\n").filter(Boolean);
     if (deps.git(["rev-list", "--count", `${headBefore}..${recordHead}`]) !== "2" || changed.length !== 1 || changed[0] !== decisionRelative
