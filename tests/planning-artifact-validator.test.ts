@@ -115,7 +115,13 @@ describe("implementation claim detection ignores disclaimers and plan-file write
     "I have never modified files in src/.",
     "I updated only the plan file.",
     "I created the plan file at docs/plans/example.md.",
-    "I wrote the planning artifact."
+    "I wrote the planning artifact.",
+    "I changed no repository files and updated the plan file.",
+    "I read the launcher, then wrote the plan file.",
+    "Phase 2, then add the assertion and replace the stale comment.",
+    // Participles used as adjectives after a split are not claims (live planning artifacts).
+    "- Reject changed request content and changed resolution; display current facts.",
+    "- Any change to authority: a versioned decision, updated constitution and migration notes."
   ])("does not treat a disclaimer or plan-file write as a claim: %s", (line) => {
     expect(codesFor(line)).not.toContain("implementation_claim_in_planning_artifact");
   });
@@ -125,6 +131,19 @@ describe("implementation claim detection ignores disclaimers and plan-file write
     "I changed no repository files, but I modified src/cli.ts.",
     "I changed no other files and modified src/cli.ts.",
     "I updated only the plan file and then modified src/cli.ts.",
+    "I updated only the plan file and modified the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and fixed the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and changed the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and implemented the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and added the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and updated the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and edited the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and wrote the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and refactored the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and removed the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and deleted the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and created the launcher in src/sessions/tmuxLauncher.ts.",
+    "I updated only the plan file and patched the launcher in src/sessions/tmuxLauncher.ts.",
     "I updated only the plan file, then I fixed the launcher in src/sessions/tmuxLauncher.ts.",
     "I changed the launcher to remove its temporary directory.",
     "I fixed no-op handling in the worker.",

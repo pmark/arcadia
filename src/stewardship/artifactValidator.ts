@@ -446,24 +446,34 @@ const NEGATED_IMPLEMENTATION_CLAIM = new RegExp(
 );
 // The only file a planning run may write is its own plan.
 const PLAN_FILE_OBJECT =
-  /^\s*(?:I|we|Codex)\s+(?:changed|modified|updated|created|added|wrote)\s+(?:only\s+)?(?:the|this|a|my|our)\s+(?:\w+\s+)?(?:plan|planning)(?:\s+(?:file|artifact|document|doc))?(?:\s+(?:at|in)\s+\S+)?\s*$/i;
+  /^\s*(?:(?:I|we|Codex)\s+)?(?:(?:also|then|just)\s+)?(?:changed|modified|updated|created|added|wrote)\s+(?:only\s+)?(?:the|this|a|my|our)\s+(?:\w+\s+)?(?:plan|planning)(?:\s+(?:file|artifact|document|doc))?(?:\s+(?:at|in)\s+\S+)?\s*$/i;
 // "and", "then" and "also" open a clause too, so a subjectless claim after a
 // disclaimer ("I changed no other files and modified src/cli.ts") is judged alone.
 const IMPLEMENTATION_CLAUSE_BOUNDARY = /[.;,:]|\b(?:but|however|although|though|yet|and|then|also)\b/i;
+// A clause after a split loses its subject, so "I updated only the plan file
+// and fixed the launcher" leaves "fixed the launcher". A later clause that
+// opens with an affirmative past-tense implementation verb carries the subject
+// before it. The verb must take an object ("the", "it", a src/ or tests/ path),
+// so a participle used as an adjective ("changed resolution", "updated
+// constitution") is not a claim. A line's first clause is never judged this
+// way, so a plan phase such as "Added assertion" stays a plan.
+const SUBJECTLESS_IMPLEMENTATION_CLAIM =
+  /^\s*(?:(?:I|we|Codex)\s+)?(?:(?:also|then|just|have|has|had)\s+)*(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|edited|wrote|rewrote|patched|replaced|renamed|moved|committed|pushed)\s+(?:the|a|an|this|that|these|those|it|them|my|our|its|their|src\/|tests?\/)(?![\w-])/i;
 
 function implementationClaimEvidence(artifactText: string): string[] {
-  return matchingLines(artifactText, [...IMPLEMENTATION_CLAIM_PATTERNS, ...IMPLEMENTATION_CLAIM_LINE_PATTERNS]).filter(
-    (line) =>
-      IMPLEMENTATION_CLAIM_LINE_PATTERNS.some((pattern) => pattern.test(line)) ||
-      line
-        .split(IMPLEMENTATION_CLAUSE_BOUNDARY)
-        .some(
-          (clause) =>
-            IMPLEMENTATION_CLAIM_PATTERNS.some((pattern) => pattern.test(clause)) &&
-            !NEGATED_IMPLEMENTATION_CLAIM.test(clause) &&
-            !PLAN_FILE_OBJECT.test(clause)
-        )
-  );
+  const affirmative = (clause: string): boolean =>
+    !NEGATED_IMPLEMENTATION_CLAIM.test(clause) && !PLAN_FILE_OBJECT.test(clause);
+  return artifactText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => {
+      if (IMPLEMENTATION_CLAIM_LINE_PATTERNS.some((pattern) => pattern.test(line))) return true;
+      return line.split(IMPLEMENTATION_CLAUSE_BOUNDARY).some((clause, index) =>
+        affirmative(clause) &&
+        (IMPLEMENTATION_CLAIM_PATTERNS.some((pattern) => pattern.test(clause)) ||
+          (index > 0 && SUBJECTLESS_IMPLEMENTATION_CLAIM.test(clause))));
+    });
 }
 
 function claimsValidationCommandsExecuted(artifactText: string): boolean {
