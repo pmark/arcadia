@@ -13,7 +13,8 @@
 #   P3 consume   write <id>.consumed.json exclusively (the first mutation), fast-forward the clean checkout to the pin only
 #   P4 install   go-broker ensure; verify; only then reinstall the pinned worker label from the pinned compiled release
 #                (protected) and restart it; observe and bind the new worker; then (Decision 0161) the sign-in sequence:
-#                reuse a fresh receipt of this bound worker, or claim today's Decision 0141 sequence, renew once and
+#                reuse a fresh receipt of this bound worker, or claim this press's own sequence record (Decision 0162: no
+#                calendar-day ceiling, only no overlap with an in-flight sequence), renew once and
 #                have the bound worker check usage once
 #   P5 plan      activate the pinned Plan through the shared planActivation runner (only when the Plan is a draft)
 #   P6 start     the retained START tail: fresh capacity/queue, scope previewed twice, `production activate`, verification
@@ -50,7 +51,7 @@ json_string() { jq -n --arg v "$1" '$v'; }
 # contain lines starting with "{"): take the last line-start "{" whose remainder parses, as json_envelope does.
 cli_failure() {
   node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8");let e;for(const i of [...s.matchAll(/^\{/gm)].map(m=>m.index).reverse()){try{e=JSON.parse(s.slice(i)).error;break}catch{}}
-process.stdout.write(e?`${e.message} [code ${e.details?.code??e.code}; dayClaimed ${e.details?.dayClaimed??"unknown"}]`:"no readable result")' "$1" 2>/dev/null || echo "no readable result"
+process.stdout.write(e?`${e.message} [code ${e.details?.code??e.code}; sequenceClaimed ${e.details?.sequenceClaimed??"unknown"}]`:"no readable result")' "$1" 2>/dev/null || echo "no readable result"
 }
 # Every call passes --json, whose stdout must be exactly one JSON envelope. Defense in depth for Issue #1956 (a child
 # printing to stdout ahead of the envelope): when stdout is not one JSON document, keep only the trailing document that
@@ -145,9 +146,9 @@ write_handoff() {  # REF:L111 (handoff), extended: phase, allowance, every mutat
       if [[ "$ENSURE_ATTEMPTED" == true ]]; then echo "go-broker ensure ran (or began to run): the broker may be installed at the pinned revision or partially installed. The runtime stays upgraded; there is no rollback to the previous release."; fi
       if [[ "$RESTART_ATTEMPTED" == true ]]; then echo "The protected worker install and restart was attempted: the worker may be on its new release, still source-run on its old one, or not running. Read the worker status before anything else."; fi
       if [[ "$SIGN_IN_ATTEMPTED" == true ]]; then
-        echo "The Decision 0161 sign-in sequence was invoked; its journal is $RUN_DIR/sign-in.json. If it claimed today's Decision 0141 sequence (America/Los_Angeles), that day is consumed: the sign-in may have rotated, a diagnostic Decision may be published on main, and there is no retry or START; the next attempt needs a new card on a later day."
+        echo "The Decision 0161 sign-in sequence was invoked; its journal is $RUN_DIR/sign-in.json. If it claimed this press's sequence record, that sequence is consumed: the sign-in may have rotated, a diagnostic Decision may be published on main, and there is no retry or START in this press; the next attempt needs a new card (no calendar-day wait, Decision 0162)."
       else
-        echo "No sign-in renewal ran and today's Decision 0141 sequence was not claimed by this run."
+        echo "No sign-in renewal ran and no renewal sequence was claimed by this run."
       fi
       if [[ "$PLAN_ACTIVATION_ATTEMPTED" == true ]]; then echo "The Plan-activation runner was invoked. It is replay-safe (it verifies and recovers an existing settlement without applying twice) and this card's START marker is the only allowance, already consumed. If it succeeded the Plan stays active: there is no automatic deactivation."; fi
       if [[ "$PLAN_ACTIVATED" == true ]]; then echo "The Plan stays active (activated by this card)."; fi
@@ -231,21 +232,8 @@ check_reviewed_hashes() {  # REF:L161: the card pair and this executor against t
   node -e 'const f=require("fs"),c=require("crypto"),p=require("path"),[lib,id,exe]=process.argv.slice(1);const m=JSON.parse(f.readFileSync(p.join(lib,"reviewed",id+".json")));const h=x=>c.createHash("sha256").update(f.readFileSync(x)).digest("hex");if(h(p.join(lib,id+".sh"))!==m.sh||h(p.join(lib,id+".json"))!==m.json||h(exe)!==m.executor)process.exit(1)' "$LIBRARY_DIR" "$ID" "$SELF" \
     || refuse "START pair or executor differs from the independently reviewed hashes"
 }
-# Decision 0161: the card's sign-in sequence counts against Decision 0141's one-per-America/Los_Angeles-day ceiling. Read the daily
-# ledger read-only: any entry for today (a claim, a renewal result, a history record) means today's sequence is used.
-check_day_unused() {
-  local out
-  out="$(node -e '
-const fs=require("fs"),p=require("path");
-const date=new Intl.DateTimeFormat("en-CA",{timeZone:"America/Los_Angeles",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date());
-const dir=p.join(process.argv[1],".arcadia","claude-renewal-days");
-let used=[];
-try{used=fs.readdirSync(dir).filter(n=>n===date+".json"||n.startsWith(date+"."))}catch(e){if(e.code!=="ENOENT"){process.stdout.write("the daily ledger "+dir+" is unreadable");process.exit(1)}}
-if(used.length){process.stdout.write("the Decision 0141 sign-in sequence for today ("+date+", America/Los_Angeles) is already used ("+used.join(", ")+"); this card cannot be pressed until the next day");process.exit(1)}
-process.stdout.write(date);
-' "$WORKSPACE")" || refuse "$out"
-  rec_str signInDay "$out"
-}
+# Decision 0162 removed the calendar-day ceiling on renewal and check sequences: no gate here reads the ledger by date.
+# The only ledger refusal is an overlapping in-flight sequence, checked by `start-run sign-in` (read-only in P2).
 # REF:L245-L248 and L364 as replaced by Decision 0161: START needs the bound worker's own usage receipt from this card's sequence (or a
 # fresh reused one of the same bound worker): its bytes unchanged, a successful approved live check, the credential expiring more than
 # 5 minutes from now and both usage windows below 100%. Read-only; never a new probe.
@@ -501,7 +489,6 @@ phase_p2() {
   fi
   rec preRestartWorkerPid "$PRE_WORKER_PID"
   rec preRestartBinding "$(jq -c '.binding' <<<"$PRE_BINDING")"
-  check_day_unused
   # The read-only checks that must hold before the sign-in sequence may claim the day (grant and request slots, request ignored by Git).
   SIGN_IN_ARGS=(start-run sign-in --repository "$ARCADIA_REPO" --workspace "$WORKSPACE" --project "$PROJECT" --card "$ID" --run-id "$RUN_ID"
     --run-directory "$RUN_DIR" --release "$PIN" --policy-revision "$PROD_REVISION" --policy-epoch "$PROD_EPOCH")
@@ -524,7 +511,6 @@ phase_p3() {
   # Last pre-mutation re-check: the cheap gates whose answer can change while the preflight ran.
   check_expiry "START card expired during preflight; no allowance consumed"  # REF:L362
   check_preserved_history
-  check_day_unused
   [[ ! -e "$ATTEMPT_FILE" ]] || refuse "the one-shot START allowance is consumed; never retry or reset"
   check_checkout_clean_on_main
   check_origin_is_pin
@@ -616,24 +602,23 @@ phase_p4() {
 }
 
 # Decision 0161 (option A), after the bound restart: reuse a fresh receipt of this bound worker, or run the Decision 0143
-# sequence exactly once (claim today's Decision 0141 sequence, one Haiku renewal, one bound-worker usage check). No retry.
+# sequence exactly once (claim this press's own sequence record, one Haiku renewal, one bound-worker usage check). No retry.
 phase_p4_sign_in() {
   local out decision changed
   phase P4 sign_in
   BOUND_HANDLER="$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
-  check_day_unused  # read-only; the sequence claims the day exclusively itself
   # Decision 0143's Off / zero-admission / no-Session guards, fresh, before the day can be claimed.
   check_production_off
   [[ -z "$(tmux ls 2>/dev/null || true)" ]] || refuse "a tmux server with live sessions exists; no competing Session may run before the sign-in sequence"
   check_capacity
   SIGN_IN_ATTEMPTED=true
-  mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims today's Decision 0141 sequence before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes the day, with no retry"
+  mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims this press's own sequence record before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes this press's sequence, with no retry"
   checkpoint
   out="$(arcadia_t "$SIGN_IN_TIMEOUT_SECONDS" "${SIGN_IN_ARGS[@]}" --json 2> "$RUN_DIR/sign-in.stderr")" \
     || { printf '%s\n' "$out" > "$RUN_DIR/sign-in-result.json"; refuse "the sign-in sequence did not succeed, so there is no START: $(cli_failure "$RUN_DIR/sign-in.stderr")"; }
   printf '%s\n' "$out" > "$RUN_DIR/sign-in-result.json"
   jq -e '.ok == true and .data.mode == "run" and (.data.outcome == "reused" or .data.outcome == "checked")' <<<"$out" >/dev/null || refuse "the sign-in sequence returned no usable result; there is no START"
-  rec signIn "$(jq -c '.data | {outcome, date, dayClaimed, decision, digest, nonce, publicationHead}' <<<"$out")"
+  rec signIn "$(jq -c '.data | {outcome, date, sequenceClaimed, decision, digest, nonce, publicationHead}' <<<"$out")"
   SIGN_IN_RECEIPT="$(jq -c '.data.receipt' <<<"$out")"
   check_signin_receipt
   # The only change the sequence may make to the checkout is its published diagnostic Decision (two commits, checked by the sequence).
@@ -642,9 +627,9 @@ phase_p4_sign_in() {
     EXPECTED_HEAD="$(jq -er '.data.publicationHead' <<<"$out")" || refuse "the sign-in sequence named no publication head"
     changed="$(git_repo diff --name-only "$PIN" "$EXPECTED_HEAD")"
     [[ "$changed" == "docs/decisions/$decision.md" ]] || refuse "the sign-in records changed more than the diagnostic Decision: $changed"
-    mutated "today's Decision 0141 sequence consumed; one Haiku renewal ran; diagnostic Decision docs/decisions/$decision.md published to main at $EXPECTED_HEAD; one bound-worker usage check ran"
+    mutated "this press's renewal sequence consumed; one Haiku renewal ran; diagnostic Decision docs/decisions/$decision.md published to main at $EXPECTED_HEAD; one bound-worker usage check ran"
   else
-    mutated "no renewal: a fresh usage receipt of the bound worker was reused; today's Decision 0141 sequence was not claimed"
+    mutated "no renewal: a fresh usage receipt of the bound worker was reused; no renewal sequence was claimed"
   fi
   [[ "$(git_repo rev-parse HEAD)" == "$EXPECTED_HEAD" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main checkout moved or changed during the sign-in sequence"
   [[ "$(timeout 30 git -C "$ARCADIA_REPO" ls-remote origin refs/heads/main | cut -f1)" == "$EXPECTED_HEAD" ]] || refuse "origin main is not the checkout after the sign-in sequence"

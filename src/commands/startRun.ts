@@ -24,10 +24,10 @@ export const START_RUN_DEFAULTS = {
   provider: "claude-code-cli",
   transitions: ["validation", "acceptance", "pointer", "packet_approval"],
   packetApprovalHours: 24,
-  /** Decision 0130 spend ceiling, 0058 candidate integration, 0097 worker PR merge, 0134 amendment, 0156 install, 0157 Plan activation, 0141/0143/0161 the in-card sign-in renewal and bound-worker check (a card is always pressed by the operator, so no delegation receipt is pinned). */
+  /** Decision 0130 spend ceiling, 0058 candidate integration, 0097 worker PR merge, 0134 amendment, 0156 install, 0157 Plan activation, 0141/0143/0161/0162 the in-card sign-in renewal and bound-worker check (0162: no calendar-day ceiling) (a card is always pressed by the operator, so no delegation receipt is pinned). */
   spendDecision: "0130",
   integrationDecision: "0058",
-  requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"],
+  requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"],
   requiredFiles: [START_RUN_EXECUTOR_PATH, "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
   gateCardId: "enable-capacity-gate-20261017",
   offId: "restore-off-production-bug-plan-first-supervised-run-2026-10-11"
@@ -272,7 +272,12 @@ export function realStartRunSignInDeps(repository: string, release: string, work
       command ??= pinnedReleaseCli(release);
       const run = spawnSync(command[0], [...command.slice(1), ...args, "--json"], { cwd: repository, env, encoding: "utf8", timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 });
       // Like the executor: a non-zero exit is a failure whatever stdout holds.
-      if (run.status !== 0) return { ok: false, error: `exit ${String(run.status ?? run.signal)}: ${(run.stderr || "no output").slice(0, 2000)}` };
+      if (run.status !== 0) {
+        // The CLI writes its --json failure envelope to stderr: keep its { code, message, details } for the refusal (Issue #1958).
+        let envelope: { error?: unknown } | null;
+        try { envelope = parseJsonEnvelope(run.stderr ?? "") as { error?: unknown }; } catch { envelope = null; }
+        return { ok: false, error: envelope?.error ?? `exit ${String(run.status ?? run.signal)}: ${(run.stderr || "no output").slice(0, 2000)}` };
+      }
       try { return parseJsonEnvelope(run.stdout) as { ok: boolean; data?: unknown }; }
       catch { return { ok: false, error: (run.stderr || "no JSON output").slice(0, 2000) }; }
     },
@@ -328,7 +333,7 @@ export async function runStartRunSignInCommand(options: StartRunSignInOptions, d
     }, collaborators);
     return createSuccess({ command: "start-run.sign-in", workspace, data: { mode: "run" as const, ...result } });
   } catch (error) {
-    if (error instanceof StartRunSignInRefusal) throw validationError(error.message, { code: error.code, dayClaimed: error.dayClaimed });
+    if (error instanceof StartRunSignInRefusal) throw validationError(error.message, { code: error.code, sequenceClaimed: error.sequenceClaimed });
     throw error;
   }
 }
