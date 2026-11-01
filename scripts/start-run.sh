@@ -381,7 +381,7 @@ phase_p0() {
   # A set API key can bill paid API usage instead of the Claude subscription; its value is never read.  REF:L155
   [[ -z "${ANTHROPIC_API_KEY:-}" ]] || refuse "ANTHROPIC_API_KEY is set in this host environment, which can bill paid API usage; unset it (its value was not read)"
   [[ -z "${ARCADIA_WORKSPACE:-}" ]] || refuse "ARCADIA_WORKSPACE is set; the configured workspace must resolve on its own"  # ADOPT:L72
-  for tool in git jq mise timeout node launchctl; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done  # REF:L159
+  for tool in git jq mise timeout node launchctl ps; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done  # REF:L159
   [[ "$(cd "$LIBRARY_DIR/../../.." && pwd -P)" == "$ARCADIA_REPO" ]] || refuse "this card does not live in the library of the checkout that holds this executor"
   jq -e '.schema == "arcadia-operator-script-v1" and .kind == "grant" and (.startRun.schema == "arcadia-start-run-v1")' "$DESCRIPTOR" >/dev/null || refuse "the descriptor is not a START grant with a startRun block"
   check_preserved_history
@@ -476,10 +476,18 @@ phase_p2() {
   OLD_PID="$(worker_pid)"
   [[ -n "$OLD_PID" ]] || refuse "worker job $WORKER_LABEL has no running PID"  # ADOPT:L98
   rec oldWorkerPid "$OLD_PID"
-  # Decision 0161: the pre-restart worker need only be live and fresh (its heartbeat fresh and its pidfile the launchd PID); it may be
-  # unbound (source-run). The card binds the worker itself in P4 and no longer reads a retained pre-press sign-in receipt.
+  # Decision 0161: the pre-restart worker need only be live and fresh (its heartbeat fresh and its pidfile the launchd PID, or that
+  # PID's direct child); it may be unbound (source-run). A source-run worker's launchd process is the tsx CLI, which runs the worker
+  # as its one direct child, so the pidfile names the child. The card binds the worker itself in P4 (a protected worker runs node
+  # directly, so there the pidfile must equal the launchd PID) and no longer reads a retained pre-press sign-in receipt.
   PRE_BINDING="$(read_worker_binding)" || refuse "the pre-restart worker heartbeat could not be read"
-  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" --argjson pid "$OLD_PID" '.ageMs >= 0 and .ageMs < $fresh and .workerPid == $pid' <<<"$PRE_BINDING" >/dev/null || refuse "stale or mismatched pre-restart worker heartbeat"
+  jq -e --argjson fresh "$HEARTBEAT_FRESH_MS" '.ageMs >= 0 and .ageMs < $fresh' <<<"$PRE_BINDING" >/dev/null || refuse "stale or mismatched pre-restart worker heartbeat"
+  PRE_WORKER_PID="$(jq -r '.workerPid' <<<"$PRE_BINDING")"
+  if [[ "$PRE_WORKER_PID" != "$OLD_PID" ]]; then
+    [[ "$PRE_WORKER_PID" =~ ^[0-9]+$ && "$(ps -o ppid= -p "$PRE_WORKER_PID" 2>/dev/null | tr -d '[:space:]')" == "$OLD_PID" ]] \
+      || refuse "stale or mismatched pre-restart worker heartbeat: the pidfile names $PRE_WORKER_PID, neither the launchd PID $OLD_PID nor its direct child"
+  fi
+  rec preRestartWorkerPid "$PRE_WORKER_PID"
   rec preRestartBinding "$(jq -c '.binding' <<<"$PRE_BINDING")"
   check_day_unused
   # The read-only checks that must hold before the sign-in sequence may claim the day (grant and request slots, request ignored by Git).
