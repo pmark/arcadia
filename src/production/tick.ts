@@ -222,14 +222,6 @@ function recoverTerminalHandoff(
         reportedSupersededTerminalCandidates.add(reportKey);
         log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) was developed for a superseded input of its Action; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
       }
-    },
-    onStaleRepairStop: (session, reason) => {
-      // Issue #1929: reported once per worker process per (Session, reason).
-      const reportKey = `${session.id}\u0000${reason}`;
-      if (!reportedStaleRepairStops.has(reportKey)) {
-        reportedStaleRepairStops.add(reportKey);
-        log?.(`Terminal candidate of Session ${session.id} (${session.project_slug}/${session.action_id}) stopped its review repair loop, but ${reason}; it stays as preserved on ${session.branch} and no longer claims this repository's handoff.`);
-      }
     }
   });
   if (!candidates) return null;
@@ -2585,8 +2577,8 @@ function attemptProjectLaunch(
   // never relaunched or re-escalated here (a settlement of another Action can
   // leave the pointer on it); the scheduler moves the pointer to the next
   // independent in-scope Action on its next pass. Issue #1929: a stop recorded
-  // for a candidate of a superseded Action input, or rounds spent in an
-  // earlier production epoch, no longer holds it; the row stays for history.
+  // for a candidate of a superseded Action input no longer holds it (an epoch
+  // change alone never releases one); the row stays for history.
   if (selected) {
     const selectedKey = `${input.projectSlug}/${selected.action.id}`;
     const state = reviewRepairEscalationState(db, selectedKey, { repoRoot: input.repoRoot, planSlug: selected.activePlan, action: selected.action });

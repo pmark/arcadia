@@ -4,7 +4,6 @@ import type { PlanActionDoc } from "../docs/types.js";
 import { isAncestor, isPatchEquivalent, resolveBaseBranch } from "../git/worktrees.js";
 import { canonicalPath, getSession, type AgentSession } from "../sessions/index.js";
 import { developedForSupersededInput } from "../sessions/roleLineage.js";
-import { readProductionPolicySafely } from "./policy.js";
 import { REVIEW_REPAIR_ESCALATIONS, REVIEW_REPAIR_ROUNDS_EXHAUSTED } from "./reviewRepair.js";
 
 /**
@@ -32,13 +31,18 @@ import { REVIEW_REPAIR_ESCALATIONS, REVIEW_REPAIR_ROUNDS_EXHAUSTED } from "./rev
  * in-scope Actions that do not depend on it. Returns that open escalation, or
  * null. Read-only; a missing table answers null.
  *
- * Issue #1929: the stop binds only the candidate it was recorded for. Once the
- * Action's input (criteria or packet) differs from that candidate's, or (for
- * spent repair rounds) the production run (epoch) has changed, the escalation
- * no longer holds the Action and a fresh attempt may be admitted. The
- * escalation row and its repair record are kept for history, never rewritten,
- * and no consumed allowance is reset: the new epoch's own repair-round bound
- * and the per-input attempt lineages still govern the fresh attempt.
+ * Issue #1929: the stop binds only the Action input its candidate was
+ * developed for. Once the Action's input (criteria or packet) differs from
+ * that candidate's (`developedForSupersededInput`), the escalation no longer
+ * holds the Action and a fresh attempt may be admitted. This releases every
+ * review repair stop kind alike, gated ones included (an authority-adjacent
+ * verdict, a Decision 0098 gate-list path, exhausted draft/comment notifies):
+ * the stop judged the old candidate, and the new candidate is judged afresh by
+ * the same gates. A production epoch change alone never releases a stop: with
+ * the same input the development lineage would refuse the fresh attempt, and
+ * that refusal would overwrite the held row and stall independent Actions.
+ * The escalation row and its repair record are kept for history, never
+ * rewritten, and no consumed allowance is reset.
  */
 export function operatorHeldEscalation(db: Database.Database, actionKey: string, context: RepairStopContext = {}): { kind: string; firstDetectedAt: string } | null {
   const state = reviewRepairEscalationState(db, actionKey, context);
@@ -76,36 +80,21 @@ export function reviewRepairEscalationState(
 }
 
 /** The fields of a stopped `production_review_repairs` row the staleness check reads. */
-interface RepairStop { failed_session_id: string; policy_epoch: number; outcome: string }
+interface RepairStop { failed_session_id: string; outcome: string }
 
 function latestRepairStop(db: Database.Database, actionKey: string, outcome: "escalated" | "gated"): RepairStop | null {
   try {
-    return (db.prepare(`SELECT failed_session_id, policy_epoch, outcome FROM production_review_repairs
+    return (db.prepare(`SELECT failed_session_id, outcome FROM production_review_repairs
       WHERE action_key = ? AND outcome = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1`).get(actionKey, outcome) as RepairStop | undefined) ?? null;
   } catch { return null; }
 }
 
-/** The current production epoch, or null when the policy cannot be read. */
-function currentProductionEpoch(db: Database.Database): number | null {
-  const read = readProductionPolicySafely(db);
-  return read.status === "ok" ? read.policy.epoch : null;
-}
-
-/** Spent repair rounds bind only the production run (epoch) that spent them. */
-function epochStaleReason(stop: RepairStop, epoch: number | null): string | null {
-  if (stop.outcome !== "escalated" || epoch === null || epoch === stop.policy_epoch) return null;
-  return `its repair rounds were spent in production epoch ${stop.policy_epoch}, and production now runs epoch ${epoch}`;
-}
-
 /**
  * Why a stopped repair no longer binds its Action, or null while it does:
- * its repair rounds were spent in an earlier production epoch, or the stopped
- * candidate was developed for a superseded input of the Action (Issue #1158's
- * test). A gated stop is never released by an epoch change alone.
+ * only when the stopped candidate was developed for a superseded input of the
+ * Action (Issue #1158's test). Anything unjudgeable answers null (fail closed).
  */
 function staleRepairStopReason(db: Database.Database, actionKey: string, stop: RepairStop, context: RepairStopContext): string | null {
-  const byEpoch = epochStaleReason(stop, currentProductionEpoch(db));
-  if (byEpoch) return byEpoch;
   const slash = actionKey.indexOf("/");
   if (slash < 1) return null;
   const projectSlug = actionKey.slice(0, slash);
@@ -130,20 +119,6 @@ function staleRepairStopReason(db: Database.Database, actionKey: string, stop: R
   } catch { return null; }
 }
 
-/**
- * Why this Session's own spent-rounds repair stop no longer claims the
- * repository's handoff (a later production epoch), or null. Read-only.
- */
-function candidateRepairStopStaleByEpoch(db: Database.Database, sessionId: string, epoch: number | null): string | null {
-  if (epoch === null) return null;
-  let stop: RepairStop | undefined;
-  try {
-    stop = db.prepare(`SELECT failed_session_id, policy_epoch, outcome FROM production_review_repairs
-      WHERE failed_session_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1`).get(sessionId) as RepairStop | undefined;
-  } catch { return null; }
-  return stop ? epochStaleReason(stop, epoch) : null;
-}
-
 export interface PendingTerminalCandidates {
   baseBranch: string;
   /** Qualifying Sessions, newest exit first. */
@@ -160,8 +135,6 @@ export function listPendingTerminalCandidates(
     /** Throw, rather than return null, when the base branch cannot be resolved. */
     strict?: boolean;
     onSuperseded?: (session: AgentSession, action: PlanActionDoc | undefined) => void;
-    /** A candidate whose own spent-rounds repair stop belongs to an earlier production epoch (Issue #1929). */
-    onStaleRepairStop?: (session: AgentSession, reason: string) => void;
   } = {}
 ): PendingTerminalCandidates | null {
   const hasExits = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'session_exit_receipts'").get();
@@ -191,7 +164,6 @@ export function listPendingTerminalCandidates(
   // pointer still names it, it stays the candidate recovery refuses today.
   const pointer = actionId === null ? docs.find((doc) => doc.type === "project" && doc.slug === projectSlug) : undefined;
   const pointerAction = pointer?.type === "project" ? pointer.currentAction : null;
-  const epoch = currentProductionEpoch(db);
   const pending: AgentSession[] = [];
   for (const exit of exits) {
     const session = getSession(db, exit.session_id);
@@ -207,15 +179,6 @@ export function listPendingTerminalCandidates(
     if (isAncestor(repoRoot, session.branch, baseBranch) || isPatchEquivalent(repoRoot, baseBranch, session.branch)) continue;
     if (developedForSupersededInput(db, session, action)) {
       options.onSuperseded?.(session, action);
-      continue;
-    }
-    // Issue #1929: spent repair rounds bind only their own production run. In
-    // a later epoch the stopped candidate stays preserved (its PR and repair
-    // record untouched) and no longer claims the handoff, so the Action can be
-    // admitted afresh under the development lineage's own bounds.
-    const staleStop = candidateRepairStopStaleByEpoch(db, session.id, epoch);
-    if (staleStop) {
-      options.onStaleRepairStop?.(session, staleStop);
       continue;
     }
     pending.push(session);
