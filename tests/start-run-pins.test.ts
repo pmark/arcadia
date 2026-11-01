@@ -2,7 +2,9 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { assertOperatorSettlementContract } from "../src/operatorActions/operatorExecution.js";
+import type { NormalizedAgentAsk } from "../src/ask/agentAsk.js";
 import { assertProjectLibraryEntry, startRunLauncher, validateOperatorScriptContract, planAmendmentLauncher, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { START_RUN_KEYS, validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { buildStartRunPins, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
@@ -274,5 +276,36 @@ describe("arcadia start-run pins", () => {
   ])("refuses %s", (_label, fixtureOptions, argOverrides, message) => {
     const f = fixture(fixtureOptions);
     expect(() => buildStartRunPins({ ...f.args, ...argOverrides }, f.deps)).toThrow(message);
+  });
+});
+
+describe("the settlement guard for a START card's sign-in diagnostic (Decision 0161)", () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+  const ASK = "start-run-signin-2026-10-31-57aeaf14";
+  const ask = (overrides: Record<string, unknown> = {}) => ({ requestId: ASK, intent: "decision", targetRef: null, project: "arcadia", ...overrides }) as unknown as NormalizedAgentAsk;
+  function context() {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "start-run-guard-"));
+    const d = cardDescriptor();
+    writeFileSync(path.join(dir, `${ID}.json`), JSON.stringify(d));
+    writeFileSync(path.join(dir, `${ID}.sh`), startRunLauncher(ID));
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", ID);
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", path.join(dir, `${ID}.json`));
+    return d;
+  }
+  it("admits only the card's own diagnostic Decision Ask, accepted, in its Project", () => {
+    const d = context();
+    const mine = ask({ project: d.startRun!.project });
+    expect(() => assertOperatorSettlementContract(mine)).not.toThrow();
+    expect(() => assertOperatorSettlementContract(mine, { proposalId: ASK, disposition: "accepted" })).not.toThrow();
+    for (const [other, settlement] of [
+      [mine, { proposalId: ASK, disposition: "rejected" }],
+      [mine, { proposalId: "another-proposal", disposition: "accepted" }],
+      [ask({ requestId: "decision-anything", project: d.startRun!.project }), null],
+      [ask({ intent: "action", project: d.startRun!.project }), null],
+      [ask({ targetRef: "plan/x", intent: "decision", project: d.startRun!.project }), null],
+      [ask({ project: "another-project" }), null]
+    ] as Array<[NormalizedAgentAsk, { proposalId: string; disposition: string } | null]>) {
+      expect(() => assertOperatorSettlementContract(other, settlement)).toThrow(/OPERATOR_SETTLEMENT_SCOPE_MISMATCH|only its own Decision 0161|belongs to Project/);
+    }
   });
 });
