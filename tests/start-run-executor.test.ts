@@ -66,7 +66,7 @@ interface BoxOptions {
   /** The dashboard's run record for this press: absent, stale, for another card, not running, or already claimed. */
   press?: "none" | "stale" | "other-card" | "not-running" | "claimed" | "other-parent";
   /** The pre-restart worker: fresh and unbound by default (a source-run worker), or stale, or not the launchd PID. */
-  preWorker?: "stale" | "pid-mismatch";
+  preWorker?: "stale" | "pid-mismatch" | "source-child";
   /** Today's Decision 0141 sequence already recorded in the daily ledger. */
   dayUsed?: boolean;
   plist?: boolean;
@@ -178,7 +178,7 @@ function box(options: BoxOptions = {}) {
   writeFileSync(path.join(workspace, "config", "arcadia.json"), JSON.stringify(options.config ?? {}));
   // The live pre-restart worker runs from source, so its heartbeat carries no protected-release binding (Issue #1950).
   writeFileSync(path.join(workspace, ".arcadia", "worker-claude-usage-heartbeat.json"), JSON.stringify({ at: Date.now() - (options.preWorker === "stale" ? 600_000 : 0), binding: null }));
-  writeFileSync(path.join(workspace, ".arcadia", "worker.pid"), JSON.stringify({ pid: options.preWorker === "pid-mismatch" ? 2222 : 1111, owner: "owner-1111" }));
+  writeFileSync(path.join(workspace, ".arcadia", "worker.pid"), JSON.stringify({ pid: options.preWorker === "pid-mismatch" ? 2222 : options.preWorker === "source-child" ? 3333 : 1111, owner: "owner-1111" }));
   if (options.dayUsed) {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     mkdirSync(path.join(workspace, ".arcadia", "claude-renewal-days"), { recursive: true });
@@ -194,6 +194,8 @@ function box(options: BoxOptions = {}) {
   shim("fake-release-node", `exec node "${path.join(fixtures, "fake-release-node.mjs")}" "$@"`);
   shim("timeout", 'shift; exec "$@"');
   shim("sleep", "exit 0");
+  // `ps -o ppid= -p <pid>`: 3333 is the source-run worker the tsx CLI (launchd PID 1111) runs as its direct child.
+  shim("ps", 'case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac');
   shim("tmux", options.tmuxSessions ? 'echo "0: 1 windows (created Sat Nov  1 00:00:00 2026)"' : "exit 1");
   writeFileSync(path.join(bin, "fake-arcadia.mjs"), readFileSync(path.join(fixtures, "fake-arcadia.mjs")));
   writeFileSync(path.join(bin, "fake-plan-runner.mjs"), readFileSync(path.join(fixtures, "fake-plan-runner.mjs")));
@@ -402,10 +404,21 @@ describe("start-run executor: preflight", () => {
     expect(existsSync(b.marker)).toBe(false);
     expect(readdirSync(path.join(b.library, "runs"))).toEqual([ID]);
     // The pre-restart worker is unbound (source-run) and that no longer refuses; the ledger and slots were only read.
+    expect(result.receipt!.record.preRestartWorkerPid).toBe(1111);
     expect(result.receipt!.record.preRestartBinding).toBeNull();
     expect(result.receipt!.record.signInDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && call.args.includes("--check-only"))).toBe(true);
     expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+  });
+});
+
+describe("start-run executor: a source-run pre-restart worker", () => {
+  it("accepts a pidfile naming the launchd PID's direct child (the tsx CLI runs the worker as its child)", () => {
+    const b = box({ preWorker: "source-child" });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", allowanceConsumed: false, mutations: [] });
+    expect(result.receipt!.record).toMatchObject({ oldWorkerPid: 1111, preRestartWorkerPid: 3333 });
   });
 });
 
