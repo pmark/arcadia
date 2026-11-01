@@ -287,6 +287,24 @@ pinned descriptor, so per-card review is small.
   this Grant is returned to Off. A later `scripts/restart-services-impl.sh`
   (restart-arcadia-services) rewrites that same worker label back to a
   source-run worker and so unbinds it; the next START card binds it again.
+- **Delegated successors (Decision 0163).** After the operator presses a START
+  card for the scope Decision 0163 names, Rowan alone may press successor cards
+  for that same scope: pin one with
+  `arcadia start-run pins … --delegated-from <origin card>/<origin executor run>`
+  (it adds the `startRun.delegation` block and requires Decision 0163), pass the
+  usual host preflight and independent pin check, publish it, then press it
+  through the same /actions runner with
+  `POST /api/operator-script {"id": "<card>", "delegation": {"decision": "0163", "agent": "rowan"}}`.
+  The runner records the press as Rowan's delegated press, never an operator
+  press. P0 refuses unless the originating receipt is unchanged and was the
+  operator's own /actions press of the delegated scope and their first such
+  press after Decision 0163 reached main; the scope is identical; fewer than 5
+  in-scope attempts (every /actions press of any card that consumed its
+  allowance) ran since it, within 72 hours; the latest of them refused with no
+  activation attempted or its executor returned its own Grant to Off; and the
+  production policy revision follows that attempt with nothing in between. Any
+  other Off, such as a STOP card, a Decision or a stop-the-line, ends the
+  delegation. Each attempt number of a chain is claimed by one card only.
 - **Run it** with `<id>.sh preflight` first (phases P0 to P2, no mutation, no
   /actions context, writes only `runs/<id>/<run>/`), then press the card. Every
   phase rewrites `receipt.json` and `failure-handoff.md` there.

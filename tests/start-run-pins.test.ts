@@ -178,7 +178,7 @@ describe("arcadia start-run pins", () => {
     writeFileSync(path.join(library, "earlier.consumed.json"), "{}\n");
     writeFileSync(path.join(library, "runs", "markers", "adopt.consumed"), "marker\n");
     const origin = options.origin ?? PIN;
-    const decisions: Record<string, string> = options.decisions ?? { "0130": decision(), "0058": decision(), "0097": decision(), "0134": decision(), "0156": decision(), "0157": decision(), "0141": decision(), "0143": decision(), "0161": decision(), "0162": decision() };
+    const decisions: Record<string, string> = options.decisions ?? { "0130": decision(), "0058": decision(), "0097": decision(), "0134": decision(), "0156": decision(), "0157": decision(), "0141": decision(), "0143": decision(), "0161": decision(), "0162": decision(), "0163": decision() };
     const files: Record<string, string> = options.files ?? {
       "scripts/start-run.sh": EXECUTOR, "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x",
       "docs/plans/fixture-plan.md": planDoc(options.planStatus ?? "active", options.done)
@@ -227,6 +227,26 @@ describe("arcadia start-run pins", () => {
     ].sort());
     // Only read-only git verbs.
     expect(f.calls.every(([verb]) => ["ls-remote", "rev-parse", "ls-tree", "show"].includes(verb))).toBe(true);
+  });
+  it("emits a Decision 0163 delegation block for Rowan's successor with --delegated-from, and refuses when the chain refuses", () => {
+    const plan = "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider";
+    const acts = ["bound-guidance-test-teardown-retries", "assert-tmux-temp-launcher-removed", "cover-retired-descriptor-byte-change"];
+    const doc = `---\nslug: ${plan}\nproject: arcadia\nstatus: active\nactions:\n${acts.map((a) => `  - id: ${a}\n    status: open\n`).join("")}---\nbody\n`;
+    const f = fixture({ files: { "scripts/start-run.sh": EXECUTOR, "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x", [`docs/plans/${plan}.md`]: doc }, queueTop: acts.map((a) => `arcadia/${a}`) });
+    const args = { ...f.args, plan, actions: acts.join(","), delegatedFrom: "start-run-origin-20261101/20261101T010000Z-111" };
+    const seen: unknown[] = [];
+    f.deps.inspectDelegation = (library, card, run, receipt, now) => {
+      seen.push({ library, card, run, receipt, now });
+      return { receiptSha256: "d".repeat(64), originatingStartedAt: "2026-11-01T00:00:00Z", attemptsSoFar: 2, trigger: "refused-before-start", latest: { card: "x", run: "y", outcome: "refused", productionActivated: false, offCleanup: "not_attempted" } };
+    };
+    const result = buildStartRunPins(args, f.deps);
+    expect(result.startRun.delegation).toEqual({ decision: "0163", originatingCard: "start-run-origin-20261101", originatingRun: "20261101T010000Z-111", originatingReceiptSha256: "d".repeat(64), attempt: 3 });
+    expect(result.startRun.requiredDecisions).toContain("0163");
+    expect(result.startRun.grantedBy).toContain("Rowan, pressing this successor START card from /actions under Decision 0163");
+    expect(seen).toHaveLength(1);
+    f.deps.inspectDelegation = () => { throw new Error("more than 72 hours have passed since the operator's originating press"); };
+    expect(() => buildStartRunPins(args, f.deps)).toThrow(/No delegated successor may be pinned: more than 72 hours/);
+    expect(() => buildStartRunPins({ ...args, delegatedFrom: "nonsense" }, f.deps)).toThrow(/--delegated-from must be/);
   });
   it("requires Decision 0157 and notes the activation for a draft Plan", () => {
     const f = fixture({ planStatus: "draft", queueTop: ["arcadia/other"] });

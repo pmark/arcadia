@@ -10,6 +10,7 @@ import { withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
+import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
@@ -38,6 +39,8 @@ export interface StartRunPinsOptions {
   actions: string;
   provider: string;
   expiresHours: string | number;
+  /** Decision 0163: `<card>/<run>` of the operator's originating press; emits the delegation block for Rowan's successor card. */
+  delegatedFrom?: string;
   repository?: string;
   workspace?: string;
 }
@@ -62,6 +65,8 @@ export interface StartRunPinsDeps {
   queue(workspacePath: string): { revision: number; orderValid: boolean; unpositionedCount: number; ordered: Array<{ orderKey?: string | null }> };
   listFiles(directory: string): string[];
   sha256File(file: string): string;
+  /** Read-only verification of a Decision 0163 delegation chain in the library (fixtures replace it). */
+  inspectDelegation?: typeof inspectDelegationChain;
 }
 
 export const realStartRunPinsDeps: StartRunPinsDeps = {
@@ -134,7 +139,13 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   }
   if (planStatus === "draft") notes.push("The Plan is a draft: embed its pinned planActivation block in the descriptor (Decision 0157) before review.");
 
-  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions];
+  let delegatedFrom: { card: string; run: string } | null = null;
+  if (options.delegatedFrom !== undefined) {
+    const match = /^([a-z0-9]+(?:-[a-z0-9]+)*)\/([0-9]{8}T[0-9]{6}Z-[0-9]+)$/.exec(options.delegatedFrom);
+    if (!match) throw validationError("--delegated-from must be <card id>/<executor run id> of the operator's originating press.");
+    delegatedFrom = { card: match[1], run: match[2] };
+  }
+  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(delegatedFrom ? ["0163"] : [])];
   const decisionFiles = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n");
   for (const decision of requiredDecisions) {
     const file = decisionFiles.find((entry) => new RegExp(`^docs/decisions/${decision}-.*\\.md$`).test(entry));
@@ -159,6 +170,16 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
 
   const main = mainCheckout(toplevel, deps);
   const library = path.join(main, "artifacts", "generated", "operator-scripts");
+  let delegation: StartRunDelegation | undefined;
+  if (delegatedFrom) {
+    try {
+      const chain = (deps.inspectDelegation ?? inspectDelegationChain)(library, delegatedFrom.card, delegatedFrom.run, null, deps.now(), null, production.revision);
+      delegation = { decision: "0163", originatingCard: delegatedFrom.card, originatingRun: delegatedFrom.run, originatingReceiptSha256: chain.receiptSha256, attempt: chain.attemptsSoFar + 1 };
+      notes.push(`Decision 0163 delegated successor: attempt ${delegation.attempt} of at most 5 after ${chain.latest.card}/${chain.latest.run} (${chain.trigger}); the operator's press at ${chain.originatingStartedAt} is the one activation touch.`);
+    } catch (error) {
+      throw validationError(`No delegated successor may be pinned: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
   // N6: the gate and STOP cards the handoffs and refusals name must exist in the library.
   const entries = new Set(deps.listFiles(library));
   for (const card of [START_RUN_DEFAULTS.gateCardId, START_RUN_DEFAULTS.offId]) {
@@ -192,8 +213,11 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     workerLabel: labels[0],
     gateCardId: START_RUN_DEFAULTS.gateCardId,
     offId: START_RUN_DEFAULTS.offId,
-    grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
-    consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) }))
+    grantedBy: delegation
+      ? `Rowan, pressing this successor START card from /actions under Decision 0163, delegated from the operator's originating press ${delegation.originatingCard}/${delegation.originatingRun}`
+      : "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
+    consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) })),
+    ...(delegation ? { delegation } : {})
   };
   try { validateStartRunPins(startRun); }
   catch (error) { throw validationError(error instanceof StartRunPinsError ? error.message : String(error)); }
