@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -21,6 +21,7 @@ import { activateProduction, fingerprintProductionScope, normalizeProductionScop
 import { prepareSession } from "../src/sessions/index.js";
 import { buildLaunchPreview, LAUNCH_ADAPTER_SUPPORT } from "../src/sessions/launchPreview.js";
 import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
+import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
 import { runReviewRejectCommand } from "../src/commands/review.js";
 import { prepareBuildPacketForAcceptedPlan, runWorkPlanCommand } from "../src/commands/work.js";
 import { resolveDispatch } from "../src/docs/dispatch.js";
@@ -219,7 +220,7 @@ describe("buildLaunchPreview", () => {
     expect(prepared.data.planningDecision).toBeTruthy();
 
     const lifecycle = withReadOnlyDatabase(fixture.workspace, (db) =>
-      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!)
+      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!, { workspace: fixture.workspace })
     );
     expect(lifecycle).toMatchObject({
       kind: "planning_approval_pending",
@@ -277,7 +278,7 @@ describe("buildLaunchPreview", () => {
     });
 
     const lifecycle = withReadOnlyDatabase(fixture.workspace, (db) =>
-      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!)
+      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!, { workspace: fixture.workspace })
     );
 
     expect(lifecycle).toMatchObject({ kind: "planning_in_progress", decisionId: newer.id });
@@ -422,6 +423,102 @@ describe("buildLaunchPreview", () => {
     expect(reopened.prerequisites.join("\n")).not.toContain("approval pending");
   });
 
+  describe("a declared execution route against old planning history", () => {
+    const lifecycleOf = (workspace: string) => withReadOnlyDatabase(workspace, (db) =>
+      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!, { workspace }));
+    const statusOf = (workspace: string, id: string) => withReadOnlyDatabase(workspace, (db) =>
+      (db.prepare("SELECT status FROM review_items WHERE id = ?").get(id) as { status: string }).status);
+
+    it("prepares a build packet, not a planning run, when an approved planning Decision predates execution: build", () => {
+      const fixture = preparedFixture({ skipInvocation: true, execution: "build" });
+      const history = addPlanningHistory(fixture.workspace, "approved");
+
+      const before = lifecycleOf(fixture.workspace);
+      expect(before.kind).toBe("planning_required");
+      expect(before.remedy).toContain("execution: build");
+
+      const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!);
+      const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id, agentProfile: "claude_build" });
+      expect(prepared.data.planningDecision).toBeNull();
+      expect(prepared.data.buildInvocation?.purpose).toBe("build");
+      expect(prepared.data.buildApproval?.resolved_intent).toBe("CodexBuildPacketApproval");
+      expect(lifecycleOf(fixture.workspace)).toMatchObject({ kind: "build_packet_ready", invocationId: prepared.data.buildInvocation!.id });
+
+      // The old planning records stay exactly as they were, as history.
+      expect(statusOf(fixture.workspace, history.planning)).toBe("approved");
+      expect(statusOf(fixture.workspace, history.validation)).toBe("open");
+    });
+
+    it("does not reuse an open planning Decision for an Action that declares execution: build", () => {
+      const fixture = preparedFixture({ skipInvocation: true, execution: "build" });
+      const history = addPlanningHistory(fixture.workspace, "open");
+      expect(lifecycleOf(fixture.workspace).kind).toBe("planning_required");
+
+      const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!);
+      const prepared = runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id, agentProfile: "claude_build" });
+      expect(prepared.data.reused).toBe(false);
+      expect(prepared.data.planningDecision).toBeNull();
+      expect(prepared.data.buildInvocation).toBeTruthy();
+      expect(statusOf(fixture.workspace, history.planning)).toBe("open");
+    });
+
+    it("still gates a plan-run Action, and an undeclared one, on its approved planning Decision", () => {
+      for (const execution of ["plan-run", undefined] as const) {
+        const fixture = preparedFixture({ skipInvocation: true, ...(execution ? { execution } : {}) });
+        const history = addPlanningHistory(fixture.workspace, "approved");
+        expect(lifecycleOf(fixture.workspace)).toMatchObject({ kind: "planning_in_progress", decisionId: history.planning });
+      }
+    });
+  });
+
+  describe("a build packet prepared for an earlier Action input", () => {
+    const preview = (fixture: { workspace: string; repo: string }, requestId: string) =>
+      withReadOnlyDatabase(fixture.workspace, (db) => buildLaunchPreview({
+        db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project",
+        requestId, profiles, adapters: defaultAdapters as ProviderAdapterRegistry
+      }));
+
+    it("is a stale packet once the Action's acceptance criteria change, and work plan prepares a fresh one", () => {
+      const fixture = preparedFixture({ skipInvocation: true, execution: "build" });
+      const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!);
+      const first = runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id, agentProfile: "claude_build" });
+      const firstId = first.data.buildInvocation!.id;
+      const metadata = JSON.parse(readFileSync(path.join(fixture.workspace, path.dirname(first.data.buildInvocation!.prompt_path), "metadata.json"), "utf8"));
+      expect(metadata.actionInputRevision).toBe(workItemInputRevision(workItem));
+      withDatabase(fixture.workspace, (db) => updateReviewItemStatus(db, first.data.buildApproval!.id, { status: "approved", decisionNote: "Approved for the old criteria." }));
+      expect(preview(fixture, "before-amend").packetLifecycle?.kind).toBe("build_packet_ready");
+
+      const plan = path.join(fixture.repo, "docs/plans/copy-proof.md");
+      // A governed amendment: newer `updated:` so the sync applies it.
+      writeFileSync(plan, readFileSync(plan, "utf8")
+        .replace("The contract exists.", "The contract exists and names its owner.")
+        .replace("updated: 2026-08-30", "updated: 2099-01-01"));
+      resync(fixture.workspace);
+
+      const stale = preview(fixture, "after-amend");
+      expect(stale.ready).toBe(false);
+      expect(stale.packet).toBeNull();
+      expect(stale.packetLifecycle).toMatchObject({ kind: "stale_packet", invocationId: firstId, supersededInput: true });
+      expect(stale.prerequisites.some((entry) => entry.startsWith("stale packet"))).toBe(true);
+
+      const second = runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id, agentProfile: "claude_build" });
+      expect(second.data.buildInvocation!.id).not.toBe(firstId);
+      expect(second.data.buildApproval!.status).toBe("open");
+      const fresh = preview(fixture, "after-replan");
+      expect(fresh.packetLifecycle).toMatchObject({ kind: "build_packet_approval_pending", invocationId: second.data.buildInvocation!.id });
+      // The superseded packet is history, not deleted.
+      withReadOnlyDatabase(fixture.workspace, (db) =>
+        expect((db.prepare("SELECT status FROM codex_invocations WHERE id = ?").get(firstId) as { status: string }).status).toBe("packet_created"));
+    });
+
+    it("fails closed: a packet that records no input revision is stale", () => {
+      const fixture = preparedFixture({ omitInputRevision: true });
+      const result = preview(fixture, "no-revision");
+      expect(result.ready).toBe(false);
+      expect(result.packetLifecycle).toMatchObject({ kind: "stale_packet", invocationId: fixture.packetId, supersededInput: true });
+    });
+  });
+
   it("names an already-leased repository as a conflicting-execution prerequisite", () => {
     const fixture = preparedFixture();
     const dispatch = resolveDispatch(fixture.repo, "test-project");
@@ -496,7 +593,7 @@ describe("buildLaunchPreview", () => {
   });
 });
 
-function preparedFixture(options?: { skipInvocation?: boolean; provider?: string; model?: string; mappingId?: string; bindingId?: string; noValidationCommands?: boolean }) {
+function preparedFixture(options?: { skipInvocation?: boolean; provider?: string; model?: string; mappingId?: string; bindingId?: string; noValidationCommands?: boolean; execution?: "build" | "plan-run"; omitInputRevision?: boolean }) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-launch-preview-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -504,7 +601,7 @@ function preparedFixture(options?: { skipInvocation?: boolean; provider?: string
   mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
   mkdirSync(path.join(repo, "docs", "decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDocument);
-  writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"), planDocument);
+  writeFileSync(path.join(repo, "docs", "plans", "copy-proof.md"), options?.execution ? withExecutionRoute(planDocument, options.execution) : planDocument);
   writeFileSync(path.join(repo, "docs", "decisions", "0001-authorize.md"), decisionDocument);
   git(repo, ["init", "-q", "-b", "main"]);
   git(repo, ["config", "user.email", "arcadia@example.test"]);
@@ -539,7 +636,8 @@ function preparedFixture(options?: { skipInvocation?: boolean; provider?: string
         workItemId: workItem.id,
         promptPath,
         baseRevision,
-        providerSelection: { provider, model, mappingId, bindingId }
+        providerSelection: { provider, model, mappingId, bindingId },
+        ...(options?.omitInputRevision ? {} : { actionInputRevision: workItemInputRevision(workItem) })
       })
     );
     createCodexInvocation(db, {
@@ -583,6 +681,48 @@ function preparedFixture(options?: { skipInvocation?: boolean; provider?: string
     updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Fixture authority approved." });
   });
   return { root, repo, workspace, packetId, now: new Date("2026-08-30T12:34:56.000Z") };
+}
+
+function withExecutionRoute(document: string, route: "build" | "plan-run"): string {
+  return document.replace("    decisions: [\"0001\"]\n", `    decisions: ["0001"]\n    execution: ${route}\n`);
+}
+
+function resync(workspace: string): void {
+  withDatabase(workspace, (db) => {
+    const project = db.prepare("SELECT * FROM projects LIMIT 1").get() as Parameters<typeof syncProjectDocs>[1];
+    const sync = syncProjectDocs(db, project, { apply: true });
+    if (sync.errors.length || sync.rejected.length) throw new Error("fixture docs did not re-sync");
+  });
+}
+
+function addPlanningHistory(workspace: string, planningStatus: "open" | "approved"): { planning: string; validation: string } {
+  return withDatabase(workspace, (db) => {
+    const workItem = getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!;
+    const planning = createReviewItem(db, {
+      workItemId: workItem.id,
+      projectId: workItem.project_id,
+      decisionNeeded: "Approve the planning Run.",
+      sourceInput: "run d planning request",
+      proposedAction: "Prepare a planning Artifact.",
+      resolvedIntent: "CodexPlanningRunApproval",
+      confidenceLabel: "high",
+      confidence: 1,
+      missingFields: []
+    });
+    if (planningStatus === "approved") updateReviewItemStatus(db, planning.id, { status: "approved", decisionNote: "Run d approved planning." });
+    const validation = createReviewItem(db, {
+      workItemId: workItem.id,
+      projectId: workItem.project_id,
+      decisionNeeded: "Validate the planning Artifact.",
+      sourceInput: "run d planning artifact",
+      proposedAction: "Retry planning.",
+      resolvedIntent: "codex_planning_artifact_validation",
+      confidenceLabel: "high",
+      confidence: 1,
+      missingFields: []
+    });
+    return { planning: planning.id, validation: validation.id };
+  });
 }
 
 function git(cwd: string, args: string[]): string {

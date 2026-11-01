@@ -1,4 +1,6 @@
 import { hasCommittedPromotionAssignment } from "../sessions/promotionAssignment.js";
+import { declaresBuildRoute } from "../sessions/packetLifecycle.js";
+import { packetIsForCurrentInput } from "../sessions/packetInputRevision.js";
 import { replayAcceptedPromotionAssignment } from "../projects/planningPromotion.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -376,7 +378,10 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
       assertActionCanBePlanned(workItem);
       assertNoManagedPlanningRun(db, workItem.id);
 
-      const active = existingActivePlanningPreparation(db, workspacePath, workItem);
+      // An Action that declares `execution: build` never resumes an earlier
+      // planning Decision: it prepares its build packet below, and that
+      // Decision stays untouched as history.
+      const active = declaresBuildRoute(workItem) ? null : existingActivePlanningPreparation(db, workspacePath, workItem);
       if (active) {
         if (options.agentProfile && active.codexInvocation?.agent_profile !== options.agentProfile) {
           throw validationError("Active planning Decision is bound to a different coding agent profile.", {
@@ -416,7 +421,14 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
       if (isManagedBuild) {
         assertRequiredProjectRepoContext(db, workItem);
         const existingPlan = getLatestExecutionPlanForWorkItem(db, workItem.id);
-        const plan = reusableUnpreparedBuildPlan(existingPlan)
+        // A plan whose build packet was prepared for an earlier Action input
+        // is not reused: a new plan gets a fresh packet (and a fresh approval),
+        // and the superseded packet stays as history.
+        const reusable = reusableUnpreparedBuildPlan(existingPlan);
+        const reusablePacket = reusable
+          ? getCodexInvocationForPlan(db, { workItemId: workItem.id, planId: reusable.id, purpose: "build" })
+          : null;
+        const plan = (reusable && (!reusablePacket || packetIsForCurrentInput(workspacePath, reusablePacket.prompt_path, workItem)) ? reusable : null)
           ?? createExecutionPlan(db, {
             workItemId: workItem.id,
             summary: `Execution plan for "${workItem.title}".`,

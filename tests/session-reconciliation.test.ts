@@ -28,6 +28,7 @@ import { ensureCandidatePreservationTable, refreshPreservedPullRequestBody, type
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
+import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
 
 const roots: string[] = [];
 
@@ -1898,6 +1899,7 @@ function preparedFixture(options: { responsibility?: string; acceptanceCriteria?
     writeFileSync(path.join(workspace, path.dirname(promptPath), "metadata.json"), JSON.stringify({
       invocationId: packetId,
       workItemId: workItem.id,
+      actionInputRevision: workItemInputRevision(workItem),
       promptPath,
       baseRevision,
       providerSelection: { provider, model, mappingId: "fixture-map", bindingId: "fixture-binding" }

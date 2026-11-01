@@ -38,8 +38,8 @@ describe("Zero Prompt Rehearsal fixture build packets", () => {
       const actionA = getWorkItemByDocRef(db, `plan/${ZERO_PROMPT_REHEARSAL_PLAN_SLUG}#write-rehearsal-marker`)!;
       const actionB = getWorkItemByDocRef(db, `plan/${ZERO_PROMPT_REHEARSAL_PLAN_SLUG}#confirm-rehearsal-marker`)!;
       return {
-        a: resolvePacketLifecycle(db, actionA),
-        b: resolvePacketLifecycle(db, actionB)
+        a: resolvePacketLifecycle(db, actionA, { workspace: fixture.workspace }),
+        b: resolvePacketLifecycle(db, actionB, { workspace: fixture.workspace })
       };
     });
     expect(before.a.kind).toBe("planning_required");
@@ -56,8 +56,8 @@ describe("Zero Prompt Rehearsal fixture build packets", () => {
       const actionA = getWorkItemByDocRef(db, `plan/${ZERO_PROMPT_REHEARSAL_PLAN_SLUG}#write-rehearsal-marker`)!;
       const actionB = getWorkItemByDocRef(db, `plan/${ZERO_PROMPT_REHEARSAL_PLAN_SLUG}#confirm-rehearsal-marker`)!;
       return {
-        a: resolvePacketLifecycle(db, actionA),
-        b: resolvePacketLifecycle(db, actionB)
+        a: resolvePacketLifecycle(db, actionA, { workspace: fixture.workspace }),
+        b: resolvePacketLifecycle(db, actionB, { workspace: fixture.workspace })
       };
     });
     expect(after.a.kind).toBe("build_packet_ready");

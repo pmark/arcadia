@@ -4,6 +4,7 @@ import path from "node:path";
 import { buildCodingAgentCommand, codingAgentLabel } from "../codingAgents/adapters.js";
 import { loadIdentityModelTierRegistry, renderSessionIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { sessionAgentForProvider } from "../sessions/index.js";
+import { workItemInputRevision } from "../sessions/packetInputRevision.js";
 import { validationError } from "../cli/errors.js";
 import { isCodingAgentAvailable, observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import type { CodexInvocationPurpose } from "../domain/constants.js";
@@ -183,6 +184,9 @@ export function createCodexPacket(input: {
         workspaceScope,
         baseRevision: resolveBaseRevision(workspaceScope),
         workItemId: input.workItem.id,
+        // The Action input this packet was written from; the packet lifecycle
+        // treats a packet whose revision differs from the current one as stale.
+        actionInputRevision: workItemInputRevision(input.workItem),
         planId: input.planId,
         project: input.projectContext
           ? {

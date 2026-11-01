@@ -389,6 +389,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       packetLifecycleKind: preview.packetLifecycle?.kind ?? null,
       packetLifecycleRemedy: preview.packetLifecycle?.remedy ?? null,
       packetLifecycleDecisionId: preview.packetLifecycle?.kind === "build_packet_approval_pending" ? preview.packetLifecycle.decisionId : null,
+      packetLifecycleSupersededInput: preview.packetLifecycle?.kind === "stale_packet" && preview.packetLifecycle.supersededInput === true,
       // Named the same as `issueAdmission`'s own refusal code (policy.ts) so a
       // caller need not distinguish "caught at preview" from "caught at
       // admission" -- both are the identical policy-provider mismatch.

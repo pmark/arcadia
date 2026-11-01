@@ -28,6 +28,7 @@ import {
   type TmuxAdapter
 } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
 
 const roots: string[] = [];
 
@@ -577,6 +578,7 @@ function preparedFixture(options: { provider?: "claude-code-cli" | "codex-cli" }
     writeFileSync(path.join(workspace, path.dirname(promptPath), "metadata.json"), JSON.stringify({
       invocationId: packetId,
       workItemId: workItem.id,
+      actionInputRevision: workItemInputRevision(workItem),
       promptPath,
       baseRevision,
       providerSelection: {

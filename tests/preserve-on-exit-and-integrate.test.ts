@@ -38,6 +38,7 @@ import {
 import { preservationIndexLocked, preservationIndexLockMalformed } from "../src/sessions/preservationStages.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
+import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -1295,7 +1296,7 @@ function preparedFixture(options: { baseFiles?: Record<string, string> } = {}) {
     writeFileSync(
       path.join(workspace, path.dirname(promptPath), "metadata.json"),
       JSON.stringify({
-        invocationId: packetId, workItemId: workItem.id, promptPath, baseRevision,
+        invocationId: packetId, workItemId: workItem.id, actionInputRevision: workItemInputRevision(workItem), promptPath, baseRevision,
         providerSelection: { provider: "claude-code-cli", model: "sonnet", mappingId: "fixture-map", bindingId: "fixture-binding" }
       })
     );
