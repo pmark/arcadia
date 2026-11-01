@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CLAUDE_CLI_SELF_REFRESH_ARGS, CLAUDE_CLI_SELF_REFRESH_TIMEOUT_MS } from "../src/production/capacityPreAdmission.js";
 import {
-  findFreshBoundReceipt, runStartRunSignIn, signInDay, signInReceiptRefusal, staticSignInChecks, StartRunSignInRefusal,
+  findFreshBoundReceipt, nextDecisionId, runStartRunSignIn, signInDay, signInReceiptRefusal, staticSignInChecks, StartRunSignInRefusal,
   type StartRunSignInContext, type StartRunSignInDeps
 } from "../src/production/startRunSignIn.js";
 import { diagnosticGrantAnswer, diagnosticGrantPath, diagnosticResponsePath, type ClaudeDiagnosticGrant } from "../src/production/workerClaudeUsageDiagnostic.js";
@@ -59,7 +59,7 @@ function fixture(options: FixtureOptions = {}) {
   // The standing authorities the diagnostic Ask cites, repository-relative (Issue #1958). Plain text: no managed frontmatter.
   for (const id of ["0141", "0143", "0161"]) if (options.withoutGoverning !== id) writeFileSync(path.join(repository, "docs", "decisions", `${id}-governing-fixture.md`), `# Decision ${id} fixture\n`);
   writeFileSync(path.join(repository, "docs", "decisions", "0099-renumbered-earlier.md"), [
-    "---", "arcadia: v1", "type: decision", 'id: "0160"', "slug: renumbered-earlier", "project: arcadia", "status: approved", "question: Earlier?",
+    "---", "arcadia: v1", "type: decision", 'id: "0162"', "slug: renumbered-earlier", "project: arcadia", "status: approved", "question: Earlier?",
     "gap_type: missing-decision", "gate_question: approval_boundary", "confidence: high", "plan: fixture-plan", "updated: 2026-10-31", "answer: Yes", "decided: 2026-10-31", "---", "", "# Decision 0160: Earlier?", ""
   ].join("\n"));
   let clock = Date.parse("2026-11-01T17:00:00.000Z");
@@ -95,7 +95,7 @@ function fixture(options: FixtureOptions = {}) {
   let jumped = false;
   const deps: StartRunSignInDeps = {
     now: () => {
-      if (options.midnightAfterClaim && !jumped && existsSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${date}.json`))) { clock += 24 * 3_600_000; jumped = true; }
+      if (options.midnightAfterClaim && !jumped && existsSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${date}.start-card.run-1.json`))) { clock += 24 * 3_600_000; jumped = true; }
       return new Date(clock);
     },
     randomUUID: () => NONCE,
@@ -135,7 +135,7 @@ function fixture(options: FixtureOptions = {}) {
       if (key === "agent-ask preview") {
         const ask = JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"));
         question = ask.desired_result; answer = ask.options[0].label; slug = slugify(question);
-        decisionFile = path.join(repository, "docs", "decisions", `0161-${slug}.md`);
+        decisionFile = path.join(repository, "docs", "decisions", `${nextDecisionId(repository)}-${slug}.md`);
         expect(args).toEqual(expect.arrayContaining(["--dir", repository]));
         return { ok: true, data: { proposal: { id: "agentask_1" } } };
       }
@@ -181,17 +181,46 @@ const goodReceipt = (f: Fixture, overrides: Record<string, unknown> = {}) => ({
   outcome: "ok", success: true, windows: [{ label: "5h", usedPercentage: 10 }, { label: "7d", usedPercentage: 20 }], ...overrides
 });
 
-describe("start-run sign-in: refusals before the day is claimed", () => {
-  it("refuses when today's Decision 0141 sequence is already used, before any renewal", async () => {
+describe("start-run sign-in: Decision 0162 (no calendar-day ceiling; the ledger is an exclusive per-sequence claim)", () => {
+  it("proceeds when an earlier sequence already ran today, and records this press's own sequence", async () => {
     const f = fixture({ dayUsed: true });
-    const error = await refusal(f);
-    expect(error).toMatchObject({ code: "DAY_USED", dayClaimed: false });
-    expect(f.calls.claude).toEqual([]);
-    expect(readdirSync(f.ledger)).toEqual([`${f.date}.json`]);
+    const result = await runStartRunSignIn(f.context, f.deps);
+    expect(result).toMatchObject({ outcome: "checked", sequenceClaimed: true });
+    expect(f.calls.claude).toHaveLength(1);
+    expect(readdirSync(f.ledger).sort()).toEqual([`${f.date}.json`, `${f.date}.start-card.run-1.json`, `${f.date}.start-card.run-1.renewal.json`]);
+    expect(JSON.parse(readFileSync(path.join(f.ledger, `${f.date}.start-card.run-1.json`), "utf8"))).toMatchObject({ cardId: "start-card", runId: "run-1", decisions: ["0141", "0143", "0161", "0162"] });
+  });
+  it("lets a second card proceed on the same date after the first card's sequence finished", async () => {
+    const f = fixture();
+    await runStartRunSignIn(f.context, f.deps);
+    // A new press of another card: a fresh nonce, the first sequence's receipt is not this bound worker's fresh one to reuse.
+    const second = { ...f.context, cardId: "start-card-b", runId: "run-2", runDirectory: path.join(path.dirname(f.context.runDirectory), "run-2") };
+    rmSync(diagnosticResponsePath(f.workspace, NONCE)); // otherwise the fresh bound receipt would be reused, as before
+    let n = 0;
+    const deps = { ...f.deps, randomUUID: () => (n++ === 0 ? "abcdef01-2345-4678-8abc-def012345678" : NONCE) };
+    // The first sequence's grant and request are terminal (answered) and are archived by the second.
+    writeFileSync(diagnosticResponsePath(f.workspace, NONCE), JSON.stringify({ nonce: NONCE }), { mode: 0o600 });
+    const result = await runStartRunSignIn(second, deps);
+    expect(result).toMatchObject({ outcome: "checked", sequenceClaimed: true });
+    expect(f.calls.claude).toHaveLength(2);
+    expect(readdirSync(f.ledger).filter((name) => name.endsWith(".renewal.json")).sort()).toEqual([`${f.date}.start-card-b.run-2.renewal.json`, `${f.date}.start-card.run-1.renewal.json`]);
+  });
+  it("refuses, claiming nothing, while another sequence is in flight; a stale marker is preserved and does not block", async () => {
+    const live = fixture();
+    mkdirSync(live.ledger, { recursive: true });
+    writeFileSync(path.join(live.ledger, "in-flight.json"), JSON.stringify({ pid: process.pid, cardId: "other", runId: "r", at: "x" }));
+    expect(await refusal(live)).toMatchObject({ code: "SEQUENCE_IN_FLIGHT", sequenceClaimed: false });
+    expect(live.calls.claude).toEqual([]);
+    const stale = fixture();
+    mkdirSync(stale.ledger, { recursive: true });
+    writeFileSync(path.join(stale.ledger, "in-flight.json"), JSON.stringify({ pid: 2 ** 30, cardId: "crashed", runId: "r", at: "x" }));
+    expect(await runStartRunSignIn(stale.context, stale.deps)).toMatchObject({ outcome: "checked" });
+    expect(readdirSync(stale.ledger)).toContain(`in-flight.stale-before-${stale.date}.start-card.run-1.json`);
+    expect(existsSync(path.join(stale.ledger, "in-flight.json"))).toBe(false);
   });
   it.each<[string, FixtureOptions["binding"]]>([["unbound (source-run)", "unbound"], ["stale", "stale"]])("refuses a %s worker heartbeat without claiming", async (_label, binding) => {
     const f = fixture({ binding });
-    expect(await refusal(f)).toMatchObject({ code: "WORKER_UNBOUND", dayClaimed: false });
+    expect(await refusal(f)).toMatchObject({ code: "WORKER_UNBOUND", sequenceClaimed: false });
     expect(existsSync(f.ledger)).toBe(false);
     expect(f.calls.claude).toEqual([]);
   });
@@ -199,14 +228,14 @@ describe("start-run sign-in: refusals before the day is claimed", () => {
     for (const options of [{ previousSlots: "busy-request" as const }, { requestIgnored: false }]) {
       const f = fixture(options);
       const error = await refusal(f);
-      expect(error.dayClaimed).toBe(false);
+      expect(error.sequenceClaimed).toBe(false);
       expect(["REQUEST_SLOT_BUSY", "REQUEST_NOT_IGNORED"]).toContain(error.code);
       expect(existsSync(f.ledger)).toBe(false);
     }
   });
   it("refuses, without claiming, a repository the worker does not poll (no active Project has it as repo_path)", async () => {
     const f = fixture({ polled: () => ["/somewhere/else"] });
-    expect(await refusal(f)).toMatchObject({ code: "REPOSITORY_NOT_POLLED", dayClaimed: false });
+    expect(await refusal(f)).toMatchObject({ code: "REPOSITORY_NOT_POLLED", sequenceClaimed: false });
     expect(existsSync(f.ledger)).toBe(false);
     expect(f.calls.claude).toEqual([]);
   });
@@ -224,7 +253,7 @@ describe("start-run sign-in: reuse", () => {
     const kept = goodReceipt(f);
     writeFileSync(diagnosticResponsePath(f.workspace, String(kept.nonce)), JSON.stringify(kept), { mode: 0o600 });
     const result = await runStartRunSignIn(f.context, f.deps);
-    expect(result).toMatchObject({ outcome: "reused", dayClaimed: false, receipt: { path: diagnosticResponsePath(f.workspace, String(kept.nonce)) } });
+    expect(result).toMatchObject({ outcome: "reused", sequenceClaimed: false, receipt: { path: diagnosticResponsePath(f.workspace, String(kept.nonce)) } });
     expect(f.calls.claude).toEqual([]);
     expect(f.calls.cli).toEqual([]);
     expect(existsSync(f.ledger)).toBe(false);
@@ -243,18 +272,18 @@ describe("start-run sign-in: reuse", () => {
 });
 
 describe("start-run sign-in: the sequence", () => {
-  it("claims the day, renews once with the reviewed call, publishes the exact Decision, then has the bound worker check once", async () => {
+  it("claims this press's sequence, renews once with the reviewed call, publishes the exact Decision, then has the bound worker check once", async () => {
     const f = fixture();
     const result = await runStartRunSignIn(f.context, f.deps);
-    expect(result).toMatchObject({ outcome: "checked", dayClaimed: true, date: f.date, nonce: NONCE });
+    expect(result).toMatchObject({ outcome: "checked", sequenceClaimed: true, date: f.date, nonce: NONCE });
     // Exactly one renewal, with the worker's reviewed arguments and 60-second bound.
     expect(f.calls.claude).toEqual([{ args: CLAUDE_CLI_SELF_REFRESH_ARGS, timeout: CLAUDE_CLI_SELF_REFRESH_TIMEOUT_MS }]);
     expect(CLAUDE_CLI_SELF_REFRESH_TIMEOUT_MS).toBe(60_000);
     // The day was claimed exclusively before the renewal and the result retained.
-    const claim = JSON.parse(readFileSync(path.join(f.ledger, `${f.date}.json`), "utf8"));
-    expect(claim).toMatchObject({ schema: "arcadia-daily-0141-claim-v1", date: f.date, timeZone: "America/Los_Angeles", decision: "0141", authority: "0161", status: "consumed-before-renewal", binding: f.binding });
-    expect(JSON.parse(readFileSync(path.join(f.ledger, `${f.date}.renewal.json`), "utf8"))).toMatchObject({ ok: true, noRetry: true });
-    expect(statSync(path.join(f.ledger, `${f.date}.json`)).mode & 0o077).toBe(0);
+    const claim = JSON.parse(readFileSync(path.join(f.ledger, `${f.date}.start-card.run-1.json`), "utf8"));
+    expect(claim).toMatchObject({ schema: "arcadia-renewal-sequence-claim-v2", date: f.date, timeZone: "America/Los_Angeles", decisions: ["0141", "0143", "0161", "0162"], cardId: "start-card", runId: "run-1", status: "consumed-before-renewal", binding: f.binding });
+    expect(JSON.parse(readFileSync(path.join(f.ledger, `${f.date}.start-card.run-1.renewal.json`), "utf8"))).toMatchObject({ ok: true, noRetry: true });
+    expect(statSync(path.join(f.ledger, `${f.date}.start-card.run-1.json`)).mode & 0o077).toBe(0);
     // The grant: one nonce, at most 5 minutes, the bound worker's identity and the exact Decision.
     const grant = JSON.parse(readFileSync(diagnosticGrantPath(f.workspace), "utf8")) as ClaudeDiagnosticGrant;
     expect(Object.keys(grant)).toEqual(["schema", "nonce", "repository", "workspace", "release", "handlerHash", "decision", "provider", "source", "endpoint", "policyRevision", "policyEpoch", "expiresAt", "deadlineMs"]);
@@ -275,8 +304,8 @@ describe("start-run sign-in: the sequence", () => {
       { from: diagnosticGrantPath(f.workspace), to: `${diagnosticGrantPath(f.workspace)}.completed-${OLD_NONCE}`, sha256: sha(JSON.stringify({ nonce: OLD_NONCE })) },
       { from: path.join(f.repository, ".arcadia", "worker-claude-usage.request"), to: path.join(f.runDirectory, `archived-worker-claude-usage-request-${OLD_NONCE}.json`), sha256: sha(JSON.stringify({ nonce: OLD_NONCE })) }
     ]);
-    // The Decision id is settlement's: max frontmatter id (0160) + 1, not the filename prefix (0099).
-    expect(result.decision).toMatch(/^0161-authorize-one-start-card-worker-claude-usage-diagnostic-/);
+    // The Decision id is settlement's: max frontmatter id (0162) + 1, not the filename prefix (0099).
+    expect(result.decision).toMatch(/^0163-authorize-one-start-card-worker-claude-usage-diagnostic-/);
     // Read-only calls are bounded by the grant time above the reserve; the two committing calls get the whole window.
     for (const i of [2, 4]) { expect(f.calls.cliTimeouts[i]).toBeGreaterThan(60_000); expect(f.calls.cliTimeouts[i]).toBeLessThanOrEqual(300_000); }
     expect(Math.max(f.calls.cliTimeouts[0], f.calls.cliTimeouts[1], f.calls.cliTimeouts[3])).toBeLessThanOrEqual(60_000);
@@ -286,19 +315,20 @@ describe("start-run sign-in: the sequence", () => {
     // Only the bound worker's own receipt for this nonce counts, and it allows START.
     expect(result.receipt.path).toBe(diagnosticResponsePath(f.workspace, NONCE));
     expect(result.receipt.sha256).toBe(sha(readFileSync(result.receipt.path)));
-    expect(journal(f).stages).toEqual(["bound", "day-claimed", "renewed", "prepared", "records-published", "requested", "received", "checked"]);
+    expect(existsSync(path.join(f.ledger, "in-flight.json"))).toBe(false);
+    expect(journal(f).stages).toEqual(["bound", "sequence-claimed", "renewed", "prepared", "records-published", "requested", "received", "checked"]);
   });
 
-  it.each<[string, FixtureOptions["renewal"]]>([["fails", { ok: false, detail: "exit 1: stderr: not logged in" }], ["throws", "throw"]])("consumes the day and checks nothing when the renewal %s", async (_label, renewal) => {
+  it.each<[string, FixtureOptions["renewal"]]>([["fails", { ok: false, detail: "exit 1: stderr: not logged in" }], ["throws", "throw"]])("consumes this press's sequence and checks nothing when the renewal %s", async (_label, renewal) => {
     const f = fixture({ renewal });
-    expect(await refusal(f)).toMatchObject({ code: "RENEWAL_FAILED", dayClaimed: true });
+    expect(await refusal(f)).toMatchObject({ code: "RENEWAL_FAILED", sequenceClaimed: true });
     expect(f.calls.claude).toHaveLength(1);
     expect(f.calls.cli).toEqual([]);
     expect(f.git.pushes).toBe(0);
-    expect(JSON.parse(readFileSync(path.join(f.ledger, `${f.date}.renewal.json`), "utf8"))).toMatchObject({ ok: false });
+    expect(JSON.parse(readFileSync(path.join(f.ledger, `${f.date}.start-card.run-1.renewal.json`), "utf8"))).toMatchObject({ ok: false });
     expect(JSON.parse(readFileSync(diagnosticGrantPath(f.workspace), "utf8"))).toEqual({ nonce: OLD_NONCE });
-    // No retry: a second call refuses on the consumed day before any renewal.
-    expect(await refusal(f)).toMatchObject({ code: "DAY_USED", dayClaimed: false });
+    // No retry inside the press: the same card and run cannot claim a second sequence.
+    expect(await refusal(f)).toMatchObject({ code: "SEQUENCE_CONSUMED", sequenceClaimed: false });
     expect(f.calls.claude).toHaveLength(1);
   });
 
@@ -309,17 +339,17 @@ describe("start-run sign-in: the sequence", () => {
   ])("consumes the day with no START when %s", async (_label, worker, reason) => {
     const f = fixture({ worker });
     const error = await refusal(f);
-    expect(error).toMatchObject({ code: "CHECK_FAILED", dayClaimed: true });
+    expect(error).toMatchObject({ code: "CHECK_FAILED", sequenceClaimed: true });
     expect(error.message).toMatch(reason);
     expect(f.calls.claude).toHaveLength(1);
     expect(f.git.pushes).toBe(1);
-    expect(journal(f).refusal).toMatchObject({ code: "CHECK_FAILED", dayClaimed: true });
+    expect(journal(f).refusal).toMatchObject({ code: "CHECK_FAILED", sequenceClaimed: true });
   });
 
   it("refuses before the push when the Decision commits are not the Arcadia Controller's", async () => {
     const operator = "P. Mark Anderson\twayoutwest@example.test";
     const f = fixture({ commitIdentity: `${operator}\t${operator}` });
-    expect(await refusal(f)).toMatchObject({ code: "RECORDS_IDENTITY", dayClaimed: true });
+    expect(await refusal(f)).toMatchObject({ code: "RECORDS_IDENTITY", sequenceClaimed: true });
     expect(f.git.pushes).toBe(0);
     expect(f.calls.git.some((args) => args[0] === "push")).toBe(false);
     expect(JSON.parse(readFileSync(diagnosticGrantPath(f.workspace), "utf8"))).toEqual({ nonce: OLD_NONCE });
@@ -329,14 +359,14 @@ describe("start-run sign-in: the sequence", () => {
     const f = fixture();
     const renew = f.deps.runClaude;
     f.deps.runClaude = async (args, timeout) => { f.git.remote = "e".repeat(40); return renew(args, timeout); };
-    expect(await refusal(f)).toMatchObject({ code: "ORIGIN_MOVED", dayClaimed: true });
+    expect(await refusal(f)).toMatchObject({ code: "ORIGIN_MOVED", sequenceClaimed: true });
     expect(f.calls.cli).toEqual([]);
   });
 
   it("refuses before the claim when the diagnostic Ask would fail the real validator (a governing Decision is missing)", async () => {
     const f = fixture({ withoutGoverning: "0143" });
     const error = await refusal(f);
-    expect(error).toMatchObject({ code: "ASK_INVALID", dayClaimed: false });
+    expect(error).toMatchObject({ code: "ASK_INVALID", sequenceClaimed: false });
     expect(error.message).toMatch(/would be refused, so nothing was claimed or renewed: Decision 0143/);
     expect(existsSync(f.ledger)).toBe(false);
     expect(f.calls.claude).toEqual([]);
@@ -354,7 +384,7 @@ describe("start-run sign-in: the sequence", () => {
   it("surfaces the CLI's error code, message and details when the preview refuses", async () => {
     const f = fixture({ previewError: { code: "VALIDATION_ERROR", message: "Agent Ask references must not contain absolute filesystem paths.", details: { references: ["/abs/sign-in.json"] } } });
     const error = await refusal(f);
-    expect(error).toMatchObject({ code: "RECORDS_FAILED", dayClaimed: true });
+    expect(error).toMatchObject({ code: "RECORDS_FAILED", sequenceClaimed: true });
     expect(error.message).toContain("the diagnostic Agent Ask preview failed: VALIDATION_ERROR: Agent Ask references must not contain absolute filesystem paths.");
     expect(error.message).toContain("/abs/sign-in.json");
     expect(journal(f).refusal.message).toContain("VALIDATION_ERROR");
@@ -362,21 +392,19 @@ describe("start-run sign-in: the sequence", () => {
 
   it("consumes the day when the bound worker never answers", async () => {
     const f = fixture({ worker: { silent: true } });
-    expect(await refusal(f)).toMatchObject({ code: "CHECK_TIMEOUT", dayClaimed: true });
+    expect(await refusal(f)).toMatchObject({ code: "CHECK_TIMEOUT", sequenceClaimed: true });
   });
 
-  it("refuses without renewing when midnight passes after the claim, leaving that day consumed", async () => {
+  it("Decision 0162: midnight passing after the claim no longer refuses; the sequence completes", async () => {
     const f = fixture({ midnightAfterClaim: true });
-    expect(await refusal(f)).toMatchObject({ code: "DAY_CHANGED", dayClaimed: true });
-    expect(f.calls.claude).toEqual([]);
-    expect(existsSync(path.join(f.ledger, `${f.date}.json`))).toBe(true);
-    expect(existsSync(path.join(f.ledger, `${f.date}.renewal.json`))).toBe(false);
+    expect(await runStartRunSignIn(f.context, f.deps)).toMatchObject({ outcome: "checked", sequenceClaimed: true });
+    expect(f.calls.claude).toHaveLength(1);
   });
 
   it("publishes no grant when the canonical records leave under 60 seconds of the 5-minute window", async () => {
     const f = fixture({ cliDelayMs: 60_000 });
     const error = await refusal(f);
-    expect(error).toMatchObject({ code: "GRANT_WINDOW", dayClaimed: true });
+    expect(error).toMatchObject({ code: "GRANT_WINDOW", sequenceClaimed: true });
     // The answer was committed locally but never pushed: the refusal says so.
     expect(error.message).toContain("main may hold unpublished local Controller diagnostic commits, and START refuses until they are reconciled");
     expect(f.git.pushes).toBe(0);

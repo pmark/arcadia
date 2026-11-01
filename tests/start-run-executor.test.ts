@@ -47,7 +47,7 @@ const planDocument = (status: "active" | "draft", done: string[] = []) => [
 ].join("\n");
 const projectDocument = (activePlan: string) => `---\nslug: arcadia\nactive_plan: ${activePlan}\n---\n`;
 const decisionDocument = (id: string, status = "approved", answer = "Yes") => `---\nid: "${id}"\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
-const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"];
+const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"];
 
 type Scenario = "same" | "behind" | "pin-unfetched" | "origin-moved" | "diverged" | "ahead";
 interface BoxOptions {
@@ -67,7 +67,7 @@ interface BoxOptions {
   press?: "none" | "stale" | "other-card" | "not-running" | "claimed" | "other-parent";
   /** The pre-restart worker: fresh and unbound by default (a source-run worker), or stale, or not the launchd PID. */
   preWorker?: "stale" | "pid-mismatch" | "source-child";
-  /** Today's Decision 0141 sequence already recorded in the daily ledger. */
+  /** Earlier finished sequences of other cards recorded today in the ledger (Decision 0162: never a reason to refuse). */
   dayUsed?: boolean;
   plist?: boolean;
   tmuxSessions?: boolean;
@@ -146,7 +146,7 @@ function box(options: BoxOptions = {}) {
     schema: "arcadia-start-run-v1", reviewedRevision: pin, executorSha256: options.executorPin ?? sha(EXECUTOR_SOURCE),
     workspace: "martianrover", project: "arcadia", plan: PLAN, actions: ACTIONS, provider: "claude-code-cli",
     transitions: ["validation", "acceptance", "pointer", "packet_approval"], concurrency: 1, packetApprovalHours: 24, intent: "A fixture run on the claude-code provider.",
-    spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"],
+    spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"],
     requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
     production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
     grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }]
@@ -182,7 +182,9 @@ function box(options: BoxOptions = {}) {
   if (options.dayUsed) {
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
     mkdirSync(path.join(workspace, ".arcadia", "claude-renewal-days"), { recursive: true });
+    // The legacy per-day claim shape and another card's finished per-run record, both from today.
     writeFileSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${today}.json`), '{"status":"consumed-before-renewal"}');
+    writeFileSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${today}.start-run-earlier-card.20261101T000000Z-1.json`), '{"status":"consumed-before-renewal"}');
   }
   if (options.plist !== false) {
     mkdirSync(path.join(home, "Library", "LaunchAgents"), { recursive: true });
@@ -379,8 +381,7 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     // Decision 0161: the pre-restart worker need only be live and fresh; the day must be unused; the sequence's slots must be free.
     ["a stale pre-restart worker heartbeat", { preWorker: "stale" }, /stale or mismatched pre-restart worker heartbeat/],
     ["a pre-restart worker whose pidfile is not the launchd PID", { preWorker: "pid-mismatch" }, /stale or mismatched pre-restart worker heartbeat/],
-    ["today's Decision 0141 sequence already used", { dayUsed: true }, /sign-in sequence for today .* is already used .* cannot be pressed until the next day/],
-    ["sign-in sequence preconditions that fail", { state: (s) => { s.signin = { check: "refuse" }; } }, /sign-in sequence preconditions fail: .*not a terminal request.*\[code REQUEST_SLOT_BUSY; dayClaimed false\]/]
+    ["sign-in sequence preconditions that fail", { state: (s) => { s.signin = { check: "refuse" }; } }, /sign-in sequence preconditions fail: .*not a terminal request.*\[code REQUEST_SLOT_BUSY; sequenceClaimed false\]/]
   ])("refuses %s", (_label, options, reason) => {
     const b = box(options);
     const headBefore = b.head();
@@ -406,7 +407,6 @@ describe("start-run executor: preflight", () => {
     // The pre-restart worker is unbound (source-run) and that no longer refuses; the ledger and slots were only read.
     expect(result.receipt!.record.preRestartWorkerPid).toBe(1111);
     expect(result.receipt!.record.preRestartBinding).toBeNull();
-    expect(result.receipt!.record.signInDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && call.args.includes("--check-only"))).toBe(true);
     expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
   });
@@ -461,12 +461,12 @@ describe("start-run executor: the START itself", () => {
     expect(binding).toMatchObject({ oldPid: 1111, workerLabel: LABEL, binding: { pid: process.pid, release: b.pin, handlerHash: `handler-${process.pid}` } });
     expect(result.receipt!.record.workerBinding).toMatchObject({ pid: process.pid, release: b.pin });
     // The sequence ran once: the day is claimed, two Decision-only commits are on main and origin, and the receipt gated START.
-    expect(result.receipt!.record.signIn).toMatchObject({ outcome: "checked", dayClaimed: true });
+    expect(result.receipt!.record.signIn).toMatchObject({ outcome: "checked", sequenceClaimed: true });
     expect(result.receipt!.record.signInReceipt).toMatchObject({ release: b.pin, handlerHash: `handler-${process.pid}` });
     expect(git(b.repo, "rev-parse", "HEAD~2")).toBe(b.pin);
     expect(git(b.repo, "diff", "--name-only", b.pin, "HEAD")).toBe(`docs/decisions/${result.receipt!.record.signIn.decision}.md`);
     expect(git(b.origin, "rev-parse", "main")).toBe(b.head());
-    expect(result.receipt!.mutations.join("\n")).toContain("today's Decision 0141 sequence consumed");
+    expect(result.receipt!.mutations.join("\n")).toContain("this press's renewal sequence consumed");
     expect(result.receipt!.record.runtimeCheck.current).toBe(true);
     expect(b.readState().production).toMatchObject({ desiredState: "active", authority: { requestId: ID } });
     expect(result.handoff).toContain("No failure");
@@ -524,12 +524,21 @@ describe("start-run executor: the START itself", () => {
     expect(b.sequence()).toEqual(["go-broker ensure"]);
   }, 60_000);
 
+  it("Decision 0162: a second card on the same America/Los_Angeles date proceeds to START despite earlier sequences today", () => {
+    const b = box({ dayUsed: true });
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", productionActivated: true });
+    expect(result.receipt!.record.signIn).toMatchObject({ outcome: "checked", sequenceClaimed: true });
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in", "production activate"]);
+  }, 120_000);
+
   it("reuses a fresh receipt of the bound worker: no renewal, no day claimed, no Decision, then starts", () => {
     const b = box({ state: (s) => { s.signin = { mode: "reused" }; } });
     const result = b.run();
     expect(result.status, result.stderr + result.stdout).toBe(0);
     expect(result.receipt).toMatchObject({ outcome: "succeeded", allowanceConsumed: true, productionActivated: true });
-    expect(result.receipt!.record.signIn).toMatchObject({ outcome: "reused", dayClaimed: false });
+    expect(result.receipt!.record.signIn).toMatchObject({ outcome: "reused", sequenceClaimed: false });
     expect(b.head()).toBe(b.pin);
     expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
     expect(result.receipt!.mutations.join("\n")).toContain("fresh usage receipt of the bound worker was reused");
@@ -610,7 +619,7 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(ok.calls().filter((call) => call.tool === "press-check").map((call) => call.args[0])).toEqual(["0"]);
     const bad = box({ state: (s) => { s.tamperClaimed = true; } });
     const result = bad.run();
-    consumed(bad, result, "P4", /start-run sign-in runs only inside a pressed START card: the press record's start-run\.claimed marker is not this run.*\[code NOT_A_CARD_PRESS; dayClaimed false\]/);
+    consumed(bad, result, "P4", /start-run sign-in runs only inside a pressed START card: the press record's start-run\.claimed marker is not this run.*\[code NOT_A_CARD_PRESS; sequenceClaimed false\]/);
     expect(existsSync(path.join(bad.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
   }, 180_000);
 
@@ -625,21 +634,22 @@ describe("start-run executor: failures after the first mutation", () => {
   }, 60_000);
 
   it.each<[string, Record<string, unknown>, RegExp]>([
-    ["the renewal fails", { mode: "renewal_failed" }, /sign-in sequence did not succeed, so there is no START: the Haiku sign-in renewal failed.*\[code RENEWAL_FAILED; dayClaimed true\]/],
-    ["the worker usage check fails", { mode: "check_failed" }, /sign-in sequence did not succeed, so there is no START: the worker usage check does not allow START.*\[code CHECK_FAILED; dayClaimed true\]/],
+    ["the renewal fails", { mode: "renewal_failed" }, /sign-in sequence did not succeed, so there is no START: the Haiku sign-in renewal failed.*\[code RENEWAL_FAILED; sequenceClaimed true\]/],
+    ["the worker usage check fails", { mode: "check_failed" }, /sign-in sequence did not succeed, so there is no START: the worker usage check does not allow START.*\[code CHECK_FAILED; sequenceClaimed true\]/],
     ["the check succeeds but the credential expires within 5 minutes", { expiresInMs: 120_000 }, /credential expiry: the sign-in has expired or expires within 5 minutes/],
     ["a usage window is at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/]
-  ])("consumes the card and the day with no START or retry when %s", (_label, signin, reason) => {
+  ])("consumes the card and its sequence with no START or retry when %s", (_label, signin, reason) => {
     const b = box({ state: (s) => { s.signin = signin; } });
     const result = b.run();
     consumed(b, result, "P4", reason);
     expect(result.receipt!.phaseName).toBe("sign_in");
     expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in"]);
     expect(b.calls().filter((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && !call.args.includes("--check-only"))).toHaveLength(1);
-    expect(result.handoff).toContain("that day is consumed");
+    expect(result.handoff).toContain("that sequence is consumed");
+    expect(result.handoff).toContain("no calendar-day wait, Decision 0162");
     expect(result.receipt!.runtimeUpgraded).toBe(true);
     expect(b.readState().production.desiredState).toBe("inactive");
-    // The day is recorded, so even a fresh card refuses in preflight today.
+    // This press's sequence is recorded (an audit record, never a reason to refuse a later card: Decision 0162).
     expect(readdirSync(path.join(b.workspace, ".arcadia", "claude-renewal-days")).length).toBeGreaterThan(0);
   }, 60_000);
 

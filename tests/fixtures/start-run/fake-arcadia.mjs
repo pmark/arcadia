@@ -17,10 +17,10 @@ const get = (flag) => args[args.indexOf(flag) + 1];
 const git = (...a) => execFileSync("git", a, { cwd: process.cwd(), encoding: "utf8" }).trim();
 const laDate = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 /** The CLI's JSON failure envelope and exit status. */
-const fail = (code, message, dayClaimed) => {
+const fail = (code, message, sequenceClaimed) => {
   // Like the real CLI: tool noise, then the pretty-printed --json failure envelope on stderr.
   // Child output moved to stderr (Issue #1956) can itself hold a line starting with "{" ahead of the envelope.
-  process.stderr.write("mise WARN  fixture noise\n{ stray child line\n" + JSON.stringify({ ok: false, command: "start-run.sign-in", error: { code: "VALIDATION_ERROR", message, details: { code, dayClaimed } } }, null, 2) + "\n");
+  process.stderr.write("mise WARN  fixture noise\n{ stray child line\n" + JSON.stringify({ ok: false, command: "start-run.sign-in", error: { code: "VALIDATION_ERROR", message, details: { code, sequenceClaimed } } }, null, 2) + "\n");
   process.exit(2);
 };
 
@@ -114,8 +114,10 @@ switch (key2) {
     const mode = signin.mode ?? "checked";
     if (mode !== "reused") {
       mkdirSync(ledger, { recursive: true });
-      writeFileSync(path.join(ledger, `${date}.json`), JSON.stringify({ schema: "arcadia-daily-0141-claim-v1", date }));
-      writeFileSync(path.join(ledger, `${date}.renewal.json`), JSON.stringify({ ok: mode !== "renewal_failed" }));
+      // Like the real sequence (Decision 0162): this press's own record, unique per card and run, never per day.
+      const record = `${date}.${get("--card")}.${get("--run-id")}`;
+      writeFileSync(path.join(ledger, `${record}.json`), JSON.stringify({ schema: "arcadia-renewal-sequence-claim-v2", date }));
+      writeFileSync(path.join(ledger, `${record}.renewal.json`), JSON.stringify({ ok: mode !== "renewal_failed" }));
       if (mode === "renewal_failed") fail("RENEWAL_FAILED", "the Haiku sign-in renewal failed (exit 1); the day is consumed, no usage check runs and there is no retry", true);
     }
     const nonce = randomUUID();
@@ -141,7 +143,7 @@ switch (key2) {
       windows: [{ label: "5h", usedPercentage: signin.windowPercent ?? 20, resetsAt: new Date(now + 3_600_000).toISOString() }, { label: "7d", usedPercentage: 30, resetsAt: new Date(now + 86_400_000).toISOString() }]
     }), { mode: 0o600 });
     const sha256 = createHash("sha256").update(readFileSync(receiptPath)).digest("hex");
-    ok({ mode: "run", outcome: mode === "reused" ? "reused" : "checked", date, dayClaimed: mode !== "reused", receipt: { path: receiptPath, sha256 }, binding, ...(decision ? { decision, digest: "d".repeat(64), nonce, publicationHead } : {}) });
+    ok({ mode: "run", outcome: mode === "reused" ? "reused" : "checked", date, sequenceClaimed: mode !== "reused", receipt: { path: receiptPath, sha256 }, binding, ...(decision ? { decision, digest: "d".repeat(64), nonce, publicationHead } : {}) });
     break;
   }
   case "go-broker status":

@@ -16,7 +16,8 @@ import {
  * release, it runs the Decision 0143 sequence exactly once, with 0143's bounds unchanged, unless a fresh retained
  * receipt from that same bound worker already exists:
  *
- *   1. claim today's Decision 0141 sequence in the daily ledger (exclusive, durable, before the renewal);
+ *   1. claim this press's own sequence record in the ledger (exclusive, durable, before the renewal), while no other
+ *      sequence is in flight;
  *   2. one reviewed Haiku one-turn call (the worker's own `runClaudeCliHeadless` with its exact arguments, environment
  *      allowlist, private empty cwd, closed stdin and 60-second bound); its redacted result is retained before branching;
  *   3. only on success, one usage check by the bound worker: a fresh nonce, the exact canonical diagnostic Decision
@@ -24,7 +25,12 @@ import {
  *      "mechanical creation/settlement/approval/publication"), a grant of at most 5 minutes with at least 60 seconds
  *      remaining at every step, a 30-second worker deadline, and only the worker's own receipt read back.
  *
- * Every failure after the claim consumes the day: there is no retry, no second nonce and no reset. START needs the
+ * Decision 0162 removed the calendar-day ceiling for this whole class: nothing refuses because of the calendar day or
+ * an earlier finished, failed or refused sequence. Agents must not add a calendar-day or cool-down limit on renewal and
+ * check sequences without a new Decision. The ledger stays the durable, exclusive per-sequence claim: a second sequence
+ * that overlaps an in-flight one is refused, and each press consumes its own record.
+ *
+ * Every failure after the claim consumes this press's sequence: there is no retry, no second nonce and no reset. START needs the
  * returned receipt to pass `signInReceiptRefusal` (success, a credential expiring more than 5 minutes later, both
  * usage windows below 100%), which the executor checks again itself.
  */
@@ -46,7 +52,7 @@ export const CONTROLLER_IDENTITY = { name: "Arcadia Controller", email: "control
 const RECEIPT_SCHEMA = "arcadia-worker-claude-usage-receipt-v1";
 
 export class StartRunSignInRefusal extends Error {
-  constructor(readonly code: string, message: string, readonly dayClaimed: boolean) { super(message); }
+  constructor(readonly code: string, message: string, readonly sequenceClaimed: boolean) { super(message); }
 }
 
 export interface StartRunSignInContext {
@@ -83,7 +89,7 @@ export interface RetainedReceipt { path: string; sha256: string }
 export interface StartRunSignInResult {
   outcome: "reused" | "checked";
   date: string;
-  dayClaimed: boolean;
+  sequenceClaimed: boolean;
   receipt: RetainedReceipt;
   binding: DiagnosticWorkerBinding;
   decision?: string;
@@ -102,16 +108,32 @@ export interface WorkerUsageReceipt {
 
 const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 
-/** The Decision 0141 calendar day. */
+/** The America/Los_Angeles date that names a sequence record (a label only: Decision 0162 removed the daily ceiling). */
 export function signInDay(now: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: SIGN_IN_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
-/** Every ledger entry for `date` (a claim, a renewal result, a history record); empty when the day is unused. Read-only. */
-export function dayLedgerEntries(workspace: string, date: string): string[] {
-  const directory = path.join(workspace, DAILY_LEDGER_DIRECTORY);
-  if (!existsSync(directory)) return [];
-  return readdirSync(directory).filter((name) => name === `${date}.json` || name.startsWith(`${date}.`)).sort();
+/** The in-flight marker: present only while one sequence runs (Decision 0162 keeps the ledger an exclusive claim). */
+export const IN_FLIGHT_MARKER = "in-flight.json";
+
+export interface InFlightSequence { pid: number; cardId: string; runId: string; at: string; path: string }
+/** The live in-flight sequence, or null. A marker whose process is gone is stale, not in flight. Read-only. */
+export function inFlightSequence(workspace: string): InFlightSequence | null {
+  const file = path.join(workspace, DAILY_LEDGER_DIRECTORY, IN_FLIGHT_MARKER);
+  let marker: Omit<InFlightSequence, "path">;
+  try { marker = JSON.parse(readFileSync(file, "utf8")); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    return { pid: -1, cardId: "unknown", runId: "unknown", at: "unknown", path: file }; // unreadable: treat as in flight, never guess
+  }
+  if (!Number.isSafeInteger(marker.pid) || marker.pid < 1) return { ...marker, path: file };
+  try { process.kill(marker.pid, 0); return { ...marker, path: file }; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === "ESRCH" ? null : { ...marker, path: file }; }
+}
+
+/** The record names of one press's sequence: unique per card and run, never per day. */
+export function sequenceRecordName(date: string, cardId: string, runId: string): string {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(cardId) || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(runId)) throw new Error("card or run id is not a safe record name");
+  return `${date}.${cardId}.${runId}`;
 }
 
 /**
@@ -201,14 +223,15 @@ export interface StaticSignInState {
 }
 
 /**
- * The read-only checks that must hold before the day is claimed: today's sequence unused, the grant and request slots
+ * The read-only checks that must hold before a sequence is claimed: no other sequence in flight, the grant and request slots
  * empty or holding only a terminal diagnostic (archived later), the request path ignored by Git (so the checkout stays
  * clean for START), and the checkout clean on main at origin main.
  */
 export function staticSignInChecks(context: Pick<StartRunSignInContext, "workspace" | "repository">, deps: Pick<StartRunSignInDeps, "now" | "git" | "polledRepositories">): StaticSignInState {
   const date = signInDay(deps.now());
-  const entries = dayLedgerEntries(context.workspace, date);
-  if (entries.length) throw new StartRunSignInRefusal("DAY_USED", `today's (${date}, ${SIGN_IN_TIME_ZONE}) Decision 0141 sequence is already used (${entries.join(", ")}); press a new card on a later day`, false);
+  // Decision 0162: never a calendar-day or earlier-sequence refusal; only an overlapping in-flight sequence refuses.
+  const live = inFlightSequence(context.workspace);
+  if (live) throw new StartRunSignInRefusal("SEQUENCE_IN_FLIGHT", `another renewal and check sequence is in flight (card ${live.cardId}, run ${live.runId}, pid ${live.pid}, ${live.path}); nothing was claimed`, false);
   const grantSlot = slotState(diagnosticGrantPath(context.workspace), context.workspace, true);
   if (grantSlot && !grantSlot.terminal) throw new StartRunSignInRefusal("GRANT_SLOT_BUSY", `the worker diagnostic grant slot ${grantSlot.path} holds a non-terminal or unreadable grant; preserve it`, false);
   const requestSlot = slotState(path.join(context.repository, CLAUDE_DIAGNOSTIC_REQUEST), context.workspace, false);
@@ -329,7 +352,7 @@ export function cliFailureText(result: { ok: boolean; error?: unknown }): string
 }
 
 /**
- * Run the sequence once. Throws StartRunSignInRefusal on every refusal or failure; `dayClaimed` says whether today's
+ * Run the sequence once. Throws StartRunSignInRefusal on every refusal or failure; `sequenceClaimed` says whether today's
  * Decision 0141 sequence was consumed by this call.
  */
 export async function runStartRunSignIn(context: StartRunSignInContext, deps: StartRunSignInDeps): Promise<StartRunSignInResult> {
@@ -337,12 +360,13 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
   const journalPath = path.join(context.runDirectory, "sign-in.json");
   const journal: Record<string, unknown> = { schema: "arcadia-start-run-sign-in-v1", cardId: context.cardId, runId: context.runId, startedAt: deps.now().toISOString(), stages: [] as string[] };
   const stage = (name: string, data: Record<string, unknown> = {}) => { (journal.stages as string[]).push(name); Object.assign(journal, data, { updatedAt: deps.now().toISOString() }); atomicJournal(journalPath, journal); };
-  let dayClaimed = false;
+  let sequenceClaimed = false;
+  let inFlightClaimed: string | null = null;
   // From the settlement apply until the push is confirmed, local main may carry unpublished Controller commits.
   let unpublishedRecords = false;
   const refuse = (code: string, message: string): never => {
     const local = unpublishedRecords ? "; main may hold unpublished local Controller diagnostic commits, and START refuses until they are reconciled" : "";
-    throw new StartRunSignInRefusal(code, message + local, dayClaimed);
+    throw new StartRunSignInRefusal(code, message + local, sequenceClaimed);
   };
   try {
     const binding = readBoundWorker(context, deps.now());
@@ -350,7 +374,7 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     const reused = findFreshBoundReceipt(context.workspace, binding, deps.now());
     if (reused) {
       stage("reused", { outcome: "reused", receipt: reused });
-      return { outcome: "reused", date: signInDay(deps.now()), dayClaimed, receipt: reused, binding };
+      return { outcome: "reused", date: signInDay(deps.now()), sequenceClaimed, receipt: reused, binding };
     }
 
     // Every static route check precedes the claim.
@@ -379,15 +403,23 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       refuse("ASK_INVALID", `the diagnostic Agent Ask would be refused, so nothing was claimed or renewed: ${errorText(error)}`);
     }
 
-    if (signInDay(deps.now()) !== slots.date) refuse("DAY_CHANGED", `the America/Los_Angeles day changed after ${slots.date} was checked; nothing was claimed or renewed`);
-    // 1. Claim the day: exclusive and durable, before the renewal.
-    const claimPath = path.join(context.workspace, DAILY_LEDGER_DIRECTORY, `${slots.date}.json`);
-    const claim = { schema: "arcadia-daily-0141-claim-v1", date: slots.date, timeZone: SIGN_IN_TIME_ZONE, decision: "0141", authority: "0161", at: deps.now().toISOString(), cardId: context.cardId, runId: context.runId, binding, status: "consumed-before-renewal" };
-    if (!publishExclusive(claimPath, claim)) refuse("DAY_USED", `today's (${slots.date}) Decision 0141 sequence was claimed concurrently; nothing was renewed`);
-    dayClaimed = true;
-    stage("day-claimed", { date: slots.date, claim: claimPath });
-    // Midnight may pass between the claim and the call: the claimed day stays consumed and nothing is renewed.
-    if (signInDay(deps.now()) !== slots.date) refuse("DAY_CHANGED", `the America/Los_Angeles day changed after ${slots.date} was claimed; that day stays consumed and nothing was renewed`);
+    // 1. Claim this press's sequence: the in-flight marker (exclusive: an overlapping sequence refuses) and then this run's
+    //    own record (exclusive per card and run, never per day; Decision 0162), both durable, before the renewal.
+    const ledger = path.join(context.workspace, DAILY_LEDGER_DIRECTORY);
+    let recordName = "";
+    try { recordName = sequenceRecordName(slots.date, context.cardId, context.runId); } catch (error) { refuse("SEQUENCE_RECORD", errorText(error)); }
+    const inFlightPath = path.join(ledger, IN_FLIGHT_MARKER);
+    const stale = existsSync(inFlightPath) && !inFlightSequence(context.workspace);
+    if (stale) archiveExclusive(inFlightPath, path.join(ledger, `in-flight.stale-before-${recordName}.json`)); // preserved, never deleted
+    if (!publishExclusive(inFlightPath, { pid: process.pid, cardId: context.cardId, runId: context.runId, at: deps.now().toISOString() })) {
+      refuse("SEQUENCE_IN_FLIGHT", "another renewal and check sequence started concurrently; nothing was claimed or renewed");
+    }
+    inFlightClaimed = inFlightPath;
+    const claimPath = path.join(ledger, `${recordName}.json`);
+    const claim = { schema: "arcadia-renewal-sequence-claim-v2", date: slots.date, timeZone: SIGN_IN_TIME_ZONE, decisions: ["0141", "0143", "0161", "0162"], at: deps.now().toISOString(), cardId: context.cardId, runId: context.runId, binding, status: "consumed-before-renewal" };
+    if (!publishExclusive(claimPath, claim)) refuse("SEQUENCE_CONSUMED", `this press's sequence record ${claimPath} already exists; one press runs at most one sequence, with no retry`);
+    sequenceClaimed = true;
+    stage("sequence-claimed", { date: slots.date, claim: claimPath });
 
     // 2. One reviewed Haiku call; its redacted result is durable before any branch.
     const callStartedAt = deps.now();
@@ -401,9 +433,9 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       durationMs: callFinishedAt.getTime() - callStartedAt.getTime(), noRetry: true,
       limitation: "Exit 0 alone does not prove sign-in; direct-child timer only; shared interactive-login interference remains possible"
     };
-    if (!publishExclusive(path.join(context.workspace, DAILY_LEDGER_DIRECTORY, `${slots.date}.renewal.json`), renewalRecord)) refuse("RENEWAL_UNRECORDED", "the renewal result could not be retained exclusively; the day is consumed");
+    if (!publishExclusive(path.join(ledger, `${recordName}.renewal.json`), renewalRecord)) refuse("RENEWAL_UNRECORDED", "the renewal result could not be retained exclusively; this press's sequence is consumed");
     stage("renewed", { renewal: renewalRecord });
-    if (!renewalRecord.ok) refuse("RENEWAL_FAILED", `the Haiku sign-in renewal failed (${renewalRecord.detail || "no detail"}); the day is consumed, no usage check runs and there is no retry`);
+    if (!renewalRecord.ok) refuse("RENEWAL_FAILED", `the Haiku sign-in renewal failed (${renewalRecord.detail || "no detail"}); this press's sequence is consumed, no usage check runs and there is no retry`);
 
     // 3. One fresh nonce and its at-most-5-minute grant.
     const nonce = deps.randomUUID();
@@ -526,7 +558,7 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       await deps.sleep(1000);
     }
     if (!workerReceipt && existsSync(responsePath)) { try { workerReceipt = boundedJson(responsePath, true); } catch { workerReceipt = null; } }
-    if (!workerReceipt) refuse("CHECK_TIMEOUT", "the bound worker returned no usage receipt for this nonce in time; the day is consumed, no retry");
+    if (!workerReceipt) refuse("CHECK_TIMEOUT", "the bound worker returned no usage receipt for this nonce in time; this press's sequence is consumed, no retry");
     const retained = { path: responsePath, sha256: sha256(readFileSync(responsePath)) };
     stage("received", { receipt: retained });
     const got = workerReceipt!;
@@ -535,10 +567,13 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     const refusal = signInReceiptRefusal(got, binding, deps.now());
     if (refusal) refuse("CHECK_FAILED", `the worker usage check does not allow START: ${refusal}`);
     stage("checked", { outcome: "checked" });
-    return { outcome: "checked", date: slots.date, dayClaimed, receipt: retained, binding, decision, digest, nonce, publicationHead: recordHead, headBefore };
+    return { outcome: "checked", date: slots.date, sequenceClaimed, receipt: retained, binding, decision, digest, nonce, publicationHead: recordHead, headBefore };
   } catch (error) {
-    const refusal = error instanceof StartRunSignInRefusal ? error : new StartRunSignInRefusal("SEQUENCE_FAILED", error instanceof Error ? error.message : String(error), dayClaimed);
-    try { stage("refused", { refusal: { code: refusal.code, message: refusal.message, dayClaimed: refusal.dayClaimed } }); } catch { /* the journal is evidence, never a gate */ }
+    const refusal = error instanceof StartRunSignInRefusal ? error : new StartRunSignInRefusal("SEQUENCE_FAILED", error instanceof Error ? error.message : String(error), sequenceClaimed);
+    try { stage("refused", { refusal: { code: refusal.code, message: refusal.message, sequenceClaimed: refusal.sequenceClaimed } }); } catch { /* the journal is evidence, never a gate */ }
     throw refusal;
+  } finally {
+    // The sequence is over (succeeded, refused or failed): it is no longer in flight. Its own record stays consumed.
+    if (inFlightClaimed) { try { unlinkSync(inFlightClaimed); } catch { /* a marker whose process is gone counts as stale */ } }
   }
 }

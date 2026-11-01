@@ -240,7 +240,7 @@ handoff until the script and descriptor match the final reviewed state.
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
 
-### Per-run START cards (Decisions 0156, 0157 and 0161)
+### Per-run START cards (Decisions 0156, 0157, 0161 and 0162)
 
 Do not hand-write a START card. One shared, independently reviewed executor,
 `scripts/start-run.sh`, runs every START; a card is only a thin launcher plus a
@@ -261,19 +261,23 @@ pinned descriptor, so per-card review is small.
   compiled release (`worker install --replace-label`, run by the release itself,
   so the plist is protected) and restart it so the worker is bound to the pinned
   release and handler; then (Decision 0161) reuse a fresh usage receipt of that
-  bound worker or run the Decision 0143 sequence once: claim today's Decision
-  0141 sequence (America/Los_Angeles), one Haiku renewal, and only on its success
+  bound worker or run the Decision 0143 sequence once: claim this press's own
+  sequence record, one Haiku renewal, and only on its success
   one diagnostic Decision published to main through the Agent Ask route and one
   bound-worker usage check. START needs that check to succeed, the credential to
   expire more than 5 minutes later and both usage windows below 100%. Then
   activate the pinned Plan and START production (every older START gate stays;
   the installed-revision pin is now the reviewed-revision pin, checked by
   `production runtime-check`; the retained pre-press sign-in receipt pin is
-  gone). Preflight refuses, before any mutation, when today's sequence is
-  already in the ledger. The allowance is consumed at the first mutation; there
-  is no rollback, a later failure leaves the runtime upgraded and an activated
-  Plan active, a renewal or check failure also consumes that day (no retry), and
-  only this Grant is returned to Off. A later `scripts/restart-services-impl.sh`
+  gone). Decision 0162 removed the calendar-day ceiling: preflight never refuses
+  because of the date or an earlier sequence, only while another renewal and
+  check sequence is in flight. Do not add a calendar-day or cool-down limit on
+  renewal and check sequences (cards or Rowan's Decision 0143 sequences)
+  without a new Decision. The allowance is consumed at the first mutation;
+  there is no rollback, a later failure leaves the runtime upgraded and an
+  activated Plan active, a renewal or check failure consumes this press's own
+  sequence (no retry within the press; a new card may run at once), and only
+  this Grant is returned to Off. A later `scripts/restart-services-impl.sh`
   (restart-arcadia-services) rewrites that same worker label back to a
   source-run worker and so unbinds it; the next START card binds it again.
 - **Run it** with `<id>.sh preflight` first (phases P0 to P2, no mutation, no

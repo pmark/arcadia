@@ -24,10 +24,10 @@ export const START_RUN_DEFAULTS = {
   provider: "claude-code-cli",
   transitions: ["validation", "acceptance", "pointer", "packet_approval"],
   packetApprovalHours: 24,
-  /** Decision 0130 spend ceiling, 0058 candidate integration, 0097 worker PR merge, 0134 amendment, 0156 install, 0157 Plan activation, 0141/0143/0161 the in-card sign-in renewal and bound-worker check (a card is always pressed by the operator, so no delegation receipt is pinned). */
+  /** Decision 0130 spend ceiling, 0058 candidate integration, 0097 worker PR merge, 0134 amendment, 0156 install, 0157 Plan activation, 0141/0143/0161/0162 the in-card sign-in renewal and bound-worker check (0162: no calendar-day ceiling) (a card is always pressed by the operator, so no delegation receipt is pinned). */
   spendDecision: "0130",
   integrationDecision: "0058",
-  requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"],
+  requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"],
   requiredFiles: [START_RUN_EXECUTOR_PATH, "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
   gateCardId: "enable-capacity-gate-20261017",
   offId: "restore-off-production-bug-plan-first-supervised-run-2026-10-11"
@@ -333,7 +333,7 @@ export async function runStartRunSignInCommand(options: StartRunSignInOptions, d
     }, collaborators);
     return createSuccess({ command: "start-run.sign-in", workspace, data: { mode: "run" as const, ...result } });
   } catch (error) {
-    if (error instanceof StartRunSignInRefusal) throw validationError(error.message, { code: error.code, dayClaimed: error.dayClaimed });
+    if (error instanceof StartRunSignInRefusal) throw validationError(error.message, { code: error.code, sequenceClaimed: error.sequenceClaimed });
     throw error;
   }
 }
