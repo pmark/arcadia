@@ -4,7 +4,7 @@ type: decision
 id: "0163"
 slug: may-the-operator-s-next-per-run-start-card-press-authorize-rowan-to-carry-that
 project: arcadia
-status: open
+status: approved
 question: May the operator's next per-run START card press authorize Rowan to carry that run through to the goal, fixing each blocking defect and running successor START cards itself, without another operator press?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -17,7 +17,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-11-01
+updated: 2026-10-31
+answer: Delegate retries to Rowan until the goal (recommended)
+decided: 2026-10-31
 ---
 
 # Decision 0163: May the operator's next per-run START card press authorize Rowan to carry that run through to the goal, fixing each blocking defect and running successor START cards itself, without another operator press?
