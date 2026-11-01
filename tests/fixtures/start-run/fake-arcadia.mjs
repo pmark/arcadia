@@ -19,7 +19,8 @@ const laDate = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_A
 /** The CLI's JSON failure envelope and exit status. */
 const fail = (code, message, dayClaimed) => {
   // Like the real CLI: tool noise, then the pretty-printed --json failure envelope on stderr.
-  process.stderr.write("mise WARN  fixture noise\n" + JSON.stringify({ ok: false, command: "start-run.sign-in", error: { code: "VALIDATION_ERROR", message, details: { code, dayClaimed } } }, null, 2) + "\n");
+  // Child output moved to stderr (Issue #1956) can itself hold a line starting with "{" ahead of the envelope.
+  process.stderr.write("mise WARN  fixture noise\n{ stray child line\n" + JSON.stringify({ ok: false, command: "start-run.sign-in", error: { code: "VALIDATION_ERROR", message, details: { code, dayClaimed } } }, null, 2) + "\n");
   process.exit(2);
 };
 
@@ -70,6 +71,11 @@ switch (key2) {
     break;
   case "go-broker ensure": {
     if (state.ensure.fail) { process.stderr.write("ensure: install failed\n"); process.exit(1); }
+    // Like the real install's host probe (Issue #1956): its git worktree, bridge and Next.js build print on stderr; a
+    // scenario can also put that noise on stdout ahead of the envelope.
+    const noise = "HEAD is now at 9b9711ad2\nBridged 4 dependency trees.\n   ▲ Next.js 15.5.19\n   Creating an optimized production build ...\n{ not json\n";
+    process.stderr.write(noise);
+    if (state.ensure.stdoutNoise) process.stdout.write(noise);
     state.broker.revision = git("rev-parse", "HEAD");
     state.broker.installed = true;
     // The registered compiled release the card then runs `worker install --replace-label` from.
@@ -78,7 +84,11 @@ switch (key2) {
     writeFileSync(path.join(release, "dist", "src", "cli.js"), "// fixture release CLI\n");
     writeFileSync(path.join(release, "broker-manifest.json"), JSON.stringify({ schema: "arcadia-go-broker-install-v1", revision: state.broker.revision, sourceRepository: state.repository, runtimeExecutable: path.join(process.env.FAKE_BIN, "fake-release-node") }));
     save();
-    ok({ action: "installed", revision: state.broker.revision });
+    // The live shape: a pretty-printed, multi-line envelope. Scenarios: an install that exits non-zero after printing
+    // ok:true, or exits zero with ok:false; both must refuse.
+    const envelope = { ok: state.ensure.result !== "notOk", command: "go-broker.ensure", data: { action: "installed", revision: state.broker.revision } };
+    process.stdout.write(JSON.stringify(envelope, null, 2) + "\n");
+    if (state.ensure.result === "nonzero") process.exit(1);
     break;
   }
   case "start-run sign-in": {

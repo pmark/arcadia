@@ -500,6 +500,30 @@ describe("start-run executor: the START itself", () => {
     expect(result.receipt!.record.runtimeCheck.current).toBe(true);
   }, 120_000);
 
+  it("parses go-broker ensure when its build children print noise on stderr, or (defense in depth) on stdout ahead of the envelope (Issue #1956)", () => {
+    for (const stdoutNoise of [false, true]) {
+      const b = box({ state: (s) => { s.ensure.stdoutNoise = stdoutNoise; } });
+      const result = b.run();
+      expect(result.status, result.stderr + result.stdout).toBe(0);
+      expect(result.receipt).toMatchObject({ outcome: "succeeded", productionActivated: true });
+      expect(result.receipt!.record.ensureAction).toBe("installed");
+      expect(JSON.parse(result.read("ensure.json")!)).toMatchObject({ ok: true, data: { action: "installed" } });
+      expect(result.read("run.log")).toContain("Bridged 4 dependency trees.");
+    }
+  }, 240_000);
+
+  it.each<[string, string, RegExp]>([
+    ["exits non-zero after printing an ok envelope", "nonzero", /go-broker ensure failed; no worker restart was attempted/],
+    ["exits zero with ok:false", "notOk", /go-broker ensure did not report success; no worker restart was attempted/]
+  ])("refuses, with noise on stdout, when go-broker ensure %s", (_label, ensureResult, reason) => {
+    const b = box({ state: (s) => { s.ensure.stdoutNoise = true; s.ensure.result = ensureResult; } });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true });
+    expect(result.receipt!.reason).toMatch(reason);
+    expect(b.sequence()).toEqual(["go-broker ensure"]);
+  }, 60_000);
+
   it("reuses a fresh receipt of the bound worker: no renewal, no day claimed, no Decision, then starts", () => {
     const b = box({ state: (s) => { s.signin = { mode: "reused" }; } });
     const result = b.run();
