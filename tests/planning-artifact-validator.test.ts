@@ -95,6 +95,45 @@ describe("validation-execution claim detection", () => {
   );
 });
 
+describe("implementation claim detection ignores disclaimers and plan-file writes (R494)", () => {
+  const codesFor = (extraLine: string): string[] =>
+    issueCodesBySeverity(
+      validatePlanningArtifact({
+        packetText: completePlanningPacket,
+        artifactText: `${completePlanningArtifact}\n${extraLine}\n`
+      }).failures,
+      "failure"
+    );
+
+  it.each([
+    // The exact live line from review item R494.
+    "I changed no repository files, only the plan file. That's why I didn't run tests or lint, as the packet allows.",
+    "I changed nothing in the repository.",
+    "We modified no source files; no changes were made to tests.",
+    "No implementation changes made.",
+    "Nothing was changed outside the plan.",
+    "I have not modified any repository file.",
+    "I updated only the plan file.",
+    "I created the plan file at docs/plans/example.md.",
+    "I wrote the planning artifact."
+  ])("does not treat a disclaimer or plan-file write as a claim: %s", (line) => {
+    expect(codesFor(line)).not.toContain("implementation_claim_in_planning_artifact");
+  });
+
+  it.each([
+    "Codex implemented src/stewardship/artifactValidator.ts and updated tests.",
+    "I changed no repository files, but I modified src/cli.ts.",
+    "I updated only the plan file, then I fixed the launcher in src/sessions/tmuxLauncher.ts.",
+    "I changed the launcher to remove its temporary directory.",
+    "I fixed no-op handling in the worker.",
+    "Implementation completed.",
+    "Modified tests/system-tmux-long-command.test.ts.",
+    "## Files Changed"
+  ])("still flags an affirmative claim: %s", (line) => {
+    expect(codesFor(line)).toContain("implementation_claim_in_planning_artifact");
+  });
+});
+
 describe("approval contradiction is judged per sentence (Issue #1277)", () => {
   const failureCodes = (extraLine: string): string[] =>
     validatePlanningArtifact({
