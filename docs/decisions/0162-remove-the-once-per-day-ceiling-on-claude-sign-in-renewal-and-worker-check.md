@@ -4,7 +4,7 @@ type: decision
 id: "0162"
 slug: remove-the-once-per-day-ceiling-on-claude-sign-in-renewal-and-worker-check
 project: arcadia
-status: open
+status: approved
 question: Remove the once-per-day ceiling on Claude sign-in renewal and worker-check sequences (Decisions 0141 and 0161), so a claimed, failed or refused sequence never delays the next START card or press?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -17,7 +17,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-11-01
+updated: 2026-10-31
+answer: Remove the daily ceiling; one sequence per press (recommended)
+decided: 2026-10-31
 ---
 
 # Decision 0162: Remove the once-per-day ceiling on Claude sign-in renewal and worker-check sequences (Decisions 0141 and 0161), so a claimed, failed or refused sequence never delays the next START card or press?
