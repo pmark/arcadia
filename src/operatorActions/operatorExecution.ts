@@ -79,8 +79,9 @@ export function assertOperatorSettlementContract(
   } else if (descriptor.startRun !== undefined && descriptor.agentAsk === undefined) {
     // Decision 0161: a START card's own sign-in sequence records exactly one diagnostic Decision through the Agent Ask
     // route, accepted, in the card's Project. Its request id carries the run's nonce, so no descriptor can pin it ahead.
+    // `settlement.proposalId` is the stored proposal id (agentask_…), never the request id; `ask` is that same proposal.
     if (!START_RUN_DIAGNOSTIC_ASK.test(ask.requestId) || ask.intent !== "decision" || ask.targetRef !== null || ask.project !== descriptor.startRun.project
-      || (settlement !== null && (settlement.proposalId !== ask.requestId || settlement.disposition !== "accepted"))) {
+      || !String(ask.rationale ?? "").includes(`for START card ${id} run `) || (settlement !== null && settlement.disposition !== "accepted")) {
       refuse("OPERATOR_SETTLEMENT_SCOPE_MISMATCH", "A START card settles only its own Decision 0161 sign-in diagnostic Agent Ask, accepted, in its Project.");
     }
   } else {
