@@ -47,7 +47,7 @@ const planDocument = (status: "active" | "draft", done: string[] = []) => [
 ].join("\n");
 const projectDocument = (activePlan: string) => `---\nslug: arcadia\nactive_plan: ${activePlan}\n---\n`;
 const decisionDocument = (id: string, status = "approved", answer = "Yes") => `---\nid: "${id}"\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
-const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157"];
+const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"];
 
 type Scenario = "same" | "behind" | "pin-unfetched" | "origin-moved" | "diverged" | "ahead";
 interface BoxOptions {
@@ -65,10 +65,10 @@ interface BoxOptions {
   historyDrift?: boolean;
   /** The dashboard's run record for this press: absent, stale, for another card, not running, or already claimed. */
   press?: "none" | "stale" | "other-card" | "not-running" | "claimed" | "other-parent";
-  receiptDrift?: "signin";
-  credentialExpiresAt?: string;
-  windowPercent?: number;
-  receiptHandler?: string;
+  /** The pre-restart worker: fresh and unbound by default (a source-run worker), or stale, or not the launchd PID. */
+  preWorker?: "stale" | "pid-mismatch";
+  /** Today's Decision 0141 sequence already recorded in the daily ledger. */
+  dayUsed?: boolean;
   plist?: boolean;
   tmuxSessions?: boolean;
   config?: unknown;
@@ -142,22 +142,14 @@ function box(options: BoxOptions = {}) {
   mkdirSync(library, { recursive: true });
   const history = path.join(library, "earlier.consumed.json");
   writeFileSync(history, '{"state":"CONSUMED"}\n');
-  const signIn = path.join(root, "signin.json");
-  const signInBody = JSON.stringify({
-    success: true, httpStatus: 200, outcome: "ok", handlerHash: options.receiptHandler ?? "handler-1111",
-    credentialExpiresAt: options.credentialExpiresAt ?? new Date(Date.now() + 3 * 3_600_000).toISOString(),
-    windows: [{ usedPercentage: options.windowPercent ?? 20 }, { usedPercentage: 30 }]
-  });
-  writeFileSync(signIn, signInBody);
   const pins: StartRunPins = {
     schema: "arcadia-start-run-v1", reviewedRevision: pin, executorSha256: options.executorPin ?? sha(EXECUTOR_SOURCE),
     workspace: "martianrover", project: "arcadia", plan: PLAN, actions: ACTIONS, provider: "claude-code-cli",
     transitions: ["validation", "acceptance", "pointer", "packet_approval"], concurrency: 1, packetApprovalHours: 24, intent: "A fixture run on the claude-code provider.",
-    spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"],
+    spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"],
     requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
     production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
-    grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }],
-    signInEvidence: { path: signIn, sha256: sha(signInBody) }
+    grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }]
   };
   const descriptor: OperatorScriptDescriptor = {
     schema: "arcadia-operator-script-v1", id: ID, kind: "grant", title: "START: fixture", script: `${ID}.sh`, repeatable: false,
@@ -179,14 +171,19 @@ function box(options: BoxOptions = {}) {
   if (options.tamper === "script") writeFileSync(scriptPath, script + "# tampered\n");
   if (options.tamper === "executor") writeFileSync(path.join(repo, "scripts", "start-run.sh"), EXECUTOR_SOURCE + "\n# tampered\n");
   if (options.historyDrift) writeFileSync(history, '{"state":"EDITED"}\n');
-  if (options.receiptDrift === "signin") writeFileSync(signIn, signInBody + " ");
 
   mkdirSync(bin, { recursive: true });
   mkdirSync(path.join(workspace, "config"), { recursive: true });
   mkdirSync(path.join(workspace, ".arcadia"), { recursive: true });
   writeFileSync(path.join(workspace, "config", "arcadia.json"), JSON.stringify(options.config ?? {}));
-  writeFileSync(path.join(workspace, ".arcadia", "worker-claude-usage-heartbeat.json"), JSON.stringify({ at: Date.now(), binding: { pid: 1111, instance: "instance-1111", release: installed, handlerHash: "handler-1111", repository: repo } }));
-  writeFileSync(path.join(workspace, ".arcadia", "worker.pid"), JSON.stringify({ pid: 1111, owner: "owner-1111" }));
+  // The live pre-restart worker runs from source, so its heartbeat carries no protected-release binding (Issue #1950).
+  writeFileSync(path.join(workspace, ".arcadia", "worker-claude-usage-heartbeat.json"), JSON.stringify({ at: Date.now() - (options.preWorker === "stale" ? 600_000 : 0), binding: null }));
+  writeFileSync(path.join(workspace, ".arcadia", "worker.pid"), JSON.stringify({ pid: options.preWorker === "pid-mismatch" ? 2222 : 1111, owner: "owner-1111" }));
+  if (options.dayUsed) {
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    mkdirSync(path.join(workspace, ".arcadia", "claude-renewal-days"), { recursive: true });
+    writeFileSync(path.join(workspace, ".arcadia", "claude-renewal-days", `${today}.json`), '{"status":"consumed-before-renewal"}');
+  }
   if (options.plist !== false) {
     mkdirSync(path.join(home, "Library", "LaunchAgents"), { recursive: true });
     writeFileSync(path.join(home, "Library", "LaunchAgents", `${LABEL}.plist`), "<plist/>");
@@ -194,6 +191,7 @@ function box(options: BoxOptions = {}) {
   const shim = (name: string, body: string) => writeFileSync(path.join(bin, name), `#!/usr/bin/env bash\n${body}\n`, { mode: 0o755 });
   shim("mise", `exec "${path.join(fixtures, "fake-mise")}" "$@"`);
   shim("launchctl", `exec node "${path.join(fixtures, "fake-launchctl.mjs")}" "$@"`);
+  shim("fake-release-node", `exec node "${path.join(fixtures, "fake-release-node.mjs")}" "$@"`);
   shim("timeout", 'shift; exec "$@"');
   shim("sleep", "exit 0");
   shim("tmux", options.tmuxSessions ? 'echo "0: 1 windows (created Sat Nov  1 00:00:00 2026)"' : "exit 1");
@@ -207,7 +205,7 @@ function box(options: BoxOptions = {}) {
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
     ensure: { fail: false }, activate: { mode: "ok" }, planRunner: { mode: "ok" },
-    worker: { pid: 1111, alive: true, heartbeat: "fresh", newPid: process.pid }
+    worker: { pid: 1111, alive: true, heartbeat: options.preWorker === "stale" ? "frozen" : "fresh", newPid: process.pid }
   };
   options.state?.(state);
   writeFileSync(path.join(root, "state.json"), JSON.stringify(state, null, 2));
@@ -255,9 +253,12 @@ function box(options: BoxOptions = {}) {
   }
   /** Calls that change the host, the runtime, Plan state or production. */
   const mutating = () => calls().filter((call) =>
-    (call.tool === "launchctl" && call.args[0] === "kickstart") || call.tool === "plan-runner" ||
+    (call.tool === "launchctl" && call.args[0] === "kickstart") || call.tool === "plan-runner" || call.tool === "worker-install" ||
+    (call.tool === "arcadia" && call.args.slice(0, 2).join(" ") === "start-run sign-in" && !call.args.includes("--check-only")) ||
     (call.tool === "arcadia" && (["go-broker ensure", "production activate", "production deactivate"].includes(call.args.slice(0, 2).join(" ")))));
-  return { root, repo, origin, library, marker, pin, installed, descriptorPath, scriptPath, env, run, calls, mutating, readState, head: () => git(repo, "rev-parse", "HEAD"), status: () => git(repo, "status", "--porcelain"), state };
+  /** The mutating calls as short names, in order. */
+  const sequence = () => mutating().map((call) => call.tool === "arcadia" ? call.args.slice(0, 2).join(" ") : call.tool);
+  return { root, repo, origin, library, marker, pin, installed, descriptorPath, scriptPath, env, run, calls, mutating, sequence, readState, workspace, head: () => git(repo, "rev-parse", "HEAD"), status: () => git(repo, "status", "--porcelain"), state };
 }
 type Box = ReturnType<typeof box>;
 
@@ -373,11 +374,11 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     ["pinned Actions out of order in the queue", { state: (s) => { s.queue.ordered.reverse(); } }, /pinned order/],
     ["an invalid queue", { state: (s) => { s.queue.orderValid = false; } }, /invalid/],
     ["a rehearsal freeze", { state: (s) => { s.freeze = "refuse"; } }, /rehearsal freeze/],
-    ["an expired credential", { credentialExpiresAt: "2020-01-01T00:00:00Z" }, /credential expiry/],
-    ["a credential within 5 minutes of expiry", { credentialExpiresAt: new Date(Date.now() + 120_000).toISOString() }, /credential expiry/],
-    ["a usage window at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/],
-    ["sign-in receipt hash drift", { receiptDrift: "signin" }, /sign-in evidence receipt drift/],
-    ["sign-in evidence naming another worker handler", { receiptHandler: "handler-other" }, /pre-restart worker handler/]
+    // Decision 0161: the pre-restart worker need only be live and fresh; the day must be unused; the sequence's slots must be free.
+    ["a stale pre-restart worker heartbeat", { preWorker: "stale" }, /stale or mismatched pre-restart worker heartbeat/],
+    ["a pre-restart worker whose pidfile is not the launchd PID", { preWorker: "pid-mismatch" }, /stale or mismatched pre-restart worker heartbeat/],
+    ["today's Decision 0141 sequence already used", { dayUsed: true }, /sign-in sequence for today .* is already used .* cannot be pressed until the next day/],
+    ["sign-in sequence preconditions that fail", { state: (s) => { s.signin = { check: "refuse" }; } }, /sign-in sequence preconditions fail: .*not a terminal request.*\[code REQUEST_SLOT_BUSY; dayClaimed false\]/]
   ])("refuses %s", (_label, options, reason) => {
     const b = box(options);
     const headBefore = b.head();
@@ -400,6 +401,11 @@ describe("start-run executor: preflight", () => {
     expect(b.status()).toBe("");
     expect(existsSync(b.marker)).toBe(false);
     expect(readdirSync(path.join(b.library, "runs"))).toEqual([ID]);
+    // The pre-restart worker is unbound (source-run) and that no longer refuses; the ledger and slots were only read.
+    expect(result.receipt!.record.preRestartBinding).toBeNull();
+    expect(result.receipt!.record.signInDay).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && call.args.includes("--check-only"))).toBe(true);
+    expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
   });
 });
 
@@ -425,15 +431,29 @@ describe("start-run executor: the START itself", () => {
     expect(result.receipt).toMatchObject({ outcome: "succeeded", phase: "P6", allowanceConsumed: true, productionActivated: true, planActivatedByThisCard: false });
     expect(result.receipt!.record.planActivation).toContain("skipped");
     expect(JSON.parse(readFileSync(b.marker, "utf8"))).toMatchObject({ state: "CONSUMED", requestId: ID, reviewedRevision: b.pin });
-    // Order: ensure, then restart, then activation; each exactly once.
-    const sequence = b.mutating().map((call) => call.tool === "launchctl" ? "kickstart" : call.args.slice(0, 2).join(" "));
-    expect(sequence).toEqual(["go-broker ensure", "kickstart", "production activate"]);
+    // Order: ensure, then the protected install and restart, then the sign-in sequence, then activation; each exactly once.
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in", "production activate"]);
+    expect(b.calls().some((call) => call.tool === "launchctl" && call.args[0] === "kickstart")).toBe(false);
+    // The install runs the pinned release's own compiled CLI, replacing exactly the pinned label for the live workspace.
+    const install = b.calls().find((call) => call.tool === "worker-install")!;
+    const release = path.join(b.root, "home", ".local", "share", "arcadia", "go-broker", "releases", b.pin);
+    expect(install.args).toEqual([path.join(release, "dist", "src", "cli.js"), "worker", "install", "--replace-label", LABEL, "--workspace", b.workspace]);
+    expect(install.cwd).toBe(release);
+    const signIn = b.calls().find((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && !call.args.includes("--check-only"))!;
+    expect(signIn.args).toEqual(expect.arrayContaining(["--release", b.pin, "--card", ID, "--policy-revision", "83", "--policy-epoch", "46", "--repository", b.repo, "--workspace", b.workspace]));
     const activate = b.calls().find((call) => call.args.slice(0, 2).join(" ") === "production activate")!;
     expect(activate.args).toEqual(expect.arrayContaining(["--require-current-runtime", "--repository", b.repo, "--request-id", ID, "--expected-revision", "83"]));
     // The worker binding is read live after the restart and recorded.
     const binding = JSON.parse(result.read("worker-binding.json")!);
     expect(binding).toMatchObject({ oldPid: 1111, workerLabel: LABEL, binding: { pid: process.pid, release: b.pin, handlerHash: `handler-${process.pid}` } });
     expect(result.receipt!.record.workerBinding).toMatchObject({ pid: process.pid, release: b.pin });
+    // The sequence ran once: the day is claimed, two Decision-only commits are on main and origin, and the receipt gated START.
+    expect(result.receipt!.record.signIn).toMatchObject({ outcome: "checked", dayClaimed: true });
+    expect(result.receipt!.record.signInReceipt).toMatchObject({ release: b.pin, handlerHash: `handler-${process.pid}` });
+    expect(git(b.repo, "rev-parse", "HEAD~2")).toBe(b.pin);
+    expect(git(b.repo, "diff", "--name-only", b.pin, "HEAD")).toBe(`docs/decisions/${result.receipt!.record.signIn.decision}.md`);
+    expect(git(b.origin, "rev-parse", "main")).toBe(b.head());
+    expect(result.receipt!.mutations.join("\n")).toContain("today's Decision 0141 sequence consumed");
     expect(result.receipt!.record.runtimeCheck.current).toBe(true);
     expect(b.readState().production).toMatchObject({ desiredState: "active", authority: { requestId: ID } });
     expect(result.handoff).toContain("No failure");
@@ -456,16 +476,26 @@ describe("start-run executor: the START itself", () => {
     expect(result.receipt).toMatchObject({ outcome: "succeeded", allowanceConsumed: true, planActivatedByThisCard: true });
     expect(result.receipt!.record.needsPlanActivation).toBe(true);
     expect(result.receipt!.mutations.join(" ")).toContain("fast-forward");
-    // The checkout moved to the pin and then exactly one governance commit (the activation) on top of it.
-    expect(git(b.repo, "rev-parse", "HEAD~1")).toBe(b.pin);
+    // The checkout moved to the pin, then the two diagnostic Decision commits, then one governance commit (the activation).
+    expect(git(b.repo, "rev-parse", "HEAD~3")).toBe(b.pin);
     expect(git(b.repo, "merge-base", "--is-ancestor", headBefore, b.pin)).toBe("");
-    const sequence = b.mutating().map((call) => call.tool === "launchctl" ? "kickstart" : call.tool === "plan-runner" ? "plan-runner" : call.args.slice(0, 2).join(" "));
-    expect(sequence).toEqual(["go-broker ensure", "kickstart", "plan-runner", "production activate"]);
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in", "plan-runner", "production activate"]);
     const runner = b.calls().find((call) => call.tool === "plan-runner")!;
     expect(runner.args).toEqual([b.descriptorPath, "run"]);
     expect(runner.operatorId).toBe(ID);
     expect(result.receipt!.record.arcadiaHeadAfterPlanActivation).toBe(b.head());
     expect(result.receipt!.record.runtimeCheck.current).toBe(true);
+  }, 120_000);
+
+  it("reuses a fresh receipt of the bound worker: no renewal, no day claimed, no Decision, then starts", () => {
+    const b = box({ state: (s) => { s.signin = { mode: "reused" }; } });
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", allowanceConsumed: true, productionActivated: true });
+    expect(result.receipt!.record.signIn).toMatchObject({ outcome: "reused", dayClaimed: false });
+    expect(b.head()).toBe(b.pin);
+    expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+    expect(result.receipt!.mutations.join("\n")).toContain("fresh usage receipt of the bound worker was reused");
   }, 120_000);
 });
 
@@ -488,11 +518,12 @@ describe("start-run executor: failures after the first mutation", () => {
     const b = box({ scenario: "behind", state: (s) => { s.ensure.fail = true; } });
     const result = b.run();
     consumed(b, result, "P4", /go-broker ensure failed; no worker restart was attempted/);
-    expect(b.mutating().map((call) => call.tool === "launchctl" ? "kickstart" : call.args.slice(0, 2).join(" "))).toEqual(["go-broker ensure"]);
+    expect(b.sequence()).toEqual(["go-broker ensure"]);
     expect(b.head()).toBe(b.pin);
     expect(result.handoff).toContain("fast-forwarded to the pinned revision");
     expect(result.handoff).toContain("The runtime stays upgraded; there is no rollback");
     expect(result.handoff).not.toContain("restart was attempted: the worker");
+    expect(result.handoff).toContain("No sign-in renewal ran");
     expect(b.readState().production.desiredState).toBe("inactive");
   }, 60_000);
 
@@ -503,23 +534,76 @@ describe("start-run executor: failures after the first mutation", () => {
     writeFileSync(fakePath, readFileSync(fakePath, "utf8").replace('state.broker.revision = git("rev-parse", "HEAD");', 'if (!state.ensure.noop) state.broker.revision = git("rev-parse", "HEAD");'));
     const result = b.run();
     consumed(b, result, "P4", /not the reviewed revision .* no worker restart was attempted/);
-    expect(b.calls().some((call) => call.tool === "launchctl" && call.args[0] === "kickstart")).toBe(false);
+    expect(b.sequence()).toEqual(["go-broker ensure"]);
+  }, 60_000);
+
+  it("keeps production Off and runs no renewal when the protected install or restart fails", () => {
+    const b = box({ state: (s) => { s.install = { fail: true }; } });
+    const result = b.run();
+    consumed(b, result, "P4", /protected worker install or restart failed: the worker may be down or still source-run; production stays Off and no renewal ran/);
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+    expect(result.read("worker-install.log")).toContain("launchctl bootstrap failed");
+    expect(result.handoff).toContain("protected worker install and restart was attempted");
+    expect(result.handoff).toContain("No sign-in renewal ran");
+    expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+    expect(b.readState().production.desiredState).toBe("inactive");
   }, 60_000);
 
   it.each<[string, (s: Record<string, any>) => void, RegExp]>([
     ["no new PID", (s) => { s.worker.noRestart = true; }, /did not come back with a new PID/],
     ["a stale heartbeat", (s) => { s.worker.heartbeat = "stale"; }, /no fresh worker heartbeat/],
-    ["a heartbeat bound to the wrong release", (s) => { s.worker.heartbeat = "wrong_release"; }, /no fresh worker heartbeat/],
+    ["a heartbeat bound to the wrong release", (s) => { s.worker.heartbeat = "wrong_release"; }, /no fresh worker heartbeat bound to the new pid .* and release/],
+    ["a heartbeat with no binding (still source-run)", (s) => { s.worker.heartbeat = "unbound"; }, /no fresh worker heartbeat bound to the new pid .* and release/],
     ["no heartbeat after the restart", (s) => { s.worker.heartbeat = "none"; }, /no fresh worker heartbeat/],
     ["transports that never become ready", (s) => { s.broker.transports = false; }, /no fresh worker heartbeat/]
-  ])("refuses %s after the restart", (_label, mutate, reason) => {
+  ])("refuses %s after the restart, before any renewal", (_label, mutate, reason) => {
     const b = box({ state: mutate });
     const result = b.run();
     consumed(b, result, "P4", reason);
-    expect(b.calls().some((call) => call.tool === "launchctl" && call.args[0] === "kickstart")).toBe(true);
-    expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "production activate")).toBe(false);
-    expect(result.handoff).toContain("The worker restart was attempted");
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+    expect(result.handoff).toContain("protected worker install and restart was attempted");
     expect(existsSync(path.join(result.dir!, "worker-binding.json"))).toBe(false);
+    expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+  }, 60_000);
+
+  it("passes the real press check against the shell-made press layout, and refuses a press claimed by another run", () => {
+    const ok = box();
+    const good = ok.run();
+    expect(good.status, good.stderr).toBe(0);
+    expect(ok.calls().filter((call) => call.tool === "press-check").map((call) => call.args[0])).toEqual(["0"]);
+    const bad = box({ state: (s) => { s.tamperClaimed = true; } });
+    const result = bad.run();
+    consumed(bad, result, "P4", /start-run sign-in runs only inside a pressed START card: the press record's start-run\.claimed marker is not this run.*\[code NOT_A_CARD_PRESS; dayClaimed false\]/);
+    expect(existsSync(path.join(bad.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+  }, 180_000);
+
+  it("re-checks capacity and production Off in the sign-in phase and refuses before the day is claimed", () => {
+    const b = box({ state: (s) => { s.exhaustCapacityAfterInstall = true; } });
+    const result = b.run();
+    consumed(b, result, "P4", /refuses claude-code-cli/);
+    expect(result.receipt!.phaseName).toBe("sign_in");
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+    expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+    expect(result.handoff).toContain("No sign-in renewal ran");
+  }, 60_000);
+
+  it.each<[string, Record<string, unknown>, RegExp]>([
+    ["the renewal fails", { mode: "renewal_failed" }, /sign-in sequence did not succeed, so there is no START: the Haiku sign-in renewal failed.*\[code RENEWAL_FAILED; dayClaimed true\]/],
+    ["the worker usage check fails", { mode: "check_failed" }, /sign-in sequence did not succeed, so there is no START: the worker usage check does not allow START.*\[code CHECK_FAILED; dayClaimed true\]/],
+    ["the check succeeds but the credential expires within 5 minutes", { expiresInMs: 120_000 }, /credential expiry: the sign-in has expired or expires within 5 minutes/],
+    ["a usage window is at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/]
+  ])("consumes the card and the day with no START or retry when %s", (_label, signin, reason) => {
+    const b = box({ state: (s) => { s.signin = signin; } });
+    const result = b.run();
+    consumed(b, result, "P4", reason);
+    expect(result.receipt!.phaseName).toBe("sign_in");
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in"]);
+    expect(b.calls().filter((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && !call.args.includes("--check-only"))).toHaveLength(1);
+    expect(result.handoff).toContain("that day is consumed");
+    expect(result.receipt!.runtimeUpgraded).toBe(true);
+    expect(b.readState().production.desiredState).toBe("inactive");
+    // The day is recorded, so even a fresh card refuses in preflight today.
+    expect(readdirSync(path.join(b.workspace, ".arcadia", "claude-renewal-days")).length).toBeGreaterThan(0);
   }, 60_000);
 
   it("keeps the Plan activation allowance consumed and production Off when the activation runner fails", () => {
@@ -600,13 +684,22 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(existsSync(path.join(b.library, "runs", "operator", ID, runId, "start-run.claimed"))).toBe(true);
   }, 120_000);
 
-  it("records the pre- and post-restart handlers and a runtimeUpgraded flag on success", () => {
+  it("records the unbound pre-restart worker, the bound handler and a runtimeUpgraded flag on success", () => {
     const b = box();
     const result = b.run();
     expect(result.status, result.stderr).toBe(0);
     expect(result.receipt!.runtimeUpgraded).toBe(true);
-    expect(result.receipt!.record).toMatchObject({ preRestartHandlerHash: "handler-1111", postRestartHandlerHash: `handler-${process.pid}` });
-    expect(result.receipt!.record.signInEvidence.windows).toHaveLength(2);
+    expect(result.receipt!.record).toMatchObject({ preRestartBinding: null, postRestartHandlerHash: `handler-${process.pid}` });
+    expect(result.receipt!.record.signInReceipt.windows).toHaveLength(2);
+  }, 120_000);
+
+  it("refuses the START when the retained usage receipt changes after the sequence", () => {
+    // The fake appends to every retained receipt at each runtime-check made after the sequence passed its own gate.
+    const b = box({ state: (s) => { s.tamperReceiptsOnRuntimeCheck = true; } });
+    const result = b.run();
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true });
+    expect(result.receipt!.reason).toMatch(/worker usage receipt drift/);
+    expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "production activate")).toBe(false);
   }, 120_000);
 
   it("forwards a TERM to the stage so an in-flight activation is returned to Off", async () => {

@@ -39,7 +39,7 @@ export interface StartRunPins {
   production: { revision: number; epoch: number };
   /** The Action queue revision observed when the card was prepared (see the executor for the activation case). */
   queueRevision: number;
-  /** The managed worker's launchd label, restarted only after `go-broker ensure` succeeds. */
+  /** The managed worker's launchd label: after `go-broker ensure` succeeds the card reinstalls it from the pinned compiled release (protected) and restarts it. */
   workerLabel: string;
   /** The operator-owned card that turns the capacity gate on. */
   gateCardId: string;
@@ -49,8 +49,8 @@ export interface StartRunPins {
   grantedBy: string;
   /** Receipts whose bytes must be unchanged (consumed markers of earlier runs, authority evidence). */
   consumedHistory: Array<{ path: string; sha256: string }>;
-  /** The retained sign-in/usage evidence (REF L245-248): credential expiry, usage windows and the pre-restart worker handler. */
-  signInEvidence: { path: string; sha256: string };
+  // Decision 0161 replaced the retained pre-press sign-in receipt (the former signInEvidence pin): the card itself renews
+  // the sign-in once and has the bound worker check usage after its protected install (scripts/start-run.sh, P4).
 }
 
 export class StartRunPinsError extends Error {
@@ -65,7 +65,7 @@ const TRANSITIONS = ["validation", "acceptance", "pointer", "packet_approval"];
 export const START_RUN_KEYS = [
   "actions", "concurrency", "consumedHistory", "executorSha256", "gateCardId", "grantedBy", "integrationDecision", "intent", "offId",
   "packetApprovalHours", "plan", "production", "project", "provider", "queueRevision", "requiredDecisions", "requiredFiles",
-  "reviewedRevision", "schema", "signInEvidence", "spendDecision", "transitions", "workerLabel", "workspace"
+  "reviewedRevision", "schema", "spendDecision", "transitions", "workerLabel", "workspace"
 ];
 /** The repository path of the shared executor; every card pins its hash. */
 export const START_RUN_EXECUTOR_PATH = "scripts/start-run.sh";
@@ -109,7 +109,7 @@ export function validateStartRunPins(value: unknown): StartRunPins {
   if (!Array.isArray(p.requiredDecisions) || !p.requiredDecisions.length || !p.requiredDecisions.every((d) => typeof d === "string" && decisionId.test(d)) || !distinct(p.requiredDecisions)) {
     fail("startRun.requiredDecisions needs distinct four-digit Decision ids.");
   }
-  for (const needed of [p.spendDecision, p.integrationDecision, "0156", "0157"]) {
+  for (const needed of [p.spendDecision, p.integrationDecision, "0141", "0143", "0156", "0157", "0161"]) {
     if (!p.requiredDecisions.includes(needed)) fail(`startRun.requiredDecisions must include Decision ${needed}.`);
   }
   if (!Array.isArray(p.requiredFiles) || !p.requiredFiles.every(repoRelative) || !distinct(p.requiredFiles) || !p.requiredFiles.includes(START_RUN_EXECUTOR_PATH)) {
@@ -125,10 +125,6 @@ export function validateStartRunPins(value: unknown): StartRunPins {
     if (!text(entry.path, 1000) || !path.isAbsolute(entry.path) || typeof entry.sha256 !== "string" || !sha256.test(entry.sha256)) fail("Each consumedHistory entry needs an absolute path and a 64-hex sha256.");
   }
   if (!distinct(p.consumedHistory.map((entry) => entry.path))) fail("startRun.consumedHistory paths must be distinct.");
-  for (const [name, entry] of [["signInEvidence", p.signInEvidence]] as const) {
-    exactKeys(entry, ["path", "sha256"], `startRun.${name}`);
-    if (!text(entry.path, 1000) || !path.isAbsolute(entry.path) || typeof entry.sha256 !== "string" || !sha256.test(entry.sha256)) fail(`startRun.${name} needs an absolute path and a 64-hex sha256.`);
-  }
   return p;
 }
 

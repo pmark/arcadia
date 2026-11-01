@@ -1,14 +1,18 @@
-import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, readdirSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
+import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
+import { controllerIdentityDefaults } from "../git/askIsolation.js";
+import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
+import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
 import { runProductionStatusCommand } from "./production.js";
 
 /**
@@ -20,10 +24,10 @@ export const START_RUN_DEFAULTS = {
   provider: "claude-code-cli",
   transitions: ["validation", "acceptance", "pointer", "packet_approval"],
   packetApprovalHours: 24,
-  /** Decision 0130 spend ceiling, 0058 candidate integration, 0097 worker PR merge, 0134 amendment, 0156 install, 0157 Plan activation (a card is always pressed by the operator, so no delegation receipt is pinned). */
+  /** Decision 0130 spend ceiling, 0058 candidate integration, 0097 worker PR merge, 0134 amendment, 0156 install, 0157 Plan activation, 0141/0143/0161 the in-card sign-in renewal and bound-worker check (a card is always pressed by the operator, so no delegation receipt is pinned). */
   spendDecision: "0130",
   integrationDecision: "0058",
-  requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157"],
+  requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"],
   requiredFiles: [START_RUN_EXECUTOR_PATH, "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
   gateCardId: "enable-capacity-gate-20261017",
   offId: "restore-off-production-bug-plan-first-supervised-run-2026-10-11"
@@ -58,9 +62,6 @@ export interface StartRunPinsDeps {
   queue(workspacePath: string): { revision: number; orderValid: boolean; unpositionedCount: number; ordered: Array<{ orderKey?: string | null }> };
   listFiles(directory: string): string[];
   sha256File(file: string): string;
-  /** Files named `filename` anywhere under `root`, newest first (read-only discovery of live receipts). */
-  findFiles(root: string, filename: string): string[];
-  readText(file: string): string;
 }
 
 export const realStartRunPinsDeps: StartRunPinsDeps = {
@@ -75,14 +76,7 @@ export const realStartRunPinsDeps: StartRunPinsDeps = {
   },
   queue: (workspacePath) => withReadOnlyDatabase(workspacePath, (db) => buildAgentQueue(db)),
   listFiles: (directory) => { try { return readdirSync(directory); } catch { return []; } },
-  sha256File: (file) => createHash("sha256").update(readFileSync(file)).digest("hex"),
-  readText: (file) => readFileSync(file, "utf8"),
-  findFiles: (root, filename) => {
-    try {
-      return (readdirSync(root, { recursive: true }) as string[]).filter((entry) => path.basename(entry) === filename).map((entry) => path.join(root, entry))
-        .sort((a, b) => statSync(b).mtimeMs - statSync(a).mtimeMs);
-    } catch { return []; }
-  }
+  sha256File: (file) => createHash("sha256").update(readFileSync(file)).digest("hex")
 };
 
 const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -170,21 +164,6 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   for (const card of [START_RUN_DEFAULTS.gateCardId, START_RUN_DEFAULTS.offId]) {
     if (!entries.has(`${card}.json`)) throw validationError(`Operator card ${card} is not in the library ${library}; no pins were computed.`);
   }
-  // Evidence receipts are discovered, never defaulted: refuse when a live receipt cannot be found.
-  const closeouts = path.join(main, "artifacts", "generated", "session-closeouts");
-  const discover = (filename: string, label: string): { path: string; sha256: string } => {
-    const found = deps.findFiles(closeouts, filename)[0];
-    if (!found) throw validationError(`No ${label} receipt (${filename}) was found under ${closeouts}; no pins were computed.`);
-    return { path: found, sha256: deps.sha256File(found) };
-  };
-  const signInEvidence = discover("postrenewal-usage-worker-receipt.json", "sign-in evidence");
-  try {
-    const evidence = JSON.parse(deps.readText(signInEvidence.path)) as { success?: boolean; credentialExpiresAt?: string; windows?: Array<{ usedPercentage?: number }> };
-    if (evidence.success !== true || !(Date.parse(String(evidence.credentialExpiresAt)) > deps.now().getTime() + 5 * 60_000) ||
-        !Array.isArray(evidence.windows) || evidence.windows.length !== 2 || !evidence.windows.every((w) => Number.isFinite(w.usedPercentage) && (w.usedPercentage as number) >= 0 && (w.usedPercentage as number) < 100)) {
-      throw new Error("not usable");
-    }
-  } catch { throw validationError(`The sign-in evidence ${signInEvidence.path} is unreadable, unsuccessful, expiring within 5 minutes or shows a usage window at 100%.`); }
   const receipts = [
     ...deps.listFiles(library).filter((file) => file.endsWith(".consumed.json")).map((file) => path.join(library, file)),
     ...deps.listFiles(path.join(library, "runs", "markers")).filter((file) => file.endsWith(".consumed")).map((file) => path.join(library, "runs", "markers", file))
@@ -214,8 +193,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     gateCardId: START_RUN_DEFAULTS.gateCardId,
     offId: START_RUN_DEFAULTS.offId,
     grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
-    consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) })),
-    signInEvidence
+    consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) }))
   };
   try { validateStartRunPins(startRun); }
   catch (error) { throw validationError(error instanceof StartRunPinsError ? error.message : String(error)); }
@@ -230,4 +208,118 @@ export function runStartRunPinsCommand(options: StartRunPinsOptions, deps: Start
 export function renderStartRunPinsSuccess(response: CommandSuccess<StartRunPinsData>): string[] {
   const { startRun, expires_at } = response.data;
   return JSON.stringify({ startRun, expires_at }, null, 2).split("\n");
+}
+
+export interface StartRunSignInOptions {
+  workspace: string;
+  repository: string;
+  project: string;
+  card: string;
+  runId: string;
+  runDirectory: string;
+  release: string;
+  policyRevision: string | number;
+  policyEpoch: string | number;
+  checkOnly?: boolean;
+}
+export type StartRunSignInData = { mode: "check-only"; static: StaticSignInState } | ({ mode: "run" } & StartRunSignInResult);
+
+/**
+ * The compiled CLI of the pinned release the card just installed (the same revision as the checkout), run with its
+ * manifest runtime: it starts in well under a second, where a `tsx` source cold start can take most of a grant window.
+ */
+export function pinnedReleaseCli(release: string, home = process.env.HOME ?? ""): string[] {
+  const directory = path.join(home, ".local", "share", "arcadia", "go-broker", "releases", release);
+  let manifest: { schema?: string; revision?: string; runtimeExecutable?: string };
+  try { manifest = JSON.parse(readFileSync(path.join(directory, "broker-manifest.json"), "utf8")); }
+  catch { throw validationError(`The pinned release ${release} is not installed; the sign-in sequence runs only after the card's go-broker ensure.`); }
+  if (manifest.schema !== "arcadia-go-broker-install-v1" || manifest.revision !== release || typeof manifest.runtimeExecutable !== "string") {
+    throw validationError(`The installed release manifest is not the pinned revision ${release}.`);
+  }
+  return [manifest.runtimeExecutable, path.join(directory, "dist", "src", "cli.js")];
+}
+
+/** Real collaborators: the pinned release's CLI and Git of the given repository, and the worker's own reviewed Claude runner. */
+export function realStartRunSignInDeps(repository: string, release: string, workspace: string): StartRunSignInDeps {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  delete env.ARCADIA_WORKSPACE;
+  // The settlement and answer commits are the Arcadia Controller's, never the host's git config or an inherited identity.
+  for (const key of ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]) delete env[key];
+  Object.assign(env, controllerIdentityDefaults(env));
+  let command: string[] | null = null;
+  return {
+    now: () => new Date(),
+    randomUUID: () => randomUUID(),
+    sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+    runClaude: runClaudeCliHeadless,
+    // The same set pollWorkerClaudeUsageDiagnostics (src/commands/worker.ts) reads.
+    polledRepositories: () => withReadOnlyDatabase(workspace, (db) => listProjects(db).filter((project) => project.status === "active")
+      .map((project) => getProjectMetadata(db, project.id)?.repo_path).filter((repo): repo is string => Boolean(repo))),
+    cli: (args, timeoutMs) => {
+      command ??= pinnedReleaseCli(release);
+      const run = spawnSync(command[0], [...command.slice(1), ...args, "--json"], { cwd: repository, env, encoding: "utf8", timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 });
+      try { return JSON.parse(run.stdout) as { ok: boolean; data?: unknown }; }
+      catch { return { ok: false, error: (run.stderr || "no JSON output").slice(0, 2000) }; }
+    },
+    git: (args) => execFileSync("git", args, { cwd: repository, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 }).trim()
+  };
+}
+
+/**
+ * `arcadia start-run sign-in`: run only by a per-run START card (scripts/start-run.sh), never by hand. With --check-only
+ * it makes the read-only checks that must hold before the Decision 0141 day is claimed. Otherwise it runs the Decision
+ * 0161 / 0143 sequence once against the bound worker (src/production/startRunSignIn.ts).
+ */
+/**
+ * The sequence may run only inside this card's own live press, after its one-shot allowance is consumed: the /actions run
+ * record names this card and is running, its start-run.claimed marker is this run, and <card>.consumed.json is this run's.
+ * A direct invocation therefore cannot claim the day or publish a diagnostic Decision.
+ */
+export function assertStartCardPress(options: Pick<StartRunSignInOptions, "card" | "runId" | "runDirectory">, env: NodeJS.ProcessEnv = process.env): void {
+  const refuse = (message: string): never => { throw validationError(`start-run sign-in runs only inside a pressed START card: ${message}. Nothing was claimed or changed.`, { code: "NOT_A_CARD_PRESS" }); };
+  const read = (file: string): Record<string, unknown> | null => { try { return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; } catch { return null; } };
+  if (env.ARCADIA_OPERATOR_SCRIPT_ID !== options.card) refuse("ARCADIA_OPERATOR_SCRIPT_ID does not name this card");
+  const pressDirectory = env.ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY;
+  if (!pressDirectory) refuse("there is no operator press record");
+  const press = read(path.join(pressDirectory!, "run.json"));
+  if (press?.scriptId !== options.card || press?.status !== "running") refuse("the operator press record is not this card's running press");
+  let claimed = "";
+  try { claimed = readFileSync(path.join(pressDirectory!, "start-run.claimed"), "utf8").trim(); } catch { /* checked below */ }
+  if (claimed !== options.runId) refuse("the press record's start-run.claimed marker is not this run");
+  const runDirectory = path.resolve(options.runDirectory);
+  if (path.basename(runDirectory) !== options.runId || path.basename(path.dirname(runDirectory)) !== options.card) refuse("the run directory is not this card's run");
+  const library = path.dirname(path.dirname(path.dirname(runDirectory)));
+  const marker = read(path.join(library, `${options.card}.consumed.json`));
+  if (marker?.state !== "CONSUMED" || marker?.requestId !== options.card || marker?.runId !== options.runId) refuse("this card's one-shot allowance is not consumed by this run");
+}
+
+export async function runStartRunSignInCommand(options: StartRunSignInOptions, deps?: StartRunSignInDeps, env: NodeJS.ProcessEnv = process.env): Promise<CommandSuccess<StartRunSignInData>> {
+  const repository = realpathSync(options.repository);
+  const workspace = realpathSync(options.workspace);
+  const collaborators = deps ?? realStartRunSignInDeps(repository, options.release, workspace);
+  const revision = Number(options.policyRevision), epoch = Number(options.policyEpoch);
+  if (!Number.isInteger(revision) || !Number.isInteger(epoch)) throw validationError("--policy-revision and --policy-epoch must be whole numbers.");
+  if (!/^[0-9a-f]{40}$/.test(options.release)) throw validationError("--release must be the reviewed 40-hex revision.");
+  if (!slug.test(options.card) || !slug.test(options.project)) throw validationError("--card and --project must be slugs.");
+  try {
+    if (options.checkOnly) {
+      const state = staticSignInChecks({ workspace, repository }, collaborators);
+      return createSuccess({ command: "start-run.sign-in", workspace, data: { mode: "check-only" as const, static: state } });
+    }
+    assertStartCardPress(options, env);
+    const result = await runStartRunSignIn({
+      workspace, repository, project: options.project, cardId: options.card, runId: options.runId, runDirectory: path.resolve(options.runDirectory),
+      release: options.release, policyRevision: revision, policyEpoch: epoch
+    }, collaborators);
+    return createSuccess({ command: "start-run.sign-in", workspace, data: { mode: "run" as const, ...result } });
+  } catch (error) {
+    if (error instanceof StartRunSignInRefusal) throw validationError(error.message, { code: error.code, dayClaimed: error.dayClaimed });
+    throw error;
+  }
+}
+
+export function renderStartRunSignInSuccess(response: CommandSuccess<StartRunSignInData>): string[] {
+  const data = response.data;
+  if (data.mode === "check-only") return [`Sign-in sequence checks pass for ${data.static.date}; nothing was claimed or changed.`];
+  return [`Sign-in ${data.outcome}: worker receipt ${data.receipt.path} (sha256 ${data.receipt.sha256}).`];
 }
