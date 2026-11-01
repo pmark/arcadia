@@ -418,14 +418,84 @@ function claimsImplementationOccurred(artifactText: string): boolean {
   return implementationClaimEvidence(artifactText).length > 0;
 }
 
+// A planning run may write its own plan file, and it may say what it did not
+// change. "I changed no repository files, only the plan file" (R494) is a
+// disclaimer, not a claim. Each clause is judged on its own, so "I changed no
+// repository files, but I modified src/cli.ts" still counts as a claim.
+const IMPLEMENTATION_CLAIM_PATTERNS = [
+  /\b(?:I|we|Codex)\s+(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|edited|rewrote)\b/i,
+  /\b(?:implementation|changes?)\s+(?:completed|made|landed|finished)\b/i,
+  /\b(?:implemented|added|modified|updated|created|removed|deleted|edited|rewrote)\s+(?:src\/|tests?\/|the code|code|files?|implementation)\b/i
+];
+const IMPLEMENTATION_CLAIM_LINE_PATTERNS = [
+  /^#{1,6}\s+(?:Files Changed|Changed Files)\b/i,
+  /\bFiles changed:\s*(?!none\b|n\/a\b|not applicable\b)/i
+];
+const CLAIM_VERB =
+  "(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|made|completed|landed|finished)";
+const NEGATED_IMPLEMENTATION_CLAIM = new RegExp(
+  [
+    // "I changed no files", "we modified nothing", "Codex added none"; never
+    // "no fewer than", "nothing less than" or "none other than", which affirm.
+    `\\b${CLAIM_VERB}\\s+(?:no|nothing|none|zero)(?![\\w-])(?!\\s+(?:fewer|less|more|other)\\b)`,
+    // "no changes made", "no implementation completed", "zero files modified"
+    `\\b(?:no|zero)\\s+(?:[\\w-]+\\s+){0,3}?(?:implementation|changes?|files?|code)\\s+(?:were\\s+|was\\s+)?${CLAIM_VERB}\\b`,
+    // "I have not changed", "we never modified", "nothing was changed"
+    `\\b(?:not|never|nothing\\s+(?:was|were)|none\\s+(?:was|were))\\s+${CLAIM_VERB}\\b`
+  ].join("|"),
+  "i"
+);
+// The only file a planning run may write is its own plan. A named path must be
+// under a plans/ directory and never under src/ or tests/.
+const PLAN_FILE_NOUN =
+  "(?:(?:the|this|a|my|our)\\s+)?(?:\\w+\\s+)?(?:plan|planning)(?:\\s+(?:file|artifact|document|doc))?(?:\\s+(?:at|in)\\s+(?!\\S*\\b(?:src|tests?)\\/)\\S*\\bplans\\/\\S*)?";
+const PLAN_FILE_OBJECT = new RegExp(
+  `^\\s*(?:(?:I|we|Codex)\\s+)?(?:(?:also|then|just)\\s+)?(?:changed|modified|updated|created|added|wrote)\\s+(?:only\\s+)?${PLAN_FILE_NOUN}\\s*$`,
+  "i"
+);
+// What follows "except", "other than", "besides" or "apart from" after a claim
+// is itself changed ("I changed no files except src/cli.ts"); only the plan file is exempt.
+const PLAN_FILE_ONLY = new RegExp(`^\\s*(?:only\\s+)?${PLAN_FILE_NOUN}\\s*$`, "i");
+const EXCEPTION_BOUNDARY = /^(?:except(?:\s+for)?|other\s+than|besides|apart\s+from)$/i;
+// "and", "then" and "also" open a clause too, so a subjectless claim after a
+// disclaimer ("I changed no other files and modified src/cli.ts") is judged alone.
+const IMPLEMENTATION_CLAUSE_BOUNDARY =
+  /([.;,:]|\b(?:but|however|although|though|yet|and|then|also|except(?:\s+for)?|other\s+than|besides|apart\s+from)\b)/i;
+// A clause after a split loses its subject, so "I updated only the plan file
+// and fixed the launcher" leaves "fixed the launcher". A later clause that
+// opens with an affirmative past-tense implementation verb carries the subject
+// before it. The verb must take an object ("the", "it", a src/ or tests/ path),
+// so a participle used as an adjective ("changed resolution", "updated
+// constitution") is not a claim. A line's first clause is never judged this
+// way, so a plan phase such as "Added assertion" stays a plan.
+const SUBJECTLESS_IMPLEMENTATION_CLAIM =
+  /^\s*(?:(?:I|we|Codex)\s+)?(?:(?:also|then|just|have|has|had)\s+)*(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|edited|wrote|rewrote|patched|replaced|renamed|moved|committed|pushed)\s+(?:(?:the|a|an|this|that|these|those|it|them|my|our|its|their)(?![\w-])|src\/|tests?\/)/i;
+
 function implementationClaimEvidence(artifactText: string): string[] {
-  return matchingLines(artifactText, [
-    /\b(?:I|we|Codex)\s+(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed)\b/i,
-    /\b(?:implementation|changes?)\s+(?:completed|made|landed|finished)\b/i,
-    /\b(?:implemented|added|modified|updated|created|removed|deleted)\s+(?:src\/|tests?\/|the code|code|files?|implementation)\b/i,
-    /^#{1,6}\s+(?:Files Changed|Changed Files)\b/i,
-    /\bFiles changed:\s*(?!none\b|n\/a\b|not applicable\b)/i
-  ]);
+  const affirmative = (clause: string): boolean =>
+    !NEGATED_IMPLEMENTATION_CLAIM.test(clause) && !PLAN_FILE_OBJECT.test(clause);
+  return artifactText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => {
+      if (IMPLEMENTATION_CLAIM_LINE_PATTERNS.some((pattern) => pattern.test(line))) return true;
+      // split() with a capture group interleaves clauses and their boundaries.
+      const parts = line.split(IMPLEMENTATION_CLAUSE_BOUNDARY);
+      let previousNamedAClaim = false;
+      for (let index = 0; index < parts.length; index += 2) {
+        const clause = parts[index] ?? "";
+        const boundary = (parts[index - 1] ?? "").trim();
+        const namesClaim = IMPLEMENTATION_CLAIM_PATTERNS.some((pattern) => pattern.test(clause)) ||
+          (index > 0 && SUBJECTLESS_IMPLEMENTATION_CLAIM.test(clause));
+        if (namesClaim && affirmative(clause)) return true;
+        if (previousNamedAClaim && EXCEPTION_BOUNDARY.test(boundary) && clause.trim() && !PLAN_FILE_ONLY.test(clause)) return true;
+        // An exception's object may run on past "." ("src/cli.ts"), so the
+        // claim context carries through the excepted object's own pieces.
+        previousNamedAClaim = namesClaim || (previousNamedAClaim && EXCEPTION_BOUNDARY.test(boundary));
+      }
+      return false;
+    });
 }
 
 function claimsValidationCommandsExecuted(artifactText: string): boolean {
