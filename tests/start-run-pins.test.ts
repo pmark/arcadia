@@ -2,7 +2,16 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { assertOperatorSettlementContract } from "../src/operatorActions/operatorExecution.js";
+import { buildDiagnosticAsk, governingDecisionReferences, GOVERNING_DECISIONS } from "../src/production/startRunSignIn.js";
+import { runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
+import { withDatabase } from "../src/db/connection.js";
+import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
+import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { discoverDocs } from "../src/docs/discover.js";
+import type { NormalizedAgentAsk } from "../src/ask/agentAsk.js";
 import { assertProjectLibraryEntry, startRunLauncher, validateOperatorScriptContract, planAmendmentLauncher, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { START_RUN_KEYS, validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { buildStartRunPins, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
@@ -274,5 +283,91 @@ describe("arcadia start-run pins", () => {
   ])("refuses %s", (_label, fixtureOptions, argOverrides, message) => {
     const f = fixture(fixtureOptions);
     expect(() => buildStartRunPins({ ...f.args, ...argOverrides }, f.deps)).toThrow(message);
+  });
+});
+
+describe("the settlement guard for a START card's sign-in diagnostic (Decision 0161)", () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+  const ASK = "start-run-signin-2026-10-31-57aeaf14";
+  // The stored proposal id the settlement passes is agentask_<hex>, never the request id (src/ask/settlement.ts).
+  const PROPOSAL = "agentask_0123456789abcdef01";
+  const ask = (overrides: Record<string, unknown> = {}) => ({ requestId: ASK, intent: "decision", targetRef: null, project: "arcadia",
+    rationale: `Mechanical record under Decisions 0141, 0143 and 0161 for START card ${ID} run 20261101T060326Z-62346: the card's one Haiku renewal succeeded.`, ...overrides }) as unknown as NormalizedAgentAsk;
+  function context() {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "start-run-guard-"));
+    const d = cardDescriptor();
+    writeFileSync(path.join(dir, `${ID}.json`), JSON.stringify(d));
+    writeFileSync(path.join(dir, `${ID}.sh`), startRunLauncher(ID));
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", ID);
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", path.join(dir, `${ID}.json`));
+    return d;
+  }
+  it("admits only the card's own diagnostic Decision Ask, accepted, in its Project", () => {
+    const d = context();
+    const mine = ask({ project: d.startRun!.project });
+    expect(() => assertOperatorSettlementContract(mine)).not.toThrow();
+    expect(() => assertOperatorSettlementContract(mine, { proposalId: PROPOSAL, disposition: "accepted" })).not.toThrow();
+    for (const [other, settlement] of [
+      [mine, { proposalId: PROPOSAL, disposition: "rejected" }],
+      [ask({ project: d.startRun!.project, rationale: "Mechanical record for START card another-card run 20261101T060326Z-1" }), { proposalId: PROPOSAL, disposition: "accepted" }],
+      [ask({ requestId: "decision-anything", project: d.startRun!.project }), null],
+      [ask({ intent: "action", project: d.startRun!.project }), null],
+      [ask({ targetRef: "plan/x", intent: "decision", project: d.startRun!.project }), null],
+      [ask({ project: "another-project" }), null]
+    ] as Array<[NormalizedAgentAsk, { proposalId: string; disposition: string } | null]>) {
+      expect(() => assertOperatorSettlementContract(other, settlement)).toThrow(/OPERATOR_SETTLEMENT_SCOPE_MISMATCH|only its own Decision 0161|belongs to Project/);
+    }
+  });
+});
+
+describe("a START card's diagnostic Ask settles through the real Agent Ask route under its /actions context (Decision 0161)", () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+  it("previews and settles the exact diagnostic Ask buildDiagnosticAsk produces, creating only its Decision", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "start-run-guard-e2e-"));
+    const repo = path.join(root, "repo"), workspace = path.join(root, "workspace"), library = path.join(root, "library");
+    mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
+    mkdirSync(path.join(repo, ".arcadia/asks/archive"), { recursive: true });
+    writeFileSync(path.join(repo, ".arcadia/asks/archive/.gitkeep"), "");
+    writeFileSync(path.join(repo, "PROJECT.md"), ["---", "arcadia: v1", "type: project", "slug: arcadia", "name: Arcadia", "status: active",
+      "mission: m.", "goal: g.", "active_plan: p", "current_action: a", "updated: 2026-10-31", "---", "", "# Arcadia", ""].join("\n"));
+    mkdirSync(path.join(repo, "docs/plans"), { recursive: true });
+    writeFileSync(path.join(repo, "docs/plans/p.md"), ["---", "arcadia: v1", "type: plan", "slug: p", "project: arcadia", "status: active", "milestone: M", "current_action: a",
+      "token_impact: small", "token_budget: Deterministic.", "recommended_model: gpt-5.6-sol", "updated: 2026-10-31", "actions:", "  - id: a", "    title: A", "    status: open", "    responsibility: agent",
+      "    effort: session", "    next_action: Do a.", "    expected_artifact: Proof", "    clarification: clarified", "    confidence: high",
+      "    acceptance_criteria:", "      - Proof exists.", "    depends_on: []", "    decisions: []", "    references: []", "questions: []", "---", "", "# P", ""].join("\n"));
+    for (const id of GOVERNING_DECISIONS) {
+      writeFileSync(path.join(repo, "docs/decisions", `${id}-governing.md`), ["---", "arcadia: v1", "type: decision", `id: "${id}"`, "slug: governing", "project: arcadia",
+        "status: approved", "question: q?", "options:", "  - label: A", "    consequence: c", "answer: A", "updated: 2026-10-31", "---", "", "# D", ""].join("\n"));
+    }
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["-c", "user.email=t@example.invalid", "-c", "user.name=T", "add", "."], { cwd: repo });
+    execFileSync("git", ["-c", "user.email=t@example.invalid", "-c", "user.name=T", "commit", "-qm", "fixture"], { cwd: repo });
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => {
+      const project = upsertProject(db, { name: "Arcadia", mission: "m.", goal: "g.", status: "active", currentMilestone: "M", nextAction: "N", workClassification: "agent" });
+      upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    });
+    mkdirSync(library);
+    writeFileSync(path.join(library, `${ID}.json`), JSON.stringify(cardDescriptor()));
+    writeFileSync(path.join(library, `${ID}.sh`), startRunLauncher(ID));
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", ID);
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", path.join(library, `${ID}.json`));
+
+    const diagnostic = buildDiagnosticAsk({
+      context: { project: "arcadia", cardId: ID, runId: "20261101T060326Z-62346", policyRevision: 83, policyEpoch: 46 },
+      date: "2026-10-31", nonce: "57aeaf14-1111-4222-8333-444455556666", binding: { release: "a".repeat(40), handlerHash: "b".repeat(64) },
+      answer: `A grant digest ${"c".repeat(64)}`, digest: "c".repeat(64), expiresAt: "2026-11-01T06:13:00.000Z", references: governingDecisionReferences(repo)
+    });
+    expect(discoverDocs(repo).rejected).toEqual([]);
+    const proposal = runAgentAskPreviewCommand({ workspace, request: JSON.stringify(diagnostic.ask) });
+    expect(proposal.data.proposal.id).toMatch(/^agentask_/);
+    const settled = runAgentAskSettleCommand({ workspace, proposal: diagnostic.requestId, requestId: diagnostic.settlementRequestId, disposition: "accepted" });
+    const documents = settled.data.receipt.review.documents as Array<{ path: string; before: string | null }>;
+    expect(documents).toHaveLength(1);
+    expect(documents[0]).toMatchObject({ before: null });
+    expect(documents[0].path).toMatch(/docs\/decisions\/\d{4}-authorize-one-start-card-worker-claude-usage-diagnostic-2026-10-31-57aeaf14\.md$/);
+    // Rejecting it, or another card's context, is refused by the same guard.
+    expect(() => runAgentAskSettleCommand({ workspace, proposal: diagnostic.requestId, requestId: `${diagnostic.settlementRequestId}-r`, disposition: "rejected" })).toThrow(/only its own Decision 0161/);
+    rmSync(root, { recursive: true, force: true });
   });
 });
