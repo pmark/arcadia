@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-10-31
+updated: 2026-11-01
 ---
 
 # Mission Log: Arcadia
@@ -2830,3 +2830,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "Decisions for persona automation, Iris, naming migration, Lead scope, design brief home and scope, design help depth, and the assurance wording are open, each as a lettered choice with consequences matching section 10 of the briefing."; "Each Decision document is on main before the operator is asked to answer it.".
 - **Next:** Next ready Action in this inactive Plan: standardize-agent-naming-vocabulary.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-open-naming-and-design-help-decisions-v2-2026-10-31).
+
+## 2026-11-01 — Agent Ask activate-unattended-claude-plan-start-20261101
+
+- **Did:** Activated arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider at bound-guidance-test-teardown-retries.
+- **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. Decision 0157: the first per-run START card activates this Plan through its pinned planActivation block. The current Plan bootstrap-managed-production-to-build-flight-deck returns to draft with every Action state preserved. No Action content changes.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.
