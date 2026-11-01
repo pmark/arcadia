@@ -295,6 +295,15 @@ actions:
     dependencies: []
 ```
 
+A child may also carry `execution: build` or `execution: plan-run`, the
+Action's declared route. The worker honours it before its keyword guess, which
+otherwise sends an Action without "implement", "code" or "prototype" to a
+Decision-gated planning run. Settlement writes it only on an agent or
+autonomous Action, refuses to replace an `execution` requirement mapping, and
+an amendment that omits it leaves the existing route alone. To change only the
+route, restate the Action's current `next_action` and acceptance verbatim; the
+preview then reports `acceptance unchanged` and the route change.
+
 Replaying a `request_id` returns the original receipt; changed content under a
 used id is refused. If the operator's judgment should decide something, say so
 in `rationale` and let Arcadia open the Decision — that is the correct outcome,
