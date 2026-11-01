@@ -29,7 +29,7 @@ export function validPins(overrides: Partial<StartRunPins> = {}): StartRunPins {
     intent: "A fixture run.",
     spendDecision: "0130",
     integrationDecision: "0058",
-    requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0161"],
+    requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"],
     requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts"],
     production: { revision: 83, epoch: 46 },
     queueRevision: 290,
@@ -87,6 +87,8 @@ describe("startRun pins validator", () => {
     ["a leftover delegation receipt", (p) => { (p as any).delegationReceipt = { path: "/abs/d.json", sha256: "d".repeat(64) }; }],
     ["Decision 0157 not required", (p) => { p.requiredDecisions = p.requiredDecisions.filter((d: string) => d !== "0157"); }],
     ["Decision 0161 not required", (p) => { p.requiredDecisions = p.requiredDecisions.filter((d: string) => d !== "0161"); }],
+    ["Decision 0141 not required", (p) => { p.requiredDecisions = p.requiredDecisions.filter((d: string) => d !== "0141"); }],
+    ["Decision 0143 not required", (p) => { p.requiredDecisions = p.requiredDecisions.filter((d: string) => d !== "0143"); }],
     // Decision 0161 replaced the retained pre-press sign-in receipt: the old pin is now an unknown field.
     ["the retired sign-in evidence pin", (p) => { p.signInEvidence = { path: "/abs/signin.json", sha256: "e".repeat(64) }; }],
     ["an empty authority list", (p) => { p.consumedHistory = []; }]
@@ -111,7 +113,7 @@ describe("startRun descriptor contract", () => {
     const d = cardDescriptor();
     expect(validateOperatorScriptContract(d, ID, startRunLauncher(ID))).toBe(d);
     const e = activationInput().envelope;
-    const withActivation = cardDescriptor({ planActivation: activationInput() }, { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0161"] });
+    const withActivation = cardDescriptor({ planActivation: activationInput() }, { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"] });
     expect(validateOperatorScriptContract(withActivation, ID, startRunLauncher(ID))).toBe(withActivation);
   });
   it.each<[string, (d: OperatorScriptDescriptor) => void, string]>([
@@ -131,14 +133,14 @@ describe("startRun descriptor contract", () => {
     const e = activationInput().envelope;
     const input = activationInput();
     input.envelope.queueSegment = [...e.queueSegment.slice(1), e.queueSegment[0]];
-    expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: input }, { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0161"] }), ID, startRunLauncher(ID))).toThrow();
+    expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: input }, { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"] }), ID, startRunLauncher(ID))).toThrow();
   });
   it("refuses a planActivation for another Plan, a different first Action, or without Decision 0157", () => {
     const e = activationInput().envelope;
-    const base = { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0161"] };
+    const base = { project: e.project, plan: e.plan, actions: segmentActions(e), requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"] };
     expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: activationInput() }, { ...base, plan: "another-plan" }), ID, startRunLauncher(ID))).toThrow("must activate startRun.plan");
     expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: activationInput() }, { ...base, actions: segmentActions(e).reverse() }), ID, startRunLauncher(ID))).toThrow("first pinned Action");
-    expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: activationInput() }, { ...base, requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0161"] }), ID, startRunLauncher(ID))).toThrow("Decision 0157");
+    expect(() => validateOperatorScriptContract(cardDescriptor({ planActivation: activationInput() }, { ...base, requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0141", "0143", "0161"] }), ID, startRunLauncher(ID))).toThrow("Decision 0157");
   });
   it.each([
     ["a bespoke script", "#!/usr/bin/env bash\nexit 0\n"],

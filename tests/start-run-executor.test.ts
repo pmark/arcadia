@@ -378,7 +378,7 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     ["a stale pre-restart worker heartbeat", { preWorker: "stale" }, /stale or mismatched pre-restart worker heartbeat/],
     ["a pre-restart worker whose pidfile is not the launchd PID", { preWorker: "pid-mismatch" }, /stale or mismatched pre-restart worker heartbeat/],
     ["today's Decision 0141 sequence already used", { dayUsed: true }, /sign-in sequence for today .* is already used .* cannot be pressed until the next day/],
-    ["sign-in sequence preconditions that fail", { state: (s) => { s.signin = { check: "refuse" }; } }, /sign-in sequence preconditions fail: .*not a terminal request/]
+    ["sign-in sequence preconditions that fail", { state: (s) => { s.signin = { check: "refuse" }; } }, /sign-in sequence preconditions fail: .*not a terminal request.*\[code REQUEST_SLOT_BUSY; dayClaimed false\]/]
   ])("refuses %s", (_label, options, reason) => {
     const b = box(options);
     const headBefore = b.head();
@@ -566,9 +566,19 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
   }, 60_000);
 
+  it("re-checks capacity and production Off in the sign-in phase and refuses before the day is claimed", () => {
+    const b = box({ state: (s) => { s.exhaustCapacityAfterInstall = true; } });
+    const result = b.run();
+    consumed(b, result, "P4", /refuses claude-code-cli/);
+    expect(result.receipt!.phaseName).toBe("sign_in");
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+    expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+    expect(result.handoff).toContain("No sign-in renewal ran");
+  }, 60_000);
+
   it.each<[string, Record<string, unknown>, RegExp]>([
-    ["the renewal fails", { mode: "renewal_failed" }, /sign-in sequence did not succeed, so there is no START: the Haiku sign-in renewal failed/],
-    ["the worker usage check fails", { mode: "check_failed" }, /sign-in sequence did not succeed, so there is no START: the worker usage check does not allow START/],
+    ["the renewal fails", { mode: "renewal_failed" }, /sign-in sequence did not succeed, so there is no START: the Haiku sign-in renewal failed.*\[code RENEWAL_FAILED; dayClaimed true\]/],
+    ["the worker usage check fails", { mode: "check_failed" }, /sign-in sequence did not succeed, so there is no START: the worker usage check does not allow START.*\[code CHECK_FAILED; dayClaimed true\]/],
     ["the check succeeds but the credential expires within 5 minutes", { expiresInMs: 120_000 }, /credential expiry: the sign-in has expired or expires within 5 minutes/],
     ["a usage window is at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/]
   ])("consumes the card and the day with no START or retry when %s", (_label, signin, reason) => {

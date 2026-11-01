@@ -7,8 +7,10 @@ import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
+import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
+import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
 import { runProductionStatusCommand } from "./production.js";
@@ -222,17 +224,40 @@ export interface StartRunSignInOptions {
 }
 export type StartRunSignInData = { mode: "check-only"; static: StaticSignInState } | ({ mode: "run" } & StartRunSignInResult);
 
-/** Real collaborators: the CLI and Git of the given repository, and the worker's own reviewed Claude runner. */
-export function realStartRunSignInDeps(repository: string): StartRunSignInDeps {
-  const env = { ...process.env };
+/**
+ * The compiled CLI of the pinned release the card just installed (the same revision as the checkout), run with its
+ * manifest runtime: it starts in well under a second, where a `tsx` source cold start can take most of a grant window.
+ */
+export function pinnedReleaseCli(release: string, home = process.env.HOME ?? ""): string[] {
+  const directory = path.join(home, ".local", "share", "arcadia", "go-broker", "releases", release);
+  let manifest: { schema?: string; revision?: string; runtimeExecutable?: string };
+  try { manifest = JSON.parse(readFileSync(path.join(directory, "broker-manifest.json"), "utf8")); }
+  catch { throw validationError(`The pinned release ${release} is not installed; the sign-in sequence runs only after the card's go-broker ensure.`); }
+  if (manifest.schema !== "arcadia-go-broker-install-v1" || manifest.revision !== release || typeof manifest.runtimeExecutable !== "string") {
+    throw validationError(`The installed release manifest is not the pinned revision ${release}.`);
+  }
+  return [manifest.runtimeExecutable, path.join(directory, "dist", "src", "cli.js")];
+}
+
+/** Real collaborators: the pinned release's CLI and Git of the given repository, and the worker's own reviewed Claude runner. */
+export function realStartRunSignInDeps(repository: string, release: string, workspace: string): StartRunSignInDeps {
+  const env: NodeJS.ProcessEnv = { ...process.env };
   delete env.ARCADIA_WORKSPACE;
+  // The settlement and answer commits are the Arcadia Controller's, never the host's git config or an inherited identity.
+  for (const key of ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL"]) delete env[key];
+  Object.assign(env, controllerIdentityDefaults(env));
+  let command: string[] | null = null;
   return {
     now: () => new Date(),
     randomUUID: () => randomUUID(),
     sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     runClaude: runClaudeCliHeadless,
-    cli: (args) => {
-      const run = spawnSync(process.execPath, ["--import", "tsx", path.join(repository, "src", "cli.ts"), ...args, "--json"], { cwd: repository, env, encoding: "utf8", timeout: 60_000, maxBuffer: 32 * 1024 * 1024 });
+    // The same set pollWorkerClaudeUsageDiagnostics (src/commands/worker.ts) reads.
+    polledRepositories: () => withReadOnlyDatabase(workspace, (db) => listProjects(db).filter((project) => project.status === "active")
+      .map((project) => getProjectMetadata(db, project.id)?.repo_path).filter((repo): repo is string => Boolean(repo))),
+    cli: (args, timeoutMs) => {
+      command ??= pinnedReleaseCli(release);
+      const run = spawnSync(command[0], [...command.slice(1), ...args, "--json"], { cwd: repository, env, encoding: "utf8", timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 });
       try { return JSON.parse(run.stdout) as { ok: boolean; data?: unknown }; }
       catch { return { ok: false, error: (run.stderr || "no JSON output").slice(0, 2000) }; }
     },
@@ -245,10 +270,33 @@ export function realStartRunSignInDeps(repository: string): StartRunSignInDeps {
  * it makes the read-only checks that must hold before the Decision 0141 day is claimed. Otherwise it runs the Decision
  * 0161 / 0143 sequence once against the bound worker (src/production/startRunSignIn.ts).
  */
-export async function runStartRunSignInCommand(options: StartRunSignInOptions, deps?: StartRunSignInDeps): Promise<CommandSuccess<StartRunSignInData>> {
+/**
+ * The sequence may run only inside this card's own live press, after its one-shot allowance is consumed: the /actions run
+ * record names this card and is running, its start-run.claimed marker is this run, and <card>.consumed.json is this run's.
+ * A direct invocation therefore cannot claim the day or publish a diagnostic Decision.
+ */
+export function assertStartCardPress(options: Pick<StartRunSignInOptions, "card" | "runId" | "runDirectory">, env: NodeJS.ProcessEnv = process.env): void {
+  const refuse = (message: string): never => { throw validationError(`start-run sign-in runs only inside a pressed START card: ${message}. Nothing was claimed or changed.`, { code: "NOT_A_CARD_PRESS" }); };
+  const read = (file: string): Record<string, unknown> | null => { try { return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; } catch { return null; } };
+  if (env.ARCADIA_OPERATOR_SCRIPT_ID !== options.card) refuse("ARCADIA_OPERATOR_SCRIPT_ID does not name this card");
+  const pressDirectory = env.ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY;
+  if (!pressDirectory) refuse("there is no operator press record");
+  const press = read(path.join(pressDirectory!, "run.json"));
+  if (press?.scriptId !== options.card || press?.status !== "running") refuse("the operator press record is not this card's running press");
+  let claimed = "";
+  try { claimed = readFileSync(path.join(pressDirectory!, "start-run.claimed"), "utf8").trim(); } catch { /* checked below */ }
+  if (claimed !== options.runId) refuse("the press record's start-run.claimed marker is not this run");
+  const runDirectory = path.resolve(options.runDirectory);
+  if (path.basename(runDirectory) !== options.runId || path.basename(path.dirname(runDirectory)) !== options.card) refuse("the run directory is not this card's run");
+  const library = path.dirname(path.dirname(path.dirname(runDirectory)));
+  const marker = read(path.join(library, `${options.card}.consumed.json`));
+  if (marker?.state !== "CONSUMED" || marker?.requestId !== options.card || marker?.runId !== options.runId) refuse("this card's one-shot allowance is not consumed by this run");
+}
+
+export async function runStartRunSignInCommand(options: StartRunSignInOptions, deps?: StartRunSignInDeps, env: NodeJS.ProcessEnv = process.env): Promise<CommandSuccess<StartRunSignInData>> {
   const repository = realpathSync(options.repository);
   const workspace = realpathSync(options.workspace);
-  const collaborators = deps ?? realStartRunSignInDeps(repository);
+  const collaborators = deps ?? realStartRunSignInDeps(repository, options.release, workspace);
   const revision = Number(options.policyRevision), epoch = Number(options.policyEpoch);
   if (!Number.isInteger(revision) || !Number.isInteger(epoch)) throw validationError("--policy-revision and --policy-epoch must be whole numbers.");
   if (!/^[0-9a-f]{40}$/.test(options.release)) throw validationError("--release must be the reviewed 40-hex revision.");
@@ -258,6 +306,7 @@ export async function runStartRunSignInCommand(options: StartRunSignInOptions, d
       const state = staticSignInChecks({ workspace, repository }, collaborators);
       return createSuccess({ command: "start-run.sign-in", workspace, data: { mode: "check-only" as const, static: state } });
     }
+    assertStartCardPress(options, env);
     const result = await runStartRunSignIn({
       workspace, repository, project: options.project, cardId: options.card, runId: options.runId, runDirectory: path.resolve(options.runDirectory),
       release: options.release, policyRevision: revision, policyEpoch: epoch

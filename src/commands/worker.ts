@@ -156,6 +156,10 @@ export interface WorkerInstallDependencies extends ProcessAncestryDependencies {
   now?: () => number;
   /** Fixture seam for the compiled-release check; the CLI never sets it. */
   resolveProtectedLaunch?: () => ProtectedWorkerLaunch | undefined;
+  /** Fixture seam for the bounded wait between launchd polls. */
+  sleepMs?: (ms: number) => void;
+  /** Fixture seam: the workspace a `worker start` without --workspace resolves to. */
+  ambientWorkspace?: () => string;
 }
 
 /**
@@ -1482,6 +1486,19 @@ export function runWorkerInstallCommand(options: WorkerOptions, dependencies: Wo
 
 }
 
+/** The bounded wait for launchd to drop the old job after bootout: 120 polls of 250 ms (30 s). */
+const REPLACEMENT_BOOTOUT_POLLS = 120;
+const REPLACEMENT_BOOTOUT_POLL_MS = 250;
+
+function launchctlErrorText(error: unknown): string {
+  const stderr = (error as { stderr?: unknown })?.stderr;
+  return `${error instanceof Error ? error.message : String(error)} ${stderr ? String(stderr) : ""}`.trim().slice(0, 500);
+}
+/** launchctl's "the job is not loaded" answers (list: 113 Could not find service; bootout: 3 No such process). */
+export function launchdNotLoaded(error: unknown): boolean {
+  return /Could not find (specified )?service|No such process|not loaded/i.test(launchctlErrorText(error));
+}
+
 /** The label family scripts/restart-services-impl.sh writes for a checkout's worker. */
 export const REPLACEABLE_WORKER_LABEL = /^com\.arcadia\.local\.[A-Za-z0-9._-]+\.worker$/;
 
@@ -1490,12 +1507,17 @@ export const REPLACEABLE_WORKER_LABEL = /^com\.arcadia\.local\.[A-Za-z0-9._-]+\.
  * other agent must be readable, and no other worker agent serving this workspace may be running (an installed but idle
  * one, such as a stale com.arcadia.worker, cannot start on its own and is reported, not touched).
  */
-export function assertWorkerReplacementCustody(workspace: string, label: string, agents: LaunchAgentAudit[], running: (label: string) => boolean): string[] {
+export function assertWorkerReplacementCustody(workspace: string, label: string, agents: LaunchAgentAudit[], running: (label: string) => boolean, ambientWorkspace: string | null): string[] {
   if (!REPLACEABLE_WORKER_LABEL.test(label)) throw validationError(`--replace-label must be a com.arcadia.local.<key>.worker label, not ${label}.`);
   const target = canonicalWorkspaceIdentity(workspace);
+  // A competing agent with no --workspace may serve this workspace, so it counts against custody.
   const serves = (agent: LaunchAgentAudit) => !agent.workspace || canonicalWorkspaceIdentity(agent.workspace) === target;
+  // The replaced agent itself must provably serve this workspace: its own --workspace, or (with none) the ambient
+  // default workspace a `worker start` without --workspace resolves to.
+  const effective = (agent: LaunchAgentAudit) => agent.workspace ?? ambientWorkspace;
   const own = agents.filter((agent) => agent.label === label);
-  if (own.length !== 1 || own[0].verdict === "unreadable" || own[0].role !== "worker" || !serves(own[0])) {
+  const ownWorkspace = own.length === 1 ? effective(own[0]) : null;
+  if (own.length !== 1 || own[0].verdict === "unreadable" || own[0].role !== "worker" || !ownWorkspace || canonicalWorkspaceIdentity(ownWorkspace) !== target) {
     throw validationError(`The launch agent ${label} is not one readable worker agent for this workspace; nothing was replaced.`);
   }
   const idle: string[] = [];
@@ -1523,19 +1545,40 @@ function runProtectedWorkerReplacement(options: WorkerOptions, label: string, de
   if (!protectedRelease) throw validationError("A replacement install writes only a protected worker: run worker install --replace-label from the registered compiled release.");
   const exec = dependencies.execFileSync ?? execFileSync;
   const home = process.env["HOME"] ?? "/tmp";
+  // Only "not loaded" means not running; any other launchctl failure leaves custody unknown and refuses.
   const running = (job: string) => {
     try { return /"PID" = \d+;/.test(String(exec("launchctl", ["list", job], { encoding: "utf8", stdio: "pipe" }))); }
-    catch { return false; }
+    catch (error) {
+      if (launchdNotLoaded(error)) return false;
+      throw validationError(`launchctl list ${job} failed (${launchctlErrorText(error)}); worker custody is unknown and nothing was replaced.`);
+    }
   };
-  const idle = assertWorkerReplacementCustody(workspacePath, label, (dependencies.auditLaunchAgents ?? auditArcadiaLaunchAgents)(home).agents, running);
+  let ambient: string | null;
+  try { ambient = (dependencies.ambientWorkspace ?? (() => resolveReadyWorkspace(undefined).workspacePath))(); } catch { ambient = null; }
+  const idle = assertWorkerReplacementCustody(workspacePath, label, (dependencies.auditLaunchAgents ?? auditArcadiaLaunchAgents)(home).agents, running, ambient);
   const plistPath = path.join(home, "Library", "LaunchAgents", `${label}.plist`);
   const plist = buildWorkerPlist({ workspacePath, repositoryRoot: protectedRelease.sourceRepository, protectedRelease, miseBin: resolveMiseExecutable(), logPath: logPath(workspacePath), home, label });
   writeFileSync(`${plistPath}.tmp`, plist, "utf8");
   renameSync(`${plistPath}.tmp`, plistPath);
   const domain = `gui/${process.getuid?.() ?? 0}`;
   const notBefore = (dependencies.now ?? Date.now)();
-  // bootout stops the running worker (it releases its pidfile on SIGTERM); bootstrap loads the protected plist.
-  try { exec("launchctl", ["bootout", `${domain}/${label}`], { stdio: "pipe" }); } catch { /* not loaded: nothing to stop */ }
+  // bootout stops the running worker (it releases its pidfile on SIGTERM); bootstrap loads the protected plist only once
+  // launchd reports the old job gone, so the new worker never races the old one for the pidfile.
+  try { exec("launchctl", ["bootout", `${domain}/${label}`], { stdio: "pipe" }); }
+  catch (error) {
+    if (!launchdNotLoaded(error)) throw validationError(`launchctl bootout of ${label} failed (${launchctlErrorText(error)}); the protected plist is written but was not loaded. The old worker may still be running.`);
+  }
+  const sleep = dependencies.sleepMs ?? ((ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms));
+  let gone = false;
+  for (let attempt = 0; attempt < REPLACEMENT_BOOTOUT_POLLS; attempt += 1) {
+    try { exec("launchctl", ["print", `${domain}/${label}`], { stdio: "pipe" }); }
+    catch (error) {
+      if (launchdNotLoaded(error)) { gone = true; break; }
+      throw validationError(`launchctl print of ${label} failed (${launchctlErrorText(error)}); the protected plist is written but was not loaded.`);
+    }
+    sleep(REPLACEMENT_BOOTOUT_POLL_MS);
+  }
+  if (!gone) throw validationError(`launchd still reports ${label} after bootout (${(REPLACEMENT_BOOTOUT_POLLS * REPLACEMENT_BOOTOUT_POLL_MS) / 1000}s); the protected plist is written but was not loaded. The old worker may still be running or stopping.`);
   try { exec("launchctl", ["bootstrap", domain, plistPath], { stdio: "pipe" }); }
   catch (error) {
     throw validationError(`launchctl bootstrap failed for ${plistPath}: ${error instanceof Error ? error.message : String(error)}. The worker may be down.`);

@@ -18,7 +18,8 @@ const git = (...a) => execFileSync("git", a, { cwd: process.cwd(), encoding: "ut
 const laDate = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 /** The CLI's JSON failure envelope and exit status. */
 const fail = (code, message, dayClaimed) => {
-  process.stdout.write(JSON.stringify({ ok: false, command: "start-run.sign-in", error: { code: "VALIDATION_ERROR", message, details: { code, dayClaimed } } }) + "\n");
+  // Like the real CLI: tool noise, then the pretty-printed --json failure envelope on stderr.
+  process.stderr.write("mise WARN  fixture noise\n" + JSON.stringify({ ok: false, command: "start-run.sign-in", error: { code: "VALIDATION_ERROR", message, details: { code, dayClaimed } } }, null, 2) + "\n");
   process.exit(2);
 };
 

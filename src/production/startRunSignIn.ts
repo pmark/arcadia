@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { closeSync, constants, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, readdirSync, realpathSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { discoverDocs } from "../docs/discover.js";
 import { parseDoc } from "../docs/parse.js";
 import { slugify } from "../utils/slug.js";
 import { CLAUDE_CLI_SELF_REFRESH_ARGS, CLAUDE_CLI_SELF_REFRESH_TIMEOUT_MS, type ClaudeCliRunner } from "./capacityPreAdmission.js";
@@ -37,6 +38,10 @@ export const WORKER_CHECK_DEADLINE_MS = 30_000;
 /** How long the card waits for the worker's own receipt (the worker polls every two seconds; its check is bounded at 30 s). */
 export const WORKER_RECEIPT_WAIT_MS = 55_000;
 const HEARTBEAT_FRESH_MS = 15_000;
+/** A read-only CLI call is never allowed more than this, nor more than the grant time left above the reserve. */
+export const READ_CLI_TIMEOUT_MS = 60_000;
+/** The commit identity the settlement and answer commands must use (src/git/askIsolation.ts controllerIdentityDefaults). */
+export const CONTROLLER_IDENTITY = { name: "Arcadia Controller", email: "controller@arcadia.local" };
 const RECEIPT_SCHEMA = "arcadia-worker-claude-usage-receipt-v1";
 
 export class StartRunSignInRefusal extends Error {
@@ -62,10 +67,15 @@ export interface StartRunSignInDeps {
   randomUUID(): string;
   sleep(ms: number): Promise<void>;
   runClaude: ClaudeCliRunner;
-  /** One supported Arcadia CLI command run in the repository with `--json`; returns its parsed envelope or throws. */
-  cli(args: string[]): { ok: boolean; data?: any; error?: unknown };
+  /**
+   * One supported Arcadia CLI command run in the repository with `--json`, killed only after `timeoutMs`; returns its
+   * parsed envelope. Commits it makes must carry the Arcadia Controller identity, never the host's git config.
+   */
+  cli(args: string[], timeoutMs: number): { ok: boolean; data?: any; error?: unknown };
   /** Git in the repository; returns trimmed stdout or throws. */
   git(args: string[]): string;
+  /** The repositories the production worker polls for diagnostic requests (active Projects' repo_path, read-only). */
+  polledRepositories(): string[];
 }
 
 export interface RetainedReceipt { path: string; sha256: string }
@@ -194,7 +204,7 @@ export interface StaticSignInState {
  * empty or holding only a terminal diagnostic (archived later), the request path ignored by Git (so the checkout stays
  * clean for START), and the checkout clean on main at origin main.
  */
-export function staticSignInChecks(context: Pick<StartRunSignInContext, "workspace" | "repository">, deps: Pick<StartRunSignInDeps, "now" | "git">): StaticSignInState {
+export function staticSignInChecks(context: Pick<StartRunSignInContext, "workspace" | "repository">, deps: Pick<StartRunSignInDeps, "now" | "git" | "polledRepositories">): StaticSignInState {
   const date = signInDay(deps.now());
   const entries = dayLedgerEntries(context.workspace, date);
   if (entries.length) throw new StartRunSignInRefusal("DAY_USED", `today's (${date}, ${SIGN_IN_TIME_ZONE}) Decision 0141 sequence is already used (${entries.join(", ")}); press a new card on a later day`, false);
@@ -204,6 +214,11 @@ export function staticSignInChecks(context: Pick<StartRunSignInContext, "workspa
   if (requestSlot && !requestSlot.terminal) throw new StartRunSignInRefusal("REQUEST_SLOT_BUSY", `the worker diagnostic request ${requestSlot.path} is not a terminal request; preserve it`, false);
   try { deps.git(["check-ignore", "-q", CLAUDE_DIAGNOSTIC_REQUEST]); }
   catch { throw new StartRunSignInRefusal("REQUEST_NOT_IGNORED", `${CLAUDE_DIAGNOSTIC_REQUEST} is not ignored by Git in ${context.repository}, so a request would leave the checkout dirty before START`, false); }
+  // The worker answers only requests in the repositories it polls; anything else would time out after the day is claimed.
+  const polled = deps.polledRepositories().map((repo) => { try { return realpathSync(repo); } catch { return repo; } });
+  if (!polled.includes(context.repository)) {
+    throw new StartRunSignInRefusal("REPOSITORY_NOT_POLLED", `${context.repository} is not the repository of an active Project the worker polls, so the worker would never answer the usage check`, false);
+  }
   if (deps.git(["branch", "--show-current"]) !== "main" || deps.git(["status", "--porcelain=v1", "--untracked-files=all"]) !== "") {
     throw new StartRunSignInRefusal("CHECKOUT_NOT_CLEAN", "the Arcadia checkout must be clean on main", false);
   }
@@ -223,11 +238,10 @@ function readBoundWorker(context: StartRunSignInContext, now: Date): DiagnosticW
   return binding;
 }
 
-function nextDecisionId(repository: string): string {
-  const highest = readdirSync(path.join(repository, "docs", "decisions")).reduce((max, name) => {
-    const match = /^(\d{4})-.+\.md$/.exec(name);
-    return match ? Math.max(max, Number(match[1])) : max;
-  }, 0);
+/** The id settlement will allocate: the highest frontmatter id over the discovered Decision documents, plus one (src/ask/settlement.ts addDecisionMutation). */
+export function nextDecisionId(repository: string): string {
+  const highest = discoverDocs(repository).docs.filter((doc) => doc.type === "decision")
+    .reduce((max, doc) => Math.max(max, Number.parseInt(String((doc as { id?: unknown }).id), 10) || 0), 0);
   return String(highest + 1).padStart(4, "0");
 }
 
@@ -267,6 +281,7 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     if (deps.git(["ls-remote", "--exit-code", "origin", "refs/heads/main"]).split(/\s+/)[0] !== headBefore) refuse("ORIGIN_MOVED", "origin main is not the checkout HEAD; the diagnostic Decision could not be published fast-forward");
     const decisionId = nextDecisionId(context.repository);
 
+    if (signInDay(deps.now()) !== slots.date) refuse("DAY_CHANGED", `the America/Los_Angeles day changed after ${slots.date} was checked; nothing was claimed or renewed`);
     // 1. Claim the day: exclusive and durable, before the renewal.
     const claimPath = path.join(context.workspace, DAILY_LEDGER_DIRECTORY, `${slots.date}.json`);
     const claim = { schema: "arcadia-daily-0141-claim-v1", date: slots.date, timeZone: SIGN_IN_TIME_ZONE, decision: "0141", authority: "0161", at: deps.now().toISOString(), cardId: context.cardId, runId: context.runId, binding, status: "consumed-before-renewal" };
@@ -322,11 +337,18 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       ],
       references: [journalPath]
     }, null, 2) + "\n");
+    // Read-only calls are bounded by the grant time left above the reserve. The two committing calls (apply and answer) are
+    // given the whole grant window: they are started only with at least the reserve left and are never killed mid-commit;
+    // one that finishes late is refused by the next reserve() check instead.
+    const readTimeout = () => Math.max(1_000, Math.min(READ_CLI_TIMEOUT_MS, Date.parse(expiresAt) - deps.now().getTime() - GRANT_RESERVE_MS));
     reserve("before the Agent Ask preview");
-    const preview = deps.cli(["agent-ask", "preview", "--file", askPath, "--dir", context.repository, "--workspace", context.workspace]);
+    if (deps.git(["ls-remote", "--exit-code", "origin", "refs/heads/main"]).split(/\s+/)[0] !== headBefore || deps.git(["rev-parse", "HEAD"]) !== headBefore) {
+      refuse("ORIGIN_MOVED", "origin main or the checkout moved before the diagnostic Agent Ask; nothing was recorded");
+    }
+    const preview = deps.cli(["agent-ask", "preview", "--file", askPath, "--dir", context.repository, "--workspace", context.workspace], readTimeout());
     if (!preview.ok) refuse("RECORDS_FAILED", "the diagnostic Agent Ask preview failed");
     const settleBase = ["agent-ask", "settle", "--proposal", requestId, "--request-id", `settle-${requestId}`, "--disposition", "accepted", "--workspace", context.workspace];
-    const settlement = deps.cli(settleBase);
+    const settlement = deps.cli(settleBase, readTimeout());
     const receipt = settlement.data?.receipt;
     const created = (receipt?.review?.documents ?? []) as Array<{ path: string; before: string | null; after: string | null }>;
     if (!settlement.ok || !receipt?.previewFingerprint || created.length !== 1 || created[0].before !== null || path.resolve(context.repository, created[0].path) !== path.join(context.repository, decisionRelative)
@@ -334,9 +356,10 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       refuse("RECORDS_FAILED", `the settlement preview does not create exactly ${decisionRelative} with the exact grant answer`);
     }
     reserve("before the settlement");
-    const applied = deps.cli([...settleBase, "--preview", receipt.previewFingerprint, "--apply"]);
+    const applied = deps.cli([...settleBase, "--preview", receipt.previewFingerprint, "--apply"], GRANT_WINDOW_MS);
     if (!applied.ok || applied.data?.receipt?.applied !== true || !/^[a-f0-9]{40}$/.test(String(applied.data?.receipt?.documentsCommit))) refuse("RECORDS_FAILED", "the diagnostic Decision settlement did not apply and commit");
-    const review = deps.cli(["review", "--workspace", context.workspace]);
+    reserve("after the settlement");
+    const review = deps.cli(["review", "--workspace", context.workspace], readTimeout());
     const items = ((review.data?.items ?? []) as Array<{ id: string; docRef?: string | null; status?: string; answerMenu?: { answerable?: boolean; options?: Array<{ letter?: string; label?: string }> } | null }>)
       .filter((item) => item.docRef === `decision/${slug}`);
     const item = items[0];
@@ -344,13 +367,19 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
       refuse("RECORDS_FAILED", "the unique open diagnostic Decision with the exact grant answer as option A was not found");
     }
     reserve("before recording the answer");
-    const answered = deps.cli(["review", "answer", item.id, "A", "--workspace", context.workspace]);
+    const answered = deps.cli(["review", "answer", item.id, "A", "--workspace", context.workspace], GRANT_WINDOW_MS);
     if (!answered.ok) refuse("RECORDS_FAILED", "the diagnostic Decision answer was not recorded");
     const recordHead = deps.git(["rev-parse", "HEAD"]);
     const changed = deps.git(["diff", "--name-only", headBefore, recordHead]).split("\n").filter(Boolean);
     if (deps.git(["rev-list", "--count", `${headBefore}..${recordHead}`]) !== "2" || changed.length !== 1 || changed[0] !== decisionRelative
       || deps.git(["status", "--porcelain=v1", "--untracked-files=all"]) !== "" || deps.git(["branch", "--show-current"]) !== "main") {
       refuse("RECORDS_FAILED", `the canonical records must be exactly two commits changing only ${decisionRelative} on a clean main`);
+    }
+    // Both commits must be the Arcadia Controller's (author and committer), never the operator's host identity.
+    const identities = deps.git(["log", "--format=%an%x09%ae%x09%cn%x09%ce", `${headBefore}..${recordHead}`]).split("\n").filter(Boolean);
+    const controller = `${CONTROLLER_IDENTITY.name}\t${CONTROLLER_IDENTITY.email}`;
+    if (identities.length !== 2 || !identities.every((line) => line === `${controller}\t${controller}`)) {
+      refuse("RECORDS_IDENTITY", `the diagnostic Decision commits are not authored and committed by ${CONTROLLER_IDENTITY.name}; nothing was pushed`);
     }
     const decisionFile = path.join(context.repository, decisionRelative);
     const parsed = parseDoc(path.basename(decisionFile), decisionFile, readFileSync(decisionFile, "utf8"));
@@ -368,20 +397,22 @@ export async function runStartRunSignIn(context: StartRunSignInContext, deps: St
     for (const target of [diagnosticResponsePath(context.workspace, nonce), `${diagnosticResponsePath(context.workspace, nonce)}.attempt`]) {
       if (existsSync(target)) refuse("NONCE_USED", `${target} already exists`);
     }
-    const archived: string[] = [];
+    const archived: Array<{ from: string; to: string; sha256: string }> = [];
     const grantSlot = slotState(grantPath, context.workspace, true);
     if (grantSlot) {
       if (!grantSlot.terminal || grantSlot.nonce !== slots.grantSlot?.nonce) refuse("GRANT_SLOT_BUSY", "the grant slot changed after the static checks");
       const to = `${grantPath}.completed-${grantSlot.nonce}`;
+      const bytes = sha256(readFileSync(grantPath));
       archiveExclusive(grantPath, to);
-      archived.push(to);
+      archived.push({ from: grantPath, to, sha256: bytes });
     }
     const requestSlot = slotState(requestPath, context.workspace, false);
     if (requestSlot) {
       if (!requestSlot.terminal || requestSlot.nonce !== slots.requestSlot?.nonce) refuse("REQUEST_SLOT_BUSY", "the request slot changed after the static checks");
       const to = path.join(context.runDirectory, `archived-worker-claude-usage-request-${requestSlot.nonce}.json`);
+      const bytes = sha256(readFileSync(requestPath));
       archiveExclusive(requestPath, to);
-      archived.push(to);
+      archived.push({ from: requestPath, to, sha256: bytes });
     }
     if (!publishDiagnosticAttempt(grantPath, grant)) refuse("GRANT_SLOT_BUSY", "the grant could not be published exclusively; no retry");
     reserve("before the request");

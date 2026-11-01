@@ -37,6 +37,8 @@ if (!state.worker.noRestart) {
   else if (mode === "wrong_release") writeWorker(pid, bound("0".repeat(40)), Date.now());
   else if (mode === "unbound") writeWorker(pid, null, Date.now());
   // mode "none": no heartbeat is ever written.
+  // Scenario: capacity is exhausted by the time the card reaches its sign-in phase.
+  if (state.exhaustCapacityAfterInstall) Object.assign(state.capacity.observation.providers[0], { admitted: false, code: "capacity_exhausted" });
   writeFileSync(statePath, JSON.stringify(state, null, 2));
 }
 process.stdout.write(`Protected worker installed under ${at("--replace-label")}.\n`);

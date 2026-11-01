@@ -42,6 +42,11 @@ WORKER_INSTALL_TIMEOUT_SECONDS=180
 # Decision 0143 bounds inside: 60 s renewal, records and publication, a 5-minute grant, a 30 s check and a 55 s receipt wait.
 SIGN_IN_TIMEOUT_SECONDS=600
 json_string() { jq -n --arg v "$1" '$v'; }
+# The CLI writes its --json failure envelope to stderr (after any tool warnings): message, refusal code and dayClaimed.
+cli_failure() {
+  node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8");const i=s.search(/^\{/m);let e;try{e=JSON.parse(s.slice(i)).error}catch{}
+process.stdout.write(e?`${e.message} [code ${e.details?.code??e.code}; dayClaimed ${e.details?.dayClaimed??"unknown"}]`:"no readable result")' "$1" 2>/dev/null || echo "no readable result"
+}
 arcadia_t() { local t="$1"; shift; (cd "$ARCADIA_REPO" && timeout "$t" mise exec -- pnpm -s arcadia "$@"); }
 arcadia() { arcadia_t 180 "$@"; }  # REF:L63
 git_repo() { git -C "$ARCADIA_REPO" "$@"; }
@@ -478,7 +483,7 @@ phase_p2() {
     --run-directory "$RUN_DIR" --release "$PIN" --policy-revision "$PROD_REVISION" --policy-epoch "$PROD_EPOCH")
   arcadia "${SIGN_IN_ARGS[@]}" --check-only --json > "$RUN_DIR/sign-in-check.json" 2> "$RUN_DIR/sign-in-check.stderr" \
     && jq -e '.ok == true and .data.mode == "check-only"' "$RUN_DIR/sign-in-check.json" >/dev/null \
-    || refuse "the sign-in sequence preconditions fail: $(jq -r '.error.message // "unreadable result"' "$RUN_DIR/sign-in-check.json" 2>/dev/null || echo 'unreadable result')"
+    || refuse "the sign-in sequence preconditions fail: $(cli_failure "$RUN_DIR/sign-in-check.stderr")"
   check_capacity
   check_queue before
   # Decision 0156: ensure refuses during a rehearsal freeze; ask first (read-only).
@@ -593,11 +598,15 @@ phase_p4_sign_in() {
   phase P4 sign_in
   BOUND_HANDLER="$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
   check_day_unused  # read-only; the sequence claims the day exclusively itself
+  # Decision 0143's Off / zero-admission / no-Session guards, fresh, before the day can be claimed.
+  check_production_off
+  [[ -z "$(tmux ls 2>/dev/null || true)" ]] || refuse "a tmux server with live sessions exists; no competing Session may run before the sign-in sequence"
+  check_capacity
   SIGN_IN_ATTEMPTED=true
   mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims today's Decision 0141 sequence before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes the day, with no retry"
   checkpoint
   out="$(arcadia_t "$SIGN_IN_TIMEOUT_SECONDS" "${SIGN_IN_ARGS[@]}" --json 2> "$RUN_DIR/sign-in.stderr")" \
-    || { printf '%s\n' "$out" > "$RUN_DIR/sign-in-result.json"; refuse "the sign-in sequence did not succeed, so there is no START: $(jq -r '.error.message // "no result"' <<<"$out" 2>/dev/null || echo 'no result')"; }
+    || { printf '%s\n' "$out" > "$RUN_DIR/sign-in-result.json"; refuse "the sign-in sequence did not succeed, so there is no START: $(cli_failure "$RUN_DIR/sign-in.stderr")"; }
   printf '%s\n' "$out" > "$RUN_DIR/sign-in-result.json"
   jq -e '.ok == true and .data.mode == "run" and (.data.outcome == "reused" or .data.outcome == "checked")' <<<"$out" >/dev/null || refuse "the sign-in sequence returned no usable result; there is no START"
   rec signIn "$(jq -c '.data | {outcome, date, dayClaimed, decision, digest, nonce, publicationHead}' <<<"$out")"

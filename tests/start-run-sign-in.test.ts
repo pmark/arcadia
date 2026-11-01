@@ -10,6 +10,7 @@ import {
 } from "../src/production/startRunSignIn.js";
 import { diagnosticGrantAnswer, diagnosticGrantPath, diagnosticResponsePath, type ClaudeDiagnosticGrant } from "../src/production/workerClaudeUsageDiagnostic.js";
 import { slugify } from "../src/utils/slug.js";
+import { assertStartCardPress } from "../src/commands/startRun.js";
 
 /**
  * Hermetic cases for the Decision 0161 sign-in sequence a START card runs after its protected worker install. The
@@ -34,6 +35,10 @@ interface FixtureOptions {
   previousSlots?: "terminal" | "busy-request" | "none";
   receipts?: Array<Record<string, unknown>>;
   requestIgnored?: boolean;
+  /** The identity the fake settlement and answer commits carry (default: the Arcadia Controller). */
+  commitIdentity?: string;
+  /** The repositories the worker polls (default: the fixture repository). */
+  polled?: (repository: string) => string[];
 }
 
 function fixture(options: FixtureOptions = {}) {
@@ -44,7 +49,10 @@ function fixture(options: FixtureOptions = {}) {
   const runDirectory = path.join(repository, "artifacts", "generated", "operator-scripts", "runs", "card", "run-1");
   for (const dir of [path.join(repository, "docs", "decisions"), path.join(repository, ".arcadia"), path.join(workspace, ".arcadia"), path.join(workspace, "artifacts", "worker-claude-usage")]) mkdirSync(dir, { recursive: true });
   chmodSync(path.join(workspace, "artifacts", "worker-claude-usage"), 0o700);
-  writeFileSync(path.join(repository, "docs", "decisions", "0160-earlier.md"), "---\nid: \"0160\"\n---\n");
+  writeFileSync(path.join(repository, "docs", "decisions", "0099-renumbered-earlier.md"), [
+    "---", "arcadia: v1", "type: decision", 'id: "0160"', "slug: renumbered-earlier", "project: arcadia", "status: approved", "question: Earlier?",
+    "gap_type: missing-decision", "gate_question: approval_boundary", "confidence: high", "plan: fixture-plan", "updated: 2026-10-31", "answer: Yes", "decided: 2026-10-31", "---", "", "# Decision 0160: Earlier?", ""
+  ].join("\n"));
   let clock = Date.parse("2026-11-01T17:00:00.000Z");
   const binding = { pid: 4242, instance: "instance-4242", release: RELEASE, handlerHash: "h".repeat(64), repository };
   const heartbeat = () => writeFileSync(path.join(workspace, ".arcadia", "worker-claude-usage-heartbeat.json"), JSON.stringify({
@@ -62,10 +70,11 @@ function fixture(options: FixtureOptions = {}) {
   for (const receipt of options.receipts ?? []) writeFileSync(diagnosticResponsePath(workspace, String(receipt.nonce)), JSON.stringify(receipt), { mode: 0o600 });
 
   // Git: a tiny model of the main checkout and origin main.
-  const git = { head: "c".repeat(40), remote: "c".repeat(40), log: [] as Array<{ sha: string; parent: string; file: string }>, pushes: 0 };
-  const commit = (file: string) => { const next = sha(git.head + file + git.log.length).slice(0, 40); git.log.push({ sha: next, parent: git.head, file }); git.head = next; };
-  const between = (from: string, to: string) => { const out: Array<{ file: string }> = []; let at = to; while (at !== from) { const c = git.log.find((entry) => entry.sha === at); if (!c) throw new Error("not an ancestor"); out.push(c); at = c.parent; } return out; };
-  const calls = { claude: [] as Array<{ args: readonly string[]; timeout: number }>, cli: [] as string[][], git: [] as string[][] };
+  const git = { head: "c".repeat(40), remote: "c".repeat(40), log: [] as Array<{ sha: string; parent: string; file: string; identity: string }>, pushes: 0 };
+  const controller = "Arcadia Controller\tcontroller@arcadia.local";
+  const commit = (file: string) => { const next = sha(git.head + file + git.log.length).slice(0, 40); git.log.push({ sha: next, parent: git.head, file, identity: options.commitIdentity ?? `${controller}\t${controller}` }); git.head = next; };
+  const between = (from: string, to: string) => { const out: Array<{ file: string; identity: string }> = []; let at = to; while (at !== from) { const c = git.log.find((entry) => entry.sha === at); if (!c) throw new Error("not an ancestor"); out.push(c); at = c.parent; } return out; };
+  const calls = { claude: [] as Array<{ args: readonly string[]; timeout: number }>, cli: [] as string[][], cliTimeouts: [] as number[], git: [] as string[][] };
   let decisionFile = "", answer = "", slug = "", question = "";
   const decisionDoc = (status: string, withAnswer: boolean) => [
     "---", "arcadia: v1", "type: decision", `id: "${path.basename(decisionFile).slice(0, 4)}"`, `slug: ${slug}`, "project: arcadia", `status: ${status}`,
@@ -98,19 +107,22 @@ function fixture(options: FixtureOptions = {}) {
         source: "worker_live_request", success: outcome === "ok" && (w.httpStatus ?? 200) === 200
       }), { mode: 0o600 });
     },
+    polledRepositories: () => (options.polled ?? ((repo) => [repo]))(repository),
     runClaude: async (args, timeout) => {
       calls.claude.push({ args, timeout });
       if (options.renewal === "throw") throw new Error("spawn EACCES");
       return options.renewal ?? { ok: true, detail: "exit 0" };
     },
-    cli: (args) => {
+    cli: (args, timeoutMs) => {
       calls.cli.push(args);
+      calls.cliTimeouts.push(timeoutMs);
       clock += options.cliDelayMs ?? 1000;
       const key = args.slice(0, 2).join(" ");
       if (key === "agent-ask preview") {
         const ask = JSON.parse(readFileSync(args[args.indexOf("--file") + 1], "utf8"));
         question = ask.desired_result; answer = ask.options[0].label; slug = slugify(question);
         decisionFile = path.join(repository, "docs", "decisions", `0161-${slug}.md`);
+        expect(args).toEqual(expect.arrayContaining(["--dir", repository]));
         return { ok: true, data: { proposal: { id: "agentask_1" } } };
       }
       if (key === "agent-ask settle" && !args.includes("--apply")) {
@@ -131,6 +143,7 @@ function fixture(options: FixtureOptions = {}) {
         case "ls-remote": return `${git.remote}\trefs/heads/main`;
         case "diff": return [...new Set(between(args[2], args[3]).map((c) => c.file))].join("\n");
         case "rev-list": { const [from, to] = args[2].split(".."); return String(between(from, to).length); }
+        case "log": { const [from, to] = args[2].split(".."); return between(from, to).map((c) => c.identity).join("\n"); }
         case "push": git.pushes += 1; git.remote = git.head; return "";
         default: throw new Error(`unexpected git ${args.join(" ")}`);
       }
@@ -176,6 +189,12 @@ describe("start-run sign-in: refusals before the day is claimed", () => {
       expect(["REQUEST_SLOT_BUSY", "REQUEST_NOT_IGNORED"]).toContain(error.code);
       expect(existsSync(f.ledger)).toBe(false);
     }
+  });
+  it("refuses, without claiming, a repository the worker does not poll (no active Project has it as repo_path)", async () => {
+    const f = fixture({ polled: () => ["/somewhere/else"] });
+    expect(await refusal(f)).toMatchObject({ code: "REPOSITORY_NOT_POLLED", dayClaimed: false });
+    expect(existsSync(f.ledger)).toBe(false);
+    expect(f.calls.claude).toEqual([]);
   });
   it("staticSignInChecks is read-only and reports the terminal slots it will archive", () => {
     const f = fixture();
@@ -238,6 +257,17 @@ describe("start-run sign-in: the sequence", () => {
     expect(result.publicationHead).toBe(f.git.remote);
     // The previous terminal grant and request were archived, never overwritten; the new request carries only the nonce.
     expect(existsSync(`${diagnosticGrantPath(f.workspace)}.completed-${OLD_NONCE}`)).toBe(true);
+    expect(journal(f).archived).toEqual([
+      { from: diagnosticGrantPath(f.workspace), to: `${diagnosticGrantPath(f.workspace)}.completed-${OLD_NONCE}`, sha256: sha(JSON.stringify({ nonce: OLD_NONCE })) },
+      { from: path.join(f.repository, ".arcadia", "worker-claude-usage.request"), to: path.join(f.runDirectory, `archived-worker-claude-usage-request-${OLD_NONCE}.json`), sha256: sha(JSON.stringify({ nonce: OLD_NONCE })) }
+    ]);
+    // The Decision id is settlement's: max frontmatter id (0160) + 1, not the filename prefix (0099).
+    expect(result.decision).toMatch(/^0161-authorize-one-start-card-worker-claude-usage-diagnostic-/);
+    // Read-only calls are bounded by the grant time above the reserve; the two committing calls get the whole window.
+    expect(f.calls.cliTimeouts[2]).toBe(300_000);
+    expect(f.calls.cliTimeouts[4]).toBe(300_000);
+    expect(Math.max(f.calls.cliTimeouts[0], f.calls.cliTimeouts[1], f.calls.cliTimeouts[3])).toBeLessThanOrEqual(60_000);
+    expect(f.calls.git.find((args) => args[0] === "log")).toBeDefined();
     expect(existsSync(path.join(f.runDirectory, `archived-worker-claude-usage-request-${OLD_NONCE}.json`))).toBe(true);
     expect(JSON.parse(readFileSync(path.join(f.repository, ".arcadia", "worker-claude-usage.request"), "utf8"))).toEqual({ nonce: NONCE });
     // Only the bound worker's own receipt for this nonce counts, and it allows START.
@@ -273,6 +303,23 @@ describe("start-run sign-in: the sequence", () => {
     expect(journal(f).refusal).toMatchObject({ code: "CHECK_FAILED", dayClaimed: true });
   });
 
+  it("refuses before the push when the Decision commits are not the Arcadia Controller's", async () => {
+    const operator = "P. Mark Anderson\twayoutwest@example.test";
+    const f = fixture({ commitIdentity: `${operator}\t${operator}` });
+    expect(await refusal(f)).toMatchObject({ code: "RECORDS_IDENTITY", dayClaimed: true });
+    expect(f.git.pushes).toBe(0);
+    expect(f.calls.git.some((args) => args[0] === "push")).toBe(false);
+    expect(JSON.parse(readFileSync(diagnosticGrantPath(f.workspace), "utf8"))).toEqual({ nonce: OLD_NONCE });
+  });
+
+  it("refuses before the Agent Ask when origin main moved after the claim", async () => {
+    const f = fixture();
+    const renew = f.deps.runClaude;
+    f.deps.runClaude = async (args, timeout) => { f.git.remote = "e".repeat(40); return renew(args, timeout); };
+    expect(await refusal(f)).toMatchObject({ code: "ORIGIN_MOVED", dayClaimed: true });
+    expect(f.calls.cli).toEqual([]);
+  });
+
   it("consumes the day when the bound worker never answers", async () => {
     const f = fixture({ worker: { silent: true } });
     expect(await refusal(f)).toMatchObject({ code: "CHECK_TIMEOUT", dayClaimed: true });
@@ -305,5 +352,38 @@ describe("start-run sign-in: the START gate on a receipt", () => {
     ["a 7d window at 100%", { windows: [{ label: "5h", usedPercentage: 1 }, { label: "7d", usedPercentage: 100 }] }, /7d at 100%/]
   ])("refuses %s", (_label, overrides, reason) => {
     expect(signInReceiptRefusal(receipt(overrides), binding, now)).toMatch(reason);
+  });
+});
+
+describe("start-run sign-in: only inside the card's own press", () => {
+  function press(overrides: { scriptId?: string; status?: string; claimed?: string | null; marker?: Record<string, unknown> | null } = {}) {
+    const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "arcadia-start-run-press-")));
+    directories.push(root);
+    const library = path.join(root, "operator-scripts");
+    const runDirectory = path.join(library, "runs", "start-card", "run-1");
+    const pressDirectory = path.join(library, "runs", "operator", "start-card", "press-1");
+    mkdirSync(runDirectory, { recursive: true });
+    mkdirSync(pressDirectory, { recursive: true });
+    writeFileSync(path.join(pressDirectory, "run.json"), JSON.stringify({ scriptId: overrides.scriptId ?? "start-card", status: overrides.status ?? "running" }));
+    if (overrides.claimed !== null) writeFileSync(path.join(pressDirectory, "start-run.claimed"), `${overrides.claimed ?? "run-1"}\n`);
+    if (overrides.marker !== null) writeFileSync(path.join(library, "start-card.consumed.json"), JSON.stringify(overrides.marker ?? { state: "CONSUMED", requestId: "start-card", runId: "run-1" }));
+    const env = { ARCADIA_OPERATOR_SCRIPT_ID: "start-card", ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY: pressDirectory };
+    return { options: { card: "start-card", runId: "run-1", runDirectory }, env };
+  }
+  it("accepts this card's running, claimed, consumed press", () => {
+    const p = press();
+    expect(() => assertStartCardPress(p.options, p.env)).not.toThrow();
+  });
+  it.each<[string, Parameters<typeof press>[0], Record<string, string | undefined> | null, RegExp]>([
+    ["no operator context", {}, {}, /does not name this card/],
+    ["another card's press", { scriptId: "other-card" }, null, /not this card's running press/],
+    ["a finished press", { status: "failed" }, null, /not this card's running press/],
+    ["an unclaimed press", { claimed: null }, null, /start-run\.claimed marker is not this run/],
+    ["a press claimed by another run", { claimed: "run-2" }, null, /start-run\.claimed marker is not this run/],
+    ["an allowance not yet consumed", { marker: null }, null, /allowance is not consumed by this run/],
+    ["an allowance consumed by another run", { marker: { state: "CONSUMED", requestId: "start-card", runId: "run-0" } }, null, /allowance is not consumed by this run/]
+  ])("refuses %s before anything is claimed", (_label, overrides, env, reason) => {
+    const p = press(overrides);
+    expect(() => assertStartCardPress(p.options, env ?? p.env)).toThrow(reason);
   });
 });

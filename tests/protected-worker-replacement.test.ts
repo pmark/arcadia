@@ -27,7 +27,7 @@ const agent = (overrides: Partial<LaunchAgentAudit> = {}): LaunchAgentAudit => (
 
 describe("assertWorkerReplacementCustody", () => {
   it("takes over only the named live worker agent and reports an idle stray worker without touching it", () => {
-    const idle = assertWorkerReplacementCustody("/workspace", LABEL, [agent(), agent({ label: "com.arcadia.worker", workspace: "/workspace" }), agent({ label: "com.arcadia.local.1.dashboard", role: "other" })], () => false);
+    const idle = assertWorkerReplacementCustody("/workspace", LABEL, [agent(), agent({ label: "com.arcadia.worker", workspace: "/workspace" }), agent({ label: "com.arcadia.local.1.dashboard", role: "other" })], () => false, "/workspace");
     expect(idle).toEqual(["com.arcadia.worker"]);
   });
   it.each<[string, string, LaunchAgentAudit[], (label: string) => boolean, RegExp]>([
@@ -38,7 +38,12 @@ describe("assertWorkerReplacementCustody", () => {
     ["any unreadable agent", LABEL, [agent(), agent({ label: "com.arcadia.demo.nightly", role: "other", verdict: "unreadable" })], () => false, /unreadable/],
     ["another running worker for this workspace", LABEL, [agent(), agent({ label: "com.arcadia.worker", workspace: "/workspace" })], (label) => label === "com.arcadia.worker", /Another worker agent com\.arcadia\.worker is running/]
   ])("refuses %s", (_label, label, agents, running, reason) => {
-    expect(() => assertWorkerReplacementCustody("/workspace", label, agents, running)).toThrow(reason);
+    expect(() => assertWorkerReplacementCustody("/workspace", label, agents, running, "/workspace")).toThrow(reason);
+  });
+  it("accepts a live agent with no --workspace only when the ambient default workspace is this one", () => {
+    expect(() => assertWorkerReplacementCustody("/workspace", LABEL, [agent()], () => false, "/elsewhere")).toThrow(/not one readable worker agent/);
+    expect(() => assertWorkerReplacementCustody("/workspace", LABEL, [agent()], () => false, null)).toThrow(/not one readable worker agent/);
+    expect(assertWorkerReplacementCustody("/workspace", LABEL, [agent()], () => false, "/workspace")).toEqual([]);
   });
 });
 
@@ -53,9 +58,17 @@ describe("worker install --replace-label", () => {
     writeFileSync(path.join(home, "Library", "LaunchAgents", `${LABEL}.plist`), "<plist>source-run worker</plist>");
     vi.stubEnv("HOME", home);
     const release: ProtectedWorkerLaunch = { directory: path.join(root, "release"), runtimeExecutable: "/runtime/node", cliPath: path.join(root, "release", "dist", "src", "cli.js"), sourceRepository: path.join(root, "arcadia") };
-    const exec = vi.fn((_file: string, args: readonly string[]) => (args[0] === "list" ? "" : ""));
-    const deps = { ...noSession, execFileSync: exec as never, waitForRoutes: () => true, now: () => 1, resolveProtectedLaunch: () => release, auditLaunchAgents: () => ({ directory: "", agents: [agent({ workspace })], counts: { pinned: 1, unpinned: 0, unreadable: 0, duplicate: 0 } }) };
-    return { workspace, home, release, exec, deps, plist: path.join(home, "Library", "LaunchAgents", `${LABEL}.plist`) };
+    // launchd: `print` fails once the job is gone (after `printsBeforeGone` successful prints following bootout).
+    let printsLeft = 0;
+    const launchd = { printsBeforeGone: 0 };
+    const exec = vi.fn((_file: string, args: readonly string[]) => {
+      if (args[0] === "bootout") printsLeft = launchd.printsBeforeGone;
+      if (args[0] === "print") { if (printsLeft <= 0) throw new Error("Could not find service"); printsLeft -= 1; }
+      return "";
+    });
+    const sleeps: number[] = [];
+    const deps = { ...noSession, execFileSync: exec as never, waitForRoutes: () => true, now: () => 1, resolveProtectedLaunch: () => release, ambientWorkspace: () => workspace, sleepMs: (ms: number) => { sleeps.push(ms); }, auditLaunchAgents: () => ({ directory: "", agents: [agent({ workspace })], counts: { pinned: 1, unpinned: 0, unreadable: 0, duplicate: 0 } }) };
+    return { workspace, home, release, exec, deps, launchd, sleeps, plist: path.join(home, "Library", "LaunchAgents", `${LABEL}.plist`) };
   }
 
   it("rewrites the live label as the protected compiled plist, then boots it out and back in", () => {
@@ -69,8 +82,41 @@ describe("worker install --replace-label", () => {
     expect(plist).not.toContain("tsx");
     expect(existsSync(`${s.plist}.tmp`)).toBe(false);
     const launchctl = s.exec.mock.calls.map(([, args]) => (args as string[])[0]);
-    expect(launchctl).toEqual(["bootout", "bootstrap"]);
-    expect(s.exec.mock.calls[1][1]).toEqual(["bootstrap", `gui/${process.getuid?.() ?? 0}`, s.plist]);
+    expect(launchctl).toEqual(["bootout", "print", "bootstrap"]);
+    expect(s.exec.mock.calls[2][1]).toEqual(["bootstrap", `gui/${process.getuid?.() ?? 0}`, s.plist]);
+  });
+
+  it("waits, bounded, until launchd reports the old job gone before bootstrapping", () => {
+    const s = setup();
+    s.launchd.printsBeforeGone = 3;
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    runWorkerInstallCommand({ workspace: s.workspace, replaceLabel: LABEL }, s.deps);
+    expect(s.exec.mock.calls.map(([, args]) => (args as string[])[0])).toEqual(["bootout", "print", "print", "print", "print", "bootstrap"]);
+    expect(s.sleeps).toEqual([250, 250, 250]);
+  });
+
+  it("fails closed on launchctl errors other than not loaded: a failed list query or bootout never proceeds", () => {
+    const s = setup();
+    const audit = () => ({ directory: "", agents: [agent({ workspace: s.workspace }), agent({ label: "com.arcadia.worker", workspace: s.workspace })], counts: { pinned: 2, unpinned: 0, unreadable: 0, duplicate: 0 } });
+    const listFails = vi.fn((_file: string, args: readonly string[]) => { if (args[0] === "list") throw new Error("Operation not permitted"); return ""; });
+    expect(() => runWorkerInstallCommand({ workspace: s.workspace, replaceLabel: LABEL }, { ...s.deps, auditLaunchAgents: audit, execFileSync: listFails as never })).toThrow(/launchctl list com\.arcadia\.worker failed .* custody is unknown/);
+    expect(listFails.mock.calls.some(([, args]) => (args as string[])[0] === "bootout")).toBe(false);
+    const bootoutFails = vi.fn((_file: string, args: readonly string[]) => { if (args[0] === "bootout") throw new Error("Operation not permitted"); return ""; });
+    expect(() => runWorkerInstallCommand({ workspace: s.workspace, replaceLabel: LABEL }, { ...s.deps, execFileSync: bootoutFails as never })).toThrow(/bootout of .* failed/);
+    expect(bootoutFails.mock.calls.some(([, args]) => (args as string[])[0] === "bootstrap")).toBe(false);
+    // "not loaded" from bootout is tolerated.
+    const notLoaded = vi.fn((_file: string, args: readonly string[]) => { if (args[0] === "bootout" || args[0] === "print") throw new Error("Boot-out failed: 3: No such process"); return ""; });
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    runWorkerInstallCommand({ workspace: s.workspace, replaceLabel: LABEL }, { ...s.deps, execFileSync: notLoaded as never });
+    expect(notLoaded.mock.calls.map(([, args]) => (args as string[])[0])).toEqual(["bootout", "print", "bootstrap"]);
+  });
+
+  it("refuses without bootstrapping when the old job never leaves launchd", () => {
+    const s = setup();
+    s.launchd.printsBeforeGone = 10_000;
+    expect(() => runWorkerInstallCommand({ workspace: s.workspace, replaceLabel: LABEL }, s.deps)).toThrow(/still reports .* after bootout \(30s\)/);
+    expect(s.exec.mock.calls.some(([, args]) => (args as string[])[0] === "bootstrap")).toBe(false);
+    expect(s.sleeps).toHaveLength(120);
   });
 
   it("refuses from source (no registered compiled release) and leaves the live plist untouched", () => {
@@ -82,7 +128,11 @@ describe("worker install --replace-label", () => {
 
   it("fails closed when launchd will not bootstrap or the restarted worker never publishes heartbeats", () => {
     const s = setup();
-    const failing = vi.fn((_file: string, args: readonly string[]) => { if (args[0] === "bootstrap") throw new Error("Input/output error"); return ""; });
+    const failing = vi.fn((_file: string, args: readonly string[]) => {
+      if (args[0] === "print") throw new Error("Could not find service");
+      if (args[0] === "bootstrap") throw new Error("Input/output error");
+      return "";
+    });
     expect(() => runWorkerInstallCommand({ workspace: s.workspace, replaceLabel: LABEL }, { ...s.deps, execFileSync: failing as never })).toThrow(/bootstrap failed .* The worker may be down/);
     expect(() => runWorkerInstallCommand({ workspace: s.workspace, replaceLabel: LABEL }, { ...s.deps, waitForRoutes: () => false })).toThrow(/did not publish fresh heartbeats/);
   });

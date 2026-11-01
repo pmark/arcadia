@@ -109,7 +109,7 @@ export function validateStartRunPins(value: unknown): StartRunPins {
   if (!Array.isArray(p.requiredDecisions) || !p.requiredDecisions.length || !p.requiredDecisions.every((d) => typeof d === "string" && decisionId.test(d)) || !distinct(p.requiredDecisions)) {
     fail("startRun.requiredDecisions needs distinct four-digit Decision ids.");
   }
-  for (const needed of [p.spendDecision, p.integrationDecision, "0156", "0157", "0161"]) {
+  for (const needed of [p.spendDecision, p.integrationDecision, "0141", "0143", "0156", "0157", "0161"]) {
     if (!p.requiredDecisions.includes(needed)) fail(`startRun.requiredDecisions must include Decision ${needed}.`);
   }
   if (!Array.isArray(p.requiredFiles) || !p.requiredFiles.every(repoRelative) || !distinct(p.requiredFiles) || !p.requiredFiles.includes(START_RUN_EXECUTOR_PATH)) {

@@ -273,7 +273,9 @@ pinned descriptor, so per-card review is small.
   already in the ledger. The allowance is consumed at the first mutation; there
   is no rollback, a later failure leaves the runtime upgraded and an activated
   Plan active, a renewal or check failure also consumes that day (no retry), and
-  only this Grant is returned to Off.
+  only this Grant is returned to Off. A later `scripts/restart-services-impl.sh`
+  (restart-arcadia-services) rewrites that same worker label back to a
+  source-run worker and so unbinds it; the next START card binds it again.
 - **Run it** with `<id>.sh preflight` first (phases P0 to P2, no mutation, no
   /actions context, writes only `runs/<id>/<run>/`), then press the card. Every
   phase rewrites `receipt.json` and `failure-handoff.md` there.
