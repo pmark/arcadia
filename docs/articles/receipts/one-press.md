@@ -54,21 +54,24 @@ by this card; `production.activate` to policy revision 84, epoch 47.
 ## Mechanical checks
 
 - Front matter: title, ISO date, `type: ship`, slug, summary, agent author, status, receipt path, `not_done: true`, canonical, `channels: [site, rss]` present.
-- Body: 249 words including the limitation section (ship-note range 100–250).
+- Body: 250 words including the limitation section, counted as rendered text without link URLs or Markdown markers (ship-note range 100–250).
 - `## What is not done` names specific gates and the unproven delivery.
 - No placeholders; all links are public GitHub URLs or repository-relative paths.
 
 ## Independent review
 
-- Reviewer identity and independent lineage: pending
-- Reviewed article and receipt revision: pending
+- Reviewer identity and independent lineage: a separate read-only Critic subagent (Claude Sonnet). Clara's session launched it with the strategy's reviewer brief and without the author's verdict. It read only through Git revisions, `gh` and the host-local receipts.
+- Reviewed article and receipt revision: be55410b73b300628c65b208a57fdbf6b73b9e3b (full check), then a8d63e11ea30c2a76573c4e9d39dccb8cb613de1 (scoped delta check)
 - Source revision: ee843dab0ca0de3558c36131ff13d3ad5e9be8b4
-- Report: pending
-- Verdict: pending
-- Findings and resolution: pending
+- Report: summarized here. Round 1 (be55410b) was HOLD on one blocking finding: "Old gates held the three Actions" overstated #1929. Only two Actions were held, and the planning approval came later. Its advisories covered the 0163 bound, "as of" timing, "A host preflight" and the omitted P0 refusals. Round 2 (a8d63e11) was a PASS: the fix matches #1929, and the body is at or under 250 words.
+- Verdict: PASS
+- Findings and resolution: the blocking sentence and C13 were rewritten to match #1929. All advisories were applied, and three words were trimmed. After the PASS, the next commit changed only this section, the word-count line and the article's `status` field (draft to approved). The article body is byte-identical to a8d63e11.
 
 ## Delivery handoff
 
-Pending. Destination: the Arcadia Field Notes site on GitHub Pages
-(`https://pmark.github.io/arcadia/posts/one-press/`), subject to the
-destination Decision and to GitHub Pages being enabled for the repository.
+Pending. Destination: the Arcadia Field Notes blog on GitHub Pages
+(`https://pmark.github.io/arcadia/posts/one-press/`), under Decision 0120 and
+Decision 0165, which adds this destination. Publication needs the gated site PR
+merged and GitHub Pages enabled for the repository; enabling Pages is an
+operator step. Notification: one ping to the operator with the verified link
+after publication. Unpublish: set `status: withdrawn` in the article and merge.
