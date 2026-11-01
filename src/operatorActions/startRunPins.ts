@@ -1,4 +1,5 @@
 import path from "node:path";
+import { DELEGATION_DECISION, DELEGATION_SCOPE, validateDelegationBlock, type StartRunDelegation } from "./startRunDelegation.js";
 
 /**
  * The pinned facts of one per-run START card (Decisions 0156 and 0157). The card is a thin launcher plus a
@@ -51,6 +52,8 @@ export interface StartRunPins {
   consumedHistory: Array<{ path: string; sha256: string }>;
   // Decision 0161 replaced the retained pre-press sign-in receipt (the former signInEvidence pin): the card itself renews
   // the sign-in once and has the bound worker check usage after its protected install (scripts/start-run.sh, P4).
+  /** Decision 0163: present only on a successor card Rowan presses, delegated from the operator's originating press. */
+  delegation?: StartRunDelegation;
 }
 
 export class StartRunPinsError extends Error {
@@ -84,8 +87,18 @@ const repoRelative = (v: unknown): v is string =>
 
 /** Strict validation: the exact field set, no defaults, no extras. Returns the same object when valid. */
 export function validateStartRunPins(value: unknown): StartRunPins {
-  exactKeys(value, START_RUN_KEYS, "startRun");
+  const hasDelegation = !!value && typeof value === "object" && "delegation" in value;
+  exactKeys(value, hasDelegation ? [...START_RUN_KEYS, "delegation"] : START_RUN_KEYS, "startRun");
   const p = value as StartRunPins;
+  if (hasDelegation) {
+    try { validateDelegationBlock(p.delegation); } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
+    if (!Array.isArray(p.requiredDecisions) || !p.requiredDecisions.includes(DELEGATION_DECISION)) fail("startRun.requiredDecisions must include Decision 0163 on a delegated card.");
+    // The delegated scope is fixed by Decision 0163.
+    if (p.plan !== DELEGATION_SCOPE.plan || JSON.stringify(p.actions) !== JSON.stringify(DELEGATION_SCOPE.actions) || p.provider !== DELEGATION_SCOPE.provider
+      || p.concurrency !== DELEGATION_SCOPE.concurrency || p.spendDecision !== DELEGATION_SCOPE.spendDecision) {
+      fail("A delegated card keeps exactly the scope Decision 0163 delegates (Plan, Actions in order, provider, concurrency, spend Decision).");
+    }
+  }
   if (p.schema !== "arcadia-start-run-v1") fail("startRun.schema must be arcadia-start-run-v1.");
   if (typeof p.reviewedRevision !== "string" || !sha1.test(p.reviewedRevision)) fail("startRun.reviewedRevision must be a full 40-hex commit id.");
   if (typeof p.executorSha256 !== "string" || !sha256.test(p.executorSha256)) fail("startRun.executorSha256 must be 64 lowercase hex.");

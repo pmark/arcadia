@@ -21,6 +21,12 @@ const PLAN = "arcadia-runs-production-unattended-on-its-own-repository-on-the-cl
 const PREVIOUS = "enable-bounded-local-native-release-manager-coordination-with-durable-addressed";
 const ACTIONS = ["claude-worker-launch-replay", "claude-capacity-evidence", "first-supervised-claude-run"];
 const SCOPED = ACTIONS.map((a) => `arcadia/${a}`);
+/** Decision 0163's delegated scope: a delegated card keeps exactly these Actions. */
+const DELEGATED_ACTIONS = ["bound-guidance-test-teardown-retries", "assert-tmux-temp-launcher-removed", "cover-retired-descriptor-byte-change"];
+const ORIGIN = "start-run-origin-20261101";
+const ORIGIN_RUN = "20261101T010000Z-111";
+const ORIGIN_PRESS = "20261101010000000-origin-press";
+type DelegationScenario = "ok" | "receipt-changed" | "origin-delegated" | "origin-scope" | "expired" | "exhausted" | "not-trigger" | "activated-other-off" | "returned-off" | "attempt-mismatch" | "no-origin";
 const LABEL = "com.arcadia.local.1.worker";
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
@@ -41,13 +47,13 @@ function commitFile(dir: string, file: string, content: string, message: string)
   return git(dir, "rev-parse", "HEAD");
 }
 
-const planDocument = (status: "active" | "draft", done: string[] = []) => [
+const planDocument = (status: "active" | "draft", done: string[] = [], actions: string[] = ACTIONS) => [
   "---", `slug: ${PLAN}`, "project: arcadia", `status: ${status}`, "actions:",
-  ...ACTIONS.flatMap((id) => [`  - id: ${id}`, `    status: ${done.includes(id) ? "done" : "open"}`]), "---", "body", ""
+  ...actions.flatMap((id) => [`  - id: ${id}`, `    status: ${done.includes(id) ? "done" : "open"}`]), "---", "body", ""
 ].join("\n");
 const projectDocument = (activePlan: string) => `---\nslug: arcadia\nactive_plan: ${activePlan}\n---\n`;
 const decisionDocument = (id: string, status = "approved", answer = "Yes") => `---\nid: "${id}"\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
-const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161"];
+const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0163"];
 
 type Scenario = "same" | "behind" | "pin-unfetched" | "origin-moved" | "diverged" | "ahead";
 interface BoxOptions {
@@ -65,6 +71,10 @@ interface BoxOptions {
   historyDrift?: boolean;
   /** The dashboard's run record for this press: absent, stale, for another card, not running, or already claimed. */
   press?: "none" | "stale" | "other-card" | "not-running" | "claimed" | "other-parent";
+  /** Decision 0163: make this a successor card Rowan presses, delegated from an operator-pressed origin in the library. */
+  delegation?: DelegationScenario;
+  /** Press a delegated card without the delegated marker (as if by the operator), or mark an ordinary card delegated. */
+  pressMarker?: "omit" | "forge";
   /** The pre-restart worker: fresh and unbound by default (a source-run worker), or stale, or not the launchd PID. */
   preWorker?: "stale" | "pid-mismatch" | "source-child";
   /** Today's Decision 0141 sequence already recorded in the daily ledger. */
@@ -97,7 +107,7 @@ function box(options: BoxOptions = {}) {
     "src/sessions/tmuxLauncher.ts": "export {};\n",
     "src/production/workerMerge.ts": "export {};\n",
     "PROJECT.md": projectDocument(options.projectPointer ?? (planStatus === "draft" ? PREVIOUS : PLAN)),
-    [`docs/plans/${PLAN}.md`]: planDocument(planStatus, options.done),
+    [`docs/plans/${PLAN}.md`]: planDocument(planStatus, options.done, options.delegation ? DELEGATED_ACTIONS : ACTIONS),
     [`docs/plans/${PREVIOUS}.md`]: `---\nslug: ${PREVIOUS}\nproject: arcadia\nstatus: ${planStatus === "draft" ? "active" : "draft"}\nactions: []\n---\n`
   };
   for (const id of DECISIONS) {
@@ -151,6 +161,42 @@ function box(options: BoxOptions = {}) {
     production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
     grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }]
   };
+  if (options.delegation) {
+    // The operator's originating press, as the /actions runner and the executor leave it on disk.
+    const scenario = options.delegation;
+    pins.actions = DELEGATED_ACTIONS;
+    pins.requiredDecisions = [...pins.requiredDecisions, "0163"];
+    pins.grantedBy = `Rowan, pressing this successor START card from /actions under Decision 0163, delegated from the operator's originating press ${ORIGIN}/${ORIGIN_RUN}`;
+    const activated = scenario === "returned-off" || scenario === "activated-other-off" || scenario === "not-trigger";
+    const originReceipt = JSON.stringify({
+      schema: "arcadia-start-run-receipt-v1", id: ORIGIN, runId: ORIGIN_RUN, mode: "run", startedAt: new Date(Date.now() - 2 * 3_600_000).toISOString(),
+      outcome: scenario === "not-trigger" ? "succeeded" : "refused", allowanceConsumed: true, productionActivated: activated,
+      offCleanup: scenario === "returned-off" ? "returned_off" : scenario === "activated-other-off" ? "other_grant_active" : "not_attempted", record: { operatorRunId: ORIGIN_PRESS }
+    });
+    const receiptDir = path.join(library, "runs", ORIGIN, ORIGIN_RUN);
+    const pressDir = path.join(library, "runs", "operator", ORIGIN, ORIGIN_PRESS);
+    mkdirSync(receiptDir, { recursive: true });
+    mkdirSync(pressDir, { recursive: true });
+    if (scenario !== "no-origin") writeFileSync(path.join(receiptDir, "receipt.json"), originReceipt);
+    writeFileSync(path.join(pressDir, "run.json"), JSON.stringify({
+      schema: "arcadia-operator-script-run-v1", runId: ORIGIN_PRESS, scriptId: ORIGIN, status: "failed",
+      startedAt: new Date(Date.now() - (scenario === "expired" ? 73 : 2) * 3_600_000).toISOString(),
+      ...(scenario === "origin-delegated" ? { press: { kind: "delegated", agent: "rowan", decision: "0163", originatingRun: "x/y" } } : {})
+    }));
+    writeFileSync(path.join(pressDir, "descriptor.json"), JSON.stringify({ startRun: { ...pins, ...(scenario === "origin-scope" ? { spendDecision: "0999" } : {}) } }));
+    writeFileSync(path.join(library, `${ORIGIN}.consumed.json`), '{"state":"CONSUMED"}\n');
+    // Earlier delegated successors of the same chain, each consumed (exhausted: 4 of them, so 5 attempts already ran).
+    const successors = scenario === "exhausted" ? 4 : 0;
+    for (let n = 1; n <= successors; n += 1) {
+      const card = `start-run-successor-${n}`;
+      writeFileSync(path.join(library, `${card}.json`), JSON.stringify({ startRun: { delegation: { decision: "0163", originatingCard: ORIGIN, originatingRun: ORIGIN_RUN, originatingReceiptSha256: "0".repeat(64), attempt: n + 1 } } }));
+      writeFileSync(path.join(library, `${card}.consumed.json`), '{"state":"CONSUMED"}\n');
+      mkdirSync(path.join(library, "runs", card, `20261101T0${n}3000Z-1`), { recursive: true });
+      writeFileSync(path.join(library, "runs", card, `20261101T0${n}3000Z-1`, "receipt.json"), JSON.stringify({ id: card, mode: "run", allowanceConsumed: true, startedAt: new Date(Date.now() - (60 - n) * 60_000).toISOString(), outcome: "refused", productionActivated: false }));
+    }
+    pins.delegation = { decision: "0163", originatingCard: ORIGIN, originatingRun: ORIGIN_RUN, originatingReceiptSha256: sha(originReceipt), attempt: scenario === "exhausted" ? 5 : scenario === "attempt-mismatch" ? 3 : 2 };
+    if (scenario === "receipt-changed") writeFileSync(path.join(receiptDir, "receipt.json"), originReceipt + " ");
+  }
   const descriptor: OperatorScriptDescriptor = {
     schema: "arcadia-operator-script-v1", id: ID, kind: "grant", title: "START: fixture", script: `${ID}.sh`, repeatable: false,
     problem: "p", desired_effect: "e", authority: { does: ["d"], never_does: ["n"] }, success: { effect: "s", next: "n" }, failure: { effect: "f", next: "n" },
@@ -203,7 +249,7 @@ function box(options: BoxOptions = {}) {
   const state: Record<string, any> = {
     workspace, repository: repo, plan: PLAN,
     production: { desiredState: "inactive", revision: 83, epoch: 46, liveAdmissions: 0, authority: null },
-    queue: { revision: 290, orderValid: true, unpositionedCount: 0, ordered: SCOPED.map((orderKey) => ({ orderKey })) },
+    queue: { revision: 290, orderValid: true, unpositionedCount: 0, ordered: (options.delegation ? DELEGATED_ACTIONS.map((a) => `arcadia/${a}`) : SCOPED).map((orderKey) => ({ orderKey })) },
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
     ensure: { fail: false }, activate: { mode: "ok" }, planRunner: { mode: "ok" },
@@ -227,6 +273,12 @@ function box(options: BoxOptions = {}) {
       startedAt: new Date(Date.now() - (kind === "stale" ? 10 * 60_000 : 1000)).toISOString()
     }));
     if (kind === "claimed") writeFileSync(path.join(dir, "start-run.claimed"), "x\n");
+    // Decision 0163: the runner records Rowan's press of a delegated card as delegated (delegatedPressMarker).
+    const delegatedMarker = { kind: "delegated", agent: "rowan", decision: "0163", originatingRun: `${ORIGIN}/${ORIGIN_RUN}` };
+    if ((options.delegation && options.pressMarker !== "omit") || options.pressMarker === "forge") {
+      const record = JSON.parse(readFileSync(path.join(dir, "run.json"), "utf8"));
+      writeFileSync(path.join(dir, "run.json"), JSON.stringify({ ...record, press: delegatedMarker }));
+    }
     return { ARCADIA_OPERATOR_SCRIPT_RUN_ID: runId, ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY: dir, ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR: path.join(dir, "descriptor.json") };
   };
   const env = (overrides: Record<string, string | undefined> = {}, actions = true): NodeJS.ProcessEnv => {
@@ -419,6 +471,44 @@ describe("start-run executor: a source-run pre-restart worker", () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.receipt).toMatchObject({ outcome: "preflight_ok", allowanceConsumed: false, mutations: [] });
     expect(result.receipt!.record).toMatchObject({ oldWorkerPid: 1111, preRestartWorkerPid: 3333 });
+  });
+});
+
+describe("start-run executor: Decision 0163 delegated presses", () => {
+  it("runs Rowan's delegated successor to START and records it as Rowan's press under 0163 from the operator's originating press", () => {
+    const b = box({ delegation: "ok" });
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", productionActivated: true });
+    expect(result.receipt!.record.authority).toContain("Rowan's delegated press of this successor START card from /actions under Decision 0163, delegated from the operator's originating press start-run-origin-20261101/20261101T010000Z-111 (the one activation touch); attempt 2 of at most 5");
+    expect(result.receipt!.record.delegation).toMatchObject({ originatingRun: `${ORIGIN}/${ORIGIN_RUN}`, attempt: 2, attemptsBefore: 1, trigger: "refused-before-start" });
+  }, 120_000);
+  it("accepts the trigger where the latest attempt's own executor returned its Grant to Off", () => {
+    const result = box({ delegation: "returned-off" }).run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt!.record.delegation).toMatchObject({ trigger: "returned-off-after-failed-activation" });
+  });
+  it.each<[string, DelegationScenario, RegExp]>([
+    ["a missing originating receipt", "no-origin", /originating press receipt .* does not exist/],
+    ["a changed originating receipt", "receipt-changed", /originating press receipt changed/],
+    ["an originating press that was itself delegated", "origin-delegated", /not pressed by the operator through \/actions/],
+    ["an originating card with another scope", "origin-scope", /scope is not the one Decision 0163 delegates/],
+    ["a press more than 72 hours after the originating one", "expired", /more than 72 hours/],
+    ["five attempts already", "exhausted", /5 START attempts already ran .* at most 5/],
+    ["an attempt number that does not follow the chain", "attempt-mismatch", /pinned as attempt 3 but 1 attempts already ran/],
+    ["a latest attempt that STARTed successfully", "not-trigger", /no Decision 0163 trigger: .* outcome succeeded/],
+    ["an Off this chain did not issue", "activated-other-off", /no Decision 0163 trigger: .* Off cleanup other_grant_active/]
+  ])("refuses %s in P0, before anything is consumed", (_label, delegation, reason) => {
+    const b = box({ delegation });
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run("preflight"), "P0", reason, headBefore);
+  });
+  it("refuses a delegated card pressed without the delegated marker, and an ordinary card carrying one", () => {
+    for (const [options, reason] of [[{ delegation: "ok" as const, pressMarker: "omit" as const }, /must be pressed through \/actions as Rowan delegated press/], [{ pressMarker: "forge" as const }, /only a Decision 0163 delegated card may carry a delegated press record/]] as const) {
+      const b = box(options);
+      const headBefore = b.head();
+      expectRefusedClean(b, b.run(), "P0", reason, headBefore);
+    }
   });
 });
 
