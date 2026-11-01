@@ -111,8 +111,8 @@ describe("implementation claim detection ignores disclaimers and plan-file write
     "I changed nothing in the repository.",
     "We modified no source files; no changes were made to tests.",
     "No implementation changes made.",
-    "Nothing was changed outside the plan.",
-    "I have not modified any repository file.",
+    "We have not modified files outside the plan.",
+    "I have never modified files in src/.",
     "I updated only the plan file.",
     "I created the plan file at docs/plans/example.md.",
     "I wrote the planning artifact."
@@ -123,6 +123,8 @@ describe("implementation claim detection ignores disclaimers and plan-file write
   it.each([
     "Codex implemented src/stewardship/artifactValidator.ts and updated tests.",
     "I changed no repository files, but I modified src/cli.ts.",
+    "I changed no other files and modified src/cli.ts.",
+    "I updated only the plan file and then modified src/cli.ts.",
     "I updated only the plan file, then I fixed the launcher in src/sessions/tmuxLauncher.ts.",
     "I changed the launcher to remove its temporary directory.",
     "I fixed no-op handling in the worker.",

@@ -447,7 +447,9 @@ const NEGATED_IMPLEMENTATION_CLAIM = new RegExp(
 // The only file a planning run may write is its own plan.
 const PLAN_FILE_OBJECT =
   /^\s*(?:I|we|Codex)\s+(?:changed|modified|updated|created|added|wrote)\s+(?:only\s+)?(?:the|this|a|my|our)\s+(?:\w+\s+)?(?:plan|planning)(?:\s+(?:file|artifact|document|doc))?(?:\s+(?:at|in)\s+\S+)?\s*$/i;
-const IMPLEMENTATION_CLAUSE_BOUNDARY = /[.;,:]|\b(?:but|however|although|though|yet|and then)\b/i;
+// "and", "then" and "also" open a clause too, so a subjectless claim after a
+// disclaimer ("I changed no other files and modified src/cli.ts") is judged alone.
+const IMPLEMENTATION_CLAUSE_BOUNDARY = /[.;,:]|\b(?:but|however|although|though|yet|and|then|also)\b/i;
 
 function implementationClaimEvidence(artifactText: string): string[] {
   return matchingLines(artifactText, [...IMPLEMENTATION_CLAIM_PATTERNS, ...IMPLEMENTATION_CLAIM_LINE_PATTERNS]).filter(
