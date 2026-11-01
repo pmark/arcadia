@@ -371,7 +371,7 @@ else if(r.press!==undefined)fail("only a Decision 0163 delegated card may carry 
 # Decision 0163: a successor card Rowan presses, delegated from the operator's originating press. Read-only, from the library on
 # disk: the originating receipt is unchanged and was a consumed /actions press by the operator of a non-delegated card with the
 # delegated scope, and the operator's first such press after Decision 0163 reached main; this card keeps that scope; fewer than
-# 5 attempts since it (every claimed or consumed /actions press of any in-scope card, read from runs/operator) and this card's
+# 5 attempts since it (every /actions press of any in-scope card that consumed its allowance, read from runs/operator) and this card's
 # attempt number follows them; within 72 hours of the originating press; and the trigger holds on the latest of them: it
 # refused with no activation attempted, or its own executor returned only its Grant to Off. Decision 0163's approval at the
 # reviewed revision is checked in P1 (it is in startRun.requiredDecisions; the descriptor contract requires it).
@@ -405,7 +405,7 @@ for(const card of ls(ops)){if(card===id||!SLUG.test(card))continue;
     if(!run||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==pr||!same(sr))continue;
     const t=Date.parse(run.startedAt);if(!Number.isFinite(t))continue;
     const m=receipts.find((x)=>x.r&&x.r.mode==="run"&&(x.r.record||{}).operatorRunId===pr)||null;
-    presses.push({card,pr,t,at:run.startedAt,sr,delegated:run.press!==undefined||sr.delegation!==undefined,attempt:fs.existsSync(p.join(dir,"start-run.claimed"))||(m&&m.r.allowanceConsumed===true),r:m&&m.r,run:m&&m.run});}}
+    presses.push({card,pr,t,at:run.startedAt,sr,delegated:run.press!==undefined||sr.delegation!==undefined,attempt:(m&&m.r.allowanceConsumed===true)||(!(m&&m.r)&&fs.existsSync(p.join(dir,"start-run.claimed"))&&fs.existsSync(p.join(lib,card+".consumed.json"))),r:m&&m.r,run:m&&m.run});}}
 presses.sort((a,b)=>a.t-b.t);
 const origin=presses.find((x)=>x.card===d.originatingCard&&x.pr===o.record.operatorRunId);
 if(!origin)fail("the originating run has no /actions press record of the delegated scope");
@@ -424,12 +424,22 @@ let trigger;
 if(r.outcome==="refused"&&r.productionActivated===false&&r.offCleanup==="not_attempted")trigger="refused-before-start";
 else if(r.outcome==="refused"&&r.productionActivated===true&&r.offCleanup==="returned_off")trigger="returned-off-after-failed-activation";
 else fail("no Decision 0163 trigger: the latest attempt "+latest.card+"/"+latest.run+" has outcome "+r.outcome+", production activated "+JSON.stringify(r.productionActivated)+", Off cleanup "+r.offCleanup+"; an Off this chain did not issue (a STOP card, a Decision, a stop-the-line) never triggers a successor");
+// Every activate and deactivate bumps the policy revision, even an Off of an already-Off policy: a STOP, a Decision, a
+// stop-the-line or another Grant since the latest attempt leaves this card pinned past it, and ends the delegation.
+const rev=((latest.sr||{}).production||{}).revision,want=Number.isInteger(rev)?rev+(trigger==="returned-off-after-failed-activation"?2:0):null;
+if(want===null||((me||{}).production||{}).revision!==want)fail("production changed after the latest attempt "+latest.card+"/"+latest.run+" (policy revision "+(((me||{}).production||{}).revision)+", expected "+want+"): a STOP, a Decision, a stop-the-line or another Grant ends the delegation");
 process.stdout.write(JSON.stringify({originatingRun:d.originatingCard+"/"+d.originatingRun,operatorRunId:o.record.operatorRunId,originatingPressAt:origin.at,attempt:d.attempt,attemptsBefore:attempts.length,latest:latest.card+"/"+latest.run,trigger}));
 ' "$LIBRARY_DIR" "$ID" "$DELEGATION" "$DESCRIPTOR")" || refuse "Decision 0163 delegation: $out"
   rec delegation "$out"
 }
 claim_operator_press_record() {  # exclusive; called once every other P0 check has passed
   [[ "$MODE" == run ]] || return 0
+  if [[ "$DELEGATION" != null ]]; then  # Decision 0163: one card per attempt of the chain, claimed exclusively
+    local chain_dir="$LIBRARY_DIR/runs/delegation/$(jq -r '.originatingCard + "--" + .originatingRun' <<<"$DELEGATION")"
+    mkdir -p "$chain_dir" || refuse "the Decision 0163 attempt claim directory could not be created"
+    ( set -C; printf '%s %s\n' "$ID" "$RUN_ID" > "$chain_dir/attempt-$(jq -r '.attempt' <<<"$DELEGATION").claimed" ) 2>/dev/null \
+      || refuse "Decision 0163 attempt $(jq -r '.attempt' <<<"$DELEGATION") of this delegation was already claimed by another card"
+  fi
   ( set -C; printf '%s\n' "$RUN_ID" > "$OPERATOR_RUN_DIR/start-run.claimed" ) 2>/dev/null || refuse "the operator press record was claimed concurrently"
   rec_str operatorRunId "$OPERATOR_RUN_ID"
 }

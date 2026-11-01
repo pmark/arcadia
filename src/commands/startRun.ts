@@ -173,7 +173,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   let delegation: StartRunDelegation | undefined;
   if (delegatedFrom) {
     try {
-      const chain = (deps.inspectDelegation ?? inspectDelegationChain)(library, delegatedFrom.card, delegatedFrom.run, null, deps.now());
+      const chain = (deps.inspectDelegation ?? inspectDelegationChain)(library, delegatedFrom.card, delegatedFrom.run, null, deps.now(), null, production.revision);
       delegation = { decision: "0163", originatingCard: delegatedFrom.card, originatingRun: delegatedFrom.run, originatingReceiptSha256: chain.receiptSha256, attempt: chain.attemptsSoFar + 1 };
       notes.push(`Decision 0163 delegated successor: attempt ${delegation.attempt} of at most 5 after ${chain.latest.card}/${chain.latest.run} (${chain.trigger}); the operator's press at ${chain.originatingStartedAt} is the one activation touch.`);
     } catch (error) {

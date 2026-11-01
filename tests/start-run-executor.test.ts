@@ -26,7 +26,7 @@ const DELEGATED_ACTIONS = ["bound-guidance-test-teardown-retries", "assert-tmux-
 const ORIGIN = "start-run-origin-20261101";
 const ORIGIN_RUN = "20261101T010000Z-111";
 const ORIGIN_PRESS = "20261101010000000-origin-press";
-type DelegationScenario = "ok" | "receipt-changed" | "origin-delegated" | "origin-scope" | "expired" | "exhausted" | "not-trigger" | "activated-other-off" | "returned-off" | "attempt-mismatch" | "no-origin" | "found-off" | "before-decision";
+type DelegationScenario = "ok" | "receipt-changed" | "origin-delegated" | "origin-scope" | "expired" | "exhausted" | "not-trigger" | "activated-other-off" | "returned-off" | "attempt-mismatch" | "no-origin" | "found-off" | "before-decision" | "production-changed";
 const LABEL = "com.arcadia.local.1.worker";
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
@@ -183,7 +183,9 @@ function box(options: BoxOptions = {}) {
       startedAt: scenario === "before-decision" ? "2026-11-01T04:00:24.507Z" : new Date(Date.now() - (scenario === "expired" ? 73 * 3_600_000 : 30 * 60_000)).toISOString(),
       ...(scenario === "origin-delegated" ? { press: { kind: "delegated", agent: "rowan", decision: "0163", originatingRun: "x/y" } } : {})
     }));
-    writeFileSync(path.join(pressDir, "descriptor.json"), JSON.stringify({ startRun: { ...pins, ...(scenario === "origin-scope" ? { spendDecision: "0999" } : {}) } }));
+    writeFileSync(path.join(pressDir, "descriptor.json"), JSON.stringify({ startRun: { ...pins, ...(scenario === "origin-scope" ? { spendDecision: "0999" } : {}),
+      // Every activate and deactivate bumps the policy revision: the executor's own activate and Off add two.
+      production: { ...pins.production, revision: pins.production.revision - (scenario === "returned-off" ? 2 : scenario === "production-changed" ? 1 : 0) } } }));
     writeFileSync(path.join(library, `${ORIGIN}.consumed.json`), '{"state":"CONSUMED"}\n');
     writeFileSync(path.join(pressDir, "start-run.claimed"), `${ORIGIN_RUN}\n`);
     // Earlier delegated successors of the same chain, each pressed through /actions and consumed (exhausted: 4 of them, so
@@ -508,11 +510,20 @@ describe("start-run executor: Decision 0163 delegated presses", () => {
     ["a latest attempt that STARTed successfully", "not-trigger", /no Decision 0163 trigger: .* outcome succeeded/],
     ["an Off this chain did not issue", "activated-other-off", /no Decision 0163 trigger: .* Off cleanup other_grant_active/],
     ["an activation found Off by another cause (a STOP card, a Decision, a stop-the-line)", "found-off", /no Decision 0163 trigger: .* Off cleanup not_active/],
-    ["an originating press made before Decision 0163 reached main", "before-decision", /predates Decision 0163 on main/]
+    ["an originating press made before Decision 0163 reached main", "before-decision", /predates Decision 0163 on main/],
+    ["an Off or another transition since the latest attempt", "production-changed", /production changed after the latest attempt .* ends the delegation/]
   ])("refuses %s in P0, before anything is consumed", (_label, delegation, reason) => {
     const b = box({ delegation });
     const headBefore = b.head();
     expectRefusedClean(b, b.run("preflight"), "P0", reason, headBefore);
+  });
+  it("claims each attempt of the chain once: a second card pinned for the same attempt refuses", () => {
+    const b = box({ delegation: "ok" });
+    const chain = path.join(b.library, "runs", "delegation", `${ORIGIN}--${ORIGIN_RUN}`);
+    mkdirSync(chain, { recursive: true });
+    writeFileSync(path.join(chain, "attempt-2.claimed"), "another-card 20261101T060000Z-1\n");
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run(), "P0", /attempt 2 of this delegation was already claimed by another card/, headBefore);
   });
   it("refuses a delegated card pressed without the delegated marker, and an ordinary card carrying one", () => {
     for (const [options, reason] of [[{ delegation: "ok" as const, pressMarker: "omit" as const }, /must be pressed through \/actions as Rowan delegated press/], [{ pressMarker: "forge" as const }, /only a Decision 0163 delegated card may carry a delegated press record/]] as const) {

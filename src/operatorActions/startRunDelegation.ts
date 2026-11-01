@@ -98,7 +98,7 @@ export interface DelegationChain {
 }
 
 /** One /actions press of an in-scope START card, read from the runner's own press directory. */
-interface Press { card: string; pressRunId: string; startedAt: number; startedAtText: string; delegated: boolean; attempt: boolean; receipt: Receipt | null; receiptRun: string | null }
+interface Press { card: string; pressRunId: string; startedAt: number; startedAtText: string; delegated: boolean; attempt: boolean; receipt: Receipt | null; receiptRun: string | null; policyRevision: unknown }
 
 const inDelegatedScope = (s: Record<string, unknown> | undefined): boolean => !!s && s.plan === DELEGATION_SCOPE.plan
   && JSON.stringify(s.actions) === JSON.stringify(DELEGATION_SCOPE.actions) && s.provider === DELEGATION_SCOPE.provider
@@ -106,8 +106,8 @@ const inDelegatedScope = (s: Record<string, unknown> | undefined): boolean => !!
 
 /**
  * Every /actions press of an in-scope START card, from `runs/operator/<card>/<press>/` (run.json and the descriptor the
- * runner snapshotted), with the executor receipt that names it. A press is an attempt once its press record was claimed
- * (P0 passed) or its receipt consumed the allowance; a missing or unreadable receipt never hides a claimed press.
+ * runner snapshotted), with the executor receipt that names it. A press is an attempt when it consumed its card's
+ * allowance; a missing or unreadable receipt never hides a claimed press of a consumed card.
  */
 function inScopePresses(library: string, excludeCard: string | null): Press[] {
   const presses: Press[] = [];
@@ -123,8 +123,10 @@ function inScopePresses(library: string, excludeCard: string | null): Press[] {
       const startedAt = Date.parse(String(run.startedAt));
       if (!Number.isFinite(startedAt)) continue;
       const match = receipts.find(({ r }) => r?.mode === "run" && r.record?.operatorRunId === pressRunId) ?? null;
-      const attempt = existsSync(path.join(dir, "start-run.claimed")) || match?.r?.allowanceConsumed === true;
-      presses.push({ card, pressRunId, startedAt, startedAtText: String(run.startedAt), delegated: run.press !== undefined || startRun!.delegation !== undefined, attempt, receipt: match?.r ?? null, receiptRun: match?.run ?? null });
+      // An attempt consumed its card's one-shot allowance: its receipt says so, or (receipt missing or unreadable) the
+      // press was claimed and the card is consumed. A press refused before P3 consumed nothing and is no attempt.
+      const attempt = match?.r?.allowanceConsumed === true || (!match?.r && existsSync(path.join(dir, "start-run.claimed")) && existsSync(path.join(library, `${card}.consumed.json`)));
+      presses.push({ card, pressRunId, startedAt, startedAtText: String(run.startedAt), delegated: run.press !== undefined || startRun!.delegation !== undefined, attempt, receipt: match?.r ?? null, receiptRun: match?.run ?? null, policyRevision: (startRun!.production as { revision?: unknown } | undefined)?.revision });
     }
   }
   return presses.sort((a, b) => a.startedAt - b.startedAt);
@@ -135,9 +137,12 @@ function inScopePresses(library: string, excludeCard: string | null): Press[] {
  * operator's own consumed /actions press of the delegated scope and the first such press after Decision 0163 reached
  * main; every in-scope press since it (any card, delegated or not) counts toward the 5-attempt bound, and the trigger is
  * judged on the latest of them. `excludeCard` is the card being checked (its own press is not an earlier attempt).
+ * `policyRevision` is the live production policy revision the successor pins: every activate and deactivate bumps it, so
+ * it must equal the latest attempt's pinned revision (plus its own activate and Off after `returned_off`); anything else
+ * (a STOP, a Decision, a stop-the-line, another Grant) touched production since and ends the delegation.
  * Throws StartRunDelegationError.
  */
-export function inspectDelegationChain(library: string, originatingCard: string, originatingRun: string, receiptSha256: string | null, now: Date, excludeCard: string | null = null): DelegationChain & { receiptSha256: string } {
+export function inspectDelegationChain(library: string, originatingCard: string, originatingRun: string, receiptSha256: string | null, now: Date, excludeCard: string | null = null, policyRevision: number | null = null): DelegationChain & { receiptSha256: string } {
   if (!slug.test(originatingCard) || !runIdPattern.test(originatingRun)) refuse("INVALID_DELEGATION", "the originating card or run id is malformed");
   const receiptPath = path.join(library, "runs", originatingCard, originatingRun, "receipt.json");
   if (!existsSync(receiptPath)) refuse("ORIGIN_MISSING", `the originating run's receipt ${receiptPath} does not exist`);
@@ -167,6 +172,10 @@ export function inspectDelegationChain(library: string, originatingCard: string,
   const latest = attempts.at(-1)!;
   if (!latest.receipt) refuse("NOT_A_TRIGGER", `the latest attempt ${latest.card}/${latest.pressRunId} has no readable executor receipt`);
   const trigger = delegationTrigger(latest.receipt!);
+  if (policyRevision !== null) {
+    const expected = Number.isInteger(latest.policyRevision) ? (latest.policyRevision as number) + (trigger === "returned-off-after-failed-activation" ? 2 : 0) : null;
+    if (expected !== policyRevision) refuse("PRODUCTION_CHANGED", `production changed after the latest attempt ${latest.card}/${latest.receiptRun} (policy revision ${policyRevision}, expected ${String(expected)}): a STOP, a Decision, a stop-the-line or another Grant ends the delegation`);
+  }
   return {
     receiptSha256: actualSha, originatingStartedAt: origin!.startedAtText, attemptsSoFar, trigger,
     latest: { card: latest.card, run: latest.receiptRun!, outcome: String(latest.receipt!.outcome), productionActivated: latest.receipt!.productionActivated ?? null, offCleanup: String(latest.receipt!.offCleanup) }
