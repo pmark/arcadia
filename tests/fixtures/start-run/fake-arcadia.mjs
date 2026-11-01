@@ -70,6 +70,11 @@ switch (key2) {
     break;
   case "go-broker ensure": {
     if (state.ensure.fail) { process.stderr.write("ensure: install failed\n"); process.exit(1); }
+    // Like the real install's host probe (Issue #1956): its git worktree, bridge and Next.js build print on stderr; a
+    // scenario can also put that noise on stdout ahead of the envelope.
+    const noise = "HEAD is now at 9b9711ad2\nBridged 4 dependency trees.\n   ▲ Next.js 15.5.19\n   Creating an optimized production build ...\n{ not json\n";
+    process.stderr.write(noise);
+    if (state.ensure.stdoutNoise) process.stdout.write(noise);
     state.broker.revision = git("rev-parse", "HEAD");
     state.broker.installed = true;
     // The registered compiled release the card then runs `worker install --replace-label` from.

@@ -51,7 +51,18 @@ cli_failure() {
   node -e 'const s=require("fs").readFileSync(process.argv[1],"utf8");const i=s.search(/^\{/m);let e;try{e=JSON.parse(s.slice(i)).error}catch{}
 process.stdout.write(e?`${e.message} [code ${e.details?.code??e.code}; dayClaimed ${e.details?.dayClaimed??"unknown"}]`:"no readable result")' "$1" 2>/dev/null || echo "no readable result"
 }
-arcadia_t() { local t="$1"; shift; (cd "$ARCADIA_REPO" && timeout "$t" mise exec -- pnpm -s arcadia "$@"); }
+# Every call passes --json, whose stdout must be exactly one JSON envelope. Defense in depth for Issue #1956 (a child
+# printing to stdout ahead of the envelope): when stdout is not one JSON document, keep only the trailing document that
+# starts at a line beginning with "{" and parses, and move the lines before it to stderr (the run log). Output that has no
+# such document passes through unchanged and is refused by its caller. The CLI's exit status is kept (pipefail).
+json_envelope() {
+  node -e 'const b=[];process.stdin.on("data",c=>b.push(c)).on("end",()=>{const s=Buffer.concat(b).toString("utf8");
+try{JSON.parse(s);process.stdout.write(s);return}catch{}
+const starts=[...s.matchAll(/^\{/gm)].map(m=>m.index).reverse();
+for(const i of starts){try{JSON.parse(s.slice(i));process.stderr.write(s.slice(0,i));process.stdout.write(s.slice(i));return}catch{}}
+process.stdout.write(s)})'
+}
+arcadia_t() { local t="$1"; shift; (cd "$ARCADIA_REPO" && timeout "$t" mise exec -- pnpm -s arcadia "$@" | json_envelope); }
 arcadia() { arcadia_t 180 "$@"; }  # REF:L63
 git_repo() { git -C "$ARCADIA_REPO" "$@"; }
 pin() { jq -er ".startRun.$1" "$DESCRIPTOR"; }

@@ -48,7 +48,7 @@ export interface WorktreeRuntimeProbeOptions {
 export function runWorktreeRuntimeProbe(options: WorktreeRuntimeProbeOptions): WorktreeRuntimeProbeResult {
   const repository = path.resolve(options.repository);
   const home = path.resolve(options.home ?? homedir());
-  const run = options.run ?? runCommand;
+  const run = options.run ?? runProbeCommand;
   const stamp = (options.now ?? new Date()).toISOString().replaceAll(/[-:.]/g, "").replace("Z", "Z");
   const root = path.join(home, ".codex", "worktrees");
   const wrapperPath = path.join(root, `${PROBE_WRAPPER_PREFIX}${stamp}-${process.pid}`);
@@ -172,6 +172,11 @@ function runtimeProbeError(step: WorktreeRuntimeProbeStep, error: unknown, extra
   });
 }
 
-function runCommand(command: string, args: string[], cwd: string): void {
-  execFileSync(command, args, { cwd, stdio: "inherit" });
+/**
+ * Child output (git worktree, dependency bridge, the dashboard build) goes to stderr, never stdout: a caller's
+ * `--json` stdout must carry only the JSON envelope (Issue #1956).
+ */
+export const CHILD_OUTPUT_TO_STDERR: ["ignore", 2, "inherit"] = ["ignore", 2, "inherit"];
+export function runProbeCommand(command: string, args: string[], cwd: string): void {
+  execFileSync(command, args, { cwd, stdio: CHILD_OUTPUT_TO_STDERR });
 }

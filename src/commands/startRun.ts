@@ -225,6 +225,19 @@ export interface StartRunSignInOptions {
 export type StartRunSignInData = { mode: "check-only"; static: StaticSignInState } | ({ mode: "run" } & StartRunSignInResult);
 
 /**
+ * A `--json` command's envelope. Its stdout should be exactly one JSON document; as defense in depth (Issue #1956), when a
+ * child printed ahead of it, the trailing document starting at a line beginning with "{" is taken. Throws when none parses.
+ */
+export function parseJsonEnvelope(stdout: string): unknown {
+  try { return JSON.parse(stdout); } catch { /* fall through to the trailing document */ }
+  const starts = [...stdout.matchAll(/^\{/gm)].map((match) => match.index ?? 0).reverse();
+  for (const start of starts) {
+    try { return JSON.parse(stdout.slice(start)); } catch { /* try an earlier start */ }
+  }
+  throw new Error("no JSON envelope on stdout");
+}
+
+/**
  * The compiled CLI of the pinned release the card just installed (the same revision as the checkout), run with its
  * manifest runtime: it starts in well under a second, where a `tsx` source cold start can take most of a grant window.
  */
@@ -258,7 +271,7 @@ export function realStartRunSignInDeps(repository: string, release: string, work
     cli: (args, timeoutMs) => {
       command ??= pinnedReleaseCli(release);
       const run = spawnSync(command[0], [...command.slice(1), ...args, "--json"], { cwd: repository, env, encoding: "utf8", timeout: timeoutMs, maxBuffer: 32 * 1024 * 1024 });
-      try { return JSON.parse(run.stdout) as { ok: boolean; data?: unknown }; }
+      try { return parseJsonEnvelope(run.stdout) as { ok: boolean; data?: unknown }; }
       catch { return { ok: false, error: (run.stderr || "no JSON output").slice(0, 2000) }; }
     },
     git: (args) => execFileSync("git", args, { cwd: repository, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 30_000 }).trim()
