@@ -103,6 +103,7 @@ function invocations(): Record<string, string[][]> {
     "identity roster": [["identity", "roster"]],
     "session title": [["session", "title", "--relation", "helper", "--kind", "build", "--state", "working", "--workstream", "Production", "--detail", "implementer"], ["session", "title", "--kind", "nope"]],
     "agent-ask contract": [["agent-ask", "contract"]],
+    "production runtime-check": [["production", "runtime-check", "--repository", repo]],
     "pr code-review": [["pr", "code-review", "0", "--repo", repo]],
     "tidy list": [["tidy", "--repo", repo, "list"]],
     "tidy undo": [["tidy", "--repo", repo, "undo", "no-such-run"]],

@@ -4,7 +4,7 @@ type: decision
 id: "0152"
 slug: should-the-lead-s-mutation-rules-stay-transport-specific
 project: arcadia
-status: open
+status: approved
 question: Should the Lead's mutation rules stay transport-specific?
 gap_type: missing-decision
 gate_question: resists_reversal
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: State the native-app exception
+decided: 2026-10-31
 ---
 
 # Decision 0152: Should the Lead's mutation rules stay transport-specific?

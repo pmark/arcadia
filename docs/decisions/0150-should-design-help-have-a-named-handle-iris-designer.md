@@ -4,7 +4,7 @@ type: decision
 id: "0150"
 slug: should-design-help-have-a-named-handle-iris-designer
 project: arcadia
-status: open
+status: approved
 question: Should design help have a named handle, Iris — Designer?
 gap_type: missing-decision
 gate_question: resists_reversal
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
 updated: 2026-10-31
+answer: Optional Iris handle
+decided: 2026-10-31
 ---
 
 # Decision 0150: Should design help have a named handle, Iris — Designer?

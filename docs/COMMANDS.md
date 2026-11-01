@@ -1286,6 +1286,26 @@ prior agent wrote is left untouched, in the order it was written — and
 refuses to write if the result would fail validation, e.g. approving without
 `--answer`.
 
+A Decision that offers options records one of their labels. When the
+operator's real answer is an option the Decision did not offer, open a
+successor Decision that offers it, then close the original as superseded:
+
+```sh
+pnpm arcadia decision approve 0153 \
+  --project arcadia \
+  --superseded-by 0156 \
+  --answer "The operator's answer was an option this Decision did not offer." \
+  --json
+```
+
+`--superseded-by` records `status: rejected` and the answer
+`Superseded by Decision <id>: <answer>`, skips the option-label match and
+applies no option effect. Only an open Decision can be superseded, and the
+successor must exist in the same Project and still be open. It also refuses a
+Decision superseding itself and any `--status` other than `rejected`. The
+supersession text is not captured as an operator reply. The operator then answers
+the successor normally.
+
 A Decision that names the Action it governs (`action: <id>`) applies its
 answer's consequence in the same command. When the chosen option carries
 `effect: defer`, `approve` parks that Action (`status: deferred` in its Plan)
@@ -1668,6 +1688,27 @@ Operator QA steps:
 4. Run the exact same command again with the same session id. Expect an identical result annotated `(already reconciled)` — reconciliation is idempotent and never re-transitions a Session or duplicates a receipt.
 
 This command is normally invoked automatically as part of Session-exit handling; running it by hand is for diagnosing a specific stuck or ambiguous Session, or for the QA steps above.
+
+## Check The Installed Runtime Is Current
+
+```bash
+pnpm arcadia production runtime-check [--repository <path>] [--json]
+```
+
+Read-only report, no workspace needed: is the installed broker release an
+ancestor of the repository's `HEAD` with no differences in `src`, `scripts`,
+`apps`, `config`, `database`, `package.json`, `pnpm-lock.yaml` or
+`tsconfig.json`? Docs-only
+differences stay current. It prints `current`, `head`, `installedRevision` and
+the reasons (no installed revision, unknown revision, not an ancestor, differing
+runtime paths) and does not refuse when the result is stale.
+
+`pnpm arcadia production activate ... --require-current-runtime [--repository <path>]`
+applies the same check as a gate: a new grant is refused before it is written when
+the runtime is stale, naming the installed revision, `HEAD` and the reasons. A
+replay of an already-settled `--request-id` still replays. Without the flag,
+activation is unchanged. `--repository` defaults to the git toplevel of the
+current directory.
 
 ## Dispose A Failed Recovery Successor With No Recorded Start
 

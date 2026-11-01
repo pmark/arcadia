@@ -1,4 +1,7 @@
+import { execFileSync } from "node:child_process";
 import { validationError } from "../cli/errors.js";
+import { readInstalledBrokerRevision } from "./goBrokerInstall.js";
+import { assessRuntimeCurrency, type RuntimeCurrencyAssessment } from "../production/runtimeCurrency.js";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -104,6 +107,12 @@ export interface ProductionActivateOptions extends ProductionPreviewOptions {
   expectedRevision?: string;
   /** From the deprecated `--expect-revision` spelling. */
   expectRevision?: string;
+  /** From `--require-current-runtime`: refuse a new grant while the installed broker is stale against HEAD. */
+  requireCurrentRuntime?: boolean;
+  /** From `--repository`; defaults to the git toplevel of the current directory. */
+  repository?: string;
+  /** Test seam: the installed broker revision, bypassing the live install. */
+  installedRevision?: string | null;
 }
 
 export interface ProductionDeactivateOptions {
@@ -271,6 +280,43 @@ export function renderProductionFreezeCheckSuccess(response: CommandSuccess<Rehe
   return [`Freeze window: ${decision.operation} allowed; managed production is Inactive (revision ${decision.policyRevision}, epoch ${decision.policyEpoch}).`];
 }
 
+export interface ProductionRuntimeCheckOptions {
+  repository?: string;
+  /** Test seam: the installed broker revision, bypassing the live install. */
+  installedRevision?: string | null;
+}
+
+function resolveRuntimeRepository(repository?: string): string {
+  return (
+    repository ?? execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim()
+  );
+}
+
+/** Read-only report: needs no workspace and never refuses on a stale result. */
+export function runProductionRuntimeCheckCommand(
+  options: ProductionRuntimeCheckOptions = {}
+): CommandSuccess<RuntimeCurrencyAssessment> {
+  const assessment = assessRuntimeCurrency({
+    repository: resolveRuntimeRepository(options.repository),
+    installedRevision: options.installedRevision !== undefined ? options.installedRevision : readInstalledBrokerRevision()
+  });
+  return createSuccess({
+    command: "production.runtime-check",
+    data: assessment,
+    warnings: assessment.current ? [] : assessment.reasons
+  });
+}
+
+export function renderProductionRuntimeCheckSuccess(response: CommandSuccess<RuntimeCurrencyAssessment>): string[] {
+  const { current, head, installedRevision, reasons } = response.data;
+  return [
+    `Installed runtime: ${current ? "current" : "STALE"}`,
+    `Installed revision: ${installedRevision ?? "none"}`,
+    `HEAD: ${head}`,
+    ...reasons.map((reason) => `Reason: ${reason}`)
+  ];
+}
+
 export function runProductionPreviewCommand(
   options: ProductionPreviewOptions
 ): CommandSuccess<ProductionPreviewData> {
@@ -340,6 +386,18 @@ export function runProductionActivateCommand(
             ...preview.unmatched.plans
           ].join(", ")}. Activating would grant a scope that omits it.`,
           { projects: preview.unmatched.projects, plans: preview.unmatched.plans }
+        );
+      }
+    }
+    if (options.requireCurrentRuntime && !findTransitionReceipt(db, requestId)) {
+      const assessment = assessRuntimeCurrency({
+        repository: resolveRuntimeRepository(options.repository),
+        installedRevision: options.installedRevision !== undefined ? options.installedRevision : readInstalledBrokerRevision()
+      });
+      if (!assessment.current) {
+        throw validationError(
+          `The installed runtime is not current: installed ${assessment.installedRevision ?? "none"}, HEAD ${assessment.head}. ${assessment.reasons.join("; ")}. Reinstall before granting.`,
+          { installedRevision: assessment.installedRevision, head: assessment.head, reasons: assessment.reasons }
         );
       }
     }

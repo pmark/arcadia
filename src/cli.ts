@@ -69,6 +69,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
+import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunPinsCommand, runStartRunSignInCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -134,7 +135,9 @@ import {
   runProductionResetRepairBudgetCommand,
   runProductionStatusCommand,
   runProductionFreezeCheckCommand,
-  renderProductionFreezeCheckSuccess
+  renderProductionFreezeCheckSuccess,
+  runProductionRuntimeCheckCommand,
+  renderProductionRuntimeCheckSuccess
 } from "./commands/production.js";
 import {
   renderScheduleClassifySuccess,
@@ -1150,6 +1153,33 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   ).action((options: { project: string; proposal: string; fingerprint: string; disposition: string; top?: boolean; id?: string; dir: string; workspace: string; json?: boolean }) =>
     runCliAction("operator-action.settle-ask", options, () => runOperatorActionSettleAskCommand(options), renderOperatorActionSettleAskSuccess));
 
+  const startRun = program.command("start-run").description("Prepare per-run START cards (Decisions 0156, 0157); preparing one grants nothing");
+  addJsonOption(startRun.command("pins")
+    .description("Print the pins JSON of one per-run START card from live read-only state; writes nothing, emits no script or manifest")
+    .requiredOption("--plan <slug>", "Plan the run executes")
+    .requiredOption("--actions <list>", "Comma-separated Action slugs, in queue order")
+    .requiredOption("--provider <id>", "Coding-agent provider (claude-code-cli)")
+    .requiredOption("--expires-hours <n>", "Hours until the card expires (at most 24)")
+    .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .option("--delegated-from <card/run>", "Decision 0163: pin Rowan's successor card, delegated from the operator's originating press (card id / executor run id)")
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; json?: boolean }) =>
+    runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
+  addJsonOption(startRun.command("sign-in")
+    .description("Run only by a per-run START card: the Decision 0161 / 0143 sign-in renewal and bound-worker usage check, once (or --check-only)")
+    .requiredOption("--repository <path>", "The Arcadia main checkout the bound worker serves")
+    .requiredOption("--workspace <path>", "The configured live workspace")
+    .requiredOption("--project <slug>", "Project whose repository holds the diagnostic Decision")
+    .requiredOption("--card <id>", "The START card id")
+    .requiredOption("--run-id <id>", "The card's run id")
+    .requiredOption("--run-directory <path>", "The card's run directory")
+    .requiredOption("--release <sha>", "The reviewed revision the bound worker must run")
+    .requiredOption("--policy-revision <n>", "Production policy revision (Off)")
+    .requiredOption("--policy-epoch <n>", "Production policy epoch")
+    .option("--check-only", "Only the read-only checks that precede the daily claim; claims and changes nothing")
+  ).action((options: { repository: string; workspace: string; project: string; card: string; runId: string; runDirectory: string; release: string; policyRevision: string; policyEpoch: string; checkOnly?: boolean; json?: boolean }) =>
+    runCliAction("start-run.sign-in", options, () => runStartRunSignInCommand(options), renderStartRunSignInSuccess));
+
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })
     .description("Queue one read-only ping. It approves nothing and answers nothing; use an Agent Ask for anything durable. A message starting with - or with the word pending/sent needs `--` before it")
@@ -1488,6 +1518,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
   addJsonOption(
     production
+      .command("runtime-check")
+      .description("Read-only: is the installed broker release current against the repository HEAD? Reports; never refuses on a stale result")
+      .option("--repository <path>", "Repository to compare against (default: git toplevel of the current directory)")
+  ).action((options: { repository?: string; json?: boolean }) =>
+    runCliAction("production.runtime-check", options, () => runProductionRuntimeCheckCommand({ repository: options.repository }), renderProductionRuntimeCheckSuccess)
+  );
+  addJsonOption(
+    production
       .command("preview")
       .description("Preview exactly what activation would authorize; writes nothing")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
@@ -1531,9 +1569,11 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .requiredOption("--granted-by <who>", "Operator granting the authorization")
       .option("--decision <ref>", "Authorizing Decision reference")
       .option("--expected-revision <n>", "Policy revision the preview showed (its expectedRevision)")
+      .option("--require-current-runtime", "Refuse a new grant unless the installed broker release is current against the repository HEAD (replays still replay)")
+      .option("--repository <path>", "Repository for --require-current-runtime (default: git toplevel of the current directory)")
       // The flag's earlier spelling, kept so existing callers keep working (Issue #609).
       .addOption(new Option("--expect-revision <n>").hideHelp())
-  ).action((options: ProductionCliOptions & { requestId: string; grantedBy: string; decision?: string; expectedRevision?: string; expectRevision?: string }) =>
+  ).action((options: ProductionCliOptions & { requestId: string; grantedBy: string; decision?: string; expectedRevision?: string; expectRevision?: string; requireCurrentRuntime?: boolean; repository?: string }) =>
     runCliAction("production.activate", options, () => runProductionActivateCommand(options), renderProductionTransitionSuccess)
   );
   addJsonOption(
@@ -2580,18 +2620,20 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .requiredOption("--project <project>", "Project id or slug that owns this Decision")
       .requiredOption("--answer <answer>", "What was actually decided")
       .option("--decided <YYYY-MM-DD>", "Date decided; defaults to today")
-      .option("--status <status>", "open, approved, rejected, or deferred", "approved")
+      .option("--status <status>", "open, approved, rejected, or deferred (default: approved; rejected with --superseded-by)")
       .option("--dry-run", "Report the consequence the answer would apply without writing anything")
       .option("--request-id <id>", "Idempotency key for the deferral's pointer transition")
       .option("--expect-status <status>", "Refuse, writing nothing, unless the Decision currently has this status")
       .option("--expect-updated <value>", "Refuse, writing nothing, unless the Decision's updated field equals this")
       .option("--expect-no-pointer-move", "Refuse, writing nothing, if a defer option's target is the current Action (it would move the active pointer)")
       .option("--expect-options <sha256>", "Refuse, writing nothing, unless sha256 of the Decision's question and options (label, consequence, effect, in order) equals this")
+      .option("--superseded-by <id>", "Close as rejected, superseded by this Decision, instead of choosing one of its options; the answer explains why")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((id: string, options: {
     workspace: string;
     project: string;
     answer: string;
+    supersededBy?: string;
     decided?: string;
     status?: string;
     dryRun?: boolean;
@@ -2617,7 +2659,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
         expectStatus: options.expectStatus,
         expectUpdated: options.expectUpdated,
         expectOptions: options.expectOptions,
-        expectNoPointerMove: options.expectNoPointerMove
+        expectNoPointerMove: options.expectNoPointerMove,
+        supersededBy: options.supersededBy
       }),
       renderDecisionApproveSuccess
     )
@@ -4773,7 +4816,8 @@ Origin: every item has "origin" (a string from a field its source records, else 
     .command("install")
     .description("Install worker as a launchd service (macOS) that starts on login")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-    .action((options: { workspace: string }) => runWorkerInstallCommand(options));
+    .option("--replace-label <label>", "Decision 0161 (START card only): rewrite this live com.arcadia.local.<key>.worker agent as the protected compiled worker of the release running this command, and restart it")
+    .action((options: { workspace: string; replaceLabel?: string }) => runWorkerInstallCommand(options));
 
   worker
     .command("uninstall")
@@ -5942,7 +5986,7 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
-  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget"].includes(second ?? "")) {
+  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check"].includes(second ?? "")) {
     return `production.${second}`;
   }
 

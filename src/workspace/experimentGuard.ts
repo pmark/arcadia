@@ -191,8 +191,14 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
     "Creates or edits a GitHub Project board and its fields.",
     `${FROM_LIVE_TERMINAL} Experiment fixture repositories have no remote to project to.`
   ),
+  "start-run pins": ALLOWED,
+  "start-run sign-in": guarded(
+    "Claims the host's daily Claude renewal, runs the Claude CLI, publishes a diagnostic Decision to main and asks the live worker for a usage check.",
+    FROM_LIVE_TERMINAL
+  ),
   "production status": ALLOWED,
   "production freeze-check": ALLOWED,
+  "production runtime-check": exempt("Compares the installed broker release with a named repository's HEAD; reads no workspace and records nothing."),
   "production preview": ALLOWED,
   "production activate": guarded("Grants the standing production authorization and its Grants.", PRODUCTION_ALTERNATIVE),
   "production reactivate-preview": ALLOWED,

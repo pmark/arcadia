@@ -240,6 +240,80 @@ handoff until the script and descriptor match the final reviewed state.
 behind each. It is a reference, not a prerequisite: everything you must do is
 stated above.
 
+### Per-run START cards (Decisions 0156, 0157, 0161 and 0162)
+
+Do not hand-write a START card. One shared, independently reviewed executor,
+`scripts/start-run.sh`, runs every START; a card is only a thin launcher plus a
+pinned descriptor, so per-card review is small.
+
+- **The card** is `<id>.sh`, exactly `startRunLauncher(id)` (three lines, no logic;
+  `check:operator-scripts` refuses any other text), and `<id>.json`, a one-shot
+  `kind: "grant"` descriptor with `expires_at` and a `startRun` block
+  (`src/operatorActions/startRunPins.ts`: reviewed main sha, executor sha256,
+  workspace, Plan, ordered Actions, production revision and epoch, queue
+  revision, worker label, Decisions, files, preserved receipts). A Plan that is
+  still a draft embeds its `planActivation` block beside it (the only runner that
+  may). Get the pins from live state with
+  `arcadia start-run pins --plan <slug> --actions a,b,c --provider claude-code-cli --expires-hours <n>`;
+  it writes nothing and emits no script.
+- **What one press may do:** fast-forward the clean main checkout to the pinned sha
+  only, `go-broker ensure`, then reinstall the pinned worker label from that
+  compiled release (`worker install --replace-label`, run by the release itself,
+  so the plist is protected) and restart it so the worker is bound to the pinned
+  release and handler; then (Decision 0161) reuse a fresh usage receipt of that
+  bound worker or run the Decision 0143 sequence once: claim this press's own
+  sequence record, one Haiku renewal, and only on its success
+  one diagnostic Decision published to main through the Agent Ask route and one
+  bound-worker usage check. START needs that check to succeed, the credential to
+  expire more than 5 minutes later and both usage windows below 100%. Then
+  activate the pinned Plan and START production (every older START gate stays;
+  the installed-revision pin is now the reviewed-revision pin, checked by
+  `production runtime-check`; the retained pre-press sign-in receipt pin is
+  gone). Decision 0162 removed the calendar-day ceiling: preflight never refuses
+  because of the date or an earlier sequence, only while another renewal and
+  check sequence is in flight. Do not add a calendar-day or cool-down limit on
+  renewal and check sequences (cards or Rowan's Decision 0143 sequences)
+  without a new Decision. Every sequence of the class, Rowan's manual Decision
+  0143 sequences included, takes the one in-flight marker
+  (`<workspace>/.arcadia/claude-renewal-days/in-flight.json`) with
+  `acquireSequenceMarker` before writing its claim, writes its claim's
+  `<claim>.renewal.json` result, and releases the marker with
+  `releaseSequenceMarker` (src/production/startRunSignIn.ts). A claim with no
+  renewal result counts as in flight and blocks every other sequence until it
+  is resolved; there is no staleness rule for it. The allowance is consumed at the first mutation;
+  there is no rollback, a later failure leaves the runtime upgraded and an
+  activated Plan active, a renewal or check failure consumes this press's own
+  sequence (no retry within the press; a new card may run at once), and only
+  this Grant is returned to Off. A later `scripts/restart-services-impl.sh`
+  (restart-arcadia-services) rewrites that same worker label back to a
+  source-run worker and so unbinds it; the next START card binds it again.
+- **Delegated successors (Decision 0163).** After the operator presses a START
+  card for the scope Decision 0163 names, Rowan alone may press successor cards
+  for that same scope: pin one with
+  `arcadia start-run pins … --delegated-from <origin card>/<origin executor run>`
+  (it adds the `startRun.delegation` block and requires Decision 0163), pass the
+  usual host preflight and independent pin check, publish it, then press it
+  through the same /actions runner with
+  `POST /api/operator-script {"id": "<card>", "delegation": {"decision": "0163", "agent": "rowan"}}`.
+  The runner records the press as Rowan's delegated press, never an operator
+  press. P0 refuses unless the originating receipt is unchanged and was the
+  operator's own /actions press of the delegated scope and their first such
+  press after Decision 0163 reached main; the scope is identical; fewer than 5
+  in-scope attempts (every /actions press of any card that consumed its
+  allowance) ran since it, within 72 hours; the latest of them refused with no
+  activation attempted or its executor returned its own Grant to Off; and the
+  production policy revision follows that attempt with nothing in between. Any
+  other Off, such as a STOP card, a Decision or a stop-the-line, ends the
+  delegation. Each attempt number of a chain is claimed by one card only.
+- **Run it** with `<id>.sh preflight` first (phases P0 to P2, no mutation, no
+  /actions context, writes only `runs/<id>/<run>/`), then press the card. Every
+  phase rewrites `receipt.json` and `failure-handoff.md` there.
+- **Review of a card** is a mechanical diff of its `startRun` pins against the live
+  `start-run pins` output, plus an independent critic check of the reviewed-hash
+  manifest `reviewed/<id>.json` (`sh`, `json`, `executor` sha256). A change to
+  `scripts/start-run.sh` is reviewed once and invalidates the hash in every older
+  card, which then refuses.
+
 ### Pinging the operator (read-only)
 
 `arcadia ping "<message>"` queues one short Discord nudge. It is not an Agent

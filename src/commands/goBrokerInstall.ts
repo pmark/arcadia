@@ -34,7 +34,7 @@ import {
 import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
 import { assertRehearsalFreezeAllows, freezeReceiptLines, type RehearsalFreezeDecision } from "../production/freezeWindow.js";
 import type { BrokerExecutables, ProviderExecutables } from "../agentSetup/goBrokerAgentSetup.js";
-import { runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
+import { CHILD_OUTPUT_TO_STDERR, runWorktreeRuntimeProbe, type WorktreeRuntimeProbeResult } from "../sessions/worktreeRuntimeProbe.js";
 
 import { agentGoTransportState, preservationTransportReady } from "../sessions/preservationTransport.js";
 import { SESSION_AGENTS } from "../sessions/index.js";
@@ -171,7 +171,8 @@ export function runGoBrokerInstallCommand(
 
   mkdirSync(releasesRoot, { recursive: true, mode: 0o755 });
   mkdirSync(binDirectory, { recursive: true, mode: 0o755 });
-  execFileSync("pnpm", ["exec", "tsc", "-p", "tsconfig.json"], { cwd: repository, stdio: "inherit" });
+  // tsc output goes to stderr so `go-broker install|ensure --json` stdout is only the envelope (Issue #1956).
+  execFileSync("pnpm", ["exec", "tsc", "-p", "tsconfig.json"], { cwd: repository, stdio: CHILD_OUTPUT_TO_STDERR });
 
   if (!existsSync(releaseDirectory)) {
     const stagingRoot = mkdtempSync(path.join(releasesRoot, ".install-"));
@@ -789,6 +790,13 @@ function readSkillTemplate(repository: string): string {
 
 function readAgentAskSkillTemplate(repository: string): string {
   return readFileSync(path.join(repository, "src", "agentSetup", "arcadia-agent-ask.SKILL.md"), "utf8");
+}
+
+/** The release revision the installed broker launchers point at, or null when none is installed or the install is inconsistent. */
+export function readInstalledBrokerRevision(home?: string): string | null {
+  const binDirectory = path.join(path.resolve(home ?? homedir()), ".local", "bin");
+  const broker = inspectInstalledBroker(brokerExecutables(binDirectory));
+  return broker.issues.length === 0 ? broker.revision : null;
 }
 
 function inspectInstalledBroker(executables: BrokerExecutables): {
