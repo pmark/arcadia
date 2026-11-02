@@ -503,47 +503,24 @@ describe("worker heartbeat beacon (Issue #617)", () => {
     }
   }, 15_000);
 
-  // Live 2026-11-02: a launch's own preparation blocked the worker's loop for
-  // ~33s, so the in-process 5s re-stamp never fired and the worker's own
-  // launch preflight read its preservation heartbeat as stale (33s old against
-  // a 15s limit) and escalated an environment_wall. Scaled down here: a 20ms
-  // beacon interval against a 200ms block (10x the interval, as 30s is to the
-  // real 5s refresh / 3x the 15s limit).
-  it("keeps the preservation route heartbeat fresh while the worker's own loop is blocked past the freshness limit", async () => {
-    const { root } = workspace();
-    const identity = { pid: process.pid, owner: "beacon-preservation" };
-    const beacon = startHeartbeatBeacon(root, identity, { intervalMs: 20 });
-    const heartbeatFile = path.join(root, ".arcadia", "preservation.heartbeat");
-    const published = { schema: "arcadia-preservation-transport-v1", at: Date.now(), sessions: [{ id: "s1", worktree: "/w" }], goRequests: true, goRequestsAt: Date.now() };
-    try {
-      await waitFor(() => existsSync(pidfileOf(root)), 5_000);
-      writeFileSync(heartbeatFile, JSON.stringify({ ...published, at: Date.now() }));
-      const before = JSON.parse(readFileSync(heartbeatFile, "utf8")).at as number;
-      const blockUntil = Date.now() + 200;
-      while (Date.now() < blockUntil) { /* the worker's tick, blocking its event loop */ }
-      const after = JSON.parse(readFileSync(heartbeatFile, "utf8"));
-      expect(after.at).toBeGreaterThan(before);
-      expect(Date.now() - after.at).toBeLessThan(150);
-      // Only liveness moves (and the writer declares its own cadence): the
-      // routes and the go-servicing stamp stay the worker's own.
-      expect(after).toEqual({ ...published, at: after.at, intervalMs: 20 });
-    } finally {
-      beacon.stop();
-    }
-  }, 15_000);
-
-  it("never re-stamps a preservation heartbeat left by an earlier worker", async () => {
+  // The beacon proves only that a process is alive. The preservation route
+  // heartbeat must mean the route's owner is making progress, so a worker
+  // wedged in its tick must still read stale to the broker, dispatch admission
+  // and install readiness however long its beacon keeps running.
+  it("never re-stamps the preservation route heartbeat, so a wedged worker still reads stale", async () => {
     const { root } = workspace();
     const heartbeatFile = path.join(root, ".arcadia", "preservation.heartbeat");
-    mkdirSync(path.dirname(heartbeatFile), { recursive: true });
-    const leftover = { schema: "arcadia-preservation-transport-v1", at: Date.now() - 60_000, sessions: [] };
-    writeFileSync(heartbeatFile, JSON.stringify(leftover));
-    const beacon = startHeartbeatBeacon(root, { pid: process.pid, owner: "beacon-leftover" }, { intervalMs: 20 });
+    const published = { schema: "arcadia-preservation-transport-v1", at: Date.now() - 33_000, intervalMs: 5_000, sessions: [], goRequests: true, goRequestsAt: Date.now() - 33_000 };
+    writeFileSync(heartbeatFile, JSON.stringify(published));
+    const beacon = startHeartbeatBeacon(root, { pid: process.pid, owner: "beacon-wedged" }, { intervalMs: 20 });
     try {
       await waitFor(() => existsSync(pidfileOf(root)), 5_000);
       const first = readRecord(root).at;
-      await waitFor(() => readRecord(root).at > first, 5_000);
-      expect(JSON.parse(readFileSync(heartbeatFile, "utf8"))).toEqual(leftover);
+      const blockUntil = Date.now() + 200;
+      while (Date.now() < blockUntil) { /* the wedged tick */ }
+      expect(readRecord(root).at).toBeGreaterThan(first);
+      expect(JSON.parse(readFileSync(heartbeatFile, "utf8"))).toEqual(published);
+      expect(preservationTransportReady(root)).toBe(false);
     } finally {
       beacon.stop();
     }

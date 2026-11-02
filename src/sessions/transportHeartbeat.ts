@@ -5,7 +5,7 @@ import path from "node:path";
  * Read-only view of the preservation/go transport heartbeat. A leaf module (no
  * transport, audit or launch imports) so cheap readiness probes -- the Session
  * capability preflight, the dashboard's import graph, the out-of-process
- * heartbeat beacon -- do not pull the whole host transport in.
+ * -- do not pull the whole host transport in.
  * `preservationTransport.ts` re-exports everything here.
  */
 export const HEARTBEAT_FILE = ".arcadia/preservation.heartbeat";
@@ -13,11 +13,12 @@ export const HEARTBEAT_FILE = ".arcadia/preservation.heartbeat";
 export const PRESERVATION_HEARTBEAT_SCHEMA = "arcadia-preservation-transport-v1";
 
 /**
- * How often the worker re-stamps the heartbeat. The out-of-process beacon
- * (`workerHeartbeatBeacon.ts`) does it on its own timer, so a long synchronous
- * tick step cannot stretch the real cadence (live 2026-11-02: the in-process
- * 5s timer was blocked by a ~33s launch step, so ages reached ~30s and the
- * worker's own launch preflight walled itself).
+ * How often the worker's in-process timer re-stamps the heartbeat. It shares
+ * the tick's event loop on purpose: `at` must mean the route's owner is making
+ * progress, so an out-of-process beacon never re-stamps it. A long synchronous
+ * tick step therefore stretches the real gap (live 2026-11-02: ~33s); the
+ * worker refreshes immediately before its own pre-launch probe
+ * (`ownWorkerCapability` in `production/tick.ts`) so it never walls itself.
  */
 export const PRESERVATION_HEARTBEAT_REFRESH_MS = 5_000;
 

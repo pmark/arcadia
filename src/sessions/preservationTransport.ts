@@ -112,8 +112,9 @@ function writePreservationHeartbeat(workspace: string, routes: PreservationHeart
  * Re-stamp the most recent projection with a fresh `at`, leaving its routes
  * untouched. Called by the worker's in-process loop and between per-Project
  * steps of a long tick, which cannot rely on timers firing while the event loop
- * is blocked; the out-of-process beacon re-stamps the same file on its own
- * timer for exactly that case. A no-op until the first projection is published.
+ * is blocked, and immediately before the worker's own pre-launch probe. Never
+ * from another process: `at` vouches for the route's owner making progress. A
+ * no-op until the first projection is published.
  */
 export function refreshPreservationHeartbeat(workspace: string, at = Date.now()): boolean {
   const routes = latestPreservationRoutes.get(workspace);

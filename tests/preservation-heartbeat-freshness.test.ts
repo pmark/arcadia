@@ -89,6 +89,21 @@ describe("preservation transport heartbeat freshness", () => {
     expect(preservationWall()?.transient).toBeFalsy();
   });
 
+  it("a successor worker never revives its predecessor's heartbeat before publishing its own projection", () => {
+    // The predecessor's last projection, 33s old, left on disk.
+    writeHeartbeat({ at: Date.now() - 33_000, intervalMs: PRESERVATION_HEARTBEAT_REFRESH_MS });
+    const left = readFileSync(heartbeatPath(), "utf8");
+    // The successor's pre-probe refresh has no projection of its own yet: a no-op.
+    expect(refreshPreservationHeartbeat(workspace)).toBe(false);
+    expect(readFileSync(heartbeatPath(), "utf8")).toBe(left);
+    expect(preservationWall()).toMatchObject({ wallClass: "preservation", transient: true });
+    // Once it publishes, its own refresh vouches for it.
+    processPreservationRequests(db, workspace);
+    vi.setSystemTime(new Date(Date.now() + 33_000));
+    expect(refreshPreservationHeartbeat(workspace)).toBe(true);
+    expect(preservationWall()).toBeUndefined();
+  });
+
   it("never calls a missing heartbeat transient", () => {
     expect(preservationWall()).toMatchObject({ wallClass: "preservation" });
     expect(preservationWall()?.transient).toBeFalsy();

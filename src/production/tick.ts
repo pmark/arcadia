@@ -121,9 +121,10 @@ export interface ManagedProductionTickOptions {
    * Pre-launch Session capability preflight (workspace write, host validation,
    * preservation). Any wall refuses the launch before a Session is prepared, so
    * no tokens are spent. The worker supplies `probeWorkerCapability`; absent,
-   * no preflight runs.
+   * no preflight runs. The tick refreshes its own preservation heartbeat
+   * (`heartbeat`) immediately before every call: see `ownWorkerCapability`.
    */
-  workerCapability?: (workspace: string) => EnvironmentWall[];
+  workerCapability?: (workspace: string, profileSandbox?: string | null) => EnvironmentWall[];
   /**
    * Re-stamp the preservation transport heartbeat between per-Project steps.
    * The tick blocks the event loop for minutes, so the worker's own 5s timer
@@ -658,6 +659,25 @@ function clearIntegrationRefusalLog(db: Database.Database, projectSlug: string):
 }
 
 /** Clear a recorded launch refusal once this Action's launch stops being refused. */
+/**
+ * The worker's own pre-launch probe, preceded by its own heartbeat refresh.
+ * The probe runs synchronously inside this tick, on the same event loop as the
+ * worker's in-process heartbeat timer; a long step before it (live 2026-11-02:
+ * ~33s of launch preparation) let that timer starve and the worker walled
+ * itself on its own stale heartbeat. A worker that is executing this probe is
+ * itself proof the route's owner is making progress, so it re-stamps first.
+ * External readers (the broker, dispatch admission, install readiness) get no
+ * such refresh: a genuinely wedged worker still reads stale to them.
+ */
+function ownWorkerCapability(options: ManagedProductionTickOptions): ((workspace: string, profileSandbox?: string | null) => EnvironmentWall[]) | undefined {
+  const probe = options.workerCapability;
+  if (!probe) return undefined;
+  return (workspace, profileSandbox) => {
+    try { options.heartbeat?.(); } catch { /* the probe still reads whatever is on disk */ }
+    return probe(workspace, profileSandbox);
+  };
+}
+
 /**
  * Whether a transient environment wait (a stale-but-recent preservation
  * heartbeat) has now been rechecked for the whole recheck window without the
@@ -2463,7 +2483,7 @@ function attemptReviewRepairLaunch(
           capacityObservation: input.options.capacityObservation,
           agentWorktreeRoot: input.options.agentWorktreeRoot,
           providerSignIn: input.options.providerSignIn,
-          workerCapability: input.options.workerCapability,
+          workerCapability: ownWorkerCapability(input.options),
           onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
         });
       }
@@ -2747,7 +2767,7 @@ function attemptProjectLaunch(
   // the same wall (the first production run: ~11.1M input tokens, no diff).
   // Refused here, before any Session is prepared; one named blocker, no repair
   // attempt counted because nothing was launched.
-  const walls = input.options.workerCapability?.(input.workspace) ?? [];
+  const walls = ownWorkerCapability(input.options)?.(input.workspace) ?? [];
   if (walls.length > 0 && walls.every((wall) => wall.transient) && !transientEnvironmentWaitExpired(db, actionKey, input.now)) {
     // One stale reading is not a dead route: recheck on the next tick.
     const named = describeEnvironmentWalls(actionKey, walls, "preflight");
@@ -2787,7 +2807,7 @@ function attemptProjectLaunch(
       providerSignIn: input.options.providerSignIn,
       // The launch re-runs the same preflight with the selected profile's
       // sandbox, which this tick's profile-less preflight cannot see.
-      workerCapability: input.options.workerCapability,
+      workerCapability: ownWorkerCapability(input.options),
       // Clear a stale sign-in blocker the moment sign-in is confirmed, not
       // only on full launch success: a later, unrelated launch failure (a
       // repair-worthy defect, counted against the budget) must not leave
@@ -2966,6 +2986,9 @@ function attemptProjectLaunch(
         if (newlyDetected) {
           input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${shownRemedy ?? error.message}`);
         }
+      } else if (rawCode === ENVIRONMENT_WALL_TRANSIENT_CODE) {
+        // Still refused, only rechecking: keep any recorded escalation, exactly
+        // as the tick-side transient branch does; a launch clears it.
       } else if (!escalateStalledPlanningGate(db, {
         actionKey,
         projectSlug: input.projectSlug,

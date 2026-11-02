@@ -1031,9 +1031,9 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     try { writeWorkerHeartbeat(workspacePath, identity); } catch {}
     // The preservation transport projection is only published on a tick. A tick
     // can block the event loop for minutes, so this loop — and the per-Project
-    // re-stamps inside the tick — keep its freshness window from lapsing. This
-    // timer shares the tick's event loop; the beacon's own timer is the one a
-    // long synchronous step cannot block.
+    // re-stamps inside the tick, including the one right before the worker's
+    // own pre-launch probe — keep its freshness window from lapsing. This timer
+    // shares the tick's event loop deliberately: a wedged worker must read stale.
     try { refreshPreservationHeartbeat(workspacePath); } catch {}
   }, PRESERVATION_HEARTBEAT_REFRESH_MS);
   log(logfile, `Worker started (PID: ${process.pid}, workspace: ${workspacePath})`);
