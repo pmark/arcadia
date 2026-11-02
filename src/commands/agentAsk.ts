@@ -5,7 +5,7 @@ import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_A
 import { discoverUnprocessedAgentAsks, EMPTY_AGENT_ASK_DISCOVERY, type AgentAskDiscoveryResult } from "../ask/discovery.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
 import { WORK_CLASSIFICATIONS } from "../domain/constants.js";
-import { sessionProposalDirectory } from "../sessions/sessionProposals.js";
+import { ensureSessionProposalDirectory, launchedSessionId } from "../sessions/sessionProposals.js";
 import { findRecoveredAsk } from "../sessions/legacyAskRecovery.js";
 import { normalizeError, validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
@@ -182,9 +182,11 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
   const content = request.trim().endsWith("\n") ? request.trim() + "\n" : `${request.trim()}\n`;
   if (normalized.intent === "complete") assertCompletionApplicableAtHead(repoDir, normalized.candidateRevision);
   // A `proposal` is a request for consideration, not part of the candidate: inside a Git
-  // checkout it is placed beside the worktree so preservation never commits it (Issue #1988).
-  const outsideCandidate = normalized.intent === "proposal" && tryGit(repoDir, ["rev-parse", "--show-toplevel"]) !== null;
-  const askDir = outsideCandidate ? sessionProposalDirectory(repoDir) : path.join(repoDir, ".arcadia", "asks");
+  // launched Session it is placed outside the worktree so preservation never commits it (Issue #1988);
+  // anywhere else (interactive agent, primary checkout, no Git) the canonical path and behavior stay.
+  const sessionId = normalized.intent === "proposal" ? launchedSessionId() : null;
+  const outsideCandidate = sessionId !== null;
+  const askDir = sessionId !== null ? ensureSessionProposalDirectory(sessionId) : path.join(repoDir, ".arcadia", "asks");
   const filePath = path.join(askDir, `agent-ask-${normalized.requestId}.yaml`);
   // Refuse symlinks at every component, including a dangling final symlink.
   // Exclusive creation closes the exists/write collision race without overwriting another draft.

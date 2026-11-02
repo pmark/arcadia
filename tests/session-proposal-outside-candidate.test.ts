@@ -2,16 +2,24 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runAgentAskContractCommand, runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject } from "../src/db/repositories.js";
 import { reconcileSessionExit } from "../src/sessions/reconciliation.js";
-import { SESSION_PROPOSAL_EVENT, recordSessionProposals, sessionProposalDirectory } from "../src/sessions/sessionProposals.js";
+import { SESSION_PROPOSAL_EVENT, recordSessionProposals, sessionProposalDirectories } from "../src/sessions/sessionProposals.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const SESSION = "session_proposal_1";
+const savedSession = process.env.ARCADIA_SESSION_ID;
+// A launched Session carries the host-set marker; the tests stand in for that environment.
+beforeEach(() => { process.env.ARCADIA_SESSION_ID = SESSION; for (const d of sessionProposalDirectories(SESSION)) rmSync(d, { recursive: true, force: true }); });
+afterEach(() => {
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const d of sessionProposalDirectories(SESSION)) rmSync(d, { recursive: true, force: true });
+  if (savedSession === undefined) delete process.env.ARCADIA_SESSION_ID; else process.env.ARCADIA_SESSION_ID = savedSession;
+});
 
 const git = (cwd: string, args: string[]) => execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
 
@@ -47,7 +55,7 @@ function sessionRow(db: import("better-sqlite3").Database, worktree: string, bas
   db.prepare(`INSERT INTO agent_sessions (id, project_id, project_slug, repository_path, plan_path, plan_slug, action_id, work_item_id, packet_id, packet_path, packet_sha256,
     authorizing_decisions_json, provider_profile, provider, model, base_revision, branch, worktree_path, provider_session_id, display_name, terminal_transport, tmux_session_name,
     status, prepared_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'docs/plans/p.md', 'p', 'the-action', 'wi', 'pk', 'pk.md', 'sha', '[]', 'prof', 'claude-code-cli', 'sonnet', ?, 'claude/candidate', ?, 'prov', 'd', 'tmux', 'tm-1', 'running', ?, ?, ?)`)
-    .run("session_proposal_1", project.id, "proposal-project", path.dirname(path.dirname(worktree)), base, worktree, now, now, now);
+    .run(SESSION, project.id, "proposal-project", path.dirname(path.dirname(worktree)), base, worktree, now, now, now);
   return { project, sessionId: "session_proposal_1" };
 }
 
@@ -56,8 +64,8 @@ describe("a Session's proposal draft stays out of its candidate (Issue #1988)", 
     const f = fixture();
     const changedBefore = git(f.worktree, ["diff", "--name-only", f.base, "HEAD"]);
     const result = runAgentAskDraftCommand({ request: proposal("session-proposal-a"), dir: f.worktree, workspace: path.join(f.root, "none") });
-    const expected = path.join(sessionProposalDirectory(f.worktree), "agent-ask-session-proposal-a.yaml");
-    expect(result.data.path).toBe(expected);
+    const expected = result.data.path;
+    expect(sessionProposalDirectories(SESSION).map((d) => path.join(d, "agent-ask-session-proposal-a.yaml"))).toContain(expected);
     expect(existsSync(expected)).toBe(true);
     expect(existsSync(path.join(f.worktree, ".arcadia", "asks"))).toBe(false);
     expect(path.relative(f.worktree, expected).startsWith("..")).toBe(true);
@@ -72,7 +80,7 @@ describe("a Session's proposal draft stays out of its candidate (Issue #1988)", 
     const workspace = path.join(f.root, "workspace");
     initWorkspace(workspace);
     runAgentAskDraftCommand({ request: proposal("session-proposal-b"), dir: f.worktree, workspace: path.join(f.root, "none") });
-    const text = readFileSync(path.join(sessionProposalDirectory(f.worktree), "agent-ask-session-proposal-b.yaml"), "utf8");
+    const text = readFileSync(sessionProposalDirectories(SESSION).map((d) => path.join(d, "agent-ask-session-proposal-b.yaml")).find((p) => existsSync(p)) ?? "", "utf8");
     withDatabase(workspace, (db) => {
       const { sessionId } = sessionRow(db, f.worktree, f.base);
       const settlementsBefore = (db.prepare("SELECT COUNT(*) AS n FROM agent_ask_settlements").get() as { n: number }).n;
@@ -107,6 +115,17 @@ describe("a Session's proposal draft stays out of its candidate (Issue #1988)", 
       expect(evidence.candidateHasChanges).toBe(false);
       expect(result.receipt.outcome).toBe("missing_evidence");
     });
+  });
+
+  it("outside a launched Session (interactive agent, no marker) keeps the canonical .arcadia/asks path", () => {
+    const f = fixture();
+    delete process.env.ARCADIA_SESSION_ID;
+    const result = runAgentAskDraftCommand({ request: proposal("interactive-proposal"), dir: f.worktree, workspace: path.join(f.root, "none") });
+    expect(result.data.path).toBe(path.join(f.worktree, ".arcadia", "asks", "agent-ask-interactive-proposal.yaml"));
+    expect(sessionProposalDirectories(SESSION).some((d) => existsSync(path.join(d, "agent-ask-interactive-proposal.yaml")))).toBe(false);
+    process.env.ARCADIA_SESSION_ID = "../escape";
+    const odd = runAgentAskDraftCommand({ request: proposal("interactive-proposal-2"), dir: f.worktree, workspace: path.join(f.root, "none") });
+    expect(odd.data.path).toBe(path.join(f.worktree, ".arcadia", "asks", "agent-ask-interactive-proposal-2.yaml"));
   });
 
   it("keeps complete and split drafts at their canonical location", () => {
