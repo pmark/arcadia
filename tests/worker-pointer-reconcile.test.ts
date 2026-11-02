@@ -205,6 +205,25 @@ describe("a local base ahead only by its own pointer commits", () => {
     expectRefused(/already done/);
   });
 
+  it("replays run i: two local pointer commits that net to nothing take the remote's settled pointer", () => {
+    // 4279f1bcd..bfb4ea609 on 2026-11-02: the scheduler moved the pointer away and back
+    // (a1 -> a2 -> a1) while the PR settling a1 landed on the remote and moved it to a2.
+    pointer(repo, "a2");
+    pointer(repo, "a1");
+    squashedPointer("a2", ["a1"]);
+    expect(sync()).toMatchObject({ outcome: "reconciled" });
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: a2");
+    expect(readFileSync(path.join(repo, PLAN), "utf8")).toContain("current_action: a2");
+  });
+
+  it("records the open shape: local point at a2, remote squash settled a2 and moved to a3", () => {
+    pointer(repo, "a2");
+    squashedPointer("a3", ["a1", "a2"]);
+    const result = sync();
+    // Both sides changed the same current_action lines from a1 to different values.
+    expect(result).toMatchObject({ outcome: "refused", reason: expect.stringMatching(/reconcile cleanly/) });
+  });
+
   it("keeps an identical pointer move the remote also made when the Action is still open", () => {
     pointer(repo, "a2");
     squashedPointer("a2");
