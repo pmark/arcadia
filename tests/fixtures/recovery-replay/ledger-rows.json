@@ -2,16 +2,19 @@
   "provenance": {
     "workspace": "martianrover",
     "database": "database/arcadia.sqlite3",
-    "extracted": "2026-11-02, read-only",
-    "sessionExits": "session_exit_receipts joined to agent_sessions (launch_revision) on session_id",
+    "extracted": "2026-11-02, read-only; every non-simulated receipt and review repair created that day",
+    "sessionExits": "session_exit_receipts joined to agent_sessions (launch_revision, base_revision) on session_id",
+    "resumed": "as getSessionContinuation (src/sessions/reconciliation.ts): a prior session_exit_receipts row with superseded_by_session_id = this session, outcome incomplete_resumable, lease_handoff = 1 and the same worktree_path",
     "reviewRepairs": "production_review_repairs (failed_checks_json)",
-    "operatorHeldMarks": "production_review_repairs row with outcome gated: the repair loop stops for the operator"
+    "operatorHeldMarks": "production_review_repairs rows with outcome gated: the repair loop stops for the operator; no released row exists for that day, so no releasedAt"
   },
   "sessionExits": [
     {
       "sessionId": "session_5c83e325c09f451ca0",
       "actionKey": "arcadia/bound-guidance-test-teardown-retries",
       "outcome": "accepted_completion",
+      "resumed": false,
+      "baseRevision": "6cf8679f2579cde93e46fb496d0878581ae3d9ca",
       "launchRevision": "6cf8679f2579cde93e46fb496d0878581ae3d9ca",
       "candidateRevision": "c44101cb692621a49da292cfd1585cc0becf9e9b",
       "at": "2026-11-02T00:14:20.018Z"
@@ -20,14 +23,48 @@
       "sessionId": "session_b94d45ce32554c518f",
       "actionKey": "arcadia/bound-guidance-test-teardown-retries",
       "outcome": "accepted_completion",
+      "resumed": false,
+      "baseRevision": "6cf8679f2579cde93e46fb496d0878581ae3d9ca",
       "launchRevision": "94889694c3e1363e0d99f0ca730caea1fc155a61",
       "candidateRevision": "33d8b3a9c5b6a46a884bf3d4ed6b091fcc512a00",
       "at": "2026-11-02T00:28:36.771Z"
     },
     {
+      "sessionId": "session_9d8938f493b747c1b8",
+      "actionKey": "arcadia/assert-tmux-temp-launcher-removed",
+      "outcome": "accepted_completion",
+      "resumed": false,
+      "baseRevision": "3b481336db0569e0209c041b106fe3e26d7ad769",
+      "launchRevision": "3b481336db0569e0209c041b106fe3e26d7ad769",
+      "candidateRevision": "a6b3af545b6b9ef1b77cd801137f5480eb6049b6",
+      "at": "2026-11-02T00:43:13.119Z"
+    },
+    {
+      "sessionId": "session_a4a994b555524f8f88",
+      "actionKey": "arcadia/assert-tmux-temp-launcher-removed",
+      "outcome": "incomplete_resumable",
+      "resumed": false,
+      "baseRevision": "3b481336db0569e0209c041b106fe3e26d7ad769",
+      "launchRevision": "191baefb68ca81735a6a690f69492301dd2ddf05",
+      "candidateRevision": "0ff42942725ed1a3aed9a6080e212516511dc004",
+      "at": "2026-11-02T00:56:39.915Z"
+    },
+    {
+      "sessionId": "session_7c8e1641dbd64e4099",
+      "actionKey": "arcadia/assert-tmux-temp-launcher-removed",
+      "outcome": "accepted_completion",
+      "resumed": true,
+      "baseRevision": "3b481336db0569e0209c041b106fe3e26d7ad769",
+      "launchRevision": "0ff42942725ed1a3aed9a6080e212516511dc004",
+      "candidateRevision": "3b4dceb01286e20eac6195637805c451a1989615",
+      "at": "2026-11-02T01:34:08.846Z"
+    },
+    {
       "sessionId": "session_18ca7fa5ba41424a93",
       "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
       "outcome": "incomplete_resumable",
+      "resumed": false,
+      "baseRevision": "35c3ba15b1e30e0320690838b44fa163d204c844",
       "launchRevision": "35c3ba15b1e30e0320690838b44fa163d204c844",
       "candidateRevision": "1287d758be93f08460a1487d680ef20d1e562f82",
       "at": "2026-11-02T04:41:18.850Z"
@@ -36,6 +73,8 @@
       "sessionId": "session_d9b74012b68741aab7",
       "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
       "outcome": "incomplete_resumable",
+      "resumed": true,
+      "baseRevision": "35c3ba15b1e30e0320690838b44fa163d204c844",
       "launchRevision": "1287d758be93f08460a1487d680ef20d1e562f82",
       "candidateRevision": "1287d758be93f08460a1487d680ef20d1e562f82",
       "at": "2026-11-02T04:44:50.866Z"
@@ -44,14 +83,48 @@
       "sessionId": "session_0864e83381c74e9b8b",
       "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
       "outcome": "incomplete_resumable",
+      "resumed": true,
+      "baseRevision": "35c3ba15b1e30e0320690838b44fa163d204c844",
       "launchRevision": "1287d758be93f08460a1487d680ef20d1e562f82",
       "candidateRevision": "c4eb3ce9b0f58bef9b5015205aafb4b41f173a82",
       "at": "2026-11-02T04:49:20.310Z"
     },
     {
+      "sessionId": "session_3d7e230004e14559b7",
+      "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
+      "outcome": "incomplete_resumable",
+      "resumed": true,
+      "baseRevision": "35c3ba15b1e30e0320690838b44fa163d204c844",
+      "launchRevision": "c4eb3ce9b0f58bef9b5015205aafb4b41f173a82",
+      "candidateRevision": "c4eb3ce9b0f58bef9b5015205aafb4b41f173a82",
+      "at": "2026-11-02T04:52:40.737Z"
+    },
+    {
+      "sessionId": "session_a31eb3d84f4e4a3da1",
+      "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
+      "outcome": "incomplete_resumable",
+      "resumed": true,
+      "baseRevision": "35c3ba15b1e30e0320690838b44fa163d204c844",
+      "launchRevision": "c4eb3ce9b0f58bef9b5015205aafb4b41f173a82",
+      "candidateRevision": "c4eb3ce9b0f58bef9b5015205aafb4b41f173a82",
+      "at": "2026-11-02T04:55:14.683Z"
+    },
+    {
+      "sessionId": "session_c7d0ed5a95164796bb",
+      "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
+      "outcome": "accepted_completion",
+      "resumed": true,
+      "baseRevision": "35c3ba15b1e30e0320690838b44fa163d204c844",
+      "launchRevision": "7c7e504b89226fce968c3c76db0d53faf4655a54",
+      "candidateRevision": "3f139ed6471a211a875bb739f2d08bb8ab605248",
+      "at": "2026-11-02T06:45:37.826Z"
+    },
+    {
       "sessionId": "session_01106a09e40447939d",
       "actionKey": "arcadia/pin-blast-radius-safety-patterns",
       "outcome": "accepted_completion",
+      "resumed": false,
+      "baseRevision": "4279f1bcde312fe4617ccf7070122105dbd67c74",
       "launchRevision": "4279f1bcde312fe4617ccf7070122105dbd67c74",
       "candidateRevision": "1a6375f90a68149204342142e2fa7cf73d0650b6",
       "at": "2026-11-02T07:01:40.100Z"
@@ -60,14 +133,38 @@
       "sessionId": "session_7339ac03862a4803b2",
       "actionKey": "arcadia/pin-blast-radius-safety-patterns",
       "outcome": "accepted_completion",
+      "resumed": false,
+      "baseRevision": "4279f1bcde312fe4617ccf7070122105dbd67c74",
       "launchRevision": "eb35a2bf59774e96cd8220f9ecc5e73cec497d60",
       "candidateRevision": "2f27c7968416701dc024aa1d98a1faee3e32cc7e",
       "at": "2026-11-02T07:17:58.857Z"
     },
     {
+      "sessionId": "session_aeafee888e21431caa",
+      "actionKey": "arcadia/pin-blast-radius-safety-patterns",
+      "outcome": "accepted_completion",
+      "resumed": false,
+      "baseRevision": "4279f1bcde312fe4617ccf7070122105dbd67c74",
+      "launchRevision": "0d501a1c1668796c3203daadccce6bd42e5ad480",
+      "candidateRevision": "ff1027e278e8efb0941414350fed3809287f70d1",
+      "at": "2026-11-02T07:33:25.888Z"
+    },
+    {
+      "sessionId": "session_2a9132e1d199462184",
+      "actionKey": "arcadia/pin-blast-radius-safety-patterns",
+      "outcome": "accepted_completion",
+      "resumed": false,
+      "baseRevision": "4279f1bcde312fe4617ccf7070122105dbd67c74",
+      "launchRevision": "26b0df53e5536abb60425178301ce6a89824f394",
+      "candidateRevision": "dc2f128c1d4cd0a29f94dbf344381a6d0f31bcd1",
+      "at": "2026-11-02T07:48:53.523Z"
+    },
+    {
       "sessionId": "session_9ab292daaa004151a9",
       "actionKey": "arcadia/cover-retired-descriptor-byte-change",
       "outcome": "accepted_completion",
+      "resumed": false,
+      "baseRevision": "0e2c19f664fe1650605451fcb965545ff5ef9ba7",
       "launchRevision": "0e2c19f664fe1650605451fcb965545ff5ef9ba7",
       "candidateRevision": "d5c319ca3fd57794c72e61c77e62caf936cfe72a",
       "at": "2026-11-02T08:02:38.706Z"
@@ -104,6 +201,25 @@
       "repairSessionId": "session_b94d45ce32554c518f",
       "outcome": "launched",
       "at": "2026-11-02T00:21:51.905Z"
+    },
+    {
+      "requestId": "worker-tick-repair-session_9d8938f493b747c1b8-a6de7eb9704900f8384fcca9b03fec68ee5668d8",
+      "actionKey": "arcadia/assert-tmux-temp-launcher-removed",
+      "round": 1,
+      "failedSessionId": "session_9d8938f493b747c1b8",
+      "role": "code-review",
+      "verdict": "needs-follow-up",
+      "failedChecks": [
+        {
+          "criterion": "tests",
+          "name": "Tests",
+          "status": "not-checked",
+          "evidence": "Although `tests/system-tmux-long-command.test.ts` changes executable test behavior, the supplied focused Vitest report records the exact changed test as `skipped`; successful lint and type-check commands cannot show the new assertion executes."
+        }
+      ],
+      "repairSessionId": "session_a4a994b555524f8f88",
+      "outcome": "launched",
+      "at": "2026-11-02T00:52:12.364Z"
     },
     {
       "requestId": "worker-tick-repair-session_01106a09e40447939d-73f78a79200e1369d3ebeca10d248958ad7bf7db",
@@ -148,6 +264,44 @@
       "repairSessionId": "session_aeafee888e21431caa",
       "outcome": "launched",
       "at": "2026-11-02T07:26:46.458Z"
+    },
+    {
+      "requestId": "worker-tick-repair-session_aeafee888e21431caa-db0a991547fe530507041da049962ab1aff8b4ff",
+      "actionKey": "arcadia/pin-blast-radius-safety-patterns",
+      "round": 3,
+      "failedSessionId": "session_aeafee888e21431caa",
+      "role": "qa",
+      "verdict": "fail",
+      "failedChecks": [
+        {
+          "criterion": "operator-qa-plan",
+          "name": "Operator QA plan",
+          "status": "fail",
+          "evidence": "Step 4 inspects `apps/dashboard/package.json`, although criterion 2 is implemented exclusively in `tests/pr-blast-radius.test.ts`; its stated expected observation therefore cannot follow from the commanded inspection."
+        }
+      ],
+      "repairSessionId": "session_2a9132e1d199462184",
+      "outcome": "launched",
+      "at": "2026-11-02T07:42:16.016Z"
+    },
+    {
+      "requestId": "worker-tick-repair-session_2a9132e1d199462184-e63f7a2e4a00aa8332417d98875c58664b186928",
+      "actionKey": "arcadia/pin-blast-radius-safety-patterns",
+      "round": 3,
+      "failedSessionId": "session_2a9132e1d199462184",
+      "role": "qa",
+      "verdict": "fail",
+      "failedChecks": [
+        {
+          "criterion": "operator-qa-plan",
+          "name": "Operator QA plan",
+          "status": "fail",
+          "evidence": "Step 4 inspects `apps/dashboard/package.json` but claims that output will prove assertions located in `tests/pr-blast-radius.test.ts`; the stated observable consequence cannot follow from the command."
+        }
+      ],
+      "repairSessionId": null,
+      "outcome": "escalated",
+      "at": "2026-11-02T07:58:37.680Z"
     },
     {
       "requestId": "worker-tick-repair-session_9ab292daaa004151a9-902cee09c1581de3e3b313067357386433bf02ca",

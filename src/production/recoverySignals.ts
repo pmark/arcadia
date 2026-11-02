@@ -4,12 +4,14 @@
  * no database, Git, clock or network and never mutates its input.
  *
  * Signals:
- * - `no_progress`: a Session exited without finishing and its candidate
- *   revision equals the revision it was launched from, so the relaunch changed
- *   nothing.
+ * - `no_progress`: a resumed Session exited `incomplete_resumable` with its
+ *   candidate equal to the revision it started from (`launch_revision`, else
+ *   `base_revision`) and a clean worktree: the same predicate as the worker
+ *   tick's unchanged-candidate check (`isNoProgressExit`).
  * - `qa_plan`: a failed independent QA review whose failed checks include the
  *   host-written operator QA plan check. `failureClass` is `sole_failure` when
- *   that is the only failed check and `mixed` when other checks failed too.
+ *   every non-pass check (fail, inherited, not-applicable, not-checked) is the
+ *   QA plan check and `mixed` when any other check is not a pass.
  *
  * An operator-held mark for the Action (a gated wait) at or before a signal
  * suppresses it: the operator owns that wait. Signals come back ordered by
@@ -18,15 +20,17 @@
 
 export const OPERATOR_QA_PLAN_CRITERION = "operator-qa-plan";
 
-/** Session exit outcomes that finish a Session; every other outcome is unfinished. */
-const FINISHED_OUTCOMES: ReadonlySet<string> = new Set(["accepted_completion", "successful_exit"]);
-
 export interface RecoverySessionExitRow {
   sessionId: string;
   actionKey: string;
   outcome: string;
+  /** True when the Session continued a prior Session's handoff (`getSessionContinuation` is non-null). */
+  resumed: boolean;
+  baseRevision: string | null;
   launchRevision: string | null;
   candidateRevision: string | null;
+  /** Worktree had no uncommitted changes at exit. Absent when not recorded; explicit `false` yields no no-progress signal. */
+  worktreeClean?: boolean;
   at: string;
 }
 
@@ -53,6 +57,8 @@ export interface RecoveryHeldMark {
   kind: string;
   reason?: string;
   at: string;
+  /** The mark stops suppressing at or after this time (e.g. a released row's `closed_at`). */
+  releasedAt?: string;
 }
 
 export interface RecoveryLedgerRows {
@@ -80,30 +86,33 @@ function epoch(at: string): number {
   return Number.isNaN(value) ? Number.POSITIVE_INFINITY : value;
 }
 
-function isFailed(check: RecoveryFailedCheck): boolean {
-  return check.status === "fail";
+/** Mirrors the worker tick's unchanged-candidate check (src/production/tick.ts), minus Git: `worktreeClean` is supplied. */
+export function isNoProgressExit(exit: RecoverySessionExitRow): boolean {
+  if (!exit.resumed || exit.outcome !== "incomplete_resumable") return false;
+  if (exit.worktreeClean === false) return false;
+  const start = exit.launchRevision ?? exit.baseRevision;
+  return exit.candidateRevision != null && start != null && exit.candidateRevision === start;
 }
 
 /** Classify ledger rows into ordered recovery signals. */
 export function classifyRecoverySignals(rows: RecoveryLedgerRows): RecoverySignal[] {
   const held = rows.operatorHeldMarks ?? [];
   const isHeld = (actionKey: string, at: string): boolean =>
-    held.some((mark) => mark.actionKey === actionKey && epoch(mark.at) <= epoch(at));
+    held.some((mark) => mark.actionKey === actionKey && epoch(mark.at) <= epoch(at)
+      && (mark.releasedAt === undefined || epoch(at) < epoch(mark.releasedAt)));
 
   const signals: RecoverySignal[] = [];
 
   for (const exit of rows.sessionExits ?? []) {
-    if (FINISHED_OUTCOMES.has(exit.outcome)) continue;
-    if (!exit.launchRevision || !exit.candidateRevision) continue;
-    if (exit.launchRevision !== exit.candidateRevision) continue;
+    if (!isNoProgressExit(exit)) continue;
     if (isHeld(exit.actionKey, exit.at)) continue;
     signals.push({ kind: "no_progress", actionKey: exit.actionKey, at: exit.at, source: exit.sessionId });
   }
 
   for (const repair of rows.reviewRepairs ?? []) {
     if (repair.role !== "qa") continue;
-    const failed = repair.failedChecks.filter(isFailed);
-    if (!failed.some((check) => check.criterion === OPERATOR_QA_PLAN_CRITERION)) continue;
+    const failed = repair.failedChecks.filter((check) => check.status !== "pass");
+    if (!repair.failedChecks.some((check) => check.criterion === OPERATOR_QA_PLAN_CRITERION && check.status === "fail")) continue;
     if (isHeld(repair.actionKey, repair.at)) continue;
     const sole = failed.every((check) => check.criterion === OPERATOR_QA_PLAN_CRITERION);
     signals.push({
