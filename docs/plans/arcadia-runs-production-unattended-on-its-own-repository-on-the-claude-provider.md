@@ -450,11 +450,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1989"]
   - id: recovery-signal-replay-gate
     title: Add a pure no-model recovery-signal classifier and a checked-in replay of real ledger rows that gates the watchdog work.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Add a pure no-model recovery-signal classifier and a checked-in replay of real ledger rows that gates the watchdog work.
+    next_action: Completed via Agent Ask complete-recovery-signal-replay-gate-20261102-r2; no further action.
     expected_artifact: Evidence satisfying Agent Ask recovery-signal-replay-gate
     clarification: clarified
     confidence: high
@@ -578,7 +578,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: recovery-signal-replay-gate
+current_action: session-proposal-stays-out-of-candidate
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
