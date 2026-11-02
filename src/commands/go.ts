@@ -2375,6 +2375,19 @@ function observeQueueWalkIn(
     const candidates = queueWalkCandidates(db, { projectSlug: input.projectSlug, exclude: [input.pointerActionId], now });
     for (const actionId of candidates) {
       if (getActiveActionClaim(db, input.repositoryPath, input.projectSlug, actionId, now)) continue;
+      // The very evaluation apply runs (it writes nothing for an unclaimed Action):
+      // a candidate apply would refuse, such as an orphan or unresolved one, is
+      // skipped here, so observation and apply cannot disagree.
+      const candidate = evaluateExistingCandidate(db, {
+        controlWorktree: input.repositoryPath,
+        projectSlug: input.projectSlug,
+        actionId,
+        agent: input.agent,
+        baseBranch: resolveBaseBranch(input.repositoryPath),
+        tmux: systemTmux,
+        now
+      });
+      if (candidate.kind === "refuse") continue;
       const dispatch = resolveDispatch(input.dispatchRoot, input.projectSlug, { actionId });
       if (!isDispatchable(dispatch) || !dispatch.context) continue;
       if (localBrowserAuditBlocker(input.agent, dispatch.context.action)) continue;

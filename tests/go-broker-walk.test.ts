@@ -15,9 +15,29 @@ import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
 const PROJECT = "walk-project";
+// Lets a test run code at the one point inside apply that sits between the two
+// walked-input checks: after the first, before the second.
+const gate = vi.hoisted(() => ({ armed: null as null | (() => void) }));
+
+vi.mock("../src/ask/operatorGate.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/ask/operatorGate.js")>();
+  return {
+    ...actual,
+    resolveOperatorGate: ((input: Parameters<typeof actual.resolveOperatorGate>[0]) => {
+      const result = actual.resolveOperatorGate(input);
+      if (gate.armed && input.selectedActionId === "gamma") {
+        const hook = gate.armed;
+        gate.armed = null;
+        hook();
+      }
+      return result;
+    }) as typeof actual.resolveOperatorGate
+  };
+});
 
 beforeEach(() => vi.stubEnv("CODEX_SANDBOX", ""));
 afterEach(() => {
+  gate.armed = null;
   vi.unstubAllEnvs();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -30,7 +50,7 @@ interface Fixture {
 }
 
 /** alpha is the pointer; gamma and delta are ready; beta waits on alpha. */
-function createFixture(): Fixture {
+function createFixture(gamma: { dependsOn?: string[]; responsibility?: string } = {}): Fixture {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-go-broker-walk-"));
   roots.push(root);
   const main = path.join(root, "repo");
@@ -54,10 +74,10 @@ updated: 2026-11-02
 
 # Walk Project
 `);
-  const action = (id: string, dependsOn: string[]) => `  - id: ${id}
+  const action = (id: string, dependsOn: string[], responsibility = "agent") => `  - id: ${id}
     title: Action ${id}
     status: open
-    responsibility: agent
+    responsibility: ${responsibility}
     effort: session
     clarification: clarified
     next_action: Implement ${id}.
@@ -79,7 +99,7 @@ recommended_model: claude-sonnet-5
 current_action: alpha
 updated: 2026-11-02
 actions:
-${action("alpha", [])}${action("beta", ["alpha"])}${action("gamma", [])}${action("delta", [])}---
+${action("alpha", [])}${action("beta", ["alpha"])}${action("gamma", gamma.dependsOn ?? [], gamma.responsibility)}${action("delta", [])}---
 
 # Walk plan
 `);
@@ -258,6 +278,101 @@ describe("broker go from the primary checkout walks the ready queue", () => {
 
     expect(error.message).toContain("already holds uncommitted changes");
     expect(claimed(fixture, "gamma")).toBe(false);
+  });
+
+  it("skips a first-ready Action whose orphan candidate apply would refuse, and prepares the next one", () => {
+    const fixture = createFixture();
+    const orphan = path.join(fixture.root, "abandoned-gamma");
+    git(fixture.main, ["worktree", "add", "-q", "-b", "claude/gamma-abandoned", orphan]);
+    writeFileSync(path.join(orphan, "unsaved.txt"), "not committed\n");
+    brokerGo(fixture);
+
+    const next = brokerGo(fixture);
+    const again = refusal(() => brokerGo(fixture));
+
+    expect(next.data.dispatch.context?.action.id).toBe("delta");
+    expect(next.options[0].initialSelection?.walk).toMatchObject({ actionId: "delta" });
+    expect(again.message).toContain("Another live worktree already claims this Action");
+    expect(claimed(fixture, "gamma")).toBe(false);
+    expect(readFileSync(path.join(orphan, "unsaved.txt"), "utf8")).toBe("not committed\n");
+    expect(git(orphan, ["status", "--porcelain"])).toContain("unsaved.txt");
+  });
+
+  it.each([
+    ["dependency-blocked", { dependsOn: ["alpha"] }],
+    ["requires_review", { responsibility: "requires_review" }]
+  ])("never binds a %s Action and walks to the next ready one", (_label, gamma) => {
+    const fixture = createFixture(gamma);
+    brokerGo(fixture);
+    const next = brokerGo(fixture);
+    expect(next.data.dispatch.context?.action.id).toBe("delta");
+    expect(next.options[0].initialSelection?.walk).toMatchObject({ actionId: "delta" });
+    expect(claimed(fixture, "gamma")).toBe(false);
+  });
+
+  it("skips an operator-gated Action when it observes the walk", () => {
+    const fixture = createFixture();
+    mkdirSync(path.join(fixture.main, "docs", "decisions"), { recursive: true });
+    writeFileSync(path.join(fixture.main, "docs", "decisions", "0001-block-gamma.md"), `---
+arcadia: v1
+type: decision
+id: "0001"
+slug: block-gamma
+project: ${PROJECT}
+action: gamma
+status: open
+question: Should gamma pause?
+options:
+  - label: Pause gamma
+    consequence: Gamma waits for this Decision.
+    recommended: true
+updated: 2026-11-02
+---
+
+# Decision
+`);
+    git(fixture.main, ["add", "."]);
+    git(fixture.main, ["commit", "-qm", "open a Decision that gates gamma"]);
+    brokerGo(fixture);
+    const next = brokerGo(fixture);
+    expect(next.data.dispatch.context?.action.id).toBe("delta");
+    expect(next.options[0].initialSelection?.walk).toMatchObject({ actionId: "delta" });
+    expect(claimed(fixture, "gamma")).toBe(false);
+  });
+
+  describe("each walked-input check is independently load-bearing", () => {
+    const plan = (fixture: Fixture) => path.join(fixture.main, "docs", "plans", "walk-plan.md");
+    const edit = (fixture: Fixture, from: string, to: string) =>
+      writeFileSync(plan(fixture), readFileSync(plan(fixture), "utf8").replace(from, to));
+
+    it("refuses when the input changes after the first check and before the second", () => {
+      const fixture = createFixture();
+      brokerGo(fixture);
+      const error = refusal(() => brokerGo(fixture, (options) => options.apply ? {
+        testHooks: {
+          beforeDispatchTransaction: () => {
+            gate.armed = () => edit(fixture, "Implement gamma.", "Implement gamma late.");
+          }
+        }
+      } : {}));
+      expect(error.details).toMatchObject({ code: "go_selection_changed", expectedAction: "gamma" });
+      expect(claimed(fixture, "gamma")).toBe(false);
+    });
+
+    it("refuses when the input changed before the first check, even if it reverts before the second", () => {
+      const fixture = createFixture();
+      brokerGo(fixture);
+      const error = refusal(() => brokerGo(fixture, (options) => options.apply ? {
+        testHooks: {
+          beforeDispatchTransaction: () => {
+            edit(fixture, "Implement gamma.", "Implement gamma early.");
+            gate.armed = () => edit(fixture, "Implement gamma early.", "Implement gamma.");
+          }
+        }
+      } : {}));
+      expect(error.details).toMatchObject({ code: "go_selection_changed", expectedAction: "gamma" });
+      expect(claimed(fixture, "gamma")).toBe(false);
+    });
   });
 
   it("never lets enrollment walk, even when the broker's snapshot carries a walk", () => {

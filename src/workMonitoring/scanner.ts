@@ -205,14 +205,20 @@ function scanRepository(
   const checkedOutBranches = new Set(worktrees.flatMap((worktree) => (worktree.branch ? [worktree.branch] : [])));
   const perRef = options.refFacts === "per-ref";
   const batchMode = options.refFacts === "per-ref" ? undefined : options.refFacts;
-  const facts = perRef ? null : new BatchedRefFacts(repositoryPath, baseRef, batchMode);
+  const batched = perRef ? null : new BatchedRefFacts(repositoryPath, baseRef, batchMode);
+  const facts = batched?.usable ? batched : null;
   // The per-ref route is the original sequential reference; the default route
   // runs the independent per-worktree reads (status, diff) concurrently.
   const execute = perRef ? runEach : runMany;
 
+  // A status that failed (timeout, oversize output, a transient Git error) is
+  // retried once on its own; one that still fails is never read as clean.
   const statuses = execute(worktrees.map((worktree) => ({
     cwd: worktree.path, command: "git", args: STATUS_ARGS
-  })));
+  }))).map((result, index) =>
+    result.ok || !existsSync(worktrees[index].path) ? result : run(worktrees[index].path, "git", STATUS_ARGS)
+  );
+  const statusUnreadable = statuses.map((result, index) => !result.ok && existsSync(worktrees[index].path));
   const worktreeRevisions = worktrees.map((worktree) =>
     // A missing worktree directory cannot run Git, which the per-ref route reports
     // as empty facts; keep that route there rather than answer from the repository.
@@ -239,7 +245,8 @@ function scanRepository(
     assessWorkingCopy(
       project, repositoryPath, baseRef, worktree, ghRepository, pullRequestLookup,
       parseChanges(statuses[index]), worktreeRevisions[index],
-      worktreeRevisions[index].commitsNotInBase > 0 ? parseChangedPaths(diffs[nextDiff++]) : []
+      worktreeRevisions[index].commitsNotInBase > 0 ? parseChangedPaths(diffs[nextDiff++]) : [],
+      statusUnreadable[index]
     )
   );
   for (const { branch, revision } of unattached) {
@@ -270,7 +277,8 @@ function assessWorkingCopy(
   pullRequestLookup: WorkingCopyAssessment["pullRequestLookup"],
   changes: WorkingCopyChanges,
   revision: RevisionFacts,
-  committedPaths: string[]
+  committedPaths: string[],
+  statusUnreadable: boolean
 ): WorkingCopyAssessment {
   const contextPaths = [...new Set([...changes.paths, ...committedPaths])];
   changes.paths = contextPaths;
@@ -278,7 +286,7 @@ function assessWorkingCopy(
   const pullRequest = worktree.branch && ghRepository && revision.commitsNotInBase > 0
     ? findPullRequest(worktree.path, ghRepository, worktree.branch)
     : null;
-  return assembleAssessment({
+  const assessment = assembleAssessment({
     project,
     repositoryPath,
     worktreePath: worktree.path,
@@ -291,6 +299,18 @@ function assessWorkingCopy(
     pullRequest,
     pullRequestLookup
   });
+  if (!statusUnreadable) return assessment;
+  // Unknown is never clean: without a readable status the copy may hold
+  // uncommitted work, so it is reported as unsaved with that reason.
+  return {
+    ...assessment,
+    preservation: "unsaved",
+    delivery: "working",
+    summary: "Git status could not be read for this worktree, so uncommitted work cannot be ruled out.",
+    recommendedAction: worktree.branch
+      ? `Run git status in ${worktree.path}; commit any changes on ${worktree.branch}, then push the branch and open a draft PR.`
+      : `Run git status in ${worktree.path}; create a branch for any changes, commit intentionally, then push and open a draft PR.`
+  };
 }
 
 function assessUnattachedBranch(
@@ -507,7 +527,9 @@ interface BranchRecord {
  */
 class BatchedRefFacts {
   private readonly branches = new Map<string, BranchRecord>();
-  private readonly remoteRefs = new Set<string>();
+  private remoteRefs: Set<string> | null = null;
+  /** False when the branch listing failed or any record did not parse; callers then use the per-ref reads. */
+  readonly usable: boolean;
   private readonly countBySha = new Map<string, number>();
   private readonly detailBySha = new Map<string, { subject: string | null; at: string | null }>();
   private readonly baseResolves: boolean;
@@ -528,19 +550,25 @@ class BatchedRefFacts {
     ];
     const read = (withCounts: boolean) => run(repositoryPath, "git", [
       "for-each-ref",
-      `--format=${[...fields, ...(withCounts ? [`%(ahead-behind:${baseRef})`] : [])].join("%1f")}%1e`,
+      // NUL cannot occur in a ref name or a commit message, so no subject can break a record.
+      `--format=${[...fields, ...(withCounts ? [`%(ahead-behind:${baseRef})`] : [])].join("%00")}`,
       "refs/heads"
     ]);
     // Git older than 2.41 rejects %(ahead-behind); the retry drops it.
     let result = mode !== "without-ahead-behind" && this.baseResolves ? read(true) : null;
     this.hasCounts = result?.ok === true;
     if (!result?.ok) result = read(false);
+    let usable = result.ok;
     if (result.ok) {
-      for (const record of result.stdout.split("\x1e")) {
-        const entry = record.replace(/^\n/, "");
+      const expectedFields = this.hasCounts ? fields.length + 1 : fields.length;
+      for (const entry of result.stdout.split("\n")) {
         if (!entry) continue;
-        const [name, sha, upstream, track, subject, at, aheadBehind] = entry.split("\x1f");
-        if (!name || !sha) continue;
+        const parts = entry.split("\0");
+        const [name, sha, upstream, track, subject, at, aheadBehind] = parts;
+        if (parts.length !== expectedFields || !name || !sha) {
+          usable = false;
+          break;
+        }
         if (this.hasCounts && aheadBehind !== undefined) {
           const unique = Number(aheadBehind.trim().split(/\s+/)[0]);
           if (Number.isFinite(unique)) this.countBySha.set(sha, unique);
@@ -549,8 +577,17 @@ class BatchedRefFacts {
         this.detailBySha.set(sha, { subject: subject?.trimStart() || null, at: at || null });
       }
     }
+    this.usable = usable;
+    // A failed or oversize listing leaves `remoteRefs` null: each branch is then
+    // asked individually rather than reported as having no remote.
     const remotes = run(repositoryPath, "git", ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/"]);
-    if (remotes.ok) for (const line of remotes.stdout.split("\n")) if (line) this.remoteRefs.add(line);
+    if (remotes.ok) this.remoteRefs = new Set(remotes.stdout.split("\n").filter(Boolean));
+  }
+
+  private remoteExists(branch: string): boolean {
+    return this.remoteRefs
+      ? this.remoteRefs.has(`refs/remotes/origin/${branch}`)
+      : run(this.repositoryPath, "git", ["show-ref", "--verify", "--quiet", `refs/remotes/origin/${branch}`]).ok;
   }
 
   branchNames(): string[] {
@@ -591,7 +628,7 @@ class BatchedRefFacts {
       ahead,
       behind,
       commitsNotInBase: this.countFor(sha, record?.name ?? null),
-      remoteBranchExists: Boolean(branch) && this.remoteRefs.has(`refs/remotes/origin/${branch}`),
+      remoteBranchExists: Boolean(branch) && this.remoteExists(branch!),
       lastCommitSubject: detail.subject,
       lastCommitAt: detail.at
     };
