@@ -39,6 +39,7 @@ import { opencodeVariant } from "./worktreePreparation.js";
 import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
 import { formatLaunchFailure } from "./launchFailure.js";
 import { tmuxNewSessionArgs, writeSessionLauncher } from "./tmuxLauncher.js";
+import { miseNodeDirectory } from "../runtime/mise.js";
 
 export { tmuxNewSessionArgs } from "./tmuxLauncher.js";
 
@@ -321,7 +322,7 @@ export const systemTmux: TmuxAdapter = {
     const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
     // Never hand tmux the provider argv: it carries the whole brief, and tmux
     // refuses an over-long command ("command too long"). See `tmuxLauncher.ts`.
-    const launcher = writeSessionLauncher(run, input.launcherDirectory ?? (input.record ? path.dirname(input.record.logFile) : undefined));
+    const launcher = writeSessionLauncher(run, input.launcherDirectory ?? (input.record ? path.dirname(input.record.logFile) : undefined), miseNodeDirectory(input.cwd));
     const result = spawnSync("tmux", tmuxNewSessionArgs(input.name, input.cwd, launcher.file), {
       stdio: ["ignore", "ignore", "pipe"],
       encoding: "utf8",

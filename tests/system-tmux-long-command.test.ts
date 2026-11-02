@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { systemTmux, tmuxNewSessionArgs } from "../src/sessions/index.js";
+import { miseNodeDirectory } from "../src/runtime/mise.js";
 import { writeSessionLauncher } from "../src/sessions/tmuxLauncher.js";
 
 /**
@@ -30,21 +31,57 @@ describe("tmuxNewSessionArgs", () => {
   });
 });
 
-describe("writeSessionLauncher", () => {
-  it("puts the Node this host runs ahead of another node on PATH, for bash and sh Session shells (Issue #1993)", () => {
+describe("the Node a Session's launcher resolves (Issue #1993)", () => {
+  function withScratch(body: (scratch: string) => void): void {
     const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-launcher-node-"));
     try {
-      const otherNodeDir = path.join(scratch, "other");
-      mkdirSync(otherNodeDir);
-      writeFileSync(path.join(otherNodeDir, "node"), "#!/bin/sh\necho other-node\n", { mode: 0o755 });
-      for (const shell of ["/bin/bash", "/bin/sh"]) {
-        const launcher = writeSessionLauncher({ command: shell, args: ["-c", "command -v node; node -p process.execPath"] }, scratch);
-        const output = execFileSync("/bin/sh", [launcher.file], { encoding: "utf8", env: { PATH: `${otherNodeDir}:/usr/bin:/bin` } });
-        expect(output.trim().split("\n")).toEqual([path.join(path.dirname(process.execPath), "node"), process.execPath]);
-      }
+      body(scratch);
     } finally {
       rmSync(scratch, { recursive: true, force: true });
     }
+  }
+  function fakeNode(directory: string, name: string): void {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, "node"), `#!/bin/sh\necho ${name}\n`, { mode: 0o755 });
+  }
+
+  it("puts the given Node ahead of another node on PATH, for bash and sh Session shells", () => {
+    withScratch((scratch) => {
+      const other = path.join(scratch, "other");
+      const pinned = path.join(scratch, "pinned");
+      fakeNode(other, "other");
+      fakeNode(pinned, "pinned");
+      for (const shell of ["/bin/bash", "/bin/sh"]) {
+        const launcher = writeSessionLauncher({ command: shell, args: ["-c", "node"] }, scratch, pinned);
+        const output = execFileSync("/bin/sh", [launcher.file], { encoding: "utf8", env: { PATH: `${other}:/usr/bin:/bin` } });
+        expect(output.trim()).toBe("pinned");
+      }
+    });
+  });
+
+  it("leaves PATH as it was when no pinned Node is known", () => {
+    withScratch((scratch) => {
+      const other = path.join(scratch, "other");
+      fakeNode(other, "other");
+      const launcher = writeSessionLauncher({ command: "/bin/sh", args: ["-c", "node"] }, scratch, null);
+      const output = execFileSync("/bin/sh", [launcher.file], { encoding: "utf8", env: { PATH: `${other}:/usr/bin:/bin` } });
+      expect(output.trim()).toBe("other");
+    });
+  });
+
+  it("asks mise about the Session's own checkout, and gives no answer when mise cannot", () => {
+    withScratch((scratch) => {
+      const seen = path.join(scratch, "argv");
+      const mise = path.join(scratch, "mise");
+      writeFileSync(mise, `#!/bin/sh\necho "$@" > ${seen}\necho /pins/node-24/bin/node\n`, { mode: 0o755 });
+      expect(miseNodeDirectory("/work/project", mise)).toBe("/pins/node-24/bin");
+      expect(readFileSync(seen, "utf8").trim()).toBe("-C /work/project which node");
+      writeFileSync(mise, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+      expect(miseNodeDirectory("/work/project", mise)).toBeNull();
+      writeFileSync(mise, "#!/bin/sh\necho node\n", { mode: 0o755 });
+      expect(miseNodeDirectory("/work/project", mise)).toBeNull();
+      expect(miseNodeDirectory("/work/project", path.join(scratch, "missing"))).toBeNull();
+    });
   });
 });
 

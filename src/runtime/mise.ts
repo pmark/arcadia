@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -51,4 +52,22 @@ export function miseLeadingPath(miseBin: string, home = homedir()): string {
  */
 export function miseNodeArgv(miseBin: string, repositoryRoot: string): string[] {
   return [miseBin, "-C", repositoryRoot, "exec", "--", "node"];
+}
+
+/**
+ * The directory of the Node that `directory`'s own mise config pins, or null
+ * when mise cannot answer (no mise, no pin, untrusted config, slow). A Session
+ * for any Project gets that Project's pin; null leaves its PATH as it was.
+ */
+export function miseNodeDirectory(directory: string, miseBin = resolveMiseExecutable()): string | null {
+  try {
+    const node = execFileSync(miseBin, ["-C", directory, "which", "node"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 10_000
+    }).trim();
+    return path.isAbsolute(node) ? path.dirname(node) : null;
+  } catch {
+    return null;
+  }
 }
