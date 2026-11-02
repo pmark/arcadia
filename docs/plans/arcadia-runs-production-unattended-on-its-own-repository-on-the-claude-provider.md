@@ -371,11 +371,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1800", "src/agentSetup/goBrokerAgentSetup.ts", "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md"]
   - id: assert-tmux-temp-launcher-removed
     title: "Make the no-launcherDirectory tmux long-command test prove its temporary launcher directory is removed, closing Issue #1536."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the no-launcherDirectory tmux long-command test prove its temporary launcher directory is removed, closing Issue #1536."
+    next_action: Completed via Agent Ask auto-settle-arcadia-assert-tmux-temp-launcher-removed-3bc4f60a1ed8; no further action.
     expected_artifact: Evidence satisfying Agent Ask assert-tmux-temp-launcher-removed
     clarification: clarified
     confidence: high
@@ -412,7 +412,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: assert-tmux-temp-launcher-removed
+current_action: cover-retired-descriptor-byte-change
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
