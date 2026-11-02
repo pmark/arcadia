@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { systemTmux, tmuxNewSessionArgs } from "../src/sessions/index.js";
+import { writeSessionLauncher } from "../src/sessions/tmuxLauncher.js";
 
 /**
  * The 2026-10-17 supervised Claude run failed twice with "tmux new-session
@@ -26,6 +27,24 @@ describe("tmuxNewSessionArgs", () => {
     expect(short).toEqual(["new-session", "-d", "-s", "arcadia-x", "-c", "/work", "sh", "/runs/x.launch.sh"]);
     // The prompt never appears: only the session name, cwd and launcher path.
     expect(short.join(" ").length).toBeLessThan(200);
+  });
+});
+
+describe("writeSessionLauncher", () => {
+  it("puts the Node this host runs ahead of another node on PATH, for bash and sh Session shells (Issue #1993)", () => {
+    const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-launcher-node-"));
+    try {
+      const otherNodeDir = path.join(scratch, "other");
+      mkdirSync(otherNodeDir);
+      writeFileSync(path.join(otherNodeDir, "node"), "#!/bin/sh\necho other-node\n", { mode: 0o755 });
+      for (const shell of ["/bin/bash", "/bin/sh"]) {
+        const launcher = writeSessionLauncher({ command: shell, args: ["-c", "command -v node; node -p process.execPath"] }, scratch);
+        const output = execFileSync("/bin/sh", [launcher.file], { encoding: "utf8", env: { PATH: `${otherNodeDir}:/usr/bin:/bin` } });
+        expect(output.trim().split("\n")).toEqual([path.join(path.dirname(process.execPath), "node"), process.execPath]);
+      }
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 });
 

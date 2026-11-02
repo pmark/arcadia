@@ -53,7 +53,12 @@ export function writeSessionLauncher(
   // `sh` has already opened the file, so removing it first is safe; the
   // provider never sees it, and nothing holding the brief outlives the start.
   const cleanup = ownsDirectory ? `rm -rf -- ${shellQuote(dir)}` : `rm -f -- ${shellQuote(file)}`;
-  const script = `${cleanup}\nexec ${[run.command, ...run.args].map(shellQuote).join(" ")}\n`;
+  // A Session's `node` and `pnpm` must be the Node this host runs (the one
+  // `mise.toml` pins, and whose ABI the shared native modules were built for).
+  // A launch agent's PATH leads with mise's directory, which can also hold
+  // another Node, and only some shells' startup files restore mise (Issue #1993).
+  const pinnedNode = `PATH=${shellQuote(path.dirname(process.execPath))}:"$PATH"\nexport PATH`;
+  const script = `${cleanup}\n${pinnedNode}\nexec ${[run.command, ...run.args].map(shellQuote).join(" ")}\n`;
   writeFileSync(file, script, { mode: 0o600, flag: "wx" });
   chmodSync(file, 0o600);
   return {
