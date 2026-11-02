@@ -562,6 +562,33 @@ describe("the worker-merge allowlist and the agent-guidance index", () => {
     const allowed = [...targets].filter((target) => isWorkerMergeSafePath(target) || isWorkerMergeSafePath(target.toUpperCase()));
     expect(allowed).toEqual([]);
   });
+  it.each([
+    "tests/helpers/x.ts",
+    "tests/fast-rehearsal/helpers/x.ts",
+    "tests/setup.ts",
+    "tests/e2e/global-setup.ts",
+    "tests/e2e/fixtures/x.json",
+    "tests/fixtures/x.txt",
+    "docs/decisions/0001-x.md",
+    "docs/agent-guidance/x.md",
+    "docs/plans/x.md",
+    "docs/scout/x.md",
+    "docs/agents-context.md",
+    "docs/managed-production-readiness.md",
+    "AGENTS.md",
+    "src/cli.ts",
+    "docs/guide.txt",
+    "tests/.hidden/x.test.ts"
+  ])("refuses the carved-out or non-allowlisted path %s", (file) => {
+    expect(isWorkerMergeSafePath(file)).toBe(false);
+  });
+  it.each([
+    "tests/worker-merge.test.ts",
+    "docs/guide.md",
+    "notes.md"
+  ])("allows the allowlisted path %s", (file) => {
+    expect(isWorkerMergeSafePath(file)).toBe(true);
+  });
 });
 
 describe("the worker-merge opt-in in the production scope", () => {
