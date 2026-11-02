@@ -1,14 +1,14 @@
-import { accessSync, constants, lstatSync, mkdirSync, readlinkSync, realpathSync, renameSync, statSync, symlinkSync } from "node:fs";
+import { accessSync, constants, lstatSync, mkdirSync, readlinkSync, realpathSync, renameSync, rmSync, statSync, symlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
 /**
  * The host's own `arcadia` command for a Session whose allow list permits
- * `arcadia ...` (a headless Session lacks the interactive shell PATH that
- * reaches it). Only the host decides this: it searches the host process's PATH,
- * then `~/.local/bin`, and never reads a file from the Session's checkout.
- * Relative entries and anything that resolves inside the worktree are refused,
- * since a Session could write there and replace `arcadia`.
+ * `arcadia ...`. Only the host decides this: it searches the host process's
+ * PATH, then `~/.local/bin`, and never reads a file from the Session's
+ * checkout. Relative entries, anything that resolves inside the worktree, and
+ * a target that is not a regular executable file or is group- or
+ * world-writable are refused.
  */
 export function findHostArcadia(worktree: string, hostPath = process.env.PATH ?? "", home = homedir()): string | null {
   let root: string;
@@ -21,7 +21,8 @@ export function findHostArcadia(worktree: string, hostPath = process.env.PATH ??
     if (!entry || !path.isAbsolute(entry)) continue;
     try {
       const target = realpathSync(path.join(entry, "arcadia"));
-      if (!statSync(target).isFile()) continue;
+      const stat = statSync(target);
+      if (!stat.isFile() || (stat.mode & 0o022) !== 0) continue;
       accessSync(target, constants.X_OK);
       const relative = path.relative(root, target);
       if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) continue;
@@ -33,37 +34,54 @@ export function findHostArcadia(worktree: string, hostPath = process.env.PATH ??
   return null;
 }
 
+export interface HostArcadiaOptions {
+  /** Test seam: the owner uid the directory must have (default: this process). */
+  uid?: number;
+  /** Called with the reason when a CLI was found but its directory could not be prepared. */
+  onFailure?: (message: string) => void;
+}
+
 /**
  * A host-owned directory holding only an `arcadia` link to the host-resolved
- * command, so a Session's PATH reaches `arcadia` and nothing else that lives
- * beside it (`~/.local/bin` also holds other coding agents and model tools).
- * It sits under `~/.local/share/arcadia`, outside every worktree, and is
- * created or refreshed (atomically) at each launch. Returns null, leaving the
- * launcher unchanged, when no CLI resolves or the directory cannot be made.
+ * command, under `~/.local/share/arcadia/session-bin` (outside every
+ * worktree), created or refreshed atomically at each launch. A launcher that
+ * names it can resolve `arcadia` independent of the worker's own PATH. It
+ * removes no other PATH entry and is not a security boundary: the launcher
+ * keeps the inherited `"$PATH"`. Returns null, leaving the launcher unchanged,
+ * when no CLI resolves or the directory cannot be prepared safely.
  */
 export function resolveHostArcadiaDirectory(
   worktree: string,
   hostPath = process.env.PATH ?? "",
-  home = homedir()
+  home = homedir(),
+  options: HostArcadiaOptions = {}
 ): string | null {
   const target = findHostArcadia(worktree, hostPath, home);
   if (!target) return null;
+  const directory = path.join(home, ".local", "share", "arcadia", "session-bin");
+  const link = path.join(directory, "arcadia");
+  const staging = `${link}.${process.pid}.tmp`;
   try {
-    const directory = path.join(home, ".local", "share", "arcadia", "session-bin");
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const stat = lstatSync(directory);
-    if (!stat.isDirectory() || stat.uid !== process.getuid?.() || (stat.mode & 0o022) !== 0) return null;
-    const link = path.join(directory, "arcadia");
+    if (!stat.isDirectory() || stat.uid !== (options.uid ?? process.getuid?.()) || (stat.mode & 0o022) !== 0) {
+      options.onFailure?.(`${directory} is not a directory owned by this user and closed to group and world writes`);
+      return null;
+    }
     let current: string | null = null;
     try { current = readlinkSync(link); } catch { current = null; }
     if (current !== target) {
-      const staging = `${link}.${process.pid}.tmp`;
-      try { lstatSync(staging); } catch { /* absent */ }
-      symlinkSync(target, staging);
-      renameSync(staging, link);
+      rmSync(staging, { force: true });
+      try {
+        symlinkSync(target, staging);
+        renameSync(staging, link);
+      } finally {
+        rmSync(staging, { force: true });
+      }
     }
     return realpathSync(directory);
-  } catch {
+  } catch (error) {
+    options.onFailure?.(`could not prepare ${directory}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }

@@ -1,8 +1,10 @@
-import { chmodSync, existsSync, mkdirSync, readdirSync, readlinkSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { chmodSync, statSync, existsSync, mkdirSync, readdirSync, readlinkSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { resolveHostArcadiaDirectory } from "../src/runtime/hostArcadiaCli.js";
+import { systemTmux } from "../src/sessions/index.js";
 import { writeSessionLauncher } from "../src/sessions/tmuxLauncher.js";
 
 const run = { command: "/bin/echo", args: ["hi"] };
@@ -115,5 +117,100 @@ describe("Session launcher arcadia directory", () => {
     installCli(path.join(home, ".local", "bin"));
     chmodSync(path.join(home, ".local", "bin", "arcadia"), 0o644);
     expect(resolveHostArcadiaDirectory(worktree, "", home)).toBeNull();
+  });
+
+  it("surfaces a preparation failure and a leftover staging file does not block the refresh", () => {
+    const worktree = path.join(scratch, "worktree");
+    mkdirSync(worktree, { recursive: true });
+    installCli(path.join(scratch, "a"));
+    const home = path.join(scratch, "home");
+    const first = resolveHostArcadiaDirectory(worktree, path.join(scratch, "a"), home)!;
+    writeFileSync(path.join(first, `arcadia.${process.pid}.tmp`), "stale");
+    installCli(path.join(scratch, "b"));
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "b"), home)).toBe(first);
+    expect(readdirSync(first)).toEqual(["arcadia"]);
+    const messages: string[] = [];
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "b"), home, { uid: process.getuid!() + 1, onFailure: (m) => messages.push(m) })).toBeNull();
+    expect(messages).toHaveLength(1);
+  });
+
+  it("creates the directory 0700 and refuses a group- or world-writable one", () => {
+    const worktree = path.join(scratch, "worktree");
+    mkdirSync(worktree, { recursive: true });
+    installCli(path.join(scratch, "a"));
+    const home = path.join(scratch, "home");
+    const dir = resolveHostArcadiaDirectory(worktree, path.join(scratch, "a"), home)!;
+    expect(statSync(dir).mode & 0o777).toBe(0o700);
+    chmodSync(dir, 0o770);
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "a"), home)).toBeNull();
+    chmodSync(dir, 0o707);
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "a"), home)).toBeNull();
+  });
+
+  it("refuses a non-file arcadia, a relative PATH entry and a writable target", () => {
+    const worktree = path.join(scratch, "worktree");
+    mkdirSync(worktree, { recursive: true });
+    const home = path.join(scratch, "home");
+    mkdirSync(path.join(scratch, "dirbin", "arcadia"), { recursive: true });
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "dirbin"), home)).toBeNull();
+    installCli(path.join(scratch, "rel"));
+    const previous = process.cwd();
+    process.chdir(scratch);
+    try {
+      expect(resolveHostArcadiaDirectory(worktree, "rel", home)).toBeNull();
+    } finally {
+      process.chdir(previous);
+    }
+    installCli(path.join(scratch, "w"));
+    chmodSync(path.join(scratch, "w", "arcadia"), 0o775);
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "w"), home)).toBeNull();
+    chmodSync(path.join(scratch, "w", "arcadia"), 0o757);
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "w"), home)).toBeNull();
+  });
+
+  describe("the real launch path", () => {
+    function launchWithFakeTmux(hostHome: string, cwd: string): string {
+      const bin = path.join(scratch, "tmuxbin");
+      mkdirSync(bin, { recursive: true });
+      const captured = path.join(scratch, "captured.sh");
+      writeFileSync(path.join(bin, "tmux"), `#!/bin/sh\nfor a; do last="$a"; done\ncp "$last" '${captured}'\n`);
+      chmodSync(path.join(bin, "tmux"), 0o755);
+      const original = process.env.PATH;
+      process.env.PATH = `${bin}:/usr/bin:/bin`;
+      try {
+        systemTmux.launch({ name: "arcadia-wiring", cwd, command: "/bin/echo", args: ["hi"], launcherDirectory: path.join(scratch, "run"), hostHome });
+      } finally {
+        process.env.PATH = original;
+      }
+      return readFileSync(captured, "utf8");
+    }
+
+    it("renders the private directory into the launcher systemTmux.launch writes, and runs fake arcadia in a plain shell", () => {
+      const home = path.join(scratch, "home");
+      const cwd = path.join(scratch, "worktree");
+      mkdirSync(cwd, { recursive: true });
+      const source = path.join(home, ".local", "bin");
+      installCli(source);
+      writeFileSync(path.join(source, "arcadia"), "#!/bin/sh\necho fake-arcadia-ran\n");
+      writeFileSync(path.join(source, "codex"), "#!/bin/sh\necho codex\n", { mode: 0o755 });
+      const text = launchWithFakeTmux(home, cwd);
+      const privateDir = path.join(realpathSync(home), ".local", "share", "arcadia", "session-bin");
+      expect(text).toContain(`'${privateDir}'`);
+      // Execute the launcher in a plain non-login shell with a minimal environment.
+      const script = path.join(scratch, "captured.sh");
+      const probe = writeFileSync(path.join(scratch, "probe.sh"), "#!/bin/sh\ncommand -v arcadia\narcadia\ncommand -v codex || echo no-codex\n", { mode: 0o755 });
+      void probe;
+      const patched = readFileSync(script, "utf8").replace(/exec .*\n$/, `exec /bin/sh '${path.join(scratch, "probe.sh")}'\n`);
+      writeFileSync(script, patched);
+      const out = execFileSync("/bin/sh", [script], { encoding: "utf8", env: { PATH: "/usr/bin:/bin", HOME: path.join(scratch, "elsewhere") } });
+      expect(out.split("\n")).toEqual([path.join(privateDir, "arcadia"), "fake-arcadia-ran", "no-codex", ""]);
+    });
+
+    it("leaves the launcher without a PATH line when the host resolves no CLI", () => {
+      const cwd = path.join(scratch, "worktree");
+      mkdirSync(cwd, { recursive: true });
+      const text = launchWithFakeTmux(path.join(scratch, "emptyhome"), cwd);
+      expect(text).not.toContain("session-bin");
+    });
   });
 });
