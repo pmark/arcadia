@@ -230,7 +230,7 @@ sources:
     added: 2026-11-02
     retention: repo
     path: probes/local-model-2.md
-    sha256: ef2e4d768abe4e84694fe95f674f2f6d645fc0ba5cb32d4e9aabddc5849e8992
+    sha256: 5c284a9cbd3a4d71f63b9b4260705495bef823d6981dc21fddc06cd57a754652
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -2495,7 +2495,7 @@ concepts:
   - id: C-046
     title: Tuned bake-off before naming a best model
     kind: mechanism
-    statement: Compare candidate local models only after the same tuning, on prompts written by a separate author, judged blind, through the live path at realistic load, and choose the smallest model that meets the operator's budgets. Prompt tuning moved routing more than model choice did in a small test.
+    statement: Compare candidate local models only after the same tuning, on prompts written by a separate author, judged blind, through the live path at realistic load, and choose the smallest model that meets the operator's budgets. Prompt tuning moved routing scores a lot in a small test, though it didn't change which model led.
     origins:
       - source: S016
         locator: The bake-off

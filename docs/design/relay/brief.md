@@ -11,7 +11,7 @@ first, and first-timer onboarding is deferred, though nothing built now should r
 knowledge. Critic R1's hold still stands against the earlier frame
 ([report](reviews/R1-relay-critique.md)). A thin [local model probe](probes/local-model-1.md) suggests
 conversation is viable on the operator's MacBook Air, and [a second](probes/local-model-2.md)
-shows tuning matters more than model choice, ahead of a proper bake-off. Way lookup is built as evidence tooling,
+shows tuning moves routing scores a lot, ahead of a proper bake-off. Way lookup is built as evidence tooling,
 and the decision interface is a [written contract](decision-interface.md).
 
 - **Experience target (operator's words):** "I should be able to just go from idea to planned
