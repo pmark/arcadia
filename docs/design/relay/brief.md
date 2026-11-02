@@ -35,8 +35,8 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-004 Attention | S003 and the mission | Entirely mine; not stated by the operator |
 | REQ-005 Group channels | S001 (as DeepSeek's approach) | Mine: nothing sent or acted on without authority |
 | REQ-006 Enforced limit | S003 and the mission | Entirely mine; not stated by the operator |
-| REQ-007 Relay mode | S001 | None |
-| REQ-008 Default shell | S001 | None |
+| REQ-007 Relay mode | S001 | Mine: the proof, a label audit by a separate judge |
+| REQ-008 Default shell | S001 | Mine: the proof, including no setup and all three hosts |
 | REQ-009 Direct addressing | S001 (as DeepSeek's approach) | Mine: only once a Decision allows it |
 
 The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
