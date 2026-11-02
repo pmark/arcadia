@@ -68,8 +68,9 @@ Recorded at the strength given:
 
 - **The main finding of the compile: nothing but the operator asks for Way knowledge.** Of
   five other sources, none addresses a first-timer learning the Way through Relay (C-001,
-  C-002). It's the largest gap and the reason I lean to C-028. The probe supports that lean: the
-  corpus answers safely, but finding the right document is the weak point.
+  C-002). It's the largest gap and the reason I lean to C-028. The probe supports that lean with limits:
+  the guidance answered most questions, but two answers had safety-relevant errors, and finding
+  the right document, answer quality and missing guidance all contributed.
 - **Agreement between S002 and S003 is weak evidence.** S003 was written after reading S002,
   so their shared concepts aren't independent. Agreement between S002 and S004, S006 or S007,
   written separately, counts for more, as on truthful state.

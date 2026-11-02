@@ -2158,12 +2158,12 @@ choices:
     decided_by: operator
     decision_ref: S005
   - id: CH-02
-    question: What gets built first?
+    question: What gets built first? Every option competes for the same capacity as the active unattended-production milestone.
     options:
       - concept: C-028
         consequence: A first-timer can get cited answers soon through Relay mode, at low cost and with a measured result, if the probe holds; otherwise the guidance gets fixed first. It stays in a coding-agent chat, so there is no messaging experience or synced thread yet, and each session still needs a developer tool.
       - concept: C-027
-        consequence: The messaging experience you asked for comes first, on a phone, with status answers and local-model answers with citations. Way knowledge stays unmeasured until a graded set exists, and it is the largest build of the three.
+        consequence: The messaging experience you asked for comes first, on a phone, with status answers and local-model answers with citations. Way knowledge stays unmeasured until a graded set exists, and it needs new server and interface work.
       - concept: C-029
         consequence: One real delivery from a conversation comes first, reusing a draft Plan. It shows building through conversation, helps a first-timer least, and depends on a Go flow that isn't proved yet. Its per-Project history would need amending to match CH-01.
   - id: CH-03

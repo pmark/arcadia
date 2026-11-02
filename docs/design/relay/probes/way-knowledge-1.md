@@ -11,7 +11,8 @@ tested a stronger setup than Relay may use.
 - [Thirty questions](way-knowledge-1-questions.md) written from a first-timer's point of view,
   without consulting the guidance.
 - One agent [answered](way-knowledge-1-answers.md) from the checked-in material only, in at
-  most 100 words each: Claude Sonnet 5.5 with file search and bounded reads.
+  most 100 words each: Claude Sonnet 5.5 with file search and bounded reads, told to start from
+  the guidance index and the `arcadia-relay` skill.
 - A separate, read-only [judge](way-knowledge-1-judgment.md) graded each answer against the
   guidance, the Decisions and the code.
 
@@ -35,10 +36,14 @@ tested a stronger setup than Relay may use.
 
 ## What it means
 
-The corpus is strong enough to answer most questions safely. The failures are mostly about
-finding the right document, which suggests Relay needs a first-timer's map of the guidance
-more than it needs more guidance. Eight concrete guidance defects are in
-[Issue 2013](https://github.com/pmark/arcadia/issues/2013).
+The guidance answered most questions, and nothing was wrong about authority, spending or
+merging. It isn't safe enough yet, though: one answer said there was no one-press stop when a
+STOP button exists, and another implied that work is safe in any crash, when that holds only
+for managed production sessions. The failures split between finding the right document (5),
+the answer itself (4) and missing guidance (1), so Relay likely needs both a first-timer's map
+of the guidance and fixes to the guidance. Eight concrete defects are in
+[Issue 2013](https://github.com/pmark/arcadia/issues/2013), including that no first-time
+walkthrough exists.
 
 ## Limits
 
