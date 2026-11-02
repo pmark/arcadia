@@ -4,15 +4,17 @@
 
 ## Where it stands
 
-**Stage 7 of 8: critics returned hold, and one choice is reopened.** The operator chose Way
-knowledge first (S012). Critic R1 then found nine blocking problems
-([report](reviews/R1-relay-critique.md)). So `arcadia way lookup` ships as read-only evidence
-tooling, the decision interface is a [written contract](decision-interface.md) rather than code,
-and CH-03 goes back to the operator. Sources were compiled from isolated extractions: 133 concepts
-became 30 mechanisms and options, S008 added 7, and R1 led to 3 more.
+**The frame changed, and the revision waits on the operator.** S014 refocuses Relay on the
+operator's own critical path, from idea to planned, autonomously produced work, with arbitrary
+text starting a conversation at once and much of it at zero cost. Unattended production stays
+first, and first-timer onboarding is deferred, though nothing built now should require special
+knowledge. Critic R1's hold still stands against the earlier frame
+([report](reviews/R1-relay-critique.md)). A thin [local model probe](probes/local-model-1.md) suggests
+conversation is viable on the operator's MacBook Air. Way lookup is built as evidence tooling,
+and the decision interface is a [written contract](decision-interface.md).
 
-- **Experience target (operator's words):** "Even a first time Arcadia operator therefore
-  shall be empowered to wield the full power of the Arcadia Way via Relay interaction."
+- **Experience target (operator's words):** "I should be able to just go from idea to planned
+  project work that is autonomously produced." The earlier first-timer target (S001) is deferred.
 - **Name:** Relay, chosen by the operator on 2026-11-02.
 - **Stated by the operator:** a single continuous thread with a UX like rich text
   messaging; the Way's most well-versed source; a first-time operator wielding its full
@@ -23,10 +25,14 @@ became 30 mechanisms and options, S008 added 7, and R1 led to 3 more.
   on these is for the frame to settle.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
-- **Being worked on:** first-timer guidance repair. **Next move:** the operator answers CH-03.
+- **Being worked on:** the revised frame and the first conversation. **Next move:** the operator
+  confirms building the conversation surface first (C-042, C-043), which would also settle CH-03.
 - **Riskiest assumption, probed once, failed:** 73% fully correct against S012's default 90%, and
   wrong on stopping ([result](probes/way-knowledge-1.md)).
-- **Open blocking findings:** R1-F1, F2, F4, F5, F6, F7, F8 and F9. None is closed by this change.
+- **Open blocking findings:** R1-F1, F2, F4, F5, F6, F7, F8 and F9. My reading of S014: a dashboard
+  conversation gives the interface its caller (F1) and fits the spending order (F2), no write tools
+  ship (F6), and deferring first-timers narrows F4 and F9. F8 stays, because the operator's own
+  Projects need the corpus too. A new critic round has to judge that.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
 
 ## Where the requirements come from
@@ -46,6 +52,9 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-009 Direct addressing | S001 (as DeepSeek's approach) | Mine: only once a Decision allows it |
 | REQ-010 Speed | S008 | Mine: the proof by measured budgets |
 | REQ-011 Minimal Way context | S008 | Mine: the proof by rerunning the probe |
+| REQ-012 Arbitrary text starts a conversation | S014 | Mine: "changes no state by itself", and the proof |
+| REQ-013 Mostly zero cost | S014 | Mine: "paid models only when they add value", and the proof |
+| REQ-014 Idea to autonomous production | S014 | Mine: the proof |
 
 The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
 implementation" of DeepSeek's benefits; "no OpenAI integration" is my reading of that.
