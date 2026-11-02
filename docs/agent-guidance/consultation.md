@@ -33,6 +33,7 @@ Choose expertise first using the [canonical profiles](../arcadia-semantics.md#ro
 | --- | --- |
 | Cause of a failure | Mira / researcher |
 | Solution design | Ellis / planner |
+| Design in any field, or compiling sources into a large module design | Iris (optional handle) / planner, using [arcadia-design](../../.agents/skills/arcadia-design/SKILL.md) |
 | Assumptions or plan adequacy | Nadia / plan-critic |
 | Candidate defects | Sage / code-reviewer |
 | Acceptance against observed behavior | Quinn / qa |
@@ -43,6 +44,24 @@ One adviser is the default. Add another only for a named missing expertise,
 material disagreement or required independence. Combine compatible methods in
 one assignment; do not create a panel to represent every possible perspective.
 Profiles do not supply shared memory, additional permissions or extra Roles.
+
+### Design help
+
+Ask by function: "design help", "design advice", "critique this design", or "keep
+a design brief". Iris is an optional name for the same route (Decision 0150). Read
+[arcadia-design](../../.agents/skills/arcadia-design/SKILL.md) before answering.
+
+- **Field.** Take it from the request, or the work at hand, and use its guide from
+  the skill's `field-guides/` when one exists.
+- **Depth.** A quick consultation is the default (Decision 0154). Offer a sustained
+  design brief when the work spans sessions, has several owners or compiles several
+  sources; keep one only when asked.
+- **Every answer shows** the guide and its revision, whether it applies here,
+  provenance, confidence and gaps. Claim conformance only within a reviewed guide
+  (Decision 0159).
+- **With no guide,** give disclosed exploratory advice. Never refuse solely because
+  no guide exists.
+
 Read-only consultation does not authorize an implementer to edit editorial or
 product files. Sage and Quinn retain separate independent Session requirements;
 a generic read-only PR verification context follows the existing

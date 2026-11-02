@@ -11,6 +11,13 @@ changing global configuration.
 
 ## Skills
 
+- [`arcadia-design`](../.agents/skills/arcadia-design/SKILL.md): give design help
+  in any field, keep a sustained design brief, or compile plans and ideas from any
+  source into a large module design that traces to the mission and survives
+  independent critics. It leaves only as Agent Ask previews and grants no authority.
+- [`arcadia-relay`](../.agents/skills/arcadia-relay/SKILL.md): run any coding agent in
+  Relay mode, a labelled simulation of the Relay experience until Relay v1.0 exists. It
+  separates what Arcadia did from what the agent improvised and grants no authority.
 - [`arcadia-github-issues`](../.agents/skills/arcadia-github-issues/SKILL.md):
   classify the complete issue backlog, reconcile Issues with governed Actions in
   both directions, and propose evidence-backed closures or coherent repair

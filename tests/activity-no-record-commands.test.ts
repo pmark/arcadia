@@ -76,6 +76,20 @@ afterEach(() => {
   for (const dir of roots.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
+/** A structurally valid record at <root>/docs/design/<slug>/record.yaml, so the success path runs. */
+function validDesignRecord(): string {
+  const project = path.join(root, "design-project");
+  const directory = path.join(project, "docs", "design", "demo");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(path.join(project, "PROJECT.md"), "# Demo\n");
+  const record = path.join(directory, "record.yaml");
+  writeFileSync(record, [
+    "schema: arcadia-design-record-v1", "design: demo", "project: demo", "authors: [Claudia Atlas]",
+    "frame:", "  status: proposed", "  outcome: One sentence.", "  milestone: One sentence.", "  experience_target: The moment it is judged."
+  ].join("\n") + "\n");
+  return record;
+}
+
 /**
  * One or more invocations of every command the CLI records no activity for.
  * A command that becomes exempt fails "covers every no-record command" until
@@ -91,6 +105,14 @@ function invocations(): Record<string, string[][]> {
       ["init", path.join(root, "fresh")],
       ["init", path.join(root, "workspaces", "exp-test-20261005"), "--profile", "experiment"],
       ["init", path.join(root, "bad-profile"), "--profile", "no-such-profile"]
+    ],
+    // The valid record is the success path: it must pass without opening or writing a database.
+    "design check": [
+      ["design", "check", path.join(root, "missing-record.yaml")],
+      ["design", "check", path.join(root, "missing-record.yaml"), "--workspace", path.join(root, "missing-workspace")],
+      ["design", "check", validDesignRecord()],
+      ["design", "check", validDesignRecord(), "--matrix", "--workspace", live],
+      ["design", "check", validDesignRecord(), "--ready"]
     ],
     "config get defaultWorkspace": [["config", "get", "defaultWorkspace"]],
     "workspace resolve": [["workspace", "resolve"]],
