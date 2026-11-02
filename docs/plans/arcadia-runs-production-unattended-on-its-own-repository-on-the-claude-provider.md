@@ -399,12 +399,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask cover-retired-descriptor-byte-change
     clarification: clarified
     confidence: high
-    source: Agent Ask route-test-only-actions-to-build-20261101
+    source: Agent Ask amend-run-criteria-provable-20261102
     why: "The retirement rule requires both hashes to match, but only the changed-script case is covered."
     acceptance_criteria:
       - apps/dashboard/app/api/operator-script/retired-entries.test.ts gains a test in which the retirement pins the sha256 of the original descriptor and the original script, only the written descriptor bytes differ (for example a trailing newline) while the script bytes equal the pinned bytes, the changed descriptor stays invalid, and GET returns no scripts with console.error called exactly once.
       - Every other test in that file passes unchanged.
-      - The change touches only apps/dashboard/app/api/operator-script/retired-entries.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
+      - The change touches only apps/dashboard/app/api/operator-script/retired-entries.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1262"]
@@ -438,11 +438,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-blast-radius-safety-patterns
     clarification: clarified
     confidence: high
-    source: Agent Ask add-pin-blast-radius-patterns-action-20261102
+    source: Agent Ask amend-run-criteria-provable-20261102
     why: "BLAST_RADIUS_SAFETY_PATTERNS decides which candidates count as never-narrow, but tests exercise only src/production; losing another path would pass unnoticed."
     acceptance_criteria:
       - "tests/pr-blast-radius.test.ts gains, inside the existing describe block titled 'computeBlastRadius', a table-driven test importing BLAST_RADIUS_SAFETY_PATTERNS from src/stewardship/prBlastRadius.ts and asserting at least one pattern matches each of: src/production/x.ts, src/ask/x.ts, src/sessions/x.ts, src/dispatch/x.ts, src/db/x.ts, src/git/x.ts, .github/x.yml, package.json, pnpm-lock.yaml and pnpm-workspace.yaml."
-      - "The same test asserts no pattern matches any of: src/commands/x.ts, tests/x.test.ts, docs/x.md, apps/dashboard/package.json and src/production."
+      - "The same test asserts no pattern matches any of: src/commands/x.ts, tests/x.ts, docs/x.md, apps/dashboard/package.json and src/production."
       - Every other test in that file passes unchanged, and no test in it is marked skip or todo.
       - The change touches only tests/pr-blast-radius.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
     depends_on: []
