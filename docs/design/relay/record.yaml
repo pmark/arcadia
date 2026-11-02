@@ -237,7 +237,7 @@ concepts:
       evidence:
         - apps/dashboard/components/workspace/workspace-ask.tsx
         - apps/dashboard/components/workspace/workspace-view.tsx
-    position: chosen
+    position: candidates
     serves:
       - REQ-003
   - id: C-005
@@ -2064,8 +2064,7 @@ concepts:
     origins:
       - source: S007
         locator: action implement-project-go-conversation, criterion 2
-    position: rejected
-    reason: S005 accepted one conversation record; each message keeps its scope instead of isolating history per Project.
+    position: candidates
   - id: C-705
     title: Accessible composer with numbered text options
     kind: requirement
@@ -2154,9 +2153,6 @@ choices:
         consequence: One conversation follows the operator everywhere, and each message keeps its scope.
       - concept: C-704
         consequence: History is isolated per Project, and the operator has a conversation per Project.
-    chosen: C-004
-    decided_by: operator
-    decision_ref: S005
   - id: CH-02
     question: What gets built first? Every option competes for the same capacity as the active unattended-production milestone.
     options:

@@ -4,9 +4,9 @@
 
 ## Where it stands
 
-**Stage 5 of 8: sources are compiled, and two choices wait on the operator.** The frame is
+**Stage 5 of 8: sources are compiled, and three choices wait on the operator.** The frame is
 confirmed (S005). Extractors read each source in isolation and produced 133 concepts, and
-the compile merged them into 29 mechanisms and options, with 13 rejected and 12 parked, each
+the compile merged them into 29 mechanisms and options, with 12 rejected and 12 parked, each
 with its reason or revival condition. The operator's other sources can still arrive and may
 reopen any of this.
 
@@ -22,8 +22,8 @@ reopen any of this.
   on these is for the frame to settle.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
-- **Being worked on:** CH-02 (what gets built first) and CH-03 (what Relay is made of).
-  **Next move:** the operator answers both. Every position except `chosen` is my leaning,
+- **Being worked on:** CH-01 (one conversation record or one per Project), CH-02 (what gets
+  built first) and CH-03 (what Relay is made of). **Next move:** the operator answers all three. Every position except `chosen` is my leaning,
   not the operator's.
 - **Riskiest assumption, probed once, inconclusive and leaning supported:** of 30 first-timer
   questions, a separate judge graded 22 correct, 8 partly correct and 0 wrong, with no wrong
