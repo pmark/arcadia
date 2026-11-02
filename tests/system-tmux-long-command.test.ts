@@ -1,10 +1,10 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { systemTmux, tmuxNewSessionArgs } from "../src/sessions/index.js";
-import { miseNodeDirectory } from "../src/runtime/mise.js";
+import { declaredMiseNodeVersion, miseNodeDirectory } from "../src/runtime/mise.js";
 import { writeSessionLauncher } from "../src/sessions/tmuxLauncher.js";
 
 /**
@@ -69,18 +69,44 @@ describe("the Node a Session's launcher resolves (Issue #1993)", () => {
     });
   });
 
-  it("asks mise about the Session's own checkout, and gives no answer when mise cannot", () => {
+  it("reads only a plain [tools] node pin as data, never a symlink or another table's value", () => {
     withScratch((scratch) => {
-      const seen = path.join(scratch, "argv");
+      const pin = (text: string) => { writeFileSync(path.join(scratch, "mise.toml"), text); return declaredMiseNodeVersion(scratch); };
+      expect(declaredMiseNodeVersion(scratch)).toBeNull();
+      expect(pin('[tools]\nnode = "22.23.1"\ntmux = "3.7c"\n')).toBe("22.23.1");
+      expect(pin('min_version = "1"\n\n[tools]\nnode = "24" # pinned\n')).toBe("24");
+      expect(pin('[env]\nnode = "20"\n[tools]\ntmux = "3"\n')).toBeNull();
+      expect(pin('[tools]\nnode = "lts"\n')).toBeNull();
+      expect(pin('[tools\nnot toml')).toBeNull();
+      expect(pin('[tools]\nnode = "{{ exec(command=\'touch /tmp/x\') }}"\n')).toBeNull();
+      rmSync(path.join(scratch, "mise.toml"));
+      const target = path.join(scratch, "target.toml");
+      writeFileSync(target, '[tools]\nnode = "22"\n');
+      symlinkSync(target, path.join(scratch, "mise.toml"));
+      expect(declaredMiseNodeVersion(scratch)).toBeNull();
+    });
+  });
+
+  it("asks mise for the declared version from a neutral directory, and never evaluates the checkout's config", () => {
+    withScratch((scratch) => {
+      const checkout = path.join(scratch, "checkout");
+      mkdirSync(checkout);
+      const marker = path.join(scratch, "evaluated");
+      writeFileSync(path.join(checkout, "mise.toml"), `[env]\n_.source = "${marker}"\n[tools]\nnode = "24.21.0"\n`);
+      const install = path.join(scratch, "installs", "24.21.0");
+      fakeNode(path.join(install, "bin"), "pinned");
+      const seen = path.join(scratch, "seen");
       const mise = path.join(scratch, "mise");
-      writeFileSync(mise, `#!/bin/sh\necho "$@" > ${seen}\necho /pins/node-24/bin/node\n`, { mode: 0o755 });
-      expect(miseNodeDirectory("/work/project", mise)).toBe("/pins/node-24/bin");
-      expect(readFileSync(seen, "utf8").trim()).toBe("-C /work/project which node");
+      writeFileSync(mise, `#!/bin/sh\n{ pwd; echo "$@"; } > ${seen}\necho ${install}\n`, { mode: 0o755 });
+      expect(miseNodeDirectory(checkout, mise)).toBe(path.join(install, "bin"));
+      expect(readFileSync(seen, "utf8").trim().split("\n")).toEqual(["/", "where node@24.21.0"]);
+      expect(existsSync(marker)).toBe(false);
       writeFileSync(mise, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
-      expect(miseNodeDirectory("/work/project", mise)).toBeNull();
-      writeFileSync(mise, "#!/bin/sh\necho node\n", { mode: 0o755 });
-      expect(miseNodeDirectory("/work/project", mise)).toBeNull();
-      expect(miseNodeDirectory("/work/project", path.join(scratch, "missing"))).toBeNull();
+      expect(miseNodeDirectory(checkout, mise)).toBeNull();
+      writeFileSync(mise, `#!/bin/sh\necho ${path.join(scratch, "not-installed")}\n`, { mode: 0o755 });
+      expect(miseNodeDirectory(checkout, mise)).toBeNull();
+      expect(miseNodeDirectory(checkout, path.join(scratch, "missing"))).toBeNull();
+      expect(miseNodeDirectory(path.join(scratch, "no-pin"), mise)).toBeNull();
     });
   });
 });
