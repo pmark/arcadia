@@ -25,8 +25,10 @@ reopen any of this.
 - **Being worked on:** CH-02 (what gets built first) and CH-03 (what Relay is made of).
   **Next move:** the operator answers both. Every position except `chosen` is my leaning,
   not the operator's.
-- **Riskiest assumption, untested:** the guidance is enough to answer a first-timer well.
-  **Next move:** Claudia Atlas runs the probe once CH-02 selects it.
+- **Riskiest assumption, probed once, inconclusive and leaning supported:** of 30 first-timer
+  questions, a separate judge graded 22 correct, 8 partly correct and 0 wrong, with no wrong
+  statement about authority, spending or merging ([result](probes/way-knowledge-1.md)).
+  **Next move:** the operator sets the pass mark.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
 
 ## Where the requirements come from
@@ -66,7 +68,8 @@ Recorded at the strength given:
 
 - **The main finding of the compile: nothing but the operator asks for Way knowledge.** Of
   five other sources, none addresses a first-timer learning the Way through Relay (C-001,
-  C-002). It's the largest gap and the reason I lean to C-028.
+  C-002). It's the largest gap and the reason I lean to C-028. The probe supports that lean: the
+  corpus answers safely, but finding the right document is the weak point.
 - **Agreement between S002 and S003 is weak evidence.** S003 was written after reading S002,
   so their shared concepts aren't independent. Agreement between S002 and S004, S006 or S007,
   written separately, counts for more, as on truthful state.

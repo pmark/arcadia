@@ -157,7 +157,7 @@ concepts:
     load_bearing: true
     verification:
       status: untested
-    reason: The corpus and its index exist, but nothing answers questions from them for an operator.
+    reason: The corpus, its index and Relay mode's instruction exist. Outside a coding-agent simulation nothing answers from them, and accuracy has never been measured.
   - id: C-002
     title: Graded question set for Way knowledge
     kind: mechanism
@@ -215,7 +215,7 @@ concepts:
   - id: C-004
     title: One continuous thread over many channels
     kind: mechanism
-    statement: The operator has one conversation, with internal sessions hidden and navigation following the work rather than a list of chats. Many channels and sessions sit behind it.
+    statement: The operator has one conversation, with internal sessions hidden and navigation following the work rather than a list of chats. Many channels and sessions sit behind it, and a separate conversation is a deliberate exception whose use case is undesigned.
     origins:
       - &a56
         source: S003
@@ -403,7 +403,7 @@ concepts:
     origins:
       - &a2
         source: S002
-        locator: docs/000-philosophy.md#philosophy
+        locator: docs/000-philosophy.md
       - &a4
         source: S002
         locator: docs/000-philosophy.md#what-follows-for-the-agent
@@ -667,7 +667,7 @@ concepts:
   - id: C-016
     title: Cheapest sufficient answer
     kind: mechanism
-    statement: Answer with code first, then a local model with citations, then a bounded stronger model. Routine status and next-move questions use no model, and ambiguous input gets one clarification rather than a guess.
+    statement: Answer with code first, then a local model with citations, then a bounded stronger model. Routine status and next-move questions use no model, name the first eligible Action or the one condition preventing it without inventing work, and ambiguous input gets one clarification rather than a guess.
     origins:
       - &a75
         source: S003
@@ -927,7 +927,7 @@ concepts:
   - id: C-028
     title: "Sequence: Way knowledge first"
     kind: constraint
-    statement: Prove the graded Way answers first, reached through Relay mode, since this is the requirement no existing work covers and the cheapest to test. Build the thread once answers pass.
+    statement: Prove the graded Way answers first, reached through Relay mode, since this requirement has the least support in existing work and is the cheapest to test. Build the thread once answers pass. If they fail, the guidance or retrieval gets fixed first.
     origins:
       - source: S001
         locator: The name and the first-time operator
@@ -960,7 +960,7 @@ concepts:
   - id: C-030
     title: Relay runs on the standard harness
     kind: mechanism
-    statement: Relay is a standard coding-agent session with instruction files and restricted tools, not a new runtime, so the same contract later serves as the default shell.
+    statement: Relay is a standard coding-agent session with instruction files and restricted tool permissions, not a new runtime, so the same contract later serves as the default shell. Restricting tools through each host's permissions must stay within the rule that the harness runs unmodified.
     origins:
       - source: S001
         locator: Relay mode and the default shell
@@ -973,16 +973,17 @@ concepts:
   - id: C-031
     title: Relay as a dedicated service agent
     kind: mechanism
-    statement: Relay is a purpose-built service calling models directly with its own small tool set, which is tighter and cheaper per turn but is a second runner.
+    statement: Relay runs on the existing Intelligence service and worker, calling models directly with its own small tool set, which is tighter and cheaper per turn.
     origins:
       - source: S003
         locator: Architecture proposed
       - source: S002
         locator: docs/007-architecture.md#model-facing-interfaces
     fit:
-      status: missing
+      status: partial
       evidence:
         - src/intelligence/litellm/client.ts
+        - src/intelligence/jobs/worker.ts
     position: candidates
   - id: C-100
     title: Attention cost as the master criterion
@@ -1664,7 +1665,7 @@ concepts:
   - id: C-400
     title: Conversation as the primary surface
     kind: requirement
-    statement: "Operator direction: the main interaction is familiar messaging (text, voice, images, attachments in one thread) with an immediately available composer. Operator direction; individual interactions still need design."
+    statement: "Operator direction: the main interaction is familiar messaging, with text, voice, images and attachments in one thread. Designer prose adds that the composer is immediately available."
     origins:
       - *a83
     position: merged
@@ -1875,7 +1876,7 @@ concepts:
   - id: C-424
     title: Safe scope-to-Ask routing and canonical state reads
     kind: constraint
-    statement: "Designer proposal: the Ask HTTP contract currently accepts only text and requestId, so a validated routing contract is needed before navigation can claim to select Ask's destination; never prepend hidden instructions or show a destination that differs from the receipt, read canonical receipts rather than a competing state store, and treat browser storage only as a draft/position cache."
+    statement: "Designer proposal: navigation may claim to select Ask's destination only through a validated routing contract, and the record of what is routed must stay honest. The spec's note that Ask takes only text and requestId predates the optional projectId now on the route."
     origins:
       - *a108
     position: merged
@@ -2027,7 +2028,7 @@ concepts:
   - id: C-700
     title: Prove Go delivery from a real coding-agent caller first
     kind: requirement
-    statement: REQ-001. Before building a conversation, retain live evidence of one real end-to-end `arcadia go` delivery invoked inside an actual coding-agent session (caller directory, provider/model/effort, selected versus assigned work, claim/candidate/Session identities, whether continuation resumes or starts a Session). Dashboard-only calls, host-terminal substitutes, stub agents and manual assembly do not count.
+    statement: S007's REQ-001. Before building a conversation, retain live evidence of one real end-to-end `arcadia go` delivery invoked inside an actual coding-agent session (caller directory, provider/model/effort, selected versus assigned work, claim/candidate/Session identities, whether continuation resumes or starts a Session). Dashboard-only calls, host-terminal substitutes, stub agents and manual assembly do not count.
     origins:
       - *a122
     position: merged
@@ -2043,7 +2044,7 @@ concepts:
   - id: C-702
     title: Delivery counts only with a full, layered evidence chain
     kind: mechanism
-    statement: REQ-009. Delivery is complete only when the same Go flow yields change, validation, commit, accessible draft PR, independent current-head review and required-check results, with operator interventions recorded. The delivery Artifact keeps source revision/checks, installed revision/adoption receipt and live request/Session/PR receipts as separate layers; missing, failed or unknown stages stay explicit, and agent exit or source tests alone never count.
+    statement: S007's REQ-009. Delivery is complete only when the same Go flow yields change, validation, commit, accessible draft PR, independent current-head review and required-check results, with operator interventions recorded. The delivery Artifact keeps source revision/checks, installed revision/adoption receipt and live request/Session/PR receipts as separate layers; missing, failed or unknown stages stay explicit, and agent exit or source tests alone never count.
     origins:
       - *a124
     position: merged
@@ -2051,7 +2052,7 @@ concepts:
   - id: C-703
     title: Read-only What-is-next orientation in a Project conversation
     kind: mechanism
-    statement: REQ-002. A Project-scoped conversation accepts "What is next" and shows Go's current Action or exact gate, observation time and selected versus assigned work when they differ, using the existing resolver with zero pointer, queue, claim or Session mutations. Fixtures cover ready, gated, empty, missing, stale and assigned-B-versus-selected-A cases.
+    statement: S007's REQ-002. A Project-scoped conversation accepts "What is next" and shows Go's current Action or exact gate, observation time and selected versus assigned work when they differ, using the existing resolver with zero pointer, queue, claim or Session mutations. Fixtures cover ready, gated, empty, missing, stale and assigned-B-versus-selected-A cases.
     origins:
       - *a125
     position: merged
@@ -2059,7 +2060,7 @@ concepts:
   - id: C-704
     title: Project-isolated persistent conversation history
     kind: requirement
-    statement: REQ-003. User messages and canonical record references survive reload under the correct Project, using an existing persistence capability or a minimal addition after inspection. Switching Projects never exposes or submits against the previous Project, and Action status and approval truth stay in their canonical stores.
+    statement: S007's REQ-003. User messages and canonical record references survive reload under the correct Project, using an existing persistence capability or a minimal addition after inspection. Switching Projects never exposes or submits against the previous Project, and Action status and approval truth stay in their canonical stores.
     origins:
       - source: S007
         locator: action implement-project-go-conversation, criterion 2
@@ -2084,7 +2085,7 @@ concepts:
   - id: C-707
     title: Go and Continue only through protected preview and browser confirmation
     kind: mechanism
-    statement: REQ-004. Go or Continue fetches a fresh existing protected preview (target, owner, provider/model/effort, limits, stable request identity, consequences), and only the existing explicit browser confirmation may commit; a first message, generic yes, copied approval prose or model-generated confirmation launches nothing.
+    statement: S007's REQ-004. Go or Continue fetches a fresh existing protected preview (target, owner, provider/model/effort, limits, stable request identity, consequences), and only the existing explicit browser confirmation may commit; a first message, generic yes, copied approval prose or model-generated confirmation launches nothing.
     origins:
       - *a128
     position: merged
@@ -2100,7 +2101,7 @@ concepts:
   - id: C-709
     title: Truthful launch outcome states
     kind: requirement
-    statement: REQ-005. Confirmation displays launched, reused, refused or unknown per the protected response; "started" appears only with a durable Session receipt and a working inspection link. Preview, confirmation and result remain visible and operable on desktop, mobile and with accessibility tools.
+    statement: S007's REQ-005. Confirmation displays launched, reused, refused or unknown per the protected response; "started" appears only with a durable Session receipt and a working inspection link. Preview, confirmation and result remain visible and operable on desktop, mobile and with accessibility tools.
     origins:
       - *a130
     position: merged
@@ -2108,7 +2109,7 @@ concepts:
   - id: C-710
     title: Session progress projected only from canonical receipts
     kind: mechanism
-    statement: REQ-006. Status and re-entry read the bound Session without interrupting it and show recorded stages (preparation, running, agent exit, validation, accepted completion, PR created, review readiness). Only canonical receipts yield claims, so stale host evidence or agent exit alone never reads as working or delivered; updates are deterministic, deduplicated, time-stamped and add no model watcher, notification or separate Action-state authority.
+    statement: S007's REQ-006. Status and re-entry read the bound Session without interrupting it and show recorded stages (preparation, running, agent exit, validation, accepted completion, PR created, review readiness). Only canonical receipts yield claims, so stale host evidence or agent exit alone never reads as working or delivered; updates are deterministic, deduplicated, time-stamped and add no model watcher, notification or separate Action-state authority.
     origins:
       - *a131
     position: merged
@@ -2124,7 +2125,7 @@ concepts:
   - id: C-712
     title: Idempotent request identity across duplicates and reconnects
     kind: mechanism
-    statement: REQ-007. Duplicate and concurrent messages, repeated confirmation and reload/reconnect for one bound launch request yield at most one claim, candidate and Session through the existing protected identity. Unverifiable reuse refuses rather than minting a new identity, changed input under an existing identity is rejected, and two-tab/two-Project tests show no cross-target leakage.
+    statement: S007's REQ-007. Duplicate and concurrent messages, repeated confirmation and reload/reconnect for one bound launch request yield at most one claim, candidate and Session through the existing protected identity. Unverifiable reuse refuses rather than minting a new identity, changed input under an existing identity is rejected, and two-tab/two-Project tests show no cross-target leakage.
     origins:
       - *a133
     position: merged
@@ -2140,7 +2141,7 @@ concepts:
   - id: C-714
     title: Live conversation-to-PR proof, operator docs and no-escalation boundary
     kind: requirement
-    statement: REQ-008, REQ-010. After separately receipted adoption, one operator-assisted conversation flow reaches a real Session, validated change and draft PR, with START_HERE.md and an executable QA checklist (success, changed preview, refusal, reconnect; desktop/mobile, keyboard/screen-reader). No automatic next Action, scope amendment, authority change, merge or Production activation; external messaging, direct text approvals, multi-Action continuation and new stop controls stay deferred.
+    statement: S007's REQ-008, S007's REQ-010. After separately receipted adoption, one operator-assisted conversation flow reaches a real Session, validated change and draft PR, with START_HERE.md and an executable QA checklist (success, changed preview, refusal, reconnect; desktop/mobile, keyboard/screen-reader). No automatic next Action, scope amendment, authority change, merge or Production activation; external messaging, direct text approvals, multi-Action continuation and new stop controls stay deferred.
     origins:
       - *a135
     position: merged
@@ -2160,20 +2161,21 @@ choices:
     question: What gets built first?
     options:
       - concept: C-028
-        consequence: A first-timer can get cited answers soon through Relay mode, at low cost and with a measured result. There is no synced thread yet, so it stays in a coding-agent chat.
+        consequence: A first-timer can get cited answers soon through Relay mode, at low cost and with a measured result, if the probe holds; otherwise the guidance gets fixed first. It stays in a coding-agent chat, so there is no messaging experience or synced thread yet, and each session still needs a developer tool.
       - concept: C-027
-        consequence: The familiar messaging experience comes first. Answers stay receipts and status until later, so a first-timer still can't learn the Way from it.
+        consequence: The messaging experience you asked for comes first, on a phone, with status answers and local-model answers with citations. Way knowledge stays unmeasured until a graded set exists, and it is the largest build of the three.
       - concept: C-029
-        consequence: One real delivery from a conversation comes first, reusing a draft Plan. Least help to a first-timer, and it depends on a Go flow that isn't proved yet.
+        consequence: One real delivery from a conversation comes first, reusing a draft Plan. It shows building through conversation, helps a first-timer least, and depends on a Go flow that isn't proved yet. Its per-Project history would need amending to match CH-01.
   - id: CH-03
     question: What is Relay made of?
     options:
       - concept: C-030
-        consequence: No new runtime, and the same contract becomes the default shell. Each turn costs a coding-agent session, and restricting its tools has to be proved on all three hosts.
+        consequence: No new runtime, and the same contract becomes the default shell. Each turn costs a coding-agent session, and restricting its tools has to be proved on all three hosts without modifying them.
       - concept: C-031
-        consequence: Tighter control and cheaper turns, but a second runner to maintain, which conflicts with the standard-harness rule and doesn't lead to the default shell.
+        consequence: Tighter control and cheaper turns, reusing a service that already runs. It's new conversational code to maintain alongside the coding agents, and doesn't by itself lead to the default shell.
 scrutiny: []
 riskiest_assumption:
   statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically. It may be too large, stale or written for agents.
-  test: Write about 30 first-timer questions, have Relay mode answer them from the guidance alone, and have a separate judge grade the answers against the cited text. Failures show whether the gap is in retrieval or in the guidance.
-  status: untested
+  test: About 30 first-timer questions, answered from the guidance alone and graded by a separate judge against the cited text, the Decisions and the code.
+  status: inconclusive
+  evidence: docs/design/relay/probes/way-knowledge-1.md
