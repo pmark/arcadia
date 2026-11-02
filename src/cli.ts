@@ -97,6 +97,7 @@ import {
   runDefectListCommand,
   runDefectShowCommand
 } from "./commands/defect.js";
+import { renderDesignCheckSuccess, runDesignCheckCommand } from "./commands/design.js";
 import {
   renderLearnCaptureSuccess,
   renderLearnImportSuccess,
@@ -1800,6 +1801,19 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     const merged: { workspace: string; json?: boolean } = cmd.optsWithGlobals();
     return runCliAction("defect.show", merged, () => runDefectShowCommand({ ...merged, id }), renderDefectShowSuccess);
   });
+
+  const design = program.command("design").description("Check Arcadia Design records and field guides (read-only)");
+  addJsonOption(
+    design
+      .command("check")
+      .description("Validate a design record or field guide; reports every problem and prints the record hash")
+      .argument("<path>", "record.yaml or a field guide .yaml")
+      .option("--ready", "Also apply the ready gate to a design record")
+      .option("--matrix", "Print the derived matrix of a design record")
+      .option("--workspace <path>", "Workspace used to verify workspace-retained sources", defaultWorkspace())
+  ).action((file: string, options: { ready?: boolean; matrix?: boolean; workspace?: string; json?: boolean }) =>
+    runCliAction("design.check", options, () => runDesignCheckCommand({ ...options, path: file }), renderDesignCheckSuccess)
+  );
 
   const learn = program
     .command("learn")

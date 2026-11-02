@@ -119,6 +119,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
     // is the command that puts the live workspace back.
     ({ source }) => source === "user config"
   ),
+  "design check": exempt("Reads the named design file and, when one resolves, a workspace directory's files; opens no database and writes and records nothing."),
   "config get defaultWorkspace": exempt("Reads the user config only."),
   "workspace resolve": exempt("Reports resolution only."),
   "workspace leak-check": exempt("Reads the live workspace read-only and host file hashes; records no activity."),

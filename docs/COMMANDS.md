@@ -1710,6 +1710,33 @@ replay of an already-settled `--request-id` still replays. Without the flag,
 activation is unchanged. `--repository` defaults to the git toplevel of the
 current directory.
 
+## Check A Design Record Or Field Guide
+
+```bash
+pnpm arcadia design check <path> [--ready] [--matrix] [--json] [--workspace <path>]
+```
+
+Read-only validation of an Arcadia Design file, dispatched on its `schema`:
+`arcadia-design-record-v1` (`docs/design/<slug>/record.yaml`) or
+`arcadia-design-field-guide-v1` (`.agents/skills/arcadia-design/field-guides/`).
+The contracts are `references/record-format.md` and `references/field-guide-format.md`
+in the `arcadia-design` skill. It reports every problem, not only the first, and
+prints the record's `record_hash`. Exit 0 means no problems; otherwise it fails with
+`VALIDATION_ERROR` and exit 1, listing the problems in the message and, with
+`--json`, in `error.details.problems`.
+
+- `--ready` adds the ready gate (confirmed frame, traced requirements, settled
+  choices, verified or accepted risk, independent current scrutiny).
+- `--matrix` prints the derived shared, differentiated, choices, trace and cut-or-later
+  views. They are computed on each run and never stored.
+- Paths stay inside their root (the record's directory, the Project root found by the
+  nearest `PROJECT.md`, or the workspace); an absolute path, a `..` escape or a
+  symlink that leaves it is a problem.
+- A `workspace` source is verified only when a workspace directory resolves (the
+  flag, then the normal resolver) and the file exists there; otherwise it is a
+  warning, never a failure. A present file with a different hash is a problem.
+- It opens no database and writes nothing, including no activity record.
+
 ## Dispose A Failed Recovery Successor With No Recorded Start
 
 An explicit `--recover-session` successor can fail with no recorded provider

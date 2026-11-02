@@ -92,6 +92,7 @@ function invocations(): Record<string, string[][]> {
       ["init", path.join(root, "workspaces", "exp-test-20261005"), "--profile", "experiment"],
       ["init", path.join(root, "bad-profile"), "--profile", "no-such-profile"]
     ],
+    "design check": [["design", "check", path.join(root, "missing-record.yaml")], ["design", "check", path.join(root, "missing-record.yaml"), "--workspace", path.join(root, "missing-workspace")]],
     "config get defaultWorkspace": [["config", "get", "defaultWorkspace"]],
     "workspace resolve": [["workspace", "resolve"]],
     "workspace leak-check": [["workspace", "leak-check", "--live-repo", repo]],
