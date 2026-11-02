@@ -13,8 +13,12 @@ import { renderActionBrief } from "../src/sessions/actionBrief.js";
 const roots: string[] = [];
 const canonicalRoot = path.resolve(import.meta.dirname, "..");
 // Retries absorb transient ENOTEMPTY races from concurrent writers in the scratch tree.
+// A root leaves the tracking array only after its removal succeeds, so a failure keeps the rest for a later attempt.
 function removeScratchRoots(roots: string[], remove: typeof rmSync = rmSync): void {
-  for (const root of roots.splice(0)) remove(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  while (roots.length > 0) {
+    remove(roots[0], { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    roots.shift();
+  }
 }
 afterEach(() => { removeScratchRoots(roots); });
 function scratch(): string { const root = mkdtempSync(path.join(tmpdir(), "arcadia-guidance-")); roots.push(root); return root; }
@@ -410,6 +414,9 @@ describe("scratch teardown", () => {
       expect(options.maxRetries).toBeGreaterThanOrEqual(3);
       expect(options.retryDelay).toBeGreaterThanOrEqual(50);
     }
+    const pending = ["/tmp/arcadia-c", "/tmp/arcadia-d"];
+    expect(() => removeScratchRoots(pending, vi.fn(() => { throw new Error("EBUSY"); }))).toThrow("EBUSY");
+    expect(pending).toEqual(["/tmp/arcadia-c", "/tmp/arcadia-d"]);
     const real = mkdtempSync(path.join(tmpdir(), "arcadia-guidance-teardown-"));
     removeScratchRoots([real]);
     expect(existsSync(real)).toBe(false);
