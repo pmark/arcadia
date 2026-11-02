@@ -146,13 +146,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
-    source: Agent Ask rescope-first-unattended-run-20261031-v3
+    source: Agent Ask add-pin-worker-merge-allowlist-action-20261102
     why: "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision."
     acceptance_criteria:
       - A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.
       - The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.
       - docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.
-    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change]
+    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs]
     decisions: []
     references: []
   - id: implement-a-hermetic-test-that-an
@@ -408,6 +408,27 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1262"]
+  - id: pin-worker-merge-allowlist-carve-outs
+    title: Pin the worker-merge allowlist's carve-outs with a table-driven test so that widening the allowlist fails a test.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Pin the worker-merge allowlist's carve-outs with a table-driven test so that widening the allowlist fails a test.
+    expected_artifact: Evidence satisfying Agent Ask pin-worker-merge-allowlist-carve-outs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-pin-worker-merge-allowlist-action-20261102
+    why: "isWorkerMergeSafePath decides what the worker may merge without the operator, but only its agent-guidance targets are tested; dropping a carve-out for fixtures, helpers or governed documents would pass unnoticed."
+    acceptance_criteria:
+      - "tests/worker-merge.test.ts gains, in the describe block titled 'the worker-merge allowlist and the agent-guidance index', a table-driven test asserting isWorkerMergeSafePath returns false for each of: tests/helpers/x.ts, tests/fast-rehearsal/helpers/x.ts, tests/setup.ts, tests/e2e/global-setup.ts, tests/e2e/fixtures/x.json, tests/fixtures/x.txt, docs/decisions/0001-x.md, docs/agent-guidance/x.md, docs/plans/x.md, docs/scout/x.md, docs/agents-context.md, docs/managed-production-readiness.md, AGENTS.md, src/cli.ts, docs/guide.txt and tests/.hidden/x.test.ts."
+      - The same test asserts isWorkerMergeSafePath returns true for tests/worker-merge.test.ts, docs/guide.md and notes.md.
+      - The PR body reports that temporarily deleting the standalone |fixtures\/ alternative (not e2e\/fixtures\/) from the first WORKER_MERGE_SAFE_PATHS pattern in src/production/workerMerge.ts makes the new test fail on tests/fixtures/x.txt, that the test passes again once the change is reverted, and that the final diff touches only tests/worker-merge.test.ts.
+      - Every other test in that file passes unchanged, and no test in it is marked skip or todo.
+      - The change touches only tests/worker-merge.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1987"]
 questions: []
 decisions: []
 recommended_model: standard
