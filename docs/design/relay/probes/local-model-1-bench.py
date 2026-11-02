@@ -70,6 +70,7 @@ for name in MODELS:
     path = ROOT + name
     entry = {"model": name, "load_avg_start": os.getloadavg()}
     try:
+        mx.reset_peak_memory()
         t = time.perf_counter()
         model, tok = load(path)
         entry["load_s"] = round(time.perf_counter() - t, 2)

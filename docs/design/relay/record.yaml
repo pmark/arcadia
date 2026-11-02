@@ -107,24 +107,6 @@ frame:
         - M1
         - M2
       proof: One real idea reaches an approved Plan and a deployed staging result, with every operator touch counted.
-    - id: REQ-012
-      statement: Completely arbitrary text sent to Relay immediately begins what seems like a traditional chatbot conversation, and changes no state by itself.
-      mission:
-        - M3
-        - M5
-      proof: Sending arbitrary messages from the dashboard yields a streamed reply, with first-word time measured against a budget the operator sets, and a test that no record other than the conversation changes.
-    - id: REQ-013
-      statement: Much of Relay's conversation costs nothing, with paid models used only when they add value.
-      mission:
-        - M3
-        - M4
-      proof: The share of turns answered by code or a local model is measured over real use, with the spend per turn.
-    - id: REQ-014
-      statement: From a conversation, the operator can use Arcadia Design and create a Project with scaffolding, templates, continuous integration and Cloudflare deployment, reaching planned work that is autonomously produced.
-      mission:
-        - M1
-        - M2
-      proof: One real idea reaches an approved Plan and a deployed staging result, with every operator touch counted.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
@@ -241,7 +223,7 @@ sources:
     added: 2026-11-02
     retention: repo
     path: probes/local-model-1.md
-    sha256: 4056e32e157cfe5763f0b14374a1ebbf309ff3ccffabe298ec5ef4182d0cd72e
+    sha256: 85b0be44f4d5bd23b8287b5ca7bec26d81408ec07dac3b383c693ca8cbbfa1e5
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -2473,7 +2455,7 @@ concepts:
   - id: C-044
     title: Models propose; code decides state changes
     kind: constraint
-    statement: A local model may classify and draft, but anything that changes state passes through code and an explicit card, because a message that told models to choose a label moved all four tested.
+    statement: A local model may classify and draft, but anything that changes state passes through code and an explicit card, because one message telling models which label to choose moved all four tested.
     origins:
       - source: S015
         locator: What it means

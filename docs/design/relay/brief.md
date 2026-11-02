@@ -9,7 +9,7 @@ operator's own critical path, from idea to planned, autonomously produced work, 
 text starting a conversation at once and much of it at zero cost. Unattended production stays
 first, and first-timer onboarding is deferred, though nothing built now should require special
 knowledge. Critic R1's hold still stands against the earlier frame
-([report](reviews/R1-relay-critique.md)). A [local model probe](probes/local-model-1.md) shows
+([report](reviews/R1-relay-critique.md)). A thin [local model probe](probes/local-model-1.md) suggests
 conversation is viable on the operator's MacBook Air. Way lookup is built as evidence tooling,
 and the decision interface is a [written contract](decision-interface.md).
 
@@ -31,7 +31,8 @@ and the decision interface is a [written contract](decision-interface.md).
   wrong on stopping ([result](probes/way-knowledge-1.md)).
 - **Open blocking findings:** R1-F1, F2, F4, F5, F6, F7, F8 and F9. My reading of S014: a dashboard
   conversation gives the interface its caller (F1) and fits the spending order (F2), no write tools
-  ship (F6), and deferring first-timers narrows F4, F8 and F9. A new critic round has to judge that.
+  ship (F6), and deferring first-timers narrows F4 and F9. F8 stays, because the operator's own
+  Projects need the corpus too. A new critic round has to judge that.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
 
 ## Where the requirements come from
@@ -52,7 +53,7 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-010 Speed | S008 | Mine: the proof by measured budgets |
 | REQ-011 Minimal Way context | S008 | Mine: the proof by rerunning the probe |
 | REQ-012 Arbitrary text starts a conversation | S014 | Mine: "changes no state by itself", and the proof |
-| REQ-013 Mostly zero cost | S014 | Mine: the proof |
+| REQ-013 Mostly zero cost | S014 | Mine: "paid models only when they add value", and the proof |
 | REQ-014 Idea to autonomous production | S014 | Mine: the proof |
 
 The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
