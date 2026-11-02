@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readlinkSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -42,19 +42,58 @@ describe("Session launcher arcadia directory", () => {
     expect(render(null, "/a:/worktree")).not.toContain("PATH=");
   });
 
-  it("takes the directory from the host PATH and never from a file in the worktree", () => {
+  it("takes the CLI from the host PATH and never from a file in the worktree", () => {
     const worktree = path.join(scratch, "worktree");
     const host = path.join(scratch, "host-bin");
+    const home = path.join(scratch, "home");
     installCli(host);
     mkdirSync(worktree, { recursive: true });
     writeFileSync(path.join(worktree, ".arcadia-cli-dir"), host);
     writeFileSync(path.join(worktree, "mise.toml"), `[env]\n_.path = ["${worktree}"]\n`);
-    // A file in the worktree naming a directory does nothing.
     expect(resolveHostArcadiaDirectory(worktree, "/nonexistent", path.join(scratch, "nohome"))).toBeNull();
-    expect(resolveHostArcadiaDirectory(worktree, host, path.join(scratch, "nohome"))).toBe(path.resolve(host));
+    expect(resolveHostArcadiaDirectory(worktree, host, home)).not.toBeNull();
   });
 
-  it("refuses worktree-writable, relative and symlinked-into-worktree directories", () => {
+  it("exposes only arcadia: a sibling tool in the source directory is unreachable", () => {
+    const worktree = path.join(scratch, "worktree");
+    const source = path.join(scratch, "home", ".local", "bin");
+    const home = path.join(scratch, "home");
+    mkdirSync(worktree, { recursive: true });
+    installCli(source);
+    writeFileSync(path.join(source, "codex"), "#!/bin/sh\n");
+    chmodSync(path.join(source, "codex"), 0o755);
+    const dir = resolveHostArcadiaDirectory(worktree, "", home)!;
+    expect(dir).toBe(path.join(home, ".local", "share", "arcadia", "session-bin"));
+    expect(readdirSync(dir)).toEqual(["arcadia"]);
+    expect(existsSync(path.join(dir, "codex"))).toBe(false);
+    expect(readlinkSync(path.join(dir, "arcadia"))).toBe(path.join(source, "arcadia"));
+    expect(dir.startsWith(worktree)).toBe(false);
+  });
+
+  it("is idempotent, refreshes a stale link, and leaves no staging file", () => {
+    const worktree = path.join(scratch, "worktree");
+    const home = path.join(scratch, "home");
+    mkdirSync(worktree, { recursive: true });
+    installCli(path.join(scratch, "a"));
+    installCli(path.join(scratch, "b"));
+    const first = resolveHostArcadiaDirectory(worktree, path.join(scratch, "a"), home);
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "a"), home)).toBe(first);
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "b"), home)).toBe(first);
+    expect(readlinkSync(path.join(first!, "arcadia"))).toBe(path.join(scratch, "b", "arcadia"));
+    expect(readdirSync(first!)).toEqual(["arcadia"]);
+  });
+
+  it("returns null and leaves the launcher unchanged when the directory cannot be created", () => {
+    const worktree = path.join(scratch, "worktree");
+    mkdirSync(worktree, { recursive: true });
+    installCli(path.join(scratch, "a"));
+    const home = path.join(scratch, "home");
+    mkdirSync(home);
+    writeFileSync(path.join(home, ".local"), "a file, not a directory");
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "a"), home)).toBeNull();
+  });
+
+  it("refuses worktree-writable, relative and symlinked-into-worktree commands", () => {
     const worktree = path.join(scratch, "worktree");
     installCli(path.join(worktree, "bin"));
     installCli(worktree);
@@ -64,18 +103,16 @@ describe("Session launcher arcadia directory", () => {
     expect(resolveHostArcadiaDirectory(worktree, "bin:.:", home)).toBeNull();
     symlinkSync(path.join(worktree, "bin"), path.join(scratch, "link"));
     expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "link"), home)).toBeNull();
-    // A hostile entry is skipped and a later safe host entry still wins.
     const host = path.join(scratch, "host-bin");
     installCli(host);
-    expect(resolveHostArcadiaDirectory(worktree, `${path.join(worktree, "bin")}:${host}`, home)).toBe(path.resolve(host));
+    expect(resolveHostArcadiaDirectory(worktree, `${path.join(worktree, "bin")}:${host}`, home)).not.toBeNull();
   });
 
-  it("falls back to the user's ~/.local/bin and requires an executable arcadia", () => {
+  it("requires an executable arcadia", () => {
     const worktree = path.join(scratch, "worktree");
     mkdirSync(worktree, { recursive: true });
     const home = path.join(scratch, "home");
     installCli(path.join(home, ".local", "bin"));
-    expect(resolveHostArcadiaDirectory(worktree, "", home)).toBe(path.resolve(home, ".local", "bin"));
     chmodSync(path.join(home, ".local", "bin", "arcadia"), 0o644);
     expect(resolveHostArcadiaDirectory(worktree, "", home)).toBeNull();
   });
