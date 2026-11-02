@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 active_plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 current_action: assert-tmux-temp-launcher-removed
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # Arcadia

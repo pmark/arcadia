@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { BOOTSTRAP_MARKER, GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, INSTRUCTION_BUDGET, assertBootstrapBudget, guidanceEntries, guidanceFingerprint, guidanceResources, inspectGuidanceDelivery, loadGuidanceEntries, renderGuidanceRetrieval } from "../src/projects/agentGuidance.js";
 import { readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { computeWayPropagationPlan } from "../src/projects/wayPropagation.js";
@@ -12,7 +12,15 @@ import { renderActionBrief } from "../src/sessions/actionBrief.js";
 
 const roots: string[] = [];
 const canonicalRoot = path.resolve(import.meta.dirname, "..");
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+// Retries absorb transient ENOTEMPTY races from concurrent writers in the scratch tree.
+// A root leaves the tracking array only after its removal succeeds, so a failure keeps the rest for a later attempt.
+function removeScratchRoots(roots: string[], remove: typeof rmSync = rmSync): void {
+  while (roots.length > 0) {
+    remove(roots[0], { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+    roots.shift();
+  }
+}
+afterEach(() => { removeScratchRoots(roots); });
 function scratch(): string { const root = mkdtempSync(path.join(tmpdir(), "arcadia-guidance-")); roots.push(root); return root; }
 function put(root: string, file: string, content: string): void { mkdirSync(path.dirname(path.join(root, file)), { recursive: true }); writeFileSync(path.join(root, file), content); }
 function adopted(): string { const root = scratch(); setupArcadiaProjectContext({ repoPath: root }); return root; }
@@ -393,5 +401,24 @@ describe("compact Way instruction delivery", () => {
     expect(change?.content).toContain("arcadia learn \"<exact text>\" --scope project:<slug>");
     expect(change?.content).toContain("Preserve this text.");
     expect(file(root, "AGENTS.md")).toBe(stale);
+  });
+});
+
+describe("scratch teardown", () => {
+  it("retries transient removal failures and defaults to the real rmSync", () => {
+    const remove = vi.fn();
+    removeScratchRoots(["/tmp/arcadia-a", "/tmp/arcadia-b"], remove);
+    expect(remove).toHaveBeenCalledTimes(2);
+    for (const [, options] of remove.mock.calls) {
+      expect(options).toMatchObject({ recursive: true, force: true });
+      expect(options.maxRetries).toBeGreaterThanOrEqual(3);
+      expect(options.retryDelay).toBeGreaterThanOrEqual(50);
+    }
+    const pending = ["/tmp/arcadia-c", "/tmp/arcadia-d"];
+    expect(() => removeScratchRoots(pending, vi.fn(() => { throw new Error("EBUSY"); }))).toThrow("EBUSY");
+    expect(pending).toEqual(["/tmp/arcadia-c", "/tmp/arcadia-d"]);
+    const real = mkdtempSync(path.join(tmpdir(), "arcadia-guidance-teardown-"));
+    removeScratchRoots([real]);
+    expect(existsSync(real)).toBe(false);
   });
 });
