@@ -123,6 +123,7 @@ scrutiny:
         summary: What was found.
         disposition: fixed           # open | fixed | declined | accepted_risk
         decision_ref: Required for accepted_risk.
+        concepts: [C-001]            # optional; the concepts this finding concerns
 ```
 
 ## Choosing retention
@@ -174,8 +175,8 @@ third-party text in the record.
   is `rejected`, `parked` or `merged`. An `operator` choice has `decision_ref`; an
   `agent` choice has `reason`.
 - A chosen concept whose fit is `conflicts` has an operator choice covering it.
-- Each `load_bearing` chosen concept is `verified` with evidence, or is covered by a
-  blocking finding marked `accepted_risk`.
+- Each `load_bearing` chosen concept is `verified` with evidence, or is named in the
+  `concepts` of a blocking finding marked `accepted_risk`.
 - `riskiest_assumption` is `supported` with evidence, or `accepted_risk` with
   `decision_ref`.
 - Reviews whose `record_hash` matches the current hash cover all three lenses, each
