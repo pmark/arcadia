@@ -430,11 +430,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1987"]
   - id: pin-blast-radius-safety-patterns
     title: Pin the blast-radius safety patterns with a table-driven test so that dropping a controller-safety path fails a test.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the blast-radius safety patterns with a table-driven test so that dropping a controller-safety path fails a test.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-blast-radius-safety-patterns-eb49876b1456; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-blast-radius-safety-patterns
     clarification: clarified
     confidence: high
@@ -452,7 +452,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-blast-radius-safety-patterns
+current_action: cover-retired-descriptor-byte-change
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
