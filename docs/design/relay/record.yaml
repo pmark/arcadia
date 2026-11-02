@@ -31,7 +31,7 @@ frame:
       mission:
         - M1
         - M3
-      proof: A golden set of first-time-operator questions, graded by a separate judge against the cited guidance, with a threshold the operator sets.
+      proof: "A held-out set of first-time-operator questions written by someone other than the author, ideally real first-timers, with an answer key, one fresh session per question, and a larger safety block, judged separately. Pass mark, by operator default in S012: at least 90% fully correct, with none wrong on authority, spending, merging or stopping."
     - id: REQ-002
       statement: The operator can carry out the Way's operations by talking to Relay, without knowing commands, paths or document formats.
       mission:
@@ -89,7 +89,7 @@ frame:
       mission:
         - M3
         - M4
-      proof: The probe's questions rerun through the lookup on all three hosts, comparing tokens and time per correct answer with the 5,000 tokens per question baseline, against targets the operator sets.
+      proof: Separate held-out sets for agent operations and first-timer questions, one fresh session per question on all three hosts, counting standing load as well as retrieved context, against targets the operator sets. The route for changing the rule that agents read a whole procedure first is named.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
@@ -179,6 +179,20 @@ sources:
     url: https://pypi.org/project/hastejev/
     revision: accessed 2026-11-02
     rights: Public listing; not copied
+  - id: S012
+    title: Operator's answer on build order and defaults
+    kind: operator
+    added: 2026-11-02
+    retention: repo
+    path: sources/S012-build-order-answer.md
+    sha256: 663f1f18fd5e88fc7e98a4dbbe68a411cf9aa3e6ab5bda11206dcd0c278b549f
+  - id: S013
+    title: Scrutiny round 1 critique
+    kind: agent
+    added: 2026-11-02
+    retention: repo
+    path: reviews/R1-relay-critique.md
+    sha256: 451d893c49d189d69a6dc01f1fe7a6de09eef6a65e105f7dc5a8207b0285fc20
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -194,7 +208,7 @@ concepts:
         - src/projects/agentGuidance.ts
         - docs/notes-to-self.md
         - START_HERE.md
-    position: leaning
+    position: chosen
     serves:
       - REQ-001
     load_bearing: true
@@ -216,7 +230,7 @@ concepts:
       evidence:
         - src/ask/goldenCases.ts
         - .agents/skills/next-action-grader/SKILL.md
-    position: leaning
+    position: chosen
     serves:
       - REQ-001
     reason: The golden-set and separate-grader patterns exist for other judgments.
@@ -280,7 +294,7 @@ concepts:
       evidence:
         - apps/dashboard/components/workspace/workspace-ask.tsx
         - apps/dashboard/components/workspace/workspace-view.tsx
-    position: candidates
+    position: chosen
     serves:
       - REQ-003
   - id: C-005
@@ -966,7 +980,8 @@ concepts:
       status: partial
       evidence:
         - apps/dashboard/components/workspace/workspace-view.tsx
-    position: candidates
+    position: parked
+    revival: Way answers meet the pass mark, and the lookup and interface are in use.
   - id: C-028
     title: "Sequence: Way knowledge first"
     kind: constraint
@@ -979,7 +994,10 @@ concepts:
       evidence:
         - .agents/skills/arcadia-relay/SKILL.md
         - docs/agent-guidance/index.json
-    position: candidates
+    position: chosen
+    serves:
+      - REQ-001
+      - REQ-011
   - id: C-029
     title: "Sequence: the Go conversation first"
     kind: constraint
@@ -999,7 +1017,8 @@ concepts:
       evidence:
         - src/commands/goContext.ts
         - docs/plans/deliver-one-authorized-action-through-a-persistent-go-conversation.md
-    position: candidates
+    position: parked
+    revival: The Way slice is done and the operator wants building through conversation next.
   - id: C-030
     title: Relay runs on the standard harness
     kind: mechanism
@@ -1013,6 +1032,9 @@ concepts:
         - docs/agent-guidance/standard-harness.md
         - .agents/skills/arcadia-relay/SKILL.md
     position: candidates
+    serves:
+      - REQ-006
+      - REQ-008
   - id: C-031
     title: Relay as a dedicated service agent
     kind: mechanism
@@ -1031,7 +1053,7 @@ concepts:
   - id: C-032
     title: One decision interface in front of every route
     kind: interface
-    statement: Every message passes one interface that takes the input, typed options and a time budget, and returns a choice, a confidence, the engine used and a reason. Rules run first, an engine is consulted only when rules can't decide, and low confidence or a missed deadline yields one clarification. Engines are replaceable behind it, and every decision is logged with its latency.
+    statement: A written contract, extending the existing intake router, for one decision point that takes the input, typed options and a time budget, and returns a choice, confidence, engine, reason and latency. Rules run first, and low confidence or a missed deadline yields one clarifying question. It needs a caller that receives messages before any model, which a standard coding-agent session can't provide.
     origins:
       - &a2
         source: S008
@@ -1041,10 +1063,11 @@ concepts:
       - source: S009
         locator: C — assembly plus Jev
     fit:
-      status: missing
+      status: partial
       evidence:
-        - src/ask/rules.ts
-        - src/intelligence/litellm/client.ts
+        - src/intake/index.ts
+        - src/ask/goldenReplay.ts
+        - docs/design/relay/decision-interface.md
     position: leaning
     serves:
       - REQ-010
@@ -1052,7 +1075,7 @@ concepts:
     load_bearing: true
     verification:
       status: untested
-    reason: The operator names the interface as most important, and it keeps the engine a reversible choice. Ask has deterministic routing rules today, with no time budget or engine seam.
+    reason: "R1-F1: no caller on a standard session. R1-F14: resolveIntake already has a classifier seam, so this extends it."
   - id: C-033
     title: "Decision engine: rules only, at first"
     kind: mechanism
@@ -1064,9 +1087,12 @@ concepts:
     fit:
       status: partial
       evidence:
-        - src/ask/rules.ts
+        - src/intake/index.ts
         - tests/fixtures/ask-golden.jsonl
-    position: candidates
+    position: chosen
+    serves:
+      - REQ-010
+      - REQ-004
   - id: C-034
     title: "Decision engine: an open local model"
     kind: mechanism
@@ -1082,7 +1108,7 @@ concepts:
       evidence:
         - src/intelligence/litellm/client.ts
     position: leaning
-    reason: If an engine is added, the operator leans to an open local solution. Subject to a benchmark on Arcadia's own routing set.
+    reason: "S012's default is to benchmark an open local model after rules. R1-F15: this is cheap through the existing LiteLLM route, and needn't wait on a condition that may never fire."
   - id: C-035
     title: "Decision engine: hosted Jev as a selectable option"
     kind: mechanism
@@ -1095,29 +1121,29 @@ concepts:
       status: missing
       evidence:
         - docs/proposals/production-benchmark.md
-    position: leaning
-    reason: The operator expects people to want it. Spending and sending data out are approval boundaries.
+    position: parked
+    revival: A Decision allows spending and sending text to a provider, and an operator wants it.
   - id: C-036
     title: "Way lookup: the exact passage, and little else"
     kind: mechanism
-    statement: A deterministic, model-free command takes a question or operation and returns the smallest relevant passages within a size budget, each with its path, heading and revision, from an index compiled from the checked-in guidance. It works the same for every agent and for Relay.
+    statement: "A deterministic, model-free command returns the smallest relevant passages within a size budget, each with address, source class and sha, and says when no passage matches the question's words. Built as read-only evidence tooling, it does not yet reach first-timer wording: 16 of 30 development questions reached the right material in its top three, on contaminated data, and it missed the stop, add-a-Project and deploy questions. A match means the words were found, not that the passage answers: 9 of 20 matched results missed the right material."
     origins:
       - *a2
     fit:
       status: partial
       evidence:
-        - docs/agent-guidance/index.json
-        - docs/agent-guidance/fingerprints.json
-        - src/projects/agentGuidance.ts
-        - docs/notes-to-self.md
+        - src/way/lookup.ts
+        - src/commands/wayLookup.ts
+        - tests/way-lookup.test.ts
     position: leaning
     serves:
       - REQ-011
       - REQ-001
     load_bearing: true
     verification:
-      status: untested
-    reason: Agents get a trigger index that points to whole procedures, plus a 261 KB START_HERE.md. The probe spent about 5,000 tokens per question.
+      status: measured_not_passing
+      evidence: docs/design/relay/probes/way-knowledge-1.md
+    reason: R1-F4 predicted this and the measurement agrees. Answers stay near 1.7 KB, and 17 of 17 off-topic queries find no match, but 9 of 20 matched results are wrong, so this doesn't deliver REQ-001's honest limit.
   - id: C-037
     title: Way passages with stable addresses
     kind: constraint
@@ -1133,7 +1159,7 @@ concepts:
     serves:
       - REQ-011
       - REQ-001
-    reason: The probe found the right material was often present but hard to find.
+    reason: "R1-F7: a short standing-alone body that rewrites guidance would be a second truth, and passages must keep their exceptions. Should wait, per R1's verdict."
   - id: C-038
     title: Latency budgets by layer, and an immediate acknowledgment
     kind: requirement
@@ -2228,7 +2254,8 @@ concepts:
     origins:
       - source: S007
         locator: action implement-project-go-conversation, criterion 2
-    position: candidates
+    position: rejected
+    reason: S012 kept one conversation record, with each message keeping its scope.
   - id: C-705
     title: Accessible composer with numbered text options
     kind: requirement
@@ -2309,6 +2336,55 @@ concepts:
       - *a136
     position: merged
     merged_into: C-029
+  - id: C-039
+    title: Relay's front door at existing Ask surfaces
+    kind: mechanism
+    statement: "Questions arrive at the dashboard composer, and possibly Discord, where code routes them before any model: lookup or status commands first, then a local model with citations, then a stronger model. Coding agents are launched only for code. This gives the decision interface a real caller and message set, without a synced thread at first."
+    origins:
+      - &a137
+        source: S013
+        locator: reviews/R1-relay-critique.md
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/app/api/ask/route.ts
+        - src/way/lookup.ts
+        - src/intelligence/litellm/client.ts
+    position: candidates
+    serves:
+      - REQ-010
+      - REQ-001
+  - id: C-040
+    title: Split lookup by who is asking
+    kind: mechanism
+    statement: Agents ask in the Way's own vocabulary, so a lexical lookup keyed on operations suits them. First-timers don't, so their wording needs a curated question map or a model that reformulates it. The two are measured separately, each with a held-out question set.
+    origins:
+      - *a137
+      - *a2
+    fit:
+      status: partial
+      evidence:
+        - src/way/lookup.ts
+        - docs/agent-guidance/index.json
+    position: leaning
+    serves:
+      - REQ-011
+      - REQ-001
+    reason: The lookup's result on first-timer wording, and R1-F5's point that the proof tested the wrong population.
+  - id: C-041
+    title: Repair guidance before measuring again
+    kind: constraint
+    statement: The first-timer guidance gets repaired before any rerun, because the probe's failures trace largely to missing or misleading guidance. Reruns use a held-out set written by someone else, with an answer key, one fresh session per question, and a larger safety block.
+    origins:
+      - *a137
+    fit:
+      status: partial
+      evidence:
+        - START_HERE.md
+        - docs/design/relay/probes/way-knowledge-1-judgment.md
+    position: chosen
+    serves:
+      - REQ-001
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?
@@ -2317,6 +2393,9 @@ choices:
         consequence: One conversation follows the operator everywhere, and each message keeps its scope.
       - concept: C-704
         consequence: History is isolated per Project, and the operator has a conversation per Project.
+    chosen: C-004
+    decided_by: operator
+    decision_ref: S012
   - id: CH-02
     question: What gets built first? Every option competes for the same capacity as the active unattended-production milestone.
     options:
@@ -2326,13 +2405,18 @@ choices:
         consequence: The messaging experience you asked for comes first, on a phone, with status answers and local-model answers with citations. Way knowledge stays unmeasured until a graded set exists, and it needs new server and interface work.
       - concept: C-029
         consequence: One real delivery from a conversation comes first, reusing a draft Plan. It shows building through conversation, helps a first-timer least, and depends on a Go flow that isn't proved yet. Its per-Project history would need amending to match CH-01.
+    chosen: C-028
+    decided_by: operator
+    decision_ref: S012
   - id: CH-03
-    question: What is Relay made of?
+    question: What is Relay made of? R1-F2 found the session option conflicts with the Constitution's spending order, and S012's silence did not settle it.
     options:
+      - concept: C-039
+        consequence: Code answers first and a coding agent runs only for code, which fits the spending order and gives the interface a real caller. It can't serve as the default coding shell by itself, and answers need new work at the Ask surface.
       - concept: C-030
-        consequence: No new runtime, and the same contract becomes the default shell. Each turn costs a coding-agent session, and restricting its tools has to be proved on all three hosts without modifying them.
+        consequence: No new runtime, and it works today as Relay mode. Every question costs a coding-agent turn, which conflicts with the spending order, a model reads every message first so routing can't be fast or enforced, and restricting its tools is unproved on all three hosts.
       - concept: C-031
-        consequence: Tighter control and cheaper turns, reusing a service that already runs. It's new conversational code to maintain alongside the coding agents, and doesn't by itself lead to the default shell.
+        consequence: Tighter control and cheaper turns on a service that already runs. It's new conversational code, and doesn't by itself lead to the default shell.
   - id: CH-04
     question: Which decision engine does Relay start with?
     options:
@@ -2342,9 +2426,95 @@ choices:
         consequence: Local, with no per-call cost and data staying home. It's another model to run on every install, and its claims need testing on our own routing set.
       - concept: C-035
         consequence: Needs no local setup, and its capability claims are unverified here. Each call has a cost, small per token by S009's figure, and sends text to a provider, so it needs a Decision, and it can't see observed group messages.
-scrutiny: []
+    chosen: C-033
+    decided_by: operator
+    decision_ref: S012
+scrutiny:
+  - id: R1
+    path: reviews/R1-relay-critique.md
+    reviewer: Critic Claudia Atlas (plan-critic subagent)
+    independent_of_authors: false
+    lenses:
+      - mission
+      - evidence
+      - failure
+    record_hash: afcb4a73728f74b7bdd86ef5033c906e8a79b94c5b1c85e0901303061dc0d900
+    verdict: hold
+    findings:
+      - id: R1-F1
+        severity: blocking
+        summary: Rules-first interface has no caller on a standard session.
+        disposition: open
+      - id: R1-F2
+        severity: blocking
+        summary: CH-03 conflicts with the Constitution's spending order, and silence settled it. CH-03 is reopened for the operator.
+        disposition: open
+      - id: R1-F3
+        severity: blocking
+        summary: A failed probe was reported as inconclusive.
+        disposition: fixed
+      - id: R1-F4
+        severity: blocking
+        summary: A deterministic lookup misses first-timer wording. It refuses off-topic queries, but 9 of 20 matched results miss the right material, so it can't say I don't know reliably.
+        disposition: open
+      - id: R1-F5
+        severity: blocking
+        summary: The token baseline is unsound, and the lookup leaves the standing load and read-the-procedure rule untouched.
+        disposition: open
+      - id: R1-F6
+        severity: blocking
+        summary: arcadia ask can change Project state, so read-and-propose isn't yet true. No write tools ship in this slice.
+        disposition: open
+      - id: R1-F7
+        severity: blocking
+        summary: Stale or truncated passages could be cited cleanly. The lookup now excludes details blocks and marked sections, and keeps authority sections whole or marked truncated; dated records without a marker remain.
+        disposition: open
+      - id: R1-F8
+        severity: blocking
+        summary: The corpus is undefined outside Arcadia's repository, and the package doesn't ship it.
+        disposition: open
+      - id: R1-F9
+        severity: blocking
+        summary: Rerunning the same 30 questions proves nothing. No rerun is claimed as a pass; a held-out set is required.
+        disposition: open
+      - id: R1-F10
+        severity: note
+        summary: Silent settlements are recorded as operator decisions; the schema has no operator-default value.
+        disposition: open
+      - id: R1-F11
+        severity: note
+        summary: REQ-008 doesn't fit REQ-006 as written.
+        disposition: open
+      - id: R1-F12
+        severity: note
+        summary: The critical-path trade-off wasn't explicit in S012's question.
+        disposition: open
+      - id: R1-F13
+        severity: note
+        summary: Messaging was all-or-nothing. C-039 adds the missing option.
+        disposition: fixed
+      - id: R1-F14
+        severity: note
+        summary: C-032 and C-033 cited the wrong file.
+        disposition: fixed
+      - id: R1-F15
+        severity: note
+        summary: C-034's benchmark was narrowed and parked.
+        disposition: fixed
+      - id: R1-F16
+        severity: note
+        summary: "The first hop may exceed a second. Measured: about 0.5 s for a compiled CLI run."
+        disposition: open
+      - id: R1-F17
+        severity: note
+        summary: Relay mode counted a file read as Arcadia did.
+        disposition: fixed
+      - id: R1-F18
+        severity: note
+        summary: Later-phase ordering of C-022, and whether lessons can feed the lookup.
+        disposition: open
 riskiest_assumption:
-  statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically. It may be too large, stale or written for agents.
+  statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically.
   test: About 30 first-timer questions, answered from the guidance alone and graded by a separate judge against the cited text, the Decisions and the code.
-  status: inconclusive
+  status: contradicted
   evidence: docs/design/relay/probes/way-knowledge-1.md

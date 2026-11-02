@@ -4,11 +4,12 @@
 
 ## Where it stands
 
-**Stage 5 of 8: sources are compiled, and four choices wait on the operator.** The frame is
-confirmed (S005). Extractors read each source in isolation and produced 133 concepts, and
-the compile merged them into 30 mechanisms and options, with 12 rejected and 12 parked, each
-with its reason or revival condition. S008 then added 7 more, for 37 in all. The operator's other sources can still arrive and may
-reopen any of this.
+**Stage 7 of 8: critics returned hold, and one choice is reopened.** The operator chose Way
+knowledge first (S012). Critic R1 then found nine blocking problems
+([report](reviews/R1-relay-critique.md)). So `arcadia way lookup` ships as read-only evidence
+tooling, the decision interface is a [written contract](decision-interface.md) rather than code,
+and CH-03 goes back to the operator. Sources were compiled from isolated extractions: 133 concepts
+became 30 mechanisms and options, S008 added 7, and R1 led to 3 more.
 
 - **Experience target (operator's words):** "Even a first time Arcadia operator therefore
   shall be empowered to wield the full power of the Arcadia Way via Relay interaction."
@@ -22,14 +23,10 @@ reopen any of this.
   on these is for the frame to settle.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
-- **Being worked on:** CH-01 (one conversation record or one per Project), CH-02 (what gets
-  built first) and CH-03 (what Relay is made of) and CH-04 (which decision engine). **Next move:** the operator answers
-  all four. Every position except `chosen` is my leaning,
-  not the operator's.
-- **Riskiest assumption, probed once, inconclusive and leaning supported:** of 30 first-timer
-  questions, a separate judge graded 22 correct, 8 partly correct and 0 wrong, with no wrong
-  statement about authority, spending or merging ([result](probes/way-knowledge-1.md)).
-  **Next move:** the operator sets the pass mark.
+- **Being worked on:** first-timer guidance repair. **Next move:** the operator answers CH-03.
+- **Riskiest assumption, probed once, failed:** 73% fully correct against S012's default 90%, and
+  wrong on stopping ([result](probes/way-knowledge-1.md)).
+- **Open blocking findings:** R1-F1, F2, F4, F5, F6, F7, F8 and F9. None is closed by this change.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
 
 ## Where the requirements come from
@@ -73,9 +70,9 @@ Recorded at the strength given:
 
 ## Expert notes (Claudia Atlas's, not the operator's)
 
-- **S008's interface and Way lookup don't depend on the decision engine.** I'd do those first:
-  a deterministic lookup is immediately useful to every agent, and today's guidance has no
-  address smaller than a whole procedure. S008's concepts were added directly by me rather than
+- **I was wrong that a deterministic lookup would be immediately useful to every agent,** at
+  least for first-timer wording: it reached 16 of 30, and 9 of its 20 matches were wrong. It may suit agents' own vocabulary, which is
+  unmeasured. I also specified an interface with no caller. S008's concepts were added directly by me rather than
   by an isolated extractor, because the source is short and the operator's own.
 - **A decision engine helps only one step.** It can make routing fast, but answering still takes
   retrieval and possibly a model. Relay's speed depends on how often the fast paths apply, which
@@ -86,9 +83,8 @@ Recorded at the strength given:
 
 - **The main finding of the compile: nothing but the operator asks for Way knowledge.** Of
   five other sources, none addresses a first-timer learning the Way through Relay (C-001,
-  C-002). It's the largest gap and the reason I lean to C-028. The probe supports that lean with limits:
-  the guidance answered most questions, but two answers had safety-relevant errors, and finding
-  the right document, answer quality and missing guidance all contributed.
+  C-002). It's the largest gap and the reason I lean to C-028. The probe failed its pass mark, and
+  C-041 now puts guidance repair first.
 - **Agreement between S002 and S003 is weak evidence.** S003 was written after reading S002,
   so their shared concepts aren't independent. Agreement between S002 and S004, S006 or S007,
   written separately, counts for more, as on truthful state.
