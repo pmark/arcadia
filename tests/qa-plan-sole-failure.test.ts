@@ -13,7 +13,7 @@ import { attemptReviewRepair } from "../src/production/reviewRepair.js";
 import { getSession, type AgentSession } from "../src/sessions/index.js";
 import { independentVerdictReadiness, requirementForSession } from "../src/sessions/roleLineage.js";
 import { launchedRepairRounds, listReviewRepairs } from "../src/sessions/reviewRepair.js";
-import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { git, LINE_A, Rehearsal, type RehearsalOptions } from "./helpers/rehearsalHarness.js";
 
 /**
  * Decision 0169: a QA verdict whose only failure is the host-written Operator
@@ -38,11 +38,17 @@ interface Options {
   qaFindingTitle?: string;
   /** Skip the QA tick: stop with code review passed and QA not yet run. */
   stopBeforeQa?: boolean;
+  /** The reviewer finding's severity and the verdict summary. */
+  qaSeverity?: string;
+  qaSummary?: string;
+  /** Extra files the candidate changes beside MARKER.md. */
+  files?: Record<string, string>;
+  rehearsal?: RehearsalOptions;
 }
 
 /** Action A preserved, readied, code review passed; with `stopBeforeQa` false the QA tick has run too. */
 function reviewed(options: Options = {}, track = true): { rehearsal: Rehearsal; a: AgentSession; head: string } {
-  const rehearsal = new Rehearsal({ independentReviewers: "tick" });
+  const rehearsal = new Rehearsal({ independentReviewers: "tick", ...options.rehearsal });
   if (track) rehearsals.push(rehearsal);
   rehearsal.createFixtureRepository();
   rehearsal.approve(rehearsal.registerProject());
@@ -50,8 +56,11 @@ function reviewed(options: Options = {}, track = true): { rehearsal: Rehearsal; 
   rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionA, 3);
   const a = rehearsal.lease()!;
   rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
+  for (const [file, content] of Object.entries(options.files ?? {})) rehearsal.agentEdit(a, file, content);
   rehearsal.agentFinish(a, CRITERIA_A);
   rehearsal.tmux.exit(a.tmux_session_name);
+  rehearsal.github.findingSeverity = options.qaSeverity ?? "medium";
+  rehearsal.github.failSummary = options.qaSummary ?? "The Operator QA plan does not match the criterion.";
   rehearsal.github.verdict = (role) => (role === "qa" && options.qaFails !== null ? "fail" : "pass");
   rehearsal.github.failCriteria = options.qaFails ?? ["operator-qa-plan"];
   rehearsal.github.findingTitle = options.qaFindingTitle ?? PLAN_TITLE;
@@ -96,6 +105,17 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
       failedChecks: [{ criterion: "operator-qa-plan", status: "fail" }] }] }).map((signal) => signal.failureClass)).toEqual(["sole_failure"]);
   });
 
+  it("lands through the worker pull-request merge (the live mode), pinned to the reviewed head, with the record and one Issue", () => {
+    const { rehearsal, head } = reviewed({ rehearsal: { workerMerge: true } });
+    expect(rehearsal.github.mergeCalls.map((call) => [call.matchHead, call.merged])).toEqual([[head, true]]);
+    expect(rehearsal.github.prs[0].state).toBe("MERGED");
+    expect(repairs(rehearsal)).toEqual([]);
+    expect(rehearsal.sessions()).toHaveLength(1);
+    expect(qaAttempts(rehearsal).map((attempt) => attempt.status)).toEqual(["failed"]);
+    expect(waiver(rehearsal, head)?.record).toContain("one operator check step went unverified");
+    expect(rehearsal.github.issues).toHaveLength(1);
+  });
+
   it("requests one Issue per Action and head through the injected runner, and a replay requests no second", () => {
     const { rehearsal, a, head } = reviewed();
     expect(rehearsal.github.issues).toHaveLength(1);
@@ -130,6 +150,8 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
     rehearsal.agentFinish(a, CRITERIA_A);
     rehearsal.tmux.exit(a.tmux_session_name);
     rehearsal.github.verdict = (role) => (role === "qa" ? "fail" : "pass");
+    rehearsal.github.findingSeverity = "medium";
+    rehearsal.github.failSummary = "The Operator QA plan does not match the criterion.";
     rehearsal.github.failCriteria = ["operator-qa-plan"];
     rehearsal.github.findingTitle = PLAN_TITLE;
     for (let i = 0; i < 4; i += 1) rehearsal.tick();
@@ -138,7 +160,7 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
 
   it("logs a failure to file the Issue without changing the verdict outcome", () => {
     const control = reviewed();
-    const failing = reviewedWithIssueFailures(Array.from({ length: MAX_QA_PLAN_ISSUE_ATTEMPTS }, () => "HTTP 502: bad gateway"));
+    const failing = reviewedWithIssueFailures(["HTTP 502: bad gateway", "HTTP 502: bad gateway", "HTTP 502: bad gateway"]);
     // The same outcome as when filing works: the head lands, no repair, no draft.
     expect(mainHead(failing.rehearsal)).toBe(failing.head);
     expect(mainHead(control.rehearsal)).toBe(control.head);
@@ -146,33 +168,26 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
     expect(repairs(failing.rehearsal)).toEqual([]);
     expect(failing.rehearsal.github.undoReadyCalls).toEqual([]);
     expect(failing.rehearsal.github.issues).toEqual([]);
+    // One attempt only: both gate calls of the landing tick share the tick's time.
     const row = waiver(failing.rehearsal, failing.head)!;
-    expect(row).toMatchObject({ issue_url: null, issue_error: "HTTP 502: bad gateway" });
-    expect(row.issue_attempts).toBeGreaterThanOrEqual(1);
-    expect(row.issue_attempts).toBeLessThanOrEqual(MAX_QA_PLAN_ISSUE_ATTEMPTS);
+    expect(row).toMatchObject({ issue_url: null, issue_error: "HTTP 502: bad gateway", issue_attempts: 1 });
     expect(failing.rehearsal.log.some((line) => line.includes("Filing the Issue for the unverified Operator QA plan") && line.includes("the verdict outcome is unchanged: HTTP 502: bad gateway"))).toBe(true);
     // The unverified record is written whether or not the Issue could be filed.
     expect(row.record).toContain("one operator check step went unverified");
   });
 
-  it("retries a failed filing and files exactly one Issue once it works", () => {
-    const retried = reviewedWithIssueFailures(["HTTP 502: bad gateway"]);
-    expect(mainHead(retried.rehearsal)).toBe(retried.head);
-    expect(retried.rehearsal.github.issues).toHaveLength(1);
-    expect(waiver(retried.rehearsal, retried.head)).toMatchObject({ issue_attempts: 2, issue_error: null, issue_url: retried.rehearsal.github.issues[0].url });
-    for (let i = 0; i < 2; i += 1) retried.rehearsal.tick();
-    expect(retried.rehearsal.github.issues).toHaveLength(1);
-  });
-
-  it("stops asking GitHub after the attempt bound", () => {
-    const { rehearsal, a, head } = reviewed();
+  it("redacts secrets in the evidence it puts in the Issue", () => {
+    const { rehearsal, a } = reviewed({ stopBeforeQa: true });
+    const github = rehearsal.github;
+    const key = "sk-" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6";
     withDatabase(rehearsal.workspace, (db) => {
-      db.prepare("UPDATE production_qa_plan_waivers SET issue_url = NULL, issue_attempts = ? WHERE target_head = ?").run(MAX_QA_PLAN_ISSUE_ATTEMPTS, head);
       const session = getSession(db, a.id)!;
-      const failure = qaPlanSoleFailureOnHead(db, { session, repoRoot: rehearsal.repo })!;
-      ensureQaPlanWaiver(db, { session, failure, now: rehearsal.now, cwd: rehearsal.repo, runCommand: rehearsal.github.runCommand });
+      const failure = { attempt: { request_id: "r" } as never, head: "h".repeat(40), pullRequestUrl: "https://github.com/pmark/rehearsal/pull/7", summary: "s", reportPath: null,
+        planEvidence: `Step 4 shows token=${key}`, findings: [{ severity: "medium", title: "Operator QA step 4", evidence: `key ${key}`, recommendation: "r" }] };
+      ensureQaPlanWaiver(db, { session, failure, now: rehearsal.now, cwd: rehearsal.repo, runCommand: github.runCommand });
     });
-    expect(rehearsal.github.issues).toHaveLength(1); // only the original filing
+    expect(github.issues).toHaveLength(1);
+    expect(github.issues[0].body).not.toContain(key);
   });
 });
 
@@ -211,6 +226,19 @@ describe("a QA verdict that still blocks and follows the existing repair path", 
     expect(rehearsal.github.issues).toEqual([]);
   });
 
+  // Decision 0169 did not lift Decision 0098's gate list: a candidate changing launch-authority code stays gated.
+  it.each([false, true])("when the candidate is on Decision 0098's gate list (src/production/policy.ts), under worker merge %s", (workerMerge) => {
+    const { rehearsal, head } = reviewed({ files: { "src/production/policy.ts": "export const gated = true;\n" }, rehearsal: { workerMerge } });
+    expect(repairs(rehearsal).map((row) => [row.role, row.outcome])).toEqual([["qa", "gated"]]);
+    expect(repairs(rehearsal)[0].reason).toContain("Decision 0098's gate list");
+    expect(rehearsal.sessions()).toHaveLength(1);
+    expect(mainHead(rehearsal)).not.toBe(head);
+    expect(rehearsal.github.mergeCalls).toEqual([]);
+    expect(rehearsal.github.prs[0].isDraft).toBe(true);
+    expect(waiver(rehearsal, head)).toBeNull();
+    expect(rehearsal.github.issues).toEqual([]);
+  });
+
   it("when the plan was refused as unavailable", () => {
     const rehearsal = new Rehearsal({ independentReviewers: "tick" });
     rehearsals.push(rehearsal);
@@ -223,6 +251,8 @@ describe("a QA verdict that still blocks and follows the existing repair path", 
     rehearsal.agentFinish(a, CRITERIA_A);
     rehearsal.tmux.exit(a.tmux_session_name);
     rehearsal.github.verdict = (role) => (role === "qa" ? "fail" : "pass");
+    rehearsal.github.findingSeverity = "medium";
+    rehearsal.github.failSummary = "The Operator QA plan does not match the criterion.";
     rehearsal.github.failCriteria = ["operator-qa-plan"];
     rehearsal.github.findingTitle = PLAN_TITLE;
     rehearsal.tick();
@@ -253,12 +283,18 @@ describe("seeded QA verdict shapes", () => {
     attemptRole?: "qa" | "code-review";
     receipt?: Record<string, unknown>;
     attemptStatus?: "failed" | "passed";
+    attemptHead?: string;
+    criteriaFingerprint?: string;
+    evidenceFingerprint?: string;
+    effectiveness?: unknown;
+    residualRisks?: string[];
   }
   const PLAN_FAIL = { criterion: "operator-qa-plan", name: "Operator QA plan", status: "fail", evidence: "Step 4 inspects the wrong file." };
   const OTHERS = ["correctness", "scope-fidelity", "approval-boundaries", "managed-documents", "hidden-consequences", "tests-and-evidence"].map((criterion) => ({
     criterion, name: criterion, status: "pass", evidence: "ok"
   }));
   const PLAN_FINDING = { severity: "medium", title: PLAN_TITLE, evidence: "Step 4 inspects the wrong file.", recommendation: "Inspect the test file." };
+  const planFinding = (over: Partial<typeof PLAN_FINDING>) => ({ ...PLAN_FINDING, ...over });
 
   /** One candidate (code review passed, QA not yet run) shared by the shape cases; each case seeds, asks the gate, and unseeds. */
   let shared: { rehearsal: Rehearsal; a: AgentSession; head: string };
@@ -276,7 +312,8 @@ describe("seeded QA verdict shapes", () => {
         resolvedIntent: "IndependentPullRequestReview", confidenceLabel: "high", confidence: 1, missingFields: [],
         context: {
           schemaVersion: 2, candidate: { headSha: head, url: "https://github.com/pmark/rehearsal/pull/7" }, verdict: input.verdict ?? "fail",
-          summary: "seeded summary", findings: input.findings ?? [PLAN_FINDING], checks: input.checks ?? [PLAN_FAIL, ...OTHERS], residualRisks: [],
+          summary: "seeded summary", findings: input.findings ?? [PLAN_FINDING], checks: input.checks ?? [PLAN_FAIL, ...OTHERS], residualRisks: input.residualRisks ?? [],
+          effectiveness: "effectiveness" in input ? input.effectiveness : { deterministicGateReasons: [], deterministicGateVerdict: "pass" },
           role: input.role ?? "qa", reportPath: "artifacts/qa/seeded.md", ...input.context
         }
       });
@@ -286,7 +323,7 @@ describe("seeded QA verdict shapes", () => {
         target_head, criteria_fingerprint, evidence_fingerprint, terminal_receipt_json, created_at, updated_at)
         VALUES ('seeded-attempt', ?, ?, ?, ?, 'seeded-attempt', 'seeded-independent-reviewer', 0, ?, ?, ?, ?, ?, ?, ?)`)
         .run(requirement.requirementId, requirement.inputRevision, role, role === "qa" ? 1 : 2, input.attemptStatus ?? "failed",
-          head, readiness.binding.criteriaFingerprint, readiness.binding.evidenceFingerprint,
+          input.attemptHead ?? head, input.criteriaFingerprint ?? readiness.binding.criteriaFingerprint, input.evidenceFingerprint ?? readiness.binding.evidenceFingerprint,
           JSON.stringify({ verdict: "fail", decisionId: item.id, ...input.receipt }), a.created_at, a.created_at);
     });
   }
@@ -296,11 +333,53 @@ describe("seeded QA verdict shapes", () => {
       db.prepare("DELETE FROM production_qa_plan_waivers").run();
     });
     shared.rehearsal.github.issues.length = 0;
+    shared.rehearsal.github.issueFailures.length = 0;
   }
   const ask = (runCommand = shared.rehearsal.github.runCommand) => withDatabase(shared.rehearsal.workspace, (db) =>
     independentVerdictGateWithQaPlanWaiver(db, { session: getSession(db, shared.a.id)!, repoRoot: shared.rehearsal.repo, now: shared.rehearsal.now, runCommand }));
   const waived = () => withDatabase(shared.rehearsal.workspace, (db) => qaPlanSoleFailureOnHead(db, { session: getSession(db, shared.a.id)!, repoRoot: shared.rehearsal.repo }));
   afterEach(unseed);
+  const askAt = (now: Date, runCommand = shared.rehearsal.github.runCommand) => withDatabase(shared.rehearsal.workspace, (db) =>
+    independentVerdictGateWithQaPlanWaiver(db, { session: getSession(db, shared.a.id)!, repoRoot: shared.rehearsal.repo, now, runCommand }));
+  const minutes = (n: number) => new Date(shared.rehearsal.now.getTime() + n * 60_000);
+
+  it("spends at most one filing attempt per tick, retries on a later tick and files exactly one Issue", () => {
+    seed({});
+    shared.rehearsal.github.issueFailures = ["HTTP 502: bad gateway"];
+    expect(askAt(minutes(0))).toMatchObject({ satisfied: true });
+    expect(waiver(shared.rehearsal, shared.head)).toMatchObject({ issue_attempts: 1, issue_error: "HTTP 502: bad gateway", issue_url: null });
+    askAt(minutes(0)); // the tick's second gate call
+    expect(waiver(shared.rehearsal, shared.head)!.issue_attempts).toBe(1);
+    expect(askAt(minutes(1))).toMatchObject({ satisfied: true });
+    expect(waiver(shared.rehearsal, shared.head)).toMatchObject({ issue_attempts: 2, issue_error: null, issue_url: expect.stringContaining("/issues/") });
+    askAt(minutes(2));
+    askAt(minutes(2));
+    expect(shared.rehearsal.github.issues).toHaveLength(1);
+  });
+
+  it("files against the repository named by the pull request URL, marks the Issue, and adopts an Issue that already carries the marker", () => {
+    seed({});
+    askAt(minutes(0));
+    const [issue] = shared.rehearsal.github.issues;
+    expect(issue.repo).toBe("pmark/rehearsal");
+    expect(shared.rehearsal.github.ghCalls.some((call) => call.startsWith("gh issue create --repo pmark/rehearsal "))).toBe(true);
+    expect(issue.body).toContain(`<!-- qa-plan-unverified:${shared.rehearsal.actionA}:${shared.head} -->`);
+    // A crash after `gh issue create` but before the row was updated: the next attempt adopts the Issue.
+    withDatabase(shared.rehearsal.workspace, (db) => db.prepare("UPDATE production_qa_plan_waivers SET issue_url = NULL").run());
+    askAt(minutes(1));
+    expect(shared.rehearsal.github.issues).toHaveLength(1);
+    expect(waiver(shared.rehearsal, shared.head)).toMatchObject({ issue_url: issue.url, issue_attempts: 2 });
+  });
+
+  it("stops asking GitHub after the attempt bound", () => {
+    seed({});
+    shared.rehearsal.github.issueFailures = ["x", "x", "x", "x"];
+    const lists = () => shared.rehearsal.github.ghCalls.filter((call) => call.startsWith("gh issue list")).length;
+    const before = lists();
+    for (let n = 0; n < MAX_QA_PLAN_ISSUE_ATTEMPTS + 2; n += 1) askAt(minutes(n));
+    expect(waiver(shared.rehearsal, shared.head)).toMatchObject({ issue_attempts: MAX_QA_PLAN_ISSUE_ATTEMPTS, issue_url: null });
+    expect(lists() - before).toBe(MAX_QA_PLAN_ISSUE_ATTEMPTS);
+  });
 
   it("the plain sole-failure shape is waived by the gate, with the record and one Issue", () => {
     seed({});
@@ -308,6 +387,19 @@ describe("seeded QA verdict shapes", () => {
     expect(ask()).toMatchObject({ satisfied: true });
     expect(waiver(shared.rehearsal, shared.head)?.record).toContain("one operator check step went unverified");
     expect(shared.rehearsal.github.issues).toHaveLength(1);
+  });
+
+  const waivable: Array<[string, Seed]> = [
+    ["one medium plan finding naming one step (the shape of #1996 to #1998)", {}],
+    ["one low plan finding", { findings: [planFinding({ severity: "low" })] }],
+    ["zero findings and plan evidence naming exactly one step", { findings: [], checks: [{ ...PLAN_FAIL, evidence: "Step 4 inspects the wrong file." }, ...OTHERS] }],
+    ["zero findings and plan evidence naming no step", { findings: [], checks: [{ ...PLAN_FAIL, evidence: "The plan is not concrete." }, ...OTHERS] }],
+    ["the same step named repeatedly", { findings: [planFinding({ evidence: "Step 4 is wrong; fix Step 4. Step 4 again." })] }]
+  ];
+  it.each(waivable)("waives %s", (_name, input) => {
+    seed(input);
+    expect(waived()).not.toBeNull();
+    expect(ask()).toMatchObject({ satisfied: true });
   });
 
   it("a QA failure that is not the latest attempt on this binding is not waived", () => {
@@ -337,7 +429,32 @@ describe("seeded QA verdict shapes", () => {
     ["the attempt receipt is stale", { receipt: { stale: true } }],
     ["the attempt receipt is reviewer unavailability", { receipt: { reviewerUnavailable: "reviewer crashed" } }],
     ["the attempt receipt names no report", { receipt: { decisionId: "missing-decision" } }],
-    ["the report lists no checks", { checks: [] }]
+    ["the report lists no checks", { checks: [] }],
+    // F2: severity, prose and claims about the candidate
+    ["a plan-titled finding is a blocker", { findings: [planFinding({ severity: "blocker" })] }],
+    ["a plan-titled finding is high", { findings: [planFinding({ severity: "high" })] }],
+    ["a plan-titled finding has an unknown severity", { findings: [planFinding({ severity: "catastrophic" })] }],
+    ["a plan-titled blocker's evidence names a code defect", { findings: [planFinding({ severity: "blocker", title: "Operator QA step 3 fails: the candidate drops the users table", evidence: "The migration drops the users table." })] }],
+    ["a plan-titled medium finding's evidence claims the candidate drops a table", { findings: [planFinding({ evidence: "Step 4 passes, but the migration drops the users table." })] }],
+    ["a plan-titled finding's recommendation claims a defect", { findings: [planFinding({ recommendation: "Fix the bug in the guard." })] }],
+    ["zero findings and the plan evidence says the code is wrong", { findings: [], checks: [{ ...PLAN_FAIL, evidence: "Step 4 is fine but the code is wrong." }, ...OTHERS] }],
+    ["the summary states data loss", { context: { summary: "Operator QA step 4 is wrong and the change causes data loss." } }],
+    ["a residual risk states a defect", { residualRisks: ["The candidate may corrupt stored data."] }],
+    ["the plan evidence names a failure of the candidate", { checks: [{ ...PLAN_FAIL, evidence: "Step 4 fails to refuse a stale head." }, ...OTHERS] }],
+    // F3: one operator check step only
+    ["there are two findings, both titled about the plan", { findings: [PLAN_FINDING, planFinding({ title: "Operator QA step 4 expects the wrong output" })] }],
+    ["a finding names step 3 and the plan evidence names step 4", { findings: [planFinding({ title: "Operator QA step 3 inspects the wrong file", evidence: "Step 3 inspects the wrong file." })] }],
+    ["zero findings and the plan evidence names Steps 4 and 6", { findings: [], checks: [{ ...PLAN_FAIL, evidence: "Steps 4 and 6 prescribe inspections that cannot establish their results." }, ...OTHERS] }],
+    ["the plan evidence names a range of steps", { findings: [], checks: [{ ...PLAN_FAIL, evidence: "Steps 1-5 are not runnable." }, ...OTHERS] }],
+    ["five high findings across steps 1 to 5", { findings: [1, 2, 3, 4, 5].map((n) => planFinding({ severity: "high", title: `Operator QA step ${n} is not runnable`, evidence: `Step ${n} is not runnable.` })) }],
+    // F5: the deterministic gate
+    ["the deterministic gate recorded a reason (merge state DIRTY)", { effectiveness: { deterministicGateReasons: ["the pull request merge state is DIRTY"], deterministicGateVerdict: "pass" } }],
+    ["the deterministic gate recorded a verdict only", { effectiveness: { deterministicGateReasons: [], deterministicGateVerdict: "fail" } }],
+    ["the report carries no effectiveness record", { effectiveness: undefined }],
+    // T1: the attempt's binding
+    ["the failed attempt is bound to another head", { attemptHead: "1".repeat(40) }],
+    ["the failed attempt's criteria fingerprint changed on the same head", { criteriaFingerprint: "c".repeat(64) }],
+    ["the failed attempt's evidence fingerprint changed on the same head", { evidenceFingerprint: "e".repeat(64) }]
   ];
   it.each(blocking)("keeps the gate blocking when %s", (_name, input) => {
     seed(input);

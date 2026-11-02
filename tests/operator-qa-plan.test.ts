@@ -325,6 +325,36 @@ describe("Operator QA plan rendering", () => {
       expect(stepOf(absent)).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT} -- ${SAMPLE}\`.`);
     });
 
+    it("states the substitution and claims only what the substituted file shows", () => {
+      const body = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: TEST_FILE }], pathExists: exists(SAMPLE, TEST_FILE)
+      }));
+      const step = stepOf(body);
+      expect(step).toContain(`- **Substitution:** the criterion names only \`${SAMPLE}\`, which this candidate did not change, so this step does not inspect it and inspects the candidate's changed test file instead.`);
+      expect(step).toContain(`not the content of \`${SAMPLE}\``);
+      expect(step).not.toContain("shows this criterion holds");
+      // No substitution, no substitution text.
+      const plain = rendered(source({ acceptanceCriteria: [`${SAMPLE} gains no new dependency.`], validationCommands: [] }), facts({
+        changedFiles: [{ status: "M", path: SAMPLE }], pathExists: exists(SAMPLE)
+      }));
+      expect(plain).not.toContain("Substitution");
+    });
+
+    it("never redirects away from a named test file or a named source file", () => {
+      const namedTest = rendered(source({ acceptanceCriteria: ["`tests/existing.test.ts` asserts the negative table."], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: "tests/other.test.ts" }], pathExists: exists("tests/existing.test.ts", "tests/other.test.ts")
+      }));
+      expect(stepOf(namedTest)).toContain(`inspect \`tests/existing.test.ts\` with \`git show ${COMMIT}:tests/existing.test.ts\``);
+      expect(stepOf(namedTest)).not.toContain("tests/other.test.ts");
+      expect(stepOf(namedTest)).not.toContain("Substitution");
+      const namedSource = rendered(source({ acceptanceCriteria: ["`src/guard.ts` still refuses a stale head."], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: "tests/b.test.ts" }], pathExists: exists("src/guard.ts", "tests/b.test.ts")
+      }));
+      expect(stepOf(namedSource)).toContain(`inspect \`src/guard.ts\` with \`git show ${COMMIT}:src/guard.ts\``);
+      expect(stepOf(namedSource)).not.toContain("tests/b.test.ts");
+      expect(stepOf(namedSource)).toContain("shows this criterion holds");
+    });
+
     it("does not redirect a criterion that a command must pass", () => {
       const body = rendered(source({ acceptanceCriteria: ["scripts/check.sh passes."], validationCommands: ["bash scripts/check.sh"] }), facts({
         changedFiles: [{ status: "A", path: TEST_FILE }], pathExists: exists("scripts/check.sh", TEST_FILE)

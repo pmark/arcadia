@@ -8,6 +8,8 @@ import { INDEPENDENT_VERDICT_ROLES, latestRoleAttempt, roleAttemptsOnHead, type 
 import { independentVerdictGate, independentVerdictReadiness, MAX_VARIANCE_REVIEW_ATTEMPTS, MAX_VERDICT_ATTEMPTS, verdictAttemptLimit, type VerdictGate } from "../sessions/roleLineage.js";
 import { ensureReviewRepairTable, getReviewRepair, requiredChecksRepairRequestId, reviewRepairRequestId } from "../sessions/reviewRepair.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
+import { redactSecrets } from "../sessions/validationEvidence.js";
+import { candidateChangeGate } from "./candidateChangeGate.js";
 import {
   classifyPullRequestChecks,
   readPullRequestChecks,
@@ -371,24 +373,121 @@ export interface QaPlanSoleFailure {
   reportPath: string | null;
   /** The failing Operator QA plan check's evidence, as the reviewer wrote it. */
   planEvidence: string;
-  findingTitles: string[];
+  /** The reviewer's findings, at most one; their titles name the plan. */
+  findings: Array<{ severity: string; title: string; evidence: string; recommendation: string }>;
 }
 
 type VerdictReadinessBinding = { requirement: { requirementId: string; inputRevision: string }; binding: { targetHead: string; criteriaFingerprint: string; evidenceFingerprint: string } };
 
+/** Severities a plan-only finding may carry; blocker, high and anything unknown keep the verdict blocking. */
+const WAIVABLE_SEVERITIES: ReadonlySet<string> = new Set(["low", "medium"]);
+
+/**
+ * Words that claim something about the candidate's code or data beyond the
+ * plan's text. Conservative on purpose: a real plan-only verdict that trips
+ * one simply takes the existing repair path.
+ */
+const CANDIDATE_CLAIM = new RegExp([
+  String.raw`\b(?:data[- ]?loss|drops?|dropped|dropping|deletes?|deleted|deleting|removes?|removed|corrupt\w*|crash\w*|vulnerab\w*|inject\w*|leak\w*|overwrit\w*|regress\w*|bugs?|defects?|defective|incorrect\w*|broken|breaks?|race|deadlock\w*|expos\w*|unsafe|insecure|exploit\w*|malicious|truncat\w*|violat\w*|users? table)\b`,
+  String.raw`\bnot (?:implemented|handled|enforced|validated|refused|rejected)\b`,
+  String.raw`\b(?:does|do|did) not (?:work|handle|refuse|reject|validate|enforce|implement|compile|pass)\b`,
+  String.raw`\b(?:fails?|failed|failing) (?:to|when|on|for)\b(?! (?:show|establish|demonstrate|prove|observe|state|name|identify|point|instruct|say|mention|tell|describe|reflect|cover)\b)`,
+  String.raw`\b(?:the )?(?:candidate|patch|implementation|source code|production code|code|change|migration|schema|database)\b[^.\n]{0,80}\b(?:wrong|incorrect|missing|lacks?|broken|defective|unsafe|buggy|faulty)\b`
+].join("|"), "i");
+
+/** Step numbers a text names: "Step 4", "Steps 4 and 6", "Steps 1-5". */
+function namedSteps(text: string): Set<string> {
+  const steps = new Set<string>();
+  for (const match of text.matchAll(/\bsteps?\s+(\d+(?:\s*(?:,|and|&|or|through|to|-|–|—)\s*\d+)*)/gi)) {
+    for (const number of match[1].match(/\d+/g) ?? []) steps.add(String(Number(number)));
+  }
+  return steps;
+}
+
+/**
+ * The report half of {@link qaPlanSoleFailure}: pure over the persisted QA
+ * report context, so a recorded verdict can be replayed. `reason` says which
+ * condition refused it.
+ */
+export function judgeQaPlanReport(raw: unknown, input: { head: string; actionKey: string; requestId: string; at: string }):
+  { ok: true; failure: Omit<QaPlanSoleFailure, "attempt"> } | { ok: false; reason: string } {
+  const refuse = (reason: string) => ({ ok: false as const, reason });
+  const context = (raw ?? {}) as {
+    role?: unknown; verdict?: unknown; summary?: unknown; reportPath?: unknown; reviewerUnavailable?: unknown; varianceReason?: unknown;
+    candidate?: { headSha?: unknown; url?: unknown }; findings?: unknown; checks?: unknown; residualRisks?: unknown;
+    effectiveness?: { deterministicGateReasons?: unknown; deterministicGateVerdict?: unknown };
+  };
+  const { head } = input;
+  if (context.role !== "qa" || context.verdict !== "fail" || context.candidate?.headSha !== head) return refuse("not a failed QA report for this head");
+  if (context.reviewerUnavailable || context.varianceReason) return refuse("reviewer unavailability or variance");
+  // The deterministic gate (merge state, stale evidence, missing checks, ...) must have recorded nothing.
+  const gate = context.effectiveness;
+  if (!gate || !Array.isArray(gate.deterministicGateReasons) || gate.deterministicGateReasons.length !== 0
+    || !(gate.deterministicGateVerdict === undefined || gate.deterministicGateVerdict === null || gate.deterministicGateVerdict === "pass")) return refuse("the deterministic gate recorded a reason or is absent");
+  if (!Array.isArray(context.checks) || context.checks.length === 0 || !Array.isArray(context.findings)) return refuse("no checks or findings list");
+  const checks = (context.checks as Array<Record<string, unknown>>).map((check) => ({
+    criterion: typeof check.criterion === "string" ? check.criterion : check.name === OPERATOR_QA_PLAN_CHECK_NAME ? OPERATOR_QA_PLAN_CRITERION : String(check.name),
+    name: String(check.name),
+    status: String(check.status),
+    evidence: typeof check.evidence === "string" ? check.evidence : ""
+  }));
+  // The recovery-signal classifier owns the sole-failure shape (Decision 0169).
+  const signals = classifyRecoverySignals({ reviewRepairs: [{
+    requestId: input.requestId, actionKey: input.actionKey, round: 0, role: "qa", verdict: "fail", failedChecks: checks, outcome: "pending", at: input.at
+  }] });
+  if (signals.length !== 1 || signals[0].failureClass !== "sole_failure") return refuse("the failed checks are not exactly the Operator QA plan");
+  // The classifier reads checks only; findings and prose are read separately.
+  const found = context.findings as Array<Record<string, unknown>>;
+  if (found.length > 1) return refuse("more than one finding");
+  const findings: QaPlanSoleFailure["findings"] = [];
+  for (const finding of found) {
+    const title = typeof finding?.title === "string" ? finding.title.trim() : "";
+    const severity = typeof finding?.severity === "string" ? finding.severity.trim().toLowerCase() : "";
+    if (!PLAN_FINDING_TITLE.test(title)) return refuse("a finding is not titled as about the plan");
+    if (!WAIVABLE_SEVERITIES.has(severity)) return refuse(`a finding has severity ${severity || "unknown"}`);
+    findings.push({ severity, title, evidence: String(finding.evidence ?? ""), recommendation: String(finding.recommendation ?? "") });
+  }
+  const plan = checks.find((check) => check.criterion === OPERATOR_QA_PLAN_CRITERION)!;
+  const summary = typeof context.summary === "string" ? context.summary : "";
+  const risks = Array.isArray(context.residualRisks) ? context.residualRisks.map(String) : [];
+  const prose = [plan.evidence, summary, ...risks, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])];
+  if (prose.some((text) => AUTHORITY_TEXT.test(text))) return refuse("authority text");
+  if (prose.some((text) => CANDIDATE_CLAIM.test(text))) return refuse(`a claim about the candidate's code or data: ${prose.map((text) => CANDIDATE_CLAIM.exec(text)?.[0]).find(Boolean)}`);
+  // "One operator check step unverified": at most one distinct plan step across the plan evidence and the finding.
+  const steps = new Set<string>();
+  for (const text of [plan.evidence, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])]) {
+    for (const step of namedSteps(text)) steps.add(step);
+  }
+  if (steps.size > 1) return refuse(`more than one plan step (${[...steps].join(", ")})`);
+  return { ok: true, failure: {
+    head,
+    pullRequestUrl: typeof context.candidate?.url === "string" ? context.candidate.url : null,
+    summary: summary || "(no summary recorded)",
+    reportPath: typeof context.reportPath === "string" ? context.reportPath : null,
+    planEvidence: plan.evidence, findings
+  } };
+}
+
 /**
  * Decision 0169: the QA verdict on this exact binding failed ONLY the
- * host-written Operator QA plan, which no repair Session can change. Returns
- * its facts, or null when there is any doubt: the lineage attempt is not a
+ * host-written Operator QA plan, which no repair Session can change, and
+ * only about ONE plan step ("one operator check step unverified"). Returns
+ * its facts, or null when there is any doubt, in which case the existing
+ * blocking and repair path applies. Null when: the lineage attempt is not a
  * failed QA verdict on exactly this binding, is reviewer unavailability or
  * variance, its persisted report cannot be read or does not name this head,
- * the plan was refused as unavailable, the verdict is not `fail`, the failed
- * checks are not exactly the Operator QA plan check (judged by
- * `classifyRecoverySignals`, so a not-checked plan, an unlisted check or any
- * other non-pass blocks), or ANY finding concerns something else or touches
- * authority. Never mutates anything.
+ * the plan was refused as unavailable, the verdict is not `fail`, the
+ * deterministic gate recorded any reason, the failed checks are not exactly
+ * the Operator QA plan check (judged by `classifyRecoverySignals`, so a
+ * not-checked plan, an unlisted check or any other non-pass blocks), the
+ * candidate is on Decision 0098's gate list (authority paths, launch and
+ * repair-loop code, test weakening), there is more than one finding, a
+ * finding is `blocker`/`high`/unknown severity or is not titled as about the
+ * plan, any finding, the plan evidence, the summary or a residual risk
+ * makes a claim about the candidate's code or data, anything touches
+ * authority, or more than one plan step is named. Never mutates anything.
  */
-export function qaPlanSoleFailure(db: Database.Database, session: AgentSession, readiness: VerdictReadinessBinding, head: string): QaPlanSoleFailure | null {
+export function qaPlanSoleFailure(db: Database.Database, session: AgentSession, readiness: VerdictReadinessBinding, head: string, repoRoot: string): QaPlanSoleFailure | null {
   const latest = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, "qa");
   if (!latest || latest.status !== "failed" || latest.target_head !== head
     || latest.criteria_fingerprint !== readiness.binding.criteriaFingerprint || latest.evidence_fingerprint !== readiness.binding.evidenceFingerprint) return null;
@@ -396,49 +495,16 @@ export function qaPlanSoleFailure(db: Database.Database, session: AgentSession, 
   // A plan Arcadia refused to render fails the criterion for a reason a person must fix.
   const preserved = workerPreservationReceipt(db, session);
   if (!preserved || preserved.qaPlanRefusal) return null;
+  // Decision 0169 did not lift Decision 0098's gate list: the same gate the repair loop applies.
+  const start = tryGit(repoRoot, ["rev-parse", "--verify", `${head}^1`]);
+  if (!start || !isAncestor(repoRoot, session.base_revision, start) || candidateChangeGate(repoRoot, session.base_revision, start) !== null) return null;
   try {
     const decisionId = (JSON.parse(latest.terminal_receipt_json ?? "{}") as { decisionId?: unknown }).decisionId;
     if (typeof decisionId !== "string") return null;
     const row = db.prepare("SELECT context_json FROM review_items WHERE id = ?").get(decisionId) as { context_json: string } | undefined;
     if (!row) return null;
-    const context = JSON.parse(row.context_json) as {
-      role?: unknown; verdict?: unknown; summary?: unknown; reportPath?: unknown; reviewerUnavailable?: unknown; varianceReason?: unknown;
-      candidate?: { headSha?: unknown; url?: unknown }; findings?: unknown; checks?: unknown;
-    };
-    if (context.role !== "qa" || context.verdict !== "fail" || context.candidate?.headSha !== head) return null;
-    if (context.reviewerUnavailable || context.varianceReason) return null;
-    if (!Array.isArray(context.checks) || context.checks.length === 0 || !Array.isArray(context.findings)) return null;
-    const checks = (context.checks as Array<Record<string, unknown>>).map((check) => ({
-      criterion: typeof check.criterion === "string" ? check.criterion : check.name === OPERATOR_QA_PLAN_CHECK_NAME ? OPERATOR_QA_PLAN_CRITERION : String(check.name),
-      name: String(check.name),
-      status: String(check.status),
-      evidence: typeof check.evidence === "string" ? check.evidence : ""
-    }));
-    // The recovery-signal classifier owns the sole-failure shape (Decision 0169).
-    const signals = classifyRecoverySignals({ reviewRepairs: [{
-      requestId: latest.request_id, actionKey: `${session.project_slug}/${session.action_id}`, round: 0, role: "qa",
-      verdict: "fail", failedChecks: checks, outcome: "pending", at: latest.created_at
-    }] });
-    if (signals.length !== 1 || signals[0].failureClass !== "sole_failure") return null;
-    // The classifier reads checks only; findings are read separately, and any
-    // finding about anything else keeps the verdict blocking.
-    const findings = context.findings as Array<Record<string, unknown>>;
-    const titles: string[] = [];
-    for (const finding of findings) {
-      const title = typeof finding?.title === "string" ? finding.title.trim() : "";
-      if (!PLAN_FINDING_TITLE.test(title)) return null;
-      if (AUTHORITY_TEXT.test(`${title} ${String(finding.evidence ?? "")} ${String(finding.recommendation ?? "")}`)) return null;
-      titles.push(title);
-    }
-    const plan = checks.find((check) => check.criterion === OPERATOR_QA_PLAN_CRITERION)!;
-    if (AUTHORITY_TEXT.test(plan.evidence)) return null;
-    return {
-      attempt: latest, head,
-      pullRequestUrl: typeof context.candidate?.url === "string" ? context.candidate.url : null,
-      summary: typeof context.summary === "string" ? context.summary : "(no summary recorded)",
-      reportPath: typeof context.reportPath === "string" ? context.reportPath : null,
-      planEvidence: plan.evidence, findingTitles: titles
-    };
+    const judged = judgeQaPlanReport(JSON.parse(row.context_json), { head, actionKey: `${session.project_slug}/${session.action_id}`, requestId: latest.request_id, at: latest.created_at });
+    return judged.ok ? { attempt: latest, ...judged.failure } : null;
   } catch {
     return null;
   }
@@ -447,7 +513,7 @@ export function qaPlanSoleFailure(db: Database.Database, session: AgentSession, 
 /** {@link qaPlanSoleFailure} for the candidate's current ready head, or null. */
 export function qaPlanSoleFailureOnHead(db: Database.Database, input: { session: AgentSession; repoRoot: string }): QaPlanSoleFailure | null {
   const readiness = independentVerdictReadiness(db, input);
-  return readiness.ready ? qaPlanSoleFailure(db, input.session, readiness, readiness.binding.targetHead) : null;
+  return readiness.ready ? qaPlanSoleFailure(db, input.session, readiness, readiness.binding.targetHead, input.repoRoot) : null;
 }
 
 export interface QaPlanWaiverRow {
@@ -460,6 +526,8 @@ export interface QaPlanWaiverRow {
   record: string;
   issue_url: string | null;
   issue_attempts: number;
+  /** The tick time (ISO) of the latest filing attempt; one attempt per tick. */
+  issue_last_attempt_at: string | null;
   issue_error: string | null;
   created_at: string;
   updated_at: string;
@@ -476,6 +544,7 @@ export function ensureQaPlanWaiverTable(db: Database.Database): void {
       record TEXT NOT NULL,
       issue_url TEXT,
       issue_attempts INTEGER NOT NULL DEFAULT 0,
+      issue_last_attempt_at TEXT,
       issue_error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -490,14 +559,21 @@ export function getQaPlanWaiver(db: Database.Database, actionKey: string, head: 
 }
 
 const oneLine = (text: string, limit = 400) => {
-  const flat = text.replace(/\p{Cc}+/gu, " ").replace(/\s+/g, " ").trim().replaceAll("`", "'").replaceAll("@", "@\u200b");
+  const flat = redactSecrets(text).replace(/\p{Cc}+/gu, " ").replace(/\s+/g, " ").trim().replaceAll("`", "'").replaceAll("@", "@​");
   return flat.length <= limit ? flat : `${flat.slice(0, limit)}...`;
 };
 
 /** The operator-unverified record: written to the waiver row, the journey log, the worker log and the Issue. */
 export function qaPlanUnverifiedRecord(actionKey: string, failure: Pick<QaPlanSoleFailure, "head" | "planEvidence">): string {
   return `Operator QA plan unverified for ${actionKey} at ${failure.head}: independent QA failed only the host-written Operator QA plan check, so one operator check step went unverified `
-    + `and QA no longer blocks this head (Decision 0169). Code review passed this head and every other QA check passed. Reviewer's evidence: ${oneLine(failure.planEvidence)}`;
+    + `and QA no longer blocks this head (Decision 0169). QA's other recorded checks passed; that does not by itself establish the candidate's code is correct. Reviewer's evidence: ${oneLine(failure.planEvidence)}`;
+}
+
+const issueMarker = (actionKey: string, head: string) => `qa-plan-unverified:${actionKey}:${head}`;
+
+/** `owner/name` from a GitHub pull-request URL, or null. */
+function repoOfPullRequest(url: string | null): string | null {
+  return url ? /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/\d+/.exec(url)?.[1] ?? null : null;
 }
 
 function issueBody(actionKey: string, failure: QaPlanSoleFailure, record: string): string {
@@ -508,10 +584,16 @@ function issueBody(actionKey: string, failure: QaPlanSoleFailure, record: string
     `- **Head:** \`${failure.head}\``,
     `- **Pull request:** ${failure.pullRequestUrl ?? "unavailable"}`,
     `- **QA report Artifact:** \`${failure.reportPath ?? "unavailable"}\``,
-    `- **QA findings (all about the plan):** ${failure.findingTitles.length > 0 ? failure.findingTitles.map((title) => `"${oneLine(title, 160)}"`).join("; ") : "none recorded"}`,
+    `- **QA summary:** ${oneLine(failure.summary, 600)}`,
+    `- **QA findings (${failure.findings.length}; titled as about the plan, severity low or medium, not otherwise verified):**`,
+    ...(failure.findings.length > 0
+      ? failure.findings.map((finding) => `  - [${finding.severity}] ${oneLine(finding.title, 200)}: ${oneLine(finding.evidence, 800)} Recommendation: ${oneLine(finding.recommendation, 400)}`)
+      : ["  - none recorded"]),
     "",
     "The host renders the Operator QA plan (src/sessions/operatorQaPlan.ts, no model wrote it), so a repair Session cannot change it; Decision 0169 chose to spend no repair rounds on it. "
-      + "Verify the plan's operator steps by hand if they matter for this change, or fix the renderer."
+      + "Verify the plan's operator step by hand if it matters for this change, or fix the renderer. Read the findings above: a finding titled as about the plan could still hide a defect.",
+    "",
+    `<!-- ${issueMarker(actionKey, failure.head)} -->`
   ].join("\n");
 }
 
@@ -519,9 +601,13 @@ function issueBody(actionKey: string, failure: QaPlanSoleFailure, record: string
  * Record, once per Action and exact head, that QA's only failure was the
  * Operator QA plan, then ask GitHub for one Issue through the injected
  * runner. The record is written before anything else and is what makes the
- * waiver visible; a failure to file is logged and retried (at most
- * {@link MAX_QA_PLAN_ISSUE_ATTEMPTS}) but never changes the verdict outcome.
- * A replay files no second Issue. Never throws.
+ * waiver visible; a failure to file is logged and retried (at most once per
+ * tick, at most {@link MAX_QA_PLAN_ISSUE_ATTEMPTS} in all) but never changes
+ * the verdict outcome. A replay files no second Issue, and an Issue that
+ * already carries the marker (a crash after filing) is adopted. Once the head
+ * lands nothing asks again, so an Issue that could not be filed before then
+ * stays unfiled and only the row, the journey entry and the log remain.
+ * Never throws.
  */
 export function ensureQaPlanWaiver(db: Database.Database, input: {
   session: AgentSession;
@@ -544,22 +630,31 @@ export function ensureQaPlanWaiver(db: Database.Database, input: {
     if (inserted) {
       input.log?.(record);
       appendJourneyLog(db, { actionKey, source: "review_repair", kind: "qa_plan_unverified", message: record,
-        remedy: "Verify the plan's operator steps by hand if they matter, or fix src/sessions/operatorQaPlan.ts; the filed Issue tracks it.", at });
+        remedy: "Verify the plan's operator step by hand if it matters, or fix src/sessions/operatorQaPlan.ts; the filed Issue tracks it.", at });
     }
     let row = getQaPlanWaiver(db, actionKey, failure.head)!;
-    if (row.issue_url !== null || row.issue_attempts >= MAX_QA_PLAN_ISSUE_ATTEMPTS) return row;
-    db.prepare("UPDATE production_qa_plan_waivers SET issue_attempts = issue_attempts + 1, updated_at = ? WHERE action_key = ? AND target_head = ?").run(at, actionKey, failure.head);
+    if (row.issue_url !== null || row.issue_attempts >= MAX_QA_PLAN_ISSUE_ATTEMPTS || row.issue_last_attempt_at === at) return row;
+    db.prepare("UPDATE production_qa_plan_waivers SET issue_attempts = issue_attempts + 1, issue_last_attempt_at = ?, updated_at = ? WHERE action_key = ? AND target_head = ?").run(at, at, actionKey, failure.head);
     let error: string | null = null;
     let url: string | null = null;
     try {
       const run = input.runCommand ?? runHostCommand;
-      const result = run({
-        command: "gh",
-        args: ["issue", "create", "--title", `QA verdict failed only the Operator QA plan: ${actionKey} at ${failure.head.slice(0, 12)}`, "--body", issueBody(actionKey, failure, record)],
-        cwd: input.cwd, timeoutMs: 30_000
-      });
-      if (result.status === 0) url = result.stdout.trim().split("\n").at(-1)?.trim() || "(filed; GitHub returned no URL)";
-      else error = result.error ?? (result.stderr.trim() || `exit ${String(result.status)}`);
+      const repo = repoOfPullRequest(failure.pullRequestUrl);
+      if (!repo) throw new Error("no GitHub repository could be derived from the pull request URL");
+      const marker = issueMarker(actionKey, failure.head);
+      const found = run({ command: "gh", args: ["issue", "list", "--repo", repo, "--state", "all", "--search", `"${marker}" in:body`, "--json", "number,url", "--limit", "1"], cwd: input.cwd, timeoutMs: 30_000 });
+      if (found.status !== 0) throw new Error(found.error ?? (found.stderr.trim() || `gh issue list exit ${String(found.status)}`));
+      const existing = (JSON.parse(found.stdout || "[]") as Array<{ url?: unknown }>)[0]?.url;
+      if (typeof existing === "string") url = existing;
+      else {
+        const result = run({
+          command: "gh",
+          args: ["issue", "create", "--repo", repo, "--title", `QA verdict failed only the Operator QA plan: ${actionKey} at ${failure.head.slice(0, 12)}`, "--body", issueBody(actionKey, failure, record)],
+          cwd: input.cwd, timeoutMs: 30_000
+        });
+        if (result.status === 0) url = result.stdout.trim().split("\n").at(-1)?.trim() || "(filed; GitHub returned no URL)";
+        else error = result.error ?? (result.stderr.trim() || `exit ${String(result.status)}`);
+      }
     } catch (thrown) {
       error = errorMessage(thrown);
     }
@@ -594,7 +689,7 @@ export function independentVerdictGateWithQaPlanWaiver(db: Database.Database, in
   if (base.satisfied || base.code !== "awaiting_independent_verdicts" || base.missing.length !== 1 || base.missing[0] !== "qa: failed") return base;
   const readiness = independentVerdictReadiness(db, input);
   if (!readiness.ready || readiness.binding.targetHead !== base.head) return base;
-  const failure = qaPlanSoleFailure(db, input.session, readiness, readiness.binding.targetHead);
+  const failure = qaPlanSoleFailure(db, input.session, readiness, readiness.binding.targetHead, input.repoRoot);
   if (!failure) return base;
   const code = latestRoleAttempt(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, "code-review");
   if (!code || code.status !== "passed") return base;
@@ -1023,7 +1118,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
       // Operator QA plan is neither rerun nor repaired; the gate reads it as
       // not blocking once the unverified step is recorded.
       if (role === "qa" && sameBinding && latest.status === "failed") {
-        const planOnly = qaPlanSoleFailure(db, session, readiness, head);
+        const planOnly = qaPlanSoleFailure(db, session, readiness, head, repoRoot);
         if (planOnly) {
           ensureQaPlanWaiver(db, { session, failure: planOnly, now, runCommand, cwd: repoRoot, log: input.log });
           continue;
@@ -1114,7 +1209,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
               + `Automatic rerun ${spent + 1} of ${MAX_VARIANCE_REVIEW_ATTEMPTS} follows on a later tick.`
           };
         }
-        const planOnly = role === "qa" ? qaPlanSoleFailure(db, session, readiness, head) : null;
+        const planOnly = role === "qa" ? qaPlanSoleFailure(db, session, readiness, head, repoRoot) : null;
         if (planOnly) {
           ensureQaPlanWaiver(db, { session, failure: planOnly, now, runCommand, cwd: repoRoot, log: input.log });
           return {

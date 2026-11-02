@@ -840,11 +840,11 @@ function hostPullRequest(branch: string, head: string) {
  */
 export type HostModelVerdict = "pass" | "fail" | "not-applicable" | "variance";
 
-function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect", failCriteria: string[] | null = null): QaPrModelVerdict {
+function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect", failCriteria: string[] | null = null, findingSeverity = "blocker", failSummary = "A defect blocks this head."): QaPrModelVerdict {
   return {
     verdict: verdict === "fail" ? "fail" : verdict === "variance" ? "needs-follow-up" : "pass",
-    summary: verdict === "fail" ? "A defect blocks this head." : verdict === "variance" ? "No defect found, but one criterion is not established." : "No defects in the exact head.",
-    findings: verdict === "fail" ? [{ severity: "blocker", title: findingTitle, evidence: "MARKER.md", recommendation: "Fix it." }] : [],
+    summary: verdict === "fail" ? failSummary : verdict === "variance" ? "No defect found, but one criterion is not established." : "No defects in the exact head.",
+    findings: verdict === "fail" ? [{ severity: findingSeverity, title: findingTitle, evidence: "MARKER.md", recommendation: "Fix it." }] : [],
     checks: criteria.map((criterion, index) => ({
       criterion: criterion.id as QaPrModelVerdict["checks"][number]["criterion"],
       name: criterion.name,
@@ -895,7 +895,7 @@ export class FakeGitHub {
   /** Every `gh pr close`. */
   closeCalls: string[] = [];
   /** Every `gh issue create` that succeeded (the QA-plan sole-failure Issue, Decision 0169). */
-  issues: Array<{ title: string; body: string; url: string }> = [];
+  issues: Array<{ title: string; body: string; url: string; repo: string }> = [];
   /** Each entry fails one `gh issue create` with that stderr, in order. */
   issueFailures: string[] = [];
   /**
@@ -928,6 +928,10 @@ export class FakeGitHub {
   verdict: (role: "code-review" | "qa", pr: FakePullRequest | undefined) => HostModelVerdict = () => "pass";
   /** The title of the model's finding on a failed verdict (a model may write any title). */
   findingTitle = "Defect";
+  /** The severity of the model's finding on a failed verdict. */
+  findingSeverity = "blocker";
+  /** The summary of a failed verdict. */
+  failSummary = "A defect blocks this head.";
   /** A non-zero exit simulates reviewer capacity or sandbox trouble. */
   reviewerExit: (role: "code-review" | "qa") => number = () => 0;
   /** One-shot: runs when `gh pr ready` is called, before it takes effect. */
@@ -1079,10 +1083,15 @@ export class FakeGitHub {
       return ok("");
     }
     if (command === "gh" && args[0] === "pr" && args[1] === "merge") return this.merge(args);
+    if (command === "gh" && args[0] === "issue" && args[1] === "list") {
+      // `--search "<marker>" in:body`: the Issues whose body carries the marker.
+      const marker = /^"(.*)" in:body$/.exec(args[args.indexOf("--search") + 1] ?? "")?.[1] ?? "\u0000";
+      return ok(`${JSON.stringify(this.issues.flatMap((issue, index) => issue.body.includes(marker) ? [{ number: 100 + index, url: issue.url }] : []))}\n`);
+    }
     if (command === "gh" && args[0] === "issue" && args[1] === "create") {
       if (this.issueFailures.length > 0) return { status: 1, stdout: "", stderr: this.issueFailures.shift()!, error: null };
       const url = `https://github.com/pmark/rehearsal/issues/${100 + this.issues.length}`;
-      this.issues.push({ title: args[args.indexOf("--title") + 1] ?? "", body: args[args.indexOf("--body") + 1] ?? "", url });
+      this.issues.push({ title: args[args.indexOf("--title") + 1] ?? "", body: args[args.indexOf("--body") + 1] ?? "", url, repo: args[args.indexOf("--repo") + 1] ?? "" });
       return ok(`${url}\n`);
     }
     if (command === "gh" && args[0] === "pr" && args[1] === "close") {
@@ -1123,7 +1132,7 @@ export class FakeGitHub {
       const exit = this.reviewerExit(role);
       if (exit !== 0) return { status: exit, stdout: "", stderr: "reviewer capacity exhausted (simulated)", error: null };
       const criteria = role === "code-review" ? CODE_REVIEW_PR_CRITERIA : QA_PR_REVIEW_CRITERIA;
-      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role, pr), criteria, this.findingTitle, this.failCriteria))}\n`, "utf8");
+      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role, pr), criteria, this.findingTitle, this.failCriteria, this.findingSeverity, this.failSummary))}\n`, "utf8");
       return ok('{"type":"task.completed"}\n');
     }
     return { status: 1, stdout: "", stderr: `Unexpected command: ${command} ${args.join(" ")}`, error: null };
