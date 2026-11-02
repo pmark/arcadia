@@ -1,4 +1,5 @@
 import { writeTransaction } from "../db/connection.js";
+import { recordSessionProposals } from "./sessionProposals.js";
 import { closeSync, existsSync, fstatSync, mkdirSync, openSync, readSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -815,6 +816,10 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
   ensureSessionExitReceiptsTable(db);
   const session = getSession(db, input.sessionId);
   if (!session) throw validationError("The Session to reconcile was not found.", { sessionId: input.sessionId });
+
+  // Issue #1988: record the Session's proposal drafts (kept beside its worktree, outside the
+  // candidate) before the worktree can be retired. Idempotent and best effort; it settles nothing.
+  try { recordSessionProposals(db, session); } catch { /* the draft stays on disk for the next reconciliation */ }
 
   const existing = getSessionExitReceipt(db, session.id);
   if (existing) {
