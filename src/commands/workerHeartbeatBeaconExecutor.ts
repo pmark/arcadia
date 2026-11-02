@@ -1,5 +1,6 @@
 import { fork, type ChildProcess } from "node:child_process";
 import type { WorkerIdentity } from "./worker.js";
+import { PRESERVATION_HEARTBEAT_REFRESH_MS } from "../sessions/transportHeartbeat.js";
 
 export interface HeartbeatBeaconExit {
   code: number | null;
@@ -16,8 +17,9 @@ export interface HeartbeatBeacon {
   onUnexpectedExit(callback: (detail: HeartbeatBeaconExit) => void): void;
 }
 
-/** How often the beacon re-stamps the worker's own liveness record. */
-const BEACON_INTERVAL_MS = 5_000;
+/** How often the beacon re-stamps the worker's own liveness record and the
+ * preservation route heartbeat (which then declares this interval). */
+const BEACON_INTERVAL_MS = PRESERVATION_HEARTBEAT_REFRESH_MS;
 
 /**
  * Starts the out-of-process heartbeat beacon (see `workerHeartbeatBeacon.ts`)
@@ -45,7 +47,8 @@ export function startHeartbeatBeacon(
   const extension = import.meta.url.endsWith(".ts") ? "ts" : "js";
   const child: ChildProcess = fork(
     new URL(`./workerHeartbeatBeacon.${extension}`, import.meta.url),
-    [workspacePath, JSON.stringify(identity), String(parentPid), String(intervalMs)],
+    // The fork time bounds which preservation heartbeat the beacon may re-stamp.
+    [workspacePath, JSON.stringify(identity), String(parentPid), String(intervalMs), String(Date.now())],
     {
       execArgv: extension === "ts" ? ["--import", import.meta.resolve("tsx")] : [],
       stdio: ["ignore", "ignore", "ignore", "ipc"]

@@ -38,6 +38,7 @@ import { probeWorkerCapability } from "../production/sessionCapability.js";
 import { startRedAlertDiagnosisInBackground } from "../production/redAlertDiagnosis.js";
 
 import { TRANSPORT_FRESHNESS_MS, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../sessions/preservationTransport.js";
+import { PRESERVATION_HEARTBEAT_REFRESH_MS } from "../sessions/transportHeartbeat.js";
 import { MANAGED_SESSION_TMUX_PREFIX, tmuxQueryEnv } from "../sessions/index.js";
 import { auditArcadiaLaunchAgents, canonicalWorkspaceIdentity, type LaunchAgentAudit } from "../runtime/launchAgents.js";
 import { startHeartbeatBeacon as defaultStartHeartbeatBeacon, type HeartbeatBeacon } from "./workerHeartbeatBeaconExecutor.js";
@@ -1030,9 +1031,11 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     try { writeWorkerHeartbeat(workspacePath, identity); } catch {}
     // The preservation transport projection is only published on a tick. A tick
     // can block the event loop for minutes, so this loop — and the per-Project
-    // re-stamps inside the tick — keep its freshness window from lapsing.
+    // re-stamps inside the tick — keep its freshness window from lapsing. This
+    // timer shares the tick's event loop; the beacon's own timer is the one a
+    // long synchronous step cannot block.
     try { refreshPreservationHeartbeat(workspacePath); } catch {}
-  }, 5_000);
+  }, PRESERVATION_HEARTBEAT_REFRESH_MS);
   log(logfile, `Worker started (PID: ${process.pid}, workspace: ${workspacePath})`);
 
   const cleanup = () => {

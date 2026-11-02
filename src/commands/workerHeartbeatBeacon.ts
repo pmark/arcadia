@@ -1,5 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+// A leaf module (node:fs/node:path only), so this process stays minimal.
+import { HEARTBEAT_FILE, PRESERVATION_HEARTBEAT_SCHEMA } from "../sessions/transportHeartbeat.js";
 
 /**
  * Runs as its own OS process (forked by `startHeartbeatBeacon`) so the
@@ -73,10 +75,43 @@ function writeHeartbeat(workspacePath: string, identity: Identity): void {
   }
 }
 
-const [workspacePath, identityJson, parentPidRaw, intervalRaw] = process.argv.slice(2);
+/**
+ * Re-stamp the preservation route heartbeat's `at` (and declare this beacon's
+ * own `intervalMs`), leaving every route the worker computed untouched. The
+ * worker's in-process re-stamp shares its event loop with the tick, so a long
+ * synchronous step (live 2026-11-02: ~33s of launch preparation) let the file
+ * age past its limit and the worker's own launch preflight walled itself.
+ *
+ * Only a heartbeat published at or after `notBefore` (this beacon's start) is
+ * touched: a leftover from an earlier worker is never revived. `goRequestsAt`
+ * is never touched, so go readiness still requires a real go pass. The
+ * read-then-rename can, in a microsecond window, write back the previous
+ * routes over a projection the worker just published; the worker's next
+ * publish or re-stamp restores them from its in-memory projection.
+ */
+function restampPreservationHeartbeat(workspacePath: string, notBefore: number, intervalMs: number): void {
+  const target = path.join(workspacePath, HEARTBEAT_FILE);
+  let value: Record<string, unknown>;
+  try {
+    value = JSON.parse(readFileSync(target, "utf8")) as Record<string, unknown>;
+  } catch {
+    return;
+  }
+  if (value.schema !== PRESERVATION_HEARTBEAT_SCHEMA || typeof value.at !== "number" || value.at < notBefore) return;
+  const temporary = `${target}.${process.pid}.beacon.tmp`;
+  writeFileSync(temporary, JSON.stringify({ ...value, at: Date.now(), intervalMs }), "utf8");
+  try {
+    renameSync(temporary, target);
+  } finally {
+    try { unlinkSync(temporary); } catch {}
+  }
+}
+
+const [workspacePath, identityJson, parentPidRaw, intervalRaw, notBeforeRaw] = process.argv.slice(2);
 const identity = JSON.parse(identityJson) as Identity;
 const parentPid = Number(parentPidRaw);
 const intervalMs = Number(intervalRaw);
+const notBefore = Number(notBeforeRaw ?? Date.now());
 
 // Gated on the parent's liveness and the ownership record even for this
 // first write: if this process was slow to start, its parent may already be
@@ -101,4 +136,5 @@ const timer = setInterval(() => {
     process.exit(0);
   }
   try { writeHeartbeat(workspacePath, identity); } catch {}
+  try { restampPreservationHeartbeat(workspacePath, notBefore, intervalMs); } catch {}
 }, intervalMs);
