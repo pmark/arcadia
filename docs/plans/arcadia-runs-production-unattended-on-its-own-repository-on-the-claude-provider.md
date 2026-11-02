@@ -410,11 +410,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1262"]
   - id: pin-worker-merge-allowlist-carve-outs
     title: Pin the worker-merge allowlist's carve-outs with a table-driven test so that widening the allowlist fails a test.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the worker-merge allowlist's carve-outs with a table-driven test so that widening the allowlist fails a test.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-worker-merge-allowlist-carve-outs-d173bcd61b63; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-worker-merge-allowlist-carve-outs
     clarification: clarified
     confidence: high
@@ -452,7 +452,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-worker-merge-allowlist-carve-outs
+current_action: pin-blast-radius-safety-patterns
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
