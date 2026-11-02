@@ -1,13 +1,17 @@
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
 import {
+  FULL_GIT_OID,
   assertReconcilableHistory,
   baseReconciliationCommitMessage,
   countRevisionRange,
   createBaseReconciliationCommit,
   isRecognizedProtectedReconciliation,
-  verifyReconciliationCommit,
-  writeCleanBaseMergeTree
+  verifyReconciliationCommit
 } from "./baseReconcile.js";
 import { git, isAncestor, tryGit } from "./worktrees.js";
 
@@ -22,7 +26,9 @@ import { git, isAncestor, tryGit } from "./worktrees.js";
  * fast-forwards the checkout onto it. It never rewrites or discards a local
  * commit, never pushes, and refuses (leaving the checkout untouched) on any
  * other local-only commit, a dirty tracked file, another checked-out branch,
- * a conflict, or a merged pointer pair that no longer agrees with the Plan.
+ * a conflict outside the pointer lines, or a merged pointer pair that no
+ * longer agrees with the Plan. A conflict confined to `current_action` lines of
+ * PROJECT.md and the active Plan resolves to the remote's value (see planReconcile).
  */
 export type BaseSyncOutcome = "current" | "fast-forwarded" | "reconciled" | "refused";
 
@@ -90,23 +96,7 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
     if (localCommits.length === 0 || foreign.length > 0) {
       refuse(`${baseBranch} has local-only commits that are not pointer commits (${foreign.slice(0, 3).map((c) => c.slice(0, 12)).join(", ")})`);
     }
-    let tree: string;
-    try {
-      tree = writeCleanBaseMergeTree(repoRoot, headBefore, remoteHead);
-    } catch (error) {
-      return refuseResult(headBefore, error);
-    }
-    const coherence = pointerPairProblem(repoRoot, tree);
-    if (coherence) refuse(coherence);
-    const message = baseReconciliationCommitMessage({
-      baseBranch,
-      upstream,
-      localHead: headBefore,
-      remoteHead,
-      mergeBase,
-      localCommits: localCommits.length,
-      remoteCommits: countRevisionRange(repoRoot, `${headBefore}..${remoteHead}`)
-    });
+    const { tree, message } = planReconcile(repoRoot, { baseBranch, upstream, mergeBase, localHead: headBefore, remoteHead, localCommits: localCommits.length });
     const resultHead = createBaseReconciliationCommit({ cwd: repoRoot, tree, localHead: headBefore, remoteHead, message, now: input.now ?? new Date() });
     verifyReconciliationCommit(repoRoot, resultHead, tree, headBefore, remoteHead);
     // Re-check immediately before the only write; nothing may have moved.
@@ -117,6 +107,127 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
     return result("reconciled", headBefore, resultHead, null, localCommits);
   } catch (error) {
     return refuseResult(headBefore, error);
+  }
+}
+
+interface ReconcilePlan {
+  baseBranch: string;
+  upstream: string;
+  mergeBase: string;
+  localHead: string;
+  remoteHead: string;
+  localCommits: number;
+}
+
+const CURRENT_ACTION_LINE = /^current_action\s*:/;
+
+function withoutPointerLines(text: string): string {
+  return text.split("\n").filter((line) => !CURRENT_ACTION_LINE.test(line)).join("\n");
+}
+
+function pointerValue(text: string | null): string {
+  return text?.match(/^current_action\s*:\s*(.*?)\s*$/m)?.[1] ?? "none";
+}
+
+/**
+ * The reconcile tree and commit message for two heads. A clean three-way merge
+ * is used as is. A conflict confined to PROJECT.md and the active Plan, where
+ * the local side changed only `current_action` lines in those files, resolves
+ * to the remote's blobs (the remote settled; the local value is recorded in the
+ * message). Everything else refuses. Deterministic, so a later sync can
+ * recompute it to recognise its own earlier commit.
+ */
+function planReconcile(cwd: string, plan: ReconcilePlan): { tree: string; message: string } {
+  const { localHead, remoteHead, mergeBase } = plan;
+  const baseMessage = baseReconciliationCommitMessage({
+    baseBranch: plan.baseBranch,
+    upstream: plan.upstream,
+    localHead,
+    remoteHead,
+    mergeBase,
+    localCommits: plan.localCommits,
+    remoteCommits: countRevisionRange(cwd, `${localHead}..${remoteHead}`)
+  });
+  const attempt = spawnSync("git", ["merge-tree", "--write-tree", "--name-only", localHead, remoteHead], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const sections = (attempt.stdout ?? "").split("\n\n");
+  const lines = sections[0].split("\n").map((v) => v.trim()).filter(Boolean);
+  if (attempt.status === 0) {
+    if (lines.length !== 1 || !FULL_GIT_OID.test(lines[0])) refuse("git did not return one auditable merge tree");
+    const problem = pointerPairProblem(cwd, lines[0]);
+    if (problem) refuse(problem);
+    return { tree: lines[0], message: baseMessage };
+  }
+  if (attempt.status !== 1 || lines.length < 2 || !FULL_GIT_OID.test(lines[0])) {
+    refuse(`the local ${plan.baseBranch} and ${plan.upstream} could not be merged: ${(attempt.stderr ?? "").trim() || `git exit ${String(attempt.status)}`}`);
+  }
+  const conflicted = lines.slice(1);
+  const allowed = new Set(["PROJECT.md", activePlanPath(cwd, localHead), activePlanPath(cwd, remoteHead)].filter((v): v is string => v !== null));
+  const foreign = conflicted.filter((file) => !allowed.has(file));
+  if (foreign.length > 0) refuse(`the base and ${plan.upstream} conflict outside the pointer documents (${foreign.slice(0, 3).join(", ")})`);
+  const replaced: string[] = [];
+  for (const file of conflicted) {
+    const before = tryGit(cwd, ["show", `${mergeBase}:${file}`]);
+    const local = tryGit(cwd, ["show", `${localHead}:${file}`]);
+    if (before === null || local === null || tryGit(cwd, ["cat-file", "-e", `${remoteHead}:${file}`]) === null) {
+      refuse(`${file} was added or removed, not only re-pointed`);
+    }
+    if (withoutPointerLines(before) !== withoutPointerLines(local)) refuse(`the local commits changed more than current_action in ${file}`);
+    replaced.push(`${file} current_action ${pointerValue(local)}`);
+  }
+  const tree = treeWithRemoteBlobs(cwd, lines[0], remoteHead, conflicted);
+  const problem = pointerPairProblem(cwd, tree);
+  if (problem) refuse(problem);
+  const message = [baseMessage, "", ...replaced.map((entry) => `Pointer-Conflict-Replaced-Local: ${entry}`), "", "Resolved to the remote values because the remote settled the Action."].join("\n");
+  return { tree, message };
+}
+
+/** `tree` with each path's entry replaced by the remote's, through a throwaway index. */
+function treeWithRemoteBlobs(cwd: string, tree: string, remoteHead: string, files: string[]): string {
+  const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-pointer-reconcile-"));
+  const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, "index") };
+  const run = (args: string[]): string => {
+    const out = spawnSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+    if (out.status !== 0) refuse(`could not build the resolved tree: ${(out.stderr ?? "").trim()}`);
+    return out.stdout.trim();
+  };
+  try {
+    run(["read-tree", tree]);
+    for (const file of files) {
+      const entry = /^(\d+) blob ([0-9a-f]+)\t/.exec(run(["ls-tree", remoteHead, "--", file]));
+      if (!entry) refuse(`${file} is not a regular file on the remote`);
+      run(["update-index", "--add", "--cacheinfo", `${entry[1]},${entry[2]},${file}`]);
+    }
+    const resolved = run(["write-tree"]);
+    if (!FULL_GIT_OID.test(resolved)) refuse("git did not return a resolved tree");
+    return resolved;
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+/** A conflict-resolving reconcile this module wrote earlier: recomputed from its parents, byte for byte. */
+function isRecognizedResolvedReconciliation(
+  cwd: string,
+  commit: string,
+  parents: string[],
+  message: string,
+  context: { baseBranch: string; upstream: string; remoteHead: string }
+): boolean {
+  if (parents.length !== 2 || !isAncestor(cwd, parents[1], context.remoteHead)) return false;
+  const mergeBases = tryGit(cwd, ["merge-base", "--all", parents[0], parents[1]])?.split("\n").map((v) => v.trim()).filter(Boolean) ?? [];
+  if (mergeBases.length !== 1 || !FULL_GIT_OID.test(mergeBases[0])) return false;
+  try {
+    const planned = planReconcile(cwd, {
+      baseBranch: context.baseBranch,
+      upstream: context.upstream,
+      mergeBase: mergeBases[0],
+      localHead: parents[0],
+      remoteHead: parents[1],
+      localCommits: countRevisionRange(cwd, `${parents[1]}..${parents[0]}`)
+    });
+    return planned.message === message.trimEnd() && planned.tree === tryGit(cwd, ["show", "-s", "--format=%T", commit]);
+  } catch {
+    return false;
   }
 }
 
@@ -138,7 +249,7 @@ function isOwnPointerCommit(cwd: string, commit: string, context: { baseBranch: 
   const subject = message.split(/\r?\n/, 1)[0];
   // A reconcile this function (or `arcadia go`) wrote earlier and never pushed.
   if (subject === `chore(arcadia): reconcile ${context.baseBranch} with ${context.upstream}`) {
-    return isRecognizedProtectedReconciliation(cwd, commit, parents, message, context);
+    return isRecognizedProtectedReconciliation(cwd, commit, parents, message, context) || isRecognizedResolvedReconciliation(cwd, commit, parents, message, context);
   }
   if (parents.length !== 1 || !POINTER_SUBJECT.test(subject)) return false;
   const paths = git(cwd, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit]).split("\0").filter(Boolean);

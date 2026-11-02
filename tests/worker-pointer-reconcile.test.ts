@@ -29,7 +29,7 @@ function projectDoc(current: string): string {
   return `---\narcadia: v1\ntype: project\nslug: fixture\nactive_plan: plan-x\ncurrent_action: ${current}\n---\n\n# Fixture\n`;
 }
 
-function planDoc(current: string, done: string[] = ["a1"]): string {
+function planDoc(current: string, done: string[] = []): string {
   const status = (id: string) => (done.includes(id) ? "done" : "open");
   return `---\narcadia: v1\ntype: plan\nslug: plan-x\nactions:\n${["a1", "a2", "a3"].map((id) => `  - id: ${id}\n    status: ${status(id)}\n`).join("")}current_action: ${current}\n---\n\n# Plan\n`;
 }
@@ -187,13 +187,42 @@ describe("a local base ahead only by its own pointer commits", () => {
       expectRefused(/checkout is on elsewhere, not main/);
     });
 
-    it("a conflict", () => {
+    it("a conflicting pointer that leaves the merged pair disagreeing", () => {
       pointer(repo, "a2");
-      // The remote moved the same pointer line somewhere else.
+      // The remote moved only PROJECT.md's pointer: resolving to it would split the pair.
       writeDoc(other, "PROJECT.md", projectDoc("a3"));
       commitAll(other, "remote pointer");
       git(other, ["push", "-q", "origin", "main"]);
-      expectRefused(/reconcile cleanly|conflict/i);
+      expectRefused(/disagrees with its Plan/);
+    });
+
+    it("a conflicting pointer whose remote value names a done Action", () => {
+      pointer(repo, "a2");
+      squashedPointer("a3", ["a1", "a2", "a3"]);
+      expectRefused(/already done/);
+    });
+
+    it("a conflicting pointer whose remote value names no Action of the Plan", () => {
+      pointer(repo, "a2");
+      squashedPointer("zz", ["a1", "a2"]);
+      expectRefused(/not an Action/);
+    });
+
+    it("a pointer commit that also changed a non-pointer line, when the pointer conflicts", () => {
+      writeDoc(repo, "PROJECT.md", `${projectDoc("a2")}\nLocal prose.\n`);
+      writeDoc(repo, PLAN, planDoc("a2", []));
+      commitAll(repo, "chore(arcadia): point at a2");
+      squashedPointer("a3", ["a1", "a2"]);
+      expectRefused(/changed more than current_action in PROJECT.md/);
+    });
+
+    it("a conflict in another file", () => {
+      writeDoc(repo, "PROJECT.md", projectDoc("a2"));
+      writeDoc(repo, PLAN, planDoc("a2", []));
+      writeDoc(repo, "docs/reports/merged.md", "local edit\n");
+      commitAll(repo, "chore(arcadia): point at a2");
+      remoteAdvances();
+      expectRefused(/not pointer commits/);
     });
   });
 
@@ -216,12 +245,34 @@ describe("a local base ahead only by its own pointer commits", () => {
     expect(readFileSync(path.join(repo, PLAN), "utf8")).toContain("current_action: a2");
   });
 
-  it("records the open shape: local point at a2, remote squash settled a2 and moved to a3", () => {
-    pointer(repo, "a2");
+  it("resolves a conflicting pointer to the remote's settled value and keeps everything else the remote changed", () => {
+    const pointerCommit = pointer(repo, "a2");
+    // The remote squash settled a2 (status done), moved the pointer to a3, and added a report.
+    writeDoc(other, "docs/reports/merged.md", "settled elsewhere\n");
     squashedPointer("a3", ["a1", "a2"]);
+    const remoteBefore = originMain();
+
     const result = sync();
-    // Both sides changed the same current_action lines from a1 to different values.
-    expect(result).toMatchObject({ outcome: "refused", reason: expect.stringMatching(/reconcile cleanly/) });
+
+    expect(result).toMatchObject({ outcome: "reconciled", pointerCommits: [pointerCommit] });
+    // Exactly the remote's blobs: pointer, the settled status and the other file all come through.
+    for (const file of ["PROJECT.md", PLAN, "docs/reports/merged.md"]) {
+      expect(git(repo, ["rev-parse", `HEAD:${file}`]).trim()).toBe(git(origin, ["rev-parse", `main:${file}`]).trim());
+    }
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: a3");
+    expect(readFileSync(path.join(repo, PLAN), "utf8")).toMatch(/id: a2\n\s+status: done/);
+    // Local history is kept, the replaced local value is visible, nothing is pushed.
+    expect(git(repo, ["rev-parse", "HEAD^1"]).trim()).toBe(pointerCommit);
+    const message = git(repo, ["show", "-s", "--format=%B", "HEAD"]);
+    expect(message).toContain("Pointer-Conflict-Replaced-Local: PROJECT.md current_action a2");
+    expect(message).toContain(`Pointer-Conflict-Replaced-Local: ${PLAN} current_action a2`);
+    expect(originMain()).toBe(remoteBefore);
+    expect(git(repo, ["status", "--porcelain"])).toBe("");
+    // A replay is a no-op, and the resolved reconcile is recognised as ours when the remote advances again.
+    expect(sync()).toMatchObject({ outcome: "current" });
+    remoteAdvances("docs/reports/later.md", "later\n");
+    expect(sync()).toMatchObject({ outcome: "reconciled" });
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: a3");
   });
 
   it("keeps an identical pointer move the remote also made when the Action is still open", () => {
