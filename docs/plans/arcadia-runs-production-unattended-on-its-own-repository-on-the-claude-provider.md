@@ -513,11 +513,11 @@ actions:
     references: ["docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
   - id: headless-session-resolves-arcadia-cli
     title: A headless Session launched by the worker can resolve the arcadia command its allow list permits, from a host-resolved location.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A headless Session launched by the worker can resolve the arcadia command its allow list permits, from a host-resolved location.
+    next_action: Completed via Agent Ask complete-headless-session-resolves-arcadia-cli-20261102; no further action.
     expected_artifact: Evidence satisfying Agent Ask headless-session-resolves-arcadia-cli
     clarification: clarified
     confidence: high
