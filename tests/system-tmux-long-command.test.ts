@@ -203,7 +203,8 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
         name,
         cwd: root,
         command: process.execPath,
-        args: [provider, "--print", LONG_BRIEF]
+        args: [provider, "--print", LONG_BRIEF],
+        hostHome: path.join(root, "home")
         // No launcherDirectory specified - should use temporary directory that is cleaned up
       });
     } finally {
