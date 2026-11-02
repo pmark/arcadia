@@ -224,6 +224,13 @@ sources:
     retention: repo
     path: probes/local-model-1.md
     sha256: 85b0be44f4d5bd23b8287b5ca7bec26d81408ec07dac3b383c693ca8cbbfa1e5
+  - id: S016
+    title: Local model probe 2 and bake-off protocol
+    kind: agent
+    added: 2026-11-02
+    retention: repo
+    path: probes/local-model-2.md
+    sha256: ef2e4d768abe4e84694fe95f674f2f6d645fc0ba5cb32d4e9aabddc5849e8992
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -2485,6 +2492,24 @@ concepts:
     serves:
       - REQ-014
     reason: It's a single template today, and its approval excludes push, merge and production.
+  - id: C-046
+    title: Tuned bake-off before naming a best model
+    kind: mechanism
+    statement: Compare candidate local models only after the same tuning, on prompts written by a separate author, judged blind, through the live path at realistic load, and choose the smallest model that meets the operator's budgets. Prompt tuning moved routing more than model choice did in a small test.
+    origins:
+      - source: S016
+        locator: The bake-off
+      - source: S014
+        locator: whole file
+    fit:
+      status: partial
+      evidence:
+        - docs/design/relay/probes/local-model-2.md
+    position: leaning
+    serves:
+      - REQ-013
+      - REQ-010
+    reason: The operator asked for the best models, tuned and optimized, and no independent comparison exists.
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?
