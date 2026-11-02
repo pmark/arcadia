@@ -1729,12 +1729,18 @@ prints the record's `record_hash`. Exit 0 means no problems; otherwise it fails 
   choices, verified or accepted risk, independent current scrutiny).
 - `--matrix` prints the derived shared, differentiated, choices, trace and cut-or-later
   views. They are computed on each run and never stored.
-- Paths stay inside their root (the record's directory, the Project root found by the
-  nearest `PROJECT.md`, or the workspace); an absolute path, a `..` escape or a
-  symlink that leaves it is a problem.
+- A record must be at `<project root>/docs/design/<slug>/record.yaml` with `PROJECT.md`
+  at the project root; a `PROJECT.md` anywhere else does not count. Paths stay inside
+  their root (the record's directory, the project root, or the workspace); an
+  absolute path, a `..` escape or a symlink that leaves it is a problem.
+- Mission `file` is exactly `PROJECT.md`, `CONSTITUTION.md` or `NORTH_STAR.md`, and a
+  quote has at least 20 non-whitespace characters. `--ready` also resolves each
+  `confirmed_ref` and `decision_ref` to an approved `docs/decisions/NNNN-*.md` or an
+  operator `repo` source, and requires each review report to contain its hash.
 - A `workspace` source is verified only when a workspace directory resolves (the
   flag, then the normal resolver) and the file exists there; otherwise it is a
-  warning, never a failure. A present file with a different hash is a problem.
+  warning, and a problem under `--ready`. A present file with a different hash is a
+  problem.
 - It opens no database and writes nothing, including no activity record.
 
 ## Dispose A Failed Recovery Successor With No Recorded Start
