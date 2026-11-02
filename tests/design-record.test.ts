@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -16,7 +16,8 @@ afterEach(() => {
 });
 
 const sha = (text: string): string => createHash("sha256").update(text).digest("hex");
-const MISSION = "The Project keeps momentum with minimal operator attention.";
+const QUOTE = "keeps momentum with minimal operator attention";
+const MISSION = `The Project ${QUOTE}.`;
 const SOURCE_TEXT = "The operator's notes.\n";
 const WORKSPACE_TEXT = "A pasted vendor plan.\n";
 
@@ -33,6 +34,10 @@ function fixture(): Fixture {
     mkdirSync(directory, { recursive: true });
   }
   writeFileSync(path.join(project, "PROJECT.md"), `# Demo\n\n${MISSION}\n`);
+  mkdirSync(path.join(project, "docs", "decisions"), { recursive: true });
+  for (const [number, status] of [["0200", "approved"], ["0201", "approved"], ["0202", "approved"], ["0203", "approved"], ["0204", "rejected"]]) {
+    writeFileSync(path.join(project, "docs", "decisions", `${number}-demo.md`), `---\narcadia: v1\ntype: decision\nid: "${number}"\nstatus: ${status}\n---\n\n# Decision ${number}\n`);
+  }
   writeFileSync(path.join(project, "src", "example.ts"), "export const x = 1;\n");
   writeFileSync(path.join(dir, "sources", "S001.md"), SOURCE_TEXT);
   writeFileSync(path.join(dir, "reviews", "R1.md"), "review one\n");
@@ -54,7 +59,7 @@ function baseRecord(): Obj {
       outcome: "One sentence outcome.",
       milestone: "One sentence milestone.",
       experience_target: "The moment it is judged against.",
-      mission: [{ id: "M1", file: "PROJECT.md", quote: "keeps momentum" }],
+      mission: [{ id: "M1", file: "PROJECT.md", quote: QUOTE }],
       requirements: [{ id: "REQ-001", statement: "An observable behavior.", mission: ["M1"], proof: "The focused test." }],
       non_goals: ["Something excluded."]
     },
@@ -93,15 +98,24 @@ function write(fx: Fixture, record: Obj, finalize = true): void {
     const hash = recordHash(record);
     for (const review of record.scrutiny ?? []) if (review.record_hash === "CURRENT") review.record_hash = hash;
   }
+  // A review report states the hash it reviewed; several reviews may share one file.
+  const stated = new Map<string, string[]>();
+  for (const review of record.scrutiny ?? []) {
+    if (/^reviews\/R\d\.md$/.test(review.path) && typeof review.record_hash === "string") stated.set(review.path, [...(stated.get(review.path) ?? []), review.record_hash]);
+  }
+  for (const [relative, hashes] of stated) {
+    if (existsSync(path.join(fx.dir, relative))) writeFileSync(path.join(fx.dir, relative), `Reviewed record_hash:\n${hashes.join("\n")}\n`);
+  }
   writeFileSync(fx.record, stringifyYaml(record));
 }
 
-interface RunOptions { ready?: boolean; matrix?: boolean; workspace?: string | null; keepHashes?: boolean; }
+interface RunOptions { ready?: boolean; matrix?: boolean; workspace?: string | null; keepHashes?: boolean; after?: (fx: Fixture) => void; }
 function run(mutate: (record: Obj, fx: Fixture) => void = () => undefined, options: RunOptions = {}): DesignCheckResult {
   const fx = fixture();
   const record = baseRecord();
   mutate(record, fx);
   write(fx, record, !options.keepHashes);
+  options.after?.(fx);
   return checkDesignFile(fx.record, {
     ready: options.ready, matrix: options.matrix,
     workspace: options.workspace === undefined ? fx.workspace : options.workspace
@@ -134,12 +148,14 @@ describe("a valid design record", () => {
     expect(result.problems.length).toBeGreaterThanOrEqual(3);
   });
 
-  it("reads no workspace and writes nothing", () => {
+  it("writes nothing, with a workspace or without one", () => {
     const fx = fixture();
     write(fx, baseRecord());
     const snapshot = (): string[] => (readdirSync(fx.root, { recursive: true }) as string[]).sort().map((entry) => `${entry}:${statSync(path.join(fx.root, entry)).mtimeMs}`);
     const before = snapshot();
     checkDesignFile(fx.record, { ready: true, matrix: true, workspace: fx.workspace });
+    checkDesignFile(fx.record, { ready: true, matrix: true, workspace: null });
+    checkDesignFile(fx.record, { ready: true, matrix: true });
     expect(snapshot()).toEqual(before);
   });
 });
@@ -174,7 +190,7 @@ describe("paths", () => {
   it("refuses a fit.evidence or mission file that escapes the Project", () => {
     expectProblem(run((r) => { r.concepts[0].fit.evidence = ["../outside.ts"]; }), /fit\.evidence "\.\.\/outside\.ts" escapes/);
     expectProblem(run((r) => { r.concepts[0].fit.evidence = ["/etc/hosts"]; }), /fit\.evidence "\/etc\/hosts" is an absolute path/);
-    expectProblem(run((r) => { r.frame.mission[0].file = "../PROJECT.md"; }), /escapes its directory/);
+    expectProblem(run((r) => { r.frame.mission[0].file = "../PROJECT.md"; }), /must be exactly PROJECT\.md/);
   });
 
   it("reports a missing fit.evidence file", () => {
@@ -191,13 +207,58 @@ describe("paths", () => {
     }), /outside its directory/);
   });
 
-  it("reports a missing project root for mission and fit checks", () => {
+  it("reports a workspace reached through a symlink or missing without throwing", () => {
+    const link = (fx: Fixture): string => {
+      const target = path.join(fx.root, "workspace-link");
+      symlinkSync(fx.workspace, target);
+      return target;
+    };
     const fx = fixture();
-    rmSync(path.join(fx.project, "PROJECT.md"));
     write(fx, baseRecord());
+    expect(checkDesignFile(fx.record, { ready: true, workspace: link(fx) }).problems).toEqual([]);
+    const missing = checkDesignFile(fx.record, { workspace: path.join(fx.root, "no-such-workspace") });
+    expect(missing.problems).toEqual([]);
+    expect(missing.warnings.join("\n")).toMatch(/S003.*not verified/);
+  });
+});
+
+describe("the project root", () => {
+  function moved(place: (fx: Fixture) => string, remove = false): DesignCheckResult {
+    const fx = fixture();
+    write(fx, baseRecord());
+    const target = place(fx);
+    mkdirSync(path.dirname(target), { recursive: true });
+    writeFileSync(target, readFileSync(fx.record));
+    if (remove) rmSync(fx.record);
+    return checkDesignFile(target, { workspace: fx.workspace });
+  }
+
+  it("requires <root>/docs/design/<slug>/record.yaml with PROJECT.md at the root", () => {
+    expectProblem(moved((fx) => path.join(fx.project, "record.yaml")), /must be at <project root>\/docs\/design\/<slug>\/record\.yaml/);
+    expectProblem(moved((fx) => path.join(fx.project, "docs", "record.yaml")), /must be at <project root>/);
+    expectProblem(moved((fx) => path.join(fx.project, "docs", "design", "demo", "notes.yaml")), /must be at <project root>/);
+    expectProblem(moved((fx) => path.join(fx.project, "docs", "design", "a", "b", "record.yaml")), /must be at <project root>/);
+    const fx = fixture();
+    write(fx, baseRecord());
+    rmSync(path.join(fx.project, "PROJECT.md"));
     const result = checkDesignFile(fx.record, { workspace: fx.workspace });
-    expectProblem(result, /no PROJECT\.md was found/);
-    expect(result.problems.filter((problem) => /no PROJECT\.md/.test(problem))).toHaveLength(1);
+    expectProblem(result, /must be at <project root>/);
+    expect(result.problems.filter((problem) => /must be at <project root>/.test(problem))).toHaveLength(1);
+  });
+
+  it("does not use a PROJECT.md planted elsewhere as the root", () => {
+    const fx = fixture();
+    write(fx, baseRecord());
+    rmSync(path.join(fx.project, "PROJECT.md"));
+    writeFileSync(path.join(fx.dir, "PROJECT.md"), `${MISSION}\n`);
+    expectProblem(checkDesignFile(fx.record, { workspace: fx.workspace }), /must be at <project root>/);
+    const nested = fixture();
+    write(nested, baseRecord());
+    const inner = path.join(nested.project, "sub", "docs", "design", "x", "record.yaml");
+    mkdirSync(path.dirname(inner), { recursive: true });
+    writeFileSync(inner, readFileSync(nested.record));
+    // sub/ has no PROJECT.md of its own, so the PROJECT.md two levels up does not count.
+    expectProblem(checkDesignFile(inner, { workspace: nested.workspace }), /must be at <project root>/);
   });
 });
 
@@ -291,7 +352,7 @@ describe("ids and references", () => {
 
 describe("mission quotes", () => {
   it("rejects a quote that is not in the file", () => {
-    expectProblem(run((r) => { r.frame.mission[0].quote = "an invented line"; }), /quote does not appear exactly in PROJECT\.md/);
+    expectProblem(run((r) => { r.frame.mission[0].quote = "an invented line of mission text"; }), /quote does not appear exactly in PROJECT\.md/);
   });
 
   it("rejects an empty or whitespace-only quote", () => {
@@ -300,13 +361,39 @@ describe("mission quotes", () => {
   });
 
   it("matches exactly: a whitespace or case difference fails", () => {
-    expectProblem(run((r) => { r.frame.mission[0].quote = "keeps  momentum"; }), /does not appear exactly/);
-    expectProblem(run((r) => { r.frame.mission[0].quote = "Keeps momentum"; }), /does not appear exactly/);
-    expectProblem(run((r) => { r.frame.mission[0].quote = "keeps\nmomentum"; }), /does not appear exactly/);
+    expectProblem(run((r) => { r.frame.mission[0].quote = QUOTE.replace("keeps momentum", "keeps  momentum"); }), /does not appear exactly/);
+    expectProblem(run((r) => { r.frame.mission[0].quote = QUOTE.replace("keeps", "Keeps"); }), /does not appear exactly/);
+    expectProblem(run((r) => { r.frame.mission[0].quote = QUOTE.replace("keeps momentum", "keeps\nmomentum"); }), /does not appear exactly/);
   });
 
-  it("rejects a mission file that is missing", () => {
-    expectProblem(run((r) => { r.frame.mission[0].file = "NOPE.md"; }), /does not exist in the Project/);
+  it("accepts only PROJECT.md, CONSTITUTION.md or NORTH_STAR.md, with exact case", () => {
+    expectProblem(run((r) => { r.frame.mission[0].file = "docs/design/demo/record.yaml"; r.frame.mission[0].quote = "schema: arcadia-design-record-v1"; }), /must be exactly PROJECT\.md, CONSTITUTION\.md or NORTH_STAR\.md/);
+    expectProblem(run((r) => { r.frame.mission[0].file = "project.md"; }), /must be exactly PROJECT\.md/);
+    expectProblem(run((r) => { r.frame.mission[0].file = "./PROJECT.md"; }), /must be exactly PROJECT\.md/);
+    expectProblem(run((r) => { r.frame.mission[0].file = "src/example.ts"; }), /must be exactly PROJECT\.md/);
+  });
+
+  it("does not take a mission file from a PROJECT.md planted in the design directory", () => {
+    expectProblem(run((r, fx) => {
+      writeFileSync(path.join(fx.dir, "PROJECT.md"), "A planted file with a very long invented quote inside it.\n");
+      r.frame.mission[0].quote = "A planted file with a very long invented quote";
+    }), /quote does not appear exactly in PROJECT\.md/);
+  });
+
+  it("accepts a CONSTITUTION.md quote and reports a missing allowed file", () => {
+    expect(run((r, fx) => {
+      writeFileSync(path.join(fx.project, "CONSTITUTION.md"), "Authority stays with the operator at every step.\n");
+      r.frame.mission[0].file = "CONSTITUTION.md";
+      r.frame.mission[0].quote = "Authority stays with the operator";
+    }).problems).toEqual([]);
+    expectProblem(run((r) => { r.frame.mission[0].file = "NORTH_STAR.md"; }), /file "NORTH_STAR\.md" does not exist in the Project/);
+  });
+
+  it("requires at least 20 non-whitespace characters in a quote", () => {
+    expectProblem(run((r) => { r.frame.mission[0].quote = "P"; }), /at least 20 non-whitespace characters/);
+    expectProblem(run((r) => { r.frame.mission[0].quote = "The Project keeps"; }), /at least 20 non-whitespace characters/);
+    expectProblem(run((r) => { r.frame.mission[0].quote = "a b c d e f g h i j k"; }), /at least 20 non-whitespace/);
+    expect(run((r) => { r.frame.mission[0].quote = "The Project keeps momentum"; }).problems).toEqual([]);
   });
 });
 
@@ -335,6 +422,15 @@ describe("positions", () => {
 describe("rights and pointers", () => {
   it("rejects a pointer missing revision", () => {
     expectProblem(run((r) => { delete r.sources[1].revision; }), /pointer source needs revision/);
+  });
+
+  it("accepts only an http or https url with no embedded credentials", () => {
+    expectProblem(run((r) => { r.sources[1].url = "https://user:pw@host.example/x"; }), /must be an http or https URL with no embedded username or password/);
+    expectProblem(run((r) => { r.sources[1].url = "https://user@host.example/x"; }), /no embedded username or password/);
+    expectProblem(run((r) => { r.sources[1].url = "file:///etc/passwd"; }), /must be an http or https URL/);
+    expectProblem(run((r) => { r.sources[1].url = "ssh://host.example/x"; }), /must be an http or https URL/);
+    expectProblem(run((r) => { r.sources[1].url = "not a url"; }), /must be an http or https URL/);
+    expect(run((r) => { r.sources[1].url = "http://host.example/x"; }).problems).toEqual([]);
   });
 });
 
@@ -416,6 +512,49 @@ describe("the ready gate", () => {
   });
 });
 
+describe("authority references", () => {
+  it("accepts an approved Decision and an operator repo source", () => {
+    expect(ready((r) => { r.choices[0].decision_ref = "S001"; r.frame.confirmed_ref = "S001"; }).problems).toEqual([]);
+  });
+
+  it("rejects an unknown, rejected or malformed Decision, in every place a reference appears", () => {
+    expectProblem(ready((r) => { r.frame.confirmed_ref = "Decision 0999"; }), /confirmed_ref: "Decision 0999" does not resolve: no docs\/decisions\/0999-\*\.md/);
+    expectProblem(ready((r) => { r.choices[0].decision_ref = "Decision 0204"; }), /"Decision 0204" is not approved: status is "rejected"/);
+    expectProblem(ready((r) => { r.riskiest_assumption.status = "accepted_risk"; r.riskiest_assumption.decision_ref = "Decision 0999"; }), /riskiest_assumption\.decision_ref: "Decision 0999"/);
+    expectProblem(ready((r) => { r.scrutiny[1].findings = [{ id: "R2-F1", severity: "blocking", summary: "Bad.", disposition: "accepted_risk", decision_ref: "Decision 0204" }]; }), /R2\/R2-F1\.decision_ref: "Decision 0204"/);
+    expectProblem(ready((r) => { r.choices[0].decision_ref = "Decision 200"; }), /"Decision 200" must be "Decision NNNN" or an operator source/);
+  });
+
+  it("rejects a source that is not an operator repo source, or is unknown", () => {
+    expectProblem(ready((r) => { r.choices[0].decision_ref = "S002"; }), /S002.*kind operator with retention repo/);
+    expectProblem(ready((r) => { r.sources[0].retention = "workspace"; r.sources[0].workspace_path = "design-sources/demo/S003.md"; r.sources[0].path = undefined; r.choices[0].decision_ref = "S001"; }), /S001.*kind operator with retention repo/);
+    expectProblem(ready((r) => { r.choices[0].decision_ref = "S099"; }), /S099.*unknown source/);
+  });
+
+  it("rejects free text", () => {
+    expectProblem(ready((r) => { r.frame.confirmed_ref = "the operator said yes"; }), /confirmed_ref: "the operator said yes" must be/);
+    expectProblem(ready((r) => { r.choices[0].decision_ref = "Decision 0201 approved"; }), /must be "Decision NNNN"/);
+  });
+
+  it("is not applied without --ready", () => {
+    expect(run((r) => { r.frame.confirmed_ref = "free text"; r.choices[0].decision_ref = "Decision 0999"; }).problems).toEqual([]);
+  });
+
+  it("rejects a Decision whose file has no approved frontmatter", () => {
+    expectProblem(ready((r, fx) => { writeFileSync(path.join(fx.project, "docs", "decisions", "0205-bare.md"), "# no frontmatter\n"); r.choices[0].decision_ref = "Decision 0205"; }), /Decision 0205.*status is/);
+  });
+});
+
+describe("--ready and the workspace source", () => {
+  it("fails when the workspace source was not verified, and only warns otherwise", () => {
+    expectProblem(ready(undefined, { workspace: null }), /S003.*not verified/);
+    expectProblem(ready((r) => { r.sources[2].workspace_path = "design-sources/demo/absent.md"; }), /absent\.md.*not verified/);
+    const structural = run(undefined, { workspace: null });
+    expect(structural.problems).toEqual([]);
+    expect(structural.warnings.join("\n")).toMatch(/not verified/);
+  });
+});
+
 describe("scrutiny", () => {
   it("does not count a review of a stale hash toward lens coverage", () => {
     const result = ready((r) => { r.scrutiny[1].record_hash = sha("an earlier record"); });
@@ -433,6 +572,11 @@ describe("scrutiny", () => {
     expectProblem(ready((r) => { r.scrutiny[0].reviewer = "critic claudia atlas"; }), /is one of the authors/);
     expectProblem(ready((r) => { r.scrutiny[0].reviewer = "CLAUDIA   ATLAS"; }), /is one of the authors/);
     expectProblem(ready((r) => { r.authors = ["Critic Cody Mason"]; }), /is one of the authors/);
+    expectProblem(ready((r) => { r.scrutiny[0].reviewer = "Critic: Claudia Atlas"; }), /is one of the authors/);
+    expectProblem(ready((r) => { r.scrutiny[0].reviewer = "critic claudia atlas,"; }), /is one of the authors/);
+    expectProblem(ready((r) => { r.scrutiny[0].reviewer = "(Critic) Claudia Atlas."; }), /is one of the authors/);
+    expectProblem(ready((r) => { r.scrutiny[0].reviewer = "Claudia Atlas (critic)"; }), /is one of the authors/);
+    expect(ready((r) => { r.scrutiny[0].reviewer = "Claudia Atlasson"; }).problems).toEqual([]);
   });
 
   it("rejects a review that is not independent", () => {
@@ -451,6 +595,28 @@ describe("scrutiny", () => {
     const mutate = (r: Obj): void => { r.scrutiny[0].path = "reviews/missing.md"; };
     expectProblem(ready(mutate), /review file "reviews\/missing\.md" does not exist/);
     expect(run(mutate).problems).toEqual([]);
+  });
+
+  it("requires a review report to be a file that contains its record_hash", () => {
+    expectProblem(ready((r) => { r.scrutiny[0].path = "reviews"; }), /path "reviews" is not a regular file/);
+    expectProblem(ready(() => undefined, { after: (fx) => writeFileSync(path.join(fx.dir, "reviews", "R1.md"), "no hash here\n") }), /does not contain its record_hash/);
+    expect(run((r) => { r.scrutiny[0].path = "reviews"; }).problems).toEqual([]);
+  });
+
+  it("counts an accepted risk only from an independent, non-author, non-hold review", () => {
+    const accept = (extra: Obj = {}) => (r: Obj): void => {
+      r.concepts[0].verification = undefined;
+      r.scrutiny[1].findings = [{ id: "R2-F1", severity: "note", summary: "Fine.", disposition: "fixed" }];
+      r.scrutiny.push({ id: "R3", path: "reviews/R1.md", reviewer: "Cody Mason", independent_of_authors: true, lenses: ["mission"], record_hash: sha("older"), verdict: "pass", ...extra,
+        findings: [{ id: "R3-F1", severity: "blocking", summary: "Unproven.", concepts: ["C-001"], disposition: "accepted_risk", decision_ref: "Decision 0202" }] });
+    };
+    const covered = /C-001: a load-bearing concept must be verified/;
+    expect(ready(accept()).problems).toEqual([]);
+    expectProblem(ready(accept({ independent_of_authors: false, verdict: "hold" })), covered);
+    expectProblem(ready(accept({ independent_of_authors: false })), covered);
+    expectProblem(ready(accept({ reviewer: "Critic: Claudia Atlas" })), covered);
+    expectProblem(ready(accept({ verdict: "hold" })), covered);
+    expectProblem(ready(accept({ verdict: "incomplete" })), covered);
   });
 
   it("fails on a blocking finding that is open or declined, even in a stale review", () => {
@@ -558,6 +724,12 @@ describe("the matrix", () => {
   });
 });
 
+function cyclic(): Obj {
+  const loop: Obj = { schema: "arcadia-design-record-v1" };
+  loop.self = loop;
+  return loop;
+}
+
 describe("yaml", () => {
   function raw(content: string, name = "record.yaml"): DesignCheckResult {
     const fx = fixture();
@@ -590,6 +762,15 @@ describe("yaml", () => {
       lines.push(`${next}: &${next} [${Array.from({ length: 10 }, () => `*${previous}`).join(", ")}]`);
     }
     expectProblem(raw(lines.join("\n") + "\n"), /^yaml:.*alias/i);
+  });
+
+  it("reports a self-referential alias as a problem, not a crash", () => {
+    expectProblem(raw("a: &a { b: *a }\n"), /^yaml:.*self-referential/);
+    expectProblem(raw("schema: arcadia-design-record-v1\ndesign: &d { again: *d }\n"), /^yaml:.*self-referential/);
+    expectProblem(raw("schema: arcadia-design-field-guide-v1\nfield: record\nentries: &e [ *e ]\n", "record.yaml"), /^yaml:.*self-referential/);
+    expect(() => recordHash(cyclic())).toThrow(/self-referential/);
+    // A shared, non-cyclic alias is fine.
+    expect(raw("a: &a { b: 1 }\nc: *a\nd: *a\n").problems.join("\n")).not.toMatch(/self-referential/);
   });
 
   it("reports a missing or unreadable file as a problem", () => {
@@ -655,6 +836,11 @@ describe("field guides", () => {
     expectProblem(checkGuide((g) => { g.frameworks[0].id = "E1"; }), /duplicate id E1/);
     expectProblem(checkGuide((g) => { g.review = { date: "2026-12-01" }; }), /review\.by: by is required/);
     expect(checkGuide((g) => { g.review = { date: "2026-12-01", by: "Mark", ref: "PR 1" }; }).problems).toEqual([]);
+  });
+
+  it("rejects a review dated before the content it reviews", () => {
+    expectProblem(checkGuide((g) => { g.review = { date: "2026-10-01", by: "Mark", ref: "PR 1" }; }), /review\.date: .*earlier than review_date/);
+    expect(checkGuide((g) => { g.review = { date: g.review_date, by: "Mark", ref: "PR 1" }; }).problems).toEqual([]);
   });
 
   it("notes that --ready and --matrix do not apply to a guide", () => {
@@ -742,7 +928,7 @@ describe("arcadia design check (CLI)", () => {
   it("warns, and still passes, when --workspace names a directory that does not exist", () => {
     const fx = fixture();
     write(fx, baseRecord());
-    const result = cli([fx.record, "--ready", "--json", "--workspace", path.join(fx.root, "no-such-workspace")], fx);
+    const result = cli([fx.record, "--json", "--workspace", path.join(fx.root, "no-such-workspace")], fx);
     expect(result.status, result.stderr).toBe(0);
     const json = parseJson(result.stdout);
     expect(json.data.problems).toEqual([]);

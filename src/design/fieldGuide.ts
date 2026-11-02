@@ -24,6 +24,9 @@ export function checkFieldGuide(data: Obj, fileName: string): Findings {
     if (!isObj(data.review)) f.problem("review", "review must be null or a mapping with date, by and ref.");
     else {
       if (!isDate(data.review.date)) f.problem("review.date", "date is required and must be a YYYY-MM-DD date.");
+      if (isDate(data.review.date) && isDate(data.review_date) && (data.review.date as string) < (data.review_date as string)) {
+        f.problem("review.date", `${String(data.review.date)} is earlier than review_date ${String(data.review_date)}; revised content needs a new review.`);
+      }
       requireText(f, "review.by", data.review.by, "by");
       requireText(f, "review.ref", data.review.ref, "ref");
     }

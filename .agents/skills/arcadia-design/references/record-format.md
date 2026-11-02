@@ -137,9 +137,13 @@ Decide at intake without asking. The repository may be public.
 | `workspace` | **The default for every other paste,** including third-party, client and anything of unknown rights. | The verbatim file under the Arcadia workspace, outside the repository, with its `sha256`. |
 
 A `third_party` or `client` source may use `repo` only with `rights` stated. Client
-material stays `workspace` unless the operator says otherwise. Concept statements
-paraphrase and point to locators, so they are safe to commit. Don't quote
-third-party text in the record.
+material stays `workspace` unless the operator says otherwise. Label a source
+`operator` only when the operator wrote it in their own words; a paste of unknown
+authorship is `third_party`.
+
+**Everything committed paraphrases.** The record, brief and review reports point to
+locators and never quote `third_party`, `client` or `workspace` text. Check this
+before every commit, because no validator can.
 
 ## Checks
 
@@ -147,19 +151,26 @@ third-party text in the record.
 
 **Always:**
 
-- The schema, required fields and allowed values are valid, and all paths stay
-  inside the design directory (or workspace, for `workspace_path`).
+- The record is at `<project root>/docs/design/<slug>/record.yaml`, and that project
+  root holds `PROJECT.md`. A `PROJECT.md` anywhere else doesn't count.
+- The schema, required fields and allowed values are valid.
+- Each path stays inside its root, including through symlinks: the design directory
+  for source and review `path`, the workspace for `workspace_path`, and the project
+  root for mission `file` and `fit.evidence`.
 - IDs are unique and match `S###`, `C-###`, `CH-##`, `REQ-###`, `M#`, `R#`. Every
   reference resolves.
 - Each `repo` source file exists and matches its `sha256`. A `workspace` source
   matches when the file is reachable; otherwise the check warns that it was not
   verified.
-- Each `pointer` source has `url`, `revision` and `rights`.
+- Each `pointer` source has `url`, `revision` and `rights`. The `url` is `http` or
+  `https` and holds no embedded username or password.
 - Each `third_party` or `client` source on `repo` has `rights`.
 - Each concept has at least one origin.
-- Each mission `quote` appears exactly in its `file`, resolved from the Project
-  root. This stops a mission trace from being invented.
-- Each `fit.evidence` path exists in the Project.
+- Each mission `file` is exactly `PROJECT.md`, `CONSTITUTION.md` or `NORTH_STAR.md`
+  at the project root. Each `quote` has at least 20 non-space characters and appears
+  exactly in that file. This makes a mission trace hard to invent; a critic still
+  judges whether the quote really supports the requirement.
+- Each `fit.evidence` path exists in the project.
 - A `rejected` concept has `reason`, `parked` has `revival`, `merged` has a
   `merged_into` that isn't itself merged, and `chosen` has `serves`.
 - It prints the current `record_hash`: the SHA-256 of the record's canonical JSON
@@ -167,6 +178,10 @@ third-party text in the record.
 
 **With `--ready`, also:**
 
+- Each authority reference resolves (see below): `confirmed_ref`, and every
+  `decision_ref`.
+- Every `workspace` source was verified against its hash. Unverified is a warning
+  otherwise, but it fails here.
 - `frame.status` is `confirmed` with a `confirmed_ref`.
 - There is at least one requirement. Each cites a mission entry, has a `proof`, and
   is served by at least one chosen concept.
@@ -176,16 +191,31 @@ third-party text in the record.
   `agent` choice has `reason`.
 - A chosen concept whose fit is `conflicts` has an operator choice covering it.
 - Each `load_bearing` chosen concept is `verified` with evidence, or is named in the
-  `concepts` of a blocking finding marked `accepted_risk`.
+  `concepts` of a blocking finding marked `accepted_risk`, in a review that is
+  independent and whose verdict is not `hold` or `incomplete`.
 - `riskiest_assumption` is `supported` with evidence, or `accepted_risk` with
   `decision_ref`.
 - Reviews whose `record_hash` matches the current hash cover all three lenses, each
   with `independent_of_authors: true` and a reviewer not listed in `authors`
-  (compared ignoring case and any `Critic` title), and none has the verdict `hold`
-  or `incomplete`. Each `path` exists.
+  (compared ignoring case, any `Critic` title and adjacent punctuation), and none has
+  the verdict `hold` or `incomplete`. Each `path` is a file that contains its
+  `record_hash`, so a report states what it reviewed.
 - Across **all** reviews, including stale ones, no blocking finding is `open` or
   `declined`, and each `accepted_risk` has `decision_ref`.
 - More than three reviews of different hashes produces a warning, not a failure.
+
+### Authority references
+
+An authority reference is one of two things, and the check verifies it:
+
+- `Decision NNNN`: `docs/decisions/NNNN-*.md` exists at the project root with
+  `status: approved`.
+- `S###`: a source with `kind: operator` and `retention: repo`, which keeps the
+  operator's own words verbatim. Use it when the operator answered in conversation.
+
+**What the check can't catch:** a paste mislabelled as `operator`, a `rights` value
+that is wrong, or private text quoted in a brief or review. Those are for the author
+and the critics.
 
 ## The matrix
 

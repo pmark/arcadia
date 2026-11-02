@@ -28,7 +28,7 @@ entries:
     text: For each effect the module can cause, name who may cause it and where that limit is enforced. A limit stated only in a prompt is a request, not a boundary.
     applies_when: The module acts on behalf of a person or reads untrusted input.
     limits: Purely read-only modules have fewer effects, though reading can still leak data.
-    provenance: { kind: imported, confidence: high, reason: The prototype ranks host-enforced facts above all prompt text., source: "dsh-superagent-prototype docs/004-prompts.md" }
+    provenance: { kind: imported, confidence: high, reason: The prototype ranks host-enforced facts above all prompt text., source: "https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/docs/004-prompts.md (MIT)" }
   - id: E3
     kind: element
     text: Give each new fact one authoritative home. Every other surface is a projection of it.
@@ -40,7 +40,7 @@ entries:
     text: Separate who decides whether work starts from who does the work. A router that only routes can be small and safe.
     applies_when: The module receives requests from several places.
     limits: Unnecessary when there is one caller and one kind of work.
-    provenance: { kind: imported, confidence: medium, reason: Described as a design principle in a research prototype; not independently measured., source: "dsh-superagent-prototype docs/004-prompts.md" }
+    provenance: { kind: imported, confidence: medium, reason: Described as a design principle in a research prototype; not independently measured., source: "https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/docs/004-prompts.md (MIT)" }
   - id: E5
     kind: question
     text: What does this cost in attention, and who pays it? Every message, setting and screen must return more value than it takes.
@@ -58,7 +58,7 @@ entries:
     text: Run a new proactive behavior in record-only mode against real events and grade what it would have done before it may act.
     applies_when: The behavior acts without being asked.
     limits: Needs enough real events to judge, and observing can itself raise privacy questions.
-    provenance: { kind: imported, confidence: medium, reason: The prototype defaults proactive work to observe mode; no results were published in the docs read., source: "dsh-superagent-prototype docs/002-authorization.md" }
+    provenance: { kind: imported, confidence: medium, reason: The prototype defaults proactive work to observe mode; no results were published in the docs read., source: "https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/docs/002-authorization.md (MIT)" }
   - id: E8
     kind: attack
     text: "Replay it: restart mid-operation, deliver an event twice, and deliver events out of order. What is lost or done twice?"

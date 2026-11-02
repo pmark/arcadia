@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { Findings, isDate, isObj, items, oneOf, requireEnum, requireText, text, type Obj } from "./common.js";
@@ -32,6 +32,8 @@ const ID_FORMS = {
   review: /^R\d+$/
 } as const;
 const SHA256 = /^[0-9a-f]{64}$/;
+const MISSION_FILES = ["PROJECT.md", "CONSTITUTION.md", "NORTH_STAR.md"] as const;
+const MIN_QUOTE_CHARACTERS = 20;
 
 export interface DesignMatrix {
   shared: Array<{ concept: string; title: string; sources: string[] }>;
@@ -74,10 +76,22 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(sortKeys(value));
 }
 
-function sortKeys(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(sortKeys);
-  if (isObj(value)) return Object.fromEntries(Object.keys(value).sort().map((key) => [key, sortKeys(value[key])]));
-  return value;
+function sortKeys(value: unknown, ancestors: Set<object> = new Set()): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  if (ancestors.has(value)) throw new Error("the document is self-referential (an alias refers to its own ancestor)");
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) return value.map((item) => sortKeys(item, ancestors));
+    const record = value as Obj;
+    return Object.fromEntries(Object.keys(record).sort().map((key) => [key, sortKeys(record[key], ancestors)]));
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+/** Whether a parsed document contains a structure that refers to its own ancestor (YAML `a: &a { b: *a }`). */
+export function isSelfReferential(value: unknown): boolean {
+  try { sortKeys(value); return false; } catch { return true; }
 }
 
 export type Contained = { ok: true; resolved: string; exists: boolean } | { ok: false; reason: string };
@@ -117,14 +131,21 @@ export function resolveContained(root: string, relative: string): Contained {
   return { ok: true, resolved: probe === resolved ? real : resolved, exists: probe === resolved };
 }
 
-/** The nearest directory at or above `from` that holds PROJECT.md. */
-export function findProjectRoot(from: string): string | null {
-  let current = from;
-  for (;;) {
-    if (existsSync(path.join(current, "PROJECT.md"))) return current;
-    const parent = path.dirname(current);
-    if (parent === current) return null;
-    current = parent;
+/**
+ * The project root of a record at `<root>/docs/design/<slug>/record.yaml` (the real
+ * directory is given), or null when it is anywhere else or `<root>` has no PROJECT.md.
+ * A PROJECT.md elsewhere never counts, so a planted file cannot become the root.
+ */
+export function recordProjectRoot(recordDir: string, fileName: string): string | null {
+  if (fileName !== "record.yaml") return null;
+  const docsDesign = path.dirname(recordDir);
+  const docs = path.dirname(docsDesign);
+  if (path.basename(docsDesign) !== "design" || path.basename(docs) !== "docs") return null;
+  const root = path.dirname(docs);
+  try {
+    return statSync(path.join(root, "PROJECT.md")).isFile() ? root : null;
+  } catch {
+    return null;
   }
 }
 
@@ -154,6 +175,7 @@ export function checkDesignFile(file: string, options: DesignCheckOptions = {}):
     return result;
   }
   if (!isObj(data)) { result.problems.push("yaml: the file must hold a mapping at its root."); return result; }
+  if (isSelfReferential(data)) { result.problems.push("yaml: the document is self-referential (an alias refers to its own ancestor)."); return result; }
 
   result.schema = typeof data.schema === "string" ? data.schema : null;
   if (data.schema === FIELD_GUIDE_SCHEMA) {
@@ -172,7 +194,7 @@ export function checkDesignFile(file: string, options: DesignCheckOptions = {}):
 
   result.kind = "record";
   const recordDir = realpathSync(path.dirname(file));
-  const findings = new RecordChecker(data, recordDir, findProjectRoot(recordDir), options.workspace ?? null, Boolean(options.ready)).run();
+  const findings = new RecordChecker(data, recordDir, recordProjectRoot(recordDir, path.basename(file)), realWorkspace(options.workspace), Boolean(options.ready)).run();
   result.problems.push(...findings.problems);
   result.warnings.push(...findings.warnings);
   result.recordHash = recordHash(data);
@@ -180,7 +202,40 @@ export function checkDesignFile(file: string, options: DesignCheckOptions = {}):
   return result;
 }
 
-const normalizeName = (name: string): string => name.toLowerCase().replace(/\bcritic\b/g, " ").replace(/\s+/g, " ").trim();
+function plainWebUrl(value: string): boolean {
+  try {
+    const url = new URL(value.trim());
+    return (url.protocol === "http:" || url.protocol === "https:") && url.username === "" && url.password === "";
+  } catch {
+    return false;
+  }
+}
+
+/** The `status` of a leading YAML frontmatter block, or null when there is none or it does not parse. */
+function frontmatterStatus(markdown: string): string | null {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(markdown);
+  if (!match) return null;
+  try {
+    const front: unknown = parseYaml(match[1], { logLevel: "error" });
+    return isObj(front) && typeof front.status === "string" ? front.status : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The workspace's real path, or null when it is absent or unresolvable; never throws. */
+function realWorkspace(workspace: string | null | undefined): string | null {
+  if (!workspace) return null;
+  try {
+    const real = realpathSync(workspace);
+    return statSync(real).isDirectory() ? real : null;
+  } catch {
+    return null;
+  }
+}
+
+// Case, a "Critic" title and punctuation around the name do not make a different person.
+const normalizeName = (name: string): string => name.toLowerCase().replace(/\bcritic\b/g, " ").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
 
 class RecordChecker {
   private readonly f = new Findings();
@@ -190,7 +245,7 @@ class RecordChecker {
   private readonly missionIds = new Set<string>();
   private readonly requirementIds = new Set<string>();
   private readonly concepts = new Map<string, Obj>();
-  private projectNoted = false;
+  private readonly sourceEntries = new Map<string, Obj>();
 
   constructor(
     private readonly data: Obj,
@@ -209,6 +264,9 @@ class RecordChecker {
     const authors = items(d.authors);
     if (!Array.isArray(d.authors) || authors.length === 0 || authors.some((author) => text(author) === null)) {
       this.f.problem("authors", "authors is required: a list of one or more names.");
+    }
+    if (this.projectRoot === null) {
+      this.f.problem("project", `the record must be at <project root>/docs/design/<slug>/record.yaml, with PROJECT.md at the project root (found ${path.join(this.recordDir, "record.yaml")}); mission quotes, fit evidence and authority references cannot be checked.`);
     }
     this.collectIds();
     this.frame();
@@ -239,6 +297,7 @@ class RecordChecker {
       }
     };
     collect(this.data.sources, "source", this.sourceIds);
+    for (const entry of items(this.data.sources)) if (isObj(entry) && typeof entry.id === "string" && this.sourceIds.has(entry.id)) this.sourceEntries.set(entry.id, entry);
     collect(this.data.concepts, "concept", this.conceptIds);
     const frame = isObj(this.data.frame) ? this.data.frame : {};
     collect(frame.mission, "mission", this.missionIds);
@@ -261,15 +320,6 @@ class RecordChecker {
     return `${prefix}[${isObj(entry) && text(entry.id) ? String(entry.id) : index}]`;
   }
 
-  private needProject(what: string): string | null {
-    if (this.projectRoot) return this.projectRoot;
-    if (!this.projectNoted) {
-      this.projectNoted = true;
-      this.f.problem("project", `no PROJECT.md was found at or above ${this.recordDir}, so ${what} cannot be checked.`);
-    }
-    return null;
-  }
-
   private frame(): void {
     const frame = this.data.frame;
     if (!isObj(frame)) { this.f.problem("frame", "frame is required and must be a mapping."); return; }
@@ -288,8 +338,12 @@ class RecordChecker {
       if (!isObj(entry)) { this.f.problem(where, "must be a mapping."); return; }
       this.id(where, entry.id, "mission", seenMission);
       const file = requireText(this.f, where, entry.file, "file");
-      if (typeof entry.quote !== "string" || entry.quote.trim() === "") this.f.problem(where, "quote is required and must not be blank.");
-      if (file !== null && typeof entry.quote === "string" && entry.quote.trim() !== "") this.missionQuote(where, file, entry.quote);
+      const allowed = file !== null && (MISSION_FILES as readonly string[]).includes(file);
+      if (file !== null && !allowed) this.f.problem(where, `file "${file}" must be exactly ${MISSION_FILES.slice(0, -1).join(", ")} or ${MISSION_FILES[MISSION_FILES.length - 1]} (exact case, at the project root).`);
+      const quote = typeof entry.quote === "string" && entry.quote.trim() !== "" ? entry.quote : null;
+      if (quote === null) this.f.problem(where, "quote is required and must not be blank.");
+      else if ([...quote.replace(/\s/g, "")].length < MIN_QUOTE_CHARACTERS) this.f.problem(where, `quote needs at least ${MIN_QUOTE_CHARACTERS} non-whitespace characters.`);
+      else if (allowed) this.missionQuote(where, file, quote);
     });
 
     const seenReq = new Set<string>();
@@ -307,9 +361,8 @@ class RecordChecker {
   }
 
   private missionQuote(where: string, file: string, quote: string): void {
-    const root = this.needProject("the mission quote");
-    if (root === null) return;
-    const target = resolveContained(realpathSync(root), file);
+    if (this.projectRoot === null) return;
+    const target = resolveContained(this.projectRoot, file);
     if (!target.ok) { this.f.problem(where, `file "${file}" ${target.reason}.`); return; }
     if (!target.exists) { this.f.problem(where, `file "${file}" does not exist in the Project.`); return; }
     const bytes = readRegularFile(target.resolved);
@@ -332,6 +385,7 @@ class RecordChecker {
         for (const field of ["url", "revision", "rights"] as const) {
           if (text(entry[field]) === null) this.f.problem(where, `a pointer source needs ${field}.`);
         }
+        if (text(entry.url) !== null && !plainWebUrl(String(entry.url))) this.f.problem(where, `url ${JSON.stringify(entry.url)} must be an http or https URL with no embedded username or password.`);
       }
       if (retention === "repo" && (kind === "third_party" || kind === "client") && text(entry.rights) === null) {
         this.f.problem(where, `a ${kind} source kept in the repository needs rights stated.`);
@@ -371,15 +425,21 @@ class RecordChecker {
       // Containment can still be judged without a root: an absolute path or a .. escape is never valid.
       const refusal = lexicalRefusal(relative);
       if (refusal) { this.f.problem(where, `workspace_path "${relative}" ${refusal}.`); return; }
-      this.f.warn(where, "no workspace is available, so the workspace source was not verified.");
+      this.unverified(where, "no workspace is available, so the workspace source was not verified.");
       return;
     }
     const target = resolveContained(this.workspace, relative);
     if (!target.ok) { this.f.problem(where, `workspace_path "${relative}" ${target.reason}.`); return; }
-    if (!target.exists) { this.f.warn(where, `workspace file "${relative}" was not found, so the workspace source was not verified.`); return; }
+    if (!target.exists) { this.unverified(where, `workspace file "${relative}" was not found, so the workspace source was not verified.`); return; }
     const bytes = readRegularFile(target.resolved);
     if (typeof bytes === "string") { this.f.problem(where, `workspace_path "${relative}" ${bytes}.`); return; }
     if (declared !== null && sha256Of(bytes) !== declared) this.f.problem(where, `sha256 does not match the workspace file ${relative} (found ${sha256Of(bytes)}).`);
+  }
+
+  /** An unverified workspace source is a warning, but the ready gate needs every source verified. */
+  private unverified(where: string, message: string): void {
+    if (this.ready) this.f.problem(where, message);
+    else this.f.warn(where, message);
   }
 
   private conceptChecks(): void {
@@ -426,9 +486,8 @@ class RecordChecker {
     const evidence = typeof fit.evidence === "string" ? [fit.evidence] : this.list(`${where}.fit.evidence`, fit.evidence);
     for (const file of evidence) {
       if (text(file) === null) { this.f.problem(where, "fit.evidence entries must be non-blank paths."); continue; }
-      const root = this.needProject("fit evidence");
-      if (root === null) continue;
-      const target = resolveContained(realpathSync(root), String(file));
+      if (this.projectRoot === null) continue;
+      const target = resolveContained(this.projectRoot, String(file));
       if (!target.ok) this.f.problem(where, `fit.evidence "${String(file)}" ${target.reason}.`);
       else if (!target.exists) this.f.problem(where, `fit.evidence "${String(file)}" does not exist in the Project.`);
     }
@@ -473,6 +532,14 @@ class RecordChecker {
     requireEnum(this.f, "riskiest_assumption", risk.status, "status", ASSUMPTION_STATUS);
   }
 
+  /** A report must be a regular file that states the record_hash it reviewed. */
+  private reviewReport(where: string, relative: string, target: Contained & { ok: true }, hash: unknown): void {
+    if (!target.exists) { this.f.problem(where, `review file "${relative}" does not exist.`); return; }
+    const bytes = readRegularFile(target.resolved);
+    if (typeof bytes === "string") { this.f.problem(where, `path "${relative}" ${bytes}.`); return; }
+    if (typeof hash === "string" && SHA256.test(hash) && !bytes.toString("utf8").includes(hash)) this.f.problem(where, `review file "${relative}" does not contain its record_hash.`);
+  }
+
   private reviewList(): Array<Obj> {
     return items(this.data.scrutiny).filter(isObj);
   }
@@ -488,7 +555,7 @@ class RecordChecker {
       if (relative !== null) {
         const target = resolveContained(this.recordDir, relative);
         if (!target.ok) this.f.problem(where, `path "${relative}" ${target.reason}.`);
-        else if (this.ready && !target.exists) this.f.problem(where, `review file "${relative}" does not exist.`);
+        else if (this.ready) this.reviewReport(where, relative, target, entry.record_hash);
       }
       requireText(this.f, where, entry.reviewer, "reviewer");
       if (typeof entry.independent_of_authors !== "boolean") this.f.problem(where, "independent_of_authors is required and must be true or false.");
@@ -542,6 +609,7 @@ class RecordChecker {
       if (oneOf(concept.position, UNSETTLED)) this.f.problem(`ready: ${id}`, `concept is still ${String(concept.position)}.`);
     }
 
+    this.authorityReferences(frame);
     this.readyChoices();
     this.readyLoadBearing();
 
@@ -582,7 +650,10 @@ class RecordChecker {
   }
 
   private readyLoadBearing(): void {
-    const accepted = this.reviewList().flatMap((review) => items(review.findings).filter(isObj))
+    // An accepted risk counts only from a review that is independent, by a non-author, and not on hold.
+    const authors = this.authorNames();
+    const accepted = this.reviewList().filter((review) => this.reviewIssues(review, authors).length === 0)
+      .flatMap((review) => items(review.findings).filter(isObj))
       .filter((finding) => finding.severity === "blocking" && finding.disposition === "accepted_risk");
     for (const [id, concept] of this.concepts) {
       if (concept.position !== "chosen") continue;
@@ -600,8 +671,68 @@ class RecordChecker {
     }
   }
 
+  /** Every confirmed_ref and decision_ref must be an approved Decision or an operator's own words kept in the repo. */
+  private authorityReferences(frame: Obj): void {
+    const refs: Array<[string, unknown]> = [];
+    if (frame.status === "confirmed") refs.push(["confirmed_ref", frame.confirmed_ref]);
+    for (const choice of items(this.data.choices).filter(isObj)) refs.push([`choices[${text(choice.id) ?? "?"}].decision_ref`, choice.decision_ref]);
+    if (isObj(this.data.riskiest_assumption)) refs.push(["riskiest_assumption.decision_ref", this.data.riskiest_assumption.decision_ref]);
+    for (const review of this.reviewList()) {
+      for (const finding of items(review.findings).filter(isObj)) refs.push([`${text(review.id) ?? "review"}/${text(finding.id) ?? "finding"}.decision_ref`, finding.decision_ref]);
+    }
+    for (const [where, value] of refs) {
+      const ref = text(value);
+      if (ref === null) continue; // a missing reference is reported by the check that requires it
+      const reason = this.authorityProblem(ref.trim());
+      if (reason) this.f.problem(`ready: ${where}`, `"${ref}" ${reason}`);
+    }
+  }
+
+  /** Null when the reference resolves; otherwise why it does not. */
+  private authorityProblem(ref: string): string | null {
+    const decision = /^Decision (\d{4})$/.exec(ref);
+    if (decision) return this.decisionProblem(decision[1]);
+    if (ID_FORMS.source.test(ref)) {
+      const source = this.sourceEntries.get(ref);
+      if (!source) return "names an unknown source.";
+      return source.kind === "operator" && source.retention === "repo" ? null : "is a source that is not kind operator with retention repo.";
+    }
+    return 'must be "Decision NNNN" or an operator source S### (kind operator, retention repo).';
+  }
+
+  private decisionProblem(number: string): string | null {
+    if (this.projectRoot === null) return "cannot be resolved without a project root.";
+    let names: string[];
+    try {
+      names = readdirSync(path.join(this.projectRoot, "docs", "decisions")).filter((name) => name.startsWith(`${number}-`) && name.endsWith(".md"));
+    } catch {
+      return "cannot be resolved: docs/decisions is not readable.";
+    }
+    if (names.length === 0) return `does not resolve: no docs/decisions/${number}-*.md.`;
+    if (names.length > 1) return `is ambiguous: ${names.join(", ")}.`;
+    const target = resolveContained(this.projectRoot, `docs/decisions/${names[0]}`);
+    if (!target.ok) return `file ${names[0]} ${target.reason}.`;
+    const bytes = readRegularFile(target.resolved);
+    if (typeof bytes === "string") return `file ${names[0]} ${bytes}.`;
+    const status = frontmatterStatus(bytes.toString("utf8"));
+    return status === "approved" ? null : `is not approved: status is ${JSON.stringify(status)}.`;
+  }
+
+  private authorNames(): Set<string> {
+    return new Set(items(this.data.authors).filter((a): a is string => typeof a === "string").map(normalizeName).filter(Boolean));
+  }
+
+  /** Why a review cannot be relied on, whatever record it is of; empty when it can. */
+  private reviewIssues(review: Obj, authors: Set<string>): string[] {
+    const issues: string[] = [];
+    if (review.independent_of_authors !== true) issues.push("independent_of_authors is not true.");
+    if (typeof review.reviewer === "string" && authors.has(normalizeName(review.reviewer))) issues.push(`reviewer "${review.reviewer}" is one of the authors.`);
+    if (review.verdict === "hold" || review.verdict === "incomplete") issues.push(`verdict is ${String(review.verdict)} on the current record.`);
+    return issues;
+  }
+
   private readyReviews(): void {
-    const authors = new Set(items(this.data.authors).filter((a): a is string => typeof a === "string").map(normalizeName).filter(Boolean));
+    const authors = this.authorNames();
     const covered = new Set<string>();
     for (const review of this.reviewList()) {
       const label = `ready: ${text(review.id) ?? "review"}`;
@@ -609,17 +740,9 @@ class RecordChecker {
         this.f.warn(label, "is of an earlier record hash, so it is stale and does not count.");
         continue;
       }
-      let qualified = true;
-      if (review.independent_of_authors !== true) { this.f.problem(label, "independent_of_authors is not true."); qualified = false; }
-      if (typeof review.reviewer === "string" && authors.has(normalizeName(review.reviewer))) {
-        this.f.problem(label, `reviewer "${review.reviewer}" is one of the authors.`);
-        qualified = false;
-      }
-      if (review.verdict === "hold" || review.verdict === "incomplete") {
-        this.f.problem(label, `verdict is ${String(review.verdict)} on the current record.`);
-        qualified = false;
-      }
-      if (qualified) for (const lens of items(review.lenses)) if (typeof lens === "string") covered.add(lens);
+      const issues = this.reviewIssues(review, authors);
+      for (const issue of issues) this.f.problem(label, issue);
+      if (issues.length === 0) for (const lens of items(review.lenses)) if (typeof lens === "string") covered.add(lens);
     }
     for (const lens of LENSES) {
       if (!covered.has(lens)) this.f.problem("ready", `no current independent review covers the ${lens} lens (current record_hash ${this.hash}).`);

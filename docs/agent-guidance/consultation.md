@@ -61,6 +61,7 @@ a design brief". Iris is an optional name for the same route (Decision 0150). Re
   (Decision 0159).
 - **With no guide,** give disclosed exploratory advice. Never refuse solely because
   no guide exists.
+
 Read-only consultation does not authorize an implementer to edit editorial or
 product files. Sage and Quinn retain separate independent Session requirements;
 a generic read-only PR verification context follows the existing

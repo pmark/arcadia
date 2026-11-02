@@ -53,6 +53,8 @@ The provenance kinds and confidence levels reuse the terms of `arcadia learn`.
 - `review: null` means unreviewed. Advice from it is exploratory, and no answer may
   claim conformance to it (Decision 0159). Only the operator or someone the operator
   names fills in `review`.
+- A `review.date` earlier than `review_date` fails validation: revised content needs a
+  new review before it can claim conformance.
 - Advice an owner merely repeats ("someone on a podcast said") is an idea for the
   brief, not a guide entry.
 - Summarize sources in your own words, and never paste third-party text into a guide.
