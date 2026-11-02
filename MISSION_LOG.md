@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-01
+updated: 2026-11-02
 ---
 
 # Mission Log: Arcadia
@@ -2837,3 +2837,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Operator-settled Plan transition. Previous Plan bootstrap-managed-production-to-build-flight-deck remains draft with completion state preserved. Decision 0157: the first per-run START card activates this Plan through its pinned planActivation block. The current Plan bootstrap-managed-production-to-build-flight-deck returns to draft with every Action state preserved. No Action content changes.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-11-02 — Completed arcadia/bound-guidance-test-teardown-retries
+
+- **Did:** Completed Action arcadia/bound-guidance-test-teardown-retries from accepted evidence (Candidate c44101cb692621a49da292cfd1585cc0becf9e9b).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/agent-guidance.test.ts defines removeScratchRoots(roots: string[], remove = rmSync), which calls remove(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 }) (or larger maxRetries and retryDelay values) for each root and then empties the array; the afterEach body is exactly one call to removeScratchRoots(roots) and contains no rmSync literal."; "A new test calls removeScratchRoots with a vi.fn() as remove and two paths and asserts each call's options object has recursive true, force true, maxRetries of at least 3 and retryDelay of at least 50; it also asserts the default is the real rmSync by removing a real mkdtemp directory with no remove argument."; "Every existing assertion in that file remains unchanged and no test in it is marked skip or todo."; "The change touches only tests/agent-guidance.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-bound-guidance-test-teardown-retries-20d84061ace5).
