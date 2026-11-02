@@ -3209,7 +3209,7 @@ describe("red alerts from the worker tick", () => {
     vi.stubEnv("PATH", `${bin}${path.delimiter}${process.env.PATH ?? ""}`);
     const tmux = new FakeTmux();
     // Exercise the actual adapter subprocess and wrapper; only presence checks are fake.
-    tmux.launch = input => systemTmux.launch(input);
+    tmux.launch = input => systemTmux.launch({ ...input, hostHome: path.join(fixture.root, "home") });
     activatePolicy(fixture);
     for (let attempt = 0; attempt < PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction; attempt++) {
       const tick = tickAt(fixture, tmux, attempt * 1000, true);
