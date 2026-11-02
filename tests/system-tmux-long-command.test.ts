@@ -110,16 +110,27 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
     const provider = path.join(root, "provider-temp.mjs");
     writeFileSync(provider, `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(out)}, JSON.stringify(process.argv.slice(2)));\n`);
     const name = `arcadia-temp-brief-${process.pid}-${Date.now()}`;
-    systemTmux.launch({
-      name,
-      cwd: root,
-      command: process.execPath,
-      args: [provider, "--print", LONG_BRIEF]
-      // No launcherDirectory specified - should use temporary directory that is cleaned up
-    });
+    // The launcher's private temporary directory is created under TMPDIR, so point it at one this test owns.
+    const tempDir = mkdtempSync(path.join(root, "tmpdir-"));
+    const originalTmpdir = process.env.TMPDIR;
+    process.env.TMPDIR = tempDir;
+    try {
+      systemTmux.launch({
+        name,
+        cwd: root,
+        command: process.execPath,
+        args: [provider, "--print", LONG_BRIEF]
+        // No launcherDirectory specified - should use temporary directory that is cleaned up
+      });
+    } finally {
+      if (originalTmpdir === undefined) delete process.env.TMPDIR;
+      else process.env.TMPDIR = originalTmpdir;
+    }
     const deadline = Date.now() + 10_000;
     while (!existsSync(out) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
     const argv = JSON.parse(readFileSync(out, "utf8")) as string[];
     expect(argv).toEqual(["--print", LONG_BRIEF]);
+    // The launcher removes its own arcadia-launch- directory before the provider runs.
+    expect(readdirSync(tempDir).filter((entry) => entry.startsWith("arcadia-launch-"))).toEqual([]);
   });
 });
