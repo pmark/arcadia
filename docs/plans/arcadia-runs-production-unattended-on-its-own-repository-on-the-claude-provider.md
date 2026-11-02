@@ -448,6 +448,132 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1989"]
+  - id: recovery-signal-replay-gate
+    title: Add a pure no-model recovery-signal classifier and a checked-in replay of real ledger rows that gates the watchdog work.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Add a pure no-model recovery-signal classifier and a checked-in replay of real ledger rows that gates the watchdog work.
+    expected_artifact: Evidence satisfying Agent Ask recovery-signal-replay-gate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-worker-recovery-build-actions-20261102
+    why: "Decision 0169 needs proof that the checks fire on runs h and i and stay silent on healthy work, and this lands green first so nothing else is blocked."
+    acceptance_criteria:
+      - src/production/recoverySignals.ts exports a pure function that takes ledger rows (Session exits with launch and candidate revisions, review repair rows with their failed checks, and operator-held marks) and returns ordered signals, using no database, Git, clock or network access.
+      - "tests/recovery-replay.test.ts loads tests/fixtures/recovery-replay/ledger-rows.json, copied from real rows of 2026-11-02, and asserts a no-progress signal at the 04:44:50Z receipt for pin-worker-merge-allowlist-carve-outs and a QA plan signal at 07:11:19Z for pin-blast-radius-safety-patterns, classed as mixed there and as sole failure at 07:26."
+      - The same test asserts no signal for bound-guidance-test-teardown-retries (one failed review, one repair, merged) and no signal for the gated wait on cover-retired-descriptor-byte-change.
+      - "The same test proves sensitivity with altered rows: a changed candidate revision yields no no-progress signal, an operator-held mark yields no signal, and an added failed check turns a sole failure into mixed."
+      - The change touches only those three paths; the focused vitest run of that test file, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
+  - id: session-proposal-stays-out-of-candidate
+    title: A Session's non-completion Ask draft lands outside its candidate from the start, and the host still receives it as a recorded proposal.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: A Session's non-completion Ask draft lands outside its candidate from the start, and the host still receives it as a recorded proposal.
+    expected_artifact: Evidence satisfying Agent Ask session-proposal-stays-out-of-candidate
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-worker-recovery-build-actions-20261102
+    why: "In run h a blocked Session's proposal made the candidate authority-adjacent and changed its revision, which reset the repair budget and bought extra futile Sessions."
+    acceptance_criteria:
+      - tests/session-proposal-outside-candidate.test.ts drives src/commands/agentAsk.ts with a proposal-intent draft in a disposable Git worktree and asserts the file is outside the set preservation would commit, the worktree counts as clean, and a preserved candidate's revision and changed-file list do not change.
+      - The same test asserts the host, at Session exit, records the proposal's text with its Session and Action, so it remains readable after the worktree is retired, and that nothing is settled or approved by that record.
+      - The same test asserts that a Session exit whose only output is that proposal leaves the candidate revision unchanged, so the unchanged-resume accounting counts the attempt and does not reset the repair budget.
+      - The same test asserts complete and split drafts keep their existing canonical location and settlement behavior.
+      - tests/agent-ask-draft.test.ts and tests/stray-ask-files.test.ts pass; pnpm lint and tsc pass.
+      - The change touches no file under src/production/.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1988", "docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
+  - id: worker-reconciles-own-pointer-commits
+    title: Before reporting base_not_synced, the worker reconciles local main when its only local-only commits are its own pointer commits; anything else still refuses.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Before reporting base_not_synced, the worker reconciles local main when its only local-only commits are its own pointer commits; anything else still refuses.
+    expected_artifact: Evidence satisfying Agent Ask worker-reconciles-own-pointer-commits
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-worker-recovery-build-actions-20261102
+    why: "Pointer commits are written locally and never pushed, so a worker merge in run i stopped falsely on base_not_synced after GitHub had already merged the PR."
+    acceptance_criteria:
+      - "tests/worker-pointer-reconcile.test.ts uses disposable local Git repositories to show that when local main is ahead of its remote only by pointer commits (subject matching chore(arcadia): point at and a diff limited to PROJECT.md and the active Plan document) and the remote has advanced, sync integrates the remote without rewriting or discarding those commits, and the merged head is contained in local main."
+      - "The same test shows sync still refuses, leaving the checkout untouched, for: a local-only commit of any other shape, a dirty checkout, a checkout on another branch, and a conflict."
+      - The same test shows that both the worker-merge sync and the per-tick base sync use this behavior, and that nothing is pushed.
+      - tests/worker-merge.test.ts passes, including its existing base_not_synced refusal; pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
+  - id: headless-session-resolves-arcadia-cli
+    title: A headless Session launched by the worker can resolve the arcadia command its allow list permits, from a host-resolved location.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: A headless Session launched by the worker can resolve the arcadia command its allow list permits, from a host-resolved location.
+    expected_artifact: Evidence satisfying Agent Ask headless-session-resolves-arcadia-cli
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-worker-recovery-build-actions-20261102
+    why: "Headless Sessions hit exit 127 on arcadia and only recovered by finding pnpm arcadia, which does not exist in other Projects, so the escalation route must work first time."
+    acceptance_criteria:
+      - tests/session-launcher-arcadia-path.test.ts renders a Session launcher with an injected host-resolved CLI directory and asserts that directory is on the launcher's PATH after the pinned Node directory, so the Node choice does not change.
+      - The same test asserts that directory comes only from the host, never from a file in the Session's worktree, and that the launcher is unchanged when the host resolves no CLI.
+      - The focused vitest run of that test file, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: []
+  - id: qa-plan-sole-failure-spends-no-repair
+    title: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
+    expected_artifact: Evidence satisfying Agent Ask qa-plan-sole-failure-spends-no-repair
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-worker-recovery-build-actions-20261102
+    why: "All 3 repair rounds in run i went on a plan step no Session could change. Decision 0169 authorizes this rule, and every other failure still blocks."
+    acceptance_criteria:
+      - tests/qa-plan-sole-failure.test.ts asserts that a QA verdict failing only the operator-qa-plan check launches no repair Session, records no repair round, lets the independent verdict gate treat QA as not blocking on that head, and records that one operator check step went unverified.
+      - The same test asserts a verdict still blocks and follows the existing repair path when any other check fails or is not-checked, when a finding concerns anything else, when the plan was refused as unavailable, and when the role is code review; it uses the mixed and sole-failure shapes from the recovery-signal classifier.
+      - The same test asserts one Issue is requested per Action and head through an injected runner, a replay requests no second Issue, and a failure to file is logged without changing the verdict outcome.
+      - tests/operator-qa-plan.test.ts asserts that when a criterion names an unchanged existing path and the candidate changes a test file, the step inspects the changed test file and not the named path, and that a criterion naming a changed file keeps inspecting that file.
+      - src/sessions/operatorQaPlan.ts, src/production/reviewRepair.ts and src/production/independentReview.ts carry the change; the focused vitest runs of those two test files, pnpm lint and tsc pass.
+    depends_on: [recovery-signal-replay-gate]
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1999", "docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
+  - id: red-alerts-for-repair-stops-and-no-progress
+    title: Red alerts fire and reach Discord when review repairs are exhausted, when a candidate is gated, and when a resumed Session leaves its candidate unchanged, through the existing alert path.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Red alerts fire and reach Discord when review repairs are exhausted, when a candidate is gated, and when a resumed Session leaves its candidate unchanged, through the existing alert path.
+    expected_artifact: Evidence satisfying Agent Ask red-alerts-for-repair-stops-and-no-progress
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-worker-recovery-build-actions-20261102
+    why: "Run i raised no alert after 06:00 because no trigger covers review repair stops, and the first notice came from Rowan polling."
+    acceptance_criteria:
+      - tests/review-repair-red-alerts.test.ts asserts that a review_repair_rounds_exhausted escalation and a review_repair_gated escalation each raise one open red alert of their own trigger in src/production/redAlerts.ts, raised by the tick from production_operator_escalations rows with no change to src/production/reviewRepair.ts, queue one notification through the existing alert notification path, and do not notify again on later ticks.
+      - The same test asserts each alert clears when its escalation clears, and that a raising failure is logged without changing the tick's outcome.
+      - tests/no-progress-red-alert.test.ts asserts that a resumed Session exiting incomplete with its candidate unchanged raises one notify-only red alert of a new no-progress trigger, reusing the existing unchanged-resume detection at the exit receipt with no second detector, and queues one notification.
+      - The same test asserts no alert for a resumed Session that changed its candidate, a fresh first Session, and an Action in an operator-held state; and that repair attempts, the next launch decision and the Action's status are identical with and without the alert.
+      - Both test files assert their triggers are produced by the recovery-signal classifier on the same fixture rows as tests/recovery-replay.test.ts.
+      - tests/fast-rehearsal/review-repair-red-alerts.test.ts shows a repair loop running out of rounds raises the alert and repeated unchanged resumes raise the notice while the existing retry budget alone stops retries, and a healthy chain raises none; its focused vitest run passes.
+      - tests/blocker-remedies.test.ts passes with a remedy registered in src/production/blockerRemedies.ts for each new trigger; the focused vitest runs, pnpm lint and tsc pass.
+    depends_on: [recovery-signal-replay-gate, worker-reconciles-own-pointer-commits]
+    decisions: []
+    references: ["docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
 questions: []
 decisions: []
 recommended_model: standard
