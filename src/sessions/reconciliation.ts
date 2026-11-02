@@ -786,6 +786,8 @@ export interface ReconcileSessionExitInput {
    * `incomplete_resumable`, which was never resumable to begin with.
    */
   suppressLeaseHandoff?: { reason: string };
+  /** Test seam: the Session proposal root; production callers omit it. */
+  proposalRoot?: string;
   /** The workspace, so the Session's provider log can be read to name a provider sign-in failure. */
   workspace?: string;
   /** Host-owned completion capability bound at launch; never supplied by the Session/model. */
@@ -819,7 +821,8 @@ export function reconcileSessionExit(input: ReconcileSessionExitInput): Reconcil
 
   // Issue #1988: record the Session's proposal drafts (kept beside its worktree, outside the
   // candidate) before the worktree can be retired. Idempotent and best effort; it settles nothing.
-  try { recordSessionProposals(db, session); } catch { /* the draft stays on disk for the next reconciliation */ }
+  try { recordSessionProposals(db, session, input.proposalRoot); }
+  catch (error) { process.stderr.write(`Session proposal recording failed for ${session.id}: ${error instanceof Error ? error.message : String(error)}\n`); }
 
   const existing = getSessionExitReceipt(db, session.id);
   if (existing) {

@@ -131,6 +131,15 @@ capture. Direct inline preview above avoids that file write entirely. A validati
 failure reports the exact fix needed before anything touches disk, so the whole ceremony is one round trip on the common
 path instead of write-then-preview-then-retry.
 
+Inside a launched Session (the host sets `ARCADIA_SESSION_ID`), a `draft` of an
+`intent: proposal` Ask is the one exception: it is written to
+`/tmp/arcadia-session-proposals/<session id>/`, outside the candidate, and the host
+records its text with the Session and Action at Session exit (a `session.proposal_recorded`
+event; anything it cannot record leaves a `session.proposal_skipped` event). If that
+location cannot be used, `draft` fails and names inline `arcadia agent-ask preview`;
+it never writes into the candidate. Interactive agents and every other intent keep the
+canonical `.arcadia/asks/` path and behavior described above.
+
 `draft` reports `workspaceStatus: previewed` only when the preview receipt was
 recorded. `not_available` means no ready workspace resolved;
 `preview_blocked` means one resolved but could not record the receipt (for

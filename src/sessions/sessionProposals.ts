@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
-import os from "node:os";
+import { lstatSync, mkdirSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { normalizeAgentAsk } from "../ask/agentAsk.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
+import { validationError } from "../cli/errors.js";
 import { createId } from "../utils/id.js";
 import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
 
@@ -17,10 +17,13 @@ import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
  * It now lands in `/tmp/arcadia-session-proposals/<session id>/`: outside the Git
  * tree, so outside the set preservation snapshots (`ls-files --cached --others
  * --exclude-standard`), and the worktree stays clean. That location is writable
- * from every headless Session: Codex `workspace-write` allows the worktree and
- * the temporary directories only (`src/sessions/index.ts` Codex launch), and
- * headless Claude's `acceptEdits` covers the working directory only, so a
- * sibling of the worktree is not. The host reads it at Session exit and records
+ * from a headless Session: Codex `workspace-write` allows the worktree and
+ * `/tmp` (`src/sessions/index.ts` Codex launch), and headless Claude's
+ * `acceptEdits` covers the working directory only, so a sibling of the worktree
+ * is not. There is one root and no fallback: a Session's `$TMPDIR` can differ
+ * from the host's, so a second location would be silently unread. When the root
+ * cannot be used, `draft` fails and names inline `agent-ask preview`; it never
+ * writes into the candidate. The host reads it at Session exit and records
  * its text with the Session and Action, so it survives the worktree's retirement.
  * Recording settles and approves nothing.
  *
@@ -30,9 +33,10 @@ import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
  */
 export const SESSION_PROPOSAL_ROOT = "/tmp/arcadia-session-proposals";
 export const SESSION_PROPOSAL_EVENT = "session.proposal_recorded";
+export const SESSION_PROPOSAL_SKIPPED_EVENT = "session.proposal_skipped";
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const PROPOSAL_FILE = /^agent-ask-[a-z0-9][a-z0-9._-]*\.ya?ml$/;
-const PROPOSAL_MAX_BYTES = 256 * 1024;
+export const PROPOSAL_MAX_BYTES = 256 * 1024;
 
 /** The launched Session's id from the host-set environment, or null outside a Session. */
 export function launchedSessionId(env: NodeJS.ProcessEnv = process.env): string | null {
@@ -40,24 +44,47 @@ export function launchedSessionId(env: NodeJS.ProcessEnv = process.env): string 
   return id && SESSION_ID.test(id) ? id : null;
 }
 
-/**
- * Every directory that may hold a Session's proposal drafts, in write order: `/tmp`
- * (the Codex `workspace-write` temporary root) then this process's temporary
- * directory (`$TMPDIR`, which a sandbox may allow when `/tmp` is denied). The
- * host reads all of them at exit.
- */
-export function sessionProposalDirectories(sessionId: string): string[] {
+/** The directory holding proposal drafts for one Session under `root`. */
+export function sessionProposalDirectory(sessionId: string, root: string = SESSION_PROPOSAL_ROOT): string {
   if (!SESSION_ID.test(sessionId)) throw new Error("Invalid Session id for a proposal directory.");
-  return [...new Set([SESSION_PROPOSAL_ROOT, path.join(os.tmpdir(), "arcadia-session-proposals")])].map((root) => path.join(root, sessionId));
+  return path.join(root, sessionId);
 }
 
-/** The first of {@link sessionProposalDirectories} that can be created (mode 0700), else the last error. */
-export function ensureSessionProposalDirectory(sessionId: string): string {
-  let failure: unknown;
-  for (const directory of sessionProposalDirectories(sessionId)) {
-    try { mkdirSync(directory, { recursive: true, mode: 0o700 }); return directory; } catch (error) { failure = error; }
+/** Why `directory` cannot be trusted as a proposal location, or null when it is a real directory owned by this user. */
+function untrustedReason(directory: string): string | null {
+  const stat = lstatSync(directory);
+  if (stat.isSymbolicLink()) return "is a symbolic link";
+  if (!stat.isDirectory()) return "is not a directory";
+  if (typeof process.getuid === "function" && stat.uid !== process.getuid()) return "is not owned by the current user";
+  return null;
+}
+
+const INLINE_REMEDY = "Register the proposal inline instead: arcadia agent-ask preview '<json>' (intent proposal, requested_authority propose).";
+
+/**
+ * Create (mode 0700) and return the Session's proposal directory under `root`.
+ * Refuses a symlinked root or session directory, or one owned by another user,
+ * and any failure to write, with a message naming inline preview. Writes nothing
+ * to the candidate.
+ */
+export function ensureSessionProposalDirectory(sessionId: string, root: string = SESSION_PROPOSAL_ROOT): string {
+  const directory = sessionProposalDirectory(sessionId, root);
+  const refuse = (cause: string): never => {
+    throw validationError(`The Session proposal location ${directory} cannot be used: ${cause}. Nothing was written to your candidate. ${INLINE_REMEDY}`, { directory, cause, remedy: INLINE_REMEDY });
+  };
+  try {
+    for (const component of [root, directory]) {
+      mkdirSync(component, { mode: 0o700, recursive: component === root });
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EEXIST") refuse(error instanceof Error ? error.message : String(error));
   }
-  throw failure;
+  for (const component of [root, directory]) {
+    let reason: string | null;
+    try { reason = untrustedReason(component); } catch (error) { return refuse(error instanceof Error ? error.message : String(error)); }
+    if (reason) refuse(`${component} ${reason}`);
+  }
+  return directory;
 }
 
 export interface SessionProposalSession {
@@ -81,28 +108,50 @@ function hasTable(db: Database.Database, name: string): boolean {
   return !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
 }
 
+function recordSkip(db: Database.Database, session: SessionProposalSession, file: string, reason: string): void {
+  const seen = (db.prepare("SELECT payload_json FROM events WHERE event_type = ?").all(SESSION_PROPOSAL_SKIPPED_EVENT) as Array<{ payload_json: string }>)
+    .some((row) => { try { const p = JSON.parse(row.payload_json); return p.sessionId === session.id && p.path === file && p.reason === reason; } catch { return false; } });
+  if (seen) return;
+  db.prepare("INSERT INTO events (id, event_type, source_module, project_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(createId("event"), SESSION_PROPOSAL_SKIPPED_EVENT, "sessions.sessionProposals", session.project_id, JSON.stringify({
+      sessionId: session.id, project: session.project_slug, planSlug: session.plan_slug, actionId: session.action_id, path: file, reason
+    }), new Date().toISOString());
+}
+
 /**
- * Record every proposal draft a Session left beside its worktree. Idempotent per
- * (Session, content). Best effort per file: an unreadable or invalid draft is
- * skipped and left on disk. Never settles, approves or changes a Project record.
+ * Record every proposal draft a launched Session left under `root`. Idempotent per
+ * (Session, content). A draft that is not recorded (bad name, symlink, not a regular
+ * file, oversize, unreadable, invalid Ask) leaves a visible `session.proposal_skipped`
+ * event naming Session, Action, path and reason, and stays on disk. An untrusted root
+ * (symlink, other owner) is never read. Never settles, approves or changes a Project record.
  */
-export function recordSessionProposals(db: Database.Database, session: SessionProposalSession): RecordedSessionProposal[] {
+export function recordSessionProposals(db: Database.Database, session: SessionProposalSession, root: string = SESSION_PROPOSAL_ROOT): RecordedSessionProposal[] {
   if (!SESSION_ID.test(session.id) || !hasTable(db, "events")) return [];
-  const files = sessionProposalDirectories(session.id).filter((directory) => existsSync(directory))
-    .flatMap((directory) => readdirSync(directory).filter((entry) => PROPOSAL_FILE.test(entry)).sort().map((entry) => path.join(directory, entry)));
+  const directory = sessionProposalDirectory(session.id, root);
+  if (!existsSyncNoFollow(directory)) return [];
+  for (const component of [root, directory]) {
+    let reason: string | null;
+    try { reason = untrustedReason(component); } catch (error) { reason = error instanceof Error ? error.message : String(error); }
+    if (reason) { recordSkip(db, session, component, `untrusted proposal location: ${reason}`); return []; }
+  }
   const recorded: RecordedSessionProposal[] = [];
-  for (const file of files) {
+  for (const entry of readdirSync(directory).sort()) {
+    const file = path.join(directory, entry);
+    if (!PROPOSAL_FILE.test(entry)) { recordSkip(db, session, file, "name is not agent-ask-<request_id>.yaml"); continue; }
     let text: string;
     try {
       const stat = lstatSync(file);
-      if (!stat.isFile() || stat.isSymbolicLink() || statSync(file).size > PROPOSAL_MAX_BYTES) continue;
+      if (stat.isSymbolicLink()) { recordSkip(db, session, file, "is a symbolic link"); continue; }
+      if (!stat.isFile()) { recordSkip(db, session, file, "is not a regular file"); continue; }
+      if (stat.size > PROPOSAL_MAX_BYTES) { recordSkip(db, session, file, `exceeds ${PROPOSAL_MAX_BYTES} bytes`); continue; }
       text = readFileSync(file, "utf8");
-    } catch { continue; }
+    } catch (error) { recordSkip(db, session, file, `unreadable: ${error instanceof Error ? error.message : String(error)}`); continue; }
     const sha256 = createHash("sha256").update(text).digest("hex");
+    let requestId: string;
+    try { requestId = normalizeAgentAsk({ request: text }).requestId; }
+    catch (error) { recordSkip(db, session, file, `invalid Agent Ask: ${error instanceof Error ? error.message : String(error)}`); continue; }
     const prior = (db.prepare("SELECT id, payload_json FROM events WHERE event_type = ?").all(SESSION_PROPOSAL_EVENT) as Array<{ id: string; payload_json: string }>)
       .find((row) => { try { const p = JSON.parse(row.payload_json); return p.sessionId === session.id && p.sha256 === sha256; } catch { return false; } });
-    let requestId: string;
-    try { requestId = normalizeAgentAsk({ request: text }).requestId; } catch { continue; }
     if (prior) { recorded.push({ requestId, sha256, eventId: prior.id, receiptRecorded: true, replayed: true }); continue; }
     let receiptRecorded = false;
     let receiptError: string | null = null;
@@ -120,4 +169,8 @@ export function recordSessionProposals(db: Database.Database, session: SessionPr
     recorded.push({ requestId, sha256, eventId, receiptRecorded, replayed: false });
   }
   return recorded;
+}
+
+function existsSyncNoFollow(target: string): boolean {
+  try { lstatSync(target); return true; } catch { return false; }
 }

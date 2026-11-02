@@ -151,7 +151,7 @@ function renderAgentAskPreview(proposal: AgentAskProposal): string[] {
   ];
 }
 
-export interface AgentAskDraftOptions { request?: string; file?: string; requestId?: string; project?: string; workspace?: string; dir?: string; }
+export interface AgentAskDraftOptions { request?: string; file?: string; requestId?: string; project?: string; workspace?: string; dir?: string; /** Test seam: the Session proposal root; never read from the environment or a file. */ proposalRoot?: string; }
 export interface AgentAskDraftData {
   path: string;
   requestId: string;
@@ -186,7 +186,7 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
   // anywhere else (interactive agent, primary checkout, no Git) the canonical path and behavior stay.
   const sessionId = normalized.intent === "proposal" ? launchedSessionId() : null;
   const outsideCandidate = sessionId !== null;
-  const askDir = sessionId !== null ? ensureSessionProposalDirectory(sessionId) : path.join(repoDir, ".arcadia", "asks");
+  const askDir = sessionId !== null ? ensureSessionProposalDirectory(sessionId, options.proposalRoot) : path.join(repoDir, ".arcadia", "asks");
   const filePath = path.join(askDir, `agent-ask-${normalized.requestId}.yaml`);
   // Refuse symlinks at every component, including a dangling final symlink.
   // Exclusive creation closes the exists/write collision race without overwriting another draft.
