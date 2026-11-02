@@ -508,6 +508,11 @@ class RecordChecker {
         requireEnum(this.f, label, finding.severity, "severity", SEVERITY);
         requireText(this.f, label, finding.summary, "summary");
         requireEnum(this.f, label, finding.disposition, "disposition", DISPOSITION);
+        if (finding.concepts !== undefined) {
+          for (const ref of this.list(`${label}.concepts`, finding.concepts)) {
+            if (typeof ref !== "string" || !this.conceptIds.has(ref)) this.f.problem(label, `concepts names unknown concept ${JSON.stringify(ref)}.`);
+          }
+        }
       });
     });
 
@@ -589,9 +594,8 @@ class RecordChecker {
       if (concept.load_bearing === true) {
         const verification = isObj(concept.verification) ? concept.verification : null;
         const verified = verification?.status === "verified" && text(Array.isArray(verification.evidence) ? verification.evidence.join("") : verification.evidence) !== null;
-        // A finding names a concept by its ID in the summary (the contract gives findings no other link).
-        const covered = accepted.some((finding) => typeof finding.summary === "string" && finding.summary.includes(id));
-        if (!verified && !covered) this.f.problem(label, "a load-bearing concept must be verified with evidence or covered by an accepted_risk blocking finding (naming it in the summary).");
+        const covered = accepted.some((finding) => items(finding.concepts).includes(id));
+        if (!verified && !covered) this.f.problem(label, "a load-bearing concept must be verified with evidence or covered by an accepted_risk blocking finding that lists it in concepts.");
       }
     }
   }

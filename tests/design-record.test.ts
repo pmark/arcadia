@@ -381,8 +381,30 @@ describe("the ready gate", () => {
     expectProblem(ready((r) => { r.concepts[0].verification = { status: "verified", evidence: " " }; }), /load-bearing concept must be verified/);
     expect(ready((r) => {
       r.concepts[0].verification = undefined;
-      r.scrutiny[1].findings = [{ id: "R2-F1", severity: "blocking", summary: "C-001 is unproven.", disposition: "accepted_risk", decision_ref: "Decision 0202" }];
+      r.scrutiny[1].findings = [{ id: "R2-F1", severity: "blocking", summary: "Unproven.", concepts: ["C-001"], disposition: "accepted_risk", decision_ref: "Decision 0202" }];
     }).problems).toEqual([]);
+  });
+
+  it("covers a concept only through the concepts list of an accepted_risk blocking finding", () => {
+    const unverified = (r: Obj, finding: Obj): void => { r.concepts[0].verification = undefined; r.scrutiny[1].findings = [{ id: "R2-F1", severity: "blocking", summary: "Unproven.", decision_ref: "Decision 0202", ...finding }]; };
+    // Named only in the summary: not covered.
+    expectProblem(ready((r) => unverified(r, { summary: "C-001 is unproven.", disposition: "accepted_risk" })), /C-001: a load-bearing concept must be verified/);
+    // A longer ID does not cover a shorter one.
+    expectProblem(ready((r) => {
+      r.concepts.push({ id: "C-0012", title: "Longer", kind: "mechanism", statement: "A paraphrase.", origins: [{ source: "S001", locator: "line 9" }], position: "parked", revival: "Later." });
+      unverified(r, { concepts: ["C-0012"], disposition: "accepted_risk" });
+    }), /C-001: a load-bearing concept must be verified/);
+    // A finding that is not an accepted risk, or is only a note, does not cover it.
+    expectProblem(ready((r) => unverified(r, { concepts: ["C-001"], disposition: "fixed" })), /C-001: a load-bearing concept must be verified/);
+    expectProblem(ready((r) => unverified(r, { concepts: ["C-001"], severity: "note", disposition: "accepted_risk" })), /C-001: a load-bearing concept must be verified/);
+  });
+
+  it("rejects an unknown or malformed concepts entry on a finding", () => {
+    const withConcepts = (concepts: unknown) => (r: Obj): void => { r.scrutiny[1].findings[0].concepts = concepts; };
+    expectProblem(run(withConcepts(["C-099"])), /concepts names unknown concept "C-099"/);
+    expectProblem(run(withConcepts(["C-0012"])), /unknown concept "C-0012"/);
+    expectProblem(run(withConcepts("C-001")), /concepts: must be a list/);
+    expect(run(withConcepts(["C-001"])).problems).toEqual([]);
   });
 
   it("requires the riskiest assumption to be supported or an accepted risk", () => {
@@ -715,6 +737,16 @@ describe("arcadia design check (CLI)", () => {
     expect(human.stdout).toContain("C-001 The mechanism [S001, S002]");
     const json = parseJson(cli([fx.record, "--matrix", "--json", "--workspace", fx.workspace], fx).stdout);
     expect(Object.keys(json.data.matrix)).toEqual(["shared", "differentiated", "choices", "trace", "cutOrLater"]);
+  });
+
+  it("warns, and still passes, when --workspace names a directory that does not exist", () => {
+    const fx = fixture();
+    write(fx, baseRecord());
+    const result = cli([fx.record, "--ready", "--json", "--workspace", path.join(fx.root, "no-such-workspace")], fx);
+    expect(result.status, result.stderr).toBe(0);
+    const json = parseJson(result.stdout);
+    expect(json.data.problems).toEqual([]);
+    expect(json.data.warnings.join("\n")).toMatch(/S003.*not verified/);
   });
 
   it("validates a field guide and warns when no workspace is reachable for a workspace source", () => {
