@@ -1,0 +1,88 @@
+schema: arcadia-design-record-v1
+design: relay
+project: arcadia
+authors: [Claudia Atlas]
+frame:
+  status: proposed
+  outcome: Any Arcadia operator, including a first-timer, can wield the full Arcadia Way through one continuous conversation with Relay, and what matters in the conversations around their work reaches them, without Relay ever exceeding the authority they granted.
+  milestone: A first-time operator takes a real website, app or media project from idea to a reviewed result using only Relay, with every approval made by the operator and every answer about the Way citing the checked-in guidance it came from.
+  experience_target: Even a first time Arcadia operator therefore shall be empowered to wield the full power of the Arcadia Way via Relay interaction.
+  mission:
+    - id: M1
+      file: PROJECT.md
+      quote: Arcadia is the operator's execution system.
+    - id: M2
+      file: PROJECT.md
+      quote: asking for a decision only when one is genuinely needed
+    - id: M3
+      file: CONSTITUTION.md
+      quote: must stay useful when the operator has almost no time
+    - id: M4
+      file: CONSTITUTION.md
+      quote: Operator attention is a budget.
+    - id: M5
+      file: CONSTITUTION.md
+      quote: Capability never grants authority.
+  requirements:
+    - id: REQ-001
+      statement: An operator who knows nothing about Arcadia can ask Relay how to do anything in the Way and get a correct, practical answer that cites the checked-in guidance it used, and says plainly when it does not know.
+      mission: [M1, M3]
+      proof: A golden set of first-time-operator questions, graded by a separate judge against the cited guidance, with a threshold the operator sets.
+    - id: REQ-002
+      statement: The operator can carry out the Way's operations by talking to Relay, without knowing commands, paths or document formats.
+      mission: [M1, M3]
+      proof: A first-time operator walkthrough on a real project, counting every moment they had to leave Relay or type a command.
+    - id: REQ-003
+      statement: One continuous conversation follows the operator across devices, and surviving a restart loses nothing they said or were told.
+      mission: [M1]
+      proof: A test that sends from one client, restarts services, and reads the same history from another.
+    - id: REQ-004
+      statement: Relay reaches the operator only when they must act or can use a result, and everything it needs from them is one clear choice with its consequence.
+      mission: [M2, M4]
+      proof: A count of messages per real workday, graded by the operator as useful or noise, against a threshold the operator sets.
+    - id: REQ-005
+      statement: What matters in the group conversations around the operator's work reaches them, and nothing from a group is lost, sent or acted on without their authority.
+      mission: [M4, M5]
+      proof: A record-only run on a real channel, with candidates graded by the operator, and a test that no outbound message or state change results.
+    - id: REQ-006
+      statement: Relay can never do more than the operator authorized, whatever a message, document or channel tells it, and this limit is enforced by tools rather than by its prompt.
+      mission: [M5]
+      proof: An adversarial test suite of hostile messages and documents, showing no effect beyond a recorded proposal.
+  non_goals:
+    - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
+    - Speaking in a group or to a client before a Decision allows it.
+    - Copying DeepSeek's implementation, or integrating any OpenAI product.
+sources:
+  - id: S001
+    title: Operator direction
+    kind: operator
+    added: 2026-11-02
+    retention: repo
+    path: sources/S001-operator-direction.md
+    sha256: 26887fa38bc33b09770b2ea3a0aa28e2c7b50bccfafe4245a0eb02882747e093
+  - id: S002
+    title: DeepSeek dsh-superagent-prototype design docs
+    kind: third_party
+    added: 2026-11-02
+    retention: pointer
+    url: https://github.com/deepseek-ai/dsh-superagent-prototype
+    revision: 6337fc823ce20251c8de8085948165c81aaa701e
+    rights: MIT, research prototype
+  - id: S003
+    title: Agent's first plan
+    kind: agent
+    added: 2026-11-02
+    retention: repo
+    path: sources/S003-agent-first-plan.md
+    sha256: a0f1c3b3c5570f94db9c72c8d51c420bb9a5e554c5c928517d38d73f4341ea54
+  - id: S004
+    title: Arcadia conversational workspace specification
+    kind: operator
+    added: 2026-11-02
+    retention: pointer
+    url: https://github.com/pmark/arcadia/blob/main/docs/design/arcadia-conversational-workspace.md
+    revision: d52e5c8311394033c7cee45570e7e18c519361d0
+    rights: Arcadia repository
+concepts: []
+choices: []
+scrutiny: []
