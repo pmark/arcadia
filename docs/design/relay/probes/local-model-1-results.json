@@ -504,7 +504,7 @@
     10.6005859375,
     11.0283203125
    ],
-   "error": "FileNotFoundError('No safetensors found in /Users/pmark/.omlx/models/z-lab/Qwen3-4B-PARO')",
+   "error": "FileNotFoundError('No safetensors found in ~/.omlx/models/z-lab/Qwen3-4B-PARO')",
    "load_avg_end": [
     16.01123046875,
     10.6005859375,
