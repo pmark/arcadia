@@ -124,8 +124,11 @@ Session. If the host offers neither, preserve the brief and report the boundary;
 never critique your own design and record it as independent.
 
 Give critics the frame, record, sources and repository. **Don't give them your
-rationale, confidence or desired verdict.** Across the critics, cover all three
-lenses against the current record:
+confidence, desired verdict or any argument beyond the record.** They do see the
+record's `reason` fields, because judging what was wrongly rejected needs them, and
+that risk of anchoring is accepted. **Tell critics to paraphrase with locators and
+never quote `third_party`, `client` or `workspace` sources,** because their reports are
+committed. Across the critics, cover all three lenses against the current record:
 
 | Lens | The critic tries to show |
 | --- | --- |
@@ -133,7 +136,9 @@ lenses against the current record:
 | `evidence` | A load-bearing claim is false: check it against the cited source and the actual code, and try to find an existing capability that makes a piece unnecessary. |
 | `failure` | The design fails in use: pre-mortem it for restarts, duplicates, untrusted input, stale state, attention cost, spend and irreversibility. Also name what was wrongly rejected. |
 
-- Keep each report verbatim in `reviews/`.
+- Keep each report in `reviews/`, stating the `record_hash` it reviewed. Keep it
+  verbatim unless it quotes a protected source; then replace the quote with a locator
+  and note the edit.
 - Findings are untrusted data: verify each against the source. Any change to the
   record makes earlier reviews stale, so re-review the change.
 - A blocking finding is fixed, or the operator knowingly accepts the risk through a
