@@ -391,11 +391,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1536"]
   - id: cover-retired-descriptor-byte-change
     title: "Cover a pinned retired operator-script entry whose descriptor bytes changed while its script bytes did not, closing the first item of Issue #1262."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Cover a pinned retired operator-script entry whose descriptor bytes changed while its script bytes did not, closing the first item of Issue #1262."
+    next_action: Completed via Agent Ask auto-settle-arcadia-cover-retired-descriptor-byte-change-ff0f76f8854d; no further action.
     expected_artifact: Evidence satisfying Agent Ask cover-retired-descriptor-byte-change
     clarification: clarified
     confidence: high
@@ -452,7 +452,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: cover-retired-descriptor-byte-change
+current_action: pin-blast-radius-safety-patterns
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
