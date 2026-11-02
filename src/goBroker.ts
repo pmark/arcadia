@@ -3,7 +3,7 @@ import type { BriefStage } from "./briefSupervisor.js";
 import { ArcadiaError, normalizeError, validationError } from "./cli/errors.js";
 import type { CommandSuccess } from "./cli/response.js";
 import { runAdvanceCommand, type AdvanceCommandData } from "./commands/advance.js";
-import { runGoCommand, type GoCommandData, type GoCommandOptions } from "./commands/go.js";
+import { observeQueueWalk, runGoCommand, type GoCommandData, type GoCommandOptions } from "./commands/go.js";
 import { renderNextSuccess, runNextReadOnlyCommand, type NextCommandData } from "./commands/next.js";
 import { runWorkMonitorCommand, type WorkMonitorCommandData } from "./commands/workMonitor.js";
 import { discoverDocs } from "./docs/discover.js";
@@ -263,11 +263,24 @@ export function runGoBroker(
     && selected?.context && isDispatchable(selected)
     ? requirementIdentity({ projectSlug: selected.context.projectSlug, planSlug: selected.context.activePlan, action: selected.context.action })
     : null;
+  // When another live worktree already claims the selected Action, name the one
+  // queue-ready Action this request may walk to now, so preview and apply bind
+  // to that Action and its input revision. Otherwise the fence stays strict.
+  const walk = initialSelection && selected?.context
+    ? observeQueueWalk({
+        workspace,
+        repositoryPath: caller!.repository,
+        dispatchRoot: caller!.repository,
+        projectSlug: selected.context.projectSlug,
+        pointerActionId: selected.context.action.id,
+        agent: request.agent
+      })
+    : null;
   const options = {
     repo: request.source,
     source: request.source,
     agent: request.agent,
-    ...(initialSelection ? { initialSelection, strictAction: true } : {})
+    ...(initialSelection ? { initialSelection: walk ? { ...initialSelection, walk } : initialSelection, strictAction: true } : {})
   } satisfies GoCommandOptions;
 
   try {

@@ -259,6 +259,7 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("Scope — a hard constraint the host checks against your diff before accepting a completion (only your completion draft in .arcadia/asks/ is exempt): the change may touch only docs/contract.md.");
     expect(brief).toContain("never change a file outside that scope to make a test pass");
     expect(brief).toContain("draft no completion: submit an Agent Ask with `intent: proposal`");
+    expect(brief).toContain("kept outside your candidate by the host, so leave it where it lands");
     expect(brief.indexOf("Scope — ")).toBeGreaterThan(brief.indexOf("  2. The change touches only docs/contract.md; lint passes."));
 
     const resumed = renderActionBrief({ ...input, continuation: { sessionId: "session_prev", candidateRevision: head(repo),

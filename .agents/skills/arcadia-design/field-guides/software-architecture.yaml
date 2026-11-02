@@ -1,0 +1,84 @@
+schema: arcadia-design-field-guide-v1
+field: software-architecture
+title: Software architecture
+revision: 1
+review_date: 2026-11-02
+review: null
+scope:
+  applies: Designing a new or substantially changed software module inside an existing system.
+  limits: Not a substitute for security, legal or domain review. It gives no language, framework or vendor advice.
+frameworks:
+  - id: F1
+    name: Walking skeleton first
+    use_when: The riskiest assumption is whether the pieces work together end to end.
+    provenance: { kind: inference, confidence: medium, reason: General practice; not measured on Arcadia. }
+  - id: F2
+    name: Contract first
+    use_when: Several owners or parallel builders must agree before they can work apart.
+    provenance: { kind: inference, confidence: medium, reason: General practice; not measured on Arcadia. }
+entries:
+  - id: E1
+    kind: element
+    text: Before designing a piece, audit what already exists. Most of a new module should be existing parts connected differently.
+    applies_when: Any module inside an existing system.
+    limits: An existing part that conflicts with the outcome is a cost, not a saving.
+    provenance: { kind: operator_statement, confidence: high, reason: Standing economy rule of the Project., source: CONSTITUTION.md }
+  - id: E2
+    kind: element
+    text: For each effect the module can cause, name who may cause it and where that limit is enforced. A limit stated only in a prompt is a request, not a boundary.
+    applies_when: The module acts on behalf of a person or reads untrusted input.
+    limits: Purely read-only modules have fewer effects, though reading can still leak data.
+    provenance: { kind: imported, confidence: high, reason: The prototype ranks host-enforced facts above all prompt text., source: "https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/docs/004-prompts.md (MIT)" }
+  - id: E3
+    kind: element
+    text: Give each new fact one authoritative home. Every other surface is a projection of it.
+    applies_when: The module stores or displays state.
+    limits: Caches are fine when they are labelled and can be rebuilt.
+    provenance: { kind: operator_statement, confidence: high, reason: Standing truth rule of the Project., source: CONSTITUTION.md }
+  - id: E4
+    kind: element
+    text: Separate who decides whether work starts from who does the work. A router that only routes can be small and safe.
+    applies_when: The module receives requests from several places.
+    limits: Unnecessary when there is one caller and one kind of work.
+    provenance: { kind: imported, confidence: medium, reason: Described as a design principle in a research prototype; not independently measured., source: "https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/docs/004-prompts.md (MIT)" }
+  - id: E5
+    kind: question
+    text: What does this cost in attention, and who pays it? Every message, setting and screen must return more value than it takes.
+    applies_when: The module can notify or interrupt a person.
+    limits: Safety alerts are not traded against convenience.
+    provenance: { kind: operator_statement, confidence: high, reason: Standing authority rule of the Project., source: CONSTITUTION.md }
+  - id: E6
+    kind: question
+    text: In what order does it spend? Deterministic code first, then local models, then frontier models, then the operator.
+    applies_when: The module calls a model.
+    limits: A cheap model that needs repeated retries can cost more overall.
+    provenance: { kind: operator_statement, confidence: high, reason: Standing economy rule of the Project., source: CONSTITUTION.md }
+  - id: E7
+    kind: probe
+    text: Run a new proactive behavior in record-only mode against real events and grade what it would have done before it may act.
+    applies_when: The behavior acts without being asked.
+    limits: Needs enough real events to judge, and observing can itself raise privacy questions.
+    provenance: { kind: imported, confidence: medium, reason: The prototype defaults proactive work to observe mode; no results were published in the docs read., source: "https://github.com/deepseek-ai/dsh-superagent-prototype/blob/6337fc823ce20251c8de8085948165c81aaa701e/docs/002-authorization.md (MIT)" }
+  - id: E8
+    kind: attack
+    text: "Replay it: restart mid-operation, deliver an event twice, and deliver events out of order. What is lost or done twice?"
+    applies_when: The module handles events or external effects.
+    limits: Less relevant to stateless, pure transformations.
+    provenance: { kind: operator_statement, confidence: high, reason: Required edge-case classes in the Project's planning process., source: docs/planning-process.md }
+  - id: E9
+    kind: attack
+    text: Treat every message, document and tool result as hostile. What is the worst thing a crafted input can make it do?
+    applies_when: The module reads anything a person outside the operator can write.
+    limits: Does not replace a security review.
+    provenance: { kind: inference, confidence: high, reason: Prompt injection is a known class of failure for agents that read untrusted text. }
+  - id: E10
+    kind: attack
+    text: Does this add a surface or a store where an existing one could grow? Can it be removed cleanly later?
+    applies_when: The design adds a table, page, service or channel.
+    limits: A genuinely new fact does need a home.
+    provenance: { kind: inference, confidence: medium, reason: Derived from the Project's single-home rule and its history of surface sprawl. }
+validation_examples:
+  - given: A proposal adds a new database of chat messages that also tracks whether each Action is done.
+    expect: E3 flags the Action status as a second source of truth; the table holds only new facts and points to the Action.
+  - given: A proposal lets a chat agent run shell commands because its prompt forbids dangerous ones.
+    expect: E2 and E9 flag a prompt-only limit; the design needs an enforced tool boundary.

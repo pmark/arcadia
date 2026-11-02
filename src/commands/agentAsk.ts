@@ -5,6 +5,7 @@ import { ACTION_ID_MAX_LENGTH, ACTION_ID_PATTERN, AGENT_ASK_AUTHORITIES, AGENT_A
 import { discoverUnprocessedAgentAsks, EMPTY_AGENT_ASK_DISCOVERY, type AgentAskDiscoveryResult } from "../ask/discovery.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
 import { WORK_CLASSIFICATIONS } from "../domain/constants.js";
+import { ensureSessionProposalDirectory, launchedSessionId } from "../sessions/sessionProposals.js";
 import { findRecoveredAsk } from "../sessions/legacyAskRecovery.js";
 import { normalizeError, validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
@@ -150,7 +151,7 @@ function renderAgentAskPreview(proposal: AgentAskProposal): string[] {
   ];
 }
 
-export interface AgentAskDraftOptions { request?: string; file?: string; requestId?: string; project?: string; workspace?: string; dir?: string; }
+export interface AgentAskDraftOptions { request?: string; file?: string; requestId?: string; project?: string; workspace?: string; dir?: string; /** Test seam: the Session proposal root; never read from the environment or a file. */ proposalRoot?: string; }
 export interface AgentAskDraftData {
   path: string;
   requestId: string;
@@ -180,11 +181,16 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
   const normalized = normalizeAgentAsk({ request, requestId: options.requestId, project: options.project });
   const content = request.trim().endsWith("\n") ? request.trim() + "\n" : `${request.trim()}\n`;
   if (normalized.intent === "complete") assertCompletionApplicableAtHead(repoDir, normalized.candidateRevision);
-  const askDir = path.join(repoDir, ".arcadia", "asks");
+  // A `proposal` is a request for consideration, not part of the candidate: inside a Git
+  // launched Session it is placed outside the worktree so preservation never commits it (Issue #1988);
+  // anywhere else (interactive agent, primary checkout, no Git) the canonical path and behavior stay.
+  const sessionId = normalized.intent === "proposal" ? launchedSessionId() : null;
+  const outsideCandidate = sessionId !== null;
+  const askDir = sessionId !== null ? ensureSessionProposalDirectory(sessionId, options.proposalRoot) : path.join(repoDir, ".arcadia", "asks");
   const filePath = path.join(askDir, `agent-ask-${normalized.requestId}.yaml`);
   // Refuse symlinks at every component, including a dangling final symlink.
   // Exclusive creation closes the exists/write collision race without overwriting another draft.
-  for (const component of [path.join(repoDir, ".arcadia"), askDir, filePath]) {
+  for (const component of outsideCandidate ? [askDir, filePath] : [path.join(repoDir, ".arcadia"), askDir, filePath]) {
     try {
       if (lstatSync(component).isSymbolicLink()) throw validationError("Agent Ask draft path cannot contain symlinks.", { path: component });
     } catch (error) {
@@ -215,7 +221,9 @@ export function runAgentAskDraftCommand(options: AgentAskDraftOptions): CommandS
     // through (rather than letting preview default it separately) makes
     // discovery scan the same `.arcadia/asks/` directory this draft was
     // just placed into, not whatever `process.cwd()` happens to be.
-    const previewResult = runAgentAskPreviewCommand({ workspace: options.workspace ?? "", file: filePath, requestId: options.requestId, project: options.project, dir: repoDir });
+    const previewResult = runAgentAskPreviewCommand(outsideCandidate
+      ? { workspace: options.workspace ?? "", request: content, requestId: options.requestId, project: options.project, dir: repoDir }
+      : { workspace: options.workspace ?? "", file: filePath, requestId: options.requestId, project: options.project, dir: repoDir });
     preview = { proposal: previewResult.data.proposal, fingerprint: previewResult.data.proposal.fingerprint };
     discovery = previewResult.data.discovery;
     workspaceStatus = "previewed";

@@ -1710,6 +1710,39 @@ replay of an already-settled `--request-id` still replays. Without the flag,
 activation is unchanged. `--repository` defaults to the git toplevel of the
 current directory.
 
+## Check A Design Record Or Field Guide
+
+```bash
+pnpm arcadia design check <path> [--ready] [--matrix] [--json] [--workspace <path>]
+```
+
+Read-only validation of an Arcadia Design file, dispatched on its `schema`:
+`arcadia-design-record-v1` (`docs/design/<slug>/record.yaml`) or
+`arcadia-design-field-guide-v1` (`.agents/skills/arcadia-design/field-guides/`).
+The contracts are `references/record-format.md` and `references/field-guide-format.md`
+in the `arcadia-design` skill. It reports every problem, not only the first, and
+prints the record's `record_hash`. Exit 0 means no problems; otherwise it fails with
+`VALIDATION_ERROR` and exit 1, listing the problems in the message and, with
+`--json`, in `error.details.problems`.
+
+- `--ready` adds the ready gate (confirmed frame, traced requirements, settled
+  choices, verified or accepted risk, independent current scrutiny).
+- `--matrix` prints the derived shared, differentiated, choices, trace and cut-or-later
+  views. They are computed on each run and never stored.
+- A record must be at `<project root>/docs/design/<slug>/record.yaml` with `PROJECT.md`
+  at the project root; a `PROJECT.md` anywhere else does not count. Paths stay inside
+  their root (the record's directory, the project root, or the workspace); an
+  absolute path, a `..` escape or a symlink that leaves it is a problem.
+- Mission `file` is exactly `PROJECT.md`, `CONSTITUTION.md` or `NORTH_STAR.md`, and a
+  quote has at least 20 non-whitespace characters. `--ready` also resolves each
+  `confirmed_ref` and `decision_ref` to an approved `docs/decisions/NNNN-*.md` or an
+  operator `repo` source, and requires each review report to contain its hash.
+- A `workspace` source is verified only when a workspace directory resolves (the
+  flag, then the normal resolver) and the file exists there; otherwise it is a
+  warning, and a problem under `--ready`. A present file with a different hash is a
+  problem.
+- It opens no database and writes nothing, including no activity record.
+
 ## Dispose A Failed Recovery Successor With No Recorded Start
 
 An explicit `--recover-session` successor can fail with no recorded provider

@@ -2,7 +2,7 @@
   "schema": "arcadia-agent-guidance-v1",
   "fingerprints": {
     "continuation": "ee9da1e2887a6a1f021f88cbdf58a0311355f8283aabc42d2c500ff61b05997f",
-    "agent-asks": "6e323dc674ca2120dcb1f0a7e1efec7f2239c0bdfd483cf29ece0335328ad4b7",
+    "agent-asks": "e321345d3a373048ad8b9f08b9d30d715c67b39780d64187dc5f2ea93e129229",
     "operator-actions": "f0ecda327875b73fd51cc1993060cc5f6267cee685ac3dc0f9719c9c363505aa",
     "proposals": "2b781df466a30191591790e5029f8107dc9d6e18cc1f1cf264a90cf3d092ac62",
     "principles": "119a74f7aaaa14380943f2a965a3a8f60e71fa01f67483c801bc3be5f9ea0894",
@@ -18,7 +18,7 @@
     "operator-directed-work": "4e5e1be606bef778bb505d01d29956940560dc4152b404e7c4b33644d9555072",
     "standard-harness": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f",
     "ask-todo-scout": "1bf00104667677704da2c3cb7cbacdc09328cbcf0894b2e1c57a62d5868e52e8",
-    "consultation": "ed457130919d871e33fae4a8bf44a833b2a7df15004d83c734bba38ee46c509f",
+    "consultation": "3f65a6300758cfe16d0b723fc10f30cb586e095c5e95b2aaf20eea0483ff608d",
     "session-roles-and-briefs": "8b10b3a3048e36e7349a2ec0f6ec695a55d197fcec531bee8dc4e6787907b446",
     "native-app-sessions": "502882ca6bb33b2cc602052d7c94722d57566d3d59ed42fc1fb3edea57c88748",
     "hacker-recovery": "2e27d7d4b41bdb2301785e856badd15ea855fce9b3522a53f3f77c9adf3ff14e",
@@ -27,6 +27,7 @@
     "chat-titles": "33e606b2ca1e7b1786385119168f6ff052e0d1ae675f9abef700cd77c29db0c9",
     "skills": "1fda642586a6214b7ea1d8ebb9f4135f22582defb82ecc255969720ada7b2e01",
     "native-mail-checkpoints": "d7ec26cdb43e93ba17fb253646bf2f33b14e4b3031b3a3bae1c67bd5d4bd97ae",
-    "process-critic": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8"
+    "process-critic": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8",
+    "relay-mode": "2f35bdae84f056f7c09e74314d6f23787f8575a36e6acc6fb2c6f0654c3fa8d1"
   }
 }

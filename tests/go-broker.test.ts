@@ -8,6 +8,7 @@ import { permissionSnippets, renderGoBrokerLauncher, stageGoBrokerDatabaseSchema
 import { assertGoBrokerHostController, parseGoBrokerArguments, runGoBroker } from "../src/goBroker.js";
 import * as broker from "../src/goBroker.js";
 import * as workspaceResolution from "../src/workspace/resolve.js";
+import { canonicalPath } from "../src/sessions/index.js";
 
 
 const goOrientation = { ok: true as const, command: "next", data: { context: null, blockers: [], operatorQuestion: null,
@@ -249,6 +250,22 @@ describe("protected Arcadia go broker", () => {
     for (const [options] of runner.mock.calls) {
       expect(options).not.toHaveProperty("initialSelection");
       expect(options).not.toHaveProperty("strictAction");
+      expect(options).not.toHaveProperty("enrollment");
+    }
+  });
+
+  it("keeps a dispatchable root selection strictly fenced and adds no walk without an observed claim", () => {
+    const runner = vi.fn().mockReturnValue({ ok: true, command: "go", data: { applied: true }, artifacts: [], warnings: [] });
+    const selected = { context: { projectSlug: "fixture", activePlan: "plan", action: { id: "a", title: "A", status: "open", responsibility: "agent",
+      clarification: "clarified", acceptanceCriteria: ["Done."], dependsOn: [], references: [], nextAction: "Do A.", expectedArtifact: "x" } },
+      blockers: [], operatorQuestion: null };
+    const next = { ...goOrientation, data: { ...goOrientation.data, orientation: { repository: canonicalPath("/tmp/finished"), worktree: "/tmp/finished", assigned: null, selected } } };
+    runGoBroker({ source: "/tmp/finished", agent: "codex", operation: "go" }, runner as never,
+      undefined, undefined, () => "/tmp/workspace", () => next as never, () => "fixture");
+    // The workspace is unreadable here, so no walk can be observed and the old strict refusal stands.
+    for (const [options] of runner.mock.calls) {
+      expect(options).toMatchObject({ strictAction: true });
+      expect(options.initialSelection).not.toHaveProperty("walk");
       expect(options).not.toHaveProperty("enrollment");
     }
   });
