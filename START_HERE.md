@@ -2389,8 +2389,12 @@ source change does not prove live UI delivery. The read-only combined brief also
 remains the way to inspect orientation without preparing anything. Selected work comes from the registered
 base; a valid caller-owned candidate retains its own Action when an unrelated
 selected pointer advances. Initial preparation from the registered root also binds the selected Action
-input across preview/apply and refuses a changed selection; it does not silently
-walk to unobserved work when that selection is claimed. Caller-owned candidate
+input across preview/apply and refuses a changed selection. When another live worktree
+already claims that selected Action, the broker observes, read-only, the one queue-ready
+Action it may walk to and binds preview and apply to that Action and its input revision, so
+sequential requests from the primary checkout receive different ready Actions. Apply claims
+only that Action; a changed input, a lost claim race, or a pointer Action released since the
+observation refuses instead of walking on. Enrollment never walks. Caller-owned candidate
 reconciliation and root cases with no dispatchable initial selection retain their
 existing path. Enrollment rechecks the initial Action input before
 claiming, and replay verifies its own claim generation, canonical Action input and

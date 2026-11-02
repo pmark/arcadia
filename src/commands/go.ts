@@ -131,8 +131,18 @@ export interface GoCommandOptions {
    * pending enrollment row inside the claim's own transaction.
    */
   enrollment?: { requestId: string; actionId: string; requirementId?: string; inputRevision?: string };
-  /** Protected broker only: bind initial root preparation, without enrollment identity or writes. */
-  initialSelection?: { requirementId: string; inputRevision: string };
+  /**
+   * Protected broker only: bind initial root preparation, without enrollment
+   * identity or writes. `walk` is present only when the broker observed the
+   * pointer Action already claimed by another live worktree and a queue-ready
+   * Action it may walk to (see `observeQueueWalk`). With it, preparation may
+   * claim exactly that Action at exactly that input revision, and nothing else.
+   */
+  initialSelection?: {
+    requirementId: string;
+    inputRevision: string;
+    walk?: { actionId: string; requirementId: string; inputRevision: string };
+  };
   /** Test-only override; the CLI intentionally does not expose it. */
   agentWorktreeRoot?: string;
   /** Test-only clock injection. */
@@ -793,9 +803,12 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
               // unresolved candidate for another Action -- and a different ready
               // Action would hit it identically, so there is nothing to walk to.
               // Only a claimed Action is a refusal another Action can answer.
-              if (candidate.code !== "action_claimed" || options.strictAction) break;
+              // A bound walk was observed with the pointer Action claimed, so it
+              // alone may walk, and only to the Action that observation named.
+              const boundWalk = boundQueueWalk(options);
+              if (candidate.code !== "action_claimed" || (options.strictAction && !boundWalk)) break;
               walked = true;
-              attempts.push(...queueWalkCandidates(db, { projectSlug, exclude: attempts, now }));
+              attempts.push(...(boundWalk ? [boundWalk.actionId] : queueWalkCandidates(db, { projectSlug, exclude: attempts, now })));
             }
             // A fallback candidate's refusal is necessarily about that Action
             // alone: every repository-scoped refusal would already have fired on
@@ -805,11 +818,23 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
             continue;
           }
 
+          // The observation said the pointer Action was claimed and bound the
+          // walk to another Action. It is claimable (or resumable) now, so the
+          // selection the caller observed no longer holds: refuse rather than
+          // hand out a different Action than the one preview described.
+          const observedWalk = boundQueueWalk(options);
+          if (attemptActionId === actionId && observedWalk) {
+            throw validationError("The pointer Action was claimed when Go observed it and is not now; the observed walk no longer applies, so nothing was claimed.", {
+              code: "go_selection_changed", expected: observedWalk.actionId, actual: attemptActionId
+            });
+          }
+
           // The same operator gate `resolveProjectTransition` applies before a
           // launch, applied before any worktree is prepared or resumed: a
           // pending Decision or unsettled Agent Ask naming this Action stops
           // preparation itself, not only the reported status (Issue #621).
           const capabilityDispatch = resolveDispatch(fallbackDispatchRoot(), projectSlug, { actionId: attemptActionId });
+          if (attemptActionId !== actionId) assertWalkedInput(options, capabilityDispatch);
           if (capabilityDispatch.context) {
             if (attemptActionId !== actionId && localBrowserAuditBlocker(options.agent!, capabilityDispatch.context.action)) continue;
             assertLocalBrowserAuditReady(options.agent!, capabilityDispatch.context.action);
@@ -910,6 +935,9 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
               effort,
               beforeCreate(prepared) {
                 assertPreparationInput(options, resolveDispatch(controlWorktree, projectSlug));
+                if (attemptActionId !== actionId) {
+                  assertWalkedInput(options, resolveDispatch(controlWorktree, projectSlug, { actionId: attemptActionId }));
+                }
                 const reservation = reserveAgentWorktree(db, {
                   repositoryPath: controlWorktree,
                   worktreePath: prepared.path,
@@ -2282,6 +2310,81 @@ function resolveProjectSlug(repoRoot: string): string {
     });
   }
   return projects[0].slug;
+}
+
+/**
+ * The one Action a bound initial snapshot may walk to. Enrollment never walks,
+ * even when the broker's snapshot carries one: it is fenced to its exact Action.
+ */
+function boundQueueWalk(options: GoCommandOptions): NonNullable<GoCommandOptions["initialSelection"]>["walk"] {
+  return options.enrollment ? undefined : options.initialSelection?.walk;
+}
+
+/**
+ * Recheck the walked Action of a bound initial snapshot. Only the Action the
+ * broker observed, at the input revision it observed, may be prepared; any
+ * other candidate, or the same one after its governed input moved, refuses.
+ */
+function assertWalkedInput(options: GoCommandOptions, dispatch: DispatchResolution): void {
+  const walk = boundQueueWalk(options);
+  if (!walk) return;
+  const context = dispatch.context;
+  const actual = context ? requirementIdentity({ projectSlug: context.projectSlug, planSlug: context.activePlan, action: context.action }) : null;
+  if (!isDispatchable(dispatch) || context?.action.id !== walk.actionId
+    || actual?.inputRevision !== walk.inputRevision || actual.requirementId !== walk.requirementId) {
+    throw validationError("The walked Action changed or became unavailable since Go observed it; nothing was claimed.", {
+      code: "go_selection_changed", expectedAction: walk.actionId, actualAction: context?.action.id ?? null,
+      expected: walk.inputRevision, actual: actual?.inputRevision ?? null
+    });
+  }
+}
+
+/**
+ * Protected broker, read-only: when the pointer Action is already claimed by a
+ * live worktree, name the one queue-ready Action `go` may walk to, with its
+ * requirement identity, so preview and apply bind to the same Action and input
+ * revision. Applies the walk's own eligibility in the walk's own order (claims,
+ * local-browser-audit capability, operator gate, dispatchability). Returns null
+ * when the pointer Action is not claimed or nothing is eligible, which leaves
+ * the strict refusal in place. Writes nothing.
+ */
+export function observeQueueWalk(input: {
+  workspace: string;
+  repositoryPath: string;
+  dispatchRoot: string;
+  projectSlug: string;
+  pointerActionId: string;
+  agent: SessionAgent;
+  now?: Date;
+}): { actionId: string; requirementId: string; inputRevision: string } | null {
+  const now = input.now ?? new Date();
+  try {
+    return observeQueueWalkIn(input, now);
+  } catch {
+    // An unreadable observation leaves the strict refusal, never a guessed walk.
+    return null;
+  }
+}
+
+function observeQueueWalkIn(
+  input: Parameters<typeof observeQueueWalk>[0],
+  now: Date
+): { actionId: string; requirementId: string; inputRevision: string } | null {
+  return withReadOnlyDatabase(input.workspace, (db) => {
+    if (!getActiveActionClaim(db, input.repositoryPath, input.projectSlug, input.pointerActionId, now)) return null;
+    const candidates = queueWalkCandidates(db, { projectSlug: input.projectSlug, exclude: [input.pointerActionId], now });
+    for (const actionId of candidates) {
+      if (getActiveActionClaim(db, input.repositoryPath, input.projectSlug, actionId, now)) continue;
+      const dispatch = resolveDispatch(input.dispatchRoot, input.projectSlug, { actionId });
+      if (!isDispatchable(dispatch) || !dispatch.context) continue;
+      if (localBrowserAuditBlocker(input.agent, dispatch.context.action)) continue;
+      const gate = resolveOperatorGate({ db, repoRoot: input.dispatchRoot, projectSlug: input.projectSlug, selectedActionId: actionId });
+      if (gate.blocking[0]) continue;
+      const identity = requirementIdentity({ projectSlug: dispatch.context.projectSlug, planSlug: dispatch.context.activePlan, action: dispatch.context.action });
+      return { actionId, requirementId: identity.requirementId, inputRevision: identity.inputRevision };
+    }
+    return null;
+  });
 }
 
 /** Recheck a protected initial snapshot before preparation or a claim commit. */

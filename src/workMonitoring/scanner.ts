@@ -22,6 +22,14 @@ interface CommandResult {
 export interface WorkMonitorScanOptions {
   includePullRequests?: boolean;
   now?: Date;
+  /**
+   * How per-ref Git facts are read. `auto` (default) batches them with one
+   * `git for-each-ref` and uses `%(ahead-behind)` when this Git supports it.
+   * `without-ahead-behind` forces the older-Git route; `per-ref` forces the
+   * original one-process-per-fact reads. The three produce identical results;
+   * the options exist for differential tests and diagnosis.
+   */
+  refFacts?: "auto" | "without-ahead-behind" | "per-ref";
 }
 
 interface WorktreeRecord {
@@ -195,16 +203,51 @@ function scanRepository(
   const pullRequestLookup = options.includePullRequests === false ? "disabled" : ghRepository ? "queried" : "unavailable";
   const worktrees = parseWorktrees(run(repositoryPath, "git", ["worktree", "list", "--porcelain"]).stdout);
   const checkedOutBranches = new Set(worktrees.flatMap((worktree) => (worktree.branch ? [worktree.branch] : [])));
-  const assessments = worktrees.map((worktree) =>
-    assessWorkingCopy(project, repositoryPath, baseRef, worktree, ghRepository, pullRequestLookup)
-  );
+  const perRef = options.refFacts === "per-ref";
+  const batchMode = options.refFacts === "per-ref" ? undefined : options.refFacts;
+  const facts = perRef ? null : new BatchedRefFacts(repositoryPath, baseRef, batchMode);
+  // The per-ref route is the original sequential reference; the default route
+  // runs the independent per-worktree reads (status, diff) concurrently.
+  const execute = perRef ? runEach : runMany;
 
-  for (const branch of listLocalBranches(repositoryPath)) {
+  const statuses = execute(worktrees.map((worktree) => ({
+    cwd: worktree.path, command: "git", args: STATUS_ARGS
+  })));
+  const worktreeRevisions = worktrees.map((worktree) =>
+    // A missing worktree directory cannot run Git, which the per-ref route reports
+    // as empty facts; keep that route there rather than answer from the repository.
+    (facts && existsSync(worktree.path) ? facts.forWorktree(worktree) : null)
+      ?? revisionFacts(worktree.path, "HEAD", worktree.branch, baseRef)
+  );
+  const unattached: Array<{ branch: string; revision: RevisionFacts }> = [];
+  for (const branch of facts ? facts.branchNames() : listLocalBranches(repositoryPath)) {
     if (checkedOutBranches.has(branch)) continue;
-    const revision = revisionFacts(repositoryPath, branch, branch, baseRef);
+    const revision = facts?.forBranch(branch) ?? revisionFacts(repositoryPath, branch, branch, baseRef);
     if (revision.commitsNotInBase === 0 && (revision.ahead ?? 0) === 0) continue;
+    unattached.push({ branch, revision });
+  }
+
+  const diffRequests = [
+    ...worktrees.flatMap((worktree, index) =>
+      worktreeRevisions[index].commitsNotInBase > 0 ? [diffRequest(worktree.path, baseRef, "HEAD")] : []),
+    ...unattached.map(({ branch }) => diffRequest(repositoryPath, baseRef, branch))
+  ];
+  const diffs = execute(diffRequests);
+  let nextDiff = 0;
+
+  const assessments = worktrees.map((worktree, index) =>
+    assessWorkingCopy(
+      project, repositoryPath, baseRef, worktree, ghRepository, pullRequestLookup,
+      parseChanges(statuses[index]), worktreeRevisions[index],
+      worktreeRevisions[index].commitsNotInBase > 0 ? parseChangedPaths(diffs[nextDiff++]) : []
+    )
+  );
+  for (const { branch, revision } of unattached) {
     assessments.push(
-      assessUnattachedBranch(project, repositoryPath, baseRef, branch, revision, ghRepository, pullRequestLookup)
+      assessUnattachedBranch(
+        project, repositoryPath, baseRef, branch, revision, ghRepository, pullRequestLookup,
+        facts?.shaOf(branch) ?? null, parseChangedPaths(diffs[nextDiff++])
+      )
     );
   }
 
@@ -224,11 +267,11 @@ function assessWorkingCopy(
   baseRef: string,
   worktree: WorktreeRecord,
   ghRepository: string | null,
-  pullRequestLookup: WorkingCopyAssessment["pullRequestLookup"]
+  pullRequestLookup: WorkingCopyAssessment["pullRequestLookup"],
+  changes: WorkingCopyChanges,
+  revision: RevisionFacts,
+  committedPaths: string[]
 ): WorkingCopyAssessment {
-  const changes = readChanges(worktree.path);
-  const revision = revisionFacts(worktree.path, "HEAD", worktree.branch, baseRef);
-  const committedPaths = revision.commitsNotInBase > 0 ? changedPaths(worktree.path, baseRef, "HEAD") : [];
   const contextPaths = [...new Set([...changes.paths, ...committedPaths])];
   changes.paths = contextPaths;
   changes.areas = summarizeAreas(contextPaths);
@@ -257,9 +300,10 @@ function assessUnattachedBranch(
   branch: string,
   revision: RevisionFacts,
   ghRepository: string | null,
-  pullRequestLookup: WorkingCopyAssessment["pullRequestLookup"]
+  pullRequestLookup: WorkingCopyAssessment["pullRequestLookup"],
+  knownHead: string | null,
+  committedPaths: string[]
 ): WorkingCopyAssessment {
-  const committedPaths = changedPaths(repositoryPath, baseRef, branch);
   const changes: WorkingCopyChanges = {
     total: 0,
     staged: 0,
@@ -268,7 +312,7 @@ function assessUnattachedBranch(
     paths: committedPaths,
     areas: summarizeAreas(committedPaths)
   };
-  const head = run(repositoryPath, "git", ["rev-parse", branch]).stdout.trim();
+  const head = knownHead ?? run(repositoryPath, "git", ["rev-parse", branch]).stdout.trim();
   const pullRequest = ghRepository ? findPullRequest(repositoryPath, ghRepository, branch) : null;
   return assembleAssessment({
     project,
@@ -445,8 +489,152 @@ function revisionFacts(cwd: string, revision: string, branch: string | null, bas
   };
 }
 
-function readChanges(cwd: string): WorkingCopyChanges {
-  const result = run(cwd, "git", ["status", "--porcelain=v1", "-z", "--untracked-files=all"]);
+interface BranchRecord {
+  name: string;
+  sha: string;
+  upstream: string | null;
+  track: string;
+}
+
+/**
+ * Per-ref facts for every local branch from a constant number of Git
+ * processes: one `for-each-ref` over local branches (upstream, tracking
+ * counts, tip, subject, date and, when Git supports `%(ahead-behind)`, the
+ * count of commits not in the base) and one over `origin` remote refs. Facts
+ * it cannot supply exactly fall back to the original single-purpose reads, so
+ * the answer never depends on the Git version. Read-only: no fetch, no ref
+ * changes.
+ */
+class BatchedRefFacts {
+  private readonly branches = new Map<string, BranchRecord>();
+  private readonly remoteRefs = new Set<string>();
+  private readonly countBySha = new Map<string, number>();
+  private readonly detailBySha = new Map<string, { subject: string | null; at: string | null }>();
+  private readonly baseResolves: boolean;
+  private readonly hasCounts: boolean;
+  private mergedIntoBase: Set<string> | null = null;
+
+  constructor(
+    private readonly repositoryPath: string,
+    private readonly baseRef: string,
+    mode: "auto" | "without-ahead-behind" | undefined
+  ) {
+    const baseSha = run(repositoryPath, "git", ["rev-parse", "--verify", "--quiet", `${baseRef}^{commit}`]);
+    this.baseResolves = baseSha.ok;
+    if (baseSha.ok) this.countBySha.set(baseSha.stdout.trim(), 0);
+    const fields = [
+      "%(refname:short)", "%(objectname)", "%(upstream:short)", "%(upstream:track)",
+      "%(contents:subject)", "%(committerdate:iso-strict)"
+    ];
+    const read = (withCounts: boolean) => run(repositoryPath, "git", [
+      "for-each-ref",
+      `--format=${[...fields, ...(withCounts ? [`%(ahead-behind:${baseRef})`] : [])].join("%1f")}%1e`,
+      "refs/heads"
+    ]);
+    // Git older than 2.41 rejects %(ahead-behind); the retry drops it.
+    let result = mode !== "without-ahead-behind" && this.baseResolves ? read(true) : null;
+    this.hasCounts = result?.ok === true;
+    if (!result?.ok) result = read(false);
+    if (result.ok) {
+      for (const record of result.stdout.split("\x1e")) {
+        const entry = record.replace(/^\n/, "");
+        if (!entry) continue;
+        const [name, sha, upstream, track, subject, at, aheadBehind] = entry.split("\x1f");
+        if (!name || !sha) continue;
+        if (this.hasCounts && aheadBehind !== undefined) {
+          const unique = Number(aheadBehind.trim().split(/\s+/)[0]);
+          if (Number.isFinite(unique)) this.countBySha.set(sha, unique);
+        }
+        this.branches.set(name, { name, sha, upstream: upstream || null, track: track ?? "" });
+        this.detailBySha.set(sha, { subject: subject?.trimStart() || null, at: at || null });
+      }
+    }
+    const remotes = run(repositoryPath, "git", ["for-each-ref", "--format=%(refname)", "refs/remotes/origin/"]);
+    if (remotes.ok) for (const line of remotes.stdout.split("\n")) if (line) this.remoteRefs.add(line);
+  }
+
+  branchNames(): string[] {
+    return [...this.branches.keys()];
+  }
+
+  shaOf(branch: string): string | null {
+    return this.branches.get(branch)?.sha ?? null;
+  }
+
+  forBranch(branch: string): RevisionFacts | null {
+    const record = this.branches.get(branch);
+    return record ? this.build(record.sha, record, branch) : null;
+  }
+
+  /** Detached worktrees have no branch, so no upstream and no remote branch. */
+  forWorktree(worktree: WorktreeRecord): RevisionFacts | null {
+    if (worktree.branch) {
+      const record = this.branches.get(worktree.branch);
+      return record ? this.build(record.sha, record, worktree.branch) : null;
+    }
+    return /^[0-9a-f]{40,64}$/.test(worktree.head) ? this.build(worktree.head, null, null) : null;
+  }
+
+  private build(sha: string, record: BranchRecord | null, branch: string | null): RevisionFacts {
+    let upstream: string | null = null;
+    let ahead: number | null = null;
+    let behind: number | null = null;
+    // A configured upstream whose remote-tracking ref is gone does not resolve.
+    if (record?.upstream && record.track.trim() !== "[gone]") {
+      upstream = record.upstream;
+      ahead = Number(/ahead (\d+)/.exec(record.track)?.[1] ?? 0);
+      behind = Number(/behind (\d+)/.exec(record.track)?.[1] ?? 0);
+    }
+    const detail = this.detailBySha.get(sha) ?? this.readDetail(sha);
+    return {
+      upstream,
+      ahead,
+      behind,
+      commitsNotInBase: this.countFor(sha, record?.name ?? null),
+      remoteBranchExists: Boolean(branch) && this.remoteRefs.has(`refs/remotes/origin/${branch}`),
+      lastCommitSubject: detail.subject,
+      lastCommitAt: detail.at
+    };
+  }
+
+  private countFor(sha: string, branch: string | null): number {
+    const known = this.countBySha.get(sha);
+    if (known !== undefined) return known;
+    if (!this.baseResolves) return 0;
+    // Older Git: one listing proves every branch merged into the base has no
+    // unique commits; only the rest need their own count.
+    if (branch && !this.hasCounts) {
+      this.mergedIntoBase ??= this.listMerged();
+      if (this.mergedIntoBase.has(branch)) {
+        this.countBySha.set(sha, 0);
+        return 0;
+      }
+    }
+    const unique = run(this.repositoryPath, "git", ["rev-list", "--count", `${this.baseRef}..${sha}`]);
+    const count = unique.ok ? Number(unique.stdout.trim()) || 0 : 0;
+    this.countBySha.set(sha, count);
+    return count;
+  }
+
+  private listMerged(): Set<string> {
+    const merged = run(this.repositoryPath, "git", [
+      "for-each-ref", `--merged=${this.baseRef}`, "--format=%(refname:short)", "refs/heads"
+    ]);
+    return new Set(merged.ok ? merged.stdout.split("\n").filter(Boolean) : []);
+  }
+
+  private readDetail(sha: string): { subject: string | null; at: string | null } {
+    const log = run(this.repositoryPath, "git", ["log", "-1", "--format=%s%x00%cI", sha]);
+    const [subject, at] = log.ok ? log.stdout.trim().split("\0") : [];
+    const detail = { subject: subject || null, at: at || null };
+    this.detailBySha.set(sha, detail);
+    return detail;
+  }
+}
+
+const STATUS_ARGS = ["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+
+function parseChanges(result: CommandResult): WorkingCopyChanges {
   if (!result.ok || !result.stdout) return emptyChanges();
   const records = result.stdout.split("\0").filter(Boolean);
   const paths: string[] = [];
@@ -471,8 +659,11 @@ function emptyChanges(): WorkingCopyChanges {
   return { total: 0, staged: 0, unstaged: 0, untracked: 0, paths: [], areas: [] };
 }
 
-function changedPaths(cwd: string, baseRef: string, revision: string): string[] {
-  const result = run(cwd, "git", ["diff", "--name-only", `${baseRef}...${revision}`]);
+function diffRequest(cwd: string, baseRef: string, revision: string): CommandRequest {
+  return { cwd, command: "git", args: ["diff", "--name-only", `${baseRef}...${revision}`] };
+}
+
+function parseChangedPaths(result: CommandResult): string[] {
   return result.ok ? result.stdout.split("\n").map((value) => value.trim()).filter(Boolean) : [];
 }
 
@@ -570,12 +761,99 @@ function repositoryError(project: WorkMonitorProject, error: string): Repository
   };
 }
 
+interface CommandRequest {
+  cwd: string;
+  command: string;
+  args: string[];
+}
+
+const COMMAND_TIMEOUT_MS = 5_000;
+const COMMAND_MAX_BUFFER = 4 * 1024 * 1024;
+const PARALLEL_MINIMUM = 4;
+const PARALLEL_LIMIT = 8;
+
+// Runs the requests with bounded concurrency inside one helper process, so the
+// scan pays one process start rather than serialising dozens of Git reads.
+// Every request keeps the sequential route's timeout and buffer limits.
+const PARALLEL_WORKER = `
+const { spawn } = require("node:child_process");
+const timeout = ${COMMAND_TIMEOUT_MS}, maxBuffer = ${COMMAND_MAX_BUFFER}, limit = ${PARALLEL_LIMIT};
+let input = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { input += chunk; });
+process.stdin.on("end", () => {
+  const requests = JSON.parse(input);
+  const results = new Array(requests.length);
+  let next = 0, active = 0, finished = 0;
+  const pump = () => {
+    while (active < limit && next < requests.length) start(next++);
+    if (finished === requests.length) process.stdout.write(JSON.stringify(results));
+  };
+  const start = (index) => {
+    active += 1;
+    const request = requests[index];
+    const out = [], err = [];
+    let size = 0, settled = false, child, timer;
+    const settle = (ok, message) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      results[index] = { ok, stdout: Buffer.concat(out).toString("utf8"), stderr: Buffer.concat(err).toString("utf8") || message || "" };
+      active -= 1;
+      finished += 1;
+      pump();
+    };
+    try {
+      child = spawn(request.command, request.args, { cwd: request.cwd, stdio: ["ignore", "pipe", "pipe"] });
+    } catch (error) {
+      settle(false, String(error && error.message));
+      return;
+    }
+    timer = setTimeout(() => { child.kill("SIGKILL"); settle(false, "timed out"); }, timeout);
+    const collect = (target) => (chunk) => {
+      size += chunk.length;
+      if (size > maxBuffer) { child.kill("SIGKILL"); settle(false, "output too large"); return; }
+      target.push(chunk);
+    };
+    child.stdout.on("data", collect(out));
+    child.stderr.on("data", collect(err));
+    child.on("error", (error) => settle(false, error.message));
+    child.on("close", (code) => settle(code === 0));
+  };
+  pump();
+});
+`;
+
+function runEach(requests: CommandRequest[]): CommandResult[] {
+  return requests.map((request) => run(request.cwd, request.command, request.args));
+}
+
+function runMany(requests: CommandRequest[]): CommandResult[] {
+  if (requests.length < PARALLEL_MINIMUM) return runEach(requests);
+  const helper = spawnSync(process.execPath, ["-e", PARALLEL_WORKER], {
+    input: JSON.stringify(requests),
+    encoding: "utf8",
+    timeout: 60_000,
+    maxBuffer: 256 * 1024 * 1024,
+    stdio: ["pipe", "pipe", "pipe"]
+  });
+  if (!helper.error && helper.status === 0) {
+    try {
+      const parsed = JSON.parse(helper.stdout) as CommandResult[];
+      if (Array.isArray(parsed) && parsed.length === requests.length) return parsed;
+    } catch {
+      // Fall through to the sequential route.
+    }
+  }
+  return runEach(requests);
+}
+
 function run(cwd: string, command: string, args: string[]): CommandResult {
   const result = spawnSync(command, args, {
     cwd,
     encoding: "utf8",
-    timeout: 5_000,
-    maxBuffer: 4 * 1024 * 1024,
+    timeout: COMMAND_TIMEOUT_MS,
+    maxBuffer: COMMAND_MAX_BUFFER,
     stdio: ["ignore", "pipe", "pipe"]
   });
   return {

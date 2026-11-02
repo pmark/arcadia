@@ -91,6 +91,32 @@ describe("caller-bound read-only Go orientation", () => {
     expect(f.read().data.orientation?.selected.context?.action.id).toBe("a");
   });
 
+  it("binds an initial-root walk to the observed ready Action only when the selected Action is claimed elsewhere", () => {
+    const f = fixture(); const runner = vi.fn((options: { apply?: boolean }) => ({ ok: true, command: "go", data: { applied: options.apply === true }, artifacts: [], warnings: [] }));
+    const go = () => { runner.mockClear(); runGoBroker({ source: f.repo, agent: "codex", operation: "go" }, runner as never, undefined, undefined, () => f.workspace); };
+
+    go();
+    for (const [options] of runner.mock.calls) {
+      expect(options).toMatchObject({ strictAction: true, initialSelection: { requirementId: expect.any(String), inputRevision: expect.any(String) } });
+      expect(options.initialSelection).not.toHaveProperty("walk");
+    }
+
+    // Another live worktree claims the selected Action a: preview and apply both carry the one
+    // queue-ready Action (b) and its input revision, never a list the apply could re-derive.
+    f.claim(f.caller, "demo", "a");
+    go();
+    expect(runner).toHaveBeenCalledTimes(2);
+    const [preview, apply] = runner.mock.calls.map(([options]) => options as { initialSelection?: { walk?: { actionId: string; inputRevision: string } } });
+    expect(preview.initialSelection?.walk).toMatchObject({ actionId: "b", requirementId: expect.any(String), inputRevision: expect.any(String) });
+    expect(apply.initialSelection).toEqual(preview.initialSelection);
+    expect(runner.mock.calls[0][0]).toMatchObject({ strictAction: true });
+
+    // The walk target is itself claimed: the next ready Action is bound instead.
+    withDatabase(f.workspace, db => reserveAgentWorktree(db, { repositoryPath: f.repo, worktreePath: f.root, branch: "other", project: "demo", actionId: "b", now }));
+    go();
+    expect((runner.mock.calls[0][0] as { initialSelection?: { walk?: { actionId: string } } }).initialSelection?.walk?.actionId).toBe("c");
+  });
+
   it("uses the same assigned Action in advance, next and combined-brief titles", () => {
     const f = fixture(); f.claim();
     expect(runAdvanceCommand({ workspace: f.workspace, repo: f.caller }).data.claimedAction).toBe("b");
