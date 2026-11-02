@@ -31,7 +31,7 @@ frame:
       mission:
         - M1
         - M3
-      proof: A golden set of first-time-operator questions, graded by a separate judge against the cited guidance, with a threshold the operator sets.
+      proof: "A graded set of first-time-operator questions, judged separately against the cited guidance. Pass mark, by operator default in S012: at least 90% fully correct, with none wrong on authority, spending, merging or stopping."
     - id: REQ-002
       statement: The operator can carry out the Way's operations by talking to Relay, without knowing commands, paths or document formats.
       mission:
@@ -179,6 +179,13 @@ sources:
     url: https://pypi.org/project/hastejev/
     revision: accessed 2026-11-02
     rights: Public listing; not copied
+  - id: S012
+    title: Operator's answer on build order and defaults
+    kind: operator
+    added: 2026-11-02
+    retention: repo
+    path: sources/S012-build-order-answer.md
+    sha256: 663f1f18fd5e88fc7e98a4dbbe68a411cf9aa3e6ab5bda11206dcd0c278b549f
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -194,7 +201,7 @@ concepts:
         - src/projects/agentGuidance.ts
         - docs/notes-to-self.md
         - START_HERE.md
-    position: leaning
+    position: chosen
     serves:
       - REQ-001
     load_bearing: true
@@ -216,7 +223,7 @@ concepts:
       evidence:
         - src/ask/goldenCases.ts
         - .agents/skills/next-action-grader/SKILL.md
-    position: leaning
+    position: chosen
     serves:
       - REQ-001
     reason: The golden-set and separate-grader patterns exist for other judgments.
@@ -280,7 +287,7 @@ concepts:
       evidence:
         - apps/dashboard/components/workspace/workspace-ask.tsx
         - apps/dashboard/components/workspace/workspace-view.tsx
-    position: candidates
+    position: chosen
     serves:
       - REQ-003
   - id: C-005
@@ -966,7 +973,8 @@ concepts:
       status: partial
       evidence:
         - apps/dashboard/components/workspace/workspace-view.tsx
-    position: candidates
+    position: parked
+    revival: Way answers meet the pass mark, and the lookup and interface are in use.
   - id: C-028
     title: "Sequence: Way knowledge first"
     kind: constraint
@@ -979,7 +987,10 @@ concepts:
       evidence:
         - .agents/skills/arcadia-relay/SKILL.md
         - docs/agent-guidance/index.json
-    position: candidates
+    position: chosen
+    serves:
+      - REQ-001
+      - REQ-011
   - id: C-029
     title: "Sequence: the Go conversation first"
     kind: constraint
@@ -999,7 +1010,8 @@ concepts:
       evidence:
         - src/commands/goContext.ts
         - docs/plans/deliver-one-authorized-action-through-a-persistent-go-conversation.md
-    position: candidates
+    position: parked
+    revival: The Way slice is done and the operator wants building through conversation next.
   - id: C-030
     title: Relay runs on the standard harness
     kind: mechanism
@@ -1012,7 +1024,10 @@ concepts:
       evidence:
         - docs/agent-guidance/standard-harness.md
         - .agents/skills/arcadia-relay/SKILL.md
-    position: candidates
+    position: chosen
+    serves:
+      - REQ-006
+      - REQ-008
   - id: C-031
     title: Relay as a dedicated service agent
     kind: mechanism
@@ -1027,7 +1042,8 @@ concepts:
       evidence:
         - src/intelligence/litellm/client.ts
         - src/intelligence/jobs/worker.ts
-    position: candidates
+    position: parked
+    revival: Restricting a standard session's tools can't be proved on all three hosts, or turn cost proves too high.
   - id: C-032
     title: One decision interface in front of every route
     kind: interface
@@ -1045,7 +1061,7 @@ concepts:
       evidence:
         - src/ask/rules.ts
         - src/intelligence/litellm/client.ts
-    position: leaning
+    position: chosen
     serves:
       - REQ-010
       - REQ-006
@@ -1066,7 +1082,10 @@ concepts:
       evidence:
         - src/ask/rules.ts
         - tests/fixtures/ask-golden.jsonl
-    position: candidates
+    position: chosen
+    serves:
+      - REQ-010
+      - REQ-004
   - id: C-034
     title: "Decision engine: an open local model"
     kind: mechanism
@@ -1081,8 +1100,8 @@ concepts:
       status: missing
       evidence:
         - src/intelligence/litellm/client.ts
-    position: leaning
-    reason: If an engine is added, the operator leans to an open local solution. Subject to a benchmark on Arcadia's own routing set.
+    position: parked
+    revival: Measurements show rules can't meet the speed or accuracy needed; benchmark it then on Arcadia's own routing set.
   - id: C-035
     title: "Decision engine: hosted Jev as a selectable option"
     kind: mechanism
@@ -1095,8 +1114,8 @@ concepts:
       status: missing
       evidence:
         - docs/proposals/production-benchmark.md
-    position: leaning
-    reason: The operator expects people to want it. Spending and sending data out are approval boundaries.
+    position: parked
+    revival: A Decision allows spending and sending text to a provider, and an operator wants it.
   - id: C-036
     title: "Way lookup: the exact passage, and little else"
     kind: mechanism
@@ -1110,7 +1129,7 @@ concepts:
         - docs/agent-guidance/fingerprints.json
         - src/projects/agentGuidance.ts
         - docs/notes-to-self.md
-    position: leaning
+    position: chosen
     serves:
       - REQ-011
       - REQ-001
@@ -1129,7 +1148,7 @@ concepts:
       evidence:
         - docs/agent-guidance/index.json
         - START_HERE.md
-    position: leaning
+    position: chosen
     serves:
       - REQ-011
       - REQ-001
@@ -1144,7 +1163,7 @@ concepts:
       status: missing
       evidence:
         - apps/dashboard/components/workspace/workspace-ask.tsx
-    position: leaning
+    position: chosen
     serves:
       - REQ-010
       - REQ-004
@@ -2228,7 +2247,8 @@ concepts:
     origins:
       - source: S007
         locator: action implement-project-go-conversation, criterion 2
-    position: candidates
+    position: rejected
+    reason: S012 kept one conversation record, with each message keeping its scope.
   - id: C-705
     title: Accessible composer with numbered text options
     kind: requirement
@@ -2317,6 +2337,9 @@ choices:
         consequence: One conversation follows the operator everywhere, and each message keeps its scope.
       - concept: C-704
         consequence: History is isolated per Project, and the operator has a conversation per Project.
+    chosen: C-004
+    decided_by: operator
+    decision_ref: S012
   - id: CH-02
     question: What gets built first? Every option competes for the same capacity as the active unattended-production milestone.
     options:
@@ -2326,6 +2349,9 @@ choices:
         consequence: The messaging experience you asked for comes first, on a phone, with status answers and local-model answers with citations. Way knowledge stays unmeasured until a graded set exists, and it needs new server and interface work.
       - concept: C-029
         consequence: One real delivery from a conversation comes first, reusing a draft Plan. It shows building through conversation, helps a first-timer least, and depends on a Go flow that isn't proved yet. Its per-Project history would need amending to match CH-01.
+    chosen: C-028
+    decided_by: operator
+    decision_ref: S012
   - id: CH-03
     question: What is Relay made of?
     options:
@@ -2333,6 +2359,9 @@ choices:
         consequence: No new runtime, and the same contract becomes the default shell. Each turn costs a coding-agent session, and restricting its tools has to be proved on all three hosts without modifying them.
       - concept: C-031
         consequence: Tighter control and cheaper turns, reusing a service that already runs. It's new conversational code to maintain alongside the coding agents, and doesn't by itself lead to the default shell.
+    chosen: C-030
+    decided_by: operator
+    decision_ref: S012
   - id: CH-04
     question: Which decision engine does Relay start with?
     options:
@@ -2342,6 +2371,9 @@ choices:
         consequence: Local, with no per-call cost and data staying home. It's another model to run on every install, and its claims need testing on our own routing set.
       - concept: C-035
         consequence: Needs no local setup, and its capability claims are unverified here. Each call has a cost, small per token by S009's figure, and sends text to a provider, so it needs a Decision, and it can't see observed group messages.
+    chosen: C-033
+    decided_by: operator
+    decision_ref: S012
 scrutiny: []
 riskiest_assumption:
   statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically. It may be too large, stale or written for agents.

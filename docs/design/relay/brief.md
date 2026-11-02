@@ -4,11 +4,11 @@
 
 ## Where it stands
 
-**Stage 5 of 8: sources are compiled, and four choices wait on the operator.** The frame is
-confirmed (S005). Extractors read each source in isolation and produced 133 concepts, and
-the compile merged them into 30 mechanisms and options, with 12 rejected and 12 parked, each
-with its reason or revival condition. S008 then added 7 more, for 37 in all. The operator's other sources can still arrive and may
-reopen any of this.
+**Stage 7 of 8 for the first slice: the operator chose, and critics are attacking it.** S012
+chose Way knowledge first, with the Way lookup and decision interface as the first slice, and
+those are being built. Later phases stay at `leaning` or `parked`, so `--ready` refuses the whole
+design by design until they're settled. Sources were compiled from isolated extractions: 133
+concepts became 30 mechanisms and options, and S008 added 7 more.
 
 - **Experience target (operator's words):** "Even a first time Arcadia operator therefore
   shall be empowered to wield the full power of the Arcadia Way via Relay interaction."
@@ -22,14 +22,13 @@ reopen any of this.
   on these is for the frame to settle.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
-- **Being worked on:** CH-01 (one conversation record or one per Project), CH-02 (what gets
-  built first) and CH-03 (what Relay is made of) and CH-04 (which decision engine). **Next move:** the operator answers
-  all four. Every position except `chosen` is my leaning,
-  not the operator's.
+- **Being worked on:** the Way lookup and decision interface. **Next move:** the probe reruns
+  through the lookup, and the operator sets latency and context targets from that baseline.
 - **Riskiest assumption, probed once, inconclusive and leaning supported:** of 30 first-timer
   questions, a separate judge graded 22 correct, 8 partly correct and 0 wrong, with no wrong
   statement about authority, spending or merging ([result](probes/way-knowledge-1.md)).
-  **Next move:** the operator sets the pass mark.
+  **Pass mark:** by S012's default, at least 90% fully correct, with none wrong on
+  authority, spending, merging or stopping. Today's 73% doesn't pass.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
 
 ## Where the requirements come from
