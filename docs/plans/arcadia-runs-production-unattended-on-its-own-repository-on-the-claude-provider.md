@@ -146,13 +146,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
-    source: Agent Ask add-pin-worker-merge-allowlist-action-20261102
+    source: Agent Ask add-pin-blast-radius-patterns-action-20261102
     why: "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision."
     acceptance_criteria:
       - A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.
       - The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.
       - docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.
-    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs]
+    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns]
     decisions: []
     references: []
   - id: implement-a-hermetic-test-that-an
@@ -428,6 +428,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1987"]
+  - id: pin-blast-radius-safety-patterns
+    title: Pin the blast-radius safety patterns with a table-driven test so that dropping a controller-safety path fails a test.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Pin the blast-radius safety patterns with a table-driven test so that dropping a controller-safety path fails a test.
+    expected_artifact: Evidence satisfying Agent Ask pin-blast-radius-safety-patterns
+    clarification: clarified
+    confidence: high
+    source: Agent Ask add-pin-blast-radius-patterns-action-20261102
+    why: "BLAST_RADIUS_SAFETY_PATTERNS decides which candidates count as never-narrow, but tests exercise only src/production; losing another path would pass unnoticed."
+    acceptance_criteria:
+      - "tests/pr-blast-radius.test.ts gains, inside the existing describe block titled 'computeBlastRadius', a table-driven test importing BLAST_RADIUS_SAFETY_PATTERNS from src/stewardship/prBlastRadius.ts and asserting at least one pattern matches each of: src/production/x.ts, src/ask/x.ts, src/sessions/x.ts, src/dispatch/x.ts, src/db/x.ts, src/git/x.ts, .github/x.yml, package.json, pnpm-lock.yaml and pnpm-workspace.yaml."
+      - "The same test asserts no pattern matches any of: src/commands/x.ts, tests/x.test.ts, docs/x.md, apps/dashboard/package.json and src/production."
+      - Every other test in that file passes unchanged, and no test in it is marked skip or todo.
+      - The change touches only tests/pr-blast-radius.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/1989"]
 questions: []
 decisions: []
 recommended_model: standard
