@@ -17,6 +17,7 @@ import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, isAncestor, projectCheckoutFor, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { syncBaseWithOwnPointerCommits } from "../git/pointerReconcile.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
@@ -3352,7 +3353,7 @@ function reportBaseSyncStatus(
   }
 }
 
-function detectBaseBranchAdvance(
+export function detectBaseBranchAdvance(
   db: Database.Database,
   input: {
     repoRoot: string;
@@ -3377,8 +3378,10 @@ function detectBaseBranchAdvance(
   // SHAs, so a manual reset it undid is named rather than just gone (#608).
   if (input.fastForward && tryGit(input.repoRoot, ["fetch", "--quiet", "origin"]) !== null) {
     const headBefore = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
-    const merged = tryGit(input.repoRoot, ["merge", "--ff-only", "--quiet", `origin/${baseBranch}`]);
-    reportBaseSyncStatus(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, baseBranch, merged: merged !== null, now: input.now, log: input.log });
+    // Also reconciles a base that is ahead only by the worker's own pointer
+    // commits; any other divergence still refuses and escalates below.
+    const synced = syncBaseWithOwnPointerCommits({ repoRoot: input.repoRoot, baseBranch, fetch: false, now: input.now });
+    reportBaseSyncStatus(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, baseBranch, merged: synced.outcome !== "refused", now: input.now, log: input.log });
     const headAfter = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
     if (headBefore && headAfter && headBefore !== headAfter) {
       input.log(`Fast-forwarded ${input.projectSlug}'s checkout ${input.repoRoot} onto origin/${baseBranch}: ${headBefore} -> ${headAfter} (managed production keeps an in-scope checkout on its remote; pause the Project or narrow the policy scope to hold a local reset).`);
