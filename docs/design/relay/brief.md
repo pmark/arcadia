@@ -6,8 +6,8 @@
 
 **Stage 5 of 8: sources are compiled, and four choices wait on the operator.** The frame is
 confirmed (S005). Extractors read each source in isolation and produced 133 concepts, and
-the compile merged them into 29 mechanisms and options, with 12 rejected and 12 parked, each
-with its reason or revival condition. S008 then added 7 more, for 36 in all. The operator's other sources can still arrive and may
+the compile merged them into 30 mechanisms and options, with 12 rejected and 12 parked, each
+with its reason or revival condition. S008 then added 7 more, for 37 in all. The operator's other sources can still arrive and may
 reopen any of this.
 
 - **Experience target (operator's words):** "Even a first time Arcadia operator therefore

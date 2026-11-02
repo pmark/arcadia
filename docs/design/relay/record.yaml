@@ -1070,7 +1070,7 @@ concepts:
   - id: C-034
     title: "Decision engine: an open local model"
     kind: mechanism
-    statement: Run an open-weight typed decision model, such as Laya or Haste Jev, locally behind the interface. Data stays local and there's no per-call cost. Its published speed and accuracy claims are self-reported and unverified, and an input limit applies.
+    statement: Run a typed decision model locally behind the interface, such as Laya or Haste Jev, both described by their write-ups as open-weight and locally runnable, which isn't yet verified at a primary source. Data stays local and there's no per-call cost. Published speed and accuracy claims are self-reported, and an input limit applies to Laya.
     origins:
       - *a2
       - source: S010
@@ -1082,7 +1082,7 @@ concepts:
       evidence:
         - src/intelligence/litellm/client.ts
     position: leaning
-    reason: The operator leans this way. Subject to a benchmark on Arcadia's own routing set.
+    reason: If an engine is added, the operator leans to an open local solution. Subject to a benchmark on Arcadia's own routing set.
   - id: C-035
     title: "Decision engine: hosted Jev as a selectable option"
     kind: mechanism
@@ -2337,11 +2337,11 @@ choices:
     question: Which decision engine does Relay start with?
     options:
       - concept: C-033
-        consequence: Fastest and free, with nothing new to run. It only handles what rules can decide, so more falls through to clarification or a slower model.
+        consequence: No per-call cost and nothing new to run, and likely the fastest path, though unmeasured. It only handles what rules can decide, so more falls through to clarification or a slower model.
       - concept: C-034
-        consequence: Open and local, with no per-call cost and data staying home. It's another model to run on every install, and its claims need testing on our own routing set.
+        consequence: Local, with no per-call cost and data staying home. It's another model to run on every install, and its claims need testing on our own routing set.
       - concept: C-035
-        consequence: Likely the most capable and needs no local setup. Each call costs money and sends text to a provider, so it needs a Decision, and it can't see observed group messages.
+        consequence: Needs no local setup, and its capability claims are unverified here. Each call has a cost, small per token by S009's figure, and sends text to a provider, so it needs a Decision, and it can't see observed group messages.
 scrutiny: []
 riskiest_assumption:
   statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically. It may be too large, stale or written for agents.
