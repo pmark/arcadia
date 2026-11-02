@@ -38,7 +38,8 @@ function shellQuote(value: string): string {
 export function writeSessionLauncher(
   run: { command: string; args: string[] },
   directory?: string,
-  nodeDirectory?: string | null
+  nodeDirectory?: string | null,
+  hostCliDirectory?: string | null
 ): SessionLauncher {
   let dir: string;
   let ownsDirectory: boolean;
@@ -58,7 +59,11 @@ export function writeSessionLauncher(
   // its native modules were built for. A launch agent's PATH leads with mise's
   // directory, which can also hold another Node, and only some shells' startup
   // files restore mise (Issue #1993).
-  const pinnedNode = nodeDirectory ? `PATH=${shellQuote(nodeDirectory)}:"$PATH"\nexport PATH\n` : "";
+  // The host-resolved `arcadia` directory follows the Node directory, so it can
+  // never shadow `node`; it is passed in by the host, never read from the
+  // Session's worktree, and absent when the host resolves none.
+  const leading = [nodeDirectory, hostCliDirectory && !hostCliDirectory.includes(":") ? hostCliDirectory : null].filter((entry): entry is string => Boolean(entry));
+  const pinnedNode = leading.length ? `PATH=${leading.map(shellQuote).join(":")}:"$PATH"\nexport PATH\n` : "";
   const script = `${cleanup}\n${pinnedNode}exec ${[run.command, ...run.args].map(shellQuote).join(" ")}\n`;
   writeFileSync(file, script, { mode: 0o600, flag: "wx" });
   chmodSync(file, 0o600);
