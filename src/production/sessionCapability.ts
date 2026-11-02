@@ -4,7 +4,7 @@ import { redactSecrets, sanitizeOutput } from "../sessions/validationEvidence.js
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
-import { LAUNCH_PREFLIGHT_JITTER_MS, agentGoTransportState, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/transportHeartbeat.js";
+import { PRESERVATION_RECHECK_CAP_MS, agentGoTransportState, preservationHeartbeatAge, preservationTransportReady, transportHeartbeatDiagnostic } from "../sessions/transportHeartbeat.js";
 import { readSessionCompletionContract, readSessionProbeNonce, SESSION_PROBE_SCRIPT_PATH } from "../sessions/sessionProbeCommand.js";
 import { sessionLogPath } from "../sessions/sessionRecording.js";
 
@@ -24,7 +24,16 @@ export interface EnvironmentWall {
   evidence: string;
   /** What restores the capability; never a model retry. */
   remedy: string;
+  /**
+   * A stale-but-recent preservation reading: the heartbeat exists and is
+   * within its own limit plus the recheck window, so the writer may only have
+   * missed refreshes. The tick rechecks it on later ticks before escalating.
+   */
+  transient?: boolean;
 }
+
+/** The refusal code of a launch whose only walls are transient: a retryable wait, never an escalation by itself. */
+export const ENVIRONMENT_WALL_TRANSIENT_CODE = "session_environment_transient";
 
 export const ENVIRONMENT_WALL_ESCALATION_KIND = "environment_wall";
 
@@ -248,9 +257,13 @@ export function probeWorkerCapability(workspace: string, profileSandbox?: string
   } catch (error) {
     walls.push({ wallClass: "workspace_write", evidence: clip(error instanceof Error ? error.message : String(error)), remedy: WALL_REMEDY.workspace_write });
   }
-  if (!preservationTransportReady(workspace, LAUNCH_PREFLIGHT_JITTER_MS)) {
-    walls.push({ wallClass: "preservation", evidence: clip(transportHeartbeatDiagnostic(workspace, "preservation")), remedy: WALL_REMEDY.preservation });
-  } else if (agentGoTransportState(workspace, LAUNCH_PREFLIGHT_JITTER_MS) === "unavailable") {
+  if (!preservationTransportReady(workspace)) {
+    // The heartbeat declares its own cadence; a reading only a few refreshes
+    // past that limit is transient (rechecked), a far older one a dead writer.
+    const reading = preservationHeartbeatAge(workspace);
+    const transient = reading !== null && reading.ageMs < reading.limitMs + PRESERVATION_RECHECK_CAP_MS;
+    walls.push({ wallClass: "preservation", evidence: clip(transportHeartbeatDiagnostic(workspace, "preservation")), remedy: WALL_REMEDY.preservation, ...(transient ? { transient: true } : {}) });
+  } else if (agentGoTransportState(workspace) === "unavailable") {
     walls.push({ wallClass: "host_validation", evidence: clip(transportHeartbeatDiagnostic(workspace, "go")), remedy: WALL_REMEDY.host_validation });
   }
   return walls;
@@ -275,7 +288,11 @@ export function assertWorkerCapability(input: {
     : process.env.VITEST ? [] : probeWorkerCapability(input.workspace, input.profileSandbox);
   if (walls.length === 0) return;
   const named = describeEnvironmentWalls(input.actionLabel, walls, "preflight");
-  throw validationError(named.message, { code: "session_environment_wall", walls, remedy: named.remedy, conflict: true });
+  // Only transient walls: a retryable wait the production tick rechecks on its
+  // next ticks (it never sleeps inside the tick), escalating only once the
+  // reading stays stale past the recheck window.
+  const code = walls.every((wall) => wall.transient) ? ENVIRONMENT_WALL_TRANSIENT_CODE : "session_environment_wall";
+  throw validationError(named.message, { code, walls, remedy: named.remedy, conflict: true });
 }
 
 /** The single named blocker text for a set of walls. */

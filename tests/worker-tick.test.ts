@@ -503,6 +503,29 @@ describe("worker heartbeat beacon (Issue #617)", () => {
     }
   }, 15_000);
 
+  // The beacon proves only that a process is alive. The preservation route
+  // heartbeat must mean the route's owner is making progress, so a worker
+  // wedged in its tick must still read stale to the broker, dispatch admission
+  // and install readiness however long its beacon keeps running.
+  it("never re-stamps the preservation route heartbeat, so a wedged worker still reads stale", async () => {
+    const { root } = workspace();
+    const heartbeatFile = path.join(root, ".arcadia", "preservation.heartbeat");
+    const published = { schema: "arcadia-preservation-transport-v1", at: Date.now() - 33_000, intervalMs: 5_000, sessions: [], goRequests: true, goRequestsAt: Date.now() - 33_000 };
+    writeFileSync(heartbeatFile, JSON.stringify(published));
+    const beacon = startHeartbeatBeacon(root, { pid: process.pid, owner: "beacon-wedged" }, { intervalMs: 20 });
+    try {
+      await waitFor(() => existsSync(pidfileOf(root)), 5_000);
+      const first = readRecord(root).at;
+      const blockUntil = Date.now() + 200;
+      while (Date.now() < blockUntil) { /* the wedged tick */ }
+      expect(readRecord(root).at).toBeGreaterThan(first);
+      expect(JSON.parse(readFileSync(heartbeatFile, "utf8"))).toEqual(published);
+      expect(preservationTransportReady(root)).toBe(false);
+    } finally {
+      beacon.stop();
+    }
+  }, 15_000);
+
   it("self-terminates once its watched parent process is gone, so a truly dead worker's record stops advancing", async () => {
     const { root } = workspace();
     const fixture = await stubbornProcess();

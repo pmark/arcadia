@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -9,7 +9,14 @@ const mocks = vi.hoisted(() => ({ projects: vi.fn(), metadata: vi.fn() }));
 vi.mock("../src/db/repositories.js", () => ({ listProjects: mocks.projects, getProjectMetadata: mocks.metadata }));
 vi.mock("../src/commands/preserve.js", () => ({ runPreserveCommand: vi.fn() }));
 import { probeWorkerCapability } from "../src/production/sessionCapability.js";
-import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince } from "../src/sessions/preservationTransport.js";
+import { agentGoTransportReady, preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat, transportHeartbeatDiagnostic, transportPublishedSince, TRANSPORT_FRESHNESS_MS } from "../src/sessions/preservationTransport.js";
+import {
+  HEARTBEAT_STALENESS_FLOOR_MS,
+  heartbeatStalenessLimitMs,
+  LEGACY_HEARTBEAT_INTERVAL_MS,
+  PRESERVATION_HEARTBEAT_REFRESH_MS,
+  PRESERVATION_RECHECK_CAP_MS
+} from "../src/sessions/transportHeartbeat.js";
 
 describe("preservation transport heartbeat freshness", () => {
   let root: string;
@@ -38,17 +45,68 @@ describe("preservation transport heartbeat freshness", () => {
     rmSync(root, { recursive: true, force: true });
   });
 
-  it("launch preflight tolerates tick jitter beyond the limit but still walls a genuinely stale worker (#1558)", () => {
+  const preservationWall = () => probeWorkerCapability(workspace, null).find((entry) => entry.wallClass === "preservation");
+  const writeHeartbeat = (fields: Record<string, unknown>) => {
+    mkdirSync(path.dirname(heartbeatPath()), { recursive: true });
+    writeFileSync(heartbeatPath(), JSON.stringify({ schema: "arcadia-preservation-transport-v1", sessions: [], goRequests: true, goRequestsAt: Date.now(), ...fields }));
+  };
+
+  it("publishes its own refresh interval and is judged by three of them, never below the floor", () => {
     processPreservationRequests(db, workspace);
-    const walls = () => probeWorkerCapability(workspace, null).filter((wall) => wall.wallClass === "preservation");
-    expect(walls()).toEqual([]);
-    // 16s old: past the strict limit (a loaded host delayed one 5s refresh) but within normal jitter.
-    vi.setSystemTime(new Date(Date.now() + 16_000));
-    expect(preservationTransportReady(workspace)).toBe(false);
-    expect(walls()).toEqual([]);
-    // A worker that stopped refreshing is still a wall.
-    vi.setSystemTime(new Date(Date.now() + 60_000));
-    expect(walls()).toHaveLength(1);
+    expect(JSON.parse(readFileSync(heartbeatPath(), "utf8")).intervalMs).toBe(PRESERVATION_HEARTBEAT_REFRESH_MS);
+    expect(heartbeatStalenessLimitMs({ intervalMs: 5_000 })).toBe(15_000);
+    expect(heartbeatStalenessLimitMs({ intervalMs: 30_000 })).toBe(90_000);
+    expect(heartbeatStalenessLimitMs({ intervalMs: 1_000 })).toBe(HEARTBEAT_STALENESS_FLOOR_MS);
+    expect(TRANSPORT_FRESHNESS_MS).toBe(heartbeatStalenessLimitMs({ intervalMs: PRESERVATION_HEARTBEAT_REFRESH_MS }));
+  });
+
+  it("does not refuse a 30s-interval writer at a 33s age the old fixed 15s limit walled (live 2026-11-02)", () => {
+    writeHeartbeat({ at: Date.now() - 33_000, intervalMs: 30_000 });
+    expect(preservationTransportReady(workspace)).toBe(true);
+    expect(preservationWall()).toBeUndefined();
+  });
+
+  it("judges a heartbeat without intervalMs (an older writer) by the conservative legacy cadence, never 15s", () => {
+    expect(heartbeatStalenessLimitMs({})).toBe(3 * LEGACY_HEARTBEAT_INTERVAL_MS);
+    expect(heartbeatStalenessLimitMs({})).toBeGreaterThan(15_000);
+    writeHeartbeat({ at: Date.now() - 33_000 });
+    expect(preservationTransportReady(workspace)).toBe(true);
+    expect(preservationWall()).toBeUndefined();
+    writeHeartbeat({ at: Date.now() - 3 * LEGACY_HEARTBEAT_INTERVAL_MS - 1 });
+    expect(preservationWall()).toMatchObject({ wallClass: "preservation", transient: true });
+  });
+
+  it("marks a stale-but-recent reading transient (rechecked) and a dead writer a durable wall", () => {
+    processPreservationRequests(db, workspace);
+    expect(preservationWall()).toBeUndefined();
+    // The live reading at a 5s cadence: 33s old, past 3 x 5s.
+    vi.setSystemTime(new Date(Date.now() + 33_000));
+    expect(preservationWall()).toMatchObject({ wallClass: "preservation", transient: true });
+    expect(transportHeartbeatDiagnostic(workspace, "preservation")).toMatch(/stale \(33s old, limit 15s\)/);
+    // Past its limit plus the whole recheck window: the writer is dead.
+    vi.setSystemTime(new Date(Date.now() + PRESERVATION_RECHECK_CAP_MS));
+    expect(preservationWall()).toMatchObject({ wallClass: "preservation" });
+    expect(preservationWall()?.transient).toBeFalsy();
+  });
+
+  it("a successor worker never revives its predecessor's heartbeat before publishing its own projection", () => {
+    // The predecessor's last projection, 33s old, left on disk.
+    writeHeartbeat({ at: Date.now() - 33_000, intervalMs: PRESERVATION_HEARTBEAT_REFRESH_MS });
+    const left = readFileSync(heartbeatPath(), "utf8");
+    // The successor's pre-probe refresh has no projection of its own yet: a no-op.
+    expect(refreshPreservationHeartbeat(workspace)).toBe(false);
+    expect(readFileSync(heartbeatPath(), "utf8")).toBe(left);
+    expect(preservationWall()).toMatchObject({ wallClass: "preservation", transient: true });
+    // Once it publishes, its own refresh vouches for it.
+    processPreservationRequests(db, workspace);
+    vi.setSystemTime(new Date(Date.now() + 33_000));
+    expect(refreshPreservationHeartbeat(workspace)).toBe(true);
+    expect(preservationWall()).toBeUndefined();
+  });
+
+  it("never calls a missing heartbeat transient", () => {
+    expect(preservationWall()).toMatchObject({ wallClass: "preservation" });
+    expect(preservationWall()?.transient).toBeFalsy();
   });
 
   it("re-stamps a fresh at for preservation while go serviceability ages out across a stuck tick", () => {

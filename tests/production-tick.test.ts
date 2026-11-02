@@ -65,6 +65,9 @@ import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
+import { PRESERVATION_RECHECK_CAP_MS } from "../src/sessions/transportHeartbeat.js";
+import { preservationTransportReady, processPreservationRequests, refreshPreservationHeartbeat } from "../src/sessions/preservationTransport.js";
+import { probeWorkerCapability } from "../src/production/sessionCapability.js";
 import { resolvePacketLifecycle } from "../src/sessions/packetLifecycle.js";
 
 const roots: string[] = [];
@@ -419,6 +422,148 @@ describe("runManagedProductionTick", () => {
     expect(escalations[0]?.remedy).toContain("Grant workspace write.");
     expect(withReadOnlyDatabase(fixture.workspace, (db) =>
       db.prepare("SELECT COUNT(*) AS n FROM production_repair_attempts").get())).toEqual({ n: 0 });
+  });
+
+  // Live 2026-11-02: one stale preservation reading (33s, limit 15s) escalated
+  // straight to the operator and held the run at concurrency 1.
+  it.each([
+    ["the tick's own preflight", (sandbox?: string | null) => sandbox === undefined],
+    ["the launch-side preflight", (sandbox?: string | null) => sandbox !== undefined]
+  ])("retries one transient stale preservation reading from %s on the next tick instead of escalating", (_label, staleIn) => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let stale = true;
+    const transientWall = [{ wallClass: "preservation" as const, transient: true, evidence: "The preservation route heartbeat is stale (33s old, limit 15s)", remedy: "Restart the worker." }];
+    const tick = (offsetMs: number) => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      workerCapability: (_workspace: string, sandbox?: string | null) => stale && staleIn(sandbox) ? transientWall : []
+    }));
+    expect(tick(0).projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM production_repair_attempts").get())).toEqual({ n: 0 });
+    // The next tick reads a fresh heartbeat and launches.
+    stale = false;
+    expect(tick(30_000).projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
+  });
+
+  it.each([
+    ["the tick's own preflight", (sandbox?: string | null) => sandbox === undefined],
+    ["the launch-side preflight", (sandbox?: string | null) => sandbox !== undefined]
+  ])("escalates a stale preservation reading from %s once it persists past the recheck window", (_label, staleIn) => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const transientWall = [{ wallClass: "preservation" as const, transient: true, evidence: "The preservation route heartbeat is stale (40s old, limit 15s)", remedy: "Restart the worker." }];
+    const tick = (offsetMs: number) => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      workerCapability: (_workspace: string, sandbox?: string | null) => staleIn(sandbox) ? transientWall : []
+    }));
+    tick(0);
+    tick(30_000);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
+    tick(PRESERVATION_RECHECK_CAP_MS);
+    expect(tmux.launches).toHaveLength(0);
+    const rows = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "environment_wall", remedy: expect.stringContaining("Restart the worker.") });
+  });
+
+  // The live incident: an incomplete-resumable candidate's resume launch walled
+  // on preservation and escalated; once the probe passes, the same tick loop
+  // resumes it with no repair budget spent and both rows cleared.
+  it("resumes an incomplete-resumable candidate once the probe passes, clearing the wall escalation and refusal without spending repair budget", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let walled = false;
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      workerCapability: (_workspace: string, sandbox?: string | null) => walled && sandbox !== undefined
+        ? [{ wallClass: "preservation" as const, evidence: "The preservation route heartbeat is stale (33s old, limit 15s)", remedy: "Restart the worker." }]
+        : []
+    }));
+    const attempts = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get("test-project/define-contract") ?? null);
+    const refusals = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT COUNT(*) AS n FROM production_launch_refusal_log WHERE action_key = ?").get("test-project/define-contract"));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    writeFileSync(path.join(first.worktree_path, "partial.txt"), "first step\n");
+    git(first.worktree_path, ["add", "partial.txt"]);
+    git(first.worktree_path, ["commit", "-m", "Partial progress"]);
+    walled = true;
+    tmux.live.delete(first.tmux_session_name);
+    tick(); tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.id))?.outcome).toBe("incomplete_resumable");
+    expect(tmux.launches).toHaveLength(1);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db)).map((row) => row.kind)).toEqual(["environment_wall"]);
+    expect(refusals()).toEqual({ n: 1 });
+    const spent = attempts();
+    walled = false;
+    tick();
+    expect(tmux.launches).toHaveLength(2);
+    const resumed = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    expect(resumed.id).not.toBe(first.id);
+    expect(readFileSync(path.join(resumed.worktree_path, "partial.txt"), "utf8")).toBe("first step\n");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
+    expect(refusals()).toEqual({ n: 0 });
+    expect(attempts()).toEqual(spent);
+  });
+
+  // The real composition: a long tick step leaves the worker's heartbeat 33s
+  // old; the worker refreshes right before its own probe and launches, while
+  // the same aged heartbeat with no refresh (a wedged worker) reads stale.
+  it("refreshes the worker's own heartbeat before its own probe, so a long tick step never walls it", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const heartbeatFile = path.join(fixture.workspace, ".arcadia", "preservation.heartbeat");
+    withDatabase(fixture.workspace, (db) => processPreservationRequests(db, fixture.workspace));
+    const age = (ms: number) => writeFileSync(heartbeatFile, JSON.stringify({ ...JSON.parse(readFileSync(heartbeatFile, "utf8")), at: Date.now() - ms, goRequestsAt: Date.now() - ms }));
+    const events: string[] = [];
+    const tick = (heartbeat?: () => void) => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: fixture.now,
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      workerCapability: (workspace: string, sandbox?: string | null) => { events.push("probe"); return probeWorkerCapability(workspace, sandbox ?? null); },
+      heartbeat
+    }));
+    // A long step left the heartbeat 33s old; with no refresh it is a transient wall.
+    age(33_000);
+    expect(tick().projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    expect(tmux.launches).toHaveLength(0);
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
+    // The worker's tick: its own refresh runs immediately before every probe.
+    age(33_000);
+    events.length = 0;
+    expect(tick(() => { events.push("heartbeat"); refreshPreservationHeartbeat(fixture.workspace); }).projects
+      .find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    const probes = events.flatMap((event, index) => event === "probe" ? [index] : []);
+    expect(probes.length).toBeGreaterThanOrEqual(2);
+    for (const index of probes) expect(events[index - 1]).toBe("heartbeat");
+    // External readers get no such refresh: a wedged worker reads stale.
+    age(33_000);
+    expect(preservationTransportReady(fixture.workspace)).toBe(false);
+  });
+
+  it("still escalates a durable (non-transient) preservation wall on its first reading", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: fixture.now,
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      workerCapability: () => [{ wallClass: "preservation" as const, evidence: "no readable heartbeat (worker not running)", remedy: "Restart the worker." }]
+    }));
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db)).map((row) => row.kind)).toEqual(["environment_wall"]);
   });
 
   it("names a launch-side capability wall as one environment_wall blocker, not a silent per-tick refusal (A12)", () => {

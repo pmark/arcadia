@@ -15,6 +15,8 @@ import { requireResolvedWorkspace } from "../workspace/resolve.js";
 import {
   agentGoTransportState,
   HEARTBEAT_FILE,
+  PRESERVATION_HEARTBEAT_REFRESH_MS,
+  PRESERVATION_HEARTBEAT_SCHEMA,
   preservationTransportReady,
   TRANSPORT_FRESHNESS_MS,
   transportHeartbeatDiagnostic,
@@ -70,6 +72,8 @@ const enrollmentResponsePath = (workspace: string, nonce: string) =>
 interface TransportHeartbeat {
   schema: "arcadia-preservation-transport-v1";
   at: number;
+  /** The writer's refresh interval; readers derive the staleness limit from it. */
+  intervalMs: number;
   sessions: Array<{ id: string; worktree: string }>;
   repositories?: Array<{ path: string; projectSlug: string }>;
   handoffs?: Array<{ id: string; worktree: string }>;
@@ -86,12 +90,12 @@ interface TransportHeartbeat {
   containerAuditRequests?: { at: number; transportHash: string };
 }
 
-type PreservationHeartbeatRoutes = Omit<TransportHeartbeat, "schema" | "at">;
+type PreservationHeartbeatRoutes = Omit<TransportHeartbeat, "schema" | "at" | "intervalMs">;
 
 /**
  * The last projection `processPreservationRequests` published, per workspace.
  * `refreshPreservationHeartbeat` re-stamps exactly these routes, so a long
- * synchronous worker tick cannot let the 15s freshness window lapse and no
+ * synchronous worker tick cannot let the freshness window lapse and no
  * route the worker did not itself compute is ever asserted.
  */
 const latestPreservationRoutes = new Map<string, PreservationHeartbeatRoutes>();
@@ -99,16 +103,18 @@ const latestPreservationRoutes = new Map<string, PreservationHeartbeatRoutes>();
 function writePreservationHeartbeat(workspace: string, routes: PreservationHeartbeatRoutes, at: number): void {
   const heartbeat = path.join(workspace, HEARTBEAT);
   mkdirSync(path.dirname(heartbeat), { recursive: true });
-  const payload: TransportHeartbeat = { schema: "arcadia-preservation-transport-v1", at, ...routes };
+  const payload: TransportHeartbeat = { schema: PRESERVATION_HEARTBEAT_SCHEMA, at, intervalMs: PRESERVATION_HEARTBEAT_REFRESH_MS, ...routes };
   writeFileSync(`${heartbeat}.${process.pid}.tmp`, JSON.stringify(payload));
   renameSync(`${heartbeat}.${process.pid}.tmp`, heartbeat);
 }
 
 /**
  * Re-stamp the most recent projection with a fresh `at`, leaving its routes
- * untouched. Called by the worker's 5s loop and between per-Project steps of a
- * long tick, which cannot rely on timers firing while the event loop is
- * blocked. A no-op until the first projection is published.
+ * untouched. Called by the worker's in-process loop and between per-Project
+ * steps of a long tick, which cannot rely on timers firing while the event loop
+ * is blocked, and immediately before the worker's own pre-launch probe. Never
+ * from another process: `at` vouches for the route's owner making progress. A
+ * no-op until the first projection is published.
  */
 export function refreshPreservationHeartbeat(workspace: string, at = Date.now()): boolean {
   const routes = latestPreservationRoutes.get(workspace);
