@@ -48,6 +48,14 @@ frame:
       statement: Relay can never do more than the operator authorized, whatever a message, document or channel tells it, and this limit is enforced by tools rather than by its prompt.
       mission: [M5]
       proof: An adversarial test suite of hostile messages and documents, showing no effect beyond a recorded proposal.
+    - id: REQ-007
+      statement: Until Relay v1.0 exists, any coding agent can simulate the experience in Relay mode, and the operator can always tell what Arcadia really did from what the agent improvised.
+      mission: [M1, M5]
+      proof: A label audit of real Relay mode sessions, where a separate judge checks each claimed Arcadia action against its receipt and each improvised behavior is marked as improvised.
+    - id: REQ-008
+      statement: Eventually, every default coding-agent session is prepared for operator interaction as Relay, consistent with every other Relay interaction, replacing Rowan as the default shell.
+      mission: [M1, M4]
+      proof: A fresh session in each of Codex, Claude Code and OpenCode opens as Relay with no setup, and the same operator questions get equivalent experiences across them and Relay's own surface.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
@@ -59,7 +67,7 @@ sources:
     added: 2026-11-02
     retention: repo
     path: sources/S001-operator-direction.md
-    sha256: 26887fa38bc33b09770b2ea3a0aa28e2c7b50bccfafe4245a0eb02882747e093
+    sha256: 44b8cbcddf5183bc3e42a93aabf87bb7044b0b463addedf6ebeac8baadc52c3f
   - id: S002
     title: DeepSeek dsh-superagent-prototype design docs
     kind: third_party

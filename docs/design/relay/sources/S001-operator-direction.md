@@ -19,3 +19,9 @@ Verbatim, in the order given.
 ## The name and the first-time operator
 
 > I love "Relay" as the moniker! It should go without saying that Relay has the capability to be the most well-versed and knowledgable source of understanding and wisdom regarding the Arcadia Way and its practical application. Even a first time Arcadia operator therefore shall be empowered to wield the full power of the Arcadia Way via Relay interaction.
+
+## Relay mode and the default shell
+
+> Please be sure to add a provision for using any coding agent in "Relay mode" which, until Relay v1.0 is available, acts as a simulation of the UX, clearly differentiating existing from filled-in, improvised behaviors that the coding agent decides to perform in lieu of Relay's own capabilities.
+>
+> Eventually, Relays will replace Rowan as the default coding agent shell (for lack of a better term, meaning that the default coding agent session context is prepared for operator interaction offering a consistent experience with other Arcadia Relay interactions).

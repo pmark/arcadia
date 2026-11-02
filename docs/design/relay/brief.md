@@ -13,6 +13,8 @@ extracted, so that the sources don't set the bar they will be judged against.
 - **Scope stated so far:** one continuous conversation like rich text messaging; observing
   group channels; direct addressing; the Way's most knowledgeable source; for operators
   who design, build and deploy websites, apps and media for themselves and clients.
+- **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
+  simulates the experience in any coding agent until Relay v1.0 exists.
 - **Being worked on:** the frame. **Next move:** the operator confirms or corrects the
   Outcome, Milestone, requirements and non-goals in `record.yaml`.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
@@ -26,6 +28,10 @@ Recorded at the strength given:
 - "Even a first time Arcadia operator ... shall be empowered": a rule, as REQ-001 and
   REQ-002.
 - "highest bang per buck": a rule on scope.
+- "clearly differentiating existing from filled-in, improvised behaviors": a rule, as
+  REQ-007.
+- "Eventually, Relays will replace Rowan as the default coding agent shell": direction,
+  with no date, as REQ-008.
 
 ## Expert notes (Claudia Atlas's, not the operator's)
 
@@ -40,3 +46,14 @@ Recorded at the strength given:
   reading is mine, for the operator to confirm.
 - **The milestone is ambitious for a first version.** A narrower first milestone may be
   right, and that is the operator's call.
+- **"One thread" and "Relays" pull against each other, and this is the design's main open
+  question.** S001 asks for a single continuous thread and also for Relay in every coding
+  session. My reading: one experience and one conversation record, with many sessions
+  behind it. Other readings are possible, and it is the operator's call.
+- **Replacing Rowan needs separating a shell from a duty.** `AGENTS.md` makes Rowan the
+  default and gives Rowan release-manager custody, which a conversational shell shouldn't
+  silently inherit. My reading: Relay replaces how a session talks to the operator, while
+  coordination stays a duty of the `lead` Role. Changing the default touches the bootstrap,
+  so it goes through a Decision when its time comes.
+- **Relay mode is also the cheapest probe available.** Each improvised behavior it captures
+  shows what operators actually need, before anything gets built.

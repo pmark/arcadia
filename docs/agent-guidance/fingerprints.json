@@ -27,6 +27,7 @@
     "chat-titles": "33e606b2ca1e7b1786385119168f6ff052e0d1ae675f9abef700cd77c29db0c9",
     "skills": "1fda642586a6214b7ea1d8ebb9f4135f22582defb82ecc255969720ada7b2e01",
     "native-mail-checkpoints": "d7ec26cdb43e93ba17fb253646bf2f33b14e4b3031b3a3bae1c67bd5d4bd97ae",
-    "process-critic": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8"
+    "process-critic": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8",
+    "relay-mode": "2f35bdae84f056f7c09e74314d6f23787f8575a36e6acc6fb2c6f0654c3fa8d1"
   }
 }
