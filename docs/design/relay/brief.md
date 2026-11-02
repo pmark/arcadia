@@ -71,7 +71,7 @@ Recorded at the strength given:
 ## Expert notes (Claudia Atlas's, not the operator's)
 
 - **I was wrong that a deterministic lookup would be immediately useful to every agent,** at
-  least for first-timer wording: it reached 16 of 30. It may suit agents' own vocabulary, which is
+  least for first-timer wording: it reached 16 of 30, and 9 of its 20 matches were wrong. It may suit agents' own vocabulary, which is
   unmeasured. I also specified an interface with no caller. S008's concepts were added directly by me rather than
   by an isolated extractor, because the source is short and the operator's own.
 - **A decision engine helps only one step.** It can make routing fast, but answering still takes

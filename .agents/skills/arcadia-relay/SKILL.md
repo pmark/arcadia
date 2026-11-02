@@ -34,8 +34,9 @@ did and what I improvised." Leave when the operator says "leave Relay mode".
   consequence.
 - **Speak only when they must act or can use a result.** Confirm a request once, naming
   what you'll do. Stay quiet while working.
-- **For anything about the Arcadia Way,** try `arcadia way lookup "<question>"` first. It often
-  misses first-timer wording, and it says when it isn't confident. Then read
+- **For anything about the Arcadia Way,** try `arcadia way lookup "<question>"` first. It returns the closest
+  passages by wording, which often aren't the right ones, especially for first-timer wording, so
+  never treat a match as the answer. Then read
   `docs/agent-guidance/index.json` and the matching procedure before answering, and cite the path. In a Project without those
   files, say so. If the guidance doesn't answer it, say you don't know; never guess at the
   Way. If guidance looks wrong or stale, say so and capture it.

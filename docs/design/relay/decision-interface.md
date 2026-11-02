@@ -60,4 +60,4 @@ Project state, proved against hostile input.
 - The caller, which depends on CH-03.
 - Time budgets, which the operator sets from a measured baseline.
 - Launch cost: about 0.5 s of a compiled `arcadia` run is importing the whole CLI, and the lookup
-  itself takes about 150 ms cold. A fast caller can't shell out to the CLI on every message.
+  itself takes about 150 to 320 ms cold, depending on load. A fast caller can't shell out to the CLI on every message.

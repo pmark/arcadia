@@ -1126,7 +1126,7 @@ concepts:
   - id: C-036
     title: "Way lookup: the exact passage, and little else"
     kind: mechanism
-    statement: "A deterministic, model-free command returns the smallest relevant passages within a size budget, each with address, source class and sha, and says when the Way doesn't clearly answer. Built as read-only evidence tooling, it does not yet reach first-timer wording: 16 of 30 development questions reached the right material in its top three, on contaminated data, and it missed the stop, add-a-Project and deploy questions."
+    statement: "A deterministic, model-free command returns the smallest relevant passages within a size budget, each with address, source class and sha, and says when no passage matches the question's words. Built as read-only evidence tooling, it does not yet reach first-timer wording: 16 of 30 development questions reached the right material in its top three, on contaminated data, and it missed the stop, add-a-Project and deploy questions. A match means the words were found, not that the passage answers: 9 of 20 matched results missed the right material."
     origins:
       - *a2
     fit:
@@ -1143,7 +1143,7 @@ concepts:
     verification:
       status: measured_not_passing
       evidence: docs/design/relay/probes/way-knowledge-1.md
-    reason: R1-F4 predicted this and the measurement agrees. Answers stay near 1.7 KB, and 17 of 17 off-topic queries abstain.
+    reason: R1-F4 predicted this and the measurement agrees. Answers stay near 1.7 KB, and 17 of 17 off-topic queries find no match, but 9 of 20 matched results are wrong, so this doesn't deliver REQ-001's honest limit.
   - id: C-037
     title: Way passages with stable addresses
     kind: constraint
@@ -2455,7 +2455,7 @@ scrutiny:
         disposition: fixed
       - id: R1-F4
         severity: blocking
-        summary: A deterministic lookup misses first-timer wording. Abstention now exists; the miss is measured.
+        summary: A deterministic lookup misses first-timer wording. It refuses off-topic queries, but 9 of 20 matched results miss the right material, so it can't say I don't know reliably.
         disposition: open
       - id: R1-F5
         severity: blocking

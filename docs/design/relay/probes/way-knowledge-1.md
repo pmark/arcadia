@@ -57,14 +57,18 @@ data, already seen by its author, so it's a measurement and not a pass (R1-F9).
 | Measure | Result |
 | --- | --- |
 | Right material in the top three | 16 of 30 |
+| Questions that matched | 20 of 30 |
+| Matched results that miss the right material | 9 of 20 |
 | Off-topic queries correctly refused | 17 of 17 |
 | Output for a typical question | about 1.7 KB |
 | Compiled CLI run | about 0.5 s, nearly all of it importing the CLI |
-| Lookup alone, cold | about 150 ms |
+| Lookup alone, cold | about 150 to 320 ms, depending on machine load |
 
-It misses the stop, add-a-Project and deploy questions. It's small, fast and honest about what it
-doesn't know, but it doesn't yet reach first-timer wording. These figures are the implementer's,
-and the Lead reran the test suite.
+It's small and it refuses off-topic queries. **It can't reliably say "I don't know":** a match
+means the question's words were found, and nearly half of matches return the wrong material. Asked
+how to stop everything, it matches and returns the agent's own stopping rule. It misses the stop,
+add-a-Project and deploy questions. An independent reviewer reproduced 16 of 30, 17 of 17, and the
+output size.
 
 ## Limits
 
