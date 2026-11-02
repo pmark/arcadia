@@ -7,7 +7,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { syncProjectDocs } from "../src/docs/sync.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-import { assessPrBlastRadius, computeBlastRadius } from "../src/stewardship/prBlastRadius.js";
+import { assessPrBlastRadius, BLAST_RADIUS_SAFETY_PATTERNS, computeBlastRadius } from "../src/stewardship/prBlastRadius.js";
 
 const projectDocument = `---
 arcadia: v1
@@ -125,6 +125,33 @@ describe("computeBlastRadius", () => {
     expect(assessment.escalate).toBe(true);
     expect(assessment.matchedSafetyPaths).toEqual([]);
     expect(assessment.reasons.some((reason) => reason.includes("narrow-change threshold"))).toBe(true);
+  });
+
+  const matchesSafetyPattern = (path: string) => BLAST_RADIUS_SAFETY_PATTERNS.some((pattern) => pattern.test(path));
+
+  it.each([
+    "src/production/x.ts",
+    "src/ask/x.ts",
+    "src/sessions/x.ts",
+    "src/dispatch/x.ts",
+    "src/db/x.ts",
+    "src/git/x.ts",
+    ".github/x.yml",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml"
+  ])("matches a blast-radius safety pattern for %s", (path) => {
+    expect(matchesSafetyPattern(path)).toBe(true);
+  });
+
+  it.each([
+    "src/commands/x.ts",
+    "tests/x.ts",
+    "docs/x.md",
+    "apps/dashboard/package.json",
+    "src/production"
+  ])("matches no blast-radius safety pattern for %s", (path) => {
+    expect(matchesSafetyPattern(path)).toBe(false);
   });
 });
 
