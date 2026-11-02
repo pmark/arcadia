@@ -4,10 +4,10 @@
 
 ## Where it stands
 
-**Stage 5 of 8: sources are compiled, and three choices wait on the operator.** The frame is
+**Stage 5 of 8: sources are compiled, and four choices wait on the operator.** The frame is
 confirmed (S005). Extractors read each source in isolation and produced 133 concepts, and
 the compile merged them into 29 mechanisms and options, with 12 rejected and 12 parked, each
-with its reason or revival condition. The operator's other sources can still arrive and may
+with its reason or revival condition. S008 then added 7 more, for 36 in all. The operator's other sources can still arrive and may
 reopen any of this.
 
 - **Experience target (operator's words):** "Even a first time Arcadia operator therefore
@@ -23,7 +23,8 @@ reopen any of this.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
 - **Being worked on:** CH-01 (one conversation record or one per Project), CH-02 (what gets
-  built first) and CH-03 (what Relay is made of). **Next move:** the operator answers all three. Every position except `chosen` is my leaning,
+  built first) and CH-03 (what Relay is made of) and CH-04 (which decision engine). **Next move:** the operator answers
+  all four. Every position except `chosen` is my leaning,
   not the operator's.
 - **Riskiest assumption, probed once, inconclusive and leaning supported:** of 30 first-timer
   questions, a separate judge graded 22 correct, 8 partly correct and 0 wrong, with no wrong
@@ -46,6 +47,8 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-007 Relay mode | S001 | Mine: the proof, a label audit by a separate judge |
 | REQ-008 Default shell | S001 | Mine: the proof, including no setup and all three hosts |
 | REQ-009 Direct addressing | S001 (as DeepSeek's approach) | Mine: only once a Decision allows it |
+| REQ-010 Speed | S008 | Mine: the proof by measured budgets |
+| REQ-011 Minimal Way context | S008 | Mine: the proof by rerunning the probe |
 
 The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
 implementation" of DeepSeek's benefits; "no OpenAI integration" is my reading of that.
@@ -59,12 +62,27 @@ Recorded at the strength given:
 - "Even a first time Arcadia operator ... shall be empowered": a rule, as REQ-001 and
   REQ-002.
 - "highest bang per buck": a rule on scope.
+- "blazing fast": a rule, as REQ-010.
+- "minimal context in order to be an adherent to the way": a rule, as REQ-011.
+- "I would lean towards an open local solution, but people will want to use Jev": a lean, not
+  a decision, as CH-04.
 - "clearly differentiating existing from filled-in, improvised behaviors": a rule, as
   REQ-007.
 - "Eventually, Relays will replace Rowan as the default coding agent shell": direction,
   with no date, as REQ-008.
 
 ## Expert notes (Claudia Atlas's, not the operator's)
+
+- **S008's interface and Way lookup don't depend on the decision engine.** I'd do those first:
+  a deterministic lookup is immediately useful to every agent, and today's guidance has no
+  address smaller than a whole procedure. S008's concepts were added directly by me rather than
+  by an isolated extractor, because the source is short and the operator's own.
+- **A decision engine helps only one step.** It can make routing fast, but answering still takes
+  retrieval and possibly a model. Relay's speed depends on how often the fast paths apply, which
+  is why latency per route matters more than any one engine's headline figure.
+- **Laya's and Jev's published figures are unverified.** They come from write-ups and listings I
+  haven't checked against primary sources. `tests/fixtures/ask-golden.jsonl` holds 20 routing
+  cases, a start on an honest comparison, though too few to decide on.
 
 - **The main finding of the compile: nothing but the operator asks for Way knowledge.** Of
   five other sources, none addresses a first-timer learning the Way through Relay (C-001,
