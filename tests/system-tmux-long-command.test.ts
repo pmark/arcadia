@@ -1,9 +1,11 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { systemTmux, tmuxNewSessionArgs } from "../src/sessions/index.js";
+import { declaredMiseNodeVersion, miseNodeDirectory } from "../src/runtime/mise.js";
+import { writeSessionLauncher } from "../src/sessions/tmuxLauncher.js";
 
 /**
  * The 2026-10-17 supervised Claude run failed twice with "tmux new-session
@@ -26,6 +28,86 @@ describe("tmuxNewSessionArgs", () => {
     expect(short).toEqual(["new-session", "-d", "-s", "arcadia-x", "-c", "/work", "sh", "/runs/x.launch.sh"]);
     // The prompt never appears: only the session name, cwd and launcher path.
     expect(short.join(" ").length).toBeLessThan(200);
+  });
+});
+
+describe("the Node a Session's launcher resolves (Issue #1993)", () => {
+  function withScratch(body: (scratch: string) => void): void {
+    const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-launcher-node-"));
+    try {
+      body(scratch);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
+  }
+  function fakeNode(directory: string, name: string): void {
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(path.join(directory, "node"), `#!/bin/sh\necho ${name}\n`, { mode: 0o755 });
+  }
+
+  it("puts the given Node ahead of another node on PATH, for bash and sh Session shells", () => {
+    withScratch((scratch) => {
+      const other = path.join(scratch, "other");
+      const pinned = path.join(scratch, "pinned");
+      fakeNode(other, "other");
+      fakeNode(pinned, "pinned");
+      for (const shell of ["/bin/bash", "/bin/sh"]) {
+        const launcher = writeSessionLauncher({ command: shell, args: ["-c", "node"] }, scratch, pinned);
+        const output = execFileSync("/bin/sh", [launcher.file], { encoding: "utf8", env: { PATH: `${other}:/usr/bin:/bin` } });
+        expect(output.trim()).toBe("pinned");
+      }
+    });
+  });
+
+  it("leaves PATH as it was when no pinned Node is known", () => {
+    withScratch((scratch) => {
+      const other = path.join(scratch, "other");
+      fakeNode(other, "other");
+      const launcher = writeSessionLauncher({ command: "/bin/sh", args: ["-c", "node"] }, scratch, null);
+      const output = execFileSync("/bin/sh", [launcher.file], { encoding: "utf8", env: { PATH: `${other}:/usr/bin:/bin` } });
+      expect(output.trim()).toBe("other");
+    });
+  });
+
+  it("reads only a plain [tools] node pin as data, never a symlink or another table's value", () => {
+    withScratch((scratch) => {
+      const pin = (text: string) => { writeFileSync(path.join(scratch, "mise.toml"), text); return declaredMiseNodeVersion(scratch); };
+      expect(declaredMiseNodeVersion(scratch)).toBeNull();
+      expect(pin('[tools]\nnode = "22.23.1"\ntmux = "3.7c"\n')).toBe("22.23.1");
+      expect(pin('min_version = "1"\n\n[tools]\nnode = "24" # pinned\n')).toBe("24");
+      expect(pin('[env]\nnode = "20"\n[tools]\ntmux = "3"\n')).toBeNull();
+      expect(pin('[tools]\nnode = "lts"\n')).toBeNull();
+      expect(pin('[tools\nnot toml')).toBeNull();
+      expect(pin('[tools]\nnode = "{{ exec(command=\'touch /tmp/x\') }}"\n')).toBeNull();
+      rmSync(path.join(scratch, "mise.toml"));
+      const target = path.join(scratch, "target.toml");
+      writeFileSync(target, '[tools]\nnode = "22"\n');
+      symlinkSync(target, path.join(scratch, "mise.toml"));
+      expect(declaredMiseNodeVersion(scratch)).toBeNull();
+    });
+  });
+
+  it("asks mise for the declared version from a neutral directory, and never evaluates the checkout's config", () => {
+    withScratch((scratch) => {
+      const checkout = path.join(scratch, "checkout");
+      mkdirSync(checkout);
+      const marker = path.join(scratch, "evaluated");
+      writeFileSync(path.join(checkout, "mise.toml"), `[env]\n_.source = "${marker}"\n[tools]\nnode = "24.21.0"\n`);
+      const install = path.join(scratch, "installs", "24.21.0");
+      fakeNode(path.join(install, "bin"), "pinned");
+      const seen = path.join(scratch, "seen");
+      const mise = path.join(scratch, "mise");
+      writeFileSync(mise, `#!/bin/sh\n{ pwd; echo "$@"; } > ${seen}\necho ${install}\n`, { mode: 0o755 });
+      expect(miseNodeDirectory(checkout, mise)).toBe(path.join(install, "bin"));
+      expect(readFileSync(seen, "utf8").trim().split("\n")).toEqual(["/", "where node@24.21.0"]);
+      expect(existsSync(marker)).toBe(false);
+      writeFileSync(mise, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+      expect(miseNodeDirectory(checkout, mise)).toBeNull();
+      writeFileSync(mise, `#!/bin/sh\necho ${path.join(scratch, "not-installed")}\n`, { mode: 0o755 });
+      expect(miseNodeDirectory(checkout, mise)).toBeNull();
+      expect(miseNodeDirectory(checkout, path.join(scratch, "missing"))).toBeNull();
+      expect(miseNodeDirectory(path.join(scratch, "no-pin"), mise)).toBeNull();
+    });
   });
 });
 

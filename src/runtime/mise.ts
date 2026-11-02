@@ -1,6 +1,8 @@
-import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, lstatSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { parse } from "smol-toml";
 
 /**
  * Where mise lives, and the PATH a launch agent needs so that mise's runtime
@@ -51,4 +53,44 @@ export function miseLeadingPath(miseBin: string, home = homedir()): string {
  */
 export function miseNodeArgv(miseBin: string, repositoryRoot: string): string[] {
   return [miseBin, "-C", repositoryRoot, "exec", "--", "node"];
+}
+
+/**
+ * The exact Node version `directory`'s `mise.toml` declares under `[tools]`, or
+ * null for anything else. It parses the file as data and never lets mise evaluate
+ * it: a candidate's `mise.toml` is Session-editable, and evaluating its templates
+ * would run them on the host, outside the Session's sandbox.
+ */
+export function declaredMiseNodeVersion(directory: string): string | null {
+  try {
+    const file = path.join(directory, "mise.toml");
+    if (!lstatSync(file).isFile()) return null;
+    const tools = parse(readFileSync(file, "utf8")).tools as { node?: unknown } | undefined;
+    return typeof tools?.node === "string" && /^\d+(?:\.\d+){0,2}$/.test(tools.node) ? tools.node : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The directory of the installed Node that `directory`'s mise config pins, or
+ * null when it has no plain pin or that version is not installed. A Session for
+ * any Project gets that Project's pin; null leaves its PATH as it was. mise runs
+ * from a neutral directory, so it loads no config from the candidate.
+ */
+export function miseNodeDirectory(directory: string, miseBin = resolveMiseExecutable()): string | null {
+  const version = declaredMiseNodeVersion(directory);
+  if (!version) return null;
+  try {
+    const install = execFileSync(miseBin, ["where", `node@${version}`], {
+      cwd: "/",
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 10_000
+    }).trim();
+    const bin = path.join(install, "bin");
+    return path.isAbsolute(install) && existsSync(path.join(bin, "node")) ? bin : null;
+  } catch {
+    return null;
+  }
 }
