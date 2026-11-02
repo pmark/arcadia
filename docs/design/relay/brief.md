@@ -4,8 +4,11 @@
 
 ## Where it stands
 
-**Stage 1 of 8: the frame is proposed and waits on the operator.** No concepts have been
-extracted, so that the sources don't set the bar they will be judged against.
+**Stage 5 of 8: sources are compiled, and three choices wait on the operator.** The frame is
+confirmed (S005). Extractors read each source in isolation and produced 133 concepts, and
+the compile merged them into 29 mechanisms and options, with 12 rejected and 12 parked, each
+with its reason or revival condition. The operator's other sources can still arrive and may
+reopen any of this.
 
 - **Experience target (operator's words):** "Even a first time Arcadia operator therefore
   shall be empowered to wield the full power of the Arcadia Way via Relay interaction."
@@ -19,8 +22,13 @@ extracted, so that the sources don't set the bar they will be judged against.
   on these is for the frame to settle.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
-- **Being worked on:** the frame. **Next move:** the operator confirms or corrects the
-  Outcome, Milestone, requirements and non-goals in `record.yaml`.
+- **Being worked on:** CH-01 (one conversation record or one per Project), CH-02 (what gets
+  built first) and CH-03 (what Relay is made of). **Next move:** the operator answers all three. Every position except `chosen` is my leaning,
+  not the operator's.
+- **Riskiest assumption, probed once, inconclusive and leaning supported:** of 30 first-timer
+  questions, a separate judge graded 22 correct, 8 partly correct and 0 wrong, with no wrong
+  statement about authority, spending or merging ([result](probes/way-knowledge-1.md)).
+  **Next move:** the operator sets the pass mark.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
 
 ## Where the requirements come from
@@ -57,6 +65,19 @@ Recorded at the strength given:
   with no date, as REQ-008.
 
 ## Expert notes (Claudia Atlas's, not the operator's)
+
+- **The main finding of the compile: nothing but the operator asks for Way knowledge.** Of
+  five other sources, none addresses a first-timer learning the Way through Relay (C-001,
+  C-002). It's the largest gap and the reason I lean to C-028. The probe supports that lean with limits:
+  the guidance answered most questions, but two answers had safety-relevant errors, and finding
+  the right document, answer quality and missing guidance all contributed.
+- **Agreement between S002 and S003 is weak evidence.** S003 was written after reading S002,
+  so their shared concepts aren't independent. Agreement between S002 and S004, S006 or S007,
+  written separately, counts for more, as on truthful state.
+- **REQ-006 and REQ-008 pull against each other.** A read-and-propose limit fits a
+  conversational agent, but a default coding session needs to write code. CH-03 is where this
+  gets resolved, and my reading is that the shell's limits stay the existing gates while the
+  conversation's own tools stay read-and-propose.
 
 - **Knowledge of the Way is the hardest requirement, and the plan in S003 missed it
   entirely.** S003 treated answers as status lookups. REQ-001 needs retrieval across the

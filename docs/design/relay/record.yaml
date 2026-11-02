@@ -1,9 +1,11 @@
 schema: arcadia-design-record-v1
 design: relay
 project: arcadia
-authors: [Claudia Atlas]
+authors:
+  - Claudia Atlas
 frame:
-  status: proposed
+  status: confirmed
+  confirmed_ref: S005
   outcome: Any Arcadia operator, including a first-timer, can wield the full Arcadia Way through one continuous conversation with Relay, and what matters in the conversations around their work reaches them, without Relay ever exceeding the authority they granted.
   milestone: A first-time operator takes a real website, app or media project from idea to a reviewed result using only Relay, with every approval made by the operator and every answer about the Way citing the checked-in guidance it came from.
   experience_target: Even a first time Arcadia operator therefore shall be empowered to wield the full power of the Arcadia Way via Relay interaction.
@@ -26,39 +28,55 @@ frame:
   requirements:
     - id: REQ-001
       statement: An operator who knows nothing about Arcadia can ask Relay how to do anything in the Way and get a correct, practical answer that cites the checked-in guidance it used, and says plainly when it does not know.
-      mission: [M1, M3]
+      mission:
+        - M1
+        - M3
       proof: A golden set of first-time-operator questions, graded by a separate judge against the cited guidance, with a threshold the operator sets.
     - id: REQ-002
       statement: The operator can carry out the Way's operations by talking to Relay, without knowing commands, paths or document formats.
-      mission: [M1, M3]
+      mission:
+        - M1
+        - M3
       proof: A first-time operator walkthrough on a real project, counting every moment they had to leave Relay or type a command.
     - id: REQ-003
       statement: One continuous conversation, with an experience like rich text messaging, follows the operator across devices, and surviving a restart loses nothing they said or were told.
-      mission: [M1]
+      mission:
+        - M1
       proof: A test that sends from one client, restarts services, and reads the same history from another.
     - id: REQ-004
       statement: Relay reaches the operator only when they must act or can use a result, and everything it needs from them is one clear choice with its consequence.
-      mission: [M2, M4]
+      mission:
+        - M2
+        - M4
       proof: A count of messages per real workday, graded by the operator as useful or noise, against a threshold the operator sets.
     - id: REQ-005
       statement: What matters in the group conversations around the operator's work reaches them, and nothing from a group is lost, sent or acted on without their authority.
-      mission: [M4, M5]
+      mission:
+        - M4
+        - M5
       proof: A record-only run on a real channel, with candidates graded by the operator, and a test that no outbound message or state change results.
     - id: REQ-006
       statement: Relay can never do more than the operator authorized, whatever a message, document or channel tells it, and this limit is enforced by tools rather than by its prompt.
-      mission: [M5]
+      mission:
+        - M5
       proof: An adversarial test suite of hostile messages and documents, showing no effect beyond a recorded proposal.
     - id: REQ-007
       statement: Until Relay v1.0 exists, any coding agent can simulate the experience in Relay mode, and the operator can always tell what Arcadia really did from what the agent improvised.
-      mission: [M1, M5]
+      mission:
+        - M1
+        - M5
       proof: A label audit of real Relay mode sessions, where a separate judge checks each claimed Arcadia action against its receipt and each improvised behavior is marked as improvised.
     - id: REQ-008
       statement: Eventually, every default coding-agent session is prepared for operator interaction as Relay, consistent with every other Relay interaction, replacing Rowan as the default shell.
-      mission: [M1, M4]
+      mission:
+        - M1
+        - M4
       proof: A fresh session in each of Codex, Claude Code and OpenCode opens as Relay with no setup, and the same operator questions get equivalent experiences across them and Relay's own surface.
     - id: REQ-009
       statement: In a group conversation, Relay can be addressed directly as a participant, once a Decision allows it to speak there.
-      mission: [M1, M5]
+      mission:
+        - M1
+        - M5
       proof: A test on a real channel where an allowed person addresses Relay and gets an answer, and everyone else's messages get none.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
@@ -95,6 +113,2065 @@ sources:
     url: https://github.com/pmark/arcadia/blob/main/docs/design/arcadia-conversational-workspace.md
     revision: d52e5c8311394033c7cee45570e7e18c519361d0
     rights: Arcadia repository
-concepts: []
-choices: []
+  - id: S005
+    title: Operator's frame confirmation
+    kind: operator
+    added: 2026-11-02
+    retention: repo
+    path: sources/S005-frame-confirmation.md
+    sha256: fa30b14c073a96ec80e35751f6a02c1fd2e95cc9465e6061721559786e523d57
+  - id: S006
+    title: Arcadia Ask product vision
+    kind: operator
+    added: 2026-11-02
+    retention: pointer
+    url: https://github.com/pmark/arcadia/blob/ec1f8daf6fc1ed4be652d8f232a75520c234ed35/docs/arcadia-ask-product-vision.md
+    revision: ec1f8daf6fc1ed4be652d8f232a75520c234ed35
+    rights: Arcadia repository
+  - id: S007
+    title: Persistent Go conversation draft Plan
+    kind: agent
+    added: 2026-11-02
+    retention: pointer
+    url: https://github.com/pmark/arcadia/blob/ec1f8daf6fc1ed4be652d8f232a75520c234ed35/docs/plans/deliver-one-authorized-action-through-a-persistent-go-conversation.md
+    revision: ec1f8daf6fc1ed4be652d8f232a75520c234ed35
+    rights: Arcadia repository
+concepts:
+  - id: C-001
+    title: Way-grounded answers with citations
+    kind: mechanism
+    statement: Relay answers questions about the Arcadia Way by retrieving the checked-in guidance, cites what it used, and says when the guidance does not answer. Only the operator asked for this; no other source addresses it.
+    origins:
+      - source: S001
+        locator: The name and the first-time operator
+    fit:
+      status: partial
+      evidence:
+        - docs/agent-guidance/index.json
+        - src/projects/agentGuidance.ts
+        - docs/notes-to-self.md
+        - START_HERE.md
+    position: leaning
+    serves:
+      - REQ-001
+    load_bearing: true
+    verification:
+      status: untested
+    reason: The corpus, its index and Relay mode's instruction exist. Outside a coding-agent simulation nothing answers from them, and accuracy has never been measured.
+  - id: C-002
+    title: Graded question set for Way knowledge
+    kind: mechanism
+    statement: A checked-in set of first-time-operator questions, judged by a separate grader against the cited guidance, with a pass mark the operator sets, makes Way knowledge measurable instead of asserted.
+    origins:
+      - source: S001
+        locator: The name and the first-time operator
+      - &a1
+        source: S005
+        locator: whole file
+    fit:
+      status: partial
+      evidence:
+        - src/ask/goldenCases.ts
+        - .agents/skills/next-action-grader/SKILL.md
+    position: leaning
+    serves:
+      - REQ-001
+    reason: The golden-set and separate-grader patterns exist for other judgments.
+  - id: C-003
+    title: Operate the Way through conversation
+    kind: mechanism
+    statement: The operator states what should become true and Relay chooses the smallest governed structure, showing what it heard and why, so that nobody needs commands, paths or document formats.
+    origins:
+      - &a112
+        source: S006
+        locator: Product thesis
+      - &a114
+        source: S006
+        locator: One request begins a visible working session
+      - &a117
+        source: S006
+        locator: Project assignment needs almost no syntax
+      - &a118
+        source: S006
+        locator: The operator asks for progress, not schema
+      - &a119
+        source: S006
+        locator: Coding agents use the same intent interface
+      - &a121
+        source: S006
+        locator: The authority contract
+      - source: S001
+        locator: The name and the first-time operator
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/app/api/ask/route.ts
+        - src/ask/agentAsk.ts
+        - src/ask/captureEnvelope.ts
+    position: leaning
+    serves:
+      - REQ-002
+    reason: Ask and Agent Ask carry this, but they return receipts and need an operator who can read them.
+  - id: C-004
+    title: One continuous thread over many channels
+    kind: mechanism
+    statement: The operator has one conversation, with internal sessions hidden and navigation following the work rather than a list of chats. Many channels and sessions sit behind it, and a separate conversation is a deliberate exception whose use case is undesigned.
+    origins:
+      - &a56
+        source: S003
+        locator: The concept in the abstract
+      - &a83
+        source: S004
+        locator: The foreground is a conversation
+      - &a89
+        source: S004
+        locator: Unified UX with flexible context navigation
+      - &a96
+        source: S004
+        locator: Interaction requirements for the prototype
+      - source: S001
+        locator: The request
+      - *a1
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/components/workspace/workspace-ask.tsx
+        - apps/dashboard/components/workspace/workspace-view.tsx
+    position: candidates
+    serves:
+      - REQ-003
+  - id: C-005
+    title: Append-only conversation record
+    kind: mechanism
+    statement: One server-side append-only record holds only new facts, namely what was said and pointers to records, each message keeping the scope it was sent in. It is evidence, never authority, and old replies stay as written while current status shows separately.
+    origins:
+      - &a70
+        source: S003
+        locator: Architecture proposed
+      - &a93
+        source: S004
+        locator: History belongs within reach of the work
+      - &a94
+        source: S004
+        locator: Brief replies that hold the experience together
+      - &a116
+        source: S006
+        locator: Arcadia chooses the least costly sufficient intelligence
+      - &a92
+        source: S004
+        locator: Interaction requirements for the prototype
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/components/workspace/workspace-ask.tsx
+        - src/db/schema.ts
+    position: leaning
+    serves:
+      - REQ-003
+    reason: The workspace exchange lives in browser localStorage today, so it does not follow the operator between devices.
+  - id: C-006
+    title: Explicit, visible scope
+    kind: mechanism
+    statement: Deliberately selecting work sets the conversation's scope, which stays visible and inspectable, and survives with its draft when the selection changes. Ambiguity across Projects gets one clarification, and routing is never done by hiding instructions in the operator's text.
+    origins:
+      - &a85
+        source: S004
+        locator: Navigation establishes conversational scope
+      - &a86
+        source: S004
+        locator: The first prototype story
+      - &a95
+        source: S004
+        locator: Interaction requirements for the prototype
+      - &a99
+        source: S004
+        locator: Mobile navigation and continuity across devices
+      - &a108
+        source: S004
+        locator: Context and safe integration
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/lib/workspace-scope.ts
+        - apps/dashboard/app/api/ask/route.ts
+    position: leaning
+    serves:
+      - REQ-003
+      - REQ-002
+    reason: Project scoping exists on Ask; Plan and Action context is display only.
+  - id: C-007
+    title: Bounded context with continuation summaries
+    kind: constraint
+    statement: Each turn loads only relevant records within a budget, using a short summary to orient, with originals reachable. Reads go through a bounded, addressable surface rather than dumping history or the portfolio into a model.
+    origins:
+      - &a87
+        source: S004
+        locator: Navigation establishes conversational scope
+      - &a88
+        source: S004
+        locator: History belongs within reach of the work
+      - &a44
+        source: S002
+        locator: docs/007-architecture.md#read-resources
+    fit:
+      status: missing
+      evidence:
+        - src/commands/goContext.ts
+    position: leaning
+    serves:
+      - REQ-001
+      - REQ-003
+    reason: Needed as soon as answers use a model.
+  - id: C-008
+    title: Related work reachable from the exchange
+    kind: interface
+    statement: Every related Action, Run, Decision and Artifact appears as a destination from the exchange, and earlier exchanges are reachable from the work they concern, rather than creating further chats.
+    origins:
+      - &a90
+        source: S004
+        locator: History belongs within reach of the work
+      - &a91
+        source: S004
+        locator: Interaction requirements for the prototype
+      - &a105
+        source: S004
+        locator: Response and navigation contract
+      - &a106
+        source: S004
+        locator: One complete feature
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/components/workspace/workspace-ask.tsx
+        - apps/dashboard/components/workspace/workspace-artifact-viewer.tsx
+    position: leaning
+    serves:
+      - REQ-003
+    reason: Receipt cards exist; per-entity history does not.
+  - id: C-009
+    title: Rich cards built on existing controls
+    kind: interface
+    statement: Choices, proposals, progress and Artifacts appear as cards inside the conversation, using the controls that already answer them, with numbered text options and stated consequences. A reopened card shows the current record.
+    origins:
+      - &a84
+        source: S004
+        locator: The foreground is a conversation
+      - &a71
+        source: S003
+        locator: Architecture proposed
+      - &a72
+        source: S003
+        locator: Phases proposed
+      - &a73
+        source: S003
+        locator: Gaps named
+      - &a126
+        source: S007
+        locator: action implement-project-go-conversation, criterion 3
+      - &a29
+        source: S002
+        locator: docs/001-domain.md#glossary
+      - &a30
+        source: S002
+        locator: docs/001-domain.md#rejected-concepts
+      - &a31
+        source: S002
+        locator: docs/004-prompts.md#principles-of-the-built-in-text
+      - &a97
+        source: S004
+        locator: The background carries orientation
+      - &a98
+        source: S004
+        locator: Broader MVP vision through four views
+      - source: S001
+        locator: The request
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/components/workspace/workspace-continue.tsx
+        - apps/dashboard/components/workspace/workspace-next-move.tsx
+        - apps/dashboard/lib/workspace-feed.ts
+    position: leaning
+    serves:
+      - REQ-003
+      - REQ-004
+    reason: The controls exist as separate pages and a feed, not as cards in one conversation.
+  - id: C-010
+    title: Attention as the master criterion
+    kind: requirement
+    statement: Every message, setting and surface must return more value than the attention it costs. Relay confirms once, stays quiet while working, and speaks only when someone must act or can use a result.
+    origins:
+      - &a2
+        source: S002
+        locator: docs/000-philosophy.md
+      - &a4
+        source: S002
+        locator: docs/000-philosophy.md#what-follows-for-the-agent
+      - &a5
+        source: S002
+        locator: docs/004-prompts.md#principles-of-the-built-in-text
+      - &a69
+        source: S003
+        locator: The concept in the abstract
+      - &a45
+        source: S002
+        locator: docs/005-panel.md#three-questions
+      - &a46
+        source: S002
+        locator: docs/005-panel.md#principles
+      - &a8
+        source: S002
+        locator: docs/000-philosophy.md#what-follows-for-the-design
+    fit:
+      status: partial
+      evidence:
+        - src/ping/operatorPing.ts
+        - src/commands/todo.ts
+        - CONSTITUTION.md
+    position: leaning
+    serves:
+      - REQ-004
+    reason: The Constitution already holds this rule, and sources agree independently, though S003 inherited it from S002.
+  - id: C-011
+    title: Truthful state from receipts only
+    kind: requirement
+    statement: "Relay claims a state only with its receipt: captured, queued, running, failed and unknown stay distinct, a lost response stays unknown until reconciled, and drafts and concept work are labelled as such."
+    origins:
+      - &a6
+        source: S002
+        locator: docs/000-philosophy.md#what-follows-for-the-agent
+      - &a7
+        source: S002
+        locator: docs/004-prompts.md#principles-of-the-built-in-text
+      - &a104
+        source: S004
+        locator: Response and navigation contract
+      - &a130
+        source: S007
+        locator: action connect-conversation-to-protected-continue, criterion 3
+      - &a131
+        source: S007
+        locator: action project-session-evidence-into-conversation, criteria 1-3
+      - &a134
+        source: S007
+        locator: action reconcile-conversation-retries-and-reconnects, criteria 2-3
+      - &a109
+        source: S004
+        locator: Verified delivery status — 2026-10-15
+      - &a110
+        source: S004
+        locator: What is not done
+      - &a27
+        source: S002
+        locator: docs/003-execution.md#ticket-stages
+      - &a28
+        source: S002
+        locator: docs/005-panel.md#principles
+      - &a102
+        source: S004
+        locator: Required MVP loop through Arcadia Ask
+      - &a103
+        source: S004
+        locator: One complete feature
+      - &a124
+        source: S007
+        locator: action prove-go-delivery-from-coding-agent-session criteria 3-4; action prove-one-action-conversation-delivery criterion 2
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/components/workspace/workspace-ask.tsx
+        - src/commands/goContext.ts
+        - CONSTITUTION.md
+    position: leaning
+    serves:
+      - REQ-003
+      - REQ-007
+    reason: The receipt loop follows this on one surface.
+  - id: C-012
+    title: Durable intake and delivery
+    kind: mechanism
+    statement: Each event becomes one immutable, deduplicated record, and outgoing work is stored before it is attempted, so restarts, duplicates and reconnects cause at most one effect and lose nothing.
+    origins:
+      - &a10
+        source: S002
+        locator: docs/001-domain.md#flow
+      - &a57
+        source: S003
+        locator: The concept in the abstract
+      - &a58
+        source: S003
+        locator: Architecture proposed
+      - &a133
+        source: S007
+        locator: action reconcile-conversation-retries-and-reconnects, criteria 1 and 3
+      - &a35
+        source: S002
+        locator: docs/003-execution.md#stored-work
+      - &a36
+        source: S002
+        locator: docs/003-execution.md#channel-failure
+      - &a37
+        source: S002
+        locator: docs/003-execution.md#restart
+      - &a32
+        source: S002
+        locator: docs/001-domain.md#concepts
+      - &a33
+        source: S002
+        locator: docs/001-domain.md#rejected-concepts
+    fit:
+      status: partial
+      evidence:
+        - src/ask/captureEnvelope.ts
+        - src/ping/operatorPing.ts
+    position: leaning
+    serves:
+      - REQ-003
+      - REQ-005
+    reason: Capture envelopes and the ping queue cover parts of it.
+  - id: C-013
+    title: Deterministic gate before any model
+    kind: mechanism
+    statement: Code decides who sent a message, whether it addressed Relay, and how strong the request is, failing closed, before any model sees it. Identities stay per channel, and message body text is never trusted to decide this.
+    origins:
+      - &a13
+        source: S002
+        locator: docs/001-domain.md#glossary
+      - &a14
+        source: S002
+        locator: docs/002-authorization.md#two-paths-for-a-trigger
+      - &a59
+        source: S003
+        locator: The concept in the abstract
+      - &a60
+        source: S003
+        locator: Architecture proposed
+      - &a16
+        source: S002
+        locator: docs/002-authorization.md#admission
+      - &a15
+        source: S002
+        locator: docs/002-authorization.md#strength
+      - &a17
+        source: S002
+        locator: docs/002-authorization.md#bots-and-automated-reviewers
+      - &a3
+        source: S002
+        locator: docs/000-philosophy.md#what-follows-for-the-agent
+      - &a61
+        source: S003
+        locator: Phases proposed
+      - &a62
+        source: S003
+        locator: Decisions and constraints named
+      - &a47
+        source: S002
+        locator: docs/001-domain.md#rejected-concepts
+      - &a48
+        source: S002
+        locator: docs/001-domain.md#concepts
+      - &a52
+        source: S002
+        locator: docs/007-architecture.md#open-questions
+    fit:
+      status: partial
+      evidence:
+        - apps/discord-bot/src/events/messageCreate.ts
+        - apps/discord-bot/src/config.ts
+    position: leaning
+    serves:
+      - REQ-005
+      - REQ-006
+    load_bearing: true
+    verification:
+      status: untested
+    reason: The bot gates by guild, channel and allowlist today, but an empty allowlist fails open.
+  - id: C-014
+    title: Read and propose, enforced by tools
+    kind: constraint
+    statement: Relay's own writes are limited by its tools, not its prompt, to capture, Agent Ask previews and lessons. Execution stays behind the existing protected previews and gates, stop and scope changes never act silently, and outside text is data.
+    origins:
+      - &a74
+        source: S003
+        locator: Architecture proposed
+      - &a34
+        source: S002
+        locator: docs/003-execution.md#execution-variables
+      - &a43
+        source: S002
+        locator: docs/004-prompts.md#assembly-and-precedence
+      - &a81
+        source: S003
+        locator: Left out, with revival conditions
+      - &a113
+        source: S006
+        locator: Product thesis
+      - &a128
+        source: S007
+        locator: action connect-conversation-to-protected-continue, criterion 1
+      - &a129
+        source: S007
+        locator: action connect-conversation-to-protected-continue, criterion 2
+      - &a132
+        source: S007
+        locator: action project-session-evidence-into-conversation, criterion 4
+      - &a23
+        source: S002
+        locator: docs/002-authorization.md#resume-and-stop
+      - &a24
+        source: S002
+        locator: docs/001-domain.md#rejected-concepts
+      - &a25
+        source: S002
+        locator: docs/004-prompts.md#principles-of-the-built-in-text
+    fit:
+      status: partial
+      evidence:
+        - src/ask/agentAsk.ts
+        - CONSTITUTION.md
+        - docs/agent-guidance/standard-harness.md
+    position: leaning
+    serves:
+      - REQ-006
+    load_bearing: true
+    verification:
+      status: untested
+    reason: Arcadia's gates are stronger than the prototype's, but no session is restricted to these tools yet. S002 itself says its isolation is not a boundary.
+  - id: C-015
+    title: Relay routes; coding agents build
+    kind: mechanism
+    statement: The conversational session routes and answers and never does technical work or blocks on it. Coding agents do the work through the existing worker path, and results come back to the conversation.
+    origins:
+      - &a39
+        source: S002
+        locator: docs/004-prompts.md#principles-of-the-built-in-text
+      - &a40
+        source: S002
+        locator: docs/007-architecture.md#main-session-tools
+      - &a41
+        source: S002
+        locator: docs/007-architecture.md#executor-tools
+      - &a42
+        source: S002
+        locator: docs/007-architecture.md#presets-and-wait-limits
+    fit:
+      status: partial
+      evidence:
+        - docs/agent-guidance/standard-harness.md
+        - apps/dashboard/components/workspace/workspace-continue.tsx
+    position: leaning
+    serves:
+      - REQ-002
+      - REQ-006
+    reason: This is how the workspace's Continue already behaves.
+  - id: C-016
+    title: Cheapest sufficient answer
+    kind: mechanism
+    statement: Answer with code first, then a local model with citations, then a bounded stronger model. Routine status and next-move questions use no model, name the first eligible Action or the one condition preventing it without inventing work, and ambiguous input gets one clarification rather than a guess.
+    origins:
+      - &a75
+        source: S003
+        locator: Architecture proposed
+      - &a76
+        source: S003
+        locator: Phases proposed
+      - &a115
+        source: S006
+        locator: Arcadia chooses the least costly sufficient intelligence
+      - &a107
+        source: S004
+        locator: Brief replies that hold the experience together
+      - &a127
+        source: S007
+        locator: action implement-project-go-conversation, criterion 4
+      - &a125
+        source: S007
+        locator: action implement-project-go-conversation, criterion 1
+      - &a120
+        source: S006
+        locator: Accepted work has one explicit order
+    fit:
+      status: partial
+      evidence:
+        - src/commands/goContext.ts
+        - src/commands/todo.ts
+        - src/commands/next.ts
+        - src/intelligence/litellm/client.ts
+    position: leaning
+    serves:
+      - REQ-001
+      - REQ-004
+    reason: The commands and the local router exist; nothing dispatches a question to them.
+  - id: C-017
+    title: Follow-ups attach by explicit reference
+    kind: mechanism
+    statement: A later message reaches existing work only through an explicit reference such as a reply to a card, never topic similarity. It arrives as context, grants no authority and starts nothing by itself.
+    origins:
+      - &a63
+        source: S003
+        locator: The concept in the abstract
+      - &a64
+        source: S003
+        locator: Architecture proposed
+      - &a65
+        source: S003
+        locator: Phases proposed
+      - &a19
+        source: S002
+        locator: docs/001-domain.md#concepts
+      - &a20
+        source: S002
+        locator: docs/002-authorization.md#subscriptions-continuing-existing-work
+      - &a21
+        source: S002
+        locator: docs/002-authorization.md#context-only-subscriptions
+      - &a22
+        source: S002
+        locator: docs/004-prompts.md#principles-of-the-built-in-text
+      - &a51
+        source: S002
+        locator: docs/001-domain.md#rejected-concepts
+    fit:
+      status: partial
+      evidence:
+        - apps/discord-bot/src/events/messageCreate.ts
+        - src/ask/replyCapture.ts
+    position: leaning
+    serves:
+      - REQ-003
+      - REQ-005
+    reason: Replies to receipts and Decisions route this way; replies to other work do not.
+  - id: C-018
+    title: Channel adapter with its own read position
+    kind: mechanism
+    statement: Each channel adapter keeps its own read position so a restart replays nothing, drops its own and out-of-scope messages, and translates events. Anything that needs waiting is modelled as an event source.
+    origins:
+      - &a11
+        source: S002
+        locator: docs/001-domain.md#concepts
+      - &a49
+        source: S002
+        locator: docs/001-domain.md#rejected-concepts
+      - &a50
+        source: S002
+        locator: docs/002-authorization.md#resume-and-stop
+    fit:
+      status: partial
+      evidence:
+        - apps/discord-bot/src/main.ts
+        - apps/discord-bot/src/events/messageCreate.ts
+    position: leaning
+    serves:
+      - REQ-005
+    reason: Discord is the only adapter needed first.
+  - id: C-019
+    title: Observe mode, graded before it may act
+    kind: mechanism
+    statement: Unaddressed group messages produce only a record of what would have happened, assessed in serial batches by the local model alone. The operator grades real candidates before anything proactive is allowed, and a pause keeps recording.
+    origins:
+      - &a18
+        source: S002
+        locator: docs/002-authorization.md#accept-mode-and-rules
+      - &a66
+        source: S003
+        locator: The concept in the abstract
+      - &a67
+        source: S003
+        locator: Architecture proposed
+      - &a68
+        source: S003
+        locator: Phases proposed
+      - &a9
+        source: S002
+        locator: docs/000-philosophy.md#responsibility
+      - &a12
+        source: S002
+        locator: docs/001-domain.md#concepts
+      - &a26
+        source: S002
+        locator: docs/002-authorization.md#when-eval-does-not-finish
+      - &a38
+        source: S002
+        locator: docs/003-execution.md#pause-processing
+    fit:
+      status: missing
+      evidence:
+        - apps/discord-bot/src/events/messageCreate.ts
+    position: leaning
+    serves:
+      - REQ-005
+    load_bearing: true
+    verification:
+      status: untested
+    reason: The cheapest safe way to learn whether group observation is worth having.
+  - id: C-020
+    title: Candidate cards and operator-sent drafts
+    kind: interface
+    statement: What matters from a group reaches the operator as a card to capture or dismiss, with a draft reply the operator can send themselves, so Relay stays silent in the group.
+    origins:
+      - &a77
+        source: S003
+        locator: Phases proposed
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/lib/workspace-feed.ts
+    position: leaning
+    serves:
+      - REQ-005
+    reason: Delivers the group value without crossing the messaging boundary.
+  - id: C-021
+    title: Group speech only after a Decision
+    kind: constraint
+    statement: Relay answers in a group, even when addressed, only after a separate Decision allows it. The standing authority covers pings to the operator alone.
+    origins:
+      - &a54
+        source: S003
+        locator: Recommendation
+      - &a55
+        source: S003
+        locator: Decisions and constraints named
+      - source: S001
+        locator: The request
+    fit:
+      status: conflicts
+      evidence:
+        - docs/decisions/0084-decide-whether-agents-may-send-the-operator-read-only-discord-pings-arcadia.md
+        - docs/agent-guidance/operator-directed-work.md
+    position: leaning
+    serves:
+      - REQ-009
+    reason: Direct addressing conflicts with today's authority until that Decision exists.
+  - id: C-022
+    title: Decision on client message retention
+    kind: constraint
+    statement: Keeping messages from clients or other third parties needs a Decision on retention and consent before any observation begins.
+    origins:
+      - &a80
+        source: S003
+        locator: Decisions and constraints named
+    fit:
+      status: missing
+      evidence:
+        - CONSTITUTION.md
+    position: leaning
+    serves:
+      - REQ-005
+    reason: Third parties have not agreed to be recorded.
+  - id: C-023
+    title: Relay mode simulation
+    kind: mechanism
+    statement: Any coding agent can simulate the experience until Relay v1.0, labelling what Arcadia did with receipts, what it improvised, and what cannot be simulated, and capturing improvisations as evidence.
+    origins:
+      - source: S001
+        locator: Relay mode and the default shell
+    fit:
+      status: exists
+      evidence:
+        - .agents/skills/arcadia-relay/SKILL.md
+        - docs/agent-guidance/relay-mode.md
+    position: chosen
+    serves:
+      - REQ-007
+  - id: C-024
+    title: Relay as the default session shell
+    kind: mechanism
+    statement: Eventually every default coding-agent session opens prepared for operator interaction as Relay, while release-manager custody stays with the lead Role. This changes the bootstrap, so it goes through a Decision.
+    origins:
+      - source: S001
+        locator: Relay mode and the default shell
+      - *a1
+    fit:
+      status: conflicts
+      evidence:
+        - AGENTS.md
+        - docs/agents-context.md
+    position: leaning
+    serves:
+      - REQ-008
+    load_bearing: true
+    verification:
+      status: untested
+    reason: AGENTS.md names Rowan as the default today.
+  - id: C-027
+    title: "Sequence: the thread first"
+    kind: constraint
+    statement: Build the synced thread and cards first, then follow-ups, then the silent observer, then group participation.
+    origins:
+      - &a53
+        source: S003
+        locator: Recommendation
+      - &a78
+        source: S003
+        locator: Phases proposed
+      - &a79
+        source: S003
+        locator: Gaps named
+      - &a82
+        source: S003
+        locator: Decisions and constraints named
+      - &a111
+        source: S004
+        locator: Three checkpoints and parallel work
+      - &a100
+        source: S004
+        locator: Broader MVP vision through four views
+      - &a101
+        source: S004
+        locator: The first prototype story
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/components/workspace/workspace-view.tsx
+    position: candidates
+  - id: C-028
+    title: "Sequence: Way knowledge first"
+    kind: constraint
+    statement: Prove the graded Way answers first, reached through Relay mode, since this requirement has the least support in existing work and is the cheapest to test. Build the thread once answers pass. If they fail, the guidance or retrieval gets fixed first.
+    origins:
+      - source: S001
+        locator: The name and the first-time operator
+    fit:
+      status: partial
+      evidence:
+        - .agents/skills/arcadia-relay/SKILL.md
+        - docs/agent-guidance/index.json
+    position: candidates
+  - id: C-029
+    title: "Sequence: the Go conversation first"
+    kind: constraint
+    statement: Finish the draft Go conversation Plan first, proving one real delivery and then one Action delivered from a Project conversation with its live proof.
+    origins:
+      - &a122
+        source: S007
+        locator: action prove-go-delivery-from-coding-agent-session
+      - &a123
+        source: S007
+        locator: action prove-go-delivery-from-coding-agent-session, criterion 2
+      - &a135
+        source: S007
+        locator: action prove-one-action-conversation-delivery, criteria 1, 3, 4; action connect-conversation-to-protected-continue criterion 4
+    fit:
+      status: partial
+      evidence:
+        - src/commands/goContext.ts
+        - docs/plans/deliver-one-authorized-action-through-a-persistent-go-conversation.md
+    position: candidates
+  - id: C-030
+    title: Relay runs on the standard harness
+    kind: mechanism
+    statement: Relay is a standard coding-agent session with instruction files and restricted tool permissions, not a new runtime, so the same contract later serves as the default shell. Restricting tools through each host's permissions must stay within the rule that the harness runs unmodified.
+    origins:
+      - source: S001
+        locator: Relay mode and the default shell
+    fit:
+      status: partial
+      evidence:
+        - docs/agent-guidance/standard-harness.md
+        - .agents/skills/arcadia-relay/SKILL.md
+    position: candidates
+  - id: C-031
+    title: Relay as a dedicated service agent
+    kind: mechanism
+    statement: Relay runs on the existing Intelligence service and worker, calling models directly with its own small tool set, which is tighter and cheaper per turn.
+    origins:
+      - source: S003
+        locator: Architecture proposed
+      - source: S002
+        locator: docs/007-architecture.md#model-facing-interfaces
+    fit:
+      status: partial
+      evidence:
+        - src/intelligence/litellm/client.ts
+        - src/intelligence/jobs/worker.ts
+    position: candidates
+  - id: C-100
+    title: Attention cost as the master criterion
+    kind: requirement
+    statement: Every message, setting, panel element or paragraph of documentation is treated as spending a human's attention and must return more value than it costs, or be removed.
+    origins:
+      - *a2
+    position: merged
+    merged_into: C-010
+  - id: C-101
+    title: Act only on a request or a written rule
+    kind: requirement
+    statement: The agent starts work only when an allowed person addresses it directly (or speaks in a conversation the team opened to requests), or when a rule the team wrote permits unrequested work. Unrequested work begins in a record-only mode.
+    origins:
+      - *a3
+    position: merged
+    merged_into: C-013
+  - id: C-102
+    title: Speak only when a person must act or can use a result
+    kind: requirement
+    statement: Confirm a request once with a concrete statement of intent, stay silent while working, then write again only for a ready result, a needed decision or an inability to finish. Messages are short, go back to the originating conversation, and ask one structured question at a time.
+    origins:
+      - *a4
+      - *a5
+    position: merged
+    merged_into: C-010
+  - id: C-103
+    title: Stop by impact, not effort; report honestly
+    kind: requirement
+    statement: Local changes proceed to a reviewable result, while changes needing a design decision halt with a question. Drafts are labelled unfinished, failures are reported as failures, and limits are never circumvented to avoid asking.
+    origins:
+      - *a6
+      - *a7
+    position: merged
+    merged_into: C-011
+  - id: C-104
+    title: Few concepts, few settings, behaviour as prompt text
+    kind: constraint
+    statement: New business needs become an attribute of an existing domain concept or prompt text rather than a new concept. A default replaces a setting whenever one value fits nearly all teams, and team-described behaviour is prose, not configuration.
+    origins:
+      - *a8
+    position: merged
+    merged_into: C-010
+  - id: C-105
+    title: Operator responsibility ramp
+    kind: requirement
+    statement: Operators begin with a short allowed list and proactive work that is only recorded, widen both after reviewing what the agent would have done, answer noise by shortening prompts or pausing rather than adding explanations, avoid volume work, and own what is posted under their identity.
+    origins:
+      - *a9
+    position: merged
+    merged_into: C-019
+  - id: C-106
+    title: Trigger to Eval to Ticket pipeline with immutable events
+    kind: mechanism
+    statement: Sources emit immutable Triggers grouped into Threads; a batch of Triggers is judged by an Eval that either creates a Ticket carrying a Mandate or records a non-acceptance. Accepting the same Trigger twice yields one Ticket, giving audit and idempotence.
+    origins:
+      - *a10
+    position: merged
+    merged_into: C-012
+  - id: C-107
+    title: Source owns read position, self-filtering and address translation
+    kind: mechanism
+    statement: Each event stream persists its own read position so restarts do not replay, discards its own bot's messages and out-of-scope events before they enter the domain, and translates events into Threads and reply addresses.
+    origins:
+      - *a11
+    position: merged
+    merged_into: C-018
+  - id: C-108
+    title: Serial, stateless Eval per Thread with merged arrivals
+    kind: mechanism
+    statement: At most one Eval runs on a Thread at once; Triggers arriving meanwhile merge into the next batch. Eval keeps no state of its own, sees the Thread snapshot, every Ticket on it including ended ones, and the current Policy, and returns a Decision.
+    origins:
+      - *a12
+      - source: S002
+        locator: docs/001-domain.md#concepts
+    position: merged
+    merged_into: C-019
+  - id: C-109
+    title: Two-layer Eval, deterministic gate then model assessment
+    kind: mechanism
+    statement: The first layer is a deterministic check of who may originate work and with what strength; only then does a model assess whether the work matches the enabled rules. Prompt text and message content cannot change the gate.
+    origins:
+      - *a13
+      - *a14
+    position: merged
+    merged_into: C-013
+  - id: C-110
+    title: Mandate as immutable record of why work is permitted
+    kind: mechanism
+    statement: An accept creates a Mandate recording the policy version, scope, strength, matched rules, sender identity and how the event arrived. Widening scope needs a new Ticket; only accept, a person's stop and failed revalidation can change a Mandate's existence, not a Ticket merely ending.
+    origins:
+      - source: S002
+        locator: docs/001-domain.md#concepts
+      - source: S002
+        locator: docs/002-authorization.md#resume-and-stop
+    position: rejected
+    reason: Agent Asks, Decisions and Grants already record why work is permitted, and more strictly.
+  - id: C-111
+    title: Explicit versus inferred strength
+    kind: mechanism
+    statement: "Requests carry one of two strengths: explicit (allowed person addressing the agent, or a follow-up on a Thread with work) or inferred (unaddressed, unlisted, or allowed-bot input). Inferred candidates need assessment and are gated by the accept mode; some inputs are not admitted at all."
+    origins:
+      - *a15
+    position: merged
+    merged_into: C-013
+  - id: C-112
+    title: Per-scope admission table
+    kind: mechanism
+    statement: Each source's receiving scopes carry a small table deciding whether a message from a listed or unlisted sender, addressed or not, becomes an explicit request, an inferred candidate or nothing. It is versioned with the policy, and defaults to ignoring unlisted senders.
+    origins:
+      - *a16
+    position: merged
+    merged_into: C-013
+  - id: C-113
+    title: Bots can propose but never request or stop
+    kind: constraint
+    statement: Only bots on a per-source list may yield inferred candidates, and only when addressing the agent or in a receive-everything scope. They can never issue explicit requests or stop work; automated reviewers using ordinary accounts are treated as people unless the team's prompt text says otherwise.
+    origins:
+      - *a17
+    position: merged
+    merged_into: C-013
+  - id: C-114
+    title: Off, observe and auto accept modes
+    kind: mechanism
+    statement: 'A three-position mode governs proactive work: off ignores all inferred input, observe assesses and records "would accept" without acting (the default), and auto accepts on a positive assessment. Explicit requests work in every mode, and a proactive accept needs at least one matching rule.'
+    origins:
+      - *a18
+    position: merged
+    merged_into: C-019
+  - id: C-115
+    title: Rules judged exhaustively; matched rules override process defaults
+    kind: mechanism
+    statement: An assessment evaluates every enabled rule exactly once, matching or not. Matched rules' names and instructions travel with the Ticket and override default process or communication behaviour for that Ticket only, while team-wide requirements stay in shared prompt sections.
+    origins:
+      - source: S002
+        locator: docs/002-authorization.md#accept-mode-and-rules
+    position: parked
+    revival: Observe mode meets its pass mark and the operator wants rule-based action, through a Decision.
+  - id: C-116
+    title: Subscription fan-out bypasses the gate and grants nothing
+    kind: mechanism
+    statement: Every message on a Thread a Ticket subscribes to reaches that Ticket as context regardless of sender, with no new authority and no Eval. A person's message on the Ticket's own Thread is decided by the working agent, and may resume an ended Ticket under its old Mandate.
+    origins:
+      - *a19
+      - *a20
+    position: merged
+    merged_into: C-017
+  - id: C-117
+    title: Executor-owned follow-ups with hand-back and release
+    kind: mechanism
+    statement: While a worker owns a human follow-up, the router cannot accept or reroute it and may only stop work. The worker either handles it within scope or hands it back once with a reason; unread messages are released to Eval when a Ticket ends. A message reaches fresh Eval only when no Ticket still owns it.
+    origins:
+      - source: S002
+        locator: docs/002-authorization.md#handing-back-and-releasing-follow-ups
+      - source: S002
+        locator: docs/003-execution.md#follow-ups-and-context-threads
+    position: parked
+    revival: Follow-ups regularly reach the wrong work.
+  - id: C-118
+    title: Context-only subscriptions
+    kind: mechanism
+    statement: A worker can follow related Threads purely for information. Messages there carry no authority, give no ownership of follow-ups and cannot resume an ended Ticket; the router attaches a Thread to a Ticket only on an explicit reference, not topic similarity.
+    origins:
+      - *a21
+      - *a22
+    position: merged
+    merged_into: C-017
+  - id: C-119
+    title: Policy changes notify live work instead of revoking it
+    kind: mechanism
+    statement: Rules, accept mode and per-source parts form a versioned Policy. A change discards running Evals, requeues their Triggers and sends a policy-changed notice to affected live Tickets, but does not cancel in-flight work; any revocation happens through revalidation when an ended Ticket would resume.
+    origins:
+      - source: S002
+        locator: docs/002-authorization.md#policy-version
+      - source: S002
+        locator: docs/001-domain.md#rejected-concepts
+    position: parked
+    revival: More than one operator shares a workspace.
+  - id: C-120
+    title: Revalidation of a Mandate before resume
+    kind: mechanism
+    statement: Before an ended Ticket wakes, its Mandate is rechecked against current policy, sender membership, bot list, accept mode and enabled rules according to what the Mandate relied on. On failure the Ticket stays ended and its waiting messages go to fresh Eval.
+    origins:
+      - source: S002
+        locator: docs/002-authorization.md#revalidation-before-resume
+    position: parked
+    revival: More than one operator shares a workspace, or work resumes automatically.
+  - id: C-121
+    title: Stop is a Decision, not an executor declaration
+    kind: constraint
+    statement: A person saying stop in a thread is just another event for Eval, and a worker may not assert that a person asked it to stop. A panel stop is a direct command. A person-stopped Ticket stays ended and receives nothing, and pauses hold across restarts and new sessions until a person lifts them.
+    origins:
+      - *a23
+      - *a24
+      - *a25
+    position: merged
+    merged_into: C-014
+  - id: C-122
+    title: Eval timeout and unavailable outcome
+    kind: mechanism
+    statement: The clock starts when a candidate reaches the router, and a timeout requeues the batch up to two times before recording an unavailable Decision. Failures and stale-policy decisions also record unavailable; only recent, unresolved ones surface to a person, who can re-evaluate or dismiss.
+    origins:
+      - *a26
+    position: merged
+    merged_into: C-019
+  - id: C-123
+    title: Mutually exclusive ticket stages computed from facts
+    kind: mechanism
+    statement: An open Ticket's stage is derived by an ordered first-match table over what it waits for (undelivered input, a question, review, blocked or failed, queued, idle, working), with person-facing labels. Stage is computed from stored reports and inputs, so it survives restarts and never contradicts other state.
+    origins:
+      - *a27
+      - *a28
+    position: merged
+    merged_into: C-011
+  - id: C-124
+    title: Structured reports and structured questions
+    kind: interface
+    statement: Workers report through a closed set of states (progress, waiting, ready, blocked, failed, dropped) and ask people through a dedicated field holding one concrete question that the router forwards unchanged. Waiting on a person is never inferred from free text.
+    origins:
+      - *a29
+      - *a30
+      - *a31
+    position: merged
+    merged_into: C-009
+  - id: C-125
+    title: Ticket state independent of executor session state
+    kind: mechanism
+    statement: A Ticket owns its own lifecycle and may have several Assignments over time, each pending, running or ended on its own, so handoff, retry, resumption and multiple executors do not corrupt Ticket status.
+    origins:
+      - *a32
+      - *a33
+    position: merged
+    merged_into: C-012
+  - id: C-126
+    title: Worker slots, reserved human slot, and background-work limits
+    kind: mechanism
+    statement: A Ticket occupies a concurrency slot while launching or in an active turn, with one extra slot reserved so a person's message can always continue existing work. Background jobs get a bounded window after a turn, then are killed with a report; handoff to a person frees the slot.
+    origins:
+      - source: S002
+        locator: docs/003-execution.md#concurrency
+    position: parked
+    revival: Relay's turns are delayed by coding-agent work in real use.
+  - id: C-127
+    title: Per-Ticket directory with prepare command
+    kind: mechanism
+    statement: Each Ticket gets its own working directory, created once by a configurable prepare command run under a time limit (typically a git worktree). A failed preparation fails the Ticket and is retried on later activity, and a pull request is associated with a Ticket by matching its branch name.
+    origins:
+      - source: S002
+        locator: docs/003-execution.md#preparing-a-ticket-directory
+    position: rejected
+    reason: Arcadia's candidate worktrees already provide this.
+  - id: C-128
+    title: Executor isolation is defaults, not a security boundary
+    kind: risk
+    statement: Workers run commands without approval as the operator's OS user, and wrappers plus blocked-command lists only cover invocations by name. The source states a worker can still run a program by absolute path, so no sandbox is claimed.
+    origins:
+      - *a34
+    position: merged
+    merged_into: C-014
+  - id: C-129
+    title: Merge policy lives in prompt text, not host logic
+    kind: mechanism
+    statement: Auto-merge conditions (own PR, approvals covering the head commit, small diff size, no merge as the agent's own account, withdrawal before a new push) are instructions to the agent. Enforcement of approvals is deferred to branch protection on the host platform.
+    origins:
+      - source: S002
+        locator: docs/003-execution.md#merging
+      - source: S002
+        locator: docs/004-prompts.md#what-a-team-writes
+    position: rejected
+    reason: Arcadia enforces merge under Decisions 0060 and 0080 rather than leaving it to prompt text.
+  - id: C-130
+    title: Ticket completion by pull-request outcome
+    kind: mechanism
+    statement: A Ticket with pull requests is finished when none it opened remain open, and ends with the last close outcome while keeping its subscriptions so later comments can resume it. A close is held back while resumed or recovered work is unfinished.
+    origins:
+      - source: S002
+        locator: docs/003-execution.md#pull-requests
+    position: rejected
+    reason: Arcadia's pull-request and completion procedures already govern this.
+  - id: C-131
+    title: Stored work with ordered retries
+    kind: mechanism
+    statement: Relays, deliveries, launches and outgoing messages are persisted before they are attempted and retried with doubling backoff. Per-conversation message order is kept, a failure holds back later items of its kind, and only repeated failures surface as system problems.
+    origins:
+      - *a35
+      - *a36
+    position: merged
+    merged_into: C-012
+  - id: C-132
+    title: Restart recovery with a recovery note and replay of unread input
+    kind: mechanism
+    statement: After a restart, interrupted assignments end and relaunch oldest-first with a note telling the worker to inspect its directory, history and the remote platform before repeating outside actions. A record of which messages the session took into history decides what counts as read and what is redelivered.
+    origins:
+      - *a37
+    position: merged
+    merged_into: C-012
+  - id: C-133
+    title: Failed or blocked hold, with transient-error retry and human release
+    kind: mechanism
+    statement: A failed or blocked Ticket stops receiving automatic input, with CI and bot messages recorded but not delivered, while the worker's tools stay usable by a person. Transient network or provider errors are retried a few times first, and a person's message or retry lifts the hold.
+    origins:
+      - source: S002
+        locator: docs/003-execution.md#executor-blocked-or-failed
+      - source: S002
+        locator: docs/001-domain.md#rejected-concepts
+    position: rejected
+    reason: Arcadia's repair and blocker handling already covers this.
+  - id: C-134
+    title: Pause processing stops dispatch but keeps recording
+    kind: mechanism
+    statement: A global pause halts dispatch, new Evals, deliveries and replies while sources continue recording and running turns are not interrupted. In-progress Eval deadlines extend by the pause length, and waiting messages to ended Tickets resume them afterward if the Mandate still holds.
+    origins:
+      - *a38
+    position: merged
+    merged_into: C-019
+  - id: C-135
+    title: Router and worker role separation
+    kind: mechanism
+    statement: A main session only routes, forwarding the original event with routing facts in a short note, batching several decisions in one tool call with per-item refusal. It never waits or makes technical decisions. The worker reads the originals, judges scope and implements, with tools for asking people, UI or spawning sessions withheld.
+    origins:
+      - *a39
+      - *a40
+      - *a41
+    position: merged
+    merged_into: C-015
+  - id: C-136
+    title: Mechanical guard against router blocking
+    kind: mechanism
+    statement: Code, not just prompt text, refuses sleep, long shell timeouts and long job waits in the router session, because a blocked step delays incoming candidates. Presets carry short foreground-to-background limits.
+    origins:
+      - source: S002
+        locator: docs/004-prompts.md#principles-of-the-built-in-text
+      - *a42
+    position: merged
+    merged_into: C-015
+  - id: C-137
+    title: Prompt precedence with enforced facts on top
+    kind: mechanism
+    statement: Instructions are layered from host-enforced facts down through built-in text, matched-rule text, team sections and team skills, with outside message content last as data that never alters rules. Editing prompts cannot change gate, Mandate, tool checks or account wrappers.
+    origins:
+      - *a43
+    position: merged
+    merged_into: C-014
+  - id: C-138
+    title: Policy section last, regenerated each request
+    kind: mechanism
+    statement: The generated policy section (version, mode, enabled rules) is placed at the end of the system prompt and rebuilt on every model request, so a policy change leaves the preceding prompt text untouched.
+    origins:
+      - source: S002
+        locator: docs/004-prompts.md#assembly-and-precedence
+    position: rejected
+    reason: Prompt assembly belongs to the standard harness, which runs unmodified.
+  - id: C-139
+    title: Three team prompt sections plus skills; everything overridable
+    kind: interface
+    statement: Teams customize behaviour through three prose sections (communication, ticket scope, delivery requirements) and loadable skills, and may override any built-in prompt part. Tool descriptions, notices and cards stay in code.
+    origins:
+      - source: S002
+        locator: docs/004-prompts.md#what-a-team-writes
+    position: rejected
+    reason: Instruction files already serve this; no prompt-editing surface is needed.
+  - id: C-140
+    title: Versioned prompt configuration with default-drift detection
+    kind: mechanism
+    statement: Every prompt save is an immutable version naming its base revision, with conflicting saves refused. An override records the built-in text it was based on, so an upgrade that changes the default is flagged and shown beside the team's text. Sessions pick up the newest version on each model request and record which revisions they used.
+    origins:
+      - source: S002
+        locator: docs/004-prompts.md#built-in-parts-and-templates
+      - source: S002
+        locator: docs/004-prompts.md#versions
+    position: rejected
+    reason: Instruction files in Git already give versions and review.
+  - id: C-141
+    title: Review and delivery honesty rules
+    kind: requirement
+    statement: An open pull request is not readiness, drafts are marked unfinished, and a UI change needs a genuine before screenshot. Fixed review comments are resolved silently, declined ones get one sentence, automated reviewers are capped at three rounds, and the agent closes its own PR when a person's already covers the change.
+    origins:
+      - source: S002
+        locator: docs/004-prompts.md#principles-of-the-built-in-text
+    position: merged
+    merged_into: C-011
+  - id: C-142
+    title: Bounded, resource-addressed read surface per role
+    kind: interface
+    statement: Sessions read state through one resource-style read tool with paged lists and character caps, normalizing source records into one compact message shape. Every id shown is readable, internal hashes are hidden, and a worker can read only its own Ticket and the material that reached it.
+    origins:
+      - *a44
+    position: merged
+    merged_into: C-007
+  - id: C-143
+    title: Panel design principles
+    kind: requirement
+    statement: The supervision panel orders content by three questions (need me now, is it healthy, what is the history), shows healthy states with no space, gives mutually exclusive checkable categories, makes every count equal the list it links to, and keeps one place per concept.
+    origins:
+      - *a45
+      - *a46
+    position: merged
+    merged_into: C-010
+  - id: C-144
+    title: Rejected, no person or cross-source identity entity
+    kind: constraint
+    statement: The domain deliberately has no person or membership concept and no mapping of identities across sources. An actor is event metadata, allowed lists are per-source policy, and the link between one human's accounts is prompt text.
+    origins:
+      - *a47
+      - *a48
+    position: merged
+    merged_into: C-013
+  - id: C-145
+    title: Rejected, Eval scheduling its own delayed work
+    kind: constraint
+    statement: Eval never waits or schedules follow-up checks; a condition that needs time is modelled as a Source that waits and emits an event, keeping Eval free of any dependency on Sources and removing waiting or revoked Eval states.
+    origins:
+      - *a49
+      - *a50
+    position: merged
+    merged_into: C-018
+  - id: C-146
+    title: Rejected, one live Ticket per Thread
+    kind: constraint
+    statement: A Thread may carry several independent Tickets, with duplicate avoidance left to the assessment's view of existing Tickets rather than a structural limit. Likewise appending to a Ticket is subscription fan-out, not a Decision.
+    origins:
+      - *a51
+    position: merged
+    merged_into: C-017
+  - id: C-147
+    title: Unsolved, trust of event fields
+    kind: risk
+    statement: The source admits it has not settled which event fields are trusted (such as the source-reported actor and thread membership) versus untrusted (body text and quotes), leaving the gate's input trust boundary open.
+    origins:
+      - *a52
+    position: merged
+    merged_into: C-013
+  - id: C-148
+    title: Unsolved, deployment isolation and pinning
+    kind: risk
+    statement: How to give the agent its own pinned host-runtime installation, so upgrading that runtime elsewhere cannot break it, is recorded as an open question.
+    origins:
+      - source: S002
+        locator: docs/007-architecture.md#open-questions
+    position: rejected
+    reason: The standard harness rule and the guarded broker install cover this.
+  - id: C-300
+    title: Operator thread first, silent observer second
+    kind: claim
+    statement: Build one continuous operator thread before anything else, then extend it to watch group channels as a silent observer that reports only to the operator.
+    origins:
+      - *a53
+    position: merged
+    merged_into: C-027
+  - id: C-301
+    title: No group speech without a separate Decision
+    kind: constraint
+    statement: The system may speak in a group channel only after a separate Decision permits it; the existing Decision 0084 covers only pings to the operator.
+    origins:
+      - *a54
+      - *a55
+    position: merged
+    merged_into: C-021
+  - id: C-302
+    title: Two layers, one thread over many channels
+    kind: claim
+    statement: Separate the operator's experience (a single continuous thread with sessions hidden) from event intake (many source conversations filtered down to authorized work), so one thread fronts many channels.
+    origins:
+      - *a56
+    position: merged
+    merged_into: C-004
+  - id: C-303
+    title: Source and Trigger normalization
+    kind: mechanism
+    statement: Each channel event (Web/PWA, Discord DM or group) is normalized into one immutable, deduplicated record before anything else happens.
+    origins:
+      - *a57
+      - *a58
+    position: merged
+    merged_into: C-012
+  - id: C-304
+    title: Deterministic gate before any model
+    kind: mechanism
+    statement: Code, with no model, checks who sent a message and whether it addressed the agent; a model judges only what passes the gate.
+    origins:
+      - *a59
+      - *a60
+    position: merged
+    merged_into: C-013
+  - id: C-305
+    title: Allowlist fails closed
+    kind: requirement
+    statement: An empty sender allowlist must admit no one, replacing the current behaviour where the bot accepts any member of the configured channel.
+    origins:
+      - *a61
+      - *a62
+    position: merged
+    merged_into: C-013
+  - id: C-306
+    title: Mandate record for allowed work
+    kind: mechanism
+    statement: Work records why it is allowed and how far it may go; the plan treats Agent Asks, Decisions and Grants as already stronger than this mechanism.
+    origins:
+      - source: S003
+        locator: The concept in the abstract
+    position: rejected
+    reason: Agent Asks, Decisions and Grants already record why work is permitted, and more strictly.
+  - id: C-307
+    title: Subscription of follow-ups to linked work
+    kind: mechanism
+    statement: Later messages reach existing work without mentioning the agent again, but attach only by explicit reference such as replying to a card, receipt, Decision or Artifact, never by topic similarity.
+    origins:
+      - *a63
+      - *a64
+      - *a65
+    position: merged
+    merged_into: C-017
+  - id: C-308
+    title: Observe mode records without acting
+    kind: mechanism
+    statement: An unaddressed message becomes an observe record noting what would have been accepted, with no action taken; per-channel policy is off or observe.
+    origins:
+      - *a66
+      - *a67
+      - *a68
+    position: merged
+    merged_into: C-019
+  - id: C-309
+    title: Attention rule for speaking
+    kind: requirement
+    statement: The system speaks to the operator only when someone must act or can use a result, rather than narrating activity.
+    origins:
+      - *a69
+    position: merged
+    merged_into: C-010
+  - id: C-310
+    title: Append-only conversation record as evidence, not authority
+    kind: mechanism
+    statement: One new append-only conversation table holds only new facts and is evidence rather than authority; old replies stay as written while current status is displayed separately.
+    origins:
+      - *a70
+    position: merged
+    merged_into: C-005
+  - id: C-311
+    title: Outbox delivering to one thread with cards
+    kind: interface
+    statement: An outbox delivers all output to a single thread, using cards (Decision, Artifact, Continue, candidate Capture or Dismiss) built on existing controls, and feed items appear as messages.
+    origins:
+      - *a71
+      - *a72
+      - *a73
+    position: merged
+    merged_into: C-009
+  - id: C-312
+    title: Routing by message type
+    kind: mechanism
+    statement: After the gate, a Decision answer takes the existing path, an explicit-reference follow-up reaches the linked work, a message from an allowed person addressing the agent reaches the thread agent, and anything else is observe-only.
+    origins:
+      - source: S003
+        locator: Architecture proposed
+    position: merged
+    merged_into: C-013
+  - id: C-313
+    title: Thread agent limited to read and propose
+    kind: constraint
+    statement: The thread agent may only read and propose; its sole write tools are arcadia ask, agent-ask preview and arcadia learn.
+    origins:
+      - *a74
+    position: merged
+    merged_into: C-014
+  - id: C-314
+    title: Cheapest-answer-first escalation
+    kind: mechanism
+    statement: Answer with code first, then a local model through LiteLLM with citations, then a bounded read-only coding agent; code-answered status questions are part of the first phase.
+    origins:
+      - *a75
+      - *a76
+    position: merged
+    merged_into: C-016
+  - id: C-315
+    title: Observed group messages go only to the local model
+    kind: constraint
+    statement: Messages merely observed in group channels are assessed only by the local model, in batches, with a read position that survives restarts.
+    origins:
+      - source: S003
+        locator: Architecture proposed
+      - source: S003
+        locator: Phases proposed
+    position: merged
+    merged_into: C-019
+  - id: C-316
+    title: Operator-sent draft replies
+    kind: mechanism
+    statement: For observed group messages the system proposes a draft reply for the operator to send, rather than sending it, until a Decision permits participation.
+    origins:
+      - *a77
+    position: merged
+    merged_into: C-020
+  - id: C-317
+    title: Phased delivery sequence
+    kind: claim
+    statement: "Deliver in four phases: the Thread, Follow the work (Discord DM joins the thread), Silent observer, then Participant (short read-only replies when addressed and rule-based automatic capture, Decision required)."
+    origins:
+      - *a78
+    position: merged
+    merged_into: C-027
+  - id: C-318
+    title: Five named gaps in current Arcadia
+    kind: claim
+    statement: Arcadia today lacks a server-side conversation, returns receipts not answers, keeps proactive updates in a feed rather than a conversation, does not route follow-ups to work beyond receipt and Decision replies, and has no safe way to observe a channel.
+    origins:
+      - *a79
+    position: merged
+    merged_into: C-027
+  - id: C-319
+    title: Client message storage needs retention and consent Decision
+    kind: constraint
+    statement: Persisting client messages requires a Decision on retention and consent before it happens.
+    origins:
+      - *a80
+    position: merged
+    merged_into: C-022
+  - id: C-320
+    title: Deferred executor ownership and hand-back
+    kind: claim
+    statement: Left out until follow-ups regularly reach the wrong work, at which point executor ownership and hand-back is revived.
+    origins:
+      - source: S003
+        locator: Left out, with revival conditions
+    position: parked
+    revival: Follow-ups regularly reach the wrong work.
+  - id: C-321
+    title: No automatic resume on a person's message
+    kind: constraint
+    statement: Left out because resuming work automatically on a message conflicts with the gate-per-Action model.
+    origins:
+      - source: S003
+        locator: Left out, with revival conditions
+    position: parked
+    revival: A Decision changes the gate-per-Action model.
+  - id: C-322
+    title: Deferred policy versioning and fan-out
+    kind: claim
+    statement: Left out until more than one operator shares a workspace.
+    origins:
+      - source: S003
+        locator: Left out, with revival conditions
+    position: parked
+    revival: More than one operator shares a workspace.
+  - id: C-323
+    title: No prompt-editing UI
+    kind: claim
+    statement: Left out because instruction files already serve that purpose.
+    origins:
+      - source: S003
+        locator: Left out, with revival conditions
+    position: rejected
+    reason: Instruction files already serve this; no prompt-editing surface is needed.
+  - id: C-324
+    title: Unapproved worker commands never allowed
+    kind: constraint
+    statement: Worker commands without approval are excluded permanently, with no revival condition.
+    origins:
+      - *a81
+    position: merged
+    merged_into: C-014
+  - id: C-325
+    title: Slack, Feishu and iMessage deferred
+    kind: claim
+    statement: Additional channel connectors are left out until the first real client needs each.
+    origins:
+      - source: S003
+        locator: Left out, with revival conditions
+    position: parked
+    revival: The first real client needs a channel other than Discord.
+  - id: C-326
+    title: Overlap with existing draft Plans and active milestone
+    kind: risk
+    statement: Two draft Plans (persistent Go conversation and Ask superpower) overlap this work, and unattended production remains the active milestone it competes with.
+    origins:
+      - *a82
+    position: merged
+    merged_into: C-027
+  - id: C-400
+    title: Conversation as the primary surface
+    kind: requirement
+    statement: "Operator direction: the main interaction is familiar messaging, with text, voice, images and attachments in one thread. Designer prose adds that the composer is immediately available."
+    origins:
+      - *a83
+    position: merged
+    merged_into: C-004
+  - id: C-401
+    title: Contextual views appear inside or beside the conversation
+    kind: mechanism
+    statement: Operator requested that relevant dashboard views, menus and protocols come into the conversation; the designer proposes review cards, consequence menus, progress/evidence views and creation previews, revealing only the controls needed and reusing dashboard capabilities contextually rather than reproducing the whole dashboard.
+    origins:
+      - *a84
+    position: merged
+    merged_into: C-009
+  - id: C-402
+    title: Open views keep dialogue readable and reflect the current record
+    kind: requirement
+    statement: "Designer proposal: the dialogue stays readable while a contextual view is open, work is preserved when the view is dismissed, and a reopened view shows the current underlying record rather than a stale copy."
+    origins:
+      - source: S004
+        locator: The foreground is a conversation
+    position: merged
+    merged_into: C-009
+  - id: C-403
+    title: Navigation establishes conversational scope
+    kind: mechanism
+    statement: "Operator's central idea: context loads because the person navigates to it. Designer proposal: deliberate selection sets scope while free camera movement stays exploratory; this distinction needs prototype validation."
+    origins:
+      - *a85
+    position: merged
+    merged_into: C-006
+  - id: C-404
+    title: Visible, inspectable scope path
+    kind: interface
+    statement: "Designer proposal: a compact readable scope path that the person can inspect and change, so a reference like 'add a step before this one' resolves to the selected Action and 'what should happen next' uses the Project's records."
+    origins:
+      - source: S004
+        locator: Navigation establishes conversational scope
+      - *a86
+    position: merged
+    merged_into: C-006
+  - id: C-405
+    title: Scope changes preserve the conversation and clarify ambiguity
+    kind: requirement
+    statement: "Designer proposal: changing scope keeps the conversation and makes the new reference clear; a request ambiguously spanning Projects gets a concise clarification before any work is affected."
+    origins:
+      - source: S004
+        locator: Navigation establishes conversational scope
+    position: merged
+    merged_into: C-006
+  - id: C-406
+    title: Bounded context loading
+    kind: constraint
+    statement: "Designer proposal: loading context means selecting relevant records within a bounded context budget, never putting the whole portfolio, or all old history, into every model request."
+    origins:
+      - *a87
+      - *a88
+    position: merged
+    merged_into: C-007
+  - id: C-407
+    title: Minimize threads; navigate the work structure
+    kind: requirement
+    statement: "Operator-endorsed principle: minimize conversation threads and keep history immediately accessible; primary navigation follows Project, Plan, Action and their relationships, with conversation as a continuous surface and internal model sessions not exposed as the user's organizing system."
+    origins:
+      - *a89
+    position: merged
+    merged_into: C-004
+  - id: C-408
+    title: Per-entity History control with search and broadening
+    kind: interface
+    statement: "Designer proposal (not implemented): a compact History control beside the scope path shows earlier exchanges for the selected entity, with search that starts in that entity and widens deliberately to parent or portfolio; results show date, source scope and context, and open the original exchange with a route back."
+    origins:
+      - *a90
+      - *a91
+    position: merged
+    merged_into: C-008
+  - id: C-409
+    title: One exchange linked from many entities, no duplicates
+    kind: mechanism
+    statement: "Designer proposal: an exchange relating to several entities is referenced from each rather than copied, and each message keeps the scope in which it was sent even after the selection changes."
+    origins:
+      - source: S004
+        locator: History belongs within reach of the work
+      - *a92
+    position: merged
+    merged_into: C-005
+  - id: C-410
+    title: Past messages are evidence, not record state
+    kind: constraint
+    statement: "Designer proposal: conversation and recorded work state stay distinct; a past message shows what was said, not that the present record has that state, and an original reply is never rewritten as if it knew later results."
+    origins:
+      - *a93
+      - *a94
+    position: merged
+    merged_into: C-005
+  - id: C-411
+    title: Continuation summary instead of forced transcript reading
+    kind: mechanism
+    statement: "Designer proposal: a lightweight continuation summary orients the person on entering an entity while original exchanges stay reachable, so nobody must read a long transcript, and history need not be injected into the active model context."
+    origins:
+      - source: S004
+        locator: History belongs within reach of the work
+    position: merged
+    merged_into: C-007
+  - id: C-412
+    title: Draft, attachment and reading-position continuity across scope changes
+    kind: requirement
+    statement: "Designer proposal: a draft and its unsent attachments survive a scope change, keep their original scope explicit if retargeting would be ambiguous, and returning to an entity restores or offers to resume the prior reading position; historical artifact references name the version discussed where available."
+    origins:
+      - *a95
+    position: merged
+    merged_into: C-006
+  - id: C-413
+    title: Separate conversation is an exceptional choice
+    kind: constraint
+    statement: "Designer proposal: creating a distinct conversation is a deliberate exception with a use case still to be designed, never the default result of navigating."
+    origins:
+      - *a96
+    position: merged
+    merged_into: C-004
+  - id: C-414
+    title: Spatial hierarchy layer shows orientation and state honestly
+    kind: mechanism
+    statement: Operator requested a lightweight vector hierarchy suggesting depth (SVG preferred start); designer proposals include Action to Plan to Project to portfolio zoom, distinct treatments for containment, sequence and dependency, summaries at distance, non-colour selection cues, and proposal appearance that reflects recorded state only, never implying approval or execution.
+    origins:
+      - source: S004
+        locator: The background carries orientation
+      - source: S004
+        locator: Design direction established in this session
+    position: parked
+    revival: The thread works and the operator wants spatial navigation next.
+  - id: C-415
+    title: Proposal-to-Action settling follows the real acceptance path
+    kind: requirement
+    statement: "Designer proposal: a proposal appears softly near the discussed work, becomes more definite on clarification, and settles into the hierarchy as an Action only through the actual proposal process; 'Accept Plan' must use that path and not silently approve execution or publication, and status labels must map to underlying record states."
+    origins:
+      - *a97
+      - *a98
+    position: merged
+    merged_into: C-009
+  - id: C-416
+    title: Expanded branch versus selected scope must be distinguishable
+    kind: risk
+    statement: "Designer proposal flagged as an open risk: in the iPhone concept the browsing branch and the explicit conversation scope differ visibly and confusingly, so a clearer treatment or a single selection rule is needed and selecting an Action must make the resulting scope unmistakable."
+    origins:
+      - *a99
+    position: merged
+    merged_into: C-006
+  - id: C-417
+    title: Four-view MVP journey with fixture-first previews
+    kind: mechanism
+    statement: "Designer proposal, with the operator approving the four-view direction: Capture, Review, Work and Orient phases of one workspace (shared shell of wordmark, scope path, conversation, composer, sky), with proposal and artifact states initially fixtures and no promise of a universal editor, automatic publication or every dashboard view. The images are hypothetical concept art, not implemented features."
+    origins:
+      - *a100
+      - *a101
+    position: merged
+    merged_into: C-027
+  - id: C-418
+    title: Cross-device portability goal
+    kind: claim
+    statement: "Operator ambition: the same navigate, select context, then converse model should translate to phone, VR, AR, XR and future interaction; this is a portability goal, not a compatibility claim or MVP commitment, and spatial media need their own equivalents rather than a floating phone layout."
+    origins:
+      - source: S004
+        locator: Mobile navigation and continuity across devices
+    position: parked
+    revival: The first surface other than phone and desktop is planned.
+  - id: C-419
+    title: Composer offered as Ask must be the real Ask loop
+    kind: requirement
+    statement: "Operator non-negotiable requirement: if the bottom composer is presented as Arcadia Ask, it must use real Ask routines and results through the whole experience (submit, understand, open related work, continue in context); a notebook with staged replies is superseded and does not qualify, and decorative previews must stay clearly staged."
+    origins:
+      - *a102
+      - *a103
+    position: merged
+    merged_into: C-011
+  - id: C-420
+    title: Honest request-state vocabulary and response contract
+    kind: requirement
+    statement: "Designer proposal: sending shows a pending receipt rather than a claim of work started; replies summarise the receipt with actual destination and state; captured, queued, running or awaiting review are stated only when supported; decisions point to the existing governed view and do not imply chat approved them; absence of Runs or Artifacts is said plainly."
+    origins:
+      - *a104
+    position: merged
+    merged_into: C-011
+  - id: C-421
+    title: Related work exposed as navigation destinations, not new chats
+    kind: mechanism
+    statement: "Designer proposal: every returned related item, Run, review or Decision and available Artifact gets a compact contextual link or card, Artifacts appear later through the same request and entity with version and producing-work route, and the trail is reopenable from entity history with original timestamps and scope."
+    origins:
+      - *a105
+      - *a106
+    position: merged
+    merged_into: C-008
+  - id: C-422
+    title: Failure and ambiguous-delivery recovery
+    kind: requirement
+    statement: "Designer proposal: keep the text and request correlation on failure, distinguish failed submission from failure after capture, offer a recoverable next step, and verify retry and idempotency semantics before enabling automatic resend."
+    origins:
+      - source: S004
+        locator: Response and navigation contract
+    position: merged
+    merged_into: C-011
+  - id: C-423
+    title: Replies render existing summaries, no extra model call
+    kind: constraint
+    statement: "Designer proposal: first implementation shows Ask's existing summary and state-derived follow-ups in a calm, concise voice (understood, what happened, where next) without another model call to narrate; richer synthesis is deferred until it proves valuable."
+    origins:
+      - *a107
+    position: merged
+    merged_into: C-016
+  - id: C-424
+    title: Safe scope-to-Ask routing and canonical state reads
+    kind: constraint
+    statement: "Designer proposal: navigation may claim to select Ask's destination only through a validated routing contract, and the record of what is routed must stay honest. The spec's note that Ask takes only text and requestId predates the optional projectId now on the route."
+    origins:
+      - *a108
+    position: merged
+    merged_into: C-006
+  - id: C-425
+    title: Verified status separates shipped scaffold from concept
+    kind: claim
+    statement: "Status record as of 2026-10-15: only the routing and React sky scaffold and an Ask API scenario suite are merged; Ask submission and conversation history are not yet supplied, deployed latency and worker execution are unproven, and the concept images are not shipped features."
+    origins:
+      - *a109
+      - *a110
+    position: merged
+    merged_into: C-011
+  - id: C-426
+    title: Shared contract then parallel build, with forecast caveat
+    kind: mechanism
+    statement: "Designer proposal: agree the request/result contract first, build experience and Ask adapter in parallel with disjoint ownership and one integrating owner, accept only through the real submission path, and treat the one-to-two-day target as uncalibrated pending inspection of context field, trail coverage and refresh path."
+    origins:
+      - *a111
+    position: merged
+    merged_into: C-027
+  - id: C-427
+    title: Mission Control sky and identity material
+    kind: constraint
+    statement: Operator required reuse of Mission Control's animated sky verbatim, adapting only React lifecycle with the hierarchy as a separate SVG/DOM layer, readability over transparency, and a reduced-motion mode (designer proposal). Operator liked the lowercase wordmark, rejected the orbit symbol and prefers a simple friendly dot-and-curve mark; typeface and logo remain unresolved.
+    origins:
+      - source: S004
+        locator: One sky and one workspace
+      - source: S004
+        locator: Identity
+    position: parked
+    revival: The thread works in the workspace; the sky already exists there.
+  - id: C-600
+    title: Intent interface with minimal ceremony
+    kind: claim
+    statement: The system is the operator's intent interface; the operator states what should become true in minimal ceremony and the system, not the operator, chooses and proposes the project-management structure (Outcome, Milestone, Action, Artifact, Decision, CLI sequence) that carries it.
+    origins:
+      - *a112
+    position: merged
+    merged_into: C-003
+  - id: C-601
+    title: Ask is not unconstrained autonomy
+    kind: constraint
+    statement: The promise is natural expression, understood implications and risks, and sufficient approval for the system to act through existing foundations; it is explicitly not a promise of unconstrained autonomous execution.
+    origins:
+      - *a113
+    position: merged
+    merged_into: C-014
+  - id: C-602
+    title: PM-only requests need no implementation ceremony
+    kind: requirement
+    statement: Planning and project-management requests must produce governed records without requiring the operator to create worktrees, branches or pull requests, and without implying implementation has begun. Where managed documents need a Git transition, the system owns the exact preview and governed persistence while the operator supplies only judgment and authority.
+    origins:
+      - source: S006
+        locator: Product thesis
+    position: merged
+    merged_into: C-003
+  - id: C-603
+    title: Ingress as live, corrigible provenance session
+    kind: mechanism
+    statement: Each input in Ingress opens into a real-time working session exposing the immutable original input and provenance, state transitions, routing evidence, model choices, interpretation, proposed records, produced Artifacts, validation evidence, approval gates and side effects, with a trace from request to every resulting record and effect.
+    origins:
+      - *a114
+    position: merged
+    merged_into: C-003
+  - id: C-604
+    title: Least-costly sufficient intelligence
+    kind: mechanism
+    statement: The system decides what interpretation an input needs and uses deterministic processing first, then a local-preferred model, escalating to a stronger model only when it adds material value. Safe raw input first yields an explicit working representation (summary, intent, destination, candidate structures, ambiguity, confidence, risk, approval boundaries).
+    origins:
+      - *a115
+    position: merged
+    merged_into: C-016
+  - id: C-605
+    title: Model suggestions never replace original capture or facts
+    kind: constraint
+    statement: Model-derived suggestions must stay labelled as such and never supersede the original captured input or deterministic facts; the working representation exists to be inspected, corrected and approved.
+    origins:
+      - *a116
+    position: merged
+    merged_into: C-005
+  - id: C-606
+    title: Project routing by lightweight prefix, explicit over inferred
+    kind: mechanism
+    statement: A recognizable Project name at the start of a request is enough to route it; explicit routing beats inference, original wording is preserved, the reason for the destination is shown, and the system asks only when the answer would materially change routing, safety or committed records.
+    origins:
+      - *a117
+    position: merged
+    merged_into: C-003
+  - id: C-607
+    title: Translate vague contributions into the smallest useful structure
+    kind: mechanism
+    statement: Anything loosely shaped like project progress is accepted and mapped to the smallest useful structure (Outcome, Milestone, Actions, Decision, plan amendment, Artifact, clarification question, deferral with a reactivation trigger, or authorized execution), which the operator may correct before it becomes durable truth.
+    origins:
+      - *a118
+    position: merged
+    merged_into: C-003
+  - id: C-608
+    title: Agent Ask convention for coding agents without extra authority
+    kind: interface
+    statement: Coding agents submit a conventional Agent Ask (desired result, likely Project and intent kind, acceptance evidence, dependencies) that is normalized into the same corrigible proposal an operator input would yield. The convention aids intent extraction only; agents cannot approve their own Decisions, claim operator agreement, or turn attachment imperatives into execution authority.
+    origins:
+      - *a119
+    position: merged
+    merged_into: C-003
+  - id: C-609
+    title: Single operator-owned execution order as projection
+    kind: mechanism
+    statement: All approved Actions sit in one operator-owned portfolio execution order that is a projection over canonical Actions, not a separate task store. Blocked and waiting Actions keep their position and show why they are ineligible, and the operator can reorder directly with a reversible receipt.
+    origins:
+      - *a120
+    position: merged
+    merged_into: C-016
+  - id: C-610
+    title: Always-know-next-action semantics
+    kind: requirement
+    statement: The system must name the first eligible Action in the explicit order and explain each higher skipped item, or name the single concrete condition preventing selection. It must never invent work to fill an empty queue or let a model-derived score silently set priority.
+    origins:
+      - source: S006
+        locator: Accepted work has one explicit order
+    position: merged
+    merged_into: C-016
+  - id: C-611
+    title: Eight-step authority loop
+    kind: mechanism
+    statement: Ask processing follows an ordered loop - preserve original intent, interpret with deterministic evidence and cheapest sufficient intelligence, show interpretation and risks in a corrigible session, ask only materially relevant questions, present the exact commit or execution boundary, act only within understood granted authority, produce and validate Artifacts, then trace results and report what is next, deferred, refused or blocked.
+    origins:
+      - *a121
+    position: merged
+    merged_into: C-003
+  - id: C-612
+    title: Operator-answerable transparency questions
+    kind: requirement
+    statement: At every point the operator must be able to learn what was heard, why a Project, structure, processor or model was chosen, what is happening now, what will be created, changed, deferred, skipped or refused, what authority is required and its consequence, what evidence proves the result, and what the next Action is.
+    origins:
+      - source: S006
+        locator: The authority contract
+    position: merged
+    merged_into: C-003
+  - id: C-613
+    title: Spare model capacity as scheduling signal only
+    kind: constraint
+    statement: Otherwise-expiring included model allowance may signal when to schedule safe Back Burner work, but the system must distinguish included allowance, banked resets, purchased credits and API spend, never treat unknown capacity as free, and never let an opportunity grant execution or spending authority.
+    origins:
+      - source: S006
+        locator: Spare capacity as a planning resource
+    position: rejected
+    reason: Scheduling spare capacity does not serve any Relay requirement.
+  - id: C-700
+    title: Prove Go delivery from a real coding-agent caller first
+    kind: requirement
+    statement: S007's REQ-001. Before building a conversation, retain live evidence of one real end-to-end `arcadia go` delivery invoked inside an actual coding-agent session (caller directory, provider/model/effort, selected versus assigned work, claim/candidate/Session identities, whether continuation resumes or starts a Session). Dashboard-only calls, host-terminal substitutes, stub agents and manual assembly do not count.
+    origins:
+      - *a122
+    position: merged
+    merged_into: C-029
+  - id: C-701
+    title: Reuse existing proof on the cheapest eligible disposable task
+    kind: constraint
+    statement: The live proof uses one eligible isolated disposable task with a trivial change and the least costly suitable agent. Existing claims and prior probe records are checked first and a qualifying proof is reused with provenance; missing setup or authority stops with an exact refusal and no inferred workspace, pointer move, attempt reset or duplicate owner.
+    origins:
+      - *a123
+    position: merged
+    merged_into: C-029
+  - id: C-702
+    title: Delivery counts only with a full, layered evidence chain
+    kind: mechanism
+    statement: S007's REQ-009. Delivery is complete only when the same Go flow yields change, validation, commit, accessible draft PR, independent current-head review and required-check results, with operator interventions recorded. The delivery Artifact keeps source revision/checks, installed revision/adoption receipt and live request/Session/PR receipts as separate layers; missing, failed or unknown stages stay explicit, and agent exit or source tests alone never count.
+    origins:
+      - *a124
+    position: merged
+    merged_into: C-011
+  - id: C-703
+    title: Read-only What-is-next orientation in a Project conversation
+    kind: mechanism
+    statement: S007's REQ-002. A Project-scoped conversation accepts "What is next" and shows Go's current Action or exact gate, observation time and selected versus assigned work when they differ, using the existing resolver with zero pointer, queue, claim or Session mutations. Fixtures cover ready, gated, empty, missing, stale and assigned-B-versus-selected-A cases.
+    origins:
+      - *a125
+    position: merged
+    merged_into: C-016
+  - id: C-704
+    title: Project-isolated persistent conversation history
+    kind: requirement
+    statement: S007's REQ-003. User messages and canonical record references survive reload under the correct Project, using an existing persistence capability or a minimal addition after inspection. Switching Projects never exposes or submits against the previous Project, and Action status and approval truth stay in their canonical stores.
+    origins:
+      - source: S007
+        locator: action implement-project-go-conversation, criterion 2
+    position: candidates
+  - id: C-705
+    title: Accessible composer with numbered text options
+    kind: requirement
+    statement: The composer acknowledges each received request and renders questions as numbered text options with stated consequences, optionally with buttons. Desktop and narrow/mobile keyboard and screen-reader checks must show the current response reachable without hidden native pickers or forced scroll away from history being read.
+    origins:
+      - *a126
+    position: merged
+    merged_into: C-009
+  - id: C-706
+    title: Bounded interpretation, no model for routine status
+    kind: constraint
+    statement: Unsupported or ambiguous input shows its interpretation limit and one clarification and neither executes nor silently amends scope. Routine orientation and status invoke zero models; free-text interpretation reuses the configured bounded route and cannot authorize effects.
+    origins:
+      - *a127
+    position: merged
+    merged_into: C-016
+  - id: C-707
+    title: Go and Continue only through protected preview and browser confirmation
+    kind: mechanism
+    statement: S007's REQ-004. Go or Continue fetches a fresh existing protected preview (target, owner, provider/model/effort, limits, stable request identity, consequences), and only the existing explicit browser confirmation may commit; a first message, generic yes, copied approval prose or model-generated confirmation launches nothing.
+    origins:
+      - *a128
+    position: merged
+    merged_into: C-014
+  - id: C-708
+    title: Adapter binds to existing resolver and gates, no new launch policy
+    kind: constraint
+    statement: The adapter binds Project, Plan, Action, resolution identity and preview fingerprint without a second resolver or launch policy. Changed facts, expired authority and non-dispatchable states return the existing refusal with a fresh-read path before effects; browser-origin and provider/custody/production gates stay enforced.
+    origins:
+      - *a129
+    position: merged
+    merged_into: C-014
+  - id: C-709
+    title: Truthful launch outcome states
+    kind: requirement
+    statement: S007's REQ-005. Confirmation displays launched, reused, refused or unknown per the protected response; "started" appears only with a durable Session receipt and a working inspection link. Preview, confirmation and result remain visible and operable on desktop, mobile and with accessibility tools.
+    origins:
+      - *a130
+    position: merged
+    merged_into: C-011
+  - id: C-710
+    title: Session progress projected only from canonical receipts
+    kind: mechanism
+    statement: S007's REQ-006. Status and re-entry read the bound Session without interrupting it and show recorded stages (preparation, running, agent exit, validation, accepted completion, PR created, review readiness). Only canonical receipts yield claims, so stale host evidence or agent exit alone never reads as working or delivered; updates are deterministic, deduplicated, time-stamped and add no model watcher, notification or separate Action-state authority.
+    origins:
+      - *a131
+    position: merged
+    merged_into: C-011
+  - id: C-711
+    title: Scope-change and stop requests cannot act silently
+    kind: risk
+    statement: Questions stay usable while work runs, but scope-change and stop requests must not silently amend the assignment or claim a stop without a supported receipt. The conversation points to the governed route or states the missing capability.
+    origins:
+      - *a132
+    position: merged
+    merged_into: C-014
+  - id: C-712
+    title: Idempotent request identity across duplicates and reconnects
+    kind: mechanism
+    statement: S007's REQ-007. Duplicate and concurrent messages, repeated confirmation and reload/reconnect for one bound launch request yield at most one claim, candidate and Session through the existing protected identity. Unverifiable reuse refuses rather than minting a new identity, changed input under an existing identity is rejected, and two-tab/two-Project tests show no cross-target leakage.
+    origins:
+      - *a133
+    position: merged
+    merged_into: C-012
+  - id: C-713
+    title: Unknown outcome on lost launch response, reconcile before retry
+    kind: mechanism
+    statement: A timeout or lost launch response renders "outcome unknown", preserves the original identity and reconciles durable evidence before offering another start. Fixtures cover succeeded-before-response-lost, in-progress, actual refusal and unavailable reconciliation; reconnect restores bindings, keeps prior receipts and labels stale observations.
+    origins:
+      - *a134
+    position: merged
+    merged_into: C-011
+  - id: C-714
+    title: Live conversation-to-PR proof, operator docs and no-escalation boundary
+    kind: requirement
+    statement: S007's REQ-008, S007's REQ-010. After separately receipted adoption, one operator-assisted conversation flow reaches a real Session, validated change and draft PR, with START_HERE.md and an executable QA checklist (success, changed preview, refusal, reconnect; desktop/mobile, keyboard/screen-reader). No automatic next Action, scope amendment, authority change, merge or Production activation; external messaging, direct text approvals, multi-Action continuation and new stop controls stay deferred.
+    origins:
+      - *a135
+    position: merged
+    merged_into: C-029
+choices:
+  - id: CH-01
+    question: One conversation record, or one per Project?
+    options:
+      - concept: C-004
+        consequence: One conversation follows the operator everywhere, and each message keeps its scope.
+      - concept: C-704
+        consequence: History is isolated per Project, and the operator has a conversation per Project.
+  - id: CH-02
+    question: What gets built first? Every option competes for the same capacity as the active unattended-production milestone.
+    options:
+      - concept: C-028
+        consequence: A first-timer can get cited answers soon through Relay mode, at low cost and with a measured result, if the probe holds; otherwise the guidance gets fixed first. It stays in a coding-agent chat, so there is no messaging experience or synced thread yet, and each session still needs a developer tool.
+      - concept: C-027
+        consequence: The messaging experience you asked for comes first, on a phone, with status answers and local-model answers with citations. Way knowledge stays unmeasured until a graded set exists, and it needs new server and interface work.
+      - concept: C-029
+        consequence: One real delivery from a conversation comes first, reusing a draft Plan. It shows building through conversation, helps a first-timer least, and depends on a Go flow that isn't proved yet. Its per-Project history would need amending to match CH-01.
+  - id: CH-03
+    question: What is Relay made of?
+    options:
+      - concept: C-030
+        consequence: No new runtime, and the same contract becomes the default shell. Each turn costs a coding-agent session, and restricting its tools has to be proved on all three hosts without modifying them.
+      - concept: C-031
+        consequence: Tighter control and cheaper turns, reusing a service that already runs. It's new conversational code to maintain alongside the coding agents, and doesn't by itself lead to the default shell.
 scrutiny: []
+riskiest_assumption:
+  statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically. It may be too large, stale or written for agents.
+  test: About 30 first-timer questions, answered from the guidance alone and graded by a separate judge against the cited text, the Decisions and the code.
+  status: inconclusive
+  evidence: docs/design/relay/probes/way-knowledge-1.md
