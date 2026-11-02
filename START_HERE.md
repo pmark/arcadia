@@ -3942,6 +3942,16 @@ Passing means every piece traces to a source and the mission, and that critics
 couldn't break it or you accepted the risk. It doesn't prove the design is right.
 The method is in the [arcadia-design skill](.agents/skills/arcadia-design/SKILL.md).
 
+### Try Relay mode
+
+Relay will be Arcadia's one conversational interface, and it isn't built yet. Until then,
+say "Relay mode" to any coding agent in a checkout containing the skill. It talks to you in
+plain language and runs the commands for you. Each turn that did something ends by showing
+what Arcadia really did, what the agent improvised, and what Relay can't do yet. It can't
+continue across devices, reach out first or watch group channels, and it won't pretend to.
+Approvals and every other gate work exactly as usual. The method is in the
+[arcadia-relay skill](.agents/skills/arcadia-relay/SKILL.md).
+
 ## Shared provider usage diagnostics
 
 Codex, Claude Code and OpenCode can all use `arcadia provider-usage --json`.
