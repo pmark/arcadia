@@ -4,7 +4,7 @@ type: decision
 id: "0169"
 slug: choose-how-the-next-unattended-production-run-recovers-and-gets-noticed
 project: arcadia
-status: open
+status: approved
 question: Choose how the next unattended production run recovers and gets noticed, including whether a host-written QA plan step may stop blocking a merge when it is the only failure.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-11-02
+answer: A. Recovery fixes plus alerts, no model
+decided: 2026-11-02
 ---
 
 # Decision 0169: Choose how the next unattended production run recovers and gets noticed, including whether a host-written QA plan step may stop blocking a merge when it is the only failure.
