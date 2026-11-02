@@ -10,7 +10,7 @@ import { upsertProject } from "../src/db/repositories.js";
 import { isNoProgressExit } from "../src/production/recoverySignals.js";
 import { reconcileSessionExit } from "../src/sessions/reconciliation.js";
 import {
-  PROPOSAL_MAX_BYTES, SESSION_PROPOSAL_EVENT, SESSION_PROPOSAL_SKIPPED_EVENT, recordSessionProposals, sessionProposalDirectory
+  PROPOSAL_MAX_BYTES, PROPOSAL_MAX_ENTRIES, SESSION_PROPOSAL_EVENT, SESSION_PROPOSAL_SKIPPED_EVENT, recordSessionProposals, sessionProposalDirectory
 } from "../src/sessions/sessionProposals.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -176,7 +176,9 @@ describe("an unusable proposal location fails loudly and never writes into the c
     let message = "";
     try { runAgentAskDraftCommand({ request: proposal("session-proposal-refused"), dir: f.worktree, workspace: f.none, proposalRoot: root }); } catch (error) { message = (error as Error).message; }
     expect(message).toContain("cannot be used");
-    expect(message).toContain("arcadia agent-ask preview");
+    expect(message).toContain("state the proposal in your final message".replace("state", "State"));
+    expect(message).toContain("Only where your permissions allow it");
+    expect(message.indexOf("final message")).toBeLessThan(message.indexOf("arcadia agent-ask preview"));
     expect(message).toContain("Nothing was written to your candidate");
     expect(existsSync(path.join(f.worktree, ".arcadia"))).toBe(false);
     expect(git(f.worktree, ["status", "--porcelain"])).toBe("");
@@ -280,6 +282,36 @@ describe("a draft the host cannot record is visible, not silent", () => {
     expect(recorded.map((r) => r.requestId)).toEqual(["good"]);
     expect(kept).toHaveLength(1);
     expect(skips.map((s) => s.reason).sort()).toEqual([expect.stringContaining("invalid Agent Ask"), "name is not agent-ask-<request_id>.yaml"].sort());
+  });
+
+  it("replaying a skip adds no event (dedupe)", () => {
+    const f = fixture();
+    const dir = seed(f);
+    writeFileSync(path.join(dir, "notes.txt"), "stray");
+    withDatabase(f.workspace, (db) => {
+      sessionRow(db, f);
+      recordSessionProposals(db, asSession(f), f.proposalRoot);
+      recordSessionProposals(db, asSession(f), f.proposalRoot);
+      recordSessionProposals(db, asSession(f), f.proposalRoot);
+      expect(events(db, SESSION_PROPOSAL_SKIPPED_EVENT)).toHaveLength(1);
+    });
+  });
+
+  it("examines at most the cap per Session, summarises the rest once, and a replay adds no events", () => {
+    const f = fixture();
+    const dir = seed(f);
+    const total = PROPOSAL_MAX_ENTRIES + 25;
+    for (let i = 0; i < total; i++) writeFileSync(path.join(dir, `junk-${String(i).padStart(4, "0")}.txt`), "x");
+    withDatabase(f.workspace, (db) => {
+      sessionRow(db, f);
+      recordSessionProposals(db, asSession(f), f.proposalRoot);
+      const first = events(db, SESSION_PROPOSAL_SKIPPED_EVENT);
+      // one event per examined entry plus exactly one summary
+      expect(first).toHaveLength(PROPOSAL_MAX_ENTRIES + 1);
+      expect(first.filter((e) => String(e.reason).includes("entries not examined"))).toEqual([expect.objectContaining({ reason: "25 entries not examined (cap 50 per Session)", path: dir })]);
+      recordSessionProposals(db, asSession(f), f.proposalRoot);
+      expect(events(db, SESSION_PROPOSAL_SKIPPED_EVENT)).toHaveLength(PROPOSAL_MAX_ENTRIES + 1);
+    });
   });
 
   it("logs a recording error and leaves the reconcile outcome unchanged", () => {

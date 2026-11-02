@@ -37,6 +37,8 @@ export const SESSION_PROPOSAL_SKIPPED_EVENT = "session.proposal_skipped";
 const SESSION_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const PROPOSAL_FILE = /^agent-ask-[a-z0-9][a-z0-9._-]*\.ya?ml$/;
 export const PROPOSAL_MAX_BYTES = 256 * 1024;
+/** Entries examined per Session per call; the rest are summarised in one skip event. */
+export const PROPOSAL_MAX_ENTRIES = 50;
 
 /** The launched Session's id from the host-set environment, or null outside a Session. */
 export function launchedSessionId(env: NodeJS.ProcessEnv = process.env): string | null {
@@ -59,7 +61,8 @@ function untrustedReason(directory: string): string | null {
   return null;
 }
 
-const INLINE_REMEDY = "Register the proposal inline instead: arcadia agent-ask preview '<json>' (intent proposal, requested_authority propose).";
+const INLINE_REMEDY = "State the proposal in your final message (the host does not parse it; it stays in the Session log) and exit. " +
+  "Only where your permissions allow it, register it inline instead: arcadia agent-ask preview '<json>' (intent proposal, requested_authority propose).";
 
 /**
  * Create (mode 0700) and return the Session's proposal directory under `root`.
@@ -108,10 +111,20 @@ function hasTable(db: Database.Database, name: string): boolean {
   return !!db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?").get(name);
 }
 
-function recordSkip(db: Database.Database, session: SessionProposalSession, file: string, reason: string): void {
-  const seen = (db.prepare("SELECT payload_json FROM events WHERE event_type = ?").all(SESSION_PROPOSAL_SKIPPED_EVENT) as Array<{ payload_json: string }>)
-    .some((row) => { try { const p = JSON.parse(row.payload_json); return p.sessionId === session.id && p.path === file && p.reason === reason; } catch { return false; } });
-  if (seen) return;
+type SkipKeys = Set<string>;
+
+function loadSkipKeys(db: Database.Database, sessionId: string): SkipKeys {
+  const keys: SkipKeys = new Set();
+  for (const row of db.prepare("SELECT payload_json FROM events WHERE event_type = ?").all(SESSION_PROPOSAL_SKIPPED_EVENT) as Array<{ payload_json: string }>) {
+    try { const p = JSON.parse(row.payload_json); if (p.sessionId === sessionId) keys.add(`${p.path}\0${p.reason}`); } catch { /* ignore */ }
+  }
+  return keys;
+}
+
+function recordSkip(db: Database.Database, seen: SkipKeys, session: SessionProposalSession, file: string, reason: string): void {
+  const key = `${file}\0${reason}`;
+  if (seen.has(key)) return;
+  seen.add(key);
   db.prepare("INSERT INTO events (id, event_type, source_module, project_id, payload_json, created_at) VALUES (?, ?, ?, ?, ?, ?)")
     .run(createId("event"), SESSION_PROPOSAL_SKIPPED_EVENT, "sessions.sessionProposals", session.project_id, JSON.stringify({
       sessionId: session.id, project: session.project_slug, planSlug: session.plan_slug, actionId: session.action_id, path: file, reason
@@ -129,30 +142,36 @@ export function recordSessionProposals(db: Database.Database, session: SessionPr
   if (!SESSION_ID.test(session.id) || !hasTable(db, "events")) return [];
   const directory = sessionProposalDirectory(session.id, root);
   if (!existsSyncNoFollow(directory)) return [];
+  const seen = loadSkipKeys(db, session.id);
   for (const component of [root, directory]) {
     let reason: string | null;
     try { reason = untrustedReason(component); } catch (error) { reason = error instanceof Error ? error.message : String(error); }
-    if (reason) { recordSkip(db, session, component, `untrusted proposal location: ${reason}`); return []; }
+    if (reason) { recordSkip(db, seen, session, component, `untrusted proposal location: ${reason}`); return []; }
   }
   const recorded: RecordedSessionProposal[] = [];
-  for (const entry of readdirSync(directory).sort()) {
+  const priorBySha = new Map<string, string>();
+  for (const row of db.prepare("SELECT id, payload_json FROM events WHERE event_type = ?").all(SESSION_PROPOSAL_EVENT) as Array<{ id: string; payload_json: string }>) {
+    try { const p = JSON.parse(row.payload_json); if (p.sessionId === session.id) priorBySha.set(p.sha256, row.id); } catch { /* ignore */ }
+  }
+  const entries = readdirSync(directory).sort();
+  if (entries.length > PROPOSAL_MAX_ENTRIES) recordSkip(db, seen, session, directory, `${entries.length - PROPOSAL_MAX_ENTRIES} entries not examined (cap ${PROPOSAL_MAX_ENTRIES} per Session)`);
+  for (const entry of entries.slice(0, PROPOSAL_MAX_ENTRIES)) {
     const file = path.join(directory, entry);
-    if (!PROPOSAL_FILE.test(entry)) { recordSkip(db, session, file, "name is not agent-ask-<request_id>.yaml"); continue; }
+    if (!PROPOSAL_FILE.test(entry)) { recordSkip(db, seen, session, file, "name is not agent-ask-<request_id>.yaml"); continue; }
     let text: string;
     try {
       const stat = lstatSync(file);
-      if (stat.isSymbolicLink()) { recordSkip(db, session, file, "is a symbolic link"); continue; }
-      if (!stat.isFile()) { recordSkip(db, session, file, "is not a regular file"); continue; }
-      if (stat.size > PROPOSAL_MAX_BYTES) { recordSkip(db, session, file, `exceeds ${PROPOSAL_MAX_BYTES} bytes`); continue; }
+      if (stat.isSymbolicLink()) { recordSkip(db, seen, session, file, "is a symbolic link"); continue; }
+      if (!stat.isFile()) { recordSkip(db, seen, session, file, "is not a regular file"); continue; }
+      if (stat.size > PROPOSAL_MAX_BYTES) { recordSkip(db, seen, session, file, `exceeds ${PROPOSAL_MAX_BYTES} bytes`); continue; }
       text = readFileSync(file, "utf8");
-    } catch (error) { recordSkip(db, session, file, `unreadable: ${error instanceof Error ? error.message : String(error)}`); continue; }
+    } catch (error) { recordSkip(db, seen, session, file, `unreadable: ${error instanceof Error ? error.message : String(error)}`); continue; }
     const sha256 = createHash("sha256").update(text).digest("hex");
     let requestId: string;
     try { requestId = normalizeAgentAsk({ request: text }).requestId; }
-    catch (error) { recordSkip(db, session, file, `invalid Agent Ask: ${error instanceof Error ? error.message : String(error)}`); continue; }
-    const prior = (db.prepare("SELECT id, payload_json FROM events WHERE event_type = ?").all(SESSION_PROPOSAL_EVENT) as Array<{ id: string; payload_json: string }>)
-      .find((row) => { try { const p = JSON.parse(row.payload_json); return p.sessionId === session.id && p.sha256 === sha256; } catch { return false; } });
-    if (prior) { recorded.push({ requestId, sha256, eventId: prior.id, receiptRecorded: true, replayed: true }); continue; }
+    catch (error) { recordSkip(db, seen, session, file, `invalid Agent Ask: ${error instanceof Error ? error.message : String(error)}`); continue; }
+    const prior = priorBySha.get(sha256);
+    if (prior) { recorded.push({ requestId, sha256, eventId: prior, receiptRecorded: true, replayed: true }); continue; }
     let receiptRecorded = false;
     let receiptError: string | null = null;
     if (hasTable(db, "agent_ask_proposals")) {
@@ -166,6 +185,7 @@ export function recordSessionProposals(db: Database.Database, session: SessionPr
         requestId, sha256, text, receiptRecorded, receiptError,
         nonActions: ["Recording settles nothing.", "A proposal grants no approval or execution authority."]
       }), new Date().toISOString());
+    priorBySha.set(sha256, eventId);
     recorded.push({ requestId, sha256, eventId, receiptRecorded, replayed: false });
   }
   return recorded;

@@ -500,7 +500,7 @@ function renderScopeConstraint(criteria: string[]): string[] {
     "",
     `Scope — a hard constraint the host checks against your diff before accepting a completion (only your completion draft in .arcadia/asks/ is exempt): the change may touch only ${allowed.length ? allowed.join(", ") : "nothing the criteria allow together"}.`,
     "If a test and the product code disagree, decide against the criteria which one is wrong; never change a file outside that scope to make a test pass.",
-    "If the criteria cannot be met within it, draft no completion: submit an Agent Ask with `intent: proposal` and `requested_authority: propose` that names the conflict (if no workspace is reachable, name it in your final message instead; an `arcadia agent-ask draft` of it is kept outside your candidate by the host, so leave it where it lands), then exit."
+    "If the criteria cannot be met within it, draft no completion: submit an Agent Ask with `intent: proposal` and `requested_authority: propose` that names the conflict (if no workspace is reachable, or `arcadia agent-ask draft` reports its proposal location cannot be used, state it in your final message instead; an `arcadia agent-ask draft` of it is kept outside your candidate by the host, so leave it where it lands), then exit."
   ];
 }
 

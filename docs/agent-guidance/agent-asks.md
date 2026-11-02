@@ -135,10 +135,14 @@ Inside a launched Session (the host sets `ARCADIA_SESSION_ID`), a `draft` of an
 `intent: proposal` Ask is the one exception: it is written to
 `/tmp/arcadia-session-proposals/<session id>/`, outside the candidate, and the host
 records its text with the Session and Action at Session exit (a `session.proposal_recorded`
-event; anything it cannot record leaves a `session.proposal_skipped` event). If that
-location cannot be used, `draft` fails and names inline `arcadia agent-ask preview`;
-it never writes into the candidate. Interactive agents and every other intent keep the
-canonical `.arcadia/asks/` path and behavior described above.
+event). A draft it cannot record leaves a `session.proposal_skipped` event, and at most 50
+entries are examined per Session; a recording exception only logs to stderr and leaves no
+event. The `/tmp` drafts are not cleaned up. If the location cannot be used, `draft` fails
+and never writes into the candidate: state the proposal in your final message (the host does
+not parse it; it stays in the Session log), or, only where your permissions allow it, use
+inline `arcadia agent-ask preview` (a headless Claude Session's allow list does not).
+Interactive agents and every other intent keep the canonical `.arcadia/asks/` path and
+behavior described above.
 
 `draft` reports `workspaceStatus: previewed` only when the preview receipt was
 recorded. `not_available` means no ready workspace resolved;
