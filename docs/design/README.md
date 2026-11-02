@@ -1,5 +1,7 @@
 # Design documents
 
+- [Arcadia Design skill](../../.agents/skills/arcadia-design/SKILL.md) — the method for design help and large module designs, with its [record format](../../.agents/skills/arcadia-design/references/record-format.md). Sustained designs live here as `docs/design/<slug>/`. [Revision 8](agent-naming-and-design-help/arcadia-design-revision-8.md) records how it was filled in.
+
 - [Agent insignia and generation prompts](arcadia-agent-insignia-prompts.md) — Astra’s proposed visual language for identities, roles, skills and Behaviors, with reusable prompts and validation limits.
 
 - [Arcadia conversational workspace UX design specification](arcadia-conversational-workspace.md) — living product design specification, visual references, interaction rules, operator feedback, and open questions.

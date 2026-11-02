@@ -3921,6 +3921,27 @@ Code, or ask OpenCode to load `arcadia-release-manager`. Loading it does not
 start a watch or grant dispatch or messaging authority. For installation and
 discovery checks, see [skill compatibility](docs/agent-guidance/skills.md).
 
+### Design something large with Arcadia Design
+
+In a coding-agent chat, ask for design help, or say "keep a design brief for this".
+You can then paste plans, proposals and ideas from anywhere, at any time. Arcadia
+Design does the following:
+
+1. Confirms the outcome with you first, tied to the Project's mission.
+2. Keeps each source and breaks it into numbered concepts. Pasted third-party or
+   client text stays outside the public repository.
+3. Shows what the sources share and where they differ, and checks each concept
+   against the real code.
+4. Brings you only the choices that are really yours. A concept that serves no
+   requirement gets cut.
+5. Has independent critics try to break the result.
+6. Hands you Agent Asks to approve. Nothing is built or approved by the design
+   itself.
+
+Passing means every piece traces to a source and the mission, and that critics
+couldn't break it or you accepted the risk. It doesn't prove the design is right.
+The method is in the [arcadia-design skill](.agents/skills/arcadia-design/SKILL.md).
+
 ## Shared provider usage diagnostics
 
 Codex, Claude Code and OpenCode can all use `arcadia provider-usage --json`.
