@@ -10,14 +10,37 @@ extracted, so that the sources don't set the bar they will be judged against.
 - **Experience target (operator's words):** "Even a first time Arcadia operator therefore
   shall be empowered to wield the full power of the Arcadia Way via Relay interaction."
 - **Name:** Relay, chosen by the operator on 2026-11-02.
-- **Scope stated so far:** one continuous conversation like rich text messaging; observing
-  group channels; direct addressing; the Way's most knowledgeable source; for operators
-  who design, build and deploy websites, apps and media for themselves and clients.
+- **Stated by the operator:** a single continuous thread with a UX like rich text
+  messaging; the Way's most well-versed source; a first-time operator wielding its full
+  power; Relay mode; eventually the default shell. It's for operators who design, build and
+  deploy websites, apps and media for themselves and clients.
+- **Described by the operator as DeepSeek's approach, wanted in 80/20 form:** observing
+  group channels, taking active or passive action, and direct addressing. How far Relay goes
+  on these is for the frame to settle.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
 - **Being worked on:** the frame. **Next move:** the operator confirms or corrects the
   Outcome, Milestone, requirements and non-goals in `record.yaml`.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
+
+## Where the requirements come from
+
+The frame is a proposal, so this separates the operator's statements from mine.
+
+| Requirement | Source | Beyond the operator's words |
+| --- | --- | --- |
+| REQ-001 Way knowledge | S001 | Mine: "anything in the Way", citing guidance, and saying when it doesn't know |
+| REQ-002 Operate by talking | S001 ("wield the full power") | Mine: the reading that this means no commands, paths or formats |
+| REQ-003 One conversation | S001 (thread, rich messaging) | Mine: across devices and surviving restarts |
+| REQ-004 Attention | S003 and the mission | Entirely mine; not stated by the operator |
+| REQ-005 Group channels | S001 (as DeepSeek's approach) | Mine: nothing sent or acted on without authority |
+| REQ-006 Enforced limit | S003 and the mission | Entirely mine; not stated by the operator |
+| REQ-007 Relay mode | S001 | None |
+| REQ-008 Default shell | S001 | None |
+| REQ-009 Direct addressing | S001 (as DeepSeek's approach) | Mine: only once a Decision allows it |
+
+The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
+implementation" of DeepSeek's benefits; "no OpenAI integration" is my reading of that.
 
 ## Principles
 

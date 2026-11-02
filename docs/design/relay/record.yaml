@@ -33,7 +33,7 @@ frame:
       mission: [M1, M3]
       proof: A first-time operator walkthrough on a real project, counting every moment they had to leave Relay or type a command.
     - id: REQ-003
-      statement: One continuous conversation follows the operator across devices, and surviving a restart loses nothing they said or were told.
+      statement: One continuous conversation, with an experience like rich text messaging, follows the operator across devices, and surviving a restart loses nothing they said or were told.
       mission: [M1]
       proof: A test that sends from one client, restarts services, and reads the same history from another.
     - id: REQ-004
@@ -56,6 +56,10 @@ frame:
       statement: Eventually, every default coding-agent session is prepared for operator interaction as Relay, consistent with every other Relay interaction, replacing Rowan as the default shell.
       mission: [M1, M4]
       proof: A fresh session in each of Codex, Claude Code and OpenCode opens as Relay with no setup, and the same operator questions get equivalent experiences across them and Relay's own surface.
+    - id: REQ-009
+      statement: In a group conversation, Relay can be addressed directly as a participant, once a Decision allows it to speak there.
+      mission: [M1, M5]
+      proof: A test on a real channel where an allowed person addresses Relay and gets an answer, and everyone else's messages get none.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
