@@ -1,0 +1,186 @@
+{
+  "provenance": {
+    "workspace": "martianrover",
+    "database": "database/arcadia.sqlite3",
+    "extracted": "2026-11-02, read-only",
+    "sessionExits": "session_exit_receipts joined to agent_sessions (launch_revision) on session_id",
+    "reviewRepairs": "production_review_repairs (failed_checks_json)",
+    "operatorHeldMarks": "production_review_repairs row with outcome gated: the repair loop stops for the operator"
+  },
+  "sessionExits": [
+    {
+      "sessionId": "session_5c83e325c09f451ca0",
+      "actionKey": "arcadia/bound-guidance-test-teardown-retries",
+      "outcome": "accepted_completion",
+      "launchRevision": "6cf8679f2579cde93e46fb496d0878581ae3d9ca",
+      "candidateRevision": "c44101cb692621a49da292cfd1585cc0becf9e9b",
+      "at": "2026-11-02T00:14:20.018Z"
+    },
+    {
+      "sessionId": "session_b94d45ce32554c518f",
+      "actionKey": "arcadia/bound-guidance-test-teardown-retries",
+      "outcome": "accepted_completion",
+      "launchRevision": "94889694c3e1363e0d99f0ca730caea1fc155a61",
+      "candidateRevision": "33d8b3a9c5b6a46a884bf3d4ed6b091fcc512a00",
+      "at": "2026-11-02T00:28:36.771Z"
+    },
+    {
+      "sessionId": "session_18ca7fa5ba41424a93",
+      "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
+      "outcome": "incomplete_resumable",
+      "launchRevision": "35c3ba15b1e30e0320690838b44fa163d204c844",
+      "candidateRevision": "1287d758be93f08460a1487d680ef20d1e562f82",
+      "at": "2026-11-02T04:41:18.850Z"
+    },
+    {
+      "sessionId": "session_d9b74012b68741aab7",
+      "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
+      "outcome": "incomplete_resumable",
+      "launchRevision": "1287d758be93f08460a1487d680ef20d1e562f82",
+      "candidateRevision": "1287d758be93f08460a1487d680ef20d1e562f82",
+      "at": "2026-11-02T04:44:50.866Z"
+    },
+    {
+      "sessionId": "session_0864e83381c74e9b8b",
+      "actionKey": "arcadia/pin-worker-merge-allowlist-carve-outs",
+      "outcome": "incomplete_resumable",
+      "launchRevision": "1287d758be93f08460a1487d680ef20d1e562f82",
+      "candidateRevision": "c4eb3ce9b0f58bef9b5015205aafb4b41f173a82",
+      "at": "2026-11-02T04:49:20.310Z"
+    },
+    {
+      "sessionId": "session_01106a09e40447939d",
+      "actionKey": "arcadia/pin-blast-radius-safety-patterns",
+      "outcome": "accepted_completion",
+      "launchRevision": "4279f1bcde312fe4617ccf7070122105dbd67c74",
+      "candidateRevision": "1a6375f90a68149204342142e2fa7cf73d0650b6",
+      "at": "2026-11-02T07:01:40.100Z"
+    },
+    {
+      "sessionId": "session_7339ac03862a4803b2",
+      "actionKey": "arcadia/pin-blast-radius-safety-patterns",
+      "outcome": "accepted_completion",
+      "launchRevision": "eb35a2bf59774e96cd8220f9ecc5e73cec497d60",
+      "candidateRevision": "2f27c7968416701dc024aa1d98a1faee3e32cc7e",
+      "at": "2026-11-02T07:17:58.857Z"
+    },
+    {
+      "sessionId": "session_9ab292daaa004151a9",
+      "actionKey": "arcadia/cover-retired-descriptor-byte-change",
+      "outcome": "accepted_completion",
+      "launchRevision": "0e2c19f664fe1650605451fcb965545ff5ef9ba7",
+      "candidateRevision": "d5c319ca3fd57794c72e61c77e62caf936cfe72a",
+      "at": "2026-11-02T08:02:38.706Z"
+    }
+  ],
+  "reviewRepairs": [
+    {
+      "requestId": "worker-tick-repair-session_5c83e325c09f451ca0-9824243ae1813475914ca6456a3a95f89aa7d72b",
+      "actionKey": "arcadia/bound-guidance-test-teardown-retries",
+      "round": 1,
+      "failedSessionId": "session_5c83e325c09f451ca0",
+      "role": "code-review",
+      "verdict": "fail",
+      "failedChecks": [
+        {
+          "criterion": "correctness",
+          "name": "Correctness",
+          "status": "fail",
+          "evidence": "tests/agent-guidance.test.ts promises removal for each supplied root and then clearing the array, but `roots.splice(0)` clears the array before removal begins; a throwing remover prevents subsequent roots from being processed."
+        },
+        {
+          "criterion": "failure-handling",
+          "name": "Failure handling",
+          "status": "fail",
+          "evidence": "A failure from `remove` in tests/agent-guidance.test.ts after Node's configured retries discards tracking for that root and every remaining root, preventing consistent retry or recovery."
+        },
+        {
+          "criterion": "state-and-concurrency",
+          "name": "State and concurrency",
+          "status": "fail",
+          "evidence": "The shared `roots` cleanup state is destructively drained before removal completion in tests/agent-guidance.test.ts, so partial failure loses pending cleanup state."
+        }
+      ],
+      "repairSessionId": "session_b94d45ce32554c518f",
+      "outcome": "launched",
+      "at": "2026-11-02T00:21:51.905Z"
+    },
+    {
+      "requestId": "worker-tick-repair-session_01106a09e40447939d-73f78a79200e1369d3ebeca10d248958ad7bf7db",
+      "actionKey": "arcadia/pin-blast-radius-safety-patterns",
+      "round": 1,
+      "failedSessionId": "session_01106a09e40447939d",
+      "role": "qa",
+      "verdict": "fail",
+      "failedChecks": [
+        {
+          "criterion": "operator-qa-plan",
+          "name": "Operator QA plan",
+          "status": "fail",
+          "evidence": "Steps 4 and 6 prescribe inspections that cannot establish their stated expected results, and the plan does not instruct the operator to run the focused test, lint, or tsc validations."
+        },
+        {
+          "criterion": "tests-and-evidence",
+          "name": "Tests and evidence",
+          "status": "fail",
+          "evidence": "Lint, tsc, preservation self-check, required CI, and focused execution are supplied, but the focused report is truncated: it declares 21 tests while exposing only 20 passed entries, leaving the no-skip/todo and all-tests-pass claim unproven."
+        }
+      ],
+      "repairSessionId": "session_7339ac03862a4803b2",
+      "outcome": "launched",
+      "at": "2026-11-02T07:11:19.392Z"
+    },
+    {
+      "requestId": "worker-tick-repair-session_7339ac03862a4803b2-7c5acab211cc16d3c28559d7292dc2b512f31d3c",
+      "actionKey": "arcadia/pin-blast-radius-safety-patterns",
+      "round": 2,
+      "failedSessionId": "session_7339ac03862a4803b2",
+      "role": "qa",
+      "verdict": "fail",
+      "failedChecks": [
+        {
+          "criterion": "operator-qa-plan",
+          "name": "Operator QA plan",
+          "status": "fail",
+          "evidence": "Step 4 instructs inspection of `apps/dashboard/package.json` while claiming that its output proves assertions in the test file. That procedure cannot establish criterion 2, even though retained focused-test evidence supports the result."
+        }
+      ],
+      "repairSessionId": "session_aeafee888e21431caa",
+      "outcome": "launched",
+      "at": "2026-11-02T07:26:46.458Z"
+    },
+    {
+      "requestId": "worker-tick-repair-session_9ab292daaa004151a9-902cee09c1581de3e3b313067357386433bf02ca",
+      "actionKey": "arcadia/cover-retired-descriptor-byte-change",
+      "round": 1,
+      "failedSessionId": "session_9ab292daaa004151a9",
+      "role": "code-review",
+      "verdict": "fail",
+      "failedChecks": [
+        {
+          "criterion": "correctness",
+          "name": "Correctness",
+          "status": "fail",
+          "evidence": "The changed test’s asserted outcome conflicts with the supplied input: a JSON document followed by a newline is still valid JSON, not the invalid changed descriptor required by the Action."
+        },
+        {
+          "criterion": "tests",
+          "name": "Tests",
+          "status": "fail",
+          "evidence": "`apps/dashboard/app/api/operator-script/retired-entries.test.ts` adds a test, but its fixture is valid JSON despite intending an invalid descriptor. Thus it does not correctly exercise the requested invalid-descriptor regression and its expected error outcome is unsupported by the test input."
+        }
+      ],
+      "repairSessionId": null,
+      "outcome": "gated",
+      "at": "2026-11-02T08:10:09.217Z"
+    }
+  ],
+  "operatorHeldMarks": [
+    {
+      "actionKey": "arcadia/cover-retired-descriptor-byte-change",
+      "kind": "gated",
+      "reason": "The candidate is on Decision 0098's gate list: it touches checked-in authority boundaries (dashboard_api_route). The repair loop stops for the operator.",
+      "at": "2026-11-02T08:10:09.217Z"
+    }
+  ]
+}
