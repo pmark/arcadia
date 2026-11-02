@@ -71,10 +71,11 @@ import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaun
 import { candidateLandingCommand, handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import type { CompletionValidationOptions } from "../sessions/completionValidation.js";
 import { createId } from "../utils/id.js";
-import { independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
+import { requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
 import {
   advanceIndependentReview,
   ensureProductionReviewStepTable,
+  independentVerdictGateWithQaPlanWaiver,
   REVIEW_BLOCK_CODES,
   resetReviewSteps,
   reviewApplicability,
@@ -335,13 +336,13 @@ function recoverTerminalHandoff(
         // A decided repair whose failed verdict no longer stands (a passing rerun,
         // a new head) is released before anything can launch it.
         releaseStalePendingRepair(db, { session, repoRoot, now, log });
-        const waiting = independentVerdictGate(db, { session, repoRoot });
+        const waiting = independentVerdictGateWithQaPlanWaiver(db, { session, repoRoot, now, log, runCommand: review?.deps.runCommand });
         const outcome = !waiting.satisfied && waiting.code === "awaiting_independent_verdicts" && review
           ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat,
             deps: { ...(review.clock ? { clock: review.clock } : {}), ...review.deps } })
           : undefined;
         reviewOutcome = outcome;
-        return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome });
+        return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome, runCommand: review?.deps.runCommand });
       } }, integrateDeps)
   };
   return { handoff, sessionId: session.id, head, refusal: null, session, review: reviewOutcome };
@@ -430,11 +431,13 @@ const VERDICT_WAIT_ESCALATIONS = new Set(["awaiting_independent_verdicts", "verd
  */
 function escalatingVerdictGate(
   db: Database.Database,
-  input: { session: AgentSession; repoRoot: string; now: Date; log?: (message: string) => void; review?: ReviewStepOutcome }
+  input: { session: AgentSession; repoRoot: string; now: Date; log?: (message: string) => void; review?: ReviewStepOutcome; runCommand?: IndependentReviewDeps["runCommand"] }
 ): VerdictGate {
   const { session, repoRoot } = input;
   const actionKey = `${session.project_slug}/${session.action_id}`;
-  const gate = independentVerdictGate(db, { session, repoRoot });
+  // Decision 0169: a QA verdict that failed only the host-written Operator QA
+  // plan does not block (the unverified step is recorded before this reads satisfied).
+  const gate = independentVerdictGateWithQaPlanWaiver(db, { session, repoRoot, now: input.now, log: input.log, runCommand: input.runCommand });
   const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
   // The verdict gate runs only after every terminal guard passed, so a
   // terminal-guard escalation still on this row is stale: it is replaced or
@@ -2167,7 +2170,7 @@ export function runManagedProductionTick(
         const completed = result.receipt.outcome === "accepted_completion";
         const integration = preservation.kind === "preserved" && completed && !operatorAuthorization
           ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now, clock,
-              verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log }) }, integrateDepsWithGitHub(options))
+              verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log, runCommand: options.review?.runCommand }) }, integrateDepsWithGitHub(options))
           : {
               kind: "refused" as const,
               reason: operatorAuthorization

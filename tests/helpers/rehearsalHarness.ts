@@ -894,6 +894,10 @@ export class FakeGitHub {
   commentFailures: string[] = [];
   /** Every `gh pr close`. */
   closeCalls: string[] = [];
+  /** Every `gh issue create` that succeeded (the QA-plan sole-failure Issue, Decision 0169). */
+  issues: Array<{ title: string; body: string; url: string }> = [];
+  /** Each entry fails one `gh issue create` with that stderr, in order. */
+  issueFailures: string[] = [];
   /**
    * The criteria a "fail" verdict judges fail; null fails every criterion (the
    * default). A defect that fails only correctness is not authority-adjacent.
@@ -1075,6 +1079,12 @@ export class FakeGitHub {
       return ok("");
     }
     if (command === "gh" && args[0] === "pr" && args[1] === "merge") return this.merge(args);
+    if (command === "gh" && args[0] === "issue" && args[1] === "create") {
+      if (this.issueFailures.length > 0) return { status: 1, stdout: "", stderr: this.issueFailures.shift()!, error: null };
+      const url = `https://github.com/pmark/rehearsal/issues/${100 + this.issues.length}`;
+      this.issues.push({ title: args[args.indexOf("--title") + 1] ?? "", body: args[args.indexOf("--body") + 1] ?? "", url });
+      return ok(`${url}\n`);
+    }
     if (command === "gh" && args[0] === "pr" && args[1] === "close") {
       const pr = this.find(args[2]);
       if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };

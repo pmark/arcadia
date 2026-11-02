@@ -177,8 +177,9 @@ function renderPlan(
   criteria.forEach((criterion, index) => {
     lines.push("", `### Step ${index + 3} — Acceptance criterion ${index + 1} of ${criteria.length}`, "");
     const named = criterionPaths(criterion, facts.changedFiles);
-    const present = named.filter((candidate) => pathExists(candidate));
-    const absent = named.filter((candidate) => !present.includes(candidate));
+    const passing = passingCommands(criterion, named, validation);
+    const absent = named.filter((candidate) => !pathExists(candidate));
+    const present = inspectedPaths(named.filter((candidate) => pathExists(candidate)), named, facts.changedFiles, passing !== null);
     const literals = present.length > 0 ? criterionLiterals(criterion) : [];
     const bytes = /newline|byte|whitespace|exactly|empty/i.test(criterion);
     const actions: string[] = [];
@@ -198,7 +199,6 @@ function renderPlan(
       ...(present.length === 0 ? ["the diff shows what changed"] : [])
     ];
     const quoted = `“${inlineText(truncate(criterion, MAX_CRITERION_CHARS))}”`;
-    const passing = passingCommands(criterion, named, validation);
     if (passing) {
       // Inspection cannot show that a command passes (Issue #986): bound the
       // Expected line to what inspection shows and point the proof of passing
@@ -342,6 +342,28 @@ function passProof(passing: PassingCheck, validation: readonly string[], validat
       ? "Any part of this criterion that is not a command passing must show in this step's output."
       : "Any other part of this criterion must show in this step's output.");
   return sentences.join(" ");
+}
+
+/**
+ * The existing named paths a criterion's step inspects. A criterion may name an
+ * unchanged file only as a sample (Issue #1999: `apps/dashboard/package.json`
+ * stood in for a negative-pattern table that lives in the candidate's own test
+ * file), and inspecting that file cannot show the assertion. So when no named
+ * path is one the candidate changed and the candidate did change test files,
+ * the step inspects those changed test files instead. A criterion naming a
+ * changed file, and a criterion that a command must pass (its proof is the
+ * declared validation, not an inspected file), keep the named paths.
+ */
+function inspectedPaths(
+  existing: readonly string[],
+  named: readonly string[],
+  changedFiles: readonly ChangedFile[],
+  mustPass: boolean
+): string[] {
+  if (mustPass || existing.length === 0) return [...existing];
+  if (named.some((candidate) => changedFiles.some((file) => file.path === candidate))) return [...existing];
+  const changedTests = changedFiles.filter((file) => !file.status.startsWith("D") && TEST_PATH.test(file.path)).map((file) => file.path);
+  return changedTests.length > 0 ? changedTests.slice(0, MAX_PATHS_PER_CRITERION) : [...existing];
 }
 
 /** Plain documents and Arcadia's governed data files: nothing to run. */

@@ -32,7 +32,7 @@ import {
   type ReviewRepairOutcome,
   type ReviewRepairRow
 } from "../sessions/reviewRepair.js";
-import { realFailedVerdict, type RequiredChecksFailure } from "./independentReview.js";
+import { AUTHORITY_TEXT, qaPlanSoleFailureOnHead, realFailedVerdict, type RequiredChecksFailure } from "./independentReview.js";
 import { policyAuthorizesPullRequestReadiness, readProductionPolicySafely, type ProductionPolicyRecord } from "./policy.js";
 
 /**
@@ -117,8 +117,6 @@ function agentChangedPaths(repoRoot: string, from: string, to: string): string[]
   if (output === null) return null;
   return output.split("\n").map((line) => line.trim()).filter((line) => line && !line.startsWith(".arcadia/asks/"));
 }
-
-const AUTHORITY_TEXT = /\b(authority|authori[sz]ation|approval[- ]boundar|credential|secret|permission|privilege|branch protection)/i;
 
 /** The authority criteria (prReview's VARIANCE_EXCLUDED_CRITERIA minus Correctness): any non-pass of one is never repaired unattended. */
 const AUTHORITY_CRITERION = /^(security and authority|approval boundaries)$/i;
@@ -441,6 +439,13 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
   if (!failed) {
     releaseStalePendingRepair(db, { session, repoRoot, now, log: input.log });
     return { kind: "not_applicable", reason: "No real failed independent verdict is recorded on the candidate's current head." };
+  }
+  // Decision 0169: a QA verdict whose only failure is the host-written
+  // Operator QA plan launches no repair Session and records no repair round
+  // (no row, no draft, no comment): a repair cannot change the plan, and the
+  // verdict gate records the unverified step instead.
+  if (failed.role === "qa" && qaPlanSoleFailureOnHead(db, { session, repoRoot })) {
+    return { kind: "not_applicable", reason: "The QA verdict's only failure is the host-written Operator QA plan, which no repair Session can change; no repair round is spent (Decision 0169)." };
   }
   const authority = repairAuthority(db, session, now);
   if ("notApplicable" in authority) return { kind: "not_applicable", reason: authority.notApplicable };

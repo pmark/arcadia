@@ -259,6 +259,81 @@ describe("Operator QA plan rendering", () => {
     expect(body).not.toContain("git show " + COMMIT + ":docs/old.md");
   });
 
+  describe("a criterion that names a path as a sample (Issue #1999)", () => {
+    const SAMPLE = "apps/dashboard/package.json";
+    const TEST_FILE = "tests/pr-blast-radius.test.ts";
+    const criterion = `The negative table asserts that ${SAMPLE} and four other paths do not match.`;
+    const exists = (...paths: string[]) => (candidate: string) => paths.includes(candidate);
+    const stepOf = (body: string) => body.slice(body.indexOf("### Step 3"), body.indexOf("### Step 4"));
+
+    it("inspects the changed test file, not the unchanged path the criterion names", () => {
+      const body = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: TEST_FILE }, { status: "M", path: "src/stewardship/prBlastRadius.ts" }],
+        pathExists: exists(SAMPLE, TEST_FILE, "src/stewardship/prBlastRadius.ts")
+      }));
+      const step = stepOf(body);
+      expect(step).toContain(`- **Do:** inspect \`${TEST_FILE}\` with \`git show ${COMMIT}:${TEST_FILE}\`.`);
+      expect(step).not.toContain(`git show ${COMMIT}:${SAMPLE}`);
+      expect(step).not.toMatch(/inspect `apps\/dashboard/);
+      // The criterion text itself is still quoted exactly as worded.
+      expect(step).toContain(SAMPLE);
+    });
+
+    it("inspects every changed test file, and never a deleted one", () => {
+      const body = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: TEST_FILE }, { status: "M", path: "tests/other.test.ts" }, { status: "D", path: "tests/gone.test.ts" }, { status: "M", path: "src/a.ts" }],
+        pathExists: exists(SAMPLE, TEST_FILE, "tests/other.test.ts", "src/a.ts")
+      }));
+      const step = stepOf(body);
+      expect(step).toContain(`inspect \`${TEST_FILE}\` with \`git show ${COMMIT}:${TEST_FILE}\`; then inspect \`tests/other.test.ts\` with`);
+      expect(step).not.toContain("gone.test.ts");
+      expect(step).not.toContain(`git show ${COMMIT}:${SAMPLE}`);
+    });
+
+    it("keeps inspecting a named file the candidate changed, even beside a changed test file", () => {
+      const changedNamed = rendered(source({ acceptanceCriteria: [`${SAMPLE} gains no new dependency.`], validationCommands: [] }), facts({
+        changedFiles: [{ status: "M", path: SAMPLE }, { status: "A", path: TEST_FILE }],
+        pathExists: exists(SAMPLE, TEST_FILE)
+      }));
+      expect(stepOf(changedNamed)).toContain(`- **Do:** inspect \`${SAMPLE}\` with \`git show ${COMMIT}:${SAMPLE}\`.`);
+      expect(stepOf(changedNamed)).not.toContain(TEST_FILE);
+      // A criterion naming a changed test file inspects that file.
+      const namedTest = rendered(source({ acceptanceCriteria: [`${TEST_FILE} asserts the negative table.`], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: TEST_FILE }, { status: "M", path: "tests/other.test.ts" }],
+        pathExists: exists(TEST_FILE, "tests/other.test.ts")
+      }));
+      expect(stepOf(namedTest)).toContain(`- **Do:** inspect \`${TEST_FILE}\` with \`git show ${COMMIT}:${TEST_FILE}\`.`);
+      expect(stepOf(namedTest)).not.toContain("tests/other.test.ts");
+      // Naming one changed and one unchanged path keeps both named paths.
+      const both = rendered(source({ acceptanceCriteria: [`${SAMPLE} and ${TEST_FILE} agree.`], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: TEST_FILE }, { status: "M", path: "tests/other.test.ts" }],
+        pathExists: exists(SAMPLE, TEST_FILE, "tests/other.test.ts")
+      }));
+      expect(stepOf(both)).toContain(`inspect \`${SAMPLE}\` with`);
+      expect(stepOf(both)).toContain(`inspect \`${TEST_FILE}\` with`);
+      expect(stepOf(both)).not.toContain("tests/other.test.ts");
+    });
+
+    it("keeps the named path when the candidate changed no test file, or the path does not exist", () => {
+      const noTests = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({
+        changedFiles: [{ status: "M", path: "src/a.ts" }], pathExists: exists(SAMPLE, "src/a.ts")
+      }));
+      expect(stepOf(noTests)).toContain(`inspect \`${SAMPLE}\` with \`git show ${COMMIT}:${SAMPLE}\``);
+      const absent = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: TEST_FILE }], pathExists: exists(TEST_FILE)
+      }));
+      expect(stepOf(absent)).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT} -- ${SAMPLE}\`.`);
+    });
+
+    it("does not redirect a criterion that a command must pass", () => {
+      const body = rendered(source({ acceptanceCriteria: ["scripts/check.sh passes."], validationCommands: ["bash scripts/check.sh"] }), facts({
+        changedFiles: [{ status: "A", path: TEST_FILE }], pathExists: exists("scripts/check.sh", TEST_FILE)
+      }));
+      expect(stepOf(body)).toContain(`inspect \`scripts/check.sh\` with \`git show ${COMMIT}:scripts/check.sh\``);
+      expect(stepOf(body)).not.toContain(TEST_FILE);
+    });
+  });
+
   it("says a documents-only patch has no runnable surface and names the proof", () => {
     const body = rendered(source(), facts({ changedFiles: [
       { status: "A", path: ".arcadia/asks/archive/agent-ask-complete-write-start-marker-2026-10-05.yaml" },
