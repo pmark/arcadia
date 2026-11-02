@@ -471,11 +471,11 @@ actions:
     references: ["docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
   - id: session-proposal-stays-out-of-candidate
     title: A Session's non-completion Ask draft lands outside its candidate from the start, and the host still receives it as a recorded proposal.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A Session's non-completion Ask draft lands outside its candidate from the start, and the host still receives it as a recorded proposal.
+    next_action: Completed via Agent Ask complete-session-proposal-stays-out-of-candidate-20261102; no further action.
     expected_artifact: Evidence satisfying Agent Ask session-proposal-stays-out-of-candidate
     clarification: clarified
     confidence: high
@@ -578,7 +578,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: session-proposal-stays-out-of-candidate
+current_action: worker-reconciles-own-pointer-commits
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
