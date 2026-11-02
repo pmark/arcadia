@@ -415,6 +415,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "identity roster": exempt("Prints the checked-in roster; reads no workspace."),
   portfolio: ALLOWED,
   way: ALLOWED,
+  "way lookup": exempt("Reads fixed checked-in guidance files under the Way root; opens no database, calls no model or network, and writes and records nothing."),
   "way propagate": guarded(
     "Opens, and for mechanical changes merges, pull requests in adopting repositories.",
     "Pass --dry-run to see what would be propagated.",

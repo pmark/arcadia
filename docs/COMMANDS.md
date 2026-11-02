@@ -1743,6 +1743,55 @@ prints the record's `record_hash`. Exit 0 means no problems; otherwise it fails 
   problem.
 - It opens no database and writes nothing, including no activity record.
 
+## Look Up The Exact Way Passage
+
+```bash
+pnpm arcadia way lookup "<question>" [--budget <bytes>] [--limit <n>] [--json]
+```
+
+Aliases: `way find`, `way consult`. Finds the smallest passages of the checked-in
+guidance that answer a question, so an agent need not read whole documents. It
+is read-only evidence tooling: deterministic (BM25 over lightly stemmed words, no
+model, no network), it opens no database, writes nothing, records no activity,
+and grants no authority.
+
+- **Corpus (a fixed list under the Way root):** `docs/agent-guidance/*.md`,
+  `CONSTITUTION.md`, `AGENTS.md`, `START_HERE.md`, `OPERATOR_CONTEXT.md`,
+  `INSTALL_WITH_A_CODING_AGENT.md`, `SETUP.md`, `docs/arcadia-semantics.md`,
+  `docs/managed-documents.md`, `docs/planning-process.md`,
+  `docs/working-copy-safety.md`, `docs/operating-model.md`, `docs/COMMANDS.md`,
+  `docs/operator-demo-and-release-contract.md`,
+  `docs/managed-production-readiness.md`, `docs/notes-to-self.md` and
+  `.agents/skills/*/SKILL.md`. A missing file is skipped. A symlink, or a file whose
+  real path leaves the root, is never read.
+- **Way root:** the enclosing Project when it holds `docs/agent-guidance/index.json`,
+  otherwise Arcadia's own checkout. `--json` reports which (`rootSource`). With
+  neither, it says so and exits 1. The package does not ship this corpus (`files`
+  in `package.json` lists only the Intelligence client), so an installed copy finds
+  it only inside a checkout.
+- **Passages:** each file is split at `##` and `###` (not inside code fences); text
+  before the first heading belongs to the title. An address is `path#slug` with
+  GitHub's slug and its `-1` numbering for duplicates, and `sha` identifies the
+  passage text. Text inside `<details>` and sections whose heading says superseded,
+  historical, obsolete, outdated or earlier are left out (`supersededSkipped`
+  counts them).
+- **Results:** at most `--limit` (default 3) passages and `--budget` (default 1500)
+  excerpt bytes, each with `address`, `heading`, `excerpt`, `line` (where the
+  excerpt starts in the file), `sha`, `score` and `sourceClass` (`canonical`,
+  `operator_guide`, `hot_cache`). A passage over budget returns its best-matching
+  chunk and `truncated: true`; read the address for the rest. `CONSTITUTION.md`
+  and any passage that states a rule with an exception come back whole when they
+  fit, never as an unmarked fragment. `--budget 0` returns addresses with no
+  excerpt; negative or non-numeric numbers are refused.
+- **Abstention:** `confident` is false unless the best chunk scores at least 4,
+  holds 60% of the question's term weight (a word found nowhere in the corpus
+  counts against it), matches two distinct terms, and, for a one-word question,
+  has that word in its heading. When not confident the human output says the Way
+  does not clearly answer and lists only the nearest addresses, with no excerpts.
+- **Output:** the human output is the excerpts and their addresses. `--json` adds
+  `elapsedMs`, `passagesScanned`, `largestPassageBytes` and `root`; everything but
+  `elapsedMs` is identical between runs.
+
 ## Dispose A Failed Recovery Successor With No Recorded Start
 
 An explicit `--recover-session` successor can fail with no recorded provider
