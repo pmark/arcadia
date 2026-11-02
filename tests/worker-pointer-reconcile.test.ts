@@ -5,7 +5,9 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { applyInitialSchema } from "../src/db/schema.js";
-import { syncBaseWithOwnPointerCommits } from "../src/git/pointerReconcile.js";
+import { inspectGovernedBaseDivergence, isRecognizedGovernanceCommit } from "../src/commands/go.js";
+import { baseReconciliationCommitMessage, createBaseReconciliationCommit, writeCleanBaseMergeTree } from "../src/git/baseReconcile.js";
+import { planReconcile, syncBaseWithOwnPointerCommits } from "../src/git/pointerReconcile.js";
 import { detectBaseBranchAdvance, ensureProductionTickTables, listOperatorEscalations } from "../src/production/tick.js";
 import { mergeCandidatePullRequest } from "../src/production/workerMerge.js";
 import type { VerdictGate } from "../src/sessions/roleLineage.js";
@@ -25,13 +27,19 @@ function git(cwd: string, args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
-function projectDoc(current: string): string {
-  return `---\narcadia: v1\ntype: project\nslug: fixture\nactive_plan: plan-x\ncurrent_action: ${current}\n---\n\n# Fixture\n`;
+function projectDoc(current: string, updated = "2026-11-01", plan = "plan-x"): string {
+  // `updated:` sits directly under `current_action:`, as in the real PROJECT.md.
+  return `---\narcadia: v1\ntype: project\nslug: fixture\nactive_plan: ${plan}\ncurrent_action: ${current}\nupdated: ${updated}\n---\n\n# Fixture\n`;
 }
 
-function planDoc(current: string, done: string[] = []): string {
+function planDoc(current: string, done: string[] = [], last = 1): string {
   const status = (id: string) => (done.includes(id) ? "done" : "open");
-  return `---\narcadia: v1\ntype: plan\nslug: plan-x\nactions:\n${["a1", "a2", "a3"].map((id) => `  - id: ${id}\n    status: ${status(id)}\n`).join("")}current_action: ${current}\n---\n\n# Plan\n`;
+  return `---\narcadia: v1\ntype: plan\nslug: plan-x\nactions:\n${["a1", "a2", "a3"].map((id) => `  - id: ${id}\n    status: ${status(id)}\n`).join("")}current_action: ${current}\nlast: ${last}\n---\n\n# Plan\n`;
+}
+
+const OTHER_PLAN = "docs/plans/other-plan.md";
+function otherPlanDoc(current: string): string {
+  return `---\ntype: plan\nslug: other-plan\nactions:\n  - id: b1\n    status: open\ncurrent_action: ${current}\n---\n`;
 }
 
 describe("a local base ahead only by its own pointer commits", () => {
@@ -103,7 +111,7 @@ describe("a local base ahead only by its own pointer commits", () => {
     git(repo, ["remote", "add", "origin", origin]);
     writeDoc(repo, "PROJECT.md", projectDoc("a1"));
     writeDoc(repo, PLAN, planDoc("a1", []));
-    writeDoc(repo, "docs/plans/other-plan.md", "---\ntype: plan\nslug: other-plan\n---\n");
+    writeDoc(repo, OTHER_PLAN, otherPlanDoc("b1"));
     commitAll(repo, "genesis");
     git(repo, ["push", "-q", "origin", "main"]);
     git(repo, ["branch", "--set-upstream-to=origin/main", "main"]);
@@ -160,7 +168,7 @@ describe("a local base ahead only by its own pointer commits", () => {
 
     it("a pointer-subject commit that touches anything beyond PROJECT.md and the active Plan", () => {
       writeDoc(repo, "PROJECT.md", projectDoc("a2"));
-      writeDoc(repo, "docs/plans/other-plan.md", "---\ntype: plan\nslug: other-plan\nextra: 1\n---\n");
+      writeDoc(repo, OTHER_PLAN, otherPlanDoc("b1").replace("b1", "b1\nextra: 1"));
       commitAll(repo, "chore(arcadia): point at a2");
       remoteAdvances();
       expectRefused(/not pointer commits/);
@@ -213,16 +221,102 @@ describe("a local base ahead only by its own pointer commits", () => {
       writeDoc(repo, PLAN, planDoc("a2", []));
       commitAll(repo, "chore(arcadia): point at a2");
       squashedPointer("a3", ["a1", "a2"]);
-      expectRefused(/changed more than current_action in PROJECT.md/);
+      expectRefused(/not pointer commits/);
     });
 
-    it("a conflict in another file", () => {
+    const TRAILER = "\n\nWritten by `arcadia advance queue make-next --apply` (qpointer_fixture).";
+
+    it("a pointer-subject commit with no make-next trailer that marks an Action done", () => {
       writeDoc(repo, "PROJECT.md", projectDoc("a2"));
-      writeDoc(repo, PLAN, planDoc("a2", []));
-      writeDoc(repo, "docs/reports/merged.md", "local edit\n");
+      writeDoc(repo, PLAN, planDoc("a2", ["a1"]));
       commitAll(repo, "chore(arcadia): point at a2");
       remoteAdvances();
       expectRefused(/not pointer commits/);
+    });
+
+    it("a trailered pointer commit that also marks an Action done, even when the pointer conflicts", () => {
+      writeDoc(repo, "PROJECT.md", projectDoc("a2"));
+      writeDoc(repo, PLAN, planDoc("a2", ["a1"]));
+      commitAll(repo, `chore(arcadia): point at a2${TRAILER}`);
+      squashedPointer("a3", ["a2"]);
+      expectRefused(/not pointer commits/);
+    });
+
+    it("a trailered pointer commit that rewrites Plan prose or injects a field", () => {
+      writeDoc(repo, "PROJECT.md", projectDoc("a2"));
+      writeDoc(repo, PLAN, planDoc("a2").replace("# Plan", "# Plan\n\nHand-written body").replace("last: 1", "last: 1\ninjected: yes"));
+      commitAll(repo, `chore(arcadia): point at a2${TRAILER}`);
+      remoteAdvances();
+      expectRefused(/not pointer commits/);
+    });
+
+    it("a trailered pointer commit that moves active_plan and edits the newly active Plan", () => {
+      writeDoc(repo, "PROJECT.md", projectDoc("b1", "2026-11-01", "other-plan"));
+      writeDoc(repo, OTHER_PLAN, otherPlanDoc("b1").replace("current_action: b1", "acceptance_override: anything\ncurrent_action: b1"));
+      commitAll(repo, `chore(arcadia): point at b1${TRAILER}`);
+      remoteAdvances();
+      expectRefused(/not pointer commits/);
+    });
+
+    it("an older pointer commit changes the Plan and a later one moves active_plan, while the remote changes the Plan", () => {
+      pointer(repo, "a2");
+      writeDoc(repo, "PROJECT.md", projectDoc("b1", "2026-11-01", "other-plan"));
+      commitAll(repo, `chore(arcadia): point at b1${TRAILER}`);
+      writeDoc(other, "PROJECT.md", projectDoc("b1", "2026-11-01", "other-plan"));
+      writeDoc(other, PLAN, planDoc("a3"));
+      commitAll(other, "remote activates the other Plan");
+      git(other, ["push", "-q", "origin", "main"]);
+      expectRefused(/not pointer commits/);
+    });
+
+    it("a pointer commit that also changes an indented current_action line", () => {
+      writeDoc(repo, "PROJECT.md", projectDoc("a2"));
+      writeDoc(repo, PLAN, planDoc("a2").replace("  - id: a2\n    status: open\n", "  - id: a2\n    status: open\n    current_action: nested\n"));
+      commitAll(repo, `chore(arcadia): point at a2${TRAILER}`);
+      remoteAdvances();
+      expectRefused(/not pointer commits/);
+    });
+
+    it("a pointer commit that also changes a column-0 body line named current_action", () => {
+      writeDoc(repo, "PROJECT.md", `${projectDoc("a1")}\ncurrent_action: operator note v1\n`);
+      commitAll(repo, "operator note");
+      git(repo, ["push", "-q", "origin", "main"]);
+      git(other, ["pull", "-q", "origin", "main"]);
+      writeDoc(repo, "PROJECT.md", `${projectDoc("a2")}\ncurrent_action: operator note v2\n`);
+      writeDoc(repo, PLAN, planDoc("a2"));
+      commitAll(repo, `chore(arcadia): point at a2${TRAILER}`);
+      remoteAdvances();
+      expectRefused(/not pointer commits/);
+    });
+
+    it("a hand commit with the pointer subject and no make-next trailer, even when it changes only the pointer", () => {
+      writeDoc(repo, "PROJECT.md", projectDoc("a2"));
+      writeDoc(repo, PLAN, planDoc("a2"));
+      commitAll(repo, "chore(arcadia): point at a2");
+      remoteAdvances();
+      expectRefused(/not pointer commits/);
+    });
+
+    it("a conflicting PROJECT.md that the remote deleted", () => {
+      pointer(repo, "a2");
+      git(other, ["rm", "-q", "PROJECT.md"]);
+      commitAll(other, "remote removes PROJECT.md");
+      git(other, ["push", "-q", "origin", "main"]);
+      expectRefused(/added or removed/);
+    });
+
+    it("a conflict outside the pointer documents (the git conflict is reached)", () => {
+      // A local-only commit can no longer reach another file through sync, so drive the resolver directly.
+      const mergeBase = head();
+      writeDoc(repo, "docs/reports/merged.md", "local edit\n");
+      const local = commitAll(repo, "local edit");
+      git(other, ["pull", "-q", "origin", "main"]);
+      writeDoc(other, "docs/reports/merged.md", "remote edit\n");
+      commitAll(other, "remote edit");
+      git(other, ["push", "-q", "origin", "main"]);
+      git(repo, ["fetch", "-q", "origin"]);
+      const remote = git(repo, ["rev-parse", "origin/main"]).trim();
+      expect(() => planReconcile(repo, { baseBranch: "main", upstream: "origin/main", mergeBase, localHead: local, remoteHead: remote, localCommits: 1 })).toThrow(/conflict outside the pointer documents \(docs\/reports\/merged.md\)/);
     });
   });
 
@@ -282,6 +376,167 @@ describe("a local base ahead only by its own pointer commits", () => {
     expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: a2");
   });
 
+  describe("a conflict that the remote did not cause by moving the pointer", () => {
+    it("keeps the local pointer and the remote's adjacent lines when the remote only touched `updated:` (K2)", () => {
+      pointer(repo, "a2");
+      writeDoc(other, "PROJECT.md", projectDoc("a1", "2026-11-02"));
+      commitAll(other, "docs hygiene: updated date only");
+      git(other, ["push", "-q", "origin", "main"]);
+
+      const result = sync();
+
+      expect(result.outcome).toBe("reconciled");
+      const project = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
+      expect(project).toContain("current_action: a2");
+      expect(project).toContain("updated: 2026-11-02");
+      const message = git(repo, ["show", "-s", "--format=%B", "HEAD"]);
+      expect(message).toContain("Pointer-Conflict-Kept-Local: PROJECT.md current_action a2 (the remote did not move it)");
+      expect(message).not.toContain("Replaced-Local");
+      expect(message).not.toMatch(/settled/);
+    });
+
+    it("keeps the local pointer when the remote edited only lines next to it in both documents (K)", () => {
+      pointer(repo, "a2");
+      writeDoc(other, "PROJECT.md", projectDoc("a1", "2026-11-02"));
+      writeDoc(other, PLAN, planDoc("a1", [], 2));
+      commitAll(other, "remote docs hygiene, no settlement");
+      git(other, ["push", "-q", "origin", "main"]);
+
+      expect(sync().outcome).toBe("reconciled");
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: a2");
+      const plan = readFileSync(path.join(repo, PLAN), "utf8");
+      expect(plan).toContain("current_action: a2");
+      expect(plan).toContain("last: 2");
+    });
+  });
+
+  describe("recognising its own earlier reconcile", () => {
+    const ctx = (remoteHead: string) => ({ baseBranch: "main", upstream: "origin/main", remoteHead });
+
+    /** A conflict-resolved worker reconcile (local main now holds it, unpushed). */
+    function resolvedReconcile(): string {
+      pointer(repo, "a2");
+      squashedPointer("a3", ["a1", "a2"]);
+      expect(sync().outcome).toBe("reconciled");
+      return head();
+    }
+
+    function forge(parentTree: string, parents: string[], message: string, extraFile?: { file: string; content: string }): string {
+      const scratch = path.join(root, "forge-index");
+      const env = { ...process.env, GIT_INDEX_FILE: scratch, GIT_AUTHOR_NAME: "x", GIT_AUTHOR_EMAIL: "x@x.invalid", GIT_COMMITTER_NAME: "x", GIT_COMMITTER_EMAIL: "x@x.invalid" };
+      const run = (args: string[], input?: string) => execFileSync("git", args, { cwd: repo, env, input, encoding: "utf8" }).trim();
+      run(["read-tree", parentTree]);
+      if (extraFile) run(["update-index", "--add", "--cacheinfo", `100644,${run(["hash-object", "-w", "--stdin"], extraFile.content)},${extraFile.file}`]);
+      const tree = run(["write-tree"]);
+      rmSync(scratch, { force: true });
+      return run(["commit-tree", tree, ...parents.flatMap((p) => ["-p", p]), "-m", message]);
+    }
+
+    it("recognises a resolved reconcile on the next remote advance, and so does go, in both orders", () => {
+      const resolved = resolvedReconcile();
+      remoteAdvances("docs/reports/later.md", "later\n");
+      git(repo, ["fetch", "-q", "origin"]);
+      const remoteHead = git(repo, ["rev-parse", "origin/main"]).trim();
+      // go's recogniser and divergence inspection accept it (go itself still never resolves a conflict) ...
+      expect(isRecognizedGovernanceCommit(repo, resolved, ctx(remoteHead))).toBe(true);
+      expect(() => inspectGovernedBaseDivergence({ cwd: repo, baseBranch: "main", upstream: "origin/main", localHead: resolved, remoteHead })).not.toThrow();
+      // ... and the worker reconciles over it again (worker, then go, then worker).
+      expect(sync().outcome).toBe("reconciled");
+    });
+
+    it("recognises a reconcile written the way go writes it (worker after go)", () => {
+      const pointerCommit = pointer(repo, "a2");
+      remoteAdvances();
+      git(repo, ["fetch", "-q", "origin"]);
+      const remoteHead = git(repo, ["rev-parse", "origin/main"]).trim();
+      const mergeBase = git(repo, ["merge-base", pointerCommit, remoteHead]).trim();
+      const tree = writeCleanBaseMergeTree(repo, pointerCommit, remoteHead);
+      const message = baseReconciliationCommitMessage({ baseBranch: "main", upstream: "origin/main", localHead: pointerCommit, remoteHead, mergeBase, localCommits: 1, remoteCommits: 1 });
+      const goWritten = createBaseReconciliationCommit({ cwd: repo, tree, localHead: pointerCommit, remoteHead, message, now: new Date("2026-11-02T12:00:00Z") });
+      git(repo, ["merge", "-q", "--ff-only", goWritten]);
+      remoteAdvances("docs/reports/later.md", "later\n");
+      expect(sync().outcome).toBe("reconciled");
+      expect(git(repo, ["rev-parse", "HEAD^1"]).trim()).toBe(goWritten);
+    });
+
+    it("refuses a forged reconcile whose tree carries something the merge would not", () => {
+      const resolved = resolvedReconcile();
+      const [first, second] = git(repo, ["show", "-s", "--format=%P", resolved]).trim().split(" ");
+      const forged = forge(`${resolved}^{tree}`, [first, second], git(repo, ["show", "-s", "--format=%B", resolved]), { file: "src/evil.sh", content: "evil\n" });
+      git(repo, ["reset", "-q", "--hard", forged]);
+      remoteAdvances("docs/reports/later.md", "later\n");
+      expectRefused(/not pointer commits/);
+    });
+
+    it("refuses a forged reconcile whose message was changed", () => {
+      const resolved = resolvedReconcile();
+      const [first, second] = git(repo, ["show", "-s", "--format=%P", resolved]).trim().split(" ");
+      const forged = forge(`${resolved}^{tree}`, [first, second], `${git(repo, ["show", "-s", "--format=%B", resolved])}\nApproved by the operator.\n`);
+      git(repo, ["reset", "-q", "--hard", forged]);
+      remoteAdvances("docs/reports/later.md", "later\n");
+      expectRefused(/not pointer commits/);
+    });
+
+    it("refuses a resolved reconcile whose remote parent is no longer in the remote's history", () => {
+      const genesis = head();
+      pointer(repo, "a2");
+      // The remote's own pointer move: the reconcile resolves to it, then the remote is rewritten without it.
+      pointer(other, "a3");
+      git(other, ["push", "-q", "origin", "main"]);
+      expect(sync().outcome).toBe("reconciled");
+      git(other, ["reset", "-q", "--hard", genesis]);
+      writeDoc(other, "docs/reports/rewritten.md", "rewritten\n");
+      commitAll(other, "history rewritten");
+      git(other, ["push", "-q", "--force", "origin", "main"]);
+      expectRefused(/not pointer commits/);
+    });
+  });
+
+  it("does not overwrite a locally ignored file the remote adds", () => {
+    writeDoc(repo, ".gitignore", "secret.env\n");
+    commitAll(repo, "ignore secret.env");
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(other, ["pull", "-q", "origin", "main"]);
+    pointer(repo, "a2");
+    writeDoc(other, "secret.env", "from the remote\n");
+    git(other, ["add", "-f", "secret.env"]);
+    commitAll(other, "remote adds a path that is ignored here");
+    git(other, ["push", "-q", "origin", "main"]);
+    writeFileSync(path.join(repo, "secret.env"), "MY IGNORED LOCAL FILE\n");
+    const before = head();
+
+    const result = sync();
+
+    expect(result.outcome).toBe("refused");
+    expect(head()).toBe(before);
+    expect(readFileSync(path.join(repo, "secret.env"), "utf8")).toBe("MY IGNORED LOCAL FILE\n");
+  });
+
+  it("keeps a column-0 body line named current_action intact through a resolved conflict", () => {
+    writeDoc(repo, "PROJECT.md", `${projectDoc("a1")}\ncurrent_action: operator note that matters\n`);
+    commitAll(repo, "operator note");
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(other, ["pull", "-q", "origin", "main"]);
+    writeDoc(repo, "PROJECT.md", `${projectDoc("a2")}\ncurrent_action: operator note that matters\n`);
+    writeDoc(repo, PLAN, planDoc("a2"));
+    commitAll(repo, "chore(arcadia): point at a2\n\nWritten by `arcadia advance queue make-next --apply` (qpointer_fixture).");
+    writeDoc(other, "PROJECT.md", `${projectDoc("a3")}\ncurrent_action: operator note that matters\n`);
+    writeDoc(other, PLAN, planDoc("a3", ["a1", "a2"]));
+    commitAll(other, "remote settles");
+    git(other, ["push", "-q", "origin", "main"]);
+    expect(sync().outcome).toBe("reconciled");
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: operator note that matters");
+  });
+
+  it("refuses when the remote finished the Plan and removed current_action (an end of Plan)", () => {
+    pointer(repo, "a2");
+    writeDoc(other, "PROJECT.md", projectDoc("a1").replace("current_action: a1\n", ""));
+    writeDoc(other, PLAN, planDoc("a1", ["a1", "a2", "a3"]).replace("current_action: a1\n", ""));
+    commitAll(other, "final settlement");
+    git(other, ["push", "-q", "origin", "main"]);
+    expectRefused(/no current_action/);
+  });
+
   describe("both callers use it", () => {
     function gateFor(sha: string): VerdictGate {
       return { satisfied: true, binding: { targetHead: sha }, verdicts: {} } as unknown as VerdictGate;
@@ -335,8 +590,9 @@ describe("a local base ahead only by its own pointer commits", () => {
       db.close();
     });
 
+    const logged: string[] = [];
     function tick(db: Database.Database, fastForward = true) {
-      return detectBaseBranchAdvance(db, { repoRoot: repo, projectSlug: "fixture", projectId: "project_fixture", now: new Date("2026-11-02T12:00:00Z"), log: () => undefined, fastForward });
+      return detectBaseBranchAdvance(db, { repoRoot: repo, projectSlug: "fixture", projectId: "project_fixture", now: new Date("2026-11-02T12:00:00Z"), log: (line) => { logged.push(line); }, fastForward });
     }
 
     it("the per-tick base sync reconciles, clears the escalation, and pushes nothing", () => {
@@ -353,6 +609,8 @@ describe("a local base ahead only by its own pointer commits", () => {
       expect(observation?.newSha).toBe(head());
       expect(listOperatorEscalations(db)).toEqual([]);
       expect(originMain()).toBe(remoteBefore);
+      expect(logged.some((line) => line.startsWith("Reconciled fixture's checkout"))).toBe(true);
+      expect(logged.some((line) => line.startsWith("Fast-forwarded"))).toBe(false);
       db.close();
     });
 
@@ -368,7 +626,11 @@ describe("a local base ahead only by its own pointer commits", () => {
       tick(db);
 
       expect(head()).toBe(before);
-      expect(listOperatorEscalations(db)).toEqual([expect.objectContaining({ kind: "base_not_synced" })]);
+      const [escalation] = listOperatorEscalations(db);
+      expect(escalation).toMatchObject({ kind: "base_not_synced", message: expect.stringContaining("not pointer commits") });
+      // A remedy that can work for a diverged base, not a fast-forward that cannot.
+      expect(escalation.remedy).toContain("git log --oneline origin/main..main");
+      expect(escalation.remedy).not.toContain("--ff-only");
       db.close();
     });
   });

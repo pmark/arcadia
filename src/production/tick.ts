@@ -3327,7 +3327,7 @@ export const BASE_NOT_SYNCED_ESCALATION = "base_not_synced";
  */
 function reportBaseSyncStatus(
   db: Database.Database,
-  input: { repoRoot: string; projectSlug: string; baseBranch: string; merged: boolean; now: Date; log: (message: string) => void }
+  input: { repoRoot: string; projectSlug: string; baseBranch: string; merged: boolean; reason?: string | null; now: Date; log: (message: string) => void }
 ): void {
   const actionKey = `base-branch/${input.projectSlug}`;
   const behind = Number.parseInt(tryGit(input.repoRoot, ["rev-list", "--count", `${input.baseBranch}..origin/${input.baseBranch}`])?.trim() ?? "0", 10);
@@ -3340,9 +3340,12 @@ function reportBaseSyncStatus(
   const causes: string[] = [];
   if (branch !== input.baseBranch) causes.push(`the checkout is on ${branch}, not ${input.baseBranch}`);
   if (dirty.length > 0) causes.push(`it has uncommitted changes (${dirty.slice(0, 5).join("; ")}${dirty.length > 5 ? `; +${dirty.length - 5} more` : ""})`);
-  const why = causes.length > 0 ? causes.join(" and ") : `${input.baseBranch} has diverged from origin/${input.baseBranch}`;
-  const message = `${input.projectSlug}'s primary checkout ${input.repoRoot} cannot fast-forward onto origin/${input.baseBranch} (${behind} commit${behind === 1 ? "" : "s"} behind): ${why}. Production's pointer cannot advance past merged work until it can.`;
-  const remedy = `In ${input.repoRoot}: ${branch !== input.baseBranch ? `\`git switch ${input.baseBranch}\`, ` : ""}commit, stash or remove the listed changes, then \`git merge --ff-only origin/${input.baseBranch}\`. The next tick clears this entry.`;
+  const why = causes.length > 0 ? causes.join(" and ") : (input.reason ?? `${input.baseBranch} has diverged from origin/${input.baseBranch}`);
+  const diverged = causes.length === 0;
+  const message = `${input.projectSlug}'s primary checkout ${input.repoRoot} cannot be brought onto origin/${input.baseBranch} (${behind} commit${behind === 1 ? "" : "s"} behind): ${why}. Production's pointer cannot advance past merged work until it can.`;
+  const remedy = diverged
+    ? `In ${input.repoRoot}: review \`git log --oneline origin/${input.baseBranch}..${input.baseBranch}\`, keep any commit that is not a \`chore(arcadia): point at\` commit on its own branch (\`git branch <name> ${input.baseBranch}\`), then \`git merge origin/${input.baseBranch}\` (resolve any conflict by hand). The next tick clears this entry.`
+    : `In ${input.repoRoot}: ${branch !== input.baseBranch ? `\`git switch ${input.baseBranch}\`, ` : ""}commit, stash or remove the listed changes, then \`git merge --ff-only origin/${input.baseBranch}\`. The next tick clears this entry.`;
   if (recordOperatorEscalation(db, { actionKey, kind: BASE_NOT_SYNCED_ESCALATION, message, remedy, now: input.now })) {
     input.log(`Escalated ${actionKey} to the operator (${BASE_NOT_SYNCED_ESCALATION}): ${message}`);
     try {
@@ -3377,13 +3380,15 @@ export function detectBaseBranchAdvance(
   // Never silent: a fast-forward that moved the checkout is logged with both
   // SHAs, so a manual reset it undid is named rather than just gone (#608).
   if (input.fastForward && tryGit(input.repoRoot, ["fetch", "--quiet", "origin"]) !== null) {
-    const headBefore = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
     // Also reconciles a base that is ahead only by the worker's own pointer
     // commits; any other divergence still refuses and escalates below.
     const synced = syncBaseWithOwnPointerCommits({ repoRoot: input.repoRoot, baseBranch, fetch: false, now: input.now });
-    reportBaseSyncStatus(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, baseBranch, merged: synced.outcome !== "refused", now: input.now, log: input.log });
-    const headAfter = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
-    if (headBefore && headAfter && headBefore !== headAfter) {
+    reportBaseSyncStatus(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, baseBranch, merged: synced.outcome !== "refused", reason: synced.reason, now: input.now, log: input.log });
+    if (synced.outcome === "reconciled") {
+      input.log(`Reconciled ${input.projectSlug}'s checkout ${input.repoRoot} with origin/${baseBranch} (its unpushed pointer commits kept): ${synced.headBefore} -> ${synced.resultHead}.`);
+    } else if (synced.outcome === "fast-forwarded") {
+      const headBefore = synced.headBefore;
+      const headAfter = synced.resultHead;
       input.log(`Fast-forwarded ${input.projectSlug}'s checkout ${input.repoRoot} onto origin/${baseBranch}: ${headBefore} -> ${headAfter} (managed production keeps an in-scope checkout on its remote; pause the Project or narrow the policy scope to hold a local reset).`);
     }
   }

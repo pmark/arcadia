@@ -31,6 +31,7 @@ import {
   verifyReconciliationCommit,
   writeCleanBaseMergeTree
 } from "../git/baseReconcile.js";
+import { isRecognizedResolvedReconciliation } from "../git/pointerReconcile.js";
 import { SCOPE_HELD_CODE } from "../production/policy.js";
 import {
   SAFE_TASK_BRANCH,
@@ -1970,7 +1971,7 @@ function assertTrackingRefValue(cwd: string, ref: string, expected: string | nul
   }
 }
 
-function inspectGovernedBaseDivergence(input: {
+export function inspectGovernedBaseDivergence(input: {
   cwd: string;
   baseBranch: string;
   upstream: string;
@@ -1998,7 +1999,7 @@ function inspectGovernedBaseDivergence(input: {
   };
 }
 
-function isRecognizedGovernanceCommit(
+export function isRecognizedGovernanceCommit(
   cwd: string,
   commit: string,
   context: { baseBranch: string; upstream: string; remoteHead: string }
@@ -2007,7 +2008,10 @@ function isRecognizedGovernanceCommit(
   const message = git(cwd, ["show", "-s", "--format=%B", commit]);
   const subject = message.split(/\r?\n/, 1)[0];
   if (subject === "chore(arcadia): reconcile " + context.baseBranch + " with " + context.upstream) {
-    return isRecognizedProtectedReconciliation(cwd, commit, parents, message, context);
+    // Also a conflict-resolved reconcile the worker wrote (never pushed): recomputed from its parents, byte for byte.
+    // Go itself still never resolves a conflict.
+    return isRecognizedProtectedReconciliation(cwd, commit, parents, message, context)
+      || isRecognizedResolvedReconciliation(cwd, commit, parents, message, context);
   }
   if (parents.length !== 1) return false;
   const paths = git(cwd, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit])

@@ -81,7 +81,7 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
 
     if (headBefore === remoteHead || isAncestor(repoRoot, remoteHead, headBefore)) return result("current", headBefore, headBefore);
     if (isAncestor(repoRoot, headBefore, remoteHead)) {
-      if (tryGit(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "--quiet", remoteHead]) === null) {
+      if (tryGit(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "--no-overwrite-ignore", "--quiet", remoteHead]) === null) {
         refuse(`${baseBranch} cannot fast-forward onto ${upstream} (conflicting local changes)`);
       }
       return result("fast-forwarded", headBefore, tryGit(repoRoot, ["rev-parse", "HEAD"])?.trim() ?? remoteHead);
@@ -99,9 +99,12 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
     const { tree, message } = planReconcile(repoRoot, { baseBranch, upstream, mergeBase, localHead: headBefore, remoteHead, localCommits: localCommits.length });
     const resultHead = createBaseReconciliationCommit({ cwd: repoRoot, tree, localHead: headBefore, remoteHead, message, now: input.now ?? new Date() });
     verifyReconciliationCommit(repoRoot, resultHead, tree, headBefore, remoteHead);
-    // Re-check immediately before the only write; nothing may have moved.
-    if (tryGit(repoRoot, ["rev-parse", "--verify", baseRef])?.trim() !== headBefore) refuse(`${baseBranch} moved during the reconcile`);
-    if (tryGit(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "--quiet", resultHead]) === null) {
+    // Re-check immediately before the only write: the merge acts on the checked-out
+    // HEAD, so that (not the branch ref alone) must still be the base at the planned head.
+    if (tryGit(repoRoot, ["symbolic-ref", "-q", "HEAD"])?.trim() !== baseRef || tryGit(repoRoot, ["rev-parse", "--verify", "HEAD"])?.trim() !== headBefore) {
+      refuse(`${baseBranch} moved during the reconcile`);
+    }
+    if (tryGit(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "--no-overwrite-ignore", "--quiet", resultHead]) === null) {
       refuse(`${baseBranch} could not fast-forward onto the reconcile commit`);
     }
     return result("reconciled", headBefore, resultHead, null, localCommits);
@@ -110,7 +113,7 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
   }
 }
 
-interface ReconcilePlan {
+export interface ReconcilePlan {
   baseBranch: string;
   upstream: string;
   mergeBase: string;
@@ -119,25 +122,24 @@ interface ReconcilePlan {
   localCommits: number;
 }
 
-const CURRENT_ACTION_LINE = /^current_action\s*:/;
-
-function withoutPointerLines(text: string): string {
-  return text.split("\n").filter((line) => !CURRENT_ACTION_LINE.test(line)).join("\n");
-}
-
-function pointerValue(text: string | null): string {
-  return text?.match(/^current_action\s*:\s*(.*?)\s*$/m)?.[1] ?? "none";
+interface PlannedReconcile {
+  tree: string;
+  message: string;
+  /** True when a pointer-only conflict was resolved (a clean merge is `arcadia go`'s own shape). */
+  resolved: boolean;
 }
 
 /**
  * The reconcile tree and commit message for two heads. A clean three-way merge
  * is used as is. A conflict confined to PROJECT.md and the active Plan, where
  * the local side changed only `current_action` lines in those files, resolves
- * to the remote's blobs (the remote settled; the local value is recorded in the
- * message). Everything else refuses. Deterministic, so a later sync can
- * recompute it to recognise its own earlier commit.
+ * per file: if the remote moved the pointer (its value differs from the merge
+ * base's) the remote's blob is taken whole; if it did not (the conflict is only
+ * an adjacent line such as `updated:`), the remote's blob is taken with the
+ * local pointer line kept. Everything else refuses. Deterministic, so a later
+ * sync (or `arcadia go`) can recompute it to recognise this commit.
  */
-function planReconcile(cwd: string, plan: ReconcilePlan): { tree: string; message: string } {
+export function planReconcile(cwd: string, plan: ReconcilePlan): PlannedReconcile {
   const { localHead, remoteHead, mergeBase } = plan;
   const baseMessage = baseReconciliationCommitMessage({
     baseBranch: plan.baseBranch,
@@ -155,7 +157,7 @@ function planReconcile(cwd: string, plan: ReconcilePlan): { tree: string; messag
     if (lines.length !== 1 || !FULL_GIT_OID.test(lines[0])) refuse("git did not return one auditable merge tree");
     const problem = pointerPairProblem(cwd, lines[0]);
     if (problem) refuse(problem);
-    return { tree: lines[0], message: baseMessage };
+    return { tree: lines[0], message: baseMessage, resolved: false };
   }
   if (attempt.status !== 1 || lines.length < 2 || !FULL_GIT_OID.test(lines[0])) {
     refuse(`the local ${plan.baseBranch} and ${plan.upstream} could not be merged: ${(attempt.stderr ?? "").trim() || `git exit ${String(attempt.status)}`}`);
@@ -164,38 +166,47 @@ function planReconcile(cwd: string, plan: ReconcilePlan): { tree: string; messag
   const allowed = new Set(["PROJECT.md", activePlanPath(cwd, localHead), activePlanPath(cwd, remoteHead)].filter((v): v is string => v !== null));
   const foreign = conflicted.filter((file) => !allowed.has(file));
   if (foreign.length > 0) refuse(`the base and ${plan.upstream} conflict outside the pointer documents (${foreign.slice(0, 3).join(", ")})`);
-  const replaced: string[] = [];
+  const entries: Array<{ file: string; mode: string; text: string | null; blob: string }> = [];
+  const notes: string[] = [];
   for (const file of conflicted) {
     const before = tryGit(cwd, ["show", `${mergeBase}:${file}`]);
     const local = tryGit(cwd, ["show", `${localHead}:${file}`]);
-    if (before === null || local === null || tryGit(cwd, ["cat-file", "-e", `${remoteHead}:${file}`]) === null) {
-      refuse(`${file} was added or removed, not only re-pointed`);
-    }
+    const remote = tryGit(cwd, ["show", `${remoteHead}:${file}`]);
+    if (before === null || local === null || remote === null) refuse(`${file} was added or removed, not only re-pointed`);
     if (withoutPointerLines(before) !== withoutPointerLines(local)) refuse(`the local commits changed more than current_action in ${file}`);
-    replaced.push(`${file} current_action ${pointerValue(local)}`);
+    const remoteEntry = /^(\d+) blob ([0-9a-f]+)\t/.exec(tryGit(cwd, ["ls-tree", remoteHead, "--", file]) ?? "");
+    if (!remoteEntry) refuse(`${file} is not a regular file on the remote`);
+    if (pointerValue(remote) !== pointerValue(before)) {
+      entries.push({ file, mode: remoteEntry[1], text: null, blob: remoteEntry[2] });
+      notes.push(`Pointer-Conflict-Replaced-Local: ${file} current_action ${pointerValue(local)} (the remote moved it to ${pointerValue(remote)})`);
+    } else {
+      const kept = withPointerLine(remote, pointerLine(local));
+      if (kept === null) refuse(`${file} has no current_action line to keep`);
+      entries.push({ file, mode: remoteEntry[1], text: kept, blob: "" });
+      notes.push(`Pointer-Conflict-Kept-Local: ${file} current_action ${pointerValue(local)} (the remote did not move it)`);
+    }
   }
-  const tree = treeWithRemoteBlobs(cwd, lines[0], remoteHead, conflicted);
+  const tree = treeWithResolvedFiles(cwd, lines[0], entries);
   const problem = pointerPairProblem(cwd, tree);
   if (problem) refuse(problem);
-  const message = [baseMessage, "", ...replaced.map((entry) => `Pointer-Conflict-Replaced-Local: ${entry}`), "", "Resolved to the remote values because the remote settled the Action."].join("\n");
-  return { tree, message };
+  const message = [baseMessage, "", ...notes, "", "Only the current_action lines were resolved; every other line is the remote's."].join("\n");
+  return { tree, message, resolved: true };
 }
 
-/** `tree` with each path's entry replaced by the remote's, through a throwaway index. */
-function treeWithRemoteBlobs(cwd: string, tree: string, remoteHead: string, files: string[]): string {
+/** `tree` with each file's entry replaced (by an existing blob or new text), through a throwaway index. */
+function treeWithResolvedFiles(cwd: string, tree: string, entries: Array<{ file: string; mode: string; text: string | null; blob: string }>): string {
   const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-pointer-reconcile-"));
   const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, "index") };
-  const run = (args: string[]): string => {
-    const out = spawnSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", env, stdio: ["ignore", "pipe", "pipe"] });
+  const run = (args: string[], stdin?: string): string => {
+    const out = spawnSync("git", ["-c", "core.hooksPath=/dev/null", ...args], { cwd, encoding: "utf8", env, input: stdin, stdio: ["pipe", "pipe", "pipe"] });
     if (out.status !== 0) refuse(`could not build the resolved tree: ${(out.stderr ?? "").trim()}`);
     return out.stdout.trim();
   };
   try {
     run(["read-tree", tree]);
-    for (const file of files) {
-      const entry = /^(\d+) blob ([0-9a-f]+)\t/.exec(run(["ls-tree", remoteHead, "--", file]));
-      if (!entry) refuse(`${file} is not a regular file on the remote`);
-      run(["update-index", "--add", "--cacheinfo", `${entry[1]},${entry[2]},${file}`]);
+    for (const entry of entries) {
+      const blob = entry.text === null ? entry.blob : run(["hash-object", "-w", "--stdin"], entry.text);
+      run(["update-index", "--add", "--cacheinfo", `${entry.mode},${blob},${entry.file}`]);
     }
     const resolved = run(["write-tree"]);
     if (!FULL_GIT_OID.test(resolved)) refuse("git did not return a resolved tree");
@@ -206,7 +217,7 @@ function treeWithRemoteBlobs(cwd: string, tree: string, remoteHead: string, file
 }
 
 /** A conflict-resolving reconcile this module wrote earlier: recomputed from its parents, byte for byte. */
-function isRecognizedResolvedReconciliation(
+export function isRecognizedResolvedReconciliation(
   cwd: string,
   commit: string,
   parents: string[],
@@ -225,7 +236,7 @@ function isRecognizedResolvedReconciliation(
       remoteHead: parents[1],
       localCommits: countRevisionRange(cwd, `${parents[1]}..${parents[0]}`)
     });
-    return planned.message === message.trimEnd() && planned.tree === tryGit(cwd, ["show", "-s", "--format=%T", commit]);
+    return planned.resolved && planned.message === message.trimEnd() && planned.tree === tryGit(cwd, ["show", "-s", "--format=%T", commit]);
   } catch {
     return false;
   }
@@ -243,6 +254,36 @@ export function syncBaseOrThrow(input: BaseSyncInput): BaseSyncResult {
   return synced;
 }
 
+const POINTER_TRAILER = /^Written by `arcadia advance queue make-next --apply` \([A-Za-z0-9][A-Za-z0-9_.:-]*\)\.$/m;
+const FRONTMATTER = /^---\r?\n([\s\S]*?)\r?\n---/;
+const CURRENT_ACTION_LINE = /^current_action\s*:/;
+
+/** The text with the frontmatter's top-level `current_action` lines removed; the body is never touched. */
+function withoutPointerLines(text: string): string {
+  const match = FRONTMATTER.exec(text);
+  if (!match) return text;
+  const kept = match[1].split("\n").filter((line) => !CURRENT_ACTION_LINE.test(line)).join("\n");
+  return text.slice(0, match.index) + match[0].replace(match[1], () => kept) + text.slice(match.index + match[0].length);
+}
+
+function pointerLine(text: string | null): string | null {
+  const match = text ? FRONTMATTER.exec(text) : null;
+  return match?.[1].split("\n").find((line) => CURRENT_ACTION_LINE.test(line)) ?? null;
+}
+
+function pointerValue(text: string | null): string {
+  return pointerLine(text)?.replace(CURRENT_ACTION_LINE, "").trim() ?? "none";
+}
+
+/** `remote` with its frontmatter `current_action` line replaced by `line`, or null if either has none. */
+function withPointerLine(remote: string, line: string | null): string | null {
+  const match = FRONTMATTER.exec(remote);
+  const own = pointerLine(remote);
+  if (!match || !own || !line) return null;
+  const replaced = match[1].split("\n").map((candidate) => (candidate === own ? line : candidate)).join("\n");
+  return remote.slice(0, match.index) + match[0].replace(match[1], () => replaced) + remote.slice(match.index + match[0].length);
+}
+
 function isOwnPointerCommit(cwd: string, commit: string, context: { baseBranch: string; upstream: string; remoteHead: string }): boolean {
   const parents = git(cwd, ["show", "-s", "--format=%P", commit]).trim().split(/\s+/).filter(Boolean);
   const message = git(cwd, ["show", "-s", "--format=%B", commit]);
@@ -251,11 +292,19 @@ function isOwnPointerCommit(cwd: string, commit: string, context: { baseBranch: 
   if (subject === `chore(arcadia): reconcile ${context.baseBranch} with ${context.upstream}`) {
     return isRecognizedProtectedReconciliation(cwd, commit, parents, message, context) || isRecognizedResolvedReconciliation(cwd, commit, parents, message, context);
   }
-  if (parents.length !== 1 || !POINTER_SUBJECT.test(subject)) return false;
+  // A real pointer commit: the writer's subject and trailer, and nothing but
+  // `current_action` lines changed in PROJECT.md and the Plan it names (read
+  // from the parent, so a commit cannot move `active_plan` and widen the paths).
+  if (parents.length !== 1 || !POINTER_SUBJECT.test(subject) || !POINTER_TRAILER.test(message)) return false;
   const paths = git(cwd, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit]).split("\0").filter(Boolean);
   if (paths.length === 0) return false;
-  const plan = activePlanPath(cwd, commit);
-  return paths.every((p) => p === "PROJECT.md" || (plan !== null && p === plan));
+  const plan = activePlanPath(cwd, parents[0]);
+  return paths.every((file) => {
+    if (file !== "PROJECT.md" && (plan === null || file !== plan)) return false;
+    const before = tryGit(cwd, ["show", `${parents[0]}:${file}`]);
+    const after = tryGit(cwd, ["show", `${commit}:${file}`]);
+    return before !== null && after !== null && withoutPointerLines(before) === withoutPointerLines(after);
+  });
 }
 
 function frontmatter(text: string | null): Record<string, unknown> | null {
