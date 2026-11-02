@@ -418,12 +418,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-worker-merge-allowlist-carve-outs
     clarification: clarified
     confidence: high
-    source: Agent Ask add-pin-worker-merge-allowlist-action-20261102
+    source: Agent Ask amend-pin-worker-merge-allowlist-criteria-20261102
     why: "isWorkerMergeSafePath decides what the worker may merge without the operator, but only its agent-guidance targets are tested; dropping a carve-out for fixtures, helpers or governed documents would pass unnoticed."
     acceptance_criteria:
       - "tests/worker-merge.test.ts gains, in the describe block titled 'the worker-merge allowlist and the agent-guidance index', a table-driven test asserting isWorkerMergeSafePath returns false for each of: tests/helpers/x.ts, tests/fast-rehearsal/helpers/x.ts, tests/setup.ts, tests/e2e/global-setup.ts, tests/e2e/fixtures/x.json, tests/fixtures/x.txt, docs/decisions/0001-x.md, docs/agent-guidance/x.md, docs/plans/x.md, docs/scout/x.md, docs/agents-context.md, docs/managed-production-readiness.md, AGENTS.md, src/cli.ts, docs/guide.txt and tests/.hidden/x.test.ts."
       - The same test asserts isWorkerMergeSafePath returns true for tests/worker-merge.test.ts, docs/guide.md and notes.md.
-      - The PR body reports that temporarily deleting the standalone |fixtures\/ alternative (not e2e\/fixtures\/) from the first WORKER_MERGE_SAFE_PATHS pattern in src/production/workerMerge.ts makes the new test fail on tests/fixtures/x.txt, that the test passes again once the change is reverted, and that the final diff touches only tests/worker-merge.test.ts.
       - Every other test in that file passes unchanged, and no test in it is marked skip or todo.
       - The change touches only tests/worker-merge.test.ts; the focused vitest run of that file, pnpm lint and tsc pass.
     depends_on: []
