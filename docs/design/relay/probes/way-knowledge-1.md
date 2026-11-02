@@ -3,8 +3,9 @@
 **Question tested:** is the checked-in guidance enough for an agent to answer a first-time
 operator correctly and practically? This is the design's riskiest assumption.
 
-**Status: inconclusive, leaning supported.** The operator hasn't set the pass mark, and this
-tested a stronger setup than Relay may use.
+**Status: failed.** It misses S012's pass mark on both clauses: 73% fully correct against 90%, and
+it was wrong on stopping (Q15). An earlier version of this file called the result inconclusive,
+which scrutiny finding R1-F3 corrected.
 
 ## Method
 
@@ -37,13 +38,33 @@ tested a stronger setup than Relay may use.
 ## What it means
 
 The guidance answered most questions, and nothing was wrong about authority, spending or
-merging. It isn't safe enough yet, though: one answer said there was no one-press stop when a
+merging. It isn't safe enough, though: one answer said there was no one-press stop when a
 STOP button exists, and another implied that work is safe in any crash, when that holds only
 for managed production sessions. The failures split between finding the right document (5),
 the answer itself (4) and missing guidance (1), so Relay likely needs both a first-timer's map
 of the guidance and fixes to the guidance. Eight concrete defects are in
 [Issue 2013](https://github.com/pmark/arcadia/issues/2013), including that no first-time
 walkthrough exists.
+
+The judge's own defect list ties four of the five "retrieval" misses to guidance defects, so
+"1 missing guidance" understates the gap (R1-F3).
+
+## Lookup measurement
+
+`arcadia way lookup` was then built and measured on these same questions. This is development
+data, already seen by its author, so it's a measurement and not a pass (R1-F9).
+
+| Measure | Result |
+| --- | --- |
+| Right material in the top three | 16 of 30 |
+| Off-topic queries correctly refused | 17 of 17 |
+| Output for a typical question | about 1.7 KB |
+| Compiled CLI run | about 0.5 s, nearly all of it importing the CLI |
+| Lookup alone, cold | about 150 ms |
+
+It misses the stop, add-a-Project and deploy questions. It's small, fast and honest about what it
+doesn't know, but it doesn't yet reach first-timer wording. These figures are the implementer's,
+and the Lead reran the test suite.
 
 ## Limits
 

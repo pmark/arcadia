@@ -1663,6 +1663,11 @@ work that survives the cutoff is named rather than concealed. Off also bumps a
 monotonic revision, so a stale worker holding an old view cannot resurrect the
 grant it lost.
 
+**To stop everything from your phone:** each run's card on the `/actions` page comes with a
+**STOP button**, which turns that run's production Off with the same result: nothing new starts,
+and nothing is killed. A session already running ends on its own, or at its time limit. See
+"Bounded lifetime" in [managed production readiness](docs/managed-production-readiness.md).
+
 **Saved configuration is not active permission.** When Off clears an active
 scope it also saves, in the same transaction, the exact reviewed configuration
 (Projects, Plans, the ordered Action allowlist, providers, concurrency,

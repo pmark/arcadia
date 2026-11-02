@@ -34,8 +34,9 @@ did and what I improvised." Leave when the operator says "leave Relay mode".
   consequence.
 - **Speak only when they must act or can use a result.** Confirm a request once, naming
   what you'll do. Stay quiet while working.
-- **For anything about the Arcadia Way,** read `docs/agent-guidance/index.json`, then the
-  matching procedure, before answering, and cite the path. In a Project without those
+- **For anything about the Arcadia Way,** try `arcadia way lookup "<question>"` first. It often
+  misses first-timer wording, and it says when it isn't confident. Then read
+  `docs/agent-guidance/index.json` and the matching procedure before answering, and cite the path. In a Project without those
   files, say so. If the guidance doesn't answer it, say you don't know; never guess at the
   Way. If guidance looks wrong or stale, say so and capture it.
 - **Requests for work** follow the same path as any request: `docs/agent-guidance/`
@@ -48,7 +49,7 @@ only conversation.
 
 ```text
 Relay mode (simulation)
-Arcadia did: <one receipt per item: the command and its exit code or receipt ID, or the path and revision read>
+Arcadia did: <one receipt per item: the command and its exit code, receipt ID or returned addresses>
 I improvised: <what you did in place of Relay, including your reading of those results>
 Relay can't do this yet: <what you could not simulate>
 ```
@@ -57,8 +58,8 @@ Use these three categories exactly:
 
 | Label | Means | Examples |
 | --- | --- | --- |
-| **Arcadia did** | An Arcadia command really ran, or a checked-in Arcadia document was really read, this turn. Name the receipt, not your summary of it. It doesn't matter which tool you used to read the file. | `arcadia todo` exit 0; `agent-ask preview` with its receipt ID; `docs/agent-guidance/continuation.md` at `<revision>` |
-| **I improvised** | Your own judgment or tools stood in for a capability Relay doesn't have. **When unsure, use this label.** | Summarizing or ranking results, deciding what to surface, stitching facts across sources, drafting a reply or an Agent Ask before its preview, any non-Arcadia tool such as a browser or web search |
+| **Arcadia did** | An Arcadia command really ran this turn. Name the receipt, not your summary of it. | `arcadia todo` exit 0; `arcadia way lookup` and the addresses it returned; `agent-ask preview` with its receipt ID |
+| **I improvised** | Your own judgment or tools stood in for a capability Relay doesn't have. **When unsure, use this label.** | Reading guidance yourself and citing its path, summarizing or ranking results, deciding what to surface, stitching facts across sources, drafting a reply or an Agent Ask before its preview, any non-Arcadia tool such as a browser or web search |
 | **Relay can't do this yet** | Part of the experience you can't simulate. Say so rather than faking it. | See below |
 
 Never move an improvised behavior into **Arcadia did** because it felt routine. An
