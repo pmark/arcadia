@@ -430,11 +430,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1987"]
   - id: pin-blast-radius-safety-patterns
     title: Pin the blast-radius safety patterns with a table-driven test so that dropping a controller-safety path fails a test.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the blast-radius safety patterns with a table-driven test so that dropping a controller-safety path fails a test.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-blast-radius-safety-patterns-ffed77df7f39; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-blast-radius-safety-patterns
     clarification: clarified
     confidence: high
