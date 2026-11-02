@@ -1772,9 +1772,12 @@ and grants no authority.
 - **Passages:** each file is split at `##` and `###` (not inside code fences); text
   before the first heading belongs to the title. An address is `path#slug` with
   GitHub's slug and its `-1` numbering for duplicates, and `sha` identifies the
-  passage text. Text inside `<details>` and sections whose heading says superseded,
-  historical, obsolete, outdated or earlier are left out (`supersededSkipped`
-  counts them).
+  passage text. A `<details>` block counts only when the tag starts a line outside
+  a code fence, and only when it closes; an unterminated one is not a block, its
+  text is kept and a warning names the file. Text inside a block, and sections whose
+  heading says superseded, historical, obsolete or outdated, are left out
+  (`supersededSkipped` counts them); text after a block's close returns to the
+  section that was open when it began.
 - **Results:** at most `--limit` (default 3) passages and `--budget` (default 1500)
   excerpt bytes, each with `address`, `heading`, `excerpt`, `line` (where the
   excerpt starts in the file), `sha`, `score` and `sourceClass` (`canonical`,
@@ -1783,14 +1786,21 @@ and grants no authority.
   and any passage that states a rule with an exception come back whole when they
   fit, never as an unmarked fragment. `--budget 0` returns addresses with no
   excerpt; negative or non-numeric numbers are refused.
-- **Abstention:** `confident` is false unless the best chunk scores at least 4,
-  holds 60% of the question's term weight (a word found nowhere in the corpus
-  counts against it), matches two distinct terms, and, for a one-word question,
-  has that word in its heading. When not confident the human output says the Way
-  does not clearly answer and lists only the nearest addresses, with no excerpts.
-- **Output:** the human output is the excerpts and their addresses. `--json` adds
-  `elapsedMs`, `passagesScanned`, `largestPassageBytes` and `root`; everything but
-  `elapsedMs` is identical between runs.
+- **`matched` is about wording, not correctness.** It is true when the best chunk
+  scores at least 4, holds 60% of the question's term weight (a word found nowhere
+  in the corpus counts against it), matches two distinct terms, and, for a
+  one-word question, has that word in its heading. A match does not mean the
+  passages answer the question: on the development fixture, many matched results
+  miss the material a reader would want. The human output therefore begins "These
+  are the closest passages by wording and may not answer the question; read them
+  before relying on them." When nothing matches it says the Way does not clearly
+  answer and lists only the nearest addresses, with no excerpts.
+- **Output:** the human output is that notice, the Way root, then the excerpts and
+  their addresses. The root line always says which guidance was read, and says
+  plainly when a Project without `docs/agent-guidance/index.json` fell back to
+  Arcadia's own checkout. `--json` adds `elapsedMs`, `passagesScanned`,
+  `largestPassageBytes`, `root`, `rootSource`, `projectRoot` and `warnings`;
+  everything but `elapsedMs` is identical between runs.
 
 ## Dispose A Failed Recovery Successor With No Recorded Start
 

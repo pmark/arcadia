@@ -46,15 +46,16 @@ export const DEFAULT_LIMIT = 3;
 export const MAX_LIMIT = 20;
 
 /**
- * The Way "clearly answers" only when the best chunk (1) scores at least
+ * A question "matches" only when the best chunk (1) scores at least
  * `minScore`, (2) holds at least `minCoverage` of the question's content-term
  * weight, where a term found nowhere in the corpus still counts in the total
  * (so one unknown word cannot be ignored), and (3) matches at least
  * `minMatchedTerms` distinct terms, or all of them when the question has fewer,
  * and (4) when the question has a single content term, that term is in the
- * passage's heading. Anything else is "not confident": near addresses are listed, no excerpts.
+ * passage's heading. Anything else is "not matched": near addresses are listed, no excerpts. A match is a statement
+ * about wording, never a verdict that the passages answer the question.
  */
-export const CONFIDENCE = { minScore: 4, minCoverage: 0.6, minMatchedTerms: 2 } as const;
+export const MATCH_RULE = { minScore: 4, minCoverage: 0.6, minMatchedTerms: 2 } as const;
 
 /** Which kind of source a passage comes from, so an answer can weigh it. */
 export type SourceClass = "canonical" | "operator_guide" | "hot_cache";
@@ -70,10 +71,15 @@ export function sourceClassOf(relative: string): SourceClass {
 }
 
 /** A heading that declares its own section out of date. */
-const SUPERSEDED_HEADING = /\b(superseded|historical|obsolete|outdated|earlier)\b/i;
+const SUPERSEDED_HEADING = /\b(superseded|historical|obsolete|outdated)\b/i;
 /** Text that states a rule with a condition or exception; cutting it can turn the rule into its opposite. */
 const RULE_WITH_EXCEPTION = /\b(unless|except|exceptions?|only (?:when|if|under|after)|hard stops?)\b/i;
 const RULE_WHOLE_MAX_BYTES = 4000;
+
+/** CONSTITUTION.md, and any passage that states a rule with a condition or exception. */
+export function isRuleBearing(passage: Pick<Passage, "path" | "body">): boolean {
+  return passage.path === "CONSTITUTION.md" || RULE_WITH_EXCEPTION.test(passage.body);
+}
 
 export interface Passage {
   /** `path#github-style-slug`; the second and later duplicates in a file take `-1`, `-2` as GitHub does. */
@@ -110,8 +116,12 @@ export interface LookupOptions {
 export interface LookupResult {
   question: string;
   results: LookupHit[];
-  confident: boolean;
-  /** The Way does not clearly answer: true when `confident` is false, even if near matches are listed. */
+  /**
+   * The question's terms were found together in one chunk. It says nothing about whether the passages
+   * answer the question: when false, only `nearest` is listed and no excerpts are returned.
+   */
+  matched: boolean;
+  /** Closest addresses by wording, listed only when nothing matched. */
   nearest: Array<{ address: string; heading: string; score: number }>;
   passagesScanned: number;
   filesScanned: number;
@@ -218,8 +228,43 @@ function shaOf(body: string): string {
   return createHash("sha256").update(body).digest("hex").slice(0, 12);
 }
 
-const DETAILS_OPEN = /<details[\s>]/gi;
-const DETAILS_CLOSE = /<\/details\s*>/gi;
+/** A block tag counts only at the start of a line, so a mention in prose or inline code is not one. */
+const DETAILS_OPEN = /^\s{0,3}<details[\s>]/i;
+const DETAILS_CLOSE = /^\s{0,3}<\/details\s*>/i;
+const DETAILS_CLOSE_ANYWHERE = /<\/details\s*>/i;
+
+/**
+ * The `<details>` blocks of a document: line indexes of matched opens and
+ * closes, one-line blocks, and how many opens never close. An unterminated
+ * open is not a block, so it cannot hide the rest of the file. Fences are
+ * tracked the same way as in `splitDocument`.
+ */
+function detailsBlocks(lines: string[]): { opens: Set<number>; closes: Set<number>; single: Set<number>; unterminated: number } {
+  const opens = new Set<number>();
+  const closes = new Set<number>();
+  const single = new Set<number>();
+  const stack: number[] = [];
+  let fence: { marker: string; length: number } | null = null;
+  lines.forEach((line, index) => {
+    const fenceMatch = FENCE.exec(line);
+    if (fence) {
+      if (fenceMatch && fenceMatch[1][0] === fence.marker && fenceMatch[1].length >= fence.length && line.trim() === fenceMatch[1]) fence = null;
+      return;
+    }
+    if (fenceMatch) {
+      fence = { marker: fenceMatch[1][0], length: fenceMatch[1].length };
+      return;
+    }
+    if (DETAILS_OPEN.test(line)) {
+      if (DETAILS_CLOSE_ANYWHERE.test(line)) single.add(index);
+      else stack.push(index);
+    } else if (DETAILS_CLOSE.test(line) && stack.length > 0) {
+      opens.add(stack.pop() as number);
+      closes.add(index);
+    }
+  });
+  return { opens, closes, single, unterminated: stack.length };
+}
 
 /**
  * Split one document at `##` and `###` headings, ignoring headings inside code
@@ -230,29 +275,46 @@ const DETAILS_CLOSE = /<\/details\s*>/gi;
  *
  * Superseded text is left out, not ranked down: everything inside `<details>`
  * (the Way collapses retired derivations that way), any section whose heading
- * says superseded, historical, obsolete, outdated or earlier, and the `###` sections
+ * says superseded, historical, obsolete or outdated, and the `###` sections
  * below such a `##`. They still claim their slugs, and `skipped` counts them.
  */
-export function splitDocument(relative: string, text: string): { passages: Passage[]; skipped: number } {
+export function splitDocument(relative: string, text: string): { passages: Passage[]; skipped: number; warnings: string[]; hiddenHeadings: string[] } {
   interface Segment { level: 1 | 2 | 3; raw: string; text: string; hidden: boolean; lines: string[]; nos: number[] }
   const segments: Segment[] = [{ level: 1, raw: "", text: "", hidden: false, lines: [], nos: [] }];
+  const rawLines = text.split("\n");
+  const blocks = detailsBlocks(rawLines);
   let titled = false;
   let fence: { marker: string; length: number } | null = null;
   let depth = 0;
   let h2Hidden = false;
-  text.split("\n").forEach((line, offset) => {
+  // The segment that receives body lines; after a `<details>` block closes it is the one that was open when the block began.
+  let active = 0;
+  let openSegment = 0;
+  let h2HiddenAtOpen = false;
+  rawLines.forEach((line, offset) => {
     const number = offset + 1;
-    const last = segments[segments.length - 1];
     const fenceMatch = FENCE.exec(line);
-    const insideDetails = depth > 0;
     if (!fence) {
-      const opens = line.match(DETAILS_OPEN)?.length ?? 0;
-      const closes = line.match(DETAILS_CLOSE)?.length ?? 0;
-      depth = Math.max(0, depth + opens - closes);
-      if (opens > 0) {
-        if (!last.hidden && !insideDetails) return;
+      if (blocks.single.has(offset)) return;
+      if (blocks.opens.has(offset)) {
+        if (depth === 0) {
+          openSegment = active;
+          h2HiddenAtOpen = h2Hidden;
+        }
+        depth += 1;
+        return;
+      }
+      if (blocks.closes.has(offset)) {
+        depth -= 1;
+        if (depth === 0) {
+          active = openSegment;
+          h2Hidden = h2HiddenAtOpen;
+        }
+        return;
       }
     }
+    const insideDetails = depth > 0;
+    const last = segments[active];
     const hiddenContent = insideDetails || last.hidden;
     const keep = (): void => {
       if (hiddenContent) return;
@@ -286,8 +348,10 @@ export function splitDocument(relative: string, text: string): { passages: Passa
       const hidden = insideDetails || marked || (level === 3 && h2Hidden);
       if (level === 2) h2Hidden = insideDetails || marked;
       segments.push({ level, raw: heading[2], text: headingText, hidden, lines: [], nos: [] });
+      active = segments.length - 1;
     }
   });
+  const warnings = blocks.unterminated > 0 ? [`${relative}: ${blocks.unterminated} unterminated <details> block(s) ignored; their text was kept.`] : [];
 
   const fallback = path.posix.basename(relative).replace(/\.md$/i, "");
   const title = segments[0].text || fallback;
@@ -300,6 +364,7 @@ export function splitDocument(relative: string, text: string): { passages: Passa
   };
   const passages: Passage[] = [];
   let skipped = 0;
+  const hiddenHeadings: string[] = [];
   let h2 = "";
   segments.forEach((segment, position) => {
     // Only a document with an H1 (or text before its first heading) has an anchor for its title.
@@ -307,6 +372,7 @@ export function splitDocument(relative: string, text: string): { passages: Passa
     const slug = hasAnchor ? claimSlug(position === 0 ? segment.raw || fallback : segment.raw) : "";
     if (segment.hidden) {
       skipped += 1;
+      hiddenHeadings.push(segment.text);
       return;
     }
     let heading: string[];
@@ -324,7 +390,7 @@ export function splitDocument(relative: string, text: string): { passages: Passa
     const body = lines.join("\n").replace(/\s+$/, "");
     passages.push({ address: `${relative}#${slug}`, path: relative, heading, body, sha: shaOf(body), lines: segment.nos.slice(first, end) });
   });
-  return { passages, skipped };
+  return { passages, skipped, warnings, hiddenHeadings };
 }
 
 export function splitPassages(relative: string, text: string): Passage[] {
@@ -426,10 +492,16 @@ function splitOversized(text: string, line: number): Array<{ text: string; joine
       continue;
     }
     let cursor = 0;
+    let breaks = 0;
+    let nextBreak = item.text.indexOf("\n");
     item.text.split(/(?<=[.!?])\s+/).filter((piece) => piece.trim()).forEach((sentence, position) => {
-      const at = item.text.indexOf(sentence, cursor);
+      const at = Math.max(item.text.indexOf(sentence, cursor), 0);
       cursor = at + sentence.length;
-      const breaks = item.text.slice(0, Math.max(at, 0)).split("\n").length - 1;
+      // Newlines are counted incrementally so the whole item is one pass.
+      while (nextBreak !== -1 && nextBreak < at) {
+        breaks += 1;
+        nextBreak = item.text.indexOf("\n", nextBreak + 1);
+      }
       pieces.push({ text: sentence, joiner: position === 0 ? "\n" : " ", line: item.line + breaks });
     });
   }
@@ -696,7 +768,7 @@ export function excerptOf(
   const { passage, units } = entry;
   const firstLine = passage.lines[0] ?? 1;
   const bodyBytes = byteLength(passage.body);
-  const ruleBearing = passage.path === "CONSTITUTION.md" || RULE_WITH_EXCEPTION.test(passage.body);
+  const ruleBearing = isRuleBearing(passage);
   const wholeLimit = ruleBearing ? RULE_WHOLE_MAX_BYTES : WHOLE_PASSAGE_BYTES;
   if (bodyBytes <= maxBytes && bodyBytes <= wholeLimit) return { excerpt: passage.body, truncated: false, line: firstLine };
   if (maxBytes <= 0 || units.length === 0) return { excerpt: "", truncated: true, line: firstLine };
@@ -725,16 +797,17 @@ export function excerptOf(
 // ---------------------------------------------------------------------------
 // Lookup
 
-export function loadPassages(root: string): { passages: Passage[]; filesScanned: number; skipped: number; indexText: string | null } {
+export function loadPassages(root: string): { passages: Passage[]; filesScanned: number; skipped: number; warnings: string[]; indexText: string | null } {
   let realRoot: string;
   try {
     realRoot = realpathSync(root);
   } catch {
-    return { passages: [], filesScanned: 0, skipped: 0, indexText: null };
+    return { passages: [], filesScanned: 0, skipped: 0, warnings: [], indexText: null };
   }
   const passages: Passage[] = [];
   let filesScanned = 0;
   let skipped = 0;
+  const warnings: string[] = [];
   for (const relative of corpusPaths(realRoot)) {
     const text = readCorpusFile(realRoot, relative);
     if (text === null) continue;
@@ -742,16 +815,17 @@ export function loadPassages(root: string): { passages: Passage[]; filesScanned:
     const document = splitDocument(relative, text);
     passages.push(...document.passages);
     skipped += document.skipped;
+    warnings.push(...document.warnings);
   }
-  return { passages, filesScanned, skipped, indexText: readCorpusFile(realRoot, GUIDANCE_INDEX_PATH) };
+  return { passages, filesScanned, skipped, warnings, indexText: readCorpusFile(realRoot, GUIDANCE_INDEX_PATH) };
 }
 
 const MIN_FOLLOW_ON_BYTES = 120;
 
-/** The rule behind `confident`; see CONFIDENCE. */
-export function isConfident(top: RankedPassage | undefined, termCount: number): boolean {
+/** The rule behind `confident`; see MATCH_RULE. */
+export function hasMatch(top: RankedPassage | undefined, termCount: number): boolean {
   if (!top || termCount === 0) return false;
-  const enough = top.score >= CONFIDENCE.minScore && top.coverage >= CONFIDENCE.minCoverage && top.matchedTerms >= Math.min(CONFIDENCE.minMatchedTerms, termCount);
+  const enough = top.score >= MATCH_RULE.minScore && top.coverage >= MATCH_RULE.minCoverage && top.matchedTerms >= Math.min(MATCH_RULE.minMatchedTerms, termCount);
   // A lone question word found only in body text is a mention, not an answer.
   return enough && (termCount > 1 || top.headingTerms > 0);
 }
@@ -766,11 +840,12 @@ export function lookup(root: string, question: string, options: LookupOptions = 
   const text = trimmed.length > MAX_QUESTION_CHARS ? trimmed.slice(0, MAX_QUESTION_CHARS) : trimmed;
   if (text.length < trimmed.length) warnings.push(`The question was cut to its first ${MAX_QUESTION_CHARS} characters.`);
 
-  const { passages, filesScanned, skipped, indexText } = loadPassages(root);
+  const { passages, filesScanned, skipped, warnings: corpusWarnings, indexText } = loadPassages(root);
+  warnings.push(...corpusWarnings);
   const index = buildIndex(passages, filesScanned);
   const { ranked, terms } = rank(index, text, parseTriggers(indexText));
   const termSet = new Set(terms);
-  const confident = isConfident(ranked[0], terms.length);
+  const matched = hasMatch(ranked[0], terms.length);
 
   const results: LookupHit[] = [];
   const nearest: LookupResult["nearest"] = [];
@@ -780,7 +855,7 @@ export function lookup(root: string, question: string, options: LookupOptions = 
     const passage = index.passages[item.passageIndex].passage;
     return { address: passage.address, heading: passage.heading.join(" > "), score: Math.round(item.score * 1000) / 1000 };
   };
-  if (confident) {
+  if (matched) {
     for (const item of ranked) {
       if (results.length >= limit) break;
       if (results.length > 0 && remaining < MIN_FOLLOW_ON_BYTES) break;
@@ -803,7 +878,7 @@ export function lookup(root: string, question: string, options: LookupOptions = 
   return {
     question: text,
     results,
-    confident,
+    matched,
     nearest,
     passagesScanned: passages.length,
     filesScanned,

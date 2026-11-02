@@ -15,6 +15,8 @@ export interface WayLookupData extends LookupResult {
   root: string;
   /** `project`: the enclosing Project; `package`: Arcadia's own checkout. */
   rootSource: "project" | "package";
+  /** The enclosing Project, if any, whether or not it supplied the guidance. */
+  projectRoot: string | null;
 }
 
 function wholeNumber(value: string | number | undefined, name: string, fallback: number, minimum: number, maximum: number): number {
@@ -31,7 +33,8 @@ export function runWayLookupCommand(options: WayLookupOptions): CommandSuccess<W
   if (!options.question.trim()) throw validationError("Give a question to look up in the Way.", {});
   const budget = wholeNumber(options.budget, "budget", DEFAULT_BUDGET_BYTES, 0, 1_000_000);
   const limit = wholeNumber(options.limit, "limit", DEFAULT_LIMIT, 1, MAX_LIMIT);
-  const found = resolveWayRoot({ projectRoot: enclosingProjectRoot(), moduleUrl: import.meta.url });
+  const projectRoot = enclosingProjectRoot();
+  const found = resolveWayRoot({ projectRoot, moduleUrl: import.meta.url });
   if (!found) {
     throw new ArcadiaError(
       "VALIDATION_ERROR",
@@ -41,19 +44,36 @@ export function runWayLookupCommand(options: WayLookupOptions): CommandSuccess<W
     );
   }
   const result = lookup(found.root, options.question, { budget, limit });
-  return createSuccess({ command: "way.lookup", data: { ...result, root: found.root, rootSource: found.source }, warnings: result.warnings });
+  return createSuccess({ command: "way.lookup", data: { ...result, root: found.root, rootSource: found.source, projectRoot }, warnings: result.warnings });
 }
 
-/** The excerpts and their addresses, and nothing else; when the Way does not clearly answer, only that, and where the nearest text is. */
+function describeRoot(data: WayLookupData): string {
+  if (data.rootSource === "project") return `Way root: ${data.root} (the enclosing Project's guidance)`;
+  if (data.projectRoot) {
+    return `Way root: ${data.root} (Arcadia's own checkout, NOT the Project's: ${data.projectRoot} has no docs/agent-guidance/index.json)`;
+  }
+  return `Way root: ${data.root} (Arcadia's own checkout; no enclosing Project)`;
+}
+
+/**
+ * The excerpts and their addresses, with the root they came from. A match is
+ * only a statement about wording, so the first line says so; when nothing
+ * matched, only that and the nearest addresses are shown.
+ */
 export function renderWayLookupSuccess(response: CommandSuccess<WayLookupData>): string[] {
   const { data } = response;
-  if (!data.confident) {
+  if (!data.matched) {
     return [
       "The Way does not clearly answer this question.",
-      ...(data.nearest.length ? ["Nearest passages (not an answer):", ...data.nearest.map((hit) => `  ${hit.address}  ${hit.heading}`)] : [])
+      describeRoot(data),
+      ...(data.nearest.length ? ["Nearest passages by wording (not an answer):", ...data.nearest.map((hit) => `  ${hit.address}  ${hit.heading}`)] : [])
     ];
   }
-  const lines: string[] = [];
+  const lines: string[] = [
+    "These are the closest passages by wording and may not answer the question; read them before relying on them.",
+    describeRoot(data),
+    ""
+  ];
   for (const hit of data.results) {
     lines.push(`${hit.address} (line ${hit.line}, ${hit.sourceClass}${hit.truncated ? ", truncated: read the address for the rest" : ""})`);
     if (hit.excerpt) lines.push(hit.excerpt);

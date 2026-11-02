@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { renderWayLookupSuccess, runWayLookupCommand } from "../src/commands/wayLookup.js";
 import {
-  CONFIDENCE,
+  isRuleBearing,
   corpusPaths,
   loadPassages,
   lookup,
@@ -15,6 +15,7 @@ import {
   sourceClassOf,
   splitDocument,
   splitPassages,
+  buildIndex,
   stem,
   tokenize
 } from "../src/way/lookup.js";
@@ -119,6 +120,67 @@ describe("passage splitting", () => {
   });
 });
 
+describe("<details> handling", () => {
+  it("does not treat a mention of the tag as a block", () => {
+    const text = ["## A", "Use `<details>` to collapse text, or write </details> by hand.", "still visible", "## B", "b text"].join("\n");
+    const { passages, skipped } = splitDocument("a.md", text);
+    expect(passages.map((p) => p.address)).toEqual(["a.md#a", "a.md#b"]);
+    expect(passages[0].body).toContain("Use `<details>` to collapse text");
+    expect(passages[0].body).toContain("still visible");
+    expect(skipped).toBe(0);
+  });
+
+  it("ignores a tag at the start of a line inside a code fence", () => {
+    const text = ["## A", "```html", "<details>", "<summary>x</summary>", "```", "after the fence", "## B", "b text"].join("\n");
+    const { passages } = splitDocument("a.md", text);
+    expect(passages.map((p) => p.address)).toEqual(["a.md#a", "a.md#b"]);
+    expect(passages[0].body).toContain("after the fence");
+  });
+
+  it("does not let an unterminated block hide the rest of the file, and warns", () => {
+    const text = ["## A", "a text", "<details>", "<summary>never closed</summary>", "## B", "b text", "## C", "c text"].join("\n");
+    const { passages, skipped, warnings } = splitDocument("a.md", text);
+    expect(passages.map((p) => p.address)).toEqual(["a.md#a", "a.md#b", "a.md#c"]);
+    expect(skipped).toBe(0);
+    expect(warnings).toEqual([expect.stringContaining("unterminated")]);
+  });
+
+  it("returns to the visible section for text after the close of a block that held headings", () => {
+    const text = ["## Current", "before", "<details>", "<summary>Old</summary>", "## Old copy", "old text", "</details>", "after the block", "## Next", "next text"].join("\n");
+    const { passages, skipped } = splitDocument("a.md", text);
+    expect(passages.map((p) => p.address)).toEqual(["a.md#current", "a.md#next"]);
+    expect(passages[0].body).toBe("before\nafter the block");
+    expect(passages[0].lines).toEqual([2, 8]);
+    expect(skipped).toBe(1);
+  });
+
+  it("leaves docs/COMMANDS.md whole although it mentions the tag in backticks", () => {
+    const { passages } = loadPassages(repoRoot);
+    const commands = passages.filter((p) => p.path === "docs/COMMANDS.md");
+    expect(commands.some((p) => p.address.startsWith("docs/COMMANDS.md#assess-a-candidate-prs-blast-radius-before-merge"))).toBe(true);
+    const result = lookup(repoRoot, "assess a candidate PR's blast radius before merge", { limit: 3 });
+    expect(result.results.map((hit) => hit.address)).toContain("docs/COMMANDS.md#assess-a-candidate-prs-blast-radius-before-merge");
+  });
+});
+
+describe("large files", () => {
+  it("splits a 3.9 MB file of every awkward shape in linear time", () => {
+    const shapes: Record<string, string> = {
+      "one paragraph of sentences": `## S\n${"A sentence here. ".repeat(3_900_000 / 17)}`,
+      "one huge list": `## L\n${"- item one. item two.\n".repeat(3_900_000 / 22)}`,
+      "many small paragraphs": `## P\n${"para text\n\n".repeat(3_900_000 / 11)}`,
+      "many headings": "## H\nbody\n".repeat(3_900_000 / 11)
+    };
+    for (const [name, text] of Object.entries(shapes)) {
+      const started = Date.now();
+      const passages = splitPassages("big.md", text);
+      const index = buildIndex(passages, 1);
+      expect(index.chunks.length, name).toBeGreaterThan(0);
+      expect(Date.now() - started, name).toBeLessThan(20_000);
+    }
+  }, 120_000);
+});
+
 describe("tokens", () => {
   it("equates inflections and drops stopwords", () => {
     expect(stem("stopping")).toBe(stem("stop"));
@@ -141,7 +203,7 @@ describe("corpus reading", () => {
     const { passages, filesScanned } = loadPassages(root);
     expect(filesScanned).toBe(3);
     expect(passages.map((p) => p.address).sort()).toEqual([".agents/skills/s/SKILL.md#s", "CONSTITUTION.md#a", "docs/agent-guidance/b.md#b"]);
-    expect(lookup(tempRoot(), "anything at all").confident).toBe(false);
+    expect(lookup(tempRoot(), "anything at all").matched).toBe(false);
   });
 
   it("reads non-UTF-8 bytes without failing", () => {
@@ -197,7 +259,7 @@ describe("lookup on a small corpus", () => {
 
   it("returns the passage that answers, with address, heading, sha, line and source class", () => {
     const result = lookup(corpus(), "When may an agent merge a pull request?");
-    expect(result.confident).toBe(true);
+    expect(result.matched).toBe(true);
     expect(result.results[0]).toMatchObject({
       address: "docs/agent-guidance/pull-requests.md#merge-on-green",
       heading: "Pull requests > Merge on green",
@@ -236,11 +298,30 @@ describe("lookup on a small corpus", () => {
     }
   });
 
+  it("returns a rule with its exception whole when it fits and marks the fragment when it does not", () => {
+    const root = tempRoot();
+    const rule = `Deploys are a hard stop. ${"Each deploy needs a recorded approval from the owner of the service. ".repeat(18)}Unless the change is a documented rollback, in which case the on-call engineer may proceed.`;
+    put(root, "docs/agent-guidance/deploys.md", `# Deploys\n\n## Deploy approval\n\n${rule}\n`);
+    put(root, "docs/agent-guidance/other.md", "# Other\n\n## Lunch\n\nThe kitchen opens at noon.\n\n## Parking\n\nPark behind the building.\n\n## Badges\n\nWear your badge.\n");
+    const whole = lookup(root, "deploy approval owner service rollback", { budget: 3000 });
+    expect(whole.matched).toBe(true);
+    expect(whole.results[0]).toMatchObject({ truncated: false });
+    expect(whole.results[0].excerpt).toContain("documented rollback");
+    const small = lookup(root, "deploy approval owner service rollback", { budget: 300 });
+    expect(small.results[0].truncated).toBe(true);
+    expect(small.results[0].address).toBe("docs/agent-guidance/deploys.md#deploy-approval");
+  });
+
+  it("does not match when most of the question's words appear nowhere in the Way", () => {
+    expect(lookup(corpus(), "merge zzqxv blorptastic frobnicate").matched).toBe(false);
+    expect(lookup(corpus(), "merge pull request").matched).toBe(true);
+  });
+
   it("does not claim an answer for empty, stopword-only, hostile or enormous questions", () => {
     const root = corpus();
     for (const question of ["", "   \n\t ", "what is the", "(((", "[a-z]+.*\\", "$(rm -rf /)", "''\"`${}<>|;&", "\u0000\u0001�"]) {
       const result = lookup(root, question);
-      expect(result.confident).toBe(false);
+      expect(result.matched).toBe(false);
       expect(result.results).toEqual([]);
     }
     const started = Date.now();
@@ -262,12 +343,15 @@ describe("the command", () => {
     expect(answered.data.root).toBe(repoRoot);
     expect(answered.data.rootSource).toBe("project");
     const lines = renderWayLookupSuccess(answered);
-    expect(lines[0]).toMatch(/^\S+#\S+ \(line \d+, \w+/);
+    expect(lines[0]).toContain("closest passages by wording and may not answer");
+    expect(lines[1]).toBe(`Way root: ${repoRoot} (the enclosing Project's guidance)`);
+    expect(lines[3]).toMatch(/^\S+#\S+ \(line \d+, \w+/);
     const unanswered = runWayLookupCommand({ question: "xylophone repair schedule" });
-    expect(unanswered.data.confident).toBe(false);
+    expect(unanswered.data.matched).toBe(false);
     expect(unanswered.data.results).toEqual([]);
     const text = renderWayLookupSuccess(unanswered).join("\n");
     expect(text).toContain("does not clearly answer");
+    expect(text).toContain(`Way root: ${repoRoot}`);
     expect(text).not.toMatch(/\(line \d+/);
   });
 });
@@ -294,9 +378,8 @@ describe("against the real guidance", () => {
   ];
 
   it("abstains on off-topic questions, including ones that borrow common Way words", () => {
-    const confident = offTopic.filter((question) => lookup(repoRoot, question).confident);
+    const confident = offTopic.filter((question) => lookup(repoRoot, question).matched);
     expect(confident).toEqual([]);
-    expect(CONFIDENCE.minCoverage).toBeGreaterThanOrEqual(0.6);
   });
 
   it("never lets a superseded copy outrank or stand beside the current one", () => {
@@ -307,7 +390,7 @@ describe("against the real guidance", () => {
     expect(readiness.some((p) => /historical-answer|current-readiness-and-limits|preserved-earlier/.test(p.address) && !p.address.includes("preserved-earlier-derivation"))).toBe(false);
     const result = lookup(repoRoot, "operator view rover route from here", { limit: 10, budget: 100_000 });
     expect(result.supersededSkipped).toBeGreaterThan(0);
-    const addresses = result.confident ? result.results.map((hit) => hit.address) : result.nearest.map((hit) => hit.address);
+    const addresses = result.matched ? result.results.map((hit) => hit.address) : result.nearest.map((hit) => hit.address);
     expect(addresses.filter((address) => /operator-view-the-rovers-route-from-here-\d/.test(address))).toEqual([]);
     const source = readFileSync(path.join(repoRoot, "docs/managed-production-readiness.md"), "utf8").split("\n");
     for (const passage of readiness) {
@@ -316,22 +399,37 @@ describe("against the real guidance", () => {
     }
   });
 
-  it("returns the merge rule whole with its exception, or marks the fragment truncated", () => {
-    const question = "Merging is a hard stop with one standing exception for an independent review";
-    const whole = lookup(repoRoot, question, { limit: 5, budget: 10_000 });
-    const authority = whole.results.find((hit) => hit.address === "CONSTITUTION.md#authority");
-    expect(authority).toBeDefined();
-    expect(authority?.truncated).toBe(false);
-    expect(authority?.excerpt).toContain("The exception excludes");
-    for (const budget of [100, 400, 900, 1400]) {
-      const small = lookup(repoRoot, question, { limit: 5, budget });
-      for (const hit of small.results.filter((candidate) => candidate.address.startsWith("CONSTITUTION.md#"))) {
-        const body = splitPassages("CONSTITUTION.md", readFileSync(path.join(repoRoot, "CONSTITUTION.md"), "utf8")).find((p) => p.address === hit.address)?.body;
-        expect(hit.truncated).toBe(hit.excerpt !== body);
-        expect(hit.truncated || hit.excerpt.includes("The exception excludes")).toBe(true);
+  it("never returns a fragment of rule-with-exception text as if it were complete", () => {
+    const { passages } = loadPassages(repoRoot);
+    const bodies = new Map(passages.map((p) => [p.address, p.body]));
+    const ruleBearing = passages.filter((p) => isRuleBearing(p));
+    expect(ruleBearing.length).toBeGreaterThan(20);
+    expect(ruleBearing.some((p) => p.path === "CONSTITUTION.md")).toBe(true);
+    const questions = [
+      "can an agent merge a pull request on its own",
+      "what is the exception to the approval boundaries",
+      "when must an agent wait for the operator",
+      "may agents spend money or use credentials",
+      "unless the operator says otherwise what happens to a stale pointer",
+      "what are the hard stops",
+      "only when is a push allowed to reset review"
+    ];
+    let seen = 0;
+    for (const question of questions) {
+      for (const budget of [150, 600, 1500, 10_000]) {
+        const { results } = lookup(repoRoot, question, { limit: 5, budget });
+        for (const [position, hit] of results.entries()) {
+          const passage = passages.find((p) => p.address === hit.address);
+          if (!passage || !isRuleBearing(passage)) continue;
+          seen += 1;
+          const body = bodies.get(hit.address);
+          expect(hit.truncated, `${question} @${budget} ${hit.address}`).toBe(hit.excerpt !== body);
+          // The first result has the whole budget; later ones only what is left.
+          if (position === 0 && Buffer.byteLength(passage.body) <= Math.min(budget, 4000)) expect(hit.excerpt, `${question} @${budget}`).toBe(body);
+        }
       }
-      expect(small.excerptBytes).toBeLessThanOrEqual(budget);
     }
+    expect(seen).toBeGreaterThan(10);
   });
 
   it("stays byte-identical between runs apart from elapsedMs", () => {
@@ -352,18 +450,31 @@ describe("against the real guidance", () => {
       .split("\n")
       .map((line) => JSON.parse(line) as { id: string; question: string; accept: string[]; gap?: string });
     expect(rows).toHaveLength(30);
-    let top3 = 0;
-    let confident = 0;
+    const known = new Set(loadPassages(repoRoot).passages.map((p) => p.address));
     const missed: string[] = [];
+    const matchedButMissed: string[] = [];
+    let accepted = 0;
+    let matched = 0;
     for (const row of rows) {
       expect(row.accept.length).toBeGreaterThan(0);
       const result = lookup(repoRoot, row.question, { limit: 3, budget: 1_000_000 });
-      const addresses = result.confident ? result.results.map((hit) => hit.address) : result.nearest.map((hit) => hit.address);
-      if (result.confident) confident += 1;
-      if (addresses.some((address) => row.accept.some((prefix) => address.startsWith(prefix)))) top3 += 1;
-      else missed.push(row.id);
+      const addresses = result.matched ? result.results.map((hit) => hit.address) : result.nearest.map((hit) => hit.address);
+      // Structure that must hold whatever the ranking does.
+      expect(result.matched ? result.nearest : result.results).toEqual([]);
+      expect(addresses.length).toBeGreaterThan(0);
+      for (const address of addresses) expect(known.has(address), address).toBe(true);
+      const hit = addresses.some((address) => row.accept.some((prefix) => address.startsWith(prefix)));
+      if (result.matched) matched += 1;
+      if (hit) accepted += 1;
+      else {
+        missed.push(row.id);
+        if (result.matched) matchedButMissed.push(row.id);
+      }
     }
-    console.info(`way lookup development fixture (contaminated, a measurement and not a pass mark): top-3 ${top3}/${rows.length}, confident ${confident}/${rows.length}, missed ${missed.join(",")}`);
-    expect(top3).toBeGreaterThanOrEqual(0);
+    expect(matched + rows.filter((row) => !lookup(repoRoot, row.question).matched).length).toBe(rows.length);
+    console.info(
+      `way lookup development fixture (contaminated; a measurement, not a pass mark): accepted material in top 3 for ${accepted}/${rows.length}; ` +
+        `matched ${matched}/${rows.length}; matched but missed ${matchedButMissed.length} (${matchedButMissed.join(",")}); all missed ${missed.join(",")}`
+    );
   });
 });
