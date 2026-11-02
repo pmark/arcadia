@@ -4,11 +4,10 @@ project: arcadia
 authors:
   - Claudia Atlas
 frame:
-  status: confirmed
-  confirmed_ref: S005
-  outcome: Any Arcadia operator, including a first-timer, can wield the full Arcadia Way through one continuous conversation with Relay, and what matters in the conversations around their work reaches them, without Relay ever exceeding the authority they granted.
-  milestone: A first-time operator takes a real website, app or media project from idea to a reviewed result using only Relay, with every approval made by the operator and every answer about the Way citing the checked-in guidance it came from.
-  experience_target: Even a first time Arcadia operator therefore shall be empowered to wield the full power of the Arcadia Way via Relay interaction.
+  status: proposed
+  outcome: The operator goes from idea to planned project work that is autonomously produced by talking to Relay, using Arcadia Design, scaffolding, templates, continuous integration and Cloudflare deployments, with much of the conversation at zero cost and nothing exceeding the authority granted.
+  milestone: The operator sends arbitrary text to Relay and gets an immediate conversation at zero cost, then turns an idea into an approved, planned Project that unattended production builds and deploys to staging.
+  experience_target: I should be able to just go from idea to planned project work that is autonomously produced.
   mission:
     - id: M1
       file: PROJECT.md
@@ -90,6 +89,24 @@ frame:
         - M3
         - M4
       proof: Separate held-out sets for agent operations and first-timer questions, one fresh session per question on all three hosts, counting standing load as well as retrieved context, against targets the operator sets. The route for changing the rule that agents read a whole procedure first is named.
+    - id: REQ-012
+      statement: Completely arbitrary text sent to Relay immediately begins what seems like a traditional chatbot conversation, and changes no state by itself.
+      mission:
+        - M3
+        - M5
+      proof: Sending arbitrary messages from the dashboard yields a streamed reply, with first-word time measured against a budget the operator sets, and a test that no record other than the conversation changes.
+    - id: REQ-013
+      statement: Much of Relay's conversation costs nothing, with paid models used only when they add value.
+      mission:
+        - M3
+        - M4
+      proof: The share of turns answered by code or a local model is measured over real use, with the spend per turn.
+    - id: REQ-014
+      statement: From a conversation, the operator can use Arcadia Design and create a Project with scaffolding, templates, continuous integration and Cloudflare deployment, reaching planned work that is autonomously produced.
+      mission:
+        - M1
+        - M2
+      proof: One real idea reaches an approved Plan and a deployed staging result, with every operator touch counted.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
@@ -193,6 +210,20 @@ sources:
     retention: repo
     path: reviews/R1-relay-critique.md
     sha256: 451d893c49d189d69a6dc01f1fe7a6de09eef6a65e105f7dc5a8207b0285fc20
+  - id: S014
+    title: Operator's direction on the critical path
+    kind: operator
+    added: 2026-11-02
+    retention: repo
+    path: sources/S014-critical-path.md
+    sha256: 867a1126c46356fe2d05057920f0d3d823276681602b063c4f9f709021c90b90
+  - id: S015
+    title: Local model probe 1
+    kind: agent
+    added: 2026-11-02
+    retention: repo
+    path: probes/local-model-1.md
+    sha256: 3f8c7fdb7922b1a1042864729c82a810360256b48d45aa9a47a0773eced111ae
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -2385,6 +2416,75 @@ concepts:
     position: chosen
     serves:
       - REQ-001
+  - id: C-042
+    title: A conversation surface that starts by talking
+    kind: mechanism
+    statement: Arbitrary text at the dashboard composer starts a streamed conversation with a local model and changes nothing else. Turning it into work is a separate, explicit card that uses the existing Ask path.
+    origins:
+      - &a138
+        source: S014
+        locator: whole file
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/components/workspace/workspace-ask.tsx
+        - src/intelligence/litellm/client.ts
+    position: leaning
+    serves:
+      - REQ-012
+      - REQ-013
+    reason: Today's composer submits every message as an Ask, which can create review items or Projects.
+  - id: C-043
+    title: Qwen3.5-9B as the first local conversation model
+    kind: claim
+    statement: An already installed model can carry the first conversation on the operator's MacBook Air, at about 1 s to first word and 9 tokens per second under heavy load, kept loaded behind the existing local router. Smaller newer models may do better and aren't yet tested.
+    origins:
+      - *a138
+      - source: S015
+        locator: Results
+    fit:
+      status: partial
+      evidence:
+        - docs/design/relay/probes/local-model-1.md
+        - docs/intelligence/LITELLM_CONFIGURATION.md
+    position: leaning
+    serves:
+      - REQ-013
+      - REQ-010
+    reason: One thin probe, with no idle baseline.
+  - id: C-044
+    title: Models propose; code decides state changes
+    kind: constraint
+    statement: A local model may classify and draft, but anything that changes state passes through code and an explicit card, because a message that told models to choose a label moved three of four.
+    origins:
+      - source: S015
+        locator: What it means
+    fit:
+      status: partial
+      evidence:
+        - docs/design/relay/probes/local-model-1.md
+        - src/commands/ask.ts
+    position: leaning
+    serves:
+      - REQ-006
+      - REQ-012
+    reason: Confirms R1-F6 from a different direction.
+  - id: C-045
+    title: Extend the existing idea-to-staging path
+    kind: mechanism
+    statement: Reach REQ-014 by extending the narrow path that already goes from a request through an Astro Project and a coding agent to a Cloudflare Workers staging link, rather than building scaffolding anew, and by routing its work through unattended production once that is proved.
+    origins:
+      - *a138
+    fit:
+      status: partial
+      evidence:
+        - src/projects/stagingDeployment.ts
+        - src/intake/index.ts
+        - START_HERE.md
+    position: leaning
+    serves:
+      - REQ-014
+    reason: It's a single template today, and its approval excludes push, merge and production.
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?
