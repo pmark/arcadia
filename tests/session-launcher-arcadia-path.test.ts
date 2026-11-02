@@ -134,6 +134,22 @@ describe("Session launcher arcadia directory", () => {
     expect(messages).toHaveLength(1);
   });
 
+  it("says so when the only host command is refused, rather than silently leaving exit 127", () => {
+    const worktree = path.join(scratch, "worktree");
+    mkdirSync(worktree, { recursive: true });
+    installCli(path.join(scratch, "a"));
+    const cli = path.join(scratch, "a", "arcadia");
+    chmodSync(cli, 0o775);
+    const messages: string[] = [];
+    const home = path.join(scratch, "nohome");
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "a"), home, { onFailure: (message) => messages.push(message) })).toBeNull();
+    expect(messages).toEqual([expect.stringContaining("refused")]);
+    chmodSync(cli, 0o755);
+    messages.length = 0;
+    expect(resolveHostArcadiaDirectory(worktree, path.join(scratch, "missing"), home, { onFailure: (message) => messages.push(message) })).toBeNull();
+    expect(messages).toEqual([]);
+  });
+
   it("creates the directory 0700 and refuses a group- or world-writable one", () => {
     const worktree = path.join(scratch, "worktree");
     mkdirSync(worktree, { recursive: true });

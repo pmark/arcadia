@@ -10,7 +10,12 @@ import path from "node:path";
  * a target that is not a regular executable file or is group- or
  * world-writable are refused.
  */
-export function findHostArcadia(worktree: string, hostPath = process.env.PATH ?? "", home = homedir()): string | null {
+export function findHostArcadia(
+  worktree: string,
+  hostPath = process.env.PATH ?? "",
+  home = homedir(),
+  onRefused?: (target: string) => void
+): string | null {
   let root: string;
   try {
     root = realpathSync(worktree);
@@ -22,7 +27,10 @@ export function findHostArcadia(worktree: string, hostPath = process.env.PATH ??
     try {
       const target = realpathSync(path.join(entry, "arcadia"));
       const stat = statSync(target);
-      if (!stat.isFile() || (stat.mode & 0o022) !== 0) continue;
+      if (!stat.isFile() || (stat.mode & 0o022) !== 0) {
+        onRefused?.(target);
+        continue;
+      }
       accessSync(target, constants.X_OK);
       const relative = path.relative(root, target);
       if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) continue;
@@ -37,7 +45,7 @@ export function findHostArcadia(worktree: string, hostPath = process.env.PATH ??
 export interface HostArcadiaOptions {
   /** Test seam: the owner uid the directory must have (default: this process). */
   uid?: number;
-  /** Called with the reason when a CLI was found but its directory could not be prepared. */
+  /** Called with the reason when a CLI was found but refused, or its directory could not be prepared. */
   onFailure?: (message: string) => void;
 }
 
@@ -56,8 +64,12 @@ export function resolveHostArcadiaDirectory(
   home = homedir(),
   options: HostArcadiaOptions = {}
 ): string | null {
-  const target = findHostArcadia(worktree, hostPath, home);
-  if (!target) return null;
+  const refused: string[] = [];
+  const target = findHostArcadia(worktree, hostPath, home, (candidate) => refused.push(candidate));
+  if (!target) {
+    if (refused.length > 0) options.onFailure?.(`refused ${[...new Set(refused)].join(", ")}: not a regular file closed to group and world writes`);
+    return null;
+  }
   const directory = path.join(home, ".local", "share", "arcadia", "session-bin");
   const link = path.join(directory, "arcadia");
   const staging = `${link}.${process.pid}.tmp`;
