@@ -4,7 +4,7 @@ project: arcadia
 authors:
   - Claudia Atlas
 frame:
-  status: proposed
+  status: confirmed
   outcome: The operator goes from idea to planned project work that is autonomously produced by talking to Relay, using Arcadia Design, scaffolding, templates, continuous integration and Cloudflare deployments, with much of the conversation at zero cost and nothing exceeding the authority granted.
   milestone: The operator sends arbitrary text to Relay and gets an immediate conversation at zero cost, then turns an idea into an approved, planned Project that unattended production builds and deploys to staging.
   experience_target: I should be able to just go from idea to planned project work that is autonomously produced.
@@ -111,6 +111,7 @@ frame:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
     - Copying DeepSeek's implementation, or integrating any OpenAI product.
+  confirmed_ref: S022
 sources:
   - id: S001
     title: Operator direction
@@ -266,6 +267,13 @@ sources:
     retention: repo
     path: sources/S021-ask-first-and-companion.md
     sha256: a84132deaac34d9558c50d0bacbb28c88c68a3ee7c9e3ef206af3f6047ce209e
+  - id: S022
+    title: Operator's decisions and interface direction
+    kind: operator
+    added: 2026-11-03
+    retention: repo
+    path: sources/S022-decisions-and-interface-direction.md
+    sha256: 5821d8910b897e3a54afd5ba78377b51d24c63993569781d5d996f15eed86a54
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -1104,10 +1112,11 @@ concepts:
       evidence:
         - docs/agent-guidance/standard-harness.md
         - .agents/skills/arcadia-relay/SKILL.md
-    position: candidates
+    position: parked
     serves:
       - REQ-006
       - REQ-008
+    revival: A later Decision on Relay as the default session shell.
   - id: C-031
     title: Relay as a dedicated service agent
     kind: mechanism
@@ -1122,7 +1131,8 @@ concepts:
       evidence:
         - src/intelligence/litellm/client.ts
         - src/intelligence/jobs/worker.ts
-    position: candidates
+    position: parked
+    revival: The companion step shows a dedicated service is needed.
   - id: C-032
     title: One decision interface in front of every route
     kind: interface
@@ -2412,18 +2422,20 @@ concepts:
   - id: C-039
     title: Relay's front door at existing Ask surfaces
     kind: mechanism
-    statement: "Questions arrive at the dashboard composer, and possibly Discord, where code routes them before any model: lookup or status commands first, then a local model with citations, then a stronger model. Coding agents are launched only for code. This gives the decision interface a real caller and message set, without a synced thread at first."
+    statement: "Questions reach Relay through Arcadia Workspace, where code routes them before any model and a coding agent runs only for code. The operator refined this: Workspace is the primary interface, and how other Ask surfaces converge on it is under investigation."
     origins:
       - &a137
         source: S013
         locator: reviews/R1-relay-critique.md
+      - source: S022
+        locator: whole file
     fit:
       status: partial
       evidence:
         - apps/dashboard/app/api/ask/route.ts
         - src/way/lookup.ts
         - src/intelligence/litellm/client.ts
-    position: candidates
+    position: chosen
     serves:
       - REQ-010
       - REQ-001
@@ -2717,6 +2729,22 @@ concepts:
       - REQ-010
       - REQ-013
     reason: Awaits the operator approving the proposal.
+  - id: C-058
+    title: Arcadia Workspace as the primary interface
+    kind: requirement
+    statement: "Relay lives in a mobile-first Arcadia Workspace, with XR as the horizon. It is neither a dashboard nor strictly a chatbot: conversational elements cue views and controls fluidly as context shifts, across phone, tablet, laptop, multi-monitor desktop, headsets and future AR glasses."
+    origins:
+      - source: S022
+        locator: whole file
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/components/workspace/workspace-view.tsx
+        - docs/design/arcadia-conversational-workspace.md
+    position: chosen
+    serves:
+      - REQ-012
+      - REQ-014
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?
@@ -2749,6 +2777,9 @@ choices:
         consequence: No new runtime, and it works today as Relay mode. Every question costs a coding-agent turn, which conflicts with the spending order, a model reads every message first so routing can't be fast or enforced, and restricting its tools is unproved on all three hosts.
       - concept: C-031
         consequence: Tighter control and cheaper turns on a service that already runs. It's new conversational code, and doesn't by itself lead to the default shell.
+    chosen: C-039
+    decided_by: operator
+    decision_ref: S022
   - id: CH-04
     question: Which decision engine does Relay start with?
     options:

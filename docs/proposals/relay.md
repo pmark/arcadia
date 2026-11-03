@@ -188,7 +188,17 @@ So that nobody relies on superseded statements from earlier in this work:
 - "Talk first" was replaced by read tools first, and then by visible answers first.
 - The 79% from rules plus a menu came from a rough prototype, and the real figure will start lower.
 
-## Decisions for the operator
+## Decisions answered
+
+**On 2026-11-03 the operator answered 1A 2A 3A 4A 5B** ([their words](../design/relay/sources/S022-decisions-and-interface-direction.md)): approve the
+first slice as ordered, 94% precision with coverage tracked, confirm the revised frame, and wait on more bake-off
+models until the companion step.
+
+**Decision 4 is refined.** Arcadia Workspace is where Relay goes, and it's the primary interface: mobile-first, with XR
+as the horizon, neither a dashboard nor strictly a chatbot, with views and controls cued fluidly as context shifts. How the
+other Ask surfaces converge is under investigation, so the first slice's surface isn't final.
+
+## Decisions as they were put
 
 1. **Approve the first slice as ordered above?** It takes capacity from production, though it stays off the
    production worker's path and is read-only.
