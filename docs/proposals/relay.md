@@ -50,6 +50,7 @@ All local, at no cost, on the operator's MacBook Air M4 with 32 GB, under uncont
 |---|---|---|
 | Qwen3.6 27B routed unseen messages | 94% right, about 5 s, no wrong production lever, 18 GB | [probe 3](../design/relay/probes/routing-3.md) |
 | Older or smaller models on the same messages | 78 to 83% | probe 3 |
+| Hermes 3 8B and Qwen3.5-9B on the same unseen messages | Hermes 66% terse and 81% JSON, about 10 s; Qwen3.5-9B 81% terse, about 7 s. Neither came close to the 27B | [results](../design/relay/probes/routing-3-results-bakeoff.json) |
 | Terse output against JSON with the 27B | Same accuracy on unseen messages, faster by a margin that varied | probe 3 |
 | Malformed model output across routing runs | 2 of about 700, so grammars alone won't fix routing | raw results in probe 3 |
 | Ask's intake today on 60 messages | About 0.2 ms, 58 low confidence | probe 3 |
@@ -60,10 +61,8 @@ All local, at no cost, on the operator's MacBook Air M4 with 32 GB, under uncont
 
 The menu figure comes from a rough script, `probes/routing-3-menu.py`. Treat it as a hint.
 
-**Not yet known:** the Hermes 3 8B result, idle latency, sustained use, real operator messages, resume speed
-and cost for supervisors, and whether the 27B can stay loaded beside coding agents. Hermes 3 is installed at
-`~/.omlx/models/mlx-community/Hermes-3-Llama-3.1-8B-4bit`, and its bake-off run hadn't reported when this was
-written.
+**Not yet known:** idle latency, sustained use, real operator messages, resume speed
+and cost for supervisors, and whether the 27B can stay loaded beside coding agents. 
 
 ## The proposed first slice
 
@@ -106,7 +105,7 @@ failing open.
 
 Compare tuned models on prompts from a separate author, judged blind, through the live oMLX and LiteLLM path, at
 idle and production-like load, with repeats. Choose the smallest model that meets the operator's budgets. Next
-candidates: Hermes 3 8B (downloaded), Qwen3.5-2B and 4B, Gemma 4 E2B and E4B, and a smaller Qwen3.6 build. The
+candidates: Qwen3.5-2B and 4B, Gemma 4 E2B and E4B, and a smaller Qwen3.6 build. The
 protocol is in [probe 2](../design/relay/probes/local-model-2.md).
 
 ## Decisions for the operator
