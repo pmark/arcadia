@@ -180,7 +180,7 @@ function renderPlan(
     const passing = passingCommands(criterion, named, validation);
     const absent = named.filter((candidate) => !pathExists(candidate));
     const existing = named.filter((candidate) => pathExists(candidate));
-    const present = inspectedPaths(existing, named, facts.changedFiles, passing !== null);
+    const present = inspectedPaths(existing, named, facts.changedFiles, passing !== null, criterion);
     const substituted = present.length > 0 && existing.length > 0 && !present.every((candidate) => existing.includes(candidate)) ? existing : [];
     const literals = present.length > 0 ? criterionLiterals(criterion) : [];
     const bytes = /newline|byte|whitespace|exactly|empty/i.test(criterion);
@@ -196,7 +196,7 @@ function renderPlan(
     }
     lines.push(`- **Do:** ${actions.join("; then ")}.`);
     if (substituted.length > 0) {
-      lines.push(`- **Substitution:** the criterion names only ${substituted.map((candidate) => code(candidate)).join(", ")}, which this candidate did not change, so this step does not inspect ${substituted.length === 1 ? "it" : "them"} and inspects the candidate's changed test ${present.length === 1 ? "file" : "files"} instead.`);
+      lines.push(`- **Substitution:** the existing ${substituted.length === 1 ? "path" : "paths"} the criterion names, ${substituted.map((candidate) => code(candidate)).join(", ")}, ${substituted.length === 1 ? "was" : "were"} not changed by this candidate, so this step does not inspect ${substituted.length === 1 ? "it" : "them"} and inspects the candidate's changed test ${present.length === 1 ? "file" : "files"} instead.`);
     }
     const outputs = [
       ...(present.length > 0 ? [bytes ? `${code("od -c")} shows every byte (a newline as ${code("\\n")})` : "the file content is shown"] : []),
@@ -369,9 +369,13 @@ function inspectedPaths(
   existing: readonly string[],
   named: readonly string[],
   changedFiles: readonly ChangedFile[],
-  mustPass: boolean
+  mustPass: boolean,
+  criterion: string
 ): string[] {
   if (mustPass || existing.length === 0) return [...existing];
+  // A criterion about what a named file says (a quoted line, "contains", "exactly") is about that file itself,
+  // never a sample: grepping a test file cannot show it.
+  if (criterionLiterals(criterion).length > 0 || /\b(?:contains?|exactly|content|lines?|reads?|says?|states?|includes?|mentions?|documents?|describes?)\b/i.test(criterion)) return [...existing];
   if (named.some((candidate) => changedFiles.some((file) => file.path === candidate))) return [...existing];
   if (existing.some((candidate) => TEST_PATH.test(candidate) || SOURCE_PATH.test(candidate))) return [...existing];
   const changedTests = changedFiles.filter((file) => !file.status.startsWith("D") && TEST_PATH.test(file.path)).map((file) => file.path);

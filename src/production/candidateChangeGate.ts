@@ -109,3 +109,6 @@ export function candidateChangeGate(repoRoot: string, from: string, to: string):
   return reasons.length > 0 ? reasons.join("; ") : null;
 }
 
+
+/** The governed records a completion settlement commit writes (pointer, Plan status, Mission Log, archived Ask), exact case; anything else in it is authority-adjacent. */
+export const SETTLEMENT_RECORD_PATH = /^(?:PROJECT\.md|MISSION_LOG\.md|docs\/plans\/[^/]+\.md|\.arcadia\/asks\/archive\/[^/]+\.ya?ml)$/;

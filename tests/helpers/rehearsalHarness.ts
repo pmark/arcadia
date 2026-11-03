@@ -1086,7 +1086,7 @@ export class FakeGitHub {
     if (command === "gh" && args[0] === "issue" && args[1] === "list") {
       // `--search "<marker>" in:body`: the Issues whose body carries the marker.
       const marker = /^"(.*)" in:body$/.exec(args[args.indexOf("--search") + 1] ?? "")?.[1] ?? "\u0000";
-      return ok(`${JSON.stringify(this.issues.flatMap((issue, index) => issue.body.includes(marker) ? [{ number: 100 + index, url: issue.url }] : []))}\n`);
+      return ok(`${JSON.stringify(this.issues.flatMap((issue, index) => issue.body.includes(marker) ? [{ number: 100 + index, url: issue.url, body: issue.body }] : []))}\n`);
     }
     if (command === "gh" && args[0] === "issue" && args[1] === "create") {
       if (this.issueFailures.length > 0) return { status: 1, stdout: "", stderr: this.issueFailures.shift()!, error: null };

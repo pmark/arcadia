@@ -4,6 +4,7 @@ import { computeBlastRadius } from "../stewardship/prBlastRadius.js";
 import { git, isAncestor, tryGit } from "../git/worktrees.js";
 import { classifyPullRequestChecks, runHostCommand, type PullRequestCheckRun, type QaPrReviewDependencies } from "../qa/prReview.js";
 import { isSettlementArchiveOf } from "../qa/patchApplicability.js";
+import { SETTLEMENT_RECORD_PATH } from "./candidateChangeGate.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
 
 /**
@@ -223,8 +224,6 @@ function diffPaths(repoRoot: string, args: string[]): string[] {
     .split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
-/** The governed records a completion settlement commit writes (pointer, Plan status, Mission Log, archived Ask), exact case; anything else in it is authority-adjacent. */
-const SETTLEMENT_RECORD_PATH =/^(?:PROJECT\.md|MISSION_LOG\.md|docs\/plans\/[^/]+\.md|\.arcadia\/asks\/archive\/[^/]+\.ya?ml)$/;
 
 /**
  * The candidate's own completion drafts that its settlement commit consumed:

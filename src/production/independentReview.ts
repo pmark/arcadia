@@ -9,7 +9,7 @@ import { independentVerdictGate, independentVerdictReadiness, MAX_VARIANCE_REVIE
 import { ensureReviewRepairTable, getReviewRepair, requiredChecksRepairRequestId, reviewRepairRequestId } from "../sessions/reviewRepair.js";
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import { redactSecrets } from "../sessions/validationEvidence.js";
-import { candidateChangeGate } from "./candidateChangeGate.js";
+import { candidateChangeGate, SETTLEMENT_RECORD_PATH } from "./candidateChangeGate.js";
 import {
   classifyPullRequestChecks,
   readPullRequestChecks,
@@ -358,7 +358,7 @@ export const AUTHORITY_TEXT = /\b(authority|authori[sz]ation|approval[- ]boundar
  * finding with any other title concerns something else and keeps the verdict
  * blocking, whatever else it says.
  */
-const PLAN_FINDING_TITLE = /^operator qa (?:plan|step)\b/i;
+const PLAN_FINDING_TITLE = /^(?:(?:missing|incomplete|inaccurate|unsound|stale|wrong|vague)\s+)?(?:operator qa (?:plan|procedure|step)\b|step\s*#?\d+\b)/i;
 const OPERATOR_QA_PLAN_CHECK_NAME = "Operator QA plan";
 
 /** Issue filings the worker attempts per Action and head before it stops asking GitHub. */
@@ -383,25 +383,55 @@ type VerdictReadinessBinding = { requirement: { requirementId: string; inputRevi
 const WAIVABLE_SEVERITIES: ReadonlySet<string> = new Set(["low", "medium"]);
 
 /**
- * Words that claim something about the candidate's code or data beyond the
- * plan's text. Conservative on purpose: a real plan-only verdict that trips
- * one simply takes the existing repair path.
+ * Claims about the candidate's code or data, which the plan check cannot
+ * excuse. Strong words trip anywhere. Weak words ("incorrect", "broken",
+ * "bug", "removed", "fails to") trip only when they sit within a short span of
+ * a subject that is the candidate's code or data and the span names no plan,
+ * procedure, step or operator: "the operator QA procedure incorrectly claims"
+ * is text about the plan. Conservative on purpose: a real plan-only verdict
+ * that trips simply takes the existing repair path.
  */
-const CANDIDATE_CLAIM = new RegExp([
-  String.raw`\b(?:data[- ]?loss|drops?|dropped|dropping|deletes?|deleted|deleting|removes?|removed|corrupt\w*|crash\w*|vulnerab\w*|inject\w*|leak\w*|overwrit\w*|regress\w*|bugs?|defects?|defective|incorrect\w*|broken|breaks?|race|deadlock\w*|expos\w*|unsafe|insecure|exploit\w*|malicious|truncat\w*|violat\w*|users? table)\b`,
-  String.raw`\bnot (?:implemented|handled|enforced|validated|refused|rejected)\b`,
-  String.raw`\b(?:does|do|did) not (?:work|handle|refuse|reject|validate|enforce|implement|compile|pass)\b`,
-  String.raw`\b(?:fails?|failed|failing) (?:to|when|on|for)\b(?! (?:show|establish|demonstrate|prove|observe|state|name|identify|point|instruct|say|mention|tell|describe|reflect|cover)\b)`,
-  String.raw`\b(?:the )?(?:candidate|patch|implementation|source code|production code|code|change|migration|schema|database)\b[^.\n]{0,80}\b(?:wrong|incorrect|missing|lacks?|broken|defective|unsafe|buggy|faulty)\b`
-].join("|"), "i");
+const STRONG_CLAIM = /\b(?:data[- ]?loss|drops?|dropped|dropping|deletes?|deleted|deleting|corrupt\w*|crash\w*|vulnerab\w*|inject\w*|leak\w*|overwrit\w*|regress(?:es|ed|ing)|deadlock\w*|expos(?:es|ed|ing|ure)|unsafe|insecure|exploit\w*|malicious|race condition|users? table)\b/i;
+const WEAK_WORD = String.raw`(?:removes?|removed|incorrect\w*|broken|breaks?|bugs?|buggy|defect\w*|faulty|wrong|violat\w*|truncat\w*|missing|lacks?|not (?:implemented|handled|enforced|validated|refused|rejected)|(?:does|do|did) not (?:work|handle|refuse|reject|validate|enforce|implement|compile|pass)|(?:fails?|failed|failing) (?:to|when|on|for) (?!(?:show|establish|demonstrate|prove|observe|state|name|identify|point|instruct|say|mention|tell|describe|reflect|cover)\b))`;
+const CODE_SUBJECT = String.raw`(?:candidate'?s?|patch|implementation|production code|source code|code|migration|schema|database|data|stored)`;
+const WEAK_CLAIM = [new RegExp(String.raw`\b${CODE_SUBJECT}\b([^.;\n]{0,60}?)\b${WEAK_WORD}`, "gi"), new RegExp(String.raw`\b${WEAK_WORD}([^.;\n]{0,40}?)\b${CODE_SUBJECT}\b`, "gi")];
+const PLAN_WORDS = /\b(?:plan|procedure|steps?|operator|inspection)\b/i;
 
-/** Step numbers a text names: "Step 4", "Steps 4 and 6", "Steps 1-5". */
-function namedSteps(text: string): Set<string> {
-  const steps = new Set<string>();
-  for (const match of text.matchAll(/\bsteps?\s+(\d+(?:\s*(?:,|and|&|or|through|to|-|–|—)\s*\d+)*)/gi)) {
-    for (const number of match[1].match(/\d+/g) ?? []) steps.add(String(Number(number)));
+/** The claim about the candidate's code or data a text makes, or null. */
+export function candidateClaim(text: string): string | null {
+  const strong = STRONG_CLAIM.exec(text);
+  if (strong) return strong[0];
+  for (const pattern of WEAK_CLAIM) {
+    for (const match of text.matchAll(pattern)) {
+      if (!PLAN_WORDS.test(match[0])) return match[0];
+    }
   }
-  return steps;
+  return null;
+}
+
+const NUMBER_WORDS: Record<string, string> = {
+  one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10", eleven: "11", twelve: "12",
+  first: "1", second: "2", third: "3", fourth: "4", fifth: "5", sixth: "6", seventh: "7", eighth: "8", ninth: "9", tenth: "10", eleventh: "11", twelfth: "12"
+};
+const NUM = String.raw`(?:\d+|${Object.keys(NUMBER_WORDS).join("|")})`;
+const SEP = String.raw`\s*(?:,|and|&|or|through|to|-|–|—)\s*`;
+const numbersIn = (text: string) => (text.toLowerCase().match(new RegExp(NUM, "g")) ?? []).map((token) => NUMBER_WORDS[token] ?? String(Number(token)));
+
+/**
+ * Numbered plan steps a text names: "Step 4", "Steps 4 and 6", "Step #4 and
+ * Step #6", "step four", "third and fifth steps", "1-5", and numbered list
+ * items. Criteria are counted separately ("acceptance criteria 2 and 4").
+ */
+function namedSteps(text: string): { steps: Set<string>; criteria: Set<string>; wholePlan: boolean } {
+  const steps = new Set<string>();
+  const criteria = new Set<string>();
+  const list = String.raw`${NUM}(?:${SEP}(?:steps?\s*)?#?\s*${NUM})*`;
+  for (const match of text.matchAll(new RegExp(String.raw`\bsteps?\s*#?\s*(${list})`, "gi"))) for (const n of numbersIn(match[1])) steps.add(n);
+  for (const match of text.matchAll(new RegExp(String.raw`\b(${list})\s+steps?\b`, "gi"))) for (const n of numbersIn(match[1])) steps.add(n);
+  for (const match of text.matchAll(/^\s*(\d+)[.)]\s/gm)) steps.add(String(Number(match[1])));
+  for (const match of text.matchAll(new RegExp(String.raw`\bcriteri(?:on|a)\s*#?\s*(${list})`, "gi"))) for (const n of numbersIn(match[1])) criteria.add(n);
+  const wholePlan = /\b(?:every|each|all|none|any)\s+(?:of\s+)?(?:the\s+)?(?:operator\s+)?(?:qa\s+)?(?:plan'?s?\s+)?(?:steps?|inspections?|instructions?)\b/i.test(text);
+  return { steps, criteria, wholePlan };
 }
 
 /**
@@ -452,13 +482,19 @@ export function judgeQaPlanReport(raw: unknown, input: { head: string; actionKey
   const risks = Array.isArray(context.residualRisks) ? context.residualRisks.map(String) : [];
   const prose = [plan.evidence, summary, ...risks, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])];
   if (prose.some((text) => AUTHORITY_TEXT.test(text))) return refuse("authority text");
-  if (prose.some((text) => CANDIDATE_CLAIM.test(text))) return refuse(`a claim about the candidate's code or data: ${prose.map((text) => CANDIDATE_CLAIM.exec(text)?.[0]).find(Boolean)}`);
-  // "One operator check step unverified": at most one distinct plan step across the plan evidence and the finding.
+  const claim = prose.map(candidateClaim).find(Boolean);
+  if (claim) return refuse(`a claim about the candidate's code or data: ${claim}`);
+  // "At most one numbered step": across the plan evidence and the finding.
   const steps = new Set<string>();
+  const criteria = new Set<string>();
   for (const text of [plan.evidence, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])]) {
-    for (const step of namedSteps(text)) steps.add(step);
+    const named = namedSteps(text);
+    if (named.wholePlan) return refuse("the text speaks of all or every plan step");
+    for (const step of named.steps) steps.add(step);
+    for (const criterion of named.criteria) criteria.add(criterion);
   }
   if (steps.size > 1) return refuse(`more than one plan step (${[...steps].join(", ")})`);
+  if (criteria.size > 1) return refuse(`more than one acceptance criterion (${[...criteria].join(", ")})`);
   return { ok: true, failure: {
     head,
     pullRequestUrl: typeof context.candidate?.url === "string" ? context.candidate.url : null,
@@ -498,6 +534,11 @@ export function qaPlanSoleFailure(db: Database.Database, session: AgentSession, 
   // Decision 0169 did not lift Decision 0098's gate list: the same gate the repair loop applies.
   const start = tryGit(repoRoot, ["rev-parse", "--verify", `${head}^1`]);
   if (!start || !isAncestor(repoRoot, session.base_revision, start) || candidateChangeGate(repoRoot, session.base_revision, start) !== null) return null;
+  // Only a settled head: the commit on top of the candidate's own work writes governed settlement records
+  // (and consumes its completion draft) and nothing else, as the worker merge requires.
+  const settlement = tryGit(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", start, head]);
+  const settled = settlement?.split("\n").map((line) => line.trim()).filter(Boolean) ?? [];
+  if (settlement === null || settled.length === 0 || !settled.every((file) => SETTLEMENT_RECORD_PATH.test(file) || /^\.arcadia\/asks\/[^/]+\.ya?ml$/.test(file))) return null;
   try {
     const decisionId = (JSON.parse(latest.terminal_receipt_json ?? "{}") as { decisionId?: unknown }).decisionId;
     if (typeof decisionId !== "string") return null;
@@ -565,8 +606,8 @@ const oneLine = (text: string, limit = 400) => {
 
 /** The operator-unverified record: written to the waiver row, the journey log, the worker log and the Issue. */
 export function qaPlanUnverifiedRecord(actionKey: string, failure: Pick<QaPlanSoleFailure, "head" | "planEvidence">): string {
-  return `Operator QA plan unverified for ${actionKey} at ${failure.head}: independent QA failed only the host-written Operator QA plan check, so one operator check step went unverified `
-    + `and QA no longer blocks this head (Decision 0169). QA's other recorded checks passed; that does not by itself establish the candidate's code is correct. Reviewer's evidence: ${oneLine(failure.planEvidence)}`;
+  return `Operator QA plan unverified for ${actionKey} at ${failure.head}: independent QA failed only the host-written Operator QA plan check and its reviewer named at most one numbered plan step, `
+    + `so that operator check went unverified and QA no longer blocks this head (Decision 0169). QA's other recorded checks passed; that does not by itself establish the candidate's code is correct. Reviewer's evidence: ${oneLine(failure.planEvidence)}`;
 }
 
 const issueMarker = (actionKey: string, head: string) => `qa-plan-unverified:${actionKey}:${head}`;
@@ -642,10 +683,18 @@ export function ensureQaPlanWaiver(db: Database.Database, input: {
       const repo = repoOfPullRequest(failure.pullRequestUrl);
       if (!repo) throw new Error("no GitHub repository could be derived from the pull request URL");
       const marker = issueMarker(actionKey, failure.head);
-      const found = run({ command: "gh", args: ["issue", "list", "--repo", repo, "--state", "all", "--search", `"${marker}" in:body`, "--json", "number,url", "--limit", "1"], cwd: input.cwd, timeoutMs: 30_000 });
-      if (found.status !== 0) throw new Error(found.error ?? (found.stderr.trim() || `gh issue list exit ${String(found.status)}`));
-      const existing = (JSON.parse(found.stdout || "[]") as Array<{ url?: unknown }>)[0]?.url;
-      if (typeof existing === "string") url = existing;
+      // A search is a failure point of its own, so it runs only on a retry (an earlier attempt may have
+      // created the Issue before the row was updated); the marker is verified client-side from the body.
+      let existing: string | null = null;
+      if (row.issue_attempts >= 1) {
+        const found = run({ command: "gh", args: ["issue", "list", "--repo", repo, "--state", "all", "--search", `"${marker}" in:body`, "--json", "number,url,body", "--limit", "5"], cwd: input.cwd, timeoutMs: 30_000 });
+        if (found.status !== 0) throw new Error(`could not check for an existing Issue: ${found.error ?? (found.stderr.trim() || `gh issue list exit ${String(found.status)}`)}`);
+        let listed: Array<{ url?: unknown; body?: unknown }>;
+        try { listed = JSON.parse(found.stdout || "[]") as typeof listed; } catch { throw new Error("could not check for an existing Issue: unreadable gh issue list output"); }
+        const match = Array.isArray(listed) ? listed.find((entry) => typeof entry?.url === "string" && typeof entry.body === "string" && entry.body.includes(`<!-- ${marker} -->`)) : undefined;
+        existing = typeof match?.url === "string" ? match.url : null;
+      }
+      if (existing !== null) url = existing;
       else {
         const result = run({
           command: "gh",
