@@ -1,9 +1,11 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
+import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { listPendingAgentAskNotifications } from "../src/ask/settlement.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
-import { RECOVERY_SIGNAL_ALERT_TRIGGERS, RED_ALERT_TRIGGERS } from "../src/production/redAlerts.js";
-import { classifyRecoverySignals, type RecoveryLedgerRows } from "../src/production/recoverySignals.js";
+import { RED_ALERT_TRIGGERS } from "../src/production/redAlerts.js";
+import { isUnchangedResumeExit } from "../src/production/tick.js";
+import { classifyRecoverySignals, type RecoveryLedgerRows, type RecoverySessionExitRow } from "../src/production/recoverySignals.js";
 import { isolateProcess, type IsolatedProcess } from "./fast-rehearsal/helpers/environment.js";
 import type { ActionWork, LaunchRecord } from "./fast-rehearsal/helpers/executor.js";
 import { ACTION_1, FastRehearsal, SCENARIO_TIMEOUT_MS, WORK } from "./fast-rehearsal/helpers/world.js";
@@ -51,6 +53,8 @@ function firstSessionDies(world: FastRehearsal): LaunchRecord {
   return world.untilLaunched(ACTION_1, 6).launch;
 }
 
+const scrub = (value: unknown) => JSON.parse(JSON.stringify(value).replace(/session_[0-9a-f]+/g, "session_X")) as unknown;
+
 /** The observable run: repair attempts, the next launch decision, the Action's status, escalations, Sessions. */
 function observed(world: FastRehearsal) {
   return {
@@ -58,7 +62,9 @@ function observed(world: FastRehearsal) {
     launches: world.tmux.launches.length,
     lease: world.lease() === null,
     action: world.planAction(world.repo, ACTION_1),
-    escalations: world.escalations().map((e) => [e.actionKey, e.kind]),
+    // Whole rows (message, remedy, timestamps), not kinds: an observer that wrote any of it would differ.
+    escalations: scrub(world.escalations()),
+    repairAttempts: scrub(withReadOnlyDatabase(world.workspace, (db) => db.prepare("SELECT * FROM production_repair_attempts ORDER BY action_key").all())),
     sessions: world.sessions().map((s) => [s.action_id, s.status])
   };
 }
@@ -68,7 +74,6 @@ describe("the recovery-signal classifier on the replay fixture rows", () => {
   it("produces the no_progress signal the alert is raised for, on the real 04:44:50Z receipt, and the alert trigger is registered", () => {
     const signals = classifyRecoverySignals({ sessionExits: fixture.sessionExits, operatorHeldMarks: fixture.operatorHeldMarks });
     expect(signals.filter((s) => s.kind === "no_progress").map((s) => s.at.slice(11, 19))).toEqual(["04:44:50", "04:52:40", "04:55:14"]);
-    expect(RECOVERY_SIGNAL_ALERT_TRIGGERS.no_progress).toBe("resume_no_progress");
     expect(RED_ALERT_TRIGGERS).toContain("resume_no_progress");
   });
   it("is silent on exactly the receipts the tick raises nothing for: a changed candidate, a fresh first Session, a held Action", () => {
@@ -78,6 +83,42 @@ describe("the recovery-signal classifier on the replay fixture rows", () => {
     expect(kinds({ sessionExits: [{ ...exit, candidateRevision: "changed" }] })).toEqual([]);
     expect(kinds({ sessionExits: [{ ...exit, resumed: false }] })).toEqual([]);
     expect(kinds({ sessionExits: [exit], operatorHeldMarks: [{ actionKey: exit.actionKey, kind: "gated", at: "2026-11-02T04:00:00.000Z" }] })).toEqual([]);
+  });
+});
+
+describe("parity: the classifier and the tick's unchanged-resume detection agree on no-progress", () => {
+  const fixture = JSON.parse(readFileSync(new URL("./fixtures/recovery-replay/ledger-rows.json", import.meta.url), "utf8")) as RecoveryLedgerRows;
+  const exits = fixture.sessionExits!;
+  // The tick reads the worktree's cleanliness from Git; a receipt does not record it. The classifier fires when it is absent,
+  // so both are fed the tick's value: a verified-clean tree (what `git status --porcelain` returned empty) or a dirty one.
+  const tick = (exit: RecoverySessionExitRow, clean: boolean, calls: { n: number } = { n: 0 }) => isUnchangedResumeExit({
+    resumed: exit.resumed, outcome: exit.outcome, candidateRevision: exit.candidateRevision,
+    startRevision: exit.launchRevision ?? exit.baseRevision, worktreeClean: () => { calls.n += 1; return clean; }
+  });
+  const classifier = (exit: RecoverySessionExitRow, clean: boolean) =>
+    classifyRecoverySignals({ sessionExits: [{ ...exit, worktreeClean: clean }] }).some((signal) => signal.kind === "no_progress");
+
+  it("agrees on every real 2026-11-02 receipt with a clean worktree: exactly the three pin-worker-merge-allowlist-carve-outs exits", () => {
+    expect(exits).toHaveLength(16);
+    const verdicts = exits.map((exit) => [exit.sessionId, tick(exit, true), classifier(exit, true)] as const);
+    for (const [id, fromTick, fromClassifier] of verdicts) expect(fromTick, id).toBe(fromClassifier);
+    expect(verdicts.filter(([, fromTick]) => fromTick)).toHaveLength(3);
+  });
+  it("agrees on the dirty-worktree case: neither reports no-progress for any receipt", () => {
+    for (const exit of exits) {
+      expect(tick(exit, false), exit.sessionId).toBe(false);
+      expect(classifier(exit, false), exit.sessionId).toBe(false);
+    }
+    const unchanged = exits.find((exit) => tick(exit, true))!;
+    expect([tick(unchanged, true), tick(unchanged, false), classifier(unchanged, true), classifier(unchanged, false)]).toEqual([true, false, true, false]);
+  });
+  it("asks Git for cleanliness only once the other conditions hold, and the classifier fires when it is absent (the one place they differ)", () => {
+    const unchanged = exits.find((exit) => tick(exit, true))!;
+    const calls = { n: 0 };
+    for (const exit of exits.filter((e) => e !== unchanged)) tick(exit, true, calls);
+    expect(calls.n).toBeLessThanOrEqual(exits.filter((e) => e.resumed && e.outcome === "incomplete_resumable").length);
+    const { worktreeClean: _recorded, ...absent } = unchanged;
+    expect(classifyRecoverySignals({ sessionExits: [absent] }).map((signal) => signal.kind)).toEqual(["no_progress"]);
   });
 });
 
@@ -185,6 +226,45 @@ describe("the notice clears when the stall ends", () => {
   }, SCENARIO_TIMEOUT_MS);
 });
 
+describe("held state is read before the exit spends the last repair attempt", () => {
+  it("raises none when that exit's budget escalation overwrites the held row", () => {
+    const world = newWorld("no-progress-held-then-budget");
+    const resumed = firstSessionDies(world);
+    const key = world.actionKey(ACTION_1);
+    withDatabase(world.workspace, (db) => {
+      db.prepare("INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at) VALUES (?, ?, 'earlier', 'x', 'x')").run(key, MAX - 1);
+      db.prepare("INSERT OR REPLACE INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at) VALUES (?, 'review_repair_gated', 'held', 'r', 'x', 'x')").run(key);
+    });
+    world.execute(resumed, ACTION_1, "exits-without-completing");
+    world.ticks(2);
+    expect(attempts(world)).toBe(MAX);
+    expect(world.escalations().map((e) => e.kind)).toEqual(["repair_budget_exhausted"]); // the held row was overwritten by the spent budget
+    expect(alertsOf(world)).toEqual([]);
+    expect(noticesOf(world)).toEqual([]);
+    world.finish();
+  }, SCENARIO_TIMEOUT_MS);
+});
+
+describe("the notice clears when its Action is done", () => {
+  it("clears although its repair attempts remain", () => {
+    const world = newWorld("no-progress-clears-when-done");
+    const resumed = firstSessionDies(world);
+    world.execute(resumed, ACTION_1, "exits-without-completing");
+    world.ticks(1);
+    expect(alertsOf(world)).toHaveLength(1);
+    expect(attempts(world)).toBe(1);
+    const planFile = path.join(world.repo, "docs/plans/two-action-rehearsal-bootstrap.md");
+    const plan = readFileSync(planFile, "utf8");
+    const marked = plan.split("  - id: ").map((block) => block.startsWith(`${ACTION_1}\n`) ? block.replace(/\n(\s+)status: \S+/, "\n$1status: done") : block).join("  - id: ");
+    expect(marked).not.toBe(plan);
+    writeFileSync(planFile, marked);
+    world.ticks(1);
+    expect(attempts(world)).toBe(1);
+    expect(alertsOf(world)).toEqual([]);
+    world.finish();
+  }, SCENARIO_TIMEOUT_MS);
+});
+
 describe("the alert is notify-only: the run is identical with and without it", () => {
   const run = (breakRaising: boolean) => {
     const world = newWorld(breakRaising ? "no-progress-without-alert" : "no-progress-with-alert", breakRaising);
@@ -196,12 +276,13 @@ describe("the alert is notify-only: the run is identical with and without it", (
     world.ticks(3);
     world.advanceClock(3 * 3_600_000);
     world.ticks(3);
-    const result = { observed: observed(world), alerts: alertsOf(world).length, failures: world.log.filter((line) => line.includes("Red alert resume no progress failed (ignored)")) };
+    const result = { observed: observed(world), worldKey: world.actionKey(ACTION_1), alerts: alertsOf(world).length, failures: world.log.filter((line) => line.includes("Red alert resume no progress failed (ignored)")) };
     world.finish();
     return result;
   };
   it("gives the same repair attempts, launch decisions, Action status and blockers; a raise failure is logged and changes nothing", () => {
     const withAlert = run(false);
+    const worldKey = withAlert.worldKey;
     const without = run(true);
     expect(withAlert.alerts).toBe(1);
     expect(without.alerts).toBe(0);
@@ -211,7 +292,9 @@ describe("the alert is notify-only: the run is identical with and without it", (
     expect(without.observed).toEqual(withAlert.observed);
     // The existing retry budget alone stopped it.
     expect(withAlert.observed.attempts).toBe(MAX);
-    expect(withAlert.observed.escalations.map(([, kind]) => kind)).toContain("repair_budget_exhausted");
+    expect(JSON.stringify(withAlert.observed.escalations)).toContain("repair_budget_exhausted");
+    // Observers never touch the budget escalation's text: its remedy is exactly the one the budget recorded.
+    expect((withAlert.observed.escalations as Array<{ remedy: string }>)[0].remedy).toBe(`Repair the underlying problem, then run \`arcadia production reset-repair-budget ${worldKey}\`.`);
     expect(withAlert.observed.launches).toBe(1 + MAX);
   }, 2 * SCENARIO_TIMEOUT_MS);
 });

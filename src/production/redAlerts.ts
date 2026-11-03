@@ -192,8 +192,9 @@ function enqueueNotification(db: Database.Database, row: AlertRow): void {
   const requestId = requestIdFor(row);
   const desired =
     `RED ALERT (${row.trigger}) on ${row.action_key ?? row.project_slug}` +
-    `${row.session_id ? `, Session ${row.session_id}` : ""}: ${row.detail.split("\n")[0]} ` +
-    `Evidence: file://${row.evidence_path}`;
+    `${row.session_id ? `, Session ${row.session_id}` : ""}: ${row.detail.split("\n")[0]}` +
+    // The new notices are read off-site: their text is self-contained, so a host file path is left out.
+    (NOTICE_ONLY_RED_ALERT_TRIGGERS.includes(row.trigger) ? "" : ` Evidence: file://${row.evidence_path}`);
   const request = JSON.stringify({
     agent_ask: "v1",
     request_id: requestId,
@@ -552,8 +553,12 @@ export const REVIEW_REPAIR_STOP_ALERTS: Readonly<Record<string, { trigger: RedAl
   [REVIEW_REPAIR_GATED]: { trigger: "repair_gated", outcome: "gated" }
 });
 
-/** The red alert trigger each recovery-signal kind (src/production/recoverySignals.ts) is raised as. */
-export const RECOVERY_SIGNAL_ALERT_TRIGGERS: Readonly<Record<"no_progress", RedAlertTrigger>> = Object.freeze({ no_progress: "resume_no_progress" });
+/**
+ * Triggers raised from other records' state (an escalation row, an unchanged
+ * resume): they are notices, never diagnosed by a model and never filed as an
+ * Issue or drafted Ask (Decision 0169 declined that for them).
+ */
+export const NOTICE_ONLY_RED_ALERT_TRIGGERS: readonly RedAlertTrigger[] = ["repair_rounds_exhausted", "repair_gated", "resume_no_progress"];
 
 const BOUNDED_FIELD_MAX = 60;
 const bounded = (value: string): string => {
@@ -582,8 +587,10 @@ export function observeReviewRepairStops(ctx: AlertContext): void {
     let repair: { outcome: string; round: number; role: string } | undefined;
     try {
       repair = db
-        .prepare("SELECT outcome, round, role FROM production_review_repairs WHERE action_key = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1")
-        .get(row.action_key) as typeof repair;
+        // The latest row of the stop's own outcome, as `latestRepairStop` does: a later write to an older
+        // `launched` row (`closeSupersededPullRequests` bumps `updated_at`) must not end a stop that stands.
+        .prepare("SELECT outcome, round, role FROM production_review_repairs WHERE action_key = ? AND outcome = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1")
+        .get(row.action_key, stop?.outcome ?? "") as typeof repair;
     } catch (error) {
       if (!(error instanceof Error && error.message.includes("no such table"))) throw error;
     }
@@ -595,9 +602,14 @@ export function observeReviewRepairStops(ctx: AlertContext): void {
       actionKey: row.action_key,
       sessionId: null,
       trigger: stop.trigger,
-      detail: () => stop.trigger === "repair_rounds_exhausted"
-        ? `Review repair stopped for ${row.action_key}: the repair loop cannot run another round (round ${repair.round}, ${bounded(repair.role)} review). The candidate stays preserved and nothing integrates. The Action's card on /todo and its escalation entry name the exact reason.`
-        : `Review repair gated for ${row.action_key}: a gate stopped the repair loop (round ${repair.round}, ${bounded(repair.role)} review). The candidate stays preserved and nothing integrates. The Action's card on /todo and its escalation entry name the exact reason.`,
+      detail: () => {
+        const todoKey = `escalation:${row.kind}:${row.action_key}`;
+        const what = stop.trigger === "repair_rounds_exhausted"
+          ? `Review repair stopped for ${row.action_key}: the repair loop cannot run another round`
+          : `Review repair gated for ${row.action_key}: a gate stopped the repair loop`;
+        return `${what} (round ${repair.round}, ${bounded(repair.role)} review). The candidate stays preserved and nothing integrates. ` +
+          `Open /todo item ${todoKey}: it names the reason and the step. This notice clears when that item does.`;
+      },
       now
     });
   }
@@ -627,19 +639,35 @@ export function raiseResumeNoProgress(ctx: AlertContext, input: { actionKey: str
     trigger: "resume_no_progress",
     detail: () =>
       `A resumed Session (${bounded(input.sessionId)}) for ${input.actionKey} exited incomplete without changing its candidate. ` +
-      `Notice only, nothing to press: the existing repair budget (${max} attempts) alone stops further resumes, and its own blocker is raised when it is spent.`,
+      `Notice only, nothing to press now: the existing repair budget (${max} attempts) alone stops further resumes and then raises its own blocker with its remedy. ` +
+      `This notice clears when the budget is reset or the Action finishes.`,
     now: ctx.now
   });
 }
 
-/** Ends the notice once the Action has no recorded repair attempts left: an operator reset, or a Session that made progress (which resets them). */
-export function observeResumeNoProgressBudget(ctx: AlertContext): void {
+/**
+ * Ends the notice once the Action has no recorded repair attempts left (an
+ * operator reset, or a Session that made progress, which resets them), or the
+ * Action is done or gone from its Project's Plans. Attempt rows outlive their
+ * Actions, so the Plan is read too; unreadable documents leave the notice open.
+ * An Action that merely leaves the production scope is not detected here.
+ */
+export function observeResumeNoProgressBudget(ctx: AlertContext, repoRoot: string): void {
   const open = ctx.db
     .prepare("SELECT id, action_key FROM production_red_alerts WHERE project_slug = ? AND trigger = 'resume_no_progress' AND status = 'open'")
     .all(ctx.projectSlug) as Array<{ id: string; action_key: string }>;
+  if (open.length === 0) return;
+  let docs: ReturnType<typeof discoverDocs>["docs"] | null;
+  try { docs = discoverDocs(repoRoot).docs; } catch { docs = null; }
   for (const row of open) {
     const attempts = ctx.db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get(row.action_key) as { attempts: number } | undefined;
-    if (!attempts || attempts.attempts < 1) {
+    let finished = false;
+    if (docs) {
+      const actionId = row.action_key.slice(row.action_key.indexOf("/") + 1);
+      const statuses = docs.flatMap((doc) => doc.type === "plan" && doc.project === ctx.projectSlug ? doc.actions.filter((action) => action.id === actionId).map((action) => action.status) : []);
+      finished = statuses.every((status) => status === "done");
+    }
+    if (!attempts || attempts.attempts < 1 || finished) {
       ctx.db.prepare("UPDATE production_red_alerts SET status = 'cleared', cleared_at = ? WHERE id = ?").run(ctx.now.toISOString(), row.id);
     }
   }
