@@ -71,7 +71,7 @@ All local, at no cost, on the operator's MacBook Air M4 with 32 GB, under uncont
 | Older or smaller models on the same messages | 78 to 83% | probe 3 |
 | Hermes 3 8B and Qwen3.5-9B on the same unseen messages | Hermes 66% terse and 81% JSON, about 10 s; Qwen3.5-9B 81% terse, about 7 s. Neither came close to the 27B | [results](../design/relay/probes/routing-3-results-bakeoff.json) |
 | Terse output against JSON with the 27B | Same accuracy on unseen messages, faster by a margin that varied | probe 3 |
-| Malformed model output across routing runs | 2 of about 700, so grammars alone won't fix routing | raw results in probe 3 |
+| Malformed model output across routing runs | 9 of about 1,000, 7 of them from Hermes 3 in terse format, so grammars alone won't fix routing for most models | raw results in probe 3 |
 | Ask's intake today on 60 messages | About 0.2 ms, 58 low confidence | probe 3 |
 | Rough rule prototype on unseen messages | Decided 46%, 81% of those right, and it lowered the 27B's accuracy | probe 3 |
 | Rules plus a three-option menu | About 79% resolved instantly or in one tap; optimistic, not truly held out | `menu` test, below |
@@ -155,7 +155,8 @@ a model could suggest options for that case, once the scorecard shows that.
 - **Keep prompts short, cache their start, and keep the model loaded.** Caching cut first-word time from 3.6 s to
   0.77 s where measured, and loading took about 2 to 6 s.
 - **Tune before comparing.** Pick output format per model: terse suited the 27B and JSON suited smaller ones. A grammar
-  is a cheap safeguard, but it won't fix wrong choices, since only 2 of about 700 outputs were malformed.
+  is a cheap safeguard and would have helped Hermes 3 in terse format, but it won't fix wrong choices, which were
+  nearly all of the errors.
 - **Don't trust headline numbers.** Save real messages from use, and replace the test sets with them.
 - **Memory is the biggest risk:** free memory fell to about 11% during runs on this shared 32 GB laptop.
 - **The next bake-off should score the companion's real jobs,** which are extraction, conversation, rewording and
