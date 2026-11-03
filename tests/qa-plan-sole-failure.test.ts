@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import path from "node:path";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { createReviewItem } from "../src/db/repositories.js";
 import {
@@ -28,6 +28,16 @@ import { git, LINE_A, Rehearsal, type RehearsalOptions } from "./helpers/rehears
  * reviewer model are stubbed. Shapes are classified by the recovery-signal
  * classifier (src/production/recoverySignals.ts).
  */
+// `consumedCompletionDrafts` can be made to throw, to prove the waiver fails closed.
+const consumed = vi.hoisted(() => ({ fail: false }));
+vi.mock("../src/production/workerMerge.js", async (importOriginal) => {
+  const original = await importOriginal<typeof import("../src/production/workerMerge.js")>();
+  return { ...original, consumedCompletionDrafts: (...args: Parameters<typeof original.consumedCompletionDrafts>) => {
+    if (consumed.fail) throw new Error("git failed");
+    return original.consumedCompletionDrafts(...args);
+  } };
+});
+
 const rehearsals: Rehearsal[] = [];
 afterEach(() => {
   for (const rehearsal of rehearsals.splice(0)) rehearsal.dispose();
@@ -441,6 +451,49 @@ describe("seeded QA verdict shapes", () => {
     expect(judge(on("src/extra.ts"))).toBeNull();
   });
 
+  describe("a host-settled head with a consumed completion draft (the live shape)", () => {
+    const repo = () => shared.rehearsal.repo;
+    /** A commit on `parent` that adds and removes the given files, built with plumbing (no checkout). */
+    const commit = (parent: string, add: Record<string, string>, remove: string[] = []) => {
+      const index = path.join(shared.rehearsal.root, `index-${Math.random().toString(36).slice(2)}`);
+      const env = { ...process.env, GIT_INDEX_FILE: index };
+      const run = (args: string[], input?: string) => execFileSync("git", args, { cwd: repo(), env, input, encoding: "utf8" }).trim();
+      run(["read-tree", parent]);
+      for (const [file, content] of Object.entries(add)) run(["update-index", "--add", "--cacheinfo", `100644,${run(["hash-object", "-w", "--stdin"], content)},${file}`]);
+      for (const file of remove) run(["update-index", "--force-remove", file]);
+      return run(["-c", "user.name=T", "-c", "user.email=t@example.test", "commit-tree", run(["write-tree"]), "-p", parent, "-m", "x"]);
+    };
+    const draft = (revision: string) => `agent_ask: v1\nrequest_id: consumed-draft\ncandidate_revision: ${revision}\n`;
+    /** pre-settlement commit + the candidate's draft, then a settlement commit that archives it: `D draft`, `A archive/draft`. */
+    const settled = () => {
+      const agent = execFileSync("git", ["rev-parse", `${shared.head}^1`], { cwd: repo(), encoding: "utf8" }).trim();
+      const withDraft = commit(agent, { ".arcadia/asks/agent-ask-consumed.yaml": draft("aaaaaaa") });
+      return commit(withDraft, { ".arcadia/asks/archive/agent-ask-consumed.yaml": draft("bbbbbbb") }, [".arcadia/asks/agent-ask-consumed.yaml"]);
+    };
+    const judge = (head: string) => {
+      seed({ attemptHead: head, context: { candidate: { headSha: head, url: "https://github.com/pmark/rehearsal/pull/7" } } });
+      try {
+        return withDatabase(shared.rehearsal.workspace, (db) => {
+          const session = getSession(db, shared.a.id)!;
+          const readiness = independentVerdictReadiness(db, { session, repoRoot: repo() });
+          if (!readiness.ready) throw new Error("not ready");
+          return qaPlanSoleFailure(db, session, { requirement: readiness.requirement, binding: { ...readiness.binding, targetHead: head } }, head, repo());
+        });
+      } finally { unseed(); }
+    };
+
+    it("waives it: the draft's deletion is the candidate's own consumed draft", () => {
+      expect(judge(settled())).not.toBeNull();
+    });
+
+    it("fails closed when reading the consumed drafts throws", () => {
+      const head = settled();
+      consumed.fail = true;
+      try { expect(judge(head)).toBeNull(); } finally { consumed.fail = false; }
+      expect(judge(head)).not.toBeNull();
+    });
+  });
+
   it("files against the repository named by the pull request URL, marks the Issue, and adopts an Issue that already carries the marker", () => {
     seed({});
     askAt(minutes(0));
@@ -564,6 +617,11 @@ describe("seeded QA verdict shapes", () => {
       [`unnumbered "${text.split("\n")[0]}" beside Step 4`, { findings: [planFinding({ evidence: `Step 4 is wrong. ${text}` })] }]
     ]),
     // R3: the bare "Step N" title never mentions the plan
+    // A1: wording that stretches one named step over the rest of the plan
+    ...[
+      "Step 4 and the following steps cannot run.", "Step 4 onward cannot run.", "Step 4 through the end cannot run.", "Step 4 fails, as do later steps.",
+      "Step 4 is representative; the others share the problem.", "Only step 4 is runnable.", "Other than step 4 the procedure does not run."
+    ].map((text): [string, Seed] => [`one step stretched over the rest: "${text}"`, { findings: [planFinding({ evidence: text })] }]),
     ["a bare Step N title", { findings: [planFinding({ title: "Step 3: the guard is wrong", evidence: "Step 4 is wrong." })] }],
     ["a bare Step N title that makes no other claim", { findings: [planFinding({ title: "Step 4: the output is vague", evidence: "Step 4 is vague." })] }],
     ["a bare Step N title about the guard", { findings: [planFinding({ title: "Step 4: the guard accepts a stale head", evidence: "Step 4 is wrong." })] }],

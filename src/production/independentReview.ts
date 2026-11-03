@@ -435,6 +435,7 @@ function namedSteps(text: string): { steps: Set<string>; criteria: Set<string>; 
   for (const match of text.matchAll(/^\s*(\d+)[.)]\s/gm)) steps.add(String(Number(match[1])));
   for (const match of text.matchAll(new RegExp(String.raw`\bcriteri(?:on|a)\s*#?\s*(${list})`, "gi"))) for (const n of numbersIn(match[1])) criteria.add(n);
   const wholePlan = /\b(?:every|each|all|none|any|both|neither|several|multiple|most|many|few|some|numerous|whole|entire)\b[^.\n]{0,30}\b(?:steps?|procedure|plan|inspections?|instructions?)\b/i.test(text)
+    || /\b(?:onward|following|later|remaining|subsequent|others|the rest|through the end|only step|other than)\b/i.test(text)
     || (text.match(/^\s*(?:[-*\u2022]|[a-z][.)])\s/gim) ?? []).length >= 2;
   return { steps, criteria, wholePlan };
 }
