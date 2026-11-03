@@ -566,6 +566,9 @@ describe("seeded QA verdict shapes", () => {
       context: { summary: "The implementation and supplied validation support the marker change, but the operator QA procedure incorrectly claims static source inspection proves that the executable check passes." },
       residualRisks: ["The operator procedure should be corrected before relying on it as a criterion-by-criterion audit record."]
     }],
+    ["a summary describing an operator following the procedure", { context: { summary: "An operator following the supplied procedure would stop at Step 4." } }],
+    ["a residual risk starting with Following", { residualRisks: ["Following the operator plan would inspect Step 4."] }],
+    ["a summary using later and other than without steps", { context: { summary: "Step 4 is wrong and should be fixed later. Other than the plan, the change is fine." } }],
     ["the same step named in the summary and a residual risk", { context: { summary: "Step 4 of the operator QA plan is wrong." }, residualRisks: ["Step 4 should be rewritten."] }],
     ["a residual risk that mentions a bug fix", { residualRisks: ["The bug fix itself is covered by a test."] }],
     ["a summary that mentions a bug fix", { context: { summary: "Step 4 is wrong; the bug fix itself is described correctly." } }],
@@ -656,6 +659,14 @@ describe("seeded QA verdict shapes", () => {
     ["the summary says the code contains a defect", { context: { summary: "The code contains a defect; Step 4 is wrong." } }],
     ["a residual risk says there is a bug in the patch", { residualRisks: ["There is a bug in the patch."] }],
     ["a residual risk says the implementation has a defect", { residualRisks: ["The implementation may have a defect."] }],
+    ["the summary stretches the step over the following steps", { context: { summary: "Step 4 and the following steps cannot run." } }],
+    ["the summary stretches the step over the following two steps", { context: { summary: "Step 4 and the following two steps cannot run." } }],
+    ["a residual risk says the others share the problem", { residualRisks: ["Step 4 is representative; the others share the problem."] }],
+    // A1 again, in the plan check's own evidence (strict)
+    ...[
+      "Step 4 and the following steps cannot run.", "Step 4 onward cannot run.", "Step 4 through the end cannot run.", "Step 4 fails, as do later steps.",
+      "Step 4 is representative; the others share the problem.", "Only step 4 is runnable.", "Other than step 4 the procedure does not run."
+    ].map((text): [string, Seed] => [`one step stretched over the rest in the plan evidence: "${text}"`, { checks: [{ ...PLAN_FAIL, evidence: text }, ...OTHERS] }]),
     // A1: wording that stretches one named step over the rest of the plan
     ...[
       "Step 4 and the following steps cannot run.", "Step 4 onward cannot run.", "Step 4 through the end cannot run.", "Step 4 fails, as do later steps.",

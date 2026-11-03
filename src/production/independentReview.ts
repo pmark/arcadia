@@ -435,7 +435,7 @@ const numbersIn = (text: string) => (text.toLowerCase().match(new RegExp(NUM, "g
  * Step #6", "step four", "third and fifth steps", "1-5", and numbered list
  * items. Criteria are counted separately ("acceptance criteria 2 and 4").
  */
-function namedSteps(text: string): { steps: Set<string>; criteria: Set<string>; wholePlan: boolean } {
+function namedSteps(text: string, strict = true): { steps: Set<string>; criteria: Set<string>; wholePlan: boolean } {
   const steps = new Set<string>();
   const criteria = new Set<string>();
   const list = String.raw`${NUM}(?:${SEP}(?:steps?\s*)?#?\s*${NUM})*`;
@@ -444,7 +444,11 @@ function namedSteps(text: string): { steps: Set<string>; criteria: Set<string>; 
   for (const match of text.matchAll(/^\s*(\d+)[.)]\s/gm)) steps.add(String(Number(match[1])));
   for (const match of text.matchAll(new RegExp(String.raw`\bcriteri(?:on|a)\s*#?\s*(${list})`, "gi"))) for (const n of numbersIn(match[1])) criteria.add(n);
   const wholePlan = /\b(?:every|each|all|none|any|both|neither|several|multiple|most|many|few|some|numerous|whole|entire)\b[^.\n]{0,30}\b(?:steps?|procedure|plan|inspections?|instructions?)\b/i.test(text)
-    || /\b(?:onward|following|later|remaining|subsequent|others|the rest|through the end|only step|other than)\b/i.test(text)
+    || (strict
+      ? /\b(?:onward|following|later|remaining|subsequent|others|the rest|through the end|only step|other than)\b/i
+      // A summary or residual risk describes the plan in running prose ("an operator following the procedure"):
+      // only the explicit forms that stretch a step over the rest of the plan refuse there.
+      : /\b(?:(?:following|later|remaining|subsequent|other)\s+(?:\w+\s+)?(?:steps?|inspections?)|onward|through the end|only step|other than steps?|the rest|the others)\b/i).test(text)
     || (text.match(/^\s*(?:[-*\u2022]|[a-z][.)])\s/gim) ?? []).length >= 2;
   return { steps, criteria, wholePlan };
 }
@@ -503,8 +507,9 @@ export function judgeQaPlanReport(raw: unknown, input: { head: string; actionKey
   // "At most one numbered step": across the plan evidence, the finding, the summary and the residual risks.
   const steps = new Set<string>();
   const criteria = new Set<string>();
-  for (const text of [plan.evidence, summary, ...risks, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])]) {
-    const named = namedSteps(text);
+  const strictTexts = [plan.evidence, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])];
+  for (const text of [...strictTexts, summary, ...risks]) {
+    const named = namedSteps(text, strictTexts.includes(text));
     if (named.wholePlan) return refuse("the text speaks of all or every plan step");
     for (const step of named.steps) steps.add(step);
     for (const criterion of named.criteria) criteria.add(criterion);
