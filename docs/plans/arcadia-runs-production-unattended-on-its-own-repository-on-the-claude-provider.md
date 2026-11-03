@@ -533,11 +533,11 @@ actions:
     references: []
   - id: qa-plan-sole-failure-spends-no-repair
     title: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
+    next_action: Completed via Agent Ask complete-qa-plan-sole-failure-spends-no-repair-20261103; no further action.
     expected_artifact: Evidence satisfying Agent Ask qa-plan-sole-failure-spends-no-repair
     clarification: clarified
     confidence: high
@@ -579,7 +579,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: qa-plan-sole-failure-spends-no-repair
+current_action: red-alerts-for-repair-stops-and-no-progress
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
