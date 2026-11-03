@@ -118,7 +118,10 @@ export const RED_ALERT_REMEDIES: Readonly<Record<string, BlockerRemedy>> = Objec
       worker("admission_refused_consecutive", "Admissions were refused for repeated ticks; the refusal reason is on /production."),
       worker("session_stalled", "A Session stopped producing output."),
       worker("reconcile_failed", "Reconciling a Session's result failed."),
-      worker("repair_budget_repeat", "The same Action exhausted its repair budget again.")
+      worker("repair_budget_repeat", "The same Action exhausted its repair budget again."),
+      link("repair_rounds_exhausted", "Open the Action's card", "The review repair loop stopped for this Action and its candidate stays preserved. This alert is a notice only and changes nothing; the Action's card on /todo (its `review_repair_rounds_exhausted` entry) names the exact reason and the step. The alert clears when that entry does.", "todo", null, "operator-step"),
+      link("repair_gated", "Open the Action's card", "A gate stopped the review repair loop for this Action and its candidate stays preserved. This alert is a notice only and changes nothing; the Action's card on /todo (its `review_repair_gated` entry) names the exact reason and the step. The alert clears when that entry does.", "todo", null, "operator-step"),
+      link("resume_no_progress", "Nothing to press", "A resumed Session exited incomplete without changing its candidate. This notice changes nothing: the existing repair budget alone stops further resumes, and a spent budget raises its own blocker with its own remedy. The notice clears when the budget is reset (`arcadia production reset-repair-budget`) or the Action finishes.", "todo", null, "worker-resolves")
     ].map((entry) => [entry.kind, entry] as const)
   )
 );

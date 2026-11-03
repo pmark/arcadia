@@ -40,6 +40,15 @@ describe("blocker-kind remedy registry (#1284)", () => {
     expect(RED_ALERT_TRIGGERS.filter((trigger) => !RED_ALERT_REMEDIES[trigger])).toEqual([]);
   });
 
+  it("registers a notice-only remedy for each Decision 0169 alert, none of which clears or grants anything", () => {
+    for (const trigger of ["repair_rounds_exhausted", "repair_gated", "resume_no_progress"]) {
+      expect(RED_ALERT_TRIGGERS).toContain(trigger);
+      expect(blockerRemedyFor(trigger)).toMatchObject({ kind: trigger, oneClick: false, surface: "todo" });
+      expect(blockerRemedyFor(trigger)?.remedyActionId).not.toBe("reset-repair-budget");
+    }
+    expect(blockerRemedyFor("resume_no_progress")?.remedyActionId).toBe("worker-resolves");
+  });
+
   it("registers the four named platform stops, with the one-click clears pinned to the reset semantics", () => {
     for (const kind of [ENVIRONMENT_WALL_ESCALATION_KIND, BUDGET_EXHAUSTED_ESCALATION_KIND]) {
       expect(blockerRemedyFor(kind)).toMatchObject({ remedyActionId: "reset-repair-budget", surface: "todo", oneClick: true });
