@@ -4,7 +4,7 @@ type: decision
 id: "0170"
 slug: decide-how-long-unattended-production-stays-at-concurrency-one-before-the
 project: arcadia
-status: open
+status: approved
 question: Decide how long unattended production stays at concurrency one before the operator decides again, and whether supervised parallel development continues meanwhile.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-11-03
+answer: "A. Time-boxed serial: up to three attempts, then decide again"
+decided: 2026-11-03
 ---
 
 # Decision 0170: Decide how long unattended production stays at concurrency one before the operator decides again, and whether supervised parallel development continues meanwhile.
