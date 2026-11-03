@@ -27,6 +27,7 @@ import { reserveAgentWorktree } from "../src/sessions/index.js";
 import type { OperatorQaPlanSource } from "../src/sessions/operatorQaPlan.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { stackedBaseRefusal } from "../src/production/sessionHandoff.js";
+import { syncBaseWithOwnPointerCommits } from "../src/git/pointerReconcile.js";
 import type { AgentSession } from "../src/sessions/index.js";
 
 const roots: string[] = [];
@@ -250,6 +251,19 @@ describe("selectPullRequestBase over a pointer-only local base", () => {
     expect(selection.ok && selection.base.reason).toContain("only governed pointer moves");
   });
 
+  it("opens on the Project base when the local base is ahead with no tree difference", () => {
+    const f = pointerGap(movePointer);
+    writeFileSync(path.join(f.repo, "PROJECT.md"), "---\nactive_plan: p\ncurrent_action: first\n---\n# Project\n");
+    writeFileSync(path.join(f.repo, "docs", "plans", "p.md"), "---\nslug: p\ncurrent_action: first\n---\n# Plan\n");
+    g(f.repo, ["add", "-A"]);
+    g(f.repo, ["commit", "-q", "-m", "chore: point back at first"]);
+    const base = g(f.repo, ["rev-parse", "HEAD"]);
+    expect(g(f.repo, ["diff", "--name-only", f.m0, base])).toBe("");
+    const selection = selectPullRequestBase(null, { repositoryPath: f.repo, baseBranch: "main", baseRevision: base, branch: f.branch }, systemPreservationRemote);
+    expect(selection).toMatchObject({ ok: true, base: { kind: "project", branch: "main", tip: f.m0, diffBase: f.m0 } });
+    expect(selection.ok && selection.base.reason).toContain("no tree change");
+  });
+
   it("still refuses a gap that changes anything besides current_action in those records", () => {
     const f = pointerGap((repo) => {
       movePointer(repo);
@@ -296,6 +310,69 @@ describe("systemPreservationRemote.listBranchTips", () => {
     const f = serial();
     expect(systemPreservationRemote.listBranchTips!({ repositoryPath: f.repo }).sort((a, b) => a.branch.localeCompare(b.branch)))
       .toEqual([tip(f.previous, f.previousHead), tip("main", f.m0)]);
+  });
+});
+
+describe("the next Action after a merge and a pointer reconcile", () => {
+  it("gets its PR on the Project base, showing only its own change, when the reconcile left no tree difference", () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-reconcile-chain-")));
+    roots.push(root);
+    const origin = path.join(root, "origin.git");
+    const repo = path.join(root, "repo");
+    const other = path.join(root, "other");
+    const docs = (current: string, cwd: string) => {
+      writeFileSync(path.join(cwd, "PROJECT.md"), `---\nslug: fixture\nactive_plan: plan-x\ncurrent_action: ${current}\n---\n\n# Fixture\n`);
+      writeFileSync(path.join(cwd, "docs", "plans", "plan-x.md"), `---\nslug: plan-x\nactions:\n  - id: a1\n    status: open\n  - id: a2\n    status: open\ncurrent_action: ${current}\n---\n\n# Plan\n`);
+    };
+    g(root, ["init", "-q", "--bare", "-b", "main", origin]);
+    g(root, ["init", "-q", "-b", "main", repo]);
+    execFileSync("mkdir", ["-p", path.join(repo, "docs", "plans")]);
+    docs("a1", repo);
+    g(repo, ["add", "-A"]);
+    g(repo, ["commit", "-q", "-m", "genesis"]);
+    g(repo, ["remote", "add", "origin", origin]);
+    g(repo, ["push", "-q", "origin", "main"]);
+    g(root, ["clone", "-q", origin, other]);
+
+    // The scheduler's pointer commit stays local while the worker merges the
+    // previous Action's PR, which carries the same pointer move, on the remote.
+    docs("a2", repo);
+    g(repo, ["add", "-A"]);
+    g(repo, ["commit", "-q", "-m", "chore(arcadia): point at a2\n\nWritten by `arcadia advance queue make-next --apply` (qpointer_fixture)."]);
+    docs("a2", other);
+    writeFileSync(path.join(other, "PREVIOUS.md"), "previous Action\n");
+    g(other, ["add", "-A"]);
+    g(other, ["commit", "-q", "-m", "Land the previous Action (#7)"]);
+    g(other, ["push", "-q", "origin", "main"]);
+    const merged = g(other, ["rev-parse", "HEAD"]);
+
+    const synced = syncBaseWithOwnPointerCommits({ repoRoot: repo, baseBranch: "main", now: NOW });
+    expect(synced.outcome).toBe("reconciled");
+    const baseRevision = g(repo, ["rev-parse", "HEAD"]);
+    expect(baseRevision).not.toBe(merged);
+    expect(g(repo, ["merge-base", "--is-ancestor", merged, baseRevision])).toBe("");
+    expect(g(repo, ["diff", "--name-only", merged, baseRevision])).toBe("");
+
+    const branch = "claude/next-20261006T020000000Z";
+    const candidate = path.join(root, "candidate");
+    g(repo, ["worktree", "add", "-q", "-b", branch, candidate, "main"]);
+    writeFileSync(path.join(candidate, "NEXT.md"), "this Action\n");
+    const workspace = path.join(root, "ws");
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => reserveAgentWorktree(db, { repositoryPath: repo, worktreePath: candidate, branch, now: NOW }));
+
+    const remote = new Remote();
+    const f = { repo, candidate, branch, previousHead: baseRevision } as Serial;
+    const receipt = withDatabase(workspace, (db) => preserveCandidate(db, request(f), { remote }));
+
+    expect(receipt).toMatchObject({ preservationState: "IN PR", baseBranch: "main", baseRevision });
+    expect(receipt.prBase).toMatchObject({ kind: "project", branch: "main", tip: merged, diffBase: merged });
+    expect(remote.pushes).toEqual([branch]);
+    expect(remote.created).toHaveLength(1);
+    expect(remote.created[0].baseBranch).toBe("main");
+    expect(remote.created[0].body).toContain("exactly 1 changed file:\n  - `A` `NEXT.md`");
+    // The worker never pushes the base.
+    expect(g(origin, ["rev-parse", "refs/heads/main"])).toBe(merged);
   });
 });
 

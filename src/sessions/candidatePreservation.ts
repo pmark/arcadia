@@ -914,7 +914,7 @@ function selectPullRequestBaseFromTips(
   if (isAncestor(repositoryPath, remoteBase, baseRevision) && isPointerOnlyGap(repositoryPath, remoteBase, baseRevision)) {
     return { ok: true, base: { kind: "project", branch: baseBranch, tip: remoteBase, diffBase: remoteBase,
       reason: `The local ${baseBranch} is ahead of the remote ${baseBranch} (${remoteBase.slice(0, 12)}) at ${short} by only governed pointer moves `
-        + "(`current_action:` lines in PROJECT.md and Plans), which show no earlier Action's change, so the PR opens on the Project base and carries them." } };
+        + "(`current_action:` lines in PROJECT.md and Plans) or no tree change at all, which show no earlier Action's change, so the PR opens on the Project base and carries them." } };
   }
   const local = (tryGit(repositoryPath, ["for-each-ref", "--points-at", baseRevision, "--format=%(refname:short)", "refs/heads"]) ?? "")
     .split("\n").map((line) => line.trim()).filter((name) => name && name !== baseBranch && name !== branch && SAFE_TASK_BRANCH.test(name)).sort();
@@ -940,8 +940,8 @@ const POINTER_LINE = /^[+-]current_action: \S+\s*$/;
 
 /**
  * Whether `from..to` only modifies `current_action:` lines in PROJECT.md and
- * Plans: the scheduler's governed pointer move, which the worker commits on
- * the local base and never pushes. Unreadable means no.
+ * Plans (the scheduler's governed pointer move, which the worker commits on
+ * the local base and never pushes) or changes no file at all. Unreadable means no.
  */
 function isPointerOnlyGap(repositoryPath: string, from: string, to: string): boolean {
   const summary = tryGit(repositoryPath, ["diff", "--no-renames", "--summary", from, to]);
@@ -949,7 +949,8 @@ function isPointerOnlyGap(repositoryPath: string, from: string, to: string): boo
   const status = tryGit(repositoryPath, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-status", from, to]);
   if (status === null) return false;
   const entries = status.split("\n").map((line) => line.trim()).filter(Boolean);
-  if (entries.length === 0 || entries.some((line) => !/^M\t/.test(line) || !POINTER_RECORD_PATH.test(line.slice(2)))) return false;
+  if (entries.length === 0) return true; // no tree difference, as a pointer reconcile can leave
+  if (entries.some((line) => !/^M\t/.test(line) || !POINTER_RECORD_PATH.test(line.slice(2)))) return false;
   // A binary change has no text lines to inspect; `--numstat` reports it as "-".
   const numstat = tryGit(repositoryPath, ["diff", "--no-renames", "--numstat", from, to]);
   if (numstat === null || numstat.split("\n").filter(Boolean).some((line) => !/^\d+\t\d+\t/.test(line))) return false;
