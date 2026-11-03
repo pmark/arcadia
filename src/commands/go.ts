@@ -2,9 +2,9 @@ import { requirementIdentity } from "../sessions/roleLineage.js";
 import type { NextCommandData } from "./next.js";
 import { recordEnrollmentClaim } from "../sessions/enrollment.js";
 import { assertLocalBrowserAuditReady, localBrowserAuditBlocker } from "../sessions/localBrowserAuditReadiness.js";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -21,6 +21,17 @@ import { resolveOperatorGate } from "../ask/operatorGate.js";
 import { resolvePlanActivation } from "../dispatch/planActivation.js";
 import { loadActionOrder } from "../dispatch/order.js";
 import { activateNextPlan, scopeHoldOnActivation, type ActivateNextPlanResult, type ScopeActivationHold } from "../dispatch/planActivationApply.js";
+import {
+  FULL_GIT_OID,
+  assertReconcilableHistory,
+  baseReconciliationCommitMessage,
+  countRevisionRange,
+  createBaseReconciliationCommit,
+  isRecognizedProtectedReconciliation,
+  verifyReconciliationCommit,
+  writeCleanBaseMergeTree
+} from "../git/baseReconcile.js";
+import { isRecognizedResolvedReconciliation } from "../git/pointerReconcile.js";
 import { SCOPE_HELD_CODE } from "../production/policy.js";
 import {
   SAFE_TASK_BRANCH,
@@ -1606,8 +1617,6 @@ function deleteVerifiedSafeSourceBranch(cwd: string, baseBranch: string, sourceB
  * a true divergence, admit only recognized Arcadia-generated governance
  * commits and publish one conflict-free, two-parent host-controller commit.
  */
-const FULL_GIT_OID = /^[0-9a-f]{40}(?:[0-9a-f]{24})?$/;
-
 function emptyBaseRemoteSync(reason: string): BaseRemoteSync {
   return {
     attempted: false,
@@ -1962,7 +1971,7 @@ function assertTrackingRefValue(cwd: string, ref: string, expected: string | nul
   }
 }
 
-function inspectGovernedBaseDivergence(input: {
+export function inspectGovernedBaseDivergence(input: {
   cwd: string;
   baseBranch: string;
   upstream: string;
@@ -1970,45 +1979,7 @@ function inspectGovernedBaseDivergence(input: {
   remoteHead: string;
 }): { mergeBase: string; localCommits: string[]; remoteCommits: number } {
   const { cwd, baseBranch, upstream, localHead, remoteHead } = input;
-  if (git(cwd, ["rev-parse", "--is-shallow-repository"]).trim() === "true") {
-    unsupportedBaseHistory("Protected Go refuses to reconcile a shallow base history.", input);
-  }
-  if (process.env.GIT_REPLACE_REF_BASE) {
-    unsupportedBaseHistory("Protected Go refuses history with a custom replacement-ref namespace.", {
-      ...input,
-      replacementRefBase: process.env.GIT_REPLACE_REF_BASE
-    });
-  }
-  const replacements = tryGit(cwd, ["for-each-ref", "--format=%(refname)", "refs/replace"]);
-  if (replacements) {
-    unsupportedBaseHistory("Protected Go refuses base history with replacement refs.", {
-      ...input,
-      replacements: replacements.split("\n").filter(Boolean)
-    });
-  }
-  const graftPathOutput = git(cwd, ["rev-parse", "--git-path", "info/grafts"]).trim();
-  const graftPath = path.isAbsolute(graftPathOutput) ? graftPathOutput : path.resolve(cwd, graftPathOutput);
-  if (existsSync(graftPath) && readFileSync(graftPath, "utf8").trim()) {
-    unsupportedBaseHistory("Protected Go refuses base history with legacy grafts.", {
-      ...input,
-      graftPath
-    });
-  }
-  const customMergeDrivers = tryGit(cwd, ["config", "--get-regexp", "^merge\\..*\\.driver$"]);
-  if (customMergeDrivers) {
-    unsupportedBaseHistory("Protected Go refuses to run repository-configured merge drivers on the host.", {
-      ...input,
-      customMergeDrivers: customMergeDrivers.split("\n").filter(Boolean)
-    });
-  }
-  const mergeBaseOutput = tryGit(cwd, ["merge-base", "--all", localHead, remoteHead]);
-  const mergeBases = mergeBaseOutput?.split("\n").map(value => value.trim()).filter(Boolean) ?? [];
-  if (mergeBases.length !== 1 || !FULL_GIT_OID.test(mergeBases[0])) {
-    unsupportedBaseHistory("Protected Go requires exactly one complete shared merge base.", {
-      ...input,
-      mergeBases
-    });
-  }
+  const mergeBase = assertReconcilableHistory(cwd, { ...input }, unsupportedBaseHistory);
 
   const localCommits = git(cwd, ["rev-list", "--reverse", remoteHead + ".." + localHead])
     .split("\n").map(value => value.trim()).filter(Boolean);
@@ -2022,13 +1993,13 @@ function inspectGovernedBaseDivergence(input: {
     });
   }
   return {
-    mergeBase: mergeBases[0],
+    mergeBase,
     localCommits,
     remoteCommits: countRevisionRange(cwd, localHead + ".." + remoteHead)
   };
 }
 
-function isRecognizedGovernanceCommit(
+export function isRecognizedGovernanceCommit(
   cwd: string,
   commit: string,
   context: { baseBranch: string; upstream: string; remoteHead: string }
@@ -2037,7 +2008,10 @@ function isRecognizedGovernanceCommit(
   const message = git(cwd, ["show", "-s", "--format=%B", commit]);
   const subject = message.split(/\r?\n/, 1)[0];
   if (subject === "chore(arcadia): reconcile " + context.baseBranch + " with " + context.upstream) {
-    return isRecognizedProtectedReconciliation(cwd, commit, parents, message, context);
+    // Also a conflict-resolved reconcile the worker wrote (never pushed): recomputed from its parents, byte for byte.
+    // Go itself still never resolves a conflict.
+    return isRecognizedProtectedReconciliation(cwd, commit, parents, message, context)
+      || isRecognizedResolvedReconciliation(cwd, commit, parents, message, context);
   }
   if (parents.length !== 1) return false;
   const paths = git(cwd, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit])
@@ -2055,154 +2029,11 @@ function isRecognizedGovernanceCommit(
   );
 }
 
-function isRecognizedProtectedReconciliation(
-  cwd: string,
-  commit: string,
-  parents: string[],
-  message: string,
-  context: { baseBranch: string; upstream: string; remoteHead: string }
-): boolean {
-  if (parents.length !== 2 || !isAncestor(cwd, parents[1], context.remoteHead)) return false;
-  const mergeBases = tryGit(cwd, ["merge-base", "--all", parents[0], parents[1]])
-    ?.split("\n").map(value => value.trim()).filter(Boolean) ?? [];
-  if (mergeBases.length !== 1 || !FULL_GIT_OID.test(mergeBases[0])) return false;
-  const mergeAttempt = attemptBaseMergeTree(cwd, parents[0], parents[1]);
-  if (mergeAttempt.status !== 0 || mergeAttempt.lines.length !== 1 ||
-      !FULL_GIT_OID.test(mergeAttempt.lines[0])) return false;
-  const actualTree = tryGit(cwd, ["show", "-s", "--format=%T", commit]);
-  if (actualTree !== mergeAttempt.lines[0]) return false;
-  const expectedMessage = baseReconciliationCommitMessage({
-    baseBranch: context.baseBranch,
-    upstream: context.upstream,
-    localHead: parents[0],
-    remoteHead: parents[1],
-    mergeBase: mergeBases[0],
-    localCommits: countRevisionRange(cwd, parents[1] + ".." + parents[0]),
-    remoteCommits: countRevisionRange(cwd, parents[0] + ".." + parents[1])
-  });
-  return message.trimEnd() === expectedMessage;
-}
-
 function isGovernancePath(relativePath: string): boolean {
   return relativePath === "PROJECT.md" ||
     relativePath === "MISSION_LOG.md" ||
     /^docs\/(?:plans|decisions)\/.+\.md$/.test(relativePath) ||
     /^\.arcadia\/asks\/(?:archive\/)?agent-ask-.+\.ya?ml$/.test(relativePath);
-}
-
-function writeCleanBaseMergeTree(cwd: string, localHead: string, remoteHead: string): string {
-  const result = attemptBaseMergeTree(cwd, localHead, remoteHead);
-  if (result.status === 129 || /unknown option|usage: git merge-tree/i.test(result.stderr)) {
-    throw validationError("The installed Git cannot compute a protected two-commit merge tree.", {
-      localHead,
-      remoteHead,
-      cause: result.stderr || result.error,
-      remedy: "Run the protected controller on a host with Git 2.38 or newer; no base ref or worktree was changed."
-    });
-  }
-  if (result.status !== 0) {
-    throw validationError("The governed local base and fetched remote do not reconcile cleanly; Arcadia left the base ref and worktree unchanged.", {
-      localHead,
-      remoteHead,
-      conflictingPaths: result.lines.slice(1),
-      cause: result.stderr || result.error,
-      remedy: "Record a focused governed repair for the overlap, then request protected Go again."
-    });
-  }
-  if (result.lines.length !== 1 || !FULL_GIT_OID.test(result.lines[0])) {
-    throw validationError("Git did not return one auditable tree for protected base reconciliation.", {
-      localHead,
-      remoteHead,
-      output: result.lines
-    });
-  }
-  return result.lines[0];
-}
-
-function attemptBaseMergeTree(cwd: string, localHead: string, remoteHead: string): {
-  status: number | null;
-  lines: string[];
-  stderr: string;
-  error: string | null;
-} {
-  const result = spawnSync("git", ["merge-tree", "--write-tree", "--name-only", localHead, remoteHead], {
-    cwd,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"]
-  });
-  const lines = result.stdout?.split("\n").map(value => value.trim()).filter(Boolean) ?? [];
-  return {
-    status: result.status,
-    lines,
-    stderr: result.stderr?.trim() ?? "",
-    error: result.error?.message ?? null
-  };
-}
-
-function createBaseReconciliationCommit(input: {
-  cwd: string;
-  tree: string;
-  localHead: string;
-  remoteHead: string;
-  message: string;
-  now: Date;
-}): string {
-  const stamp = input.now.toISOString();
-  let resultHead: string;
-  try {
-    resultHead = execFileSync("git", [
-      "-c", "core.hooksPath=/dev/null",
-      "-c", "commit.gpgSign=false",
-      "commit-tree", input.tree,
-      "-p", input.localHead,
-      "-p", input.remoteHead,
-      "-m", input.message
-    ], {
-      cwd: input.cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        GIT_AUTHOR_NAME: "Arcadia Controller",
-        GIT_AUTHOR_EMAIL: "controller@arcadia.local",
-        GIT_COMMITTER_NAME: "Arcadia Controller",
-        GIT_COMMITTER_EMAIL: "controller@arcadia.local",
-        GIT_AUTHOR_DATE: stamp,
-        GIT_COMMITTER_DATE: stamp
-      }
-    }).trim();
-  } catch (error) {
-    const detail = error as { stderr?: Buffer | string; message?: string };
-    throw validationError("Protected Go could not create the pinned reconciliation commit.", {
-      cause: String(detail.stderr ?? detail.message ?? error).trim()
-    });
-  }
-  if (!FULL_GIT_OID.test(resultHead)) {
-    throw validationError("Git did not return a full object id for the host-controller reconciliation commit.", {
-      resultHead
-    });
-  }
-  return resultHead;
-}
-
-function verifyReconciliationCommit(
-  cwd: string,
-  resultHead: string,
-  expectedTree: string,
-  localHead: string,
-  remoteHead: string
-): void {
-  const parents = git(cwd, ["show", "-s", "--format=%P", resultHead]).trim();
-  const tree = git(cwd, ["show", "-s", "--format=%T", resultHead]).trim();
-  if (parents !== localHead + " " + remoteHead || tree !== expectedTree) {
-    throw validationError("The generated reconciliation commit does not match its pinned parents and tree.", {
-      resultHead,
-      expectedParents: [localHead, remoteHead],
-      actualParents: parents.split(/\s+/).filter(Boolean),
-      expectedTree,
-      actualTree: tree
-    });
-  }
 }
 
 function validateReconciledDispatch(cwd: string, resultHead: string): void {
@@ -2229,28 +2060,6 @@ function validateReconciledDispatch(cwd: string, resultHead: string): void {
     }
     rmSync(scratchRoot, { recursive: true, force: true });
   }
-}
-
-function baseReconciliationCommitMessage(input: {
-  baseBranch: string;
-  upstream: string;
-  localHead: string;
-  remoteHead: string;
-  mergeBase: string;
-  localCommits: number;
-  remoteCommits: number;
-}): string {
-  return [
-    "chore(arcadia): reconcile " + input.baseBranch + " with " + input.upstream,
-    "",
-    "Local-Head: " + input.localHead,
-    "Remote-Head: " + input.remoteHead,
-    "Merge-Base: " + input.mergeBase,
-    "Local-Governance-Commits: " + input.localCommits,
-    "Remote-Commits-Integrated: " + input.remoteCommits,
-    "",
-    "Written by protected Arcadia Go host-controller reconciliation."
-  ].join("\n");
 }
 
 function resolveFullRef(cwd: string, ref: string, label: string): string {
@@ -2287,10 +2096,6 @@ function assertCheckedOutBranch(cwd: string, expectedRef: string, label: string)
       remedy: "Protected Go did not publish the planned result. Retry through the fixed host-controller route."
     });
   }
-}
-
-function countRevisionRange(cwd: string, range: string): number {
-  return Number.parseInt(git(cwd, ["rev-list", "--count", range]).trim(), 10);
 }
 
 function unsupportedBaseHistory(message: string, details: Record<string, unknown>): never {

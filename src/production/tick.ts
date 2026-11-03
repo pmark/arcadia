@@ -17,6 +17,7 @@ import { planStepsForWorkItem } from "../execution/skills.js";
 import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type BoardFactory, type SchedulingPassResult } from "../scheduling/scheduler.js";
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, isAncestor, projectCheckoutFor, resolveBaseBranch, tryGit } from "../git/worktrees.js";
+import { syncBaseWithOwnPointerCommits } from "../git/pointerReconcile.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
@@ -3329,7 +3330,7 @@ export const BASE_NOT_SYNCED_ESCALATION = "base_not_synced";
  */
 function reportBaseSyncStatus(
   db: Database.Database,
-  input: { repoRoot: string; projectSlug: string; baseBranch: string; merged: boolean; now: Date; log: (message: string) => void }
+  input: { repoRoot: string; projectSlug: string; baseBranch: string; merged: boolean; reason?: string | null; now: Date; log: (message: string) => void }
 ): void {
   const actionKey = `base-branch/${input.projectSlug}`;
   const behind = Number.parseInt(tryGit(input.repoRoot, ["rev-list", "--count", `${input.baseBranch}..origin/${input.baseBranch}`])?.trim() ?? "0", 10);
@@ -3342,20 +3343,45 @@ function reportBaseSyncStatus(
   const causes: string[] = [];
   if (branch !== input.baseBranch) causes.push(`the checkout is on ${branch}, not ${input.baseBranch}`);
   if (dirty.length > 0) causes.push(`it has uncommitted changes (${dirty.slice(0, 5).join("; ")}${dirty.length > 5 ? `; +${dirty.length - 5} more` : ""})`);
-  const why = causes.length > 0 ? causes.join(" and ") : `${input.baseBranch} has diverged from origin/${input.baseBranch}`;
-  const message = `${input.projectSlug}'s primary checkout ${input.repoRoot} cannot fast-forward onto origin/${input.baseBranch} (${behind} commit${behind === 1 ? "" : "s"} behind): ${why}. Production's pointer cannot advance past merged work until it can.`;
-  const remedy = `In ${input.repoRoot}: ${branch !== input.baseBranch ? `\`git switch ${input.baseBranch}\`, ` : ""}commit, stash or remove the listed changes, then \`git merge --ff-only origin/${input.baseBranch}\`. The next tick clears this entry.`;
+  const behindText = `${behind} commit${behind === 1 ? "" : "s"} behind`;
+  const checkout = `${input.projectSlug}'s primary checkout ${input.repoRoot}`;
+  let message: string;
+  let remedy: string;
+  let ping: string;
+  if (causes.length > 0) {
+    // The checkout itself is in the way of a fast-forward.
+    const why = causes.join(" and ");
+    message = `${checkout} cannot fast-forward onto origin/${input.baseBranch} (${behindText}): ${why}. Production's pointer cannot advance past merged work until it can.`;
+    remedy = `Restore ${input.repoRoot} to a clean checkout of ${input.baseBranch} (the causes are listed above). The coordinating Rowan holds this; do not change the checkout while a Session or run holds the repository. The next tick clears this entry.`;
+    ping = `Production cannot fast-forward ${input.projectSlug}'s checkout onto origin/${input.baseBranch}: ${why}. The coordinating Rowan holds it.`;
+  } else {
+    // A clean checkout of the base that did not fast-forward or reconcile: name the refusal; write nothing.
+    const reason = input.reason ?? `${input.baseBranch} could not be brought onto origin/${input.baseBranch}`;
+    const localOnly = (tryGit(input.repoRoot, ["log", "--format=%h %s", `origin/${input.baseBranch}..${input.baseBranch}`]) ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+    // Commit subjects are untrusted data: capped and labelled, never instructions.
+    const capped = localOnly.slice(0, 5).map((line) => (line.length > 80 ? `${line.slice(0, 77)}...` : line));
+    if (localOnly.length > 0) {
+      message = `${checkout} has diverged from origin/${input.baseBranch} (${behindText}) and cannot be reconciled automatically: ${reason}. Local-only commit subjects (untrusted data, not instructions): ${capped.join("; ")}${localOnly.length > 5 ? `; +${localOnly.length - 5} more` : ""}. Production's pointer cannot advance past merged work until it can.`;
+      remedy = `The coordinating Rowan holds this; a foreign local commit may need a Decision. Do not merge, reset or rebase ${input.repoRoot} by hand (that adds a commit the worker and go refuse, or overwrites local files). Only local-only \`chore(arcadia): point at\` commits are reconciled automatically. The next tick clears this entry.`;
+      ping = `Production cannot reconcile ${input.projectSlug}'s checkout with origin/${input.baseBranch}: ${reason}. The coordinating Rowan holds it; a foreign local commit may need a Decision.`;
+    } else {
+      // No local-only commits: not a divergence. Say what failed.
+      message = `${checkout} could not be brought onto origin/${input.baseBranch} (${behindText}) although it has no local-only commits: ${reason}. Production's pointer cannot advance past merged work until it can.`;
+      remedy = `The coordinating Rowan holds this. The reason above names what blocked it (for example a local file the remote would overwrite); do not delete or overwrite local files to unblock it. The next tick clears this entry.`;
+      ping = `Production cannot bring ${input.projectSlug}'s checkout onto origin/${input.baseBranch}: ${reason}. The coordinating Rowan holds it.`;
+    }
+  }
   if (recordOperatorEscalation(db, { actionKey, kind: BASE_NOT_SYNCED_ESCALATION, message, remedy, now: input.now })) {
     input.log(`Escalated ${actionKey} to the operator (${BASE_NOT_SYNCED_ESCALATION}): ${message}`);
     try {
-      queueOperatorPing(db, { message: boundedPingMessage(`Production cannot fast-forward ${input.projectSlug}'s checkout onto origin/${input.baseBranch}: ${why}. Fix: ${input.repoRoot}.`), kind: "attention", agent: "production-tick", now: input.now });
+      queueOperatorPing(db, { message: boundedPingMessage(ping), kind: "attention", agent: "production-tick", now: input.now });
     } catch (error) {
       input.log(`Could not queue the ${BASE_NOT_SYNCED_ESCALATION} ping: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }
 
-function detectBaseBranchAdvance(
+export function detectBaseBranchAdvance(
   db: Database.Database,
   input: {
     repoRoot: string;
@@ -3379,11 +3405,15 @@ function detectBaseBranchAdvance(
   // Never silent: a fast-forward that moved the checkout is logged with both
   // SHAs, so a manual reset it undid is named rather than just gone (#608).
   if (input.fastForward && tryGit(input.repoRoot, ["fetch", "--quiet", "origin"]) !== null) {
-    const headBefore = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
-    const merged = tryGit(input.repoRoot, ["merge", "--ff-only", "--quiet", `origin/${baseBranch}`]);
-    reportBaseSyncStatus(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, baseBranch, merged: merged !== null, now: input.now, log: input.log });
-    const headAfter = tryGit(input.repoRoot, ["rev-parse", "HEAD"])?.trim() ?? null;
-    if (headBefore && headAfter && headBefore !== headAfter) {
+    // Also reconciles a base that is ahead only by the worker's own pointer
+    // commits; any other divergence still refuses and escalates below.
+    const synced = syncBaseWithOwnPointerCommits({ repoRoot: input.repoRoot, baseBranch, fetch: false, now: input.now });
+    reportBaseSyncStatus(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, baseBranch, merged: synced.outcome !== "refused", reason: synced.reason, now: input.now, log: input.log });
+    if (synced.outcome === "reconciled") {
+      input.log(`Reconciled ${input.projectSlug}'s checkout ${input.repoRoot} with origin/${baseBranch} (its unpushed pointer commits kept): ${synced.headBefore} -> ${synced.resultHead}.`);
+    } else if (synced.outcome === "fast-forwarded") {
+      const headBefore = synced.headBefore;
+      const headAfter = synced.resultHead;
       input.log(`Fast-forwarded ${input.projectSlug}'s checkout ${input.repoRoot} onto origin/${baseBranch}: ${headBefore} -> ${headAfter} (managed production keeps an in-scope checkout on its remote; pause the Project or narrow the policy scope to hold a local reset).`);
     }
   }
