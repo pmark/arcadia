@@ -26,6 +26,9 @@ and the decision interface is a [written contract](decision-interface.md).
   on these is for the frame to settle.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
+- **Routing direction (S017):** the local model routes and uses tools, Ask comes first, engines are
+  pluggable with none added now, and supervisors supply rich context ([probe 3](probes/routing-3.md),
+  [ladder](decision-interface.md)).
 - **Being worked on:** the revised frame and the first conversation. **Next move:** the operator
   confirms building the conversation surface first (C-042, C-043), which would also settle CH-03.
 - **Riskiest assumption, probed once, failed:** 73% fully correct against S012's default 90%, and
@@ -79,6 +82,12 @@ Recorded at the strength given:
   with no date, as REQ-008.
 
 ## Expert notes (Claudia Atlas's, not the operator's)
+
+- **"Warm" should mean resumable, not running.** I rejected hot sessions (C-053) because they spend while
+  idle and need a keep-alive service. That's my call, for the operator to overrule, and the resume path's
+  speed and cost are unmeasured.
+- **S017 asks that Relay manage production "through skills". I read that as:** a coding agent uses skills,
+  and the local model uses a short typed tool list, because a small model can't follow long skills.
 
 - **I was wrong that a deterministic lookup would be immediately useful to every agent,** at
   least for first-timer wording: it reached 16 of 30, and 9 of its 20 matches were wrong. It may suit agents' own vocabulary, which is
