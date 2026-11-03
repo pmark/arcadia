@@ -98,6 +98,7 @@ import {
   runDefectShowCommand
 } from "./commands/defect.js";
 import { renderDesignCheckSuccess, runDesignCheckCommand } from "./commands/design.js";
+import { renderWayLookupSuccess, runWayLookupCommand } from "./commands/wayLookup.js";
 import {
   renderLearnCaptureSuccess,
   renderLearnImportSuccess,
@@ -4787,6 +4788,20 @@ Origin: every item has "origin" (a string from a field its source records, else 
   way.action((options: { workspace: string; json?: boolean }) =>
     runCliAction("way", options, () => runWayStatusCommand(options), renderWayStatusSuccess)
   );
+  addJsonOption(
+    way
+      .command("lookup")
+      .alias("find")
+      .alias("consult")
+      .description("Find the exact Way passages that answer a question, within a byte budget (read-only, no model, no database)")
+      .argument("<question>", "The question or operation to look up")
+      .option("--budget <bytes>", "Most excerpt bytes to return (default 1500)")
+      .option("--limit <n>", "Most passages to return (default 3)")
+  ).action((question: string, _options: unknown, cmd: Command) => {
+    // The parent `way` command also declares --json, so read the merged options.
+    const merged: { budget?: string; limit?: string; json?: boolean } = cmd.optsWithGlobals();
+    return runCliAction("way.lookup", merged, () => runWayLookupCommand({ question, budget: merged.budget, limit: merged.limit }), renderWayLookupSuccess);
+  });
   addJsonOption(
     way
       .command("propagate")

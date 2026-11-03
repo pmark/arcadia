@@ -54,7 +54,8 @@ describe.skipIf(!hasTmux)("systemTmux pane targeting", () => {
       name,
       cwd: root,
       command: "sh",
-      args: ["-c", "printf 'arcadia-pane-marker\\n'; sleep 30"]
+      args: ["-c", "printf 'arcadia-pane-marker\\n'; sleep 30"],
+      hostHome: path.join(root, "home")
     });
     expect(systemTmux.hasSession(name)).toBe(true);
 
