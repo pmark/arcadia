@@ -404,12 +404,18 @@ function preflightFor(project: string, plan: string, input: SelectorInput, planD
     else {
       // scope_* alerts have a pinned turn-production-off control on /production; the rest clear on the worker tick.
       const scoped = mine.some(a => a.trigger === "scope_pointer_mismatch" || a.trigger === "scope_successor_held");
+      const repairStop = mine.some(a => a.trigger === "repair_rounds_exhausted" || a.trigger === "repair_gated");
+      const noProgress = mine.some(a => a.trigger === "resume_no_progress");
       out.push({
         check: "no_open_red_alert", ok: false, status: "fail",
         blocker: `Open red alert(s) on ${project}: ${mine.map(a => a.id).join(", ")}.`,
         remedy: scoped
           ? "Open /production and use the turn-production-off control."
-          : "No one-click control exists yet: the worker tick re-evaluates and clears this alert itself; nothing to press."
+          : repairStop
+            ? "No one-click control exists yet: a review repair stop holds this Project. Open the Action's item on /todo (kind review_repair_rounds_exhausted or review_repair_gated); it names the reason and the step, and the alert clears when that item does."
+            : noProgress
+              ? "No one-click control exists yet: a resumed Session left its candidate unchanged. The alert clears when the Action's repair budget is reset (`arcadia production reset-repair-budget`) or the Action finishes; a spent budget raises its own blocker."
+              : "No one-click control exists yet: the worker tick re-evaluates and clears this alert itself; nothing to press."
       });
     }
   }
