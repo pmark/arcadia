@@ -433,7 +433,7 @@ describe.skipIf(!tmuxAvailable())("headless fixture-cli launch through real tmux
     const fixture = preparedFixture(outcome, "0");
     const session = prepareFixtureSession(fixture, new FakeTmux());
     tmuxSessions.push(session.tmux_session_name);
-    withDatabase(fixture.workspace, (db) => launchPreparedSession(db, session, systemTmux, undefined, fixture.workspace));
+    withDatabase(fixture.workspace, (db) => launchPreparedSession(db, session, { ...systemTmux, launch: (input) => systemTmux.launch({ ...input, hostHome: path.join(fixture.workspace, "home") }) }, undefined, fixture.workspace));
     const deadline = Date.now() + 30_000;
     while (systemTmux.hasSession(session.tmux_session_name) && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 100));

@@ -68,7 +68,7 @@ describe("system tmux launch failures", () => {
       chmodSync(executable, 0o755);
     }
     vi.stubEnv("PATH", root);
-    return () => systemTmux.launch({ name: "fixture", cwd: root, command: "PRIVATE_PAYLOAD", args: ["PRIVATE_ARGUMENT"] });
+    return () => systemTmux.launch({ name: "fixture", cwd: root, hostHome: path.join(root, "home"), command: "PRIVATE_PAYLOAD", args: ["PRIVATE_ARGUMENT"] });
   }
 
   it("keeps an unavailable-executable cause without a null-stderr failure", () => {

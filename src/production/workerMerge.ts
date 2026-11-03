@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/batchMerge.js";
 import { computeBlastRadius } from "../stewardship/prBlastRadius.js";
+import { syncBaseOrThrow } from "../git/pointerReconcile.js";
 import { git, isAncestor, tryGit } from "../git/worktrees.js";
 import { classifyPullRequestChecks, runHostCommand, type PullRequestCheckRun, type QaPrReviewDependencies } from "../qa/prReview.js";
 import { isSettlementArchiveOf } from "../qa/patchApplicability.js";
@@ -464,8 +465,9 @@ function readPullRequest(runCommand: RunCommand, repoRoot: string, url: string):
 }
 
 function defaultSyncBase({ repoRoot, baseBranch }: { repoRoot: string; baseBranch: string }): void {
-  git(repoRoot, ["fetch", "--quiet", "origin", baseBranch]);
-  git(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "--quiet", `origin/${baseBranch}`]);
+  // Fast-forward, or reconcile when the only local-only commits are the
+  // worker's own never-pushed pointer commits; any other divergence throws.
+  syncBaseOrThrow({ repoRoot, baseBranch });
 }
 
 /** The exact operator command for a refused worker merge. */
