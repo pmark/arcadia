@@ -532,11 +532,11 @@ actions:
     references: []
   - id: qa-plan-sole-failure-spends-no-repair
     title: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
+    next_action: Completed via Agent Ask complete-qa-plan-sole-failure-spends-no-repair-20261102; no further action.
     expected_artifact: Evidence satisfying Agent Ask qa-plan-sole-failure-spends-no-repair
     clarification: clarified
     confidence: high
