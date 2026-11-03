@@ -528,7 +528,10 @@ export function integrateSessionCandidate(
     if (deps.fastForward) deps.fastForward({ repoRoot, branch, commitSha });
     else git(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", commitSha]);
   } catch (error) {
-    return refusal(error instanceof Error ? error.message : String(error), merge);
+    // Name Git's own reason too: the bare "Git command failed" hides why the fast-forward was refused.
+    const cause = (error as { details?: { cause?: unknown } }).details?.cause;
+    const why = typeof cause === "string" && cause.trim() ? ` (${cause.trim().replace(/\s+/g, " ").slice(0, 300)})` : "";
+    return refusal(`${error instanceof Error ? error.message : String(error)}${why}`, merge);
   }
   return { kind: "integrated", baseBranch, commits };
 }
