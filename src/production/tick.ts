@@ -28,6 +28,10 @@ import {
   ensureRedAlertTables,
   observeAdmission,
   observeReconcileFailure,
+  isOperatorHeldAction,
+  observeResumeNoProgressBudget,
+  observeReviewRepairStops,
+  raiseResumeNoProgress,
   observeReconcileSuccess,
   observeRepairBudget,
   observeScopeDriftForProject,
@@ -2117,6 +2121,8 @@ export function runManagedProductionTick(
         const continuation = getSessionContinuation(db, lease);
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
         const sourceCompletion = completionCapabilityForReconciliation(workspace, lease);
+        // What the exit receipt decided about an unchanged resume, read after the receipt commits to raise the notify-only red alert.
+        let unchangedResume: { actionKey: string } | null = null;
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot, workspace,
           ...sourceCompletion,
@@ -2140,6 +2146,7 @@ export function runManagedProductionTick(
                 recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts,
                   lastError: attempts.lastError, now, log });
               }
+              unchangedResume = { actionKey };
             } else if (receipt.outcome === "accepted_completion"
               || (continuation !== null && receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
               resetRepairAttempts(db, actionKey);
@@ -2203,6 +2210,13 @@ export function runManagedProductionTick(
             log(`Operator launch authorization for Session ${lease.id} could not be concluded: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
+        // Notify only (Decision 0169): the unchanged-resume detection above already spent the repair attempt; the alert
+        // changes no attempt, launch decision or Action status, and a failure to raise it is logged and ignored.
+        safelyRaiseRedAlerts(log, "resume no progress", () => {
+          if (unchangedResume && !isOperatorHeldAction(db, unchangedResume.actionKey)) {
+            raiseResumeNoProgress(alertCtx, { actionKey: unchangedResume.actionKey, sessionId: lease.id });
+          }
+        });
         safelyRaiseRedAlerts(log, "reconcile clear", () => {
           observeReconcileSuccess(alertCtx);
           observeStall(alertCtx, { session: null, stalled: false, tmux });
@@ -2347,6 +2361,8 @@ export function runManagedProductionTick(
 
     safelyRaiseRedAlerts(log, "admission", () => observeAdmission(alertCtx, launch));
     safelyRaiseRedAlerts(log, "repair budget", () => observeRepairBudget(alertCtx, launch));
+    safelyRaiseRedAlerts(log, "review repair stops", () => observeReviewRepairStops(alertCtx));
+    safelyRaiseRedAlerts(log, "resume no progress clear", () => observeResumeNoProgressBudget(alertCtx));
     options.heartbeat?.();
     projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, askSurfacing, reconciled, handoff, launch });
   }
