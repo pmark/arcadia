@@ -562,14 +562,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask red-alerts-for-repair-stops-and-no-progress
     clarification: clarified
     confidence: high
-    source: Agent Ask add-worker-recovery-build-actions-20261102
+    source: Agent Ask amend-red-alerts-classifier-parity-20261103
     why: "Run i raised no alert after 06:00 because no trigger covers review repair stops, and the first notice came from Rowan polling."
     acceptance_criteria:
       - tests/review-repair-red-alerts.test.ts asserts that a review_repair_rounds_exhausted escalation and a review_repair_gated escalation each raise one open red alert of their own trigger in src/production/redAlerts.ts, raised by the tick from production_operator_escalations rows with no change to src/production/reviewRepair.ts, queue one notification through the existing alert notification path, and do not notify again on later ticks.
       - The same test asserts each alert clears when its escalation clears, and that a raising failure is logged without changing the tick's outcome.
       - tests/no-progress-red-alert.test.ts asserts that a resumed Session exiting incomplete with its candidate unchanged raises one notify-only red alert of a new no-progress trigger, reusing the existing unchanged-resume detection at the exit receipt with no second detector, and queues one notification.
       - The same test asserts no alert for a resumed Session that changed its candidate, a fresh first Session, and an Action in an operator-held state; and that repair attempts, the next launch decision and the Action's status are identical with and without the alert.
-      - Both test files assert their triggers are produced by the recovery-signal classifier on the same fixture rows as tests/recovery-replay.test.ts.
+      - A parity test feeds the same exit rows to the recovery-signal classifier and to the tick detection, on the fixture rows of tests/recovery-replay.test.ts plus a dirty-worktree case, and asserts they agree on no-progress; tests/review-repair-red-alerts.test.ts asserts each repair trigger follows the repair row outcome on those fixture rows, and that a QA verdict the classifier reads as sole failure raises no stop alert unless its outcome is escalated.
       - tests/fast-rehearsal/review-repair-red-alerts.test.ts shows a repair loop running out of rounds raises the alert and repeated unchanged resumes raise the notice while the existing retry budget alone stops retries, and a healthy chain raises none; its focused vitest run passes.
       - tests/blocker-remedies.test.ts passes with a remedy registered in src/production/blockerRemedies.ts for each new trigger; the focused vitest runs, pnpm lint and tsc pass.
     depends_on: [recovery-signal-replay-gate, worker-reconciles-own-pointer-commits]
