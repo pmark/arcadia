@@ -169,9 +169,9 @@ export function planReconcile(cwd: string, plan: ReconcilePlan): PlannedReconcil
   const entries: Array<{ file: string; mode: string; text: string | null; blob: string }> = [];
   const notes: string[] = [];
   for (const file of conflicted) {
-    const before = tryGit(cwd, ["show", `${mergeBase}:${file}`]);
-    const local = tryGit(cwd, ["show", `${localHead}:${file}`]);
-    const remote = tryGit(cwd, ["show", `${remoteHead}:${file}`]);
+    const before = rawBlob(cwd, mergeBase, file);
+    const local = rawBlob(cwd, localHead, file);
+    const remote = rawBlob(cwd, remoteHead, file);
     if (before === null || local === null || remote === null) refuse(`${file} was added or removed, not only re-pointed`);
     if (withoutPointerLines(before) !== withoutPointerLines(local)) refuse(`the local commits changed more than current_action in ${file}`);
     const remoteEntry = /^(\d+) blob ([0-9a-f]+)\t/.exec(tryGit(cwd, ["ls-tree", remoteHead, "--", file]) ?? "");
@@ -266,6 +266,12 @@ function withoutPointerLines(text: string): string {
   return text.slice(0, match.index) + match[0].replace(match[1], () => kept) + text.slice(match.index + match[0].length);
 }
 
+/** A file's exact bytes at a revision (never trimmed: end-of-file whitespace and CRLF matter), or null if absent. */
+function rawBlob(cwd: string, rev: string, file: string): string | null {
+  const out = spawnSync("git", ["show", `${rev}:${file}`], { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  return out.status === 0 ? out.stdout : null;
+}
+
 function pointerLine(text: string | null): string | null {
   const match = text ? FRONTMATTER.exec(text) : null;
   return match?.[1].split("\n").find((line) => CURRENT_ACTION_LINE.test(line)) ?? null;
@@ -301,8 +307,8 @@ function isOwnPointerCommit(cwd: string, commit: string, context: { baseBranch: 
   const plan = activePlanPath(cwd, parents[0]);
   return paths.every((file) => {
     if (file !== "PROJECT.md" && (plan === null || file !== plan)) return false;
-    const before = tryGit(cwd, ["show", `${parents[0]}:${file}`]);
-    const after = tryGit(cwd, ["show", `${commit}:${file}`]);
+    const before = rawBlob(cwd, parents[0], file);
+    const after = rawBlob(cwd, commit, file);
     return before !== null && after !== null && withoutPointerLines(before) === withoutPointerLines(after);
   });
 }

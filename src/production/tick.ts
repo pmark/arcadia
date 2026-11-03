@@ -3340,16 +3340,30 @@ function reportBaseSyncStatus(
   const causes: string[] = [];
   if (branch !== input.baseBranch) causes.push(`the checkout is on ${branch}, not ${input.baseBranch}`);
   if (dirty.length > 0) causes.push(`it has uncommitted changes (${dirty.slice(0, 5).join("; ")}${dirty.length > 5 ? `; +${dirty.length - 5} more` : ""})`);
-  const why = causes.length > 0 ? causes.join(" and ") : (input.reason ?? `${input.baseBranch} has diverged from origin/${input.baseBranch}`);
-  const diverged = causes.length === 0;
-  const message = `${input.projectSlug}'s primary checkout ${input.repoRoot} cannot be brought onto origin/${input.baseBranch} (${behind} commit${behind === 1 ? "" : "s"} behind): ${why}. Production's pointer cannot advance past merged work until it can.`;
-  const remedy = diverged
-    ? `In ${input.repoRoot}: review \`git log --oneline origin/${input.baseBranch}..${input.baseBranch}\`, keep any commit that is not a \`chore(arcadia): point at\` commit on its own branch (\`git branch <name> ${input.baseBranch}\`), then \`git merge origin/${input.baseBranch}\` (resolve any conflict by hand). The next tick clears this entry.`
-    : `In ${input.repoRoot}: ${branch !== input.baseBranch ? `\`git switch ${input.baseBranch}\`, ` : ""}commit, stash or remove the listed changes, then \`git merge --ff-only origin/${input.baseBranch}\`. The next tick clears this entry.`;
+  const behindText = `${behind} commit${behind === 1 ? "" : "s"} behind`;
+  const checkout = `${input.projectSlug}'s primary checkout ${input.repoRoot}`;
+  let message: string;
+  let remedy: string;
+  let ping: string;
+  if (causes.length > 0) {
+    // The checkout itself is in the way of a fast-forward.
+    const why = causes.join(" and ");
+    message = `${checkout} cannot fast-forward onto origin/${input.baseBranch} (${behindText}): ${why}. Production's pointer cannot advance past merged work until it can.`;
+    remedy = `Restore ${input.repoRoot} to a clean checkout of ${input.baseBranch} (the causes are listed above), through the coordinating Rowan or a validated operator step; do not change it while a Session or run holds the repository. The next tick clears this entry.`;
+    ping = `Production cannot fast-forward ${input.projectSlug}'s checkout onto origin/${input.baseBranch}: ${why}. Fix: ${input.repoRoot}.`;
+  } else {
+    // A clean checkout of the base that has diverged: name the refusal and the local-only commits; write nothing.
+    const reason = input.reason ?? `${input.baseBranch} has diverged from origin/${input.baseBranch}`;
+    const localOnly = (tryGit(input.repoRoot, ["log", "--format=%h %s", `origin/${input.baseBranch}..${input.baseBranch}`]) ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+    const commits = localOnly.length > 0 ? ` Local-only commits: ${localOnly.slice(0, 5).join("; ")}${localOnly.length > 5 ? `; +${localOnly.length - 5} more` : ""}.` : "";
+    message = `${checkout} has diverged from origin/${input.baseBranch} (${behindText}) and cannot be reconciled automatically: ${reason}.${commits} Production's pointer cannot advance past merged work until it can.`;
+    remedy = `Take this to the coordinating Rowan or a validated operator step; do not merge, reset or rebase ${input.repoRoot} by hand (that adds a commit the worker and go refuse, or overwrites local files). Only local-only \`chore(arcadia): point at\` commits are reconciled automatically. The next tick clears this entry.`;
+    ping = `Production cannot reconcile ${input.projectSlug}'s checkout with origin/${input.baseBranch}: ${reason}. See ${input.repoRoot}.`;
+  }
   if (recordOperatorEscalation(db, { actionKey, kind: BASE_NOT_SYNCED_ESCALATION, message, remedy, now: input.now })) {
     input.log(`Escalated ${actionKey} to the operator (${BASE_NOT_SYNCED_ESCALATION}): ${message}`);
     try {
-      queueOperatorPing(db, { message: boundedPingMessage(`Production cannot fast-forward ${input.projectSlug}'s checkout onto origin/${input.baseBranch}: ${why}. Fix: ${input.repoRoot}.`), kind: "attention", agent: "production-tick", now: input.now });
+      queueOperatorPing(db, { message: boundedPingMessage(ping), kind: "attention", agent: "production-tick", now: input.now });
     } catch (error) {
       input.log(`Could not queue the ${BASE_NOT_SYNCED_ESCALATION} ping: ${error instanceof Error ? error.message : String(error)}`);
     }

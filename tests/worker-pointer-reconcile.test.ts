@@ -37,6 +37,7 @@ function planDoc(current: string, done: string[] = [], last = 1): string {
   return `---\narcadia: v1\ntype: plan\nslug: plan-x\nactions:\n${["a1", "a2", "a3"].map((id) => `  - id: ${id}\n    status: ${status(id)}\n`).join("")}current_action: ${current}\nlast: ${last}\n---\n\n# Plan\n`;
 }
 
+const MUTATING_GIT = /\bgit\s+(merge|reset|rebase|switch|checkout|branch|commit|stash|push|pull|clean|rm|cherry-pick|revert|apply)\b/;
 const OTHER_PLAN = "docs/plans/other-plan.md";
 function otherPlanDoc(current: string): string {
   return `---\ntype: plan\nslug: other-plan\nactions:\n  - id: b1\n    status: open\ncurrent_action: ${current}\n---\n`;
@@ -297,6 +298,14 @@ describe("a local base ahead only by its own pointer commits", () => {
       expectRefused(/not pointer commits/);
     });
 
+    it("a pointer commit that also changes end-of-file whitespace", () => {
+      writeDoc(repo, "PROJECT.md", `${projectDoc("a2")}\n\n`);
+      writeDoc(repo, PLAN, planDoc("a2"));
+      commitAll(repo, `chore(arcadia): point at a2${TRAILER}`);
+      remoteAdvances();
+      expectRefused(/not pointer commits/);
+    });
+
     it("a conflicting PROJECT.md that the remote deleted", () => {
       pointer(repo, "a2");
       git(other, ["rm", "-q", "PROJECT.md"]);
@@ -386,9 +395,10 @@ describe("a local base ahead only by its own pointer commits", () => {
       const result = sync();
 
       expect(result.outcome).toBe("reconciled");
+      // Exact bytes (final newline included), in the working tree and in the committed blob.
       const project = readFileSync(path.join(repo, "PROJECT.md"), "utf8");
-      expect(project).toContain("current_action: a2");
-      expect(project).toContain("updated: 2026-11-02");
+      expect(project).toBe(projectDoc("a2", "2026-11-02"));
+      expect(git(repo, ["show", "HEAD:PROJECT.md"])).toBe(projectDoc("a2", "2026-11-02"));
       const message = git(repo, ["show", "-s", "--format=%B", "HEAD"]);
       expect(message).toContain("Pointer-Conflict-Kept-Local: PROJECT.md current_action a2 (the remote did not move it)");
       expect(message).not.toContain("Replaced-Local");
@@ -403,10 +413,38 @@ describe("a local base ahead only by its own pointer commits", () => {
       git(other, ["push", "-q", "origin", "main"]);
 
       expect(sync().outcome).toBe("reconciled");
-      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: a2");
-      const plan = readFileSync(path.join(repo, PLAN), "utf8");
-      expect(plan).toContain("current_action: a2");
-      expect(plan).toContain("last: 2");
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(projectDoc("a2", "2026-11-02"));
+      expect(readFileSync(path.join(repo, PLAN), "utf8")).toBe(planDoc("a2", [], 2));
+      expect(git(repo, ["show", "HEAD:PROJECT.md"])).toBe(projectDoc("a2", "2026-11-02"));
+      expect(git(repo, ["show", "HEAD:" + PLAN])).toBe(planDoc("a2", [], 2));
+      // A later reconcile keeps the bytes.
+      remoteAdvances("docs/reports/later.md", "later\n");
+      expect(sync().outcome).toBe("reconciled");
+      expect(git(repo, ["show", "HEAD:PROJECT.md"])).toBe(projectDoc("a2", "2026-11-02"));
+    });
+
+    it("round-trips CRLF line endings and a missing final newline byte for byte", () => {
+      const crlf = (text: string) => text.replace(/\n/g, "\r\n");
+      const noFinalNewline = (text: string) => text.replace(/\r?\n$/, "");
+      for (const cwd of [repo, other]) git(cwd, ["config", "core.autocrlf", "false"]);
+      writeDoc(repo, "PROJECT.md", noFinalNewline(crlf(projectDoc("a1"))));
+      writeDoc(repo, PLAN, crlf(planDoc("a1")));
+      commitAll(repo, "CRLF documents");
+      git(repo, ["push", "-q", "origin", "main"]);
+      git(other, ["pull", "-q", "origin", "main"]);
+      writeDoc(repo, "PROJECT.md", noFinalNewline(crlf(projectDoc("a2"))));
+      writeDoc(repo, PLAN, crlf(planDoc("a2")));
+      commitAll(repo, "chore(arcadia): point at a2\n\nWritten by `arcadia advance queue make-next --apply` (qpointer_fixture).");
+      writeDoc(other, "PROJECT.md", noFinalNewline(crlf(projectDoc("a1", "2026-11-02"))));
+      writeDoc(other, PLAN, crlf(planDoc("a1", [], 2)));
+      commitAll(other, "remote hygiene");
+      git(other, ["push", "-q", "origin", "main"]);
+
+      expect(sync().outcome).toBe("reconciled");
+
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toBe(noFinalNewline(crlf(projectDoc("a2", "2026-11-02"))));
+      expect(readFileSync(path.join(repo, PLAN), "utf8")).toBe(crlf(planDoc("a2", [], 2)));
+      expect(git(repo, ["show", "HEAD:PROJECT.md"])).toBe(noFinalNewline(crlf(projectDoc("a2", "2026-11-02"))));
     });
   });
 
@@ -508,6 +546,23 @@ describe("a local base ahead only by its own pointer commits", () => {
     const result = sync();
 
     expect(result.outcome).toBe("refused");
+    expect(head()).toBe(before);
+    expect(readFileSync(path.join(repo, "secret.env"), "utf8")).toBe("MY IGNORED LOCAL FILE\n");
+  });
+
+  it("does not overwrite a locally ignored file on the plain fast-forward path either", () => {
+    writeDoc(repo, ".gitignore", "secret.env\n");
+    commitAll(repo, "ignore secret.env");
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(other, ["pull", "-q", "origin", "main"]);
+    writeDoc(other, "secret.env", "from the remote\n");
+    git(other, ["add", "-f", "secret.env"]);
+    commitAll(other, "remote adds a path that is ignored here");
+    git(other, ["push", "-q", "origin", "main"]);
+    writeFileSync(path.join(repo, "secret.env"), "MY IGNORED LOCAL FILE\n");
+    const before = head();
+
+    expect(sync().outcome).toBe("refused");
     expect(head()).toBe(before);
     expect(readFileSync(path.join(repo, "secret.env"), "utf8")).toBe("MY IGNORED LOCAL FILE\n");
   });
@@ -614,6 +669,26 @@ describe("a local base ahead only by its own pointer commits", () => {
       db.close();
     });
 
+    it("the per-tick base sync escalates a checkout on another branch as a fast-forward problem, with a read-only remedy", () => {
+      const db = new Database(":memory:");
+      applyInitialSchema(db);
+      ensureProductionTickTables(db);
+      remoteAdvances();
+      git(repo, ["checkout", "-q", "-b", "feature"]);
+
+      tick(db);
+
+      const [escalation] = listOperatorEscalations(db);
+      expect(escalation.message).toContain("cannot fast-forward onto origin/main");
+      expect(escalation.message).toContain("the checkout is on feature, not main");
+      expect(escalation.remedy).toContain(repo);
+      expect(escalation.remedy).not.toContain("has diverged");
+      const pings = (db.prepare("SELECT message FROM operator_pings").all() as Array<{ message: string }>).map((row) => row.message);
+      expect(pings.join("\n")).toContain("cannot fast-forward");
+      for (const text of [escalation.message, escalation.remedy, ...pings]) expect(text).not.toMatch(MUTATING_GIT);
+      db.close();
+    });
+
     it("the per-tick base sync still escalates base_not_synced for a foreign local commit", () => {
       const db = new Database(":memory:");
       applyInitialSchema(db);
@@ -628,9 +703,15 @@ describe("a local base ahead only by its own pointer commits", () => {
       expect(head()).toBe(before);
       const [escalation] = listOperatorEscalations(db);
       expect(escalation).toMatchObject({ kind: "base_not_synced", message: expect.stringContaining("not pointer commits") });
-      // A remedy that can work for a diverged base, not a fast-forward that cannot.
-      expect(escalation.remedy).toContain("git log --oneline origin/main..main");
-      expect(escalation.remedy).not.toContain("--ff-only");
+      // Diverged, not "cannot fast-forward": names the refusal and the local-only commit, and suggests no write.
+      expect(escalation.message).toContain("has diverged from origin/main");
+      expect(escalation.message).toContain("local work");
+      expect(escalation.message).not.toContain("cannot fast-forward");
+      expect(escalation.remedy).toContain("Rowan");
+      const pings = (db.prepare("SELECT message FROM operator_pings").all() as Array<{ message: string }>).map((row) => row.message);
+      expect(pings.join("\n")).toContain("cannot reconcile");
+      expect(pings.join("\n")).not.toContain("cannot fast-forward");
+      for (const text of [escalation.message, escalation.remedy, ...pings]) expect(text).not.toMatch(MUTATING_GIT);
       db.close();
     });
   });
