@@ -148,7 +148,8 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
       cwd: root,
       command: process.execPath,
       args: [provider, "--print", LONG_BRIEF],
-      launcherDirectory: runDir
+      launcherDirectory: runDir,
+      hostHome: path.join(root, "home")
     });
     const deadline = Date.now() + 10_000;
     while (!existsSync(out) && Date.now() < deadline) await new Promise((resolve) => setTimeout(resolve, 50));
@@ -174,7 +175,8 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
         cwd: root,
         command: process.execPath,
         args: ["--version"],
-        launcherDirectory: runDir
+        launcherDirectory: runDir,
+        hostHome: path.join(root, "home")
       });
       expect.fail("Expected systemTmux.launch to throw");
     } catch (error) {
@@ -201,7 +203,8 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
         name,
         cwd: root,
         command: process.execPath,
-        args: [provider, "--print", LONG_BRIEF]
+        args: [provider, "--print", LONG_BRIEF],
+        hostHome: path.join(root, "home")
         // No launcherDirectory specified - should use temporary directory that is cleaned up
       });
     } finally {

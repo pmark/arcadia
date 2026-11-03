@@ -114,6 +114,13 @@ function invocations(): Record<string, string[][]> {
       ["design", "check", validDesignRecord(), "--matrix", "--workspace", live],
       ["design", "check", validDesignRecord(), "--ready"]
     ],
+    "way lookup": [
+      ["way", "lookup", "How do I stop everything immediately?"],
+      ["way", "find", "merge without me", "--budget", "200", "--limit", "1"],
+      ["way", "consult", "xylophone repair schedule"],
+      ["way", "lookup", "   "],
+      ["way", "lookup", "merge", "--budget", "-5"]
+    ],
     "config get defaultWorkspace": [["config", "get", "defaultWorkspace"]],
     "workspace resolve": [["workspace", "resolve"]],
     "workspace leak-check": [["workspace", "leak-check", "--live-repo", repo]],

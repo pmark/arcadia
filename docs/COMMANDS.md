@@ -1743,6 +1743,65 @@ prints the record's `record_hash`. Exit 0 means no problems; otherwise it fails 
   problem.
 - It opens no database and writes nothing, including no activity record.
 
+## Look Up The Exact Way Passage
+
+```bash
+pnpm arcadia way lookup "<question>" [--budget <bytes>] [--limit <n>] [--json]
+```
+
+Aliases: `way find`, `way consult`. Finds the smallest passages of the checked-in
+guidance that answer a question, so an agent need not read whole documents. It
+is read-only evidence tooling: deterministic (BM25 over lightly stemmed words, no
+model, no network), it opens no database, writes nothing, records no activity,
+and grants no authority.
+
+- **Corpus (a fixed list under the Way root):** `docs/agent-guidance/*.md`,
+  `CONSTITUTION.md`, `AGENTS.md`, `START_HERE.md`, `OPERATOR_CONTEXT.md`,
+  `INSTALL_WITH_A_CODING_AGENT.md`, `SETUP.md`, `docs/arcadia-semantics.md`,
+  `docs/managed-documents.md`, `docs/planning-process.md`,
+  `docs/working-copy-safety.md`, `docs/operating-model.md`, `docs/COMMANDS.md`,
+  `docs/operator-demo-and-release-contract.md`,
+  `docs/managed-production-readiness.md`, `docs/notes-to-self.md` and
+  `.agents/skills/*/SKILL.md`. A missing file is skipped. A symlink, or a file whose
+  real path leaves the root, is never read.
+- **Way root:** the enclosing Project when it holds `docs/agent-guidance/index.json`,
+  otherwise Arcadia's own checkout. `--json` reports which (`rootSource`). With
+  neither, it says so and exits 1. The package does not ship this corpus (`files`
+  in `package.json` lists only the Intelligence client), so an installed copy finds
+  it only inside a checkout.
+- **Passages:** each file is split at `##` and `###` (not inside code fences); text
+  before the first heading belongs to the title. An address is `path#slug` with
+  GitHub's slug and its `-1` numbering for duplicates, and `sha` identifies the
+  passage text. A `<details>` block counts only when the tag starts a line outside
+  a code fence, and only when it closes; an unterminated one is not a block, its
+  text is kept and a warning names the file. Text inside a block, and sections whose
+  heading says superseded, historical, obsolete or outdated, are left out
+  (`supersededSkipped` counts them); text after a block's close returns to the
+  section that was open when it began.
+- **Results:** at most `--limit` (default 3) passages and `--budget` (default 1500)
+  excerpt bytes, each with `address`, `heading`, `excerpt`, `line` (where the
+  excerpt starts in the file), `sha`, `score` and `sourceClass` (`canonical`,
+  `operator_guide`, `hot_cache`). A passage over budget returns its best-matching
+  chunk and `truncated: true`; read the address for the rest. `CONSTITUTION.md`
+  and any passage that states a rule with an exception come back whole when they
+  fit, never as an unmarked fragment. `--budget 0` returns addresses with no
+  excerpt; negative or non-numeric numbers are refused.
+- **`matched` is about wording, not correctness.** It is true when the best chunk
+  scores at least 4, holds 60% of the question's term weight (a word found nowhere
+  in the corpus counts against it), matches two distinct terms, and, for a
+  one-word question, has that word in its heading. A match does not mean the
+  passages answer the question: on the development fixture, many matched results
+  miss the material a reader would want. The human output therefore begins "These
+  are the closest passages by wording and may not answer the question; read them
+  before relying on them." When nothing matches it says the Way does not clearly
+  answer and lists only the nearest addresses, with no excerpts.
+- **Output:** the human output is that notice, the Way root, then the excerpts and
+  their addresses. The root line always says which guidance was read, and says
+  plainly when a Project without `docs/agent-guidance/index.json` fell back to
+  Arcadia's own checkout. `--json` adds `elapsedMs`, `passagesScanned`,
+  `largestPassageBytes`, `root`, `rootSource`, `projectRoot` and `warnings`;
+  everything but `elapsedMs` is identical between runs.
+
 ## Dispose A Failed Recovery Successor With No Recorded Start
 
 An explicit `--recover-session` successor can fail with no recorded provider

@@ -4,14 +4,18 @@
 
 ## Where it stands
 
-**Stage 5 of 8: sources are compiled, and three choices wait on the operator.** The frame is
-confirmed (S005). Extractors read each source in isolation and produced 133 concepts, and
-the compile merged them into 29 mechanisms and options, with 12 rejected and 12 parked, each
-with its reason or revival condition. The operator's other sources can still arrive and may
-reopen any of this.
+**The frame changed, and the revision waits on the operator.** S014 refocuses Relay on the
+operator's own critical path, from idea to planned, autonomously produced work, with arbitrary
+text starting a conversation at once and much of it at zero cost. Unattended production stays
+first, and first-timer onboarding is deferred, though nothing built now should require special
+knowledge. Critic R1's hold still stands against the earlier frame
+([report](reviews/R1-relay-critique.md)). A thin [local model probe](probes/local-model-1.md) suggests
+conversation is viable on the operator's MacBook Air, and [a second](probes/local-model-2.md)
+shows tuning moves routing scores a lot, ahead of a proper bake-off. Way lookup is built as evidence tooling,
+and the decision interface is a [written contract](decision-interface.md).
 
-- **Experience target (operator's words):** "Even a first time Arcadia operator therefore
-  shall be empowered to wield the full power of the Arcadia Way via Relay interaction."
+- **Experience target (operator's words):** "I should be able to just go from idea to planned
+  project work that is autonomously produced." The earlier first-timer target (S001) is deferred.
 - **Name:** Relay, chosen by the operator on 2026-11-02.
 - **Stated by the operator:** a single continuous thread with a UX like rich text
   messaging; the Way's most well-versed source; a first-time operator wielding its full
@@ -22,13 +26,14 @@ reopen any of this.
   on these is for the frame to settle.
 - **Relay mode:** the [arcadia-relay skill](../../../.agents/skills/arcadia-relay/SKILL.md)
   simulates the experience in any coding agent until Relay v1.0 exists.
-- **Being worked on:** CH-01 (one conversation record or one per Project), CH-02 (what gets
-  built first) and CH-03 (what Relay is made of). **Next move:** the operator answers all three. Every position except `chosen` is my leaning,
-  not the operator's.
-- **Riskiest assumption, probed once, inconclusive and leaning supported:** of 30 first-timer
-  questions, a separate judge graded 22 correct, 8 partly correct and 0 wrong, with no wrong
-  statement about authority, spending or merging ([result](probes/way-knowledge-1.md)).
-  **Next move:** the operator sets the pass mark.
+- **Being worked on:** the revised frame and the first conversation. **Next move:** the operator
+  confirms building the conversation surface first (C-042, C-043), which would also settle CH-03.
+- **Riskiest assumption, probed once, failed:** 73% fully correct against S012's default 90%, and
+  wrong on stopping ([result](probes/way-knowledge-1.md)).
+- **Open blocking findings:** R1-F1, F2, F4, F5, F6, F7, F8 and F9. My reading of S014: a dashboard
+  conversation gives the interface its caller (F1) and fits the spending order (F2), no write tools
+  ship (F6), and deferring first-timers narrows F4 and F9. F8 stays, because the operator's own
+  Projects need the corpus too. A new critic round has to judge that.
 - **Open sources:** the operator has more to paste. They can arrive at any time.
 
 ## Where the requirements come from
@@ -46,6 +51,11 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-007 Relay mode | S001 | Mine: the proof, a label audit by a separate judge |
 | REQ-008 Default shell | S001 | Mine: the proof, including no setup and all three hosts |
 | REQ-009 Direct addressing | S001 (as DeepSeek's approach) | Mine: only once a Decision allows it |
+| REQ-010 Speed | S008 | Mine: the proof by measured budgets |
+| REQ-011 Minimal Way context | S008 | Mine: the proof by rerunning the probe |
+| REQ-012 Arbitrary text starts a conversation | S014 | Mine: "changes no state by itself", and the proof |
+| REQ-013 Mostly zero cost | S014 | Mine: "paid models only when they add value", and the proof |
+| REQ-014 Idea to autonomous production | S014 | Mine: the proof |
 
 The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
 implementation" of DeepSeek's benefits; "no OpenAI integration" is my reading of that.
@@ -59,6 +69,10 @@ Recorded at the strength given:
 - "Even a first time Arcadia operator ... shall be empowered": a rule, as REQ-001 and
   REQ-002.
 - "highest bang per buck": a rule on scope.
+- "blazing fast": a rule, as REQ-010.
+- "minimal context in order to be an adherent to the way": a rule, as REQ-011.
+- "I would lean towards an open local solution, but people will want to use Jev": a lean, not
+  a decision, as CH-04.
 - "clearly differentiating existing from filled-in, improvised behaviors": a rule, as
   REQ-007.
 - "Eventually, Relays will replace Rowan as the default coding agent shell": direction,
@@ -66,11 +80,21 @@ Recorded at the strength given:
 
 ## Expert notes (Claudia Atlas's, not the operator's)
 
+- **I was wrong that a deterministic lookup would be immediately useful to every agent,** at
+  least for first-timer wording: it reached 16 of 30, and 9 of its 20 matches were wrong. It may suit agents' own vocabulary, which is
+  unmeasured. I also specified an interface with no caller. S008's concepts were added directly by me rather than
+  by an isolated extractor, because the source is short and the operator's own.
+- **A decision engine helps only one step.** It can make routing fast, but answering still takes
+  retrieval and possibly a model. Relay's speed depends on how often the fast paths apply, which
+  is why latency per route matters more than any one engine's headline figure.
+- **Laya's and Jev's published figures are unverified.** They come from write-ups and listings I
+  haven't checked against primary sources. `tests/fixtures/ask-golden.jsonl` holds 20 routing
+  cases, a start on an honest comparison, though too few to decide on.
+
 - **The main finding of the compile: nothing but the operator asks for Way knowledge.** Of
   five other sources, none addresses a first-timer learning the Way through Relay (C-001,
-  C-002). It's the largest gap and the reason I lean to C-028. The probe supports that lean with limits:
-  the guidance answered most questions, but two answers had safety-relevant errors, and finding
-  the right document, answer quality and missing guidance all contributed.
+  C-002). It's the largest gap and the reason I lean to C-028. The probe failed its pass mark, and
+  C-041 now puts guidance repair first.
 - **Agreement between S002 and S003 is weak evidence.** S003 was written after reading S002,
   so their shared concepts aren't independent. Agreement between S002 and S004, S006 or S007,
   written separately, counts for more, as on truthful state.

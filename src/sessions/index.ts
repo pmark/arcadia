@@ -40,6 +40,7 @@ import { SESSION_ENV_MARKER } from "./operatorLaunch.js";
 import { formatLaunchFailure } from "./launchFailure.js";
 import { tmuxNewSessionArgs, writeSessionLauncher } from "./tmuxLauncher.js";
 import { miseNodeDirectory } from "../runtime/mise.js";
+import { resolveHostArcadiaDirectory } from "../runtime/hostArcadiaCli.js";
 
 export { tmuxNewSessionArgs } from "./tmuxLauncher.js";
 
@@ -258,6 +259,8 @@ export interface TmuxAdapter {
      * run directory (beside its log), else a private temporary directory.
      */
     launcherDirectory?: string;
+    /** Test seam: the home whose `.local` the host-owned `arcadia` directory lives under (default: the real home). */
+    hostHome?: string;
   }): void;
   /**
    * The pane's full scrollback (not just the currently visible screen), used
@@ -322,7 +325,9 @@ export const systemTmux: TmuxAdapter = {
     const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
     // Never hand tmux the provider argv: it carries the whole brief, and tmux
     // refuses an over-long command ("command too long"). See `tmuxLauncher.ts`.
-    const launcher = writeSessionLauncher(run, input.launcherDirectory ?? (input.record ? path.dirname(input.record.logFile) : undefined), miseNodeDirectory(input.cwd));
+    const launcher = writeSessionLauncher(run, input.launcherDirectory ?? (input.record ? path.dirname(input.record.logFile) : undefined), miseNodeDirectory(input.cwd), resolveHostArcadiaDirectory(input.cwd, process.env.PATH, input.hostHome, {
+      onFailure: (message) => process.stderr.write(`arcadia: Session launches without a host arcadia command: ${message}\n`)
+    }));
     const result = spawnSync("tmux", tmuxNewSessionArgs(input.name, input.cwd, launcher.file), {
       stdio: ["ignore", "ignore", "pipe"],
       encoding: "utf8",
