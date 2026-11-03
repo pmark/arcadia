@@ -32,12 +32,12 @@ Any turn that did something ends with a block:
 
 ```text
 Relay mode (simulation)
-Arcadia did: <the command and its exit code, or a receipt ID>
+Arcadia did: <the command and its exit code, receipt ID or returned addresses>
 I improvised: <what the agent did in place of Relay>
 Relay can't do this yet: <what it could not simulate>
 ```
 
-The split is strict. **Arcadia did** needs a receipt. If the agent cannot name one, the item does not belong there. **I improvised** covers the agent's own judgment and tools: reading guidance itself, ranking results, summarizing, drafting a reply, using a browser. The skill says that when the agent is unsure, it should choose this label, and that an improvised behavior must never be promoted because it felt routine.
+The split is strict. **Arcadia did** needs a receipt, such as an exit code, a receipt ID or the addresses `arcadia way lookup` returned. If the agent cannot name one, the item does not belong there. **I improvised** covers the agent's own judgment and tools: reading guidance itself, ranking results, summarizing, drafting a reply, using a browser. The skill says that when the agent is unsure, it should choose this label, and that an improvised behavior must never be promoted because it felt routine.
 
 The point is that you can tell what would still work without the agent. A command with an exit code would. A summary the agent wrote would not.
 
