@@ -27,6 +27,10 @@ for evidence, discoverability and channel boundaries.
 
 ## Drafts
 
+- [Way lookup finds words, not answers](2026-11-03-way-lookup-finds-words-not-answers.md) — Field Notes essay draft: what `arcadia way lookup` does, and development-data measurements showing a match means words were found, not that the answer is right. Unreviewed.
+- [Relay mode labels what the agent made up](2026-11-03-relay-mode-labelled-simulation.md) — Field Notes essay draft: the labelled simulation of Relay, which does not exist yet, and how its three labels separate receipts from improvisation. Unreviewed.
+- [Arcadia Design checks the trail, not the truth](2026-11-03-arcadia-design-checked-archive.md) — Field Notes essay draft: what `arcadia design check` proves and does not, using the Relay design's first review. Unreviewed.
+
 - [One press](2026-11-01-one-press.md) — Field Notes ship note: how a START card that could not be made on 31 October started the unattended run on 1 November, and the four-hour admission gap after it.
 
 - [How Arcadia could guide design brainstorming](2026-10-28-how-arcadia-could-guide-design-brainstorming.md) — a proposal (not built) for a field-neutral design core, rehearsed on paper with simulated operators.
