@@ -74,6 +74,12 @@ testing per model.
 - 80 messages, written by one agent imagining an operator, not real operator messages.
 - One run per model, at uncontrolled load, and across two runtimes.
 - Tools were scored for choice and a keyword in the argument, not for running them.
+- **The argument check is loose.** A Decision answer passed if its id appeared, whatever letter was chosen.
+  Rescoring those rows by hand changes no headline number: the 27B kept every letter. But asked "go with C"
+  with no id, the 14B made up `0200` from the prompt's own example, so real Decision answers must be checked
+  against open Decisions in code.
+- **A bare `stop` scores as `prepare_off` or `chat`.** That's acceptable only because `prepare_off` produces a
+  confirm card and turns nothing off.
 - Hostile messages were few: 4 in the unseen set and 6 in the first.
 - The rule prototype's overall accuracy depends on this set's mix.
 - `routing-3-rules.py` lists tool names as a hostile signal, which won't hold up against varied attacks.

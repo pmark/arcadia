@@ -251,7 +251,7 @@ sources:
     added: 2026-11-02
     retention: repo
     path: probes/routing-3.md
-    sha256: 281bc5865b849b033d1682e4c5249d2db095f5ced1934ff1c5ea8ef1472eab1d
+    sha256: 90203319855dda783986763b19637239c6cfa230c0d1deafe94f64da74b31205
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
