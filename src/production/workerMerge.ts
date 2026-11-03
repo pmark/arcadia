@@ -234,7 +234,7 @@ function diffPaths(repoRoot: string, args: string[]): string[] {
  * archived copy does, which is a settlement record. A draft already on the
  * base, one archived under another name or one left in place is not consumed.
  */
-function consumedCompletionDrafts(repoRoot: string, baseRevision: string, parent: string, head: string): Set<string> {
+export function consumedCompletionDrafts(repoRoot: string, baseRevision: string, parent: string, head: string): Set<string> {
   const consumed = new Set<string>();
   const renames = git(repoRoot, ["-c", "core.quotepath=false", "diff", "--find-renames", "--name-status", "--diff-filter=R", parent, head])
     .split("\n").map((line) => line.split("\t")).filter((fields) => fields.length === 3);

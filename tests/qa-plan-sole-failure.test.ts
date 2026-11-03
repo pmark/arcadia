@@ -1,8 +1,11 @@
+import { execFileSync } from "node:child_process";
+import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { createReviewItem } from "../src/db/repositories.js";
 import {
   ensureQaPlanWaiver,
+  ensureQaPlanWaiverTable,
   getQaPlanWaiver,
   independentVerdictGateWithQaPlanWaiver,
   MAX_QA_PLAN_ISSUE_ATTEMPTS,
@@ -31,7 +34,7 @@ afterEach(() => {
 });
 
 const CRITERIA_A = [`MARKER.md exists and contains exactly the line "${LINE_A}" followed by a trailing newline, with no other content.`];
-const PLAN_TITLE = "Operator QA plan uses the wrong evidence for acceptance criterion 1";
+const PLAN_TITLE = "Operator QA step 4 uses the wrong evidence for acceptance criterion 1";
 
 interface Options {
   /** What the stubbed QA reviewer fails; null passes every QA criterion (no QA verdict failure at all). */
@@ -95,7 +98,7 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
     // The operator-unverified record: stored per Action and head, logged, and in the Action's journey.
     const row = waiver(rehearsal, head)!;
     expect(row.record).toContain(`Operator QA plan unverified for ${rehearsal.actionA} at ${head}`);
-    expect(row.record).toContain("its reviewer named at most one numbered plan step, so that operator check went unverified and QA no longer blocks this head (Decision 0169)");
+    expect(row.record).toContain("named one numbered plan step, so one operator check step (Step 4) went unverified and QA no longer blocks this head (Decision 0169)");
     expect(row.verdict_request_id).toBe(qaAttempts(rehearsal)[0].request_id);
     expect(rehearsal.log.some((line) => line.includes(row.record))).toBe(true);
     const journey = withReadOnlyDatabase(rehearsal.workspace, (db) =>
@@ -113,7 +116,7 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
     expect(repairs(rehearsal)).toEqual([]);
     expect(rehearsal.sessions()).toHaveLength(1);
     expect(qaAttempts(rehearsal).map((attempt) => attempt.status)).toEqual(["failed"]);
-    expect(waiver(rehearsal, head)?.record).toContain("that operator check went unverified");
+    expect(waiver(rehearsal, head)?.record).toContain("one operator check step (Step 4) went unverified");
     expect(rehearsal.github.issues).toHaveLength(1);
   });
 
@@ -123,7 +126,7 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
     const [issue] = rehearsal.github.issues;
     expect(issue.title).toBe(`QA verdict failed only the Operator QA plan: ${rehearsal.actionA} at ${head.slice(0, 12)}`);
     expect(issue.body).toContain(`Operator QA plan unverified for ${rehearsal.actionA} at ${head}`);
-    expect(issue.body).toContain("that operator check went unverified");
+    expect(issue.body).toContain("one operator check step (Step 4) went unverified");
     expect(waiver(rehearsal, head)).toMatchObject({ issue_url: issue.url, issue_attempts: 1, issue_error: null });
     for (let i = 0; i < 3; i += 1) rehearsal.tick();
     expect(rehearsal.github.issues).toHaveLength(1);
@@ -174,7 +177,7 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
     expect(row).toMatchObject({ issue_url: null, issue_error: "HTTP 502: bad gateway", issue_attempts: 1 });
     expect(failing.rehearsal.log.some((line) => line.includes("Filing the Issue for the unverified Operator QA plan") && line.includes("the verdict outcome is unchanged: HTTP 502: bad gateway"))).toBe(true);
     // The unverified record is written whether or not the Issue could be filed.
-    expect(row.record).toContain("that operator check went unverified");
+    expect(row.record).toContain("one operator check step (Step 4) went unverified");
   });
 
   it("redacts secrets in the evidence it puts in the Issue", () => {
@@ -297,7 +300,8 @@ describe("seeded QA verdict shapes", () => {
   const PLAN_FINDING = { severity: "medium", title: PLAN_TITLE, evidence: "Step 4 inspects the wrong file.", recommendation: "Inspect the test file." };
   const planFinding = (over: Partial<typeof PLAN_FINDING>) => ({ ...PLAN_FINDING, ...over });
   /** A plan check whose own evidence names no step, so only the finding's wording is under test. */
-  const noStep = [{ ...PLAN_FAIL, evidence: "The plan is not concrete." }, ...OTHERS];
+  const noStep0 = { ...PLAN_FAIL, evidence: "The plan is not concrete." };
+  const noStep = [noStep0, ...OTHERS];
 
   /** One candidate (code review passed, QA not yet run) shared by the shape cases; each case seeds, asks the gate, and unseeds. */
   let shared: { rehearsal: Rehearsal; a: AgentSession; head: string };
@@ -333,6 +337,7 @@ describe("seeded QA verdict shapes", () => {
   function unseed(): void {
     withDatabase(shared.rehearsal.workspace, (db) => {
       db.prepare("DELETE FROM session_role_attempts WHERE id = 'seeded-attempt'").run();
+      ensureQaPlanWaiverTable(db);
       db.prepare("DELETE FROM production_qa_plan_waivers").run();
     });
     shared.rehearsal.github.issues.length = 0;
@@ -407,6 +412,35 @@ describe("seeded QA verdict shapes", () => {
     expect(verdict(agentHead)).toBeNull();
   });
 
+  it("accepts a head whose last commit writes a Plan record but refuses one that adds an unconsumed ask file", () => {
+    const repo = shared.rehearsal.repo;
+    const on = (file: string) => {
+      // A commit on top of the pre-settlement commit that adds one file, built with plumbing (no checkout).
+      const index = path.join(shared.rehearsal.root, `index-${file.replaceAll("/", "_")}`);
+      const env = { ...process.env, GIT_INDEX_FILE: index };
+      const run = (args: string[], input?: string) => execFileSync("git", args, { cwd: repo, env, input, encoding: "utf8" }).trim();
+      const parent = run(["rev-parse", `${shared.head}^1`]); // the pre-settlement commit, so only `file` differs from it
+      run(["read-tree", parent]);
+      const blob = run(["hash-object", "-w", "--stdin"], "x\n");
+      run(["update-index", "--add", "--cacheinfo", `100644,${blob},${file}`]);
+      return run(["-c", "user.name=T", "-c", "user.email=t@example.test", "commit-tree", run(["write-tree"]), "-p", parent, "-m", "extra"]);
+    };
+    const judge = (head: string) => {
+      seed({ attemptHead: head, context: { candidate: { headSha: head, url: "https://github.com/pmark/rehearsal/pull/7" } } });
+      try {
+        return withDatabase(shared.rehearsal.workspace, (db) => {
+          const session = getSession(db, shared.a.id)!;
+          const readiness = independentVerdictReadiness(db, { session, repoRoot: repo });
+          if (!readiness.ready) throw new Error("not ready");
+          return qaPlanSoleFailure(db, session, { requirement: readiness.requirement, binding: { ...readiness.binding, targetHead: head } }, head, repo);
+        });
+      } finally { unseed(); }
+    };
+    expect(judge(on("docs/plans/extra-plan.md"))).not.toBeNull();
+    expect(judge(on(".arcadia/asks/rogue.yaml"))).toBeNull();
+    expect(judge(on("src/extra.ts"))).toBeNull();
+  });
+
   it("files against the repository named by the pull request URL, marks the Issue, and adopts an Issue that already carries the marker", () => {
     seed({});
     askAt(minutes(0));
@@ -435,7 +469,7 @@ describe("seeded QA verdict shapes", () => {
     seed({});
     expect(waived()).toMatchObject({ head: shared.head });
     expect(ask()).toMatchObject({ satisfied: true });
-    expect(waiver(shared.rehearsal, shared.head)?.record).toContain("that operator check went unverified");
+    expect(waiver(shared.rehearsal, shared.head)?.record).toContain("one operator check step (Step 4) went unverified");
     expect(shared.rehearsal.github.issues).toHaveLength(1);
   });
 
@@ -443,24 +477,17 @@ describe("seeded QA verdict shapes", () => {
     ["one medium plan finding naming one step (the shape of #1996 to #1998)", {}],
     ["one low plan finding", { findings: [planFinding({ severity: "low" })] }],
     ["zero findings and plan evidence naming exactly one step", { findings: [], checks: [{ ...PLAN_FAIL, evidence: "Step 4 inspects the wrong file." }, ...OTHERS] }],
-    ["zero findings and plan evidence naming no step", { findings: [], checks: [{ ...PLAN_FAIL, evidence: "The plan is not concrete." }, ...OTHERS] }],
     ["the same step named repeatedly", { findings: [planFinding({ evidence: "Step 4 is wrong; fix Step 4. Step 4 again." })] }],
     ["a step named in words or with a hash", { findings: [planFinding({ evidence: "Step four, also written Step #4, is wrong." })] }],
     // Real ledger text (martianrover, QA reports for PR #5 and PR #2): text about the plan, not the code.
     ["the real #5 shape: 'the operator QA procedure incorrectly claims', one step", {
-      findings: [planFinding({ title: "Step 4 does not prove its stated acceptance criterion", evidence: "Step 4 only runs `git show ...:scripts/check-rehearsal.mjs`, yet its expected result says that displayed source proves the check passes. Source display cannot establish a successful execution.", recommendation: "Make Step 4 a source-inspection step only." })],
+      findings: [planFinding({ title: "Operator QA step 4 does not prove its stated acceptance criterion", evidence: "Step 4 only runs `git show ...:scripts/check-rehearsal.mjs`, yet its expected result says that displayed source proves the check passes. Source display cannot establish a successful execution.", recommendation: "Make Step 4 a source-inspection step only." })],
       checks: [{ ...PLAN_FAIL, evidence: "The procedure is mostly concrete, but Step 4 falsely treats source display as proof that an executable check passes." }, ...OTHERS],
       context: { summary: "The implementation and supplied validation support the marker change, but the operator QA procedure incorrectly claims static source inspection proves that the executable check passes." },
       residualRisks: ["The operator procedure should be corrected before relying on it as a criterion-by-criterion audit record."]
     }],
-    ["the real #2 shape: 'Missing operator QA plan'", {
-      findings: [planFinding({ title: "Missing operator QA plan", evidence: "The patch adds MARKER.md and settlement records, but contains no runnable operator procedure or stated observable verification outcome beyond the archived assertion that a check passed.", recommendation: "Add a concise operator QA procedure that states the command or inspection to perform and the expected observable result." })],
-      checks: [{ ...PLAN_FAIL, evidence: "No patch content provides an operator-facing, runnable QA procedure and its observable expected consequence." }, ...OTHERS],
-      context: { summary: "The marker implementation is correct and CI succeeded, but the candidate supplies no concrete operator-facing QA procedure with observable results." },
-      residualRisks: ["The operator cannot independently follow a documented verification procedure from this candidate alone."]
-    }],
+    ["a summary that mentions a bug fix", { context: { summary: "Step 4 is wrong; the bug fix itself is described correctly." } }],
     ["the real #1661/#1786 summary wording about a regression test", { context: { summary: "The regression test is logically aligned with the stated acceptance criteria, but the operator QA plan targets a predecessor commit and an incorrect file list." }, residualRisks: ["The new regression test may not have been executed by the specifically requested command."] }],
-    ["a weak word beside the candidate but inside a sentence about a step", { findings: [planFinding({ evidence: "The candidate is inspected in Step 4, whose expected output is wrong." })] }],
     ["plan text that fails to run, is broken or names an incorrect path", { findings: [planFinding({ evidence: "Step 4's command fails to run: the path it names is incorrect and the inspection is broken." })] }]
   ];
   it.each(waivable)("waives %s", (_name, input) => {
@@ -526,6 +553,29 @@ describe("seeded QA verdict shapes", () => {
     ["every step", { findings: [planFinding({ evidence: "Every step of the plan is wrong." })], checks: noStep }],
     ["none of the inspections", { findings: [planFinding({ evidence: "None of the inspections in Step 4 shows the result." })], checks: noStep }],
     ["all steps in the plan evidence", { findings: [], checks: [{ ...PLAN_FAIL, evidence: "All steps are vague." }, ...OTHERS] }],
+    // R1: a wholly missing plan, or a plan naming no step, is not "one operator check step unverified"
+    ["zero findings and plan evidence naming no step", { findings: [], checks: [noStep0, ...OTHERS] }],
+    ["a finding titled Missing operator QA plan", { findings: [planFinding({ title: "Missing operator QA plan", evidence: "There is no operator procedure." })], checks: [noStep0, ...OTHERS] }],
+    ...[
+      "The whole procedure is unrunnable.", "Several steps cannot run.", "Multiple steps cannot run.", "Most steps cannot run.", "All acceptance steps cannot run.",
+      "Both inspection steps cannot run.", "Neither the fourth nor the sixth step can run.", "Wrong:\na) inspect the file\nb) run the check\nc) compare", "Wrong:\n- inspect the file\n- run the check"
+    ].flatMap((text): Array<[string, Seed]> => [
+      [`unnumbered "${text.split("\n")[0]}" with no step named`, { findings: [planFinding({ title: "Operator QA plan is unrunnable", evidence: text })], checks: [noStep0, ...OTHERS] }],
+      [`unnumbered "${text.split("\n")[0]}" beside Step 4`, { findings: [planFinding({ evidence: `Step 4 is wrong. ${text}` })] }]
+    ]),
+    // R3: the bare "Step N" title never mentions the plan
+    ["a bare Step N title", { findings: [planFinding({ title: "Step 3: the guard is wrong", evidence: "Step 4 is wrong." })] }],
+    ["a bare Step N title that makes no other claim", { findings: [planFinding({ title: "Step 4: the output is vague", evidence: "Step 4 is vague." })] }],
+    ["a bare Step N title about the guard", { findings: [planFinding({ title: "Step 4: the guard accepts a stale head", evidence: "Step 4 is wrong." })] }],
+    // R2: the plan-word exemption is closed; defect words in findings and plan evidence
+    ["the code at step 4 is broken", { findings: [planFinding({ evidence: "The code at step 4 is broken." })] }],
+    ["the patch, per step 4, is incorrect", { findings: [planFinding({ evidence: "The patch, per step 4, is incorrect." })] }],
+    ["the implementation in the plan step is wrong", { findings: [planFinding({ evidence: "The implementation in the plan step is wrong. Step 4." })] }],
+    ["the migration in step 4 fails to apply", { findings: [planFinding({ evidence: "The migration in step 4 fails to apply." })] }],
+    ["step 4: the guard accepts a stale head", { findings: [planFinding({ evidence: "Step 4: the guard accepts a stale head." })] }],
+    ["a candidate inspected in a step whose output is wrong", { findings: [planFinding({ evidence: "The candidate is inspected in Step 4, whose expected output is wrong." })] }],
+    ["a finding says bug", { findings: [planFinding({ evidence: "Step 4 hides a bug." })] }],
+    ["the plan evidence says defect", { checks: [{ ...PLAN_FAIL, evidence: "Step 4 shows a defect." }, ...OTHERS] }],
     // F5: the deterministic gate
     ["the deterministic gate recorded a reason (merge state DIRTY)", { effectiveness: { deterministicGateReasons: ["the pull request merge state is DIRTY"], deterministicGateVerdict: "pass" } }],
     ["the deterministic gate recorded a verdict only", { effectiveness: { deterministicGateReasons: [], deterministicGateVerdict: "fail" } }],

@@ -10,6 +10,7 @@ import { ensureReviewRepairTable, getReviewRepair, requiredChecksRepairRequestId
 import { isAncestor, tryGit } from "../git/worktrees.js";
 import { redactSecrets } from "../sessions/validationEvidence.js";
 import { candidateChangeGate, SETTLEMENT_RECORD_PATH } from "./candidateChangeGate.js";
+import { consumedCompletionDrafts } from "./workerMerge.js";
 import {
   classifyPullRequestChecks,
   readPullRequestChecks,
@@ -358,7 +359,7 @@ export const AUTHORITY_TEXT = /\b(authority|authori[sz]ation|approval[- ]boundar
  * finding with any other title concerns something else and keeps the verdict
  * blocking, whatever else it says.
  */
-const PLAN_FINDING_TITLE = /^(?:(?:missing|incomplete|inaccurate|unsound|stale|wrong|vague)\s+)?(?:operator qa (?:plan|procedure|step)\b|step\s*#?\d+\b)/i;
+const PLAN_FINDING_TITLE = /^operator qa (?:plan|procedure|step)\b/i;
 const OPERATOR_QA_PLAN_CHECK_NAME = "Operator QA plan";
 
 /** Issue filings the worker attempts per Action and head before it stops asking GitHub. */
@@ -373,6 +374,8 @@ export interface QaPlanSoleFailure {
   reportPath: string | null;
   /** The failing Operator QA plan check's evidence, as the reviewer wrote it. */
   planEvidence: string;
+  /** The one numbered plan step the reviewer named. */
+  step: string;
   /** The reviewer's findings, at most one; their titles name the plan. */
   findings: Array<{ severity: string; title: string; evidence: string; recommendation: string }>;
 }
@@ -385,26 +388,27 @@ const WAIVABLE_SEVERITIES: ReadonlySet<string> = new Set(["low", "medium"]);
 /**
  * Claims about the candidate's code or data, which the plan check cannot
  * excuse. Strong words trip anywhere. Weak words ("incorrect", "broken",
- * "bug", "removed", "fails to") trip only when they sit within a short span of
- * a subject that is the candidate's code or data and the span names no plan,
- * procedure, step or operator: "the operator QA procedure incorrectly claims"
- * is text about the plan. Conservative on purpose: a real plan-only verdict
- * that trips simply takes the existing repair path.
+ * "removed", "fails to", "accepts") trip when they sit within a short span of
+ * a subject that is the candidate's code or data; "the operator QA procedure
+ * incorrectly claims" has no such subject. Conservative on purpose: a real
+ * plan-only verdict that trips simply takes the existing repair path.
  */
 const STRONG_CLAIM = /\b(?:data[- ]?loss|drops?|dropped|dropping|deletes?|deleted|deleting|corrupt\w*|crash\w*|vulnerab\w*|inject\w*|leak\w*|overwrit\w*|regress(?:es|ed|ing)|deadlock\w*|expos(?:es|ed|ing|ure)|unsafe|insecure|exploit\w*|malicious|race condition|users? table)\b/i;
-const WEAK_WORD = String.raw`(?:removes?|removed|incorrect\w*|broken|breaks?|bugs?|buggy|defect\w*|faulty|wrong|violat\w*|truncat\w*|missing|lacks?|not (?:implemented|handled|enforced|validated|refused|rejected)|(?:does|do|did) not (?:work|handle|refuse|reject|validate|enforce|implement|compile|pass)|(?:fails?|failed|failing) (?:to|when|on|for) (?!(?:show|establish|demonstrate|prove|observe|state|name|identify|point|instruct|say|mention|tell|describe|reflect|cover)\b))`;
-const CODE_SUBJECT = String.raw`(?:candidate'?s?|patch|implementation|production code|source code|code|migration|schema|database|data|stored)`;
+const WEAK_WORD = String.raw`(?:removes?|removed|incorrect\w*|broken|breaks?|faulty|wrong|accepts?|allows?|permits?|ignores?|bypass\w*|violat\w*|truncat\w*|missing|lacks?|not (?:implemented|handled|enforced|validated|refused|rejected)|(?:does|do|did) not (?:work|handle|refuse|reject|validate|enforce|implement|compile|pass)|(?:fails?|failed|failing) (?:to|when|on|for) (?!(?:show|establish|demonstrate|prove|observe|state|name|identify|point|instruct|say|mention|tell|describe|reflect|cover)\b))`;
+const CODE_SUBJECT = String.raw`(?:candidate'?s?|patch|implementation|production code|source code|code|migration|schema|database|data|stored|guard|function|handler|module)`;
 const WEAK_CLAIM = [new RegExp(String.raw`\b${CODE_SUBJECT}\b([^.;\n]{0,60}?)\b${WEAK_WORD}`, "gi"), new RegExp(String.raw`\b${WEAK_WORD}([^.;\n]{0,40}?)\b${CODE_SUBJECT}\b`, "gi")];
-const PLAN_WORDS = /\b(?:plan|procedure|steps?|operator|inspection)\b/i;
+/** Defect words, tripped in a finding or the plan check's evidence only: "bug fix" is ordinary in a summary. */
+const DEFECT_WORD = /\b(?:bugs?|buggy|defects?|defective)\b/i;
 
-/** The claim about the candidate's code or data a text makes, or null. */
-export function candidateClaim(text: string): string | null {
+/** The claim about the candidate's code or data a text makes, or null. `strict` texts (findings, plan evidence) also trip on defect words. */
+export function candidateClaim(text: string, strict = false): string | null {
   const strong = STRONG_CLAIM.exec(text);
   if (strong) return strong[0];
+  if (strict) { const defect = DEFECT_WORD.exec(text); if (defect) return defect[0]; }
+  // No plan-wording exemption: "the code at step 4 is broken" is still a claim about the code.
   for (const pattern of WEAK_CLAIM) {
-    for (const match of text.matchAll(pattern)) {
-      if (!PLAN_WORDS.test(match[0])) return match[0];
-    }
+    const hit = text.match(pattern)?.[0];
+    if (hit) return hit;
   }
   return null;
 }
@@ -430,7 +434,8 @@ function namedSteps(text: string): { steps: Set<string>; criteria: Set<string>; 
   for (const match of text.matchAll(new RegExp(String.raw`\b(${list})\s+steps?\b`, "gi"))) for (const n of numbersIn(match[1])) steps.add(n);
   for (const match of text.matchAll(/^\s*(\d+)[.)]\s/gm)) steps.add(String(Number(match[1])));
   for (const match of text.matchAll(new RegExp(String.raw`\bcriteri(?:on|a)\s*#?\s*(${list})`, "gi"))) for (const n of numbersIn(match[1])) criteria.add(n);
-  const wholePlan = /\b(?:every|each|all|none|any)\s+(?:of\s+)?(?:the\s+)?(?:operator\s+)?(?:qa\s+)?(?:plan'?s?\s+)?(?:steps?|inspections?|instructions?)\b/i.test(text);
+  const wholePlan = /\b(?:every|each|all|none|any|both|neither|several|multiple|most|many|few|some|numerous|whole|entire)\b[^.\n]{0,30}\b(?:steps?|procedure|plan|inspections?|instructions?)\b/i.test(text)
+    || (text.match(/^\s*(?:[-*\u2022]|[a-z][.)])\s/gim) ?? []).length >= 2;
   return { steps, criteria, wholePlan };
 }
 
@@ -482,7 +487,8 @@ export function judgeQaPlanReport(raw: unknown, input: { head: string; actionKey
   const risks = Array.isArray(context.residualRisks) ? context.residualRisks.map(String) : [];
   const prose = [plan.evidence, summary, ...risks, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])];
   if (prose.some((text) => AUTHORITY_TEXT.test(text))) return refuse("authority text");
-  const claim = prose.map(candidateClaim).find(Boolean);
+  const strictProse = [plan.evidence, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])];
+  const claim = [...prose.map((text) => candidateClaim(text, strictProse.includes(text))), ...strictProse.map((text) => candidateClaim(text, true))].find(Boolean);
   if (claim) return refuse(`a claim about the candidate's code or data: ${claim}`);
   // "At most one numbered step": across the plan evidence and the finding.
   const steps = new Set<string>();
@@ -493,14 +499,14 @@ export function judgeQaPlanReport(raw: unknown, input: { head: string; actionKey
     for (const step of named.steps) steps.add(step);
     for (const criterion of named.criteria) criteria.add(criterion);
   }
-  if (steps.size > 1) return refuse(`more than one plan step (${[...steps].join(", ")})`);
+  if (steps.size !== 1) return refuse(steps.size === 0 ? "no numbered plan step is named, so no host-written plan step was checked" : `more than one plan step (${[...steps].join(", ")})`);
   if (criteria.size > 1) return refuse(`more than one acceptance criterion (${[...criteria].join(", ")})`);
   return { ok: true, failure: {
     head,
     pullRequestUrl: typeof context.candidate?.url === "string" ? context.candidate.url : null,
     summary: summary || "(no summary recorded)",
     reportPath: typeof context.reportPath === "string" ? context.reportPath : null,
-    planEvidence: plan.evidence, findings
+    planEvidence: plan.evidence, findings, step: [...steps][0]
   } };
 }
 
@@ -538,7 +544,9 @@ export function qaPlanSoleFailure(db: Database.Database, session: AgentSession, 
   // (and consumes its completion draft) and nothing else, as the worker merge requires.
   const settlement = tryGit(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", start, head]);
   const settled = settlement?.split("\n").map((line) => line.trim()).filter(Boolean) ?? [];
-  if (settlement === null || settled.length === 0 || !settled.every((file) => SETTLEMENT_RECORD_PATH.test(file) || /^\.arcadia\/asks\/[^/]+\.ya?ml$/.test(file))) return null;
+  let consumed = new Set<string>();
+  try { consumed = consumedCompletionDrafts(repoRoot, session.base_revision, start, head); } catch { return null; }
+  if (settlement === null || settled.length === 0 || !settled.every((file) => consumed.has(file) || SETTLEMENT_RECORD_PATH.test(file))) return null;
   try {
     const decisionId = (JSON.parse(latest.terminal_receipt_json ?? "{}") as { decisionId?: unknown }).decisionId;
     if (typeof decisionId !== "string") return null;
@@ -605,9 +613,9 @@ const oneLine = (text: string, limit = 400) => {
 };
 
 /** The operator-unverified record: written to the waiver row, the journey log, the worker log and the Issue. */
-export function qaPlanUnverifiedRecord(actionKey: string, failure: Pick<QaPlanSoleFailure, "head" | "planEvidence">): string {
-  return `Operator QA plan unverified for ${actionKey} at ${failure.head}: independent QA failed only the host-written Operator QA plan check and its reviewer named at most one numbered plan step, `
-    + `so that operator check went unverified and QA no longer blocks this head (Decision 0169). QA's other recorded checks passed; that does not by itself establish the candidate's code is correct. Reviewer's evidence: ${oneLine(failure.planEvidence)}`;
+export function qaPlanUnverifiedRecord(actionKey: string, failure: Pick<QaPlanSoleFailure, "head" | "planEvidence" | "step">): string {
+  return `Operator QA plan unverified for ${actionKey} at ${failure.head}: independent QA failed only the host-written Operator QA plan check and named one numbered plan step, `
+    + `so one operator check step (Step ${failure.step}) went unverified and QA no longer blocks this head (Decision 0169). QA's other recorded checks passed; that does not by itself establish the candidate's code is correct. Reviewer's evidence: ${oneLine(failure.planEvidence)}`;
 }
 
 const issueMarker = (actionKey: string, head: string) => `qa-plan-unverified:${actionKey}:${head}`;
