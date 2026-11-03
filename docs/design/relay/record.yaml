@@ -274,6 +274,20 @@ sources:
     retention: repo
     path: sources/S022-decisions-and-interface-direction.md
     sha256: 5821d8910b897e3a54afd5ba78377b51d24c63993569781d5d996f15eed86a54
+  - id: S023
+    title: Operator's direction on the layered Workspace
+    kind: operator
+    added: 2026-11-03
+    retention: repo
+    path: sources/S023-layered-overlay.md
+    sha256: 7992e80ebfd8c8aecc760748da73e29f99c17b4385f0454e9e42f95c93dbeb6e
+  - id: S024
+    title: Mira's Ask surface and Workspace inventory
+    kind: agent
+    added: 2026-11-03
+    retention: repo
+    path: reviews/mira-ask-surfaces-and-workspace.md
+    sha256: 7de67176622221aaa1f94d38e3099dc4599253e614fb6f406fda487d21d4fae2
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -2745,6 +2759,53 @@ concepts:
     serves:
       - REQ-012
       - REQ-014
+  - id: C-059
+    title: "Three layers: scene, context view, Relay overlay"
+    kind: requirement
+    statement: The scene background conveys system status, the underlying view defines context, and Relay appears as an overlay always available from any context, offering natural language input and dynamic, free-flowing experiences.
+    origins: &a144
+      - &a143
+        source: S023
+        locator: whole file
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/app/workspace/layout.tsx
+        - apps/dashboard/lib/system-sky.ts
+        - apps/dashboard/lib/workspace-scope.ts
+    position: chosen
+    serves:
+      - REQ-012
+      - REQ-014
+  - id: C-060
+    title: Typed answers and a server-side thread
+    kind: interface
+    statement: "Ask returns typed data: the kind of answer, its facts and freshness, its options and a view intent any renderer can draw. The thread and menus live on the server, so devices share them."
+    origins:
+      - source: S024
+        locator: Fit with the vision
+      - *a143
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/components/workspace/workspace-ask.tsx
+    position: chosen
+    serves:
+      - REQ-003
+      - REQ-012
+  - id: C-061
+    title: Freeze other Ask surfaces
+    kind: constraint
+    statement: /capture and the dashboard Ask panel keep working and get nothing new. Production control pages stay until Workspace can replace them under the same gates.
+    origins: *a144
+    fit:
+      status: exists
+      evidence:
+        - apps/dashboard/app/capture/page.tsx
+        - apps/dashboard/app/dashboard/page.tsx
+    position: chosen
+    serves:
+      - REQ-012
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?

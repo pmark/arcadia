@@ -1,5 +1,9 @@
 # Handoff: Relay proposal
 
+**Latest (2026-11-03):** the operator answered 1A 2A 3A 4A 5B, then set the three-layer Workspace direction and froze other
+surfaces (S022, S023), and asked to capture and stop. The operator hasn't approved starting the build beyond those answers.
+The proposal is current. Usage was at about 96% of the week, resetting Nov 4 at 7:59 pm.
+
 # Objective
 
 Take [the Relay proposal](../../proposals/relay.md) from proposed to approved, then build its first slice.
@@ -79,9 +83,8 @@ Resume with the prompt below, and run an independent review of PR 2027 first.
 
 ```text
 Continue the Relay proposal. Read docs/reports/handoffs/20261103T0000Z-relay-proposal.md and
-docs/proposals/relay.md, then check the state of PR 2027 and PR 2028. Have an independent agent, not on the
-author's model, review PR 2027. Then bring me its five decisions as one menu with consequences. Don't start
-building until I've answered. Unattended production stays first, and production stays Off.
+docs/proposals/relay.md, then check the state of PR 2027 and PR 2028. Check its review status. Its five decisions are answered, in S022 and S023. Bring me the design of the three layers through
+Arcadia Design first, and don't start building until I've approved it. Unattended production stays first, and production stays Off.
 ```
 
 # Stop condition

@@ -20,6 +20,22 @@ deployment, and they manage production through it.
 The operator named it Relay. First-time-operator onboarding is deferred, but nothing built now should require
 special knowledge.
 
+## The interface: three layers
+
+By the operator's direction ([their words](../design/relay/sources/S023-layered-overlay.md)), Arcadia Workspace is the
+primary interface, mobile-first, with XR as the horizon, across phone, tablet, laptop, multi-monitor desktop, headsets
+and future AR glasses. It's neither a dashboard nor strictly a chatbot.
+
+| Layer | Its job |
+|---|---|
+| **Scene background** | Conveys system status |
+| **Underlying view** | Defines the context |
+| **Relay overlay** | Always available from any context, offering natural language input and dynamic, free-flowing experiences |
+
+Views and controls are cued and presented fluidly as context shifts. The existing status sky (`lib/system-sky.ts`) and
+navigation scope (`lib/workspace-scope.ts`) are starting points, but [Mira's inventory](../design/relay/reviews/mira-ask-surfaces-and-workspace.md)
+found no cued views, thread, or XR code yet. How this should feel needs its own design pass, through Arcadia Design.
+
 ## The rule that governs everything
 
 **Ask must be complete with no model at all. The local model is a companion that only adds to what Ask already
@@ -84,6 +100,16 @@ The menu figure comes from a rough script, `probes/routing-3-menu.py`. Treat it 
 and cost for supervisors, and whether the 27B can stay loaded beside coding agents. 
 
 ## The proposed first slice
+
+**Revised for Workspace.** This supersedes anything below that conflicts:
+
+- **Answers are typed data, not formatted text.** Ask returns the kind of answer, its facts and freshness, its options and a
+  view intent, so a phone, a laptop, a headset or Discord can each draw it.
+- **The thread and menus live on the server,** so devices share them. This moves into the first slice, which makes it larger.
+- **New answers and menus are built for the Relay overlay in Workspace.** `/capture` and the dashboard Ask panel are frozen:
+  they keep working and get nothing new. `/capture` stays the browser path for files until Workspace has one.
+- **Production control stays where it is,** on `/todo`, `/review`, `/actions`, `/production`, `/now` and `/mission-control`,
+  until Workspace can replace it under the same gates. Moving Decision answers into Relay needs a Decision.
 
 Independent investigation changed the order. Its report is
 [here](../design/relay/reviews/investigation-first-slice.md), and the main code claims were checked.
@@ -168,7 +194,8 @@ a model could suggest options for that case, once the scorecard shows that.
 
 1. **Review and approve this proposal.** An independent agent reviews it, and the operator answers the decisions below.
 2. **Run a fresh critic round,** on a model other than the author's, against this version.
-3. **Ship visible answers,** using the structured outcome.
+3. **Design the three layers** through Arcadia Design, then **ship visible answers** in the overlay, using typed answers and
+   the server-side thread.
 4. **Add name matching and lookups, then the menu and scorecard.** That finishes Ask alone, useful even if no model
    ever ships.
 5. **Rerun the bake-off** on the companion's jobs, before choosing its model.
@@ -194,9 +221,8 @@ So that nobody relies on superseded statements from earlier in this work:
 first slice as ordered, 94% precision with coverage tracked, confirm the revised frame, and wait on more bake-off
 models until the companion step.
 
-**Decision 4 is refined.** Arcadia Workspace is where Relay goes, and it's the primary interface: mobile-first, with XR
-as the horizon, neither a dashboard nor strictly a chatbot, with views and controls cued fluidly as context shifts. How the
-other Ask surfaces converge is under investigation, so the first slice's surface isn't final.
+**Decision 4 is refined and settled:** Workspace-first, with the three layers above, and other surfaces frozen.
+**Still open:** retiring display pages, and any move of Decision answers into Relay.
 
 ## Decisions as they were put
 
