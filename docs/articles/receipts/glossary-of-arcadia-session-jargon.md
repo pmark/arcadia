@@ -27,12 +27,14 @@
 | Waiver | `src/production/independentReview.ts`, `src/production/reviewRepair.ts`, Decision 0169 (merged 2026-11-03, #2024) |
 | START card, press, pre-mortem | `docs/agent-guidance/operator-actions.md`; `docs/managed-production-readiness.md` |
 | Replay | `scripts/production-replay.ts` header |
+| Constitution, brief, dispatch, handoff, preserve, stop the line, Process Critic, Hacker, rehearsal, lane, Discord | `CONSTITUTION.md`; `session-roles-and-briefs.md`; `arcadia-semantics.md` (Session); `AGENTS.md`; `working-copy-safety.md`; `principles.md`; `process-critic-brief.md`; `hacker-recovery.md`; rehearsal runbook; `production-scheduling.md`; `AGENTS.md` (Discord) |
 | Mutant | `docs/evidence/managed-production-release-evidence-index.md`; `tests/qa-plan-sole-failure.test.ts` (comment) |
 
 ## Left out (could not verify a definition)
 
 - The internals of the Claude Code auto-mode classifier.
 - "Replay gate" as a named gate: the repository says "replay first" and "review/replay gates" without a single definition, so only "replay" is defined.
+- `enroll` (broker operation; no definition found).
 - Any red-alert trigger beyond the four in code.
 
 ## Staleness noted

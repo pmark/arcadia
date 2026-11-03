@@ -3,7 +3,7 @@ title: "A glossary of Arcadia session jargon, and whose word each one is"
 date: "2026-11-03"
 type: essay
 slug: "glossary-of-arcadia-session-jargon"
-summary: "Arcadia sessions mix words from Arcadia, Claude Code, Git and GitHub, outside tools and plain engineering. This glossary defines about seventy of them, labels whose each one is, and flags the words that mean two things, starting with 'classifier'."
+summary: "Arcadia sessions mix words from Arcadia, Claude Code, Git and GitHub, outside tools and plain engineering. This glossary defines about seventy-five entries, labels whose each one is, and flags the words that mean two things, starting with 'classifier'."
 author: "Arcadia (drafted by Claudia Mason, as Clara)"
 status: draft
 claims_receipt: "docs/articles/receipts/glossary-of-arcadia-session-jargon.md"
@@ -55,6 +55,10 @@ classifier," it usually means one of two unrelated things.
   system, not from Arcadia. Arcadia cannot see inside it or change it. Its
   logic is Claude Code's own and is not documented in this repository, so this
   glossary does not describe how it decides.
+
+**Claude Code: the permission check.** Claude Code asks, or in auto mode
+decides, whether a tool call may run. That check, not Arcadia, is what blocks a
+command in a session.
 
 A similar Arcadia word, `classifySession` in `src/production/sessionSignals.ts`,
 is also plain code with no model. It sorts one live Session into a fixed set of
@@ -182,7 +186,7 @@ authority, expose credentials, hand the same work to two agents, open a
 security hole, or break a required check or acceptance criterion. A blocking
 finding is fixed before merge.
 
-**Subagent** — **Two meanings.** In **Claude Code**, a child agent that a
+**Subagent** — **Two senses of one idea, across two owners.** In **Claude Code**, a child agent that a
 session starts with its Agent tool to do a side task. In **Arcadia**, the same
 idea sits under the rules above: only a top-level Lead may request a helper,
 helpers never delegate, and reviewers and QA are separate Sessions, never
@@ -190,16 +194,17 @@ children. Say which you mean.
 
 **Tier** — **Two meanings.** In **Arcadia**, a logical model level an Action
 names: `light`, `standard` or `heavy`, resolved to a concrete model per coding
-agent. Sessions start on `light` and call in help. Separately, **Token Impact**
-sizes (None to Extra Large) use tier points in scheduling. Do not mix them up.
+agent. Sessions start on `light` and call in help. Separately, Arcadia's **Token Impact** scores (None to Extra Large), which the
+scheduler calls "tier points," size how much model use an Action needs. Token
+Impact is not a model tier. This is a split inside Arcadia, not an owner split.
 
 **Sonnet, Opus, Haiku** — **Outside tool** (Anthropic's models). Arcadia's
 model-tier table maps `light` to Haiku, `standard` to Sonnet and `heavy` to
 Opus for Claude Code. These session notes use the names as shorthand for those
 tiers.
 
-**Escalation** — **Two meanings.** In **Arcadia** model tiers, escalating means
-calling in a bigger model than the one the Session started on. In **Arcadia**
+**Escalation** — **Two uses, both Arcadia's (not an owner split).** In model tiers, escalating means
+calling in a bigger model than the one the Session started on. In
 production, an escalation is also a named operator-facing stall, shown in
 `production status` and pinged once, such as `base_not_synced`. One word, two
 unrelated uses.
@@ -322,10 +327,16 @@ operator, included in every pull request and written by the host's code from
 the candidate's real changed files.
 
 **Waiver** — Arcadia. Under Decision 0169, a failed QA verdict whose only
-failing check is the host-written operator QA plan spends no repair, because no
-repair Session can change that plan. Code in
-`src/production/independentReview.ts` (merged on 3 November 2026) confirms the
-failure is exactly that and nothing else, using `classifyRecoverySignals`.
+failing check is the host-written operator QA plan gets a narrow exception. It
+uses no repair rounds, because no repair Session can change that plan. The
+finding stops blocking, an Issue is filed, and exactly one named plan step goes
+unverified, so the Action can merge with one operator check step unchecked. It
+applies only under strict conditions: the failed checks must be exactly the
+operator QA plan check, with one finding and one named step, and nothing in the
+change touching authority. The check lives in
+`src/production/independentReview.ts` (merged 3 November 2026) and uses
+`classifyRecoverySignals`. A waiver does not establish that the code is
+correct; it only says the one unchecked step is not a reason to block.
 
 **Fixture** — **General engineering.** A disposable, controlled setup used for
 a test. Arcadia's rehearsals ran against a fixture repository so a mistake
@@ -343,14 +354,56 @@ so no test can catch it. Arcadia's evidence index and a test comment use the
 word; the method is done by hand there, by disabling a guard, rerunning the
 matrix, and restoring it.
 
+## More session vocabulary
+
+**Constitution** — Arcadia. `CONSTITUTION.md`, the top rule set. Its approval
+boundaries are hard stops: no deploy, publish, delete, spend, credential use,
+production access or messaging without an explicit Decision.
+
+**Brief** — Arcadia. The written assignment for a Session or helper, with
+sections such as Task, Identity, Context, Ownership, Acceptance, Checks and
+Return.
+
+**Dispatch** — Arcadia. Launching a Session for an Action. A Session is one
+bounded coding-agent dispatch, per the semantics document.
+
+**Handoff** — Arcadia. The record a Session leaves so a successor can resume:
+Plan and Action, revisions, owners, pending work, approvals and next move.
+
+**Preserve** — Arcadia. The host-side step that turns a finished candidate
+worktree into one recoverable commit on its agent-owned branch, with a receipt
+keyed by request id.
+
+**Stop the line** — Arcadia. The rule that a defect blocking work outranks the
+plan it interrupted; promoting it to first priority is the default.
+
+**Process Critic** — Arcadia. A read-only specialization of the `plan-critic`
+role that critiques a run or the process around it. It grants no authority.
+
+**Hacker (recovery)** — Arcadia. A Behavior, not a role or a bypass: when a
+route keeps failing, find the smallest existing authorized path, prove it, then
+resume.
+
+**Rehearsal** — Arcadia. A live practice run of the unattended path against a
+fixture repository, recorded in the rehearsal runbook.
+
+**Lane** — Arcadia. In the push projection, Actions grouped by repository. One
+repository is one lane, and the production policy allows one lease per
+repository.
+
+**Discord** — **Outside tool**, used by Arcadia. The chat service where the
+configured channel receives alerts about new or material blockers.
+
 ## What this glossary leaves out
 
 Words the author could not tie to a definition in the repository are not
-defined here. They are listed in the receipt rather than guessed.
+defined here, such as `enroll`, the "replay gate" and any further red-alert
+triggers. They are listed in the receipt rather than guessed.
 
 ## What is not done
 
-This is a draft, not a published page. It has not been fact-checked by an
-independent reader, and Field Notes or Mission Control Site publication needs
-its own approval. Some documents it relies on are older than the code, so the
-claims receipt names the revision each statement was checked against.
+This is a draft. An independent fact-check for accuracy was done on 2026-11-03.
+Publication approval has not been given, and nothing has been published. Some
+documents it relies on are older than the code, so the claims receipt names the
+revision each statement was checked against. Re-check dated claims before
+publishing.

@@ -27,7 +27,7 @@ for evidence, discoverability and channel boundaries.
 
 ## Drafts
 
-- [A glossary of Arcadia session jargon, and whose word each one is](2026-11-03-glossary-of-arcadia-session-jargon.md) — about seventy terms from coordinator sessions, each labelled Arcadia, Claude Code, Git/GitHub, an outside tool or general engineering; opens with "classifier".
+- [A glossary of Arcadia session jargon, and whose word each one is](2026-11-03-glossary-of-arcadia-session-jargon.md) — about seventy-five entries from coordinator sessions, each labelled Arcadia, Claude Code, Git/GitHub, an outside tool or general engineering; opens with "classifier".
 
 - [One press](2026-11-01-one-press.md) — Field Notes ship note: how a START card that could not be made on 31 October started the unattended run on 1 November, and the four-hour admission gap after it.
 
