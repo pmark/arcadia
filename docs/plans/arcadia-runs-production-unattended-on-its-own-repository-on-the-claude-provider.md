@@ -533,21 +533,21 @@ actions:
     references: []
   - id: qa-plan-sole-failure-spends-no-repair
     title: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
+    next_action: Completed via Agent Ask complete-qa-plan-sole-failure-spends-no-repair-20261103; no further action.
     expected_artifact: Evidence satisfying Agent Ask qa-plan-sole-failure-spends-no-repair
     clarification: clarified
     confidence: high
-    source: Agent Ask add-worker-recovery-build-actions-20261102
+    source: Agent Ask amend-qa-plan-renderer-non-code-path-20261102
     why: "All 3 repair rounds in run i went on a plan step no Session could change. Decision 0169 authorizes this rule, and every other failure still blocks."
     acceptance_criteria:
       - tests/qa-plan-sole-failure.test.ts asserts that a QA verdict failing only the operator-qa-plan check launches no repair Session, records no repair round, lets the independent verdict gate treat QA as not blocking on that head, and records that one operator check step went unverified.
       - The same test asserts a verdict still blocks and follows the existing repair path when any other check fails or is not-checked, when a finding concerns anything else, when the plan was refused as unavailable, and when the role is code review; it uses the mixed and sole-failure shapes from the recovery-signal classifier.
       - The same test asserts one Issue is requested per Action and head through an injected runner, a replay requests no second Issue, and a failure to file is logged without changing the verdict outcome.
-      - tests/operator-qa-plan.test.ts asserts that when a criterion names an unchanged existing path and the candidate changes a test file, the step inspects the changed test file and not the named path, and that a criterion naming a changed file keeps inspecting that file.
+      - tests/operator-qa-plan.test.ts asserts that when a criterion names an unchanged existing non-code path and the candidate changes a test file, the step inspects the changed test file and not the named path, that a criterion naming a changed file keeps inspecting that file, and that a criterion naming a source or test file is never redirected, with any substitution stated in the step.
       - src/sessions/operatorQaPlan.ts, src/production/reviewRepair.ts and src/production/independentReview.ts carry the change; the focused vitest runs of those two test files, pnpm lint and tsc pass.
     depends_on: [recovery-signal-replay-gate]
     decisions: []
@@ -579,7 +579,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: qa-plan-sole-failure-spends-no-repair
+current_action: red-alerts-for-repair-stops-and-no-progress
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
