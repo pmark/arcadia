@@ -34,6 +34,6 @@ updated: 2026-11-03
 
 ## Rationale
 
-Operator, 2026-11-03: concurrency is a must eventually, reached by first proving serial work; he also doubted an open-ended serial phase, given how slowly unattended production has progressed, and asked that attempts be limited. A plan critic found Decision 0070's work blocks parallelism, not serial runs, and would rewrite the only path that has merged live. An attempt is a START that admits at least one Session; a START refused before any Session launches does not count. A clean run is three Actions merged by the worker with operator touches limited to activation. This Decision grants no START, spend or merge: each press stays the operator's.
+Operator, 2026-11-03: concurrency is a must eventually, reached by first proving serial work; the operator also doubted an open-ended serial phase, given how slowly unattended production has progressed, and asked that attempts be limited. A plan critic found Decision 0070's work blocks parallelism, not serial runs, and would rewrite the only path that has merged live. An attempt is a START that admits at least one Session; a START refused before any Session launches does not count. A clean run is three Actions merged by the worker with operator touches limited to activation. This Decision grants no START, spend or merge: each press stays the operator's.
 
 Proposed by Agent Ask decide-serial-proof-time-box-20261103.
