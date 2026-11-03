@@ -231,6 +231,27 @@ sources:
     retention: repo
     path: probes/local-model-2.md
     sha256: 5c284a9cbd3a4d71f63b9b4260705495bef823d6981dc21fddc06cd57a754652
+  - id: S017
+    title: Operator's direction on routing and supervisors
+    kind: operator
+    added: 2026-11-02
+    retention: repo
+    path: sources/S017-routing-and-supervisors.md
+    sha256: b3769d700caaa8beaa945406bdc2f80694cfa3fec17d20c647603cb017d3a25e
+  - id: S018
+    title: Gemini's model suggestion, pasted by the operator
+    kind: third_party
+    added: 2026-11-02
+    retention: workspace
+    workspace_path: design-sources/relay/S018.md
+    sha256: bc0581678c9d91f158310497f87e51e82560cb2c22d25d0aeefbcbec13317e8c
+  - id: S019
+    title: Routing probe 3
+    kind: agent
+    added: 2026-11-02
+    retention: repo
+    path: probes/routing-3.md
+    sha256: 90203319855dda783986763b19637239c6cfa230c0d1deafe94f64da74b31205
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -1091,7 +1112,7 @@ concepts:
   - id: C-032
     title: One decision interface in front of every route
     kind: interface
-    statement: A written contract, extending the existing intake router, for one decision point that takes the input, typed options and a time budget, and returns a choice, confidence, engine, reason and latency. Rules run first, and low confidence or a missed deadline yields one clarifying question. It needs a caller that receives messages before any model, which a standard coding-agent session can't provide.
+    statement: A written contract, extending the existing intake router, for one decision point on a ladder from Ask's rules through Arcadia's tools, a local model, a Project supervisor and a frontier model. It takes the input, typed options and a time budget, and returns a choice, confidence, engine, reason and latency. Tools declare a read or prepare effect in code.
     origins:
       - &a2
         source: S008
@@ -2510,6 +2531,132 @@ concepts:
       - REQ-013
       - REQ-010
     reason: The operator asked for the best models, tuned and optimized, and no independent comparison exists.
+  - id: C-047
+    title: Local model routes and uses tools
+    kind: mechanism
+    statement: The local model's main job is choosing tools and chatting, while Arcadia's deterministic tools hold the knowledge. Code runs the tool and writes the answer, and the model sees only a compact result when interpreting one.
+    origins:
+      - &a139
+        source: S017
+        locator: whole file
+    fit:
+      status: partial
+      evidence:
+        - docs/design/relay/probes/routing-3.md
+    position: leaning
+    serves:
+      - REQ-001
+      - REQ-013
+    reason: Read commands return 23 to 717 KB today, far more than a small model can read quickly.
+  - id: C-048
+    title: Ask as the first, deterministic rung
+    kind: mechanism
+    statement: Every message meets Ask's deterministic intake first, extended with read-only lookup routes and real Project names, and a rule claims a message only when it's more accurate than the next rung. The operator's target is at least 50% and hopefully 80% of requests.
+    origins:
+      - *a139
+      - &a140
+        source: S019
+        locator: whole file
+    fit:
+      status: partial
+      evidence:
+        - src/intake/index.ts
+        - src/ask/goldenReplay.ts
+        - docs/design/relay/probes/routing-3.md
+    position: leaning
+    serves:
+      - REQ-010
+      - REQ-013
+    load_bearing: true
+    verification:
+      status: measured_not_passing
+      evidence: docs/design/relay/probes/routing-3.md
+    reason: A rough prototype decided 46% of unseen messages at 81% accuracy, which lowered overall accuracy when put ahead of the model.
+  - id: C-049
+    title: A terse wire format for the routing model
+    kind: interface
+    statement: The routing model reads a short tool list and answers in a bare format not meant for people. With a 27B model it was faster than JSON at about the same accuracy, by a margin that varied between runs, though smaller models did better with JSON.
+    origins:
+      - *a139
+      - *a140
+    fit:
+      status: partial
+      evidence:
+        - docs/design/relay/probes/routing-3-toolroute.py
+    position: leaning
+    serves:
+      - REQ-010
+    reason: One run per model, under uncontrolled load.
+  - id: C-050
+    title: A larger routing model
+    kind: claim
+    statement: A 27B Qwen3.6 build routed 94% of unseen messages at about 5 s with no wrong route to a lever, well ahead of the smaller and older models tested, but it occupies 18 GB on a 32 GB laptop shared with coding agents and production.
+    origins:
+      - *a139
+      - *a140
+    fit:
+      status: partial
+      evidence:
+        - docs/design/relay/probes/routing-3.md
+    position: leaning
+    serves:
+      - REQ-013
+    reason: Best result so far. Whether it can stay loaded alongside other work is untested.
+  - id: C-051
+    title: Pluggable decision engines, none added now
+    kind: constraint
+    statement: The routing seam accepts rules, a local model, and later a typed decision model such as Laya or Jev, without changing callers. No decision engine is added now, by the operator's direction.
+    origins:
+      - *a139
+      - *a2
+    fit:
+      status: missing
+      evidence:
+        - docs/design/relay/decision-interface.md
+        - src/intake/index.ts
+    position: chosen
+    serves:
+      - REQ-010
+  - id: C-052
+    title: Resumable Project supervisors
+    kind: mechanism
+    statement: For questions a tool can't answer, Relay resumes a context-rich coding session for that Project on demand, read-only and within a finite budget. Warm means resumable, not running. Its answers feed a compact Project digest, so the next similar question can be free.
+    origins:
+      - *a139
+    fit:
+      status: partial
+      evidence:
+        - .agents/skills/arcadia-supervisor/SKILL.md
+        - .agents/skills/arcadia-handoff/SKILL.md
+    position: leaning
+    serves:
+      - REQ-012
+      - REQ-014
+    reason: Claude and Codex can resume headlessly, and Project supervisors are already defined with a budget requirement. Cost and speed are unmeasured, and the handoff skill says it can't guarantee avoiding compaction and adds no session launcher.
+  - id: C-053
+    title: Hot supervisor sessions kept running
+    kind: mechanism
+    statement: Keep one coding session live per Project, ready to answer at once.
+    origins:
+      - *a139
+    position: rejected
+    reason: Spends allowance and holds context while idle, and needs a keep-alive service the standard-harness rule excludes. Resuming on demand gets most of the benefit. Revisit if resume time proves too slow.
+  - id: C-054
+    title: Compact read tools
+    kind: interface
+    statement: A small set of fast read tools returns only what the operator asked about, for production status, what needs them, what's next and Project context, so that code can answer directly and any model reads little.
+    origins:
+      - *a139
+    fit:
+      status: partial
+      evidence:
+        - src/commands/todo.ts
+        - src/commands/goContext.ts
+    position: leaning
+    serves:
+      - REQ-010
+      - REQ-013
+    reason: Full JSON from these commands runs 23 to 717 KB in 2 to 4.5 s.
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?
