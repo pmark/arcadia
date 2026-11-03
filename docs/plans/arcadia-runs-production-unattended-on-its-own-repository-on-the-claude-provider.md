@@ -493,11 +493,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1988", "docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
   - id: worker-reconciles-own-pointer-commits
     title: Before reporting base_not_synced, the worker reconciles local main when its only local-only commits are its own pointer commits; anything else still refuses.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Before reporting base_not_synced, the worker reconciles local main when its only local-only commits are its own pointer commits; anything else still refuses.
+    next_action: Completed via Agent Ask complete-worker-reconciles-own-pointer-commits-20261102; no further action.
     expected_artifact: Evidence satisfying Agent Ask worker-reconciles-own-pointer-commits
     clarification: clarified
     confidence: high
@@ -579,7 +579,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: worker-reconciles-own-pointer-commits
+current_action: qa-plan-sole-failure-spends-no-repair
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.

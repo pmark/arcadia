@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-02
+updated: 2026-11-03
 ---
 
 # Mission Log: Arcadia
@@ -2886,3 +2886,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/session-launcher-arcadia-path.test.ts renders a Session launcher with an injected host-resolved CLI directory and asserts that directory is on the launcher's PATH after the pinned Node directory, so the Node choice does not change."; "The same test asserts that directory comes only from the host, never from a file in the Session's worktree, and that the launcher is unchanged when the host resolves no CLI."; "The focused vitest run of that test file, pnpm lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-headless-session-resolves-arcadia-cli-20261102).
+
+## 2026-11-03 — Completed arcadia/worker-reconciles-own-pointer-commits
+
+- **Did:** Completed Action arcadia/worker-reconciles-own-pointer-commits from accepted evidence (Candidate 5bb662edaf29b2e912691319237cd74a578b6c54).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/worker-pointer-reconcile.test.ts uses disposable local Git repositories to show that when local main is ahead of its remote only by pointer commits (subject matching chore(arcadia): point at and a diff limited to PROJECT.md and the active Plan document) and the remote has advanced, sync integrates the remote without rewriting or discarding those commits, and the merged head is contained in local main."; "The same test shows sync still refuses, leaving the checkout untouched, for: a local-only commit of any other shape, a dirty checkout, a checkout on another branch, and any conflict other than the pointer-only conflict below."; "The same test shows that a conflict confined to PROJECT.md and the active Plan document, where the local-only commits changed only current_action lines in those files, resolves per file: when the remote moved the pointer, to the remote value; when it did not, to the local value with the remote other lines. Sync refuses instead if the merged pointer pair disagrees, names no Action of the active Plan, or names a done Action."; "The same test shows that both the worker-merge sync and the per-tick base sync use this behavior, and that nothing is pushed."; "tests/worker-merge.test.ts passes, including its existing base_not_synced refusal; pnpm lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-worker-reconciles-own-pointer-commits-20261102).
