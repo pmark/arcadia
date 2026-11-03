@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-03
+updated: 2026-11-02
 ---
 
 # Mission Log: Arcadia
@@ -2886,10 +2886,3 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/session-launcher-arcadia-path.test.ts renders a Session launcher with an injected host-resolved CLI directory and asserts that directory is on the launcher's PATH after the pinned Node directory, so the Node choice does not change."; "The same test asserts that directory comes only from the host, never from a file in the Session's worktree, and that the launcher is unchanged when the host resolves no CLI."; "The focused vitest run of that test file, pnpm lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-headless-session-resolves-arcadia-cli-20261102).
-
-## 2026-11-03 — Completed arcadia/qa-plan-sole-failure-spends-no-repair
-
-- **Did:** Completed Action arcadia/qa-plan-sole-failure-spends-no-repair from accepted evidence (Candidate 14f2920a77d44a195a43a8f1297092730ed599c9).
-- **Result:** Every declared acceptance criterion was accepted as met: "tests/qa-plan-sole-failure.test.ts asserts that a QA verdict failing only the operator-qa-plan check launches no repair Session, records no repair round, lets the independent verdict gate treat QA as not blocking on that head, and records that one operator check step went unverified."; "The same test asserts a verdict still blocks and follows the existing repair path when any other check fails or is not-checked, when a finding concerns anything else, when the plan was refused as unavailable, and when the role is code review; it uses the mixed and sole-failure shapes from the recovery-signal classifier."; "The same test asserts one Issue is requested per Action and head through an injected runner, a replay requests no second Issue, and a failure to file is logged without changing the verdict outcome."; "tests/operator-qa-plan.test.ts asserts that when a criterion names an unchanged existing non-code path and the candidate changes a test file, the step inspects the changed test file and not the named path, that a criterion naming a changed file keeps inspecting that file, and that a criterion naming a source or test file is never redirected, with any substitution stated in the step."; "src/sessions/operatorQaPlan.ts, src/production/reviewRepair.ts and src/production/independentReview.ts carry the change; the focused vitest runs of those two test files, pnpm lint and tsc pass.".
-- **Next:** Advanced to the next eligible Action in the explicit queue order.
-- **Blockers:** None recorded by this settlement (Agent Ask complete-qa-plan-sole-failure-spends-no-repair-20261102).
