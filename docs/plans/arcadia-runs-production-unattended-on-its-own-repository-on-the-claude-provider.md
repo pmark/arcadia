@@ -554,11 +554,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1999", "docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
   - id: red-alerts-for-repair-stops-and-no-progress
     title: Red alerts fire and reach Discord when review repairs are exhausted, when a candidate is gated, and when a resumed Session leaves its candidate unchanged, through the existing alert path.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Red alerts fire and reach Discord when review repairs are exhausted, when a candidate is gated, and when a resumed Session leaves its candidate unchanged, through the existing alert path.
+    next_action: Completed via Agent Ask complete-red-alerts-for-repair-stops-and-no-progress-20261103; no further action.
     expected_artifact: Evidence satisfying Agent Ask red-alerts-for-repair-stops-and-no-progress
     clarification: clarified
     confidence: high
@@ -579,7 +579,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: red-alerts-for-repair-stops-and-no-progress
+current_action: cover-retired-descriptor-byte-change
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
