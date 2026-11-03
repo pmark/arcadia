@@ -252,6 +252,20 @@ sources:
     retention: repo
     path: probes/routing-3.md
     sha256: 90203319855dda783986763b19637239c6cfa230c0d1deafe94f64da74b31205
+  - id: S020
+    title: Gemini's second suggestion, relayed by the operator
+    kind: third_party
+    added: 2026-11-03
+    retention: workspace
+    workspace_path: design-sources/relay/S020.md
+    sha256: 7ab5f208f69cc63ef62cdd382fc96d735f166ac1ed000f7484644566389aa3b1
+  - id: S021
+    title: Operator's direction on Ask, the menu and the companion
+    kind: operator
+    added: 2026-11-03
+    retention: repo
+    path: sources/S021-ask-first-and-companion.md
+    sha256: a84132deaac34d9558c50d0bacbb28c88c68a3ee7c9e3ef206af3f6047ce209e
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -2657,6 +2671,52 @@ concepts:
       - REQ-010
       - REQ-013
     reason: Full JSON from these commands runs 23 to 717 KB in 2 to 4.5 s.
+  - id: C-055
+    title: Ask is complete with no model
+    kind: constraint
+    statement: Ask works fully alone, with its test suite always running with the model off, and a local companion only adds to what Ask produced.
+    origins: &a141
+      - source: S021
+        locator: Ask alone, Relay with a companion
+    fit: &a142
+      status: partial
+      evidence:
+        - src/intake/index.ts
+        - src/commands/ask.ts
+        - docs/proposals/relay.md
+    position: leaning
+    serves:
+      - REQ-012
+      - REQ-013
+    reason: Awaits the operator approving the proposal.
+  - id: C-056
+    title: Structured outcome, instant answer and context packet
+    kind: interface
+    statement: Every Ask returns a route, confidence, facts, menu options and plain text, answers immediately from code, and records a small context packet that a companion may read.
+    origins: *a141
+    fit: *a142
+    position: leaning
+    serves:
+      - REQ-010
+      - REQ-012
+    reason: Awaits the operator approving the proposal.
+  - id: C-057
+    title: Deterministic Did you mean menu
+    kind: interface
+    statement: On low confidence, Ask offers up to three options plus Something else, with a menu ID and fingerprint, recording taps without replaying them.
+    origins:
+      - source: S021
+        locator: The menu
+    fit:
+      status: missing
+      evidence:
+        - src/ask/corrections.ts
+        - docs/design/relay/reviews/investigation-first-slice.md
+    position: leaning
+    serves:
+      - REQ-010
+      - REQ-013
+    reason: Awaits the operator approving the proposal.
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?
