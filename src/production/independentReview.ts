@@ -400,11 +400,20 @@ const WEAK_CLAIM = [new RegExp(String.raw`\b${CODE_SUBJECT}\b([^.;\n]{0,60}?)\b$
 /** Defect words, tripped in a finding or the plan check's evidence only: "bug fix" is ordinary in a summary. */
 const DEFECT_WORD = /\b(?:bugs?|buggy|defects?|defective)\b/i;
 
+const BUG_SUBJECT = String.raw`(?:candidates?|candidate'?s|code|patch|implementation|change|migration|production code|source code|schema|database|function|module)`;
+const BUG_STATEMENT = [
+  new RegExp(String.raw`\b${BUG_SUBJECT}\b[^.;\n]{0,40}\b(?:has|have|had|contains?|introduces?|ships?|carries|hides?)\b[^.;\n]{0,20}\b(?:bugs?|defects?)\b`, "i"),
+  new RegExp(String.raw`\b(?:bugs?|defects?)\b[^.;\n]{0,30}\b(?:in|of|within)\b[^.;\n]{0,15}\b${BUG_SUBJECT}\b`, "i")
+];
+
 /** The claim about the candidate's code or data a text makes, or null. `strict` texts (findings, plan evidence) also trip on defect words. */
 export function candidateClaim(text: string, strict = false): string | null {
   const strong = STRONG_CLAIM.exec(text);
   if (strong) return strong[0];
   if (strict) { const defect = DEFECT_WORD.exec(text); if (defect) return defect[0]; }
+  // "The candidate has a bug": a statement about the code even where "bug fix" is ordinary.
+  const bugStatement = BUG_STATEMENT.map((pattern) => pattern.exec(text)?.[0]).find(Boolean);
+  if (bugStatement) return bugStatement;
   // No plan-wording exemption: "the code at step 4 is broken" is still a claim about the code.
   for (const pattern of WEAK_CLAIM) {
     const hit = text.match(pattern)?.[0];
@@ -491,10 +500,10 @@ export function judgeQaPlanReport(raw: unknown, input: { head: string; actionKey
   const strictProse = [plan.evidence, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])];
   const claim = [...prose.map((text) => candidateClaim(text, strictProse.includes(text))), ...strictProse.map((text) => candidateClaim(text, true))].find(Boolean);
   if (claim) return refuse(`a claim about the candidate's code or data: ${claim}`);
-  // "At most one numbered step": across the plan evidence and the finding.
+  // "At most one numbered step": across the plan evidence, the finding, the summary and the residual risks.
   const steps = new Set<string>();
   const criteria = new Set<string>();
-  for (const text of [plan.evidence, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])]) {
+  for (const text of [plan.evidence, summary, ...risks, ...findings.flatMap((finding) => [finding.title, finding.evidence, finding.recommendation])]) {
     const named = namedSteps(text);
     if (named.wholePlan) return refuse("the text speaks of all or every plan step");
     for (const step of named.steps) steps.add(step);
@@ -1147,6 +1156,13 @@ export function advanceIndependentReview(db: Database.Database, input: {
     const varianceAttempts = (role: IndependentVerdictRole): number =>
       roleAttemptsOnHead(db, readiness.requirement.requirementId, readiness.requirement.inputRevision, role, head)
         .filter((attempt) => attempt.status === "failed" && varianceFromReceipt(attempt.terminal_receipt_json) !== null).length;
+    /** The QA-plan waiver could not be recorded, so the verdict keeps blocking, as the gate wrapper does; no repair is launched for it. */
+    const waiverUnrecorded = (role: IndependentVerdictRole): ReviewStepOutcome => ({
+      kind: "blocked",
+      code: "independent_verdict_failed",
+      reason: `The independent ${role} verdict on ${head.slice(0, 12)} failed only the host-written Operator QA plan, but the unverified-step record could not be written; QA keeps blocking this head until it can be.`,
+      remedy: `Check that the Arcadia database is writable (the production_qa_plan_waivers table); the next tick records the waiver and lets the head land. Or fix the candidate (a new head is reviewed afresh), or rerun it with \`arcadia ${role === "qa" ? "qa pr" : "qa code-review"} ${url} --rerun\`.`
+    });
     const failedVerdict = (role: IndependentVerdictRole): ReviewStepOutcome => ({
       kind: "blocked",
       code: "independent_verdict_failed",
@@ -1178,7 +1194,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
       if (role === "qa" && sameBinding && latest.status === "failed") {
         const planOnly = qaPlanSoleFailure(db, session, readiness, head, repoRoot);
         if (planOnly) {
-          ensureQaPlanWaiver(db, { session, failure: planOnly, now, runCommand, cwd: repoRoot, log: input.log });
+          if (!ensureQaPlanWaiver(db, { session, failure: planOnly, now, runCommand, cwd: repoRoot, log: input.log })) return waiverUnrecorded(role);
           continue;
         }
       }
@@ -1269,7 +1285,7 @@ export function advanceIndependentReview(db: Database.Database, input: {
         }
         const planOnly = role === "qa" ? qaPlanSoleFailure(db, session, readiness, head, repoRoot) : null;
         if (planOnly) {
-          ensureQaPlanWaiver(db, { session, failure: planOnly, now, runCommand, cwd: repoRoot, log: input.log });
+          if (!ensureQaPlanWaiver(db, { session, failure: planOnly, now, runCommand, cwd: repoRoot, log: input.log })) return waiverUnrecorded(role);
           return {
             kind: "advanced",
             step: role,

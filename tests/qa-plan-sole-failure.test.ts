@@ -130,6 +130,33 @@ describe("a QA verdict whose only failure is the operator QA plan", () => {
     expect(rehearsal.github.issues).toHaveLength(1);
   });
 
+  it("keeps blocking, with an accurate reason, while the unverified-step record cannot be written, and lands once it can", () => {
+    const { rehearsal, head } = reviewed({ stopBeforeQa: true });
+    const unwritable = (on: boolean) => withDatabase(rehearsal.workspace, (db) => {
+      ensureQaPlanWaiverTable(db);
+      db.exec(on
+        ? "CREATE TRIGGER IF NOT EXISTS qa_plan_waiver_unwritable BEFORE INSERT ON production_qa_plan_waivers BEGIN SELECT RAISE(ABORT, 'unwritable'); END;"
+        : "DROP TRIGGER IF EXISTS qa_plan_waiver_unwritable");
+    });
+    unwritable(true);
+    const blocked = () => rehearsal.status().operatorEscalations.find((row) => row.actionKey === rehearsal.actionA);
+    rehearsal.tick(); // QA runs and fails only the plan; the record cannot be written
+    expect(qaAttempts(rehearsal).map((attempt) => attempt.status)).toEqual(["failed"]);
+    expect(blocked()).toMatchObject({ kind: "independent_verdict_failed", message: expect.stringContaining("record could not be written") });
+    expect(mainHead(rehearsal)).not.toBe(head);
+    rehearsal.tick(); // the already-recorded failed verdict is met again: still blocked
+    expect(blocked()).toMatchObject({ kind: "independent_verdict_failed" });
+    expect(mainHead(rehearsal)).not.toBe(head);
+    expect(rehearsal.sessions()).toHaveLength(1); // no repair Session, no repair row
+    expect(repairs(rehearsal)).toEqual([]);
+    expect(waiver(rehearsal, head)).toBeNull();
+    expect(rehearsal.github.issues).toEqual([]);
+    unwritable(false);
+    rehearsal.tick();
+    expect(mainHead(rehearsal)).toBe(head);
+    expect(waiver(rehearsal, head)?.record).toContain("one operator check step (Step 4) went unverified");
+  });
+
   it("requests one Issue per Action and head through the injected runner, and a replay requests no second", () => {
     const { rehearsal, a, head } = reviewed();
     expect(rehearsal.github.issues).toHaveLength(1);
@@ -539,6 +566,8 @@ describe("seeded QA verdict shapes", () => {
       context: { summary: "The implementation and supplied validation support the marker change, but the operator QA procedure incorrectly claims static source inspection proves that the executable check passes." },
       residualRisks: ["The operator procedure should be corrected before relying on it as a criterion-by-criterion audit record."]
     }],
+    ["the same step named in the summary and a residual risk", { context: { summary: "Step 4 of the operator QA plan is wrong." }, residualRisks: ["Step 4 should be rewritten."] }],
+    ["a residual risk that mentions a bug fix", { residualRisks: ["The bug fix itself is covered by a test."] }],
     ["a summary that mentions a bug fix", { context: { summary: "Step 4 is wrong; the bug fix itself is described correctly." } }],
     ["the real #1661/#1786 summary wording about a regression test", { context: { summary: "The regression test is logically aligned with the stated acceptance criteria, but the operator QA plan targets a predecessor commit and an incorrect file list." }, residualRisks: ["The new regression test may not have been executed by the specifically requested command."] }],
     ["plan text that fails to run, is broken or names an incorrect path", { findings: [planFinding({ evidence: "Step 4's command fails to run: the path it names is incorrect and the inspection is broken." })] }]
@@ -617,6 +646,16 @@ describe("seeded QA verdict shapes", () => {
       [`unnumbered "${text.split("\n")[0]}" beside Step 4`, { findings: [planFinding({ evidence: `Step 4 is wrong. ${text}` })] }]
     ]),
     // R3: the bare "Step N" title never mentions the plan
+    // The summary and residual risks count too: a second step, or the whole plan, refuses
+    ["the summary names a second step", { context: { summary: "Step 4 is wrong and Step 6 fails too." } }],
+    ["a residual risk names a second step", { residualRisks: ["Step 5 may also be unrunnable."] }],
+    ["the summary speaks of every step", { context: { summary: "Every step of the operator QA plan is vague." } }],
+    ["a residual risk speaks of the remaining steps", { residualRisks: ["Step 4 is wrong, as are the remaining steps."] }],
+    // "The candidate has a bug", in a summary or a residual risk (where "bug fix" stays ordinary)
+    ["the summary says the candidate has a bug", { context: { summary: "Step 4 is wrong and the candidate has a bug in the guard." } }],
+    ["the summary says the code contains a defect", { context: { summary: "The code contains a defect; Step 4 is wrong." } }],
+    ["a residual risk says there is a bug in the patch", { residualRisks: ["There is a bug in the patch."] }],
+    ["a residual risk says the implementation has a defect", { residualRisks: ["The implementation may have a defect."] }],
     // A1: wording that stretches one named step over the rest of the plan
     ...[
       "Step 4 and the following steps cannot run.", "Step 4 onward cannot run.", "Step 4 through the end cannot run.", "Step 4 fails, as do later steps.",
