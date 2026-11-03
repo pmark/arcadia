@@ -97,8 +97,9 @@ Independent investigation changed the order. Its report is
    existing `status` heard type, with a golden case and a near-miss for each, and no second router.
 3. **The "Did you mean" menu.** Up to three plain-language options plus "Something else", with a menu ID and a
    fingerprint so stale menus and double taps are safe. In Discord, a number only counts as a reply to that menu.
-   It appears only when there's a real candidate; otherwise today's clarifying question applies. Taps are recorded
-   and counted but never replayed.
+   It appears only when there's a real candidate; otherwise today's clarifying question applies. A tap runs the chosen
+   route once for that same Ask, and read-only routes answer at once, so you never resend. A `prepare` option shows its
+   confirm card. Taps are recorded and counted, but never replayed for later messages.
 4. **The scorecard.** A held-out test written by someone other than the rule author, frozen first, inside the
    existing Ask report.
 

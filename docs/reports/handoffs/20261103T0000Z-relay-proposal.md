@@ -87,4 +87,6 @@ building until I've answered. Unattended production stays first, and production 
 # Stop condition
 
 The operator has answered the proposal's decisions, PR 2027 has had an independent review with no blocking finding,
-and the first slice has an approved route: an Agent Ask or an operator-directed PR for "visible answers".
+and the first slice has an approved route for "visible answers". That's an operator-directed PR, or an Agent Ask, which
+Arcadia Design allows only once `arcadia design check docs/design/relay/record.yaml --ready` passes. An independent PR
+review doesn't satisfy that gate, because it counts only reviews recorded in the design record.

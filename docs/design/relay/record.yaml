@@ -2703,7 +2703,7 @@ concepts:
   - id: C-057
     title: Deterministic Did you mean menu
     kind: interface
-    statement: On low confidence, Ask offers up to three options plus Something else, with a menu ID and fingerprint, recording taps without replaying them.
+    statement: On low confidence, Ask offers up to three options plus Something else, with a menu ID and fingerprint. A tap runs the chosen route once for that same Ask, and is recorded without being replayed for later messages.
     origins:
       - source: S021
         locator: The menu
