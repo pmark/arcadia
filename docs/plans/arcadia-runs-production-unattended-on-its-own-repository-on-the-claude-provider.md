@@ -7,7 +7,7 @@ status: active
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-02
+updated: 2026-11-03
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -493,19 +493,20 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1988", "docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
   - id: worker-reconciles-own-pointer-commits
     title: Before reporting base_not_synced, the worker reconciles local main when its only local-only commits are its own pointer commits; anything else still refuses.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Before reporting base_not_synced, the worker reconciles local main when its only local-only commits are its own pointer commits; anything else still refuses.
+    next_action: Completed via Agent Ask complete-worker-reconciles-own-pointer-commits-20261102; no further action.
     expected_artifact: Evidence satisfying Agent Ask worker-reconciles-own-pointer-commits
     clarification: clarified
     confidence: high
-    source: Agent Ask add-worker-recovery-build-actions-20261102
+    source: Agent Ask amend-worker-reconciles-keep-local-pointer-20261102
     why: "Pointer commits are written locally and never pushed, so a worker merge in run i stopped falsely on base_not_synced after GitHub had already merged the PR."
     acceptance_criteria:
       - "tests/worker-pointer-reconcile.test.ts uses disposable local Git repositories to show that when local main is ahead of its remote only by pointer commits (subject matching chore(arcadia): point at and a diff limited to PROJECT.md and the active Plan document) and the remote has advanced, sync integrates the remote without rewriting or discarding those commits, and the merged head is contained in local main."
-      - "The same test shows sync still refuses, leaving the checkout untouched, for: a local-only commit of any other shape, a dirty checkout, a checkout on another branch, and a conflict."
+      - "The same test shows sync still refuses, leaving the checkout untouched, for: a local-only commit of any other shape, a dirty checkout, a checkout on another branch, and any conflict other than the pointer-only conflict below."
+      - "The same test shows that a conflict confined to PROJECT.md and the active Plan document, where the local-only commits changed only current_action lines in those files, resolves per file: when the remote moved the pointer, to the remote value; when it did not, to the local value with the remote other lines. Sync refuses instead if the merged pointer pair disagrees, names no Action of the active Plan, or names a done Action."
       - The same test shows that both the worker-merge sync and the per-tick base sync use this behavior, and that nothing is pushed.
       - tests/worker-merge.test.ts passes, including its existing base_not_synced refusal; pnpm lint and tsc pass.
     depends_on: []
@@ -578,7 +579,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: worker-reconciles-own-pointer-commits
+current_action: qa-plan-sole-failure-spends-no-repair
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
