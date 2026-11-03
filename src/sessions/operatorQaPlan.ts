@@ -177,8 +177,11 @@ function renderPlan(
   criteria.forEach((criterion, index) => {
     lines.push("", `### Step ${index + 3} — Acceptance criterion ${index + 1} of ${criteria.length}`, "");
     const named = criterionPaths(criterion, facts.changedFiles);
-    const present = named.filter((candidate) => pathExists(candidate));
-    const absent = named.filter((candidate) => !present.includes(candidate));
+    const passing = passingCommands(criterion, named, validation);
+    const absent = named.filter((candidate) => !pathExists(candidate));
+    const existing = named.filter((candidate) => pathExists(candidate));
+    const present = inspectedPaths(existing, named, facts.changedFiles, passing !== null, criterion);
+    const substituted = present.length > 0 && existing.length > 0 && !present.every((candidate) => existing.includes(candidate)) ? existing : [];
     const literals = present.length > 0 ? criterionLiterals(criterion) : [];
     const bytes = /newline|byte|whitespace|exactly|empty/i.test(criterion);
     const actions: string[] = [];
@@ -192,18 +195,25 @@ function renderPlan(
       actions.push(`read the change with ${code(`git diff ${facts.baseRevision} ${facts.commitSha}${scope}`)}`);
     }
     lines.push(`- **Do:** ${actions.join("; then ")}.`);
+    if (substituted.length > 0) {
+      lines.push(`- **Substitution:** the existing ${substituted.length === 1 ? "path" : "paths"} the criterion names, ${substituted.map((candidate) => code(candidate)).join(", ")}, ${substituted.length === 1 ? "was" : "were"} not changed by this candidate, so this step does not inspect ${substituted.length === 1 ? "it" : "them"} and inspects the candidate's changed test ${present.length === 1 ? "file" : "files"} instead.`);
+    }
     const outputs = [
       ...(present.length > 0 ? [bytes ? `${code("od -c")} shows every byte (a newline as ${code("\\n")})` : "the file content is shown"] : []),
       ...(literals.length > 0 ? [`${code("grep -Fxn")} prints each quoted text that is a whole line with its line number, and nothing when no line matches`] : []),
       ...(present.length === 0 ? ["the diff shows what changed"] : [])
     ];
     const quoted = `“${inlineText(truncate(criterion, MAX_CRITERION_CHARS))}”`;
-    const passing = passingCommands(criterion, named, validation);
     if (passing) {
       // Inspection cannot show that a command passes (Issue #986): bound the
       // Expected line to what inspection shows and point the proof of passing
       // at the declared-validation step and its exit-zero result.
       lines.push(`- **Expected:** ${outputs.join("; ")}. ${inspectionScope(present)} ${passProof(passing, validation, criteria.length + 3)} The criterion, exactly as worded: ${quoted}`);
+      return;
+    }
+    if (substituted.length > 0) {
+      // The substituted file shows what the candidate's test asserts, not the named path's content.
+      lines.push(`- **Expected:** ${outputs.join("; ")}. That is all this inspection shows: what the changed test ${present.length === 1 ? "file asserts" : "files assert"}, not the content of ${substituted.map((candidate) => code(candidate)).join(", ")}. The criterion, exactly as worded: ${quoted}`);
       return;
     }
     lines.push(`- **Expected:** ${outputs.join("; ")}; and that output shows this criterion holds, exactly as worded: ${quoted}`);
@@ -343,6 +353,37 @@ function passProof(passing: PassingCheck, validation: readonly string[], validat
       : "Any other part of this criterion must show in this step's output.");
   return sentences.join(" ");
 }
+
+/**
+ * The existing named paths a criterion's step inspects. A criterion may name an
+ * unchanged data file only as a sample (Issue #1999: `apps/dashboard/package.json`
+ * stood in for a negative-pattern table that lives in the candidate's own test
+ * file), and inspecting that file cannot show the assertion. So when no named
+ * path is one the candidate changed, none is a test file or source code (a
+ * named test or source file is always inspected itself) and the candidate did
+ * change test files, the step inspects those changed test files instead, and
+ * says so. A criterion that a command must pass keeps the named paths (its
+ * proof is the declared validation).
+ */
+function inspectedPaths(
+  existing: readonly string[],
+  named: readonly string[],
+  changedFiles: readonly ChangedFile[],
+  mustPass: boolean,
+  criterion: string
+): string[] {
+  if (mustPass || existing.length === 0) return [...existing];
+  // A criterion about what a named file says (a quoted line, "contains", "exactly") is about that file itself,
+  // never a sample: grepping a test file cannot show it.
+  if (criterionLiterals(criterion).length > 0 || /\b(?:contains?|exactly|content|lines?|reads?|says?|states?|includes?|mentions?|documents?|describes?)\b/i.test(criterion)) return [...existing];
+  if (named.some((candidate) => changedFiles.some((file) => file.path === candidate))) return [...existing];
+  if (existing.some((candidate) => TEST_PATH.test(candidate) || SOURCE_PATH.test(candidate))) return [...existing];
+  const changedTests = changedFiles.filter((file) => !file.status.startsWith("D") && TEST_PATH.test(file.path)).map((file) => file.path);
+  return changedTests.length > 0 ? changedTests.slice(0, MAX_PATHS_PER_CRITERION) : [...existing];
+}
+
+/** Source code files, which a criterion names to be read, never as a stand-in sample. */
+const SOURCE_PATH = /\.(?:[cm]?[jt]sx?|py|rb|go|rs|java|kt|swift|sh|bash|zsh|pl|php|cs|cpp|c|h)$/i;
 
 /** Plain documents and Arcadia's governed data files: nothing to run. */
 function isDocumentPath(filePath: string): boolean {
