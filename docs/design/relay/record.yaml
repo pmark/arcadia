@@ -251,7 +251,7 @@ sources:
     added: 2026-11-02
     retention: repo
     path: probes/routing-3.md
-    sha256: 9f263f31b127627e2a549ad2f70a23706709238ba0825558b2a5df9d02a00de3
+    sha256: 281bc5865b849b033d1682e4c5249d2db095f5ced1934ff1c5ea8ef1472eab1d
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -2575,7 +2575,7 @@ concepts:
   - id: C-049
     title: A terse wire format for the routing model
     kind: interface
-    statement: The routing model reads a short tool list and answers in a bare format not meant for people. With a 27B model on unseen messages it matched JSON's accuracy at nearly half the time, though smaller models did better with JSON.
+    statement: The routing model reads a short tool list and answers in a bare format not meant for people. With a 27B model it was faster than JSON at about the same accuracy, by a margin that varied between runs, though smaller models did better with JSON.
     origins:
       - *a139
       - *a140
