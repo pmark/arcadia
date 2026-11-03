@@ -81,9 +81,8 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
 
     if (headBefore === remoteHead || isAncestor(repoRoot, remoteHead, headBefore)) return result("current", headBefore, headBefore);
     if (isAncestor(repoRoot, headBefore, remoteHead)) {
-      if (tryGit(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "--no-overwrite-ignore", "--quiet", remoteHead]) === null) {
-        refuse(`${baseBranch} cannot fast-forward onto ${upstream} (conflicting local changes)`);
-      }
+      const failure = fastForwardMerge(repoRoot, remoteHead);
+      if (failure !== null) refuse(`${baseBranch} cannot fast-forward onto ${upstream}: ${failure}`);
       return result("fast-forwarded", headBefore, tryGit(repoRoot, ["rev-parse", "HEAD"])?.trim() ?? remoteHead);
     }
 
@@ -104,9 +103,8 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
     if (tryGit(repoRoot, ["symbolic-ref", "-q", "HEAD"])?.trim() !== baseRef || tryGit(repoRoot, ["rev-parse", "--verify", "HEAD"])?.trim() !== headBefore) {
       refuse(`${baseBranch} moved during the reconcile`);
     }
-    if (tryGit(repoRoot, ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "--no-overwrite-ignore", "--quiet", resultHead]) === null) {
-      refuse(`${baseBranch} could not fast-forward onto the reconcile commit`);
-    }
+    const failure = fastForwardMerge(repoRoot, resultHead);
+    if (failure !== null) refuse(`${baseBranch} could not fast-forward onto the reconcile commit: ${failure}`);
     return result("reconciled", headBefore, resultHead, null, localCommits);
   } catch (error) {
     return refuseResult(headBefore, error);
@@ -171,7 +169,8 @@ export function planReconcile(cwd: string, plan: ReconcilePlan): PlannedReconcil
   for (const file of conflicted) {
     const before = rawBlob(cwd, mergeBase, file);
     const local = rawBlob(cwd, localHead, file);
-    const remote = rawBlob(cwd, remoteHead, file);
+    // The remote's text is only inspected here; its blob is reused by id unless the local pointer line is kept (re-read exactly below).
+    const remote = rawBlob(cwd, remoteHead, file, false);
     if (before === null || local === null || remote === null) refuse(`${file} was added or removed, not only re-pointed`);
     if (withoutPointerLines(before) !== withoutPointerLines(local)) refuse(`the local commits changed more than current_action in ${file}`);
     const remoteEntry = /^(\d+) blob ([0-9a-f]+)\t/.exec(tryGit(cwd, ["ls-tree", remoteHead, "--", file]) ?? "");
@@ -180,7 +179,7 @@ export function planReconcile(cwd: string, plan: ReconcilePlan): PlannedReconcil
       entries.push({ file, mode: remoteEntry[1], text: null, blob: remoteEntry[2] });
       notes.push(`Pointer-Conflict-Replaced-Local: ${file} current_action ${pointerValue(local)} (the remote moved it to ${pointerValue(remote)})`);
     } else {
-      const kept = withPointerLine(remote, pointerLine(local));
+      const kept = withPointerLine(rawBlob(cwd, remoteHead, file) ?? remote, pointerLine(local));
       if (kept === null) refuse(`${file} has no current_action line to keep`);
       entries.push({ file, mode: remoteEntry[1], text: kept, blob: "" });
       notes.push(`Pointer-Conflict-Kept-Local: ${file} current_action ${pointerValue(local)} (the remote did not move it)`);
@@ -266,10 +265,25 @@ function withoutPointerLines(text: string): string {
   return text.slice(0, match.index) + match[0].replace(match[1], () => kept) + text.slice(match.index + match[0].length);
 }
 
-/** A file's exact bytes at a revision (never trimmed: end-of-file whitespace and CRLF matter), or null if absent. */
-function rawBlob(cwd: string, rev: string, file: string): string | null {
-  const out = spawnSync("git", ["show", `${rev}:${file}`], { cwd, encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
-  return out.status === 0 ? out.stdout : null;
+/**
+ * A file's exact text at a revision (never trimmed: end-of-file whitespace and
+ * CRLF matter), or null if absent. When `exact`, bytes that do not survive a
+ * UTF-8 round trip refuse naming the file: decoding would fold distinct bytes
+ * together and re-encoding would rewrite them.
+ */
+function rawBlob(cwd: string, rev: string, file: string, exact = true): string | null {
+  const out = spawnSync("git", ["show", `${rev}:${file}`], { cwd, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  if (out.status !== 0) return null;
+  const text = out.stdout.toString("utf8");
+  if (exact && !Buffer.from(text, "utf8").equals(out.stdout)) refuse(`${file} at ${rev.slice(0, 12)} is not valid UTF-8, so it cannot be compared or re-pointed without risking its bytes`);
+  return text;
+}
+
+/** Run a fast-forward merge of `target` and return Git's own explanation on failure. */
+function fastForwardMerge(cwd: string, target: string): string | null {
+  const out = spawnSync("git", ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "--no-overwrite-ignore", "--quiet", target], { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (out.status === 0) return null;
+  return (out.stderr || out.stdout || `git exit ${String(out.status)}`).split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 4).join(" ").slice(0, 400);
 }
 
 function pointerLine(text: string | null): string | null {
