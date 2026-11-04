@@ -5,7 +5,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type Interceptor = (command: string, args: readonly string[], cwd: string) => boolean;
-const control = vi.hoisted(() => ({ fail: null as null | Interceptor, calls: [] as string[][] }));
+const control = vi.hoisted(() => ({
+  fail: null as null | Interceptor,
+  calls: [] as string[][],
+  alterListing: null as null | ((stdout: string) => string),
+  alterations: 0
+}));
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -16,7 +21,14 @@ vi.mock("node:child_process", async (importOriginal) => {
       if (control.fail?.(command, args, options?.cwd ?? "")) {
         return { status: 1, signal: null, stdout: "", stderr: "forced failure", pid: 0, output: [], error: undefined };
       }
-      return (actual.spawnSync as (...a: unknown[]) => unknown)(command, args, options);
+      const result = (actual.spawnSync as (...a: unknown[]) => { stdout?: string })(command, args, options);
+      // Only the batched branch listing (NUL-separated fields) is altered.
+      const isBatchedListing = command === "git" && args[0] === "for-each-ref" && args.some((arg) => arg.includes("%00"));
+      if (control.alterListing && isBatchedListing && typeof result.stdout === "string") {
+        result.stdout = control.alterListing(result.stdout);
+        control.alterations++;
+      }
+      return result;
     }) as typeof actual.spawnSync
   };
 });
@@ -27,6 +39,8 @@ const roots: string[] = [];
 afterEach(() => {
   control.fail = null;
   control.calls = [];
+  control.alterListing = null;
+  control.alterations = 0;
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
@@ -135,6 +149,19 @@ describe("work monitor failure handling", () => {
     expect(baseline.repositories[0].workingCopies.some((entry) => entry.branch === "unpublished")).toBe(true);
     control.fail = (command, args) => command === "git" && args[0] === "for-each-ref" && args.some((arg) => arg.includes("%00"));
     expect(scan(repository)).toEqual(baseline);
+  });
+
+  it("falls back to the per-ref reads when one batched record keeps only its name and object id", () => {
+    const { repository } = createRepository();
+    const baseline = scan(repository);
+    // The first record loses every field after its object id, so it no longer has the expected shape.
+    control.alterListing = (stdout) => {
+      const [first, ...rest] = stdout.split("\n");
+      const [name, sha] = first.split("\0");
+      return [`${name}\0${sha}`, ...rest].join("\n");
+    };
+    expect(scan(repository)).toEqual(baseline);
+    expect(control.alterations).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps a subject that contains the old record delimiters intact", () => {
