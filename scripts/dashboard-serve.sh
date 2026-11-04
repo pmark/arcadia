@@ -18,6 +18,9 @@ PORT="${ARCADIA_DASHBOARD_PORT:-3020}"
 
 # shellcheck source=lib/dashboard-next-env.sh
 source "$SCRIPTS/lib/dashboard-next-env.sh"
+# The build switches by restarting this launchd job, so it needs the job's name. launchd names the job in
+# this variable, but macOS resets it to "0" in any process the job forks, so it's passed on under another name.
+export ARCADIA_DASHBOARD_JOB="${XPC_SERVICE_NAME:-}"
 # A build killed by the last restart can't tidy up after itself. A build that's still running needs its mark, so it's left alone.
 if ! build_lock_is_live "$LIVE/build.lock"; then
   heal_next_env "$REPO"
