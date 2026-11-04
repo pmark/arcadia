@@ -1,8 +1,10 @@
 # Handoff: Relay proposal
 
 **Latest (2026-11-04):** the operator approved [the layer design](../../design/relay/workspace-layers.md) with 1A and 2A (S029). Build
-step 1, the Scene on every view, is starting as its own PR off main. PR 2027 still carries the operator's decisions, so it waits for
-them to merge. Earlier, they answered 1A 2A 3A 4A 5B on the proposal and set the Workspace direction and freeze (S022, S023).
+step 1, the Scene on every view, merged as [PR 2048](https://github.com/pmark/arcadia/pull/2048). The live dashboard still needs a restart
+to show it, and the operator chooses when. They asked to wait for step 1 before starting step 2, the Relay overlay. PR 2027 still carries
+their decisions, so it waits for them to merge. Earlier, they answered 1A 2A 3A 4A 5B on the proposal and set the Workspace direction and
+freeze (S022, S023).
 
 # Objective
 
@@ -16,7 +18,7 @@ Unattended production stays the first priority, and production stays Off.
 **Merged to main:** PR 2007 (Arcadia Design skill and `arcadia design check`), 2009 (Relay mode), 2010, 2014, 2016
 (`arcadia way lookup`, STOP guidance), 2019, 2020, 2022 (design record and probes).
 
-**Open, not merged.** Re-read each PR's checks and merge state before relying on them. PR 2027's latest head was pushed at close. Its required checks go red from [Issue 2043](https://github.com/pmark/arcadia/issues/2043), an expired test fixture unrelated to this PR that blocks every branch.
+**Open, not merged.** Re-read each PR's checks and merge state before relying on them. PR 2027's latest head was pushed at close.
 
 | PR | Contents | Independent review |
 |---|---|---|
