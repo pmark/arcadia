@@ -152,3 +152,16 @@
 .workspace-status-panel a {text-decoration:underline;}
 .workspace-shell .workspace-status-panel p {margin:6px 0 0;font-size:13px;}
 .workspace-shell .workspace-status-panel p.workspace-status-note {color:#d6d9e4;font-size:12px;line-height:1.5;}
+
+/* Every tap answers at once: the control presses, the link stays marked, and a line says what's opening. These use only transform and opacity, so they stay smooth however busy the page is. */
+.workspace-shell :is(a,button,summary) {-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+.workspace-shell :is(a,button,summary):not(:disabled,[aria-disabled="true"]):active {transform:scale(.98);opacity:.75;}
+.workspace-shell a[data-opening] {opacity:.75;outline:2px solid #ffd9aa;outline-offset:2px;}
+/* At the bottom left, clear of the header's controls and the Journey button. */
+.workspace-activity {position:fixed;z-index:20;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;justify-content:flex-start;pointer-events:none;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(88px,env(safe-area-inset-right,0px));}
+.workspace-activity p {margin:0;display:flex;align-items:center;gap:10px;max-width:100%;padding:8px 14px;font-size:13px;line-height:1.35;border-radius:14px;border:1px solid rgb(236 226 211 / .3);background:#0a0f1e;box-shadow:0 6px 24px rgb(0 0 0 / .4);animation:workspace-activity-in .12s ease-out;}
+.workspace-shell .workspace-activity p {margin:0;font-size:13px;line-height:1.35;}
+.workspace-activity-spinner {width:12px;height:12px;flex:none;border-radius:50%;border:2px solid rgb(236 226 211 / .25);border-top-color:#ffd9aa;animation:workspace-activity-turn .9s linear infinite;}
+@keyframes workspace-activity-turn {to {transform:rotate(360deg);}}
+@keyframes workspace-activity-in {from {opacity:0;transform:translateY(4px);}}
+@media(prefers-reduced-motion:reduce){.workspace-shell :is(a,button,summary):not(:disabled,[aria-disabled="true"]):active{transform:none;}.workspace-activity p{animation:none;}.workspace-activity-spinner{animation:none;}}
