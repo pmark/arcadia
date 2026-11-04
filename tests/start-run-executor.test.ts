@@ -511,7 +511,8 @@ describe("start-run executor: Decision 0163 delegated presses", () => {
     ["a latest attempt that STARTed successfully", "not-trigger", /no Decision 0163 trigger: .* outcome succeeded/],
     ["an Off this chain did not issue", "activated-other-off", /no Decision 0163 trigger: .* Off cleanup other_grant_active/],
     ["an activation found Off by another cause (a STOP card, a Decision, a stop-the-line)", "found-off", /no Decision 0163 trigger: .* Off cleanup not_active/],
-    ["an originating press made before Decision 0163 reached main", "before-decision", /predates Decision 0163 on main/],
+    // Fixed time: since 2026-11-04T04:00:24Z this press is also past the 72-hour window, which the executor checks first.
+    ["an originating press made before Decision 0163 reached main", "before-decision", /more than 72 hours|predates Decision 0163 on main/],
     ["an Off or another transition since the latest attempt", "production-changed", /production changed after the latest attempt .* ends the delegation/]
   ])("refuses %s in P0, before anything is consumed", (_label, delegation, reason) => {
     const b = box({ delegation });
