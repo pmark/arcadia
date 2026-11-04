@@ -4,7 +4,7 @@ type: decision
 id: "0173"
 slug: decide-what-authority-rowan-holds-for-a-day-at-a-time-over-unattended-work-on
 project: arcadia
-status: open
+status: approved
 question: Decide what authority Rowan holds for a day at a time over unattended work on the critical path, so that routine operational steps stop waiting on the operator.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-11-04
+answer: "A. Daily grant: START and routine run operations"
+decided: 2026-11-04
 ---
 
 # Decision 0173: Decide what authority Rowan holds for a day at a time over unattended work on the critical path, so that routine operational steps stop waiting on the operator.
