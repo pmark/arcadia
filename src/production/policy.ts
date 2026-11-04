@@ -1834,6 +1834,33 @@ export function assertReceiptTransition(
   );
 }
 
+/**
+ * Decision 0173's read-only production record: every policy transition since `since`, and each activation with how many
+ * Sessions it admitted. Decision 0170 counts a START that admits at least one Session; an admission that was committed is
+ * a launched Session, whereas one fenced or released before commit never launched.
+ */
+export function readDayGrantEvidence(db: Database.Database, since: string): {
+  transitions: Array<{ requestId: string; transition: "activate" | "deactivate"; revisionBefore: number; revisionAfter: number; at: string }>;
+  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number }>;
+} {
+  const earliest = Date.parse(since);
+  const rows = db.prepare(
+    `SELECT request_id, transition, revision_before, revision_after, created_at FROM production_policy_receipts ORDER BY revision_before`
+  ).all() as Array<{ request_id: string; transition: "activate" | "deactivate"; revision_before: number; revision_after: number; created_at: string }>;
+  const count = db.prepare(
+    `SELECT COUNT(*) AS admitted FROM production_admissions WHERE committed_at IS NOT NULL AND policy_revision >= ? AND policy_revision < ?`
+  );
+  const recent = rows.filter((row) => Date.parse(row.created_at) >= earliest);
+  return {
+    transitions: recent.map((row) => ({ requestId: row.request_id, transition: row.transition, revisionBefore: row.revision_before, revisionAfter: row.revision_after, at: row.created_at })),
+    activations: recent.filter((row) => row.transition === "activate").map((row) => {
+      const off = rows.find((other) => other.revision_before >= row.revision_after && other.transition === "deactivate");
+      const { admitted } = count.get(row.revision_after, off ? off.revision_after : Number.MAX_SAFE_INTEGER) as { admitted: number };
+      return { requestId: row.request_id, revisionAfter: row.revision_after, at: row.created_at, admitted };
+    })
+  };
+}
+
 function recordTransitionReceipt(
   db: Database.Database,
   input: {

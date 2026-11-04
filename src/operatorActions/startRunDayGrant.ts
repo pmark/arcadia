@@ -1,0 +1,358 @@
+import { createHash } from "node:crypto";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import path from "node:path";
+import { DAY_GRANT_DECISION, StartRunDelegationError } from "./startRunDelegation.js";
+
+/**
+ * Decision 0173 (option A), the START part: the operator's press of a day-grant card on /actions approves one day, exactly
+ * 24 hours from that press, and Rowan may press START cards it prepared within that window. This module is the read-only
+ * computation `arcadia start-run pins --day-grant-from` uses; scripts/start-run.sh (P0) verifies the same chain again from
+ * the same files and the same evidence, and both refuse with the same code.
+ *
+ * What a machine can establish here, and what it cannot:
+ *  - The press is the only approval. Decision 0173 also allows "the operator's own message in Rowan's chat", but nothing
+ *    can verify a chat message and a record Rowan wrote about it would be self-attesting, so that route is not built.
+ *  - "Operator press" means: through the /actions runner, without a delegated marker, from a browser request. The dashboard
+ *    has no identity layer (apps/dashboard/app/lib/originGuard.ts), so this is not proof of who pressed. A process on this
+ *    host able to forge request headers or rewrite these files could fabricate an approval; no check here can detect that.
+ *  - A cause is Rowan's judgement. The card must carry it and the evidence pointer; the checks here compare what was named
+ *    (and, for refusals, the executor's own recorded reason). They cannot prove the cause is right or truly cleared.
+ *
+ * Everything the executor reads is a file on disk: the library (approval, presses, receipts) and, through the read-only
+ * `arcadia start-run day-evidence`, the policy receipts and admissions in the workspace database, the only record of who
+ * moved production and whether a Session was admitted.
+ */
+export { DAY_GRANT_DECISION };
+export const DAY_GRANT_WINDOW_MS = 24 * 3_600_000;
+/** Decision 0170: three attempts, counted across days. */
+export const DAY_GRANT_MAX_ATTEMPTS = 3;
+/** Decision 0173: refused re-presses per day, in total, however the card is re-prepared. */
+export const DAY_GRANT_MAX_REPRESSES = 2;
+/** Decision 0170 was answered on main at ffd23b342 (2026-11-03T19:26:51Z); attempts count from there, and one is already used. */
+export const ATTEMPT_COUNT_EARLIEST = "2026-11-03T19:26:51Z";
+/**
+ * The request id that marks an Off as Rowan's own, which does not end the day. Fail-closed: any other Off ends it. This is
+ * self-attested, but only Rowan's own Off can carry it: a STOP card's and the dashboard switch's ids are written by those
+ * paths (`<card>-<run>`, `dashboard-toggle-*`) and a receipt's id never changes afterwards.
+ */
+export const ROWAN_OFF_REQUEST = /^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+export const DAY_GRANT_EXECUTOR_PATH = "scripts/day-grant.sh";
+
+export interface DayGrantPins {
+  schema: "arcadia-day-grant-v1";
+  decision: typeof DAY_GRANT_DECISION;
+  executorSha256: string;
+  project: string;
+  /** The active Plan the operator approves; a START card of any other Plan is refused for this day. */
+  plan: string;
+  provider: "claude-code-cli";
+  concurrency: 1;
+  spendDecision: string;
+}
+export const DAY_GRANT_KEYS = ["concurrency", "decision", "executorSha256", "plan", "project", "provider", "schema", "spendDecision"];
+
+export type DayGrantClearance =
+  | { kind: "merged-fix"; pullRequest: string; commit: string; reproduction: string }
+  | { kind: "observed-cleared"; observation: string };
+
+/** Rowan's recorded judgement of the latest press: named, with an evidence pointer; recorded, not machine-proved. */
+export interface DayGrantPrevious {
+  /** `<card>/<press run id>` of the latest START press. */
+  press: string;
+  kind: "failed-attempt" | "no-session";
+  /** A stable slug: two presses with one cause must carry the same slug. */
+  cause: string;
+  evidence: string;
+  clearance: DayGrantClearance;
+}
+
+/** startRun.delegation on a START card Rowan presses under Decision 0173. */
+export interface DayGrantDelegation {
+  decision: typeof DAY_GRANT_DECISION;
+  approvalCard: string;
+  approvalRun: string;
+  /** sha256 of the approval's final receipt.json and of its press record run.json; a change to either refuses. */
+  approvalReceiptSha256: string;
+  approvalPressSha256: string;
+  /** Under Decision 0170, the attempt this press would be if it admits a Session. */
+  attempt: number;
+  /** Null only when no START press has happened since Decision 0170. */
+  previous: DayGrantPrevious | null;
+}
+export const DAY_GRANT_DELEGATION_KEYS = ["approvalCard", "approvalPressSha256", "approvalReceiptSha256", "approvalRun", "attempt", "decision", "previous"];
+
+/** The read-only production record `arcadia start-run day-evidence` prints. */
+export interface DayEvidence {
+  transitions: Array<{ requestId: string; transition: "activate" | "deactivate"; revisionBefore: number; revisionAfter: number; at: string }>;
+  /** Each activation since Decision 0170, with how many Sessions it admitted (committed admissions). */
+  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number }>;
+}
+
+const refuse = (code: string, message: string): never => { throw new StartRunDelegationError(code, message); };
+const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const runIdPattern = /^[0-9]{8}T[0-9]{6}Z-[0-9]+$/;
+const sha256Hex = /^[0-9a-f]{64}$/;
+const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
+const readJson = <T>(file: string): T | null => { try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return null; } };
+const listDirectory = (directory: string): string[] => { try { return readdirSync(directory); } catch { return []; } };
+const pointer = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 500 && !value.includes("\n")
+  && (/^https:\/\/\S+$/.test(value) || (!path.isAbsolute(value) && !value.split("/").includes("..")));
+const repoRelative = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 300 && !value.includes("\n") && !path.isAbsolute(value) && !value.split("/").some((part) => part === ".." || part === "." || part === "");
+const exactKeys = (value: unknown, keys: string[]): boolean => !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join() === [...keys].sort().join();
+
+export function validateDayGrantPins(value: unknown): DayGrantPins {
+  const p = value as DayGrantPins;
+  if (!exactKeys(p, DAY_GRANT_KEYS)) refuse("INVALID_DAY_GRANT", `dayGrant needs exactly ${DAY_GRANT_KEYS.join(", ")}.`);
+  if (p.schema !== "arcadia-day-grant-v1") refuse("INVALID_DAY_GRANT", "dayGrant.schema must be arcadia-day-grant-v1.");
+  if (p.decision !== DAY_GRANT_DECISION) refuse("INVALID_DAY_GRANT", "dayGrant.decision must be 0173.");
+  if (typeof p.executorSha256 !== "string" || !sha256Hex.test(p.executorSha256)) refuse("INVALID_DAY_GRANT", "dayGrant.executorSha256 must be 64 lowercase hex.");
+  if (typeof p.project !== "string" || !slug.test(p.project) || typeof p.plan !== "string" || !slug.test(p.plan)) refuse("INVALID_DAY_GRANT", "dayGrant.project and plan must be slugs.");
+  if (p.provider !== "claude-code-cli") refuse("INVALID_DAY_GRANT", "dayGrant.provider must be claude-code-cli.");
+  if (p.concurrency !== 1) refuse("INVALID_DAY_GRANT", "dayGrant.concurrency must be 1.");
+  if (typeof p.spendDecision !== "string" || !/^\d{4}$/.test(p.spendDecision)) refuse("INVALID_DAY_GRANT", "dayGrant.spendDecision must be a four-digit Decision id.");
+  return p;
+}
+
+export function validateDayGrantDelegation(value: unknown): DayGrantDelegation {
+  const d = value as DayGrantDelegation;
+  if (!exactKeys(d, DAY_GRANT_DELEGATION_KEYS)) refuse("INVALID_DELEGATION", `startRun.delegation needs exactly ${DAY_GRANT_DELEGATION_KEYS.join(", ")}.`);
+  if (d.decision !== DAY_GRANT_DECISION) refuse("INVALID_DELEGATION", "startRun.delegation.decision must be 0173.");
+  if (typeof d.approvalCard !== "string" || !slug.test(d.approvalCard)) refuse("INVALID_DELEGATION", "startRun.delegation.approvalCard must be a card id.");
+  if (typeof d.approvalRun !== "string" || !runIdPattern.test(d.approvalRun)) refuse("INVALID_DELEGATION", "startRun.delegation.approvalRun must be an executor run id.");
+  for (const hash of [d.approvalReceiptSha256, d.approvalPressSha256]) if (typeof hash !== "string" || !sha256Hex.test(hash)) refuse("INVALID_DELEGATION", "startRun.delegation approval hashes must be 64 lowercase hex.");
+  if (!Number.isInteger(d.attempt) || d.attempt < 1 || d.attempt > DAY_GRANT_MAX_ATTEMPTS) refuse("INVALID_DELEGATION", `startRun.delegation.attempt must be 1 to ${DAY_GRANT_MAX_ATTEMPTS}.`);
+  if (d.previous !== null) validateDayGrantPrevious(d.previous);
+  return d;
+}
+
+export function validateDayGrantPrevious(value: unknown): DayGrantPrevious {
+  const p = value as DayGrantPrevious;
+  if (!exactKeys(p, ["cause", "clearance", "evidence", "kind", "press"])) refuse("INVALID_DELEGATION", "startRun.delegation.previous needs exactly press, kind, cause, evidence, clearance.");
+  if (typeof p.press !== "string" || !p.press.includes("/")) refuse("INVALID_DELEGATION", "previous.press must be <card>/<press run id>.");
+  if (p.kind !== "failed-attempt" && p.kind !== "no-session") refuse("INVALID_DELEGATION", "previous.kind must be failed-attempt or no-session.");
+  if (typeof p.cause !== "string" || !slug.test(p.cause)) refuse("INVALID_DELEGATION", "previous.cause must be a stable slug naming the cause.");
+  if (!pointer(p.evidence)) refuse("INVALID_DELEGATION", "previous.evidence must be an https URL or a repository-relative path.");
+  const c = p.clearance;
+  if (c?.kind === "merged-fix") {
+    if (!exactKeys(c, ["commit", "kind", "pullRequest", "reproduction"])) refuse("INVALID_DELEGATION", "A merged-fix clearance needs exactly pullRequest, commit and reproduction.");
+    if (typeof c.pullRequest !== "string" || !/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(c.pullRequest)) refuse("INVALID_DELEGATION", "clearance.pullRequest must be a pull request URL.");
+    if (typeof c.commit !== "string" || !/^[0-9a-f]{40}$/.test(c.commit)) refuse("INVALID_DELEGATION", "clearance.commit must be a full commit id.");
+    if (!repoRelative(c.reproduction)) refuse("INVALID_DELEGATION", "clearance.reproduction must be the repository-relative fixture or replay that reproduces the cause.");
+  } else if (c?.kind === "observed-cleared") {
+    if (!exactKeys(c, ["kind", "observation"])) refuse("INVALID_DELEGATION", "An observed-cleared clearance needs exactly observation.");
+    if (!pointer(c.observation)) refuse("INVALID_DELEGATION", "clearance.observation must be an https URL or a repository-relative path.");
+  } else refuse("INVALID_DELEGATION", "previous.clearance.kind must be merged-fix or observed-cleared.");
+  return p;
+}
+
+/**
+ * The /actions runner's gate for a day-grant card: a browser request only. The dashboard has no identity layer, so this
+ * cannot say who pressed; it does mean the scripted POST a delegated press uses cannot produce an approval by accident.
+ */
+export const isBrowserPress = (secFetchSite: string | null): boolean => secFetchSite === "same-origin";
+
+/** The exact launcher of a day-grant card; every pin lives in its descriptor. */
+export function dayGrantLauncher(id: string): string {
+  if (!slug.test(id)) refuse("INVALID_DAY_GRANT", "Operator action id must be a lowercase slug.");
+  return [
+    "#!/usr/bin/env bash",
+    "set -euo pipefail",
+    `exec "$(cd "$(dirname "\${BASH_SOURCE[0]}")/../../.." && pwd -P)/${DAY_GRANT_EXECUTOR_PATH}" "\${1:-run}" "$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd -P)/${id}.json"`,
+    ""
+  ].join("\n");
+}
+
+interface ApprovalReceipt { schema?: string; id?: string; runId?: string; mode?: string; outcome?: string; allowanceConsumed?: boolean; record?: { operatorRunId?: string; policyRevisionAtApproval?: unknown; pressStartedAt?: string; windowClosesAt?: string } }
+interface PressRecord { schema?: string; scriptId?: string; runId?: string; status?: string; startedAt?: string; press?: unknown; browserPress?: unknown }
+interface StartReceipt { mode?: string; outcome?: string; reason?: string; phase?: string; record?: { operatorRunId?: string } }
+
+export interface DayGrantWindow { opensAt: string; closesAt: string; closesAtMs: number; opensAtMs: number; baselineRevision: number; pins: DayGrantPins; receiptSha256: string; pressSha256: string }
+
+/**
+ * The approval itself, from the library: its receipt and press record unchanged, a press through the runner by a browser
+ * request with no delegated marker, consumed by this very run, with a window of exactly 24 hours from the press.
+ */
+export function inspectDayApproval(library: string, card: string, run: string, receiptSha: string | null, pressSha: string | null, now: Date): DayGrantWindow {
+  if (!slug.test(card) || !runIdPattern.test(run)) refuse("INVALID_DELEGATION", "the approval card or run id is malformed");
+  const receiptPath = path.join(library, "runs", card, run, "receipt.json");
+  if (!existsSync(receiptPath)) refuse("APPROVAL_MISSING", `the approval receipt ${receiptPath} does not exist`);
+  const receiptBytes = readFileSync(receiptPath);
+  const receiptSha256 = sha256(receiptBytes);
+  if (receiptSha !== null && receiptSha256 !== receiptSha) refuse("APPROVAL_CHANGED", "the approval receipt changed since this card was pinned");
+  let receipt: ApprovalReceipt;
+  try { receipt = JSON.parse(receiptBytes.toString("utf8")) as ApprovalReceipt; } catch { return refuse("APPROVAL_NOT_PRESSED", "the approval receipt is unreadable"); }
+  const pressId = receipt.record?.operatorRunId;
+  if (receipt.schema !== "arcadia-day-grant-receipt-v1" || receipt.id !== card || receipt.runId !== run || receipt.mode !== "run" || receipt.outcome !== "approved" || receipt.allowanceConsumed !== true || typeof pressId !== "string") {
+    refuse("APPROVAL_NOT_PRESSED", "the approval is not a consumed, approved /actions press of a day-grant card");
+  }
+  const consumed = readJson<{ state?: string; requestId?: string; runId?: string }>(path.join(library, `${card}.consumed.json`));
+  if (consumed?.state !== "CONSUMED" || consumed.requestId !== card || consumed.runId !== run) refuse("APPROVAL_NOT_PRESSED", "the day-grant card's one-shot marker does not name this run");
+  const pressDir = path.join(library, "runs", "operator", card, String(pressId));
+  const pressPath = path.join(pressDir, "run.json");
+  if (!existsSync(pressPath)) refuse("APPROVAL_NOT_OPERATOR", "the approval has no /actions press record");
+  const pressBytes = readFileSync(pressPath);
+  const pressSha256 = sha256(pressBytes);
+  if (pressSha !== null && pressSha256 !== pressSha) refuse("APPROVAL_CHANGED", "the approval press record changed since this card was pinned");
+  const press = readJson<PressRecord>(pressPath);
+  if (press?.schema !== "arcadia-operator-script-run-v1" || press.scriptId !== card || press.runId !== pressId || press.status !== "succeeded") refuse("APPROVAL_NOT_OPERATOR", "the approval press record is not this card's finished /actions press");
+  if (press!.press !== undefined) refuse("APPROVAL_NOT_OPERATOR", "a delegated press never counts as the operator's day approval");
+  if (press!.browserPress !== true) refuse("APPROVAL_NOT_OPERATOR", "the approval was not pressed from the /actions page in a browser");
+  let claimed = "";
+  try { claimed = readFileSync(path.join(pressDir, "day-grant.claimed"), "utf8").trim(); } catch { /* checked below */ }
+  if (claimed !== run) refuse("APPROVAL_NOT_OPERATOR", "the approval press record was not claimed by this run");
+  const pins = readJson<{ dayGrant?: unknown }>(path.join(pressDir, "descriptor.json"))?.dayGrant;
+  let validPins: DayGrantPins;
+  try { validPins = validateDayGrantPins(pins); } catch { return refuse("APPROVAL_NOT_OPERATOR", "the approval press did not run a day-grant card"); }
+  const opensAtMs = Date.parse(String(press!.startedAt));
+  if (!Number.isFinite(opensAtMs)) refuse("APPROVAL_NOT_OPERATOR", "the approval press has no readable start time");
+  const closesAtMs = opensAtMs + DAY_GRANT_WINDOW_MS;
+  if (receipt.record!.pressStartedAt !== press!.startedAt || Date.parse(String(receipt.record!.windowClosesAt)) !== closesAtMs) refuse("APPROVAL_CHANGED", "the approval receipt's window is not exactly 24 hours from the press");
+  if (now.getTime() >= closesAtMs) refuse("WINDOW_EXPIRED", `the day approved at ${press!.startedAt} ended at ${new Date(closesAtMs).toISOString()}; it never renews itself`);
+  if (now.getTime() < opensAtMs) refuse("WINDOW_EXPIRED", "the approval press is in the future");
+  const baselineRevision = receipt.record!.policyRevisionAtApproval;
+  if (!Number.isInteger(baselineRevision)) refuse("APPROVAL_NOT_PRESSED", "the approval receipt records no policy revision");
+  // Only the operator's latest approval opens the day: nothing later may supersede this one.
+  for (const other of listDirectory(path.join(library, "runs", "operator"))) {
+    for (const otherPress of listDirectory(path.join(library, "runs", "operator", other))) {
+      const dir = path.join(library, "runs", "operator", other, otherPress);
+      if (!readJson<{ dayGrant?: unknown }>(path.join(dir, "descriptor.json"))?.dayGrant) continue;
+      const record = readJson<PressRecord>(path.join(dir, "run.json"));
+      if (record?.status === "succeeded" && record.press === undefined && record.browserPress === true && existsSync(path.join(dir, "day-grant.claimed")) && Date.parse(String(record.startedAt)) > opensAtMs) {
+        refuse("APPROVAL_SUPERSEDED", `the operator approved a later day with ${other}/${otherPress}; a card names the latest approval`);
+      }
+    }
+  }
+  return { opensAt: String(press!.startedAt), closesAt: new Date(closesAtMs).toISOString(), opensAtMs, closesAtMs, baselineRevision: baselineRevision as number, pins: validPins, receiptSha256, pressSha256 };
+}
+
+interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean }
+
+/** Every /actions press of a START card since Decision 0170, oldest first, with whether it admitted a Session. */
+function startPresses(library: string, evidence: DayEvidence, excludePress: string | null): StartPress[] {
+  const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
+  const operatorRuns = path.join(library, "runs", "operator");
+  const presses: StartPress[] = [];
+  for (const card of listDirectory(operatorRuns)) {
+    if (!slug.test(card)) continue;
+    const receipts = listDirectory(path.join(library, "runs", card)).map((run) => readJson<StartReceipt>(path.join(library, "runs", card, run, "receipt.json")));
+    for (const pressId of listDirectory(path.join(operatorRuns, card))) {
+      if (pressId === excludePress) continue;
+      const dir = path.join(operatorRuns, card, pressId);
+      const run = readJson<PressRecord & { press?: { decision?: string } }>(path.join(dir, "run.json"));
+      const startRun = readJson<{ startRun?: { delegation?: StartPress["delegation"] } }>(path.join(dir, "descriptor.json"))?.startRun;
+      if (!run || !startRun || run.schema !== "arcadia-operator-script-run-v1" || run.scriptId !== card || run.runId !== pressId) continue;
+      const startedAt = Date.parse(String(run.startedAt));
+      if (!Number.isFinite(startedAt) || startedAt < earliest) continue;
+      const receipt = receipts.find((r) => r?.mode === "run" && r.record?.operatorRunId === pressId) ?? null;
+      const admitted = evidence.activations.some((a) => a.requestId === card && a.admitted >= 1);
+      if (receipt?.outcome === "succeeded" && !evidence.activations.some((a) => a.requestId === card)) refuse("EVIDENCE_MISMATCH", `${card} recorded a successful START but production has no activation under its request id`);
+      presses.push({ card, pressId, key: `${card}/${pressId}`, startedAt, status: String(run.status), delegation: startRun.delegation ?? null, marker: run.press ?? null, receipt, admitted });
+    }
+  }
+  return presses.sort((a, b) => a.startedAt - b.startedAt);
+}
+
+/** A refusal's identity: its phase and reason with the run-specific numbers and ids taken out. */
+export function refusalKey(receipt: Pick<StartReceipt, "phase" | "reason"> | null): string | null {
+  if (!receipt || typeof receipt.reason !== "string" || !receipt.reason.trim()) return null;
+  return `${String(receipt.phase)}|${receipt.reason.toLowerCase().replace(/[0-9]{4}-[0-9]{2}-[0-9]{2}t[0-9:.]+z/g, "#").replace(/\b[0-9a-f]{7,64}\b/g, "#").replace(/[0-9]+/g, "#")}`;
+}
+
+/** Production's moves since the approval, each one this chain's or Rowan's own. Throws for anything else. */
+function checkProductionChain(evidence: DayEvidence, window: DayGrantWindow, library: string, pinnedRevision: number | null): number {
+  const pressedCards = new Set(listDirectory(path.join(library, "runs", "operator")).filter((card) => listDirectory(path.join(library, "runs", "operator", card)).some((press) => !!readJson<{ startRun?: unknown }>(path.join(library, "runs", "operator", card, press, "descriptor.json"))?.startRun)));
+  let revision = window.baselineRevision;
+  for (const t of [...evidence.transitions].filter((x) => x.revisionBefore >= window.baselineRevision).sort((a, b) => a.revisionBefore - b.revisionBefore)) {
+    if (t.revisionBefore !== revision) refuse("PRODUCTION_CHANGED", `production policy moved from ${revision} with no receipt (next receipt is at ${t.revisionBefore}); no card may follow an unexplained move`);
+    if (t.transition === "activate") {
+      if (!pressedCards.has(t.requestId)) refuse("PRODUCTION_CHANGED", `production was activated by ${t.requestId}, which is no pressed START card`);
+    } else if (!ROWAN_OFF_REQUEST.test(t.requestId) && ![...pressedCards].some((card) => t.requestId.startsWith(`${card}-`) && t.requestId.endsWith("-off"))) {
+      refuse("DAY_ENDED_BY_OPERATOR", `production was turned Off by ${t.requestId}, not by this chain or Rowan: an operator STOP or operator-issued Off ends the day`);
+    }
+    revision = t.revisionAfter;
+  }
+  if (pinnedRevision !== null && pinnedRevision !== revision) refuse("PRODUCTION_CHANGED", `this card pins policy revision ${pinnedRevision}, but the chain since the approval reaches ${revision}`);
+  return revision;
+}
+
+export interface DayGrantChain {
+  window: DayGrantWindow;
+  /** Decision 0170 attempts so far: activations since it that admitted a Session. */
+  attemptsSoFar: number;
+  /** Rowan's refused re-presses inside this window. */
+  rePressesToday: number;
+  /** The latest START press, which a card must name; null when none happened since Decision 0170. */
+  latest: { press: string; kind: "failed-attempt" | "no-session" } | null;
+  revision: number;
+}
+
+export interface InspectDayGrantInput {
+  library: string;
+  approvalCard: string;
+  approvalRun: string;
+  approvalReceiptSha256: string | null;
+  approvalPressSha256: string | null;
+  now: Date;
+  evidence: DayEvidence;
+  /** The card's pinned policy revision; null while computing a card's pins before the revision is chosen. */
+  policyRevision: number | null;
+  /** The press running right now, not an earlier one. */
+  excludePress: string | null;
+  scope: { project: string; plan: string; provider: string; concurrency: number; spendDecision: string };
+  /** The card's named cause; undefined computes the chain before Rowan has named one. */
+  previous?: DayGrantPrevious | null;
+  attempt?: number;
+}
+
+/**
+ * The whole Decision 0173 check of one START press, read-only, in the same order as scripts/start-run.sh. Throws
+ * StartRunDelegationError. Decision 0170's limit counts across days; refused re-presses count within this day's window.
+ */
+export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain {
+  const window = inspectDayApproval(input.library, input.approvalCard, input.approvalRun, input.approvalReceiptSha256, input.approvalPressSha256, input.now);
+  const { scope } = input;
+  if (scope.project !== window.pins.project || scope.plan !== window.pins.plan || scope.provider !== window.pins.provider || scope.concurrency !== window.pins.concurrency || scope.spendDecision !== window.pins.spendDecision) {
+    refuse("SCOPE_NOT_APPROVED", `this card's scope (${scope.project}/${scope.plan}, ${scope.provider}, concurrency ${scope.concurrency}, spend Decision ${scope.spendDecision}) is not the Plan, provider and spend Decision the operator approved`);
+  }
+  const revision = checkProductionChain(input.evidence, window, input.library, input.policyRevision);
+  const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
+  const attemptsSoFar = input.evidence.activations.filter((a) => Date.parse(a.at) >= earliest && a.admitted >= 1).length;
+  if (attemptsSoFar >= DAY_GRANT_MAX_ATTEMPTS) refuse("ATTEMPTS_EXHAUSTED", `${attemptsSoFar} attempts already admitted a Session under Decision 0170; at ${DAY_GRANT_MAX_ATTEMPTS} Rowan stops and the operator decides`);
+
+  const presses = startPresses(input.library, input.evidence, input.excludePress);
+  const latest = presses.at(-1) ?? null;
+  if (latest && (latest.status === "running" || latest.receipt?.outcome === "in_progress")) refuse("PREVIOUS_UNSETTLED", `the latest START press ${latest.key} has not finished; read its receipt before any other press`);
+  const noSession = (press: StartPress) => !press.admitted;
+  let rePressesToday = 0;
+  presses.forEach((press, index) => {
+    if (press.startedAt >= window.opensAtMs && press.marker?.decision === DAY_GRANT_DECISION && index > 0 && noSession(presses[index - 1])) rePressesToday += 1;
+  });
+  const latestSummary = latest ? { press: latest.key, kind: latest.admitted ? "failed-attempt" as const : "no-session" as const } : null;
+  if (latest && noSession(latest) && rePressesToday >= DAY_GRANT_MAX_REPRESSES) refuse("REPRESSES_EXHAUSTED", `${rePressesToday} re-presses after a refusal already ran in this day; Decision 0173 allows at most ${DAY_GRANT_MAX_REPRESSES}, however the card is re-prepared`);
+  if (latest && noSession(latest) && latest.startedAt >= window.opensAtMs) {
+    const key = refusalKey(latest.receipt);
+    const repeat = key && presses.find((press) => press !== latest && noSession(press) && press.startedAt >= window.opensAtMs && refusalKey(press.receipt) === key);
+    if (repeat) refuse("SAME_REFUSAL", `the latest press refused for the same recorded reason as ${repeat.key} in this day: ${String(latest.receipt?.reason).slice(0, 200)}; stop for the operator`);
+  }
+
+  if (input.previous !== undefined) {
+    const previous = input.previous;
+    if (!latest) { if (previous !== null) refuse("PREVIOUS_MISMATCH", `this card names ${previous.press}, but no START press has happened since Decision 0170`); }
+    else {
+      if (previous === null) refuse("PREVIOUS_CAUSE_REQUIRED", `the latest START press ${latest.key} needs its cause named on this card, with an evidence pointer and how it was cleared`);
+      if (previous!.press !== latest.key) refuse("PREVIOUS_MISMATCH", `this card names ${previous!.press}, but the latest START press is ${latest.key}`);
+      if (previous!.kind !== latestSummary!.kind) refuse("PREVIOUS_MISMATCH", `this card calls ${latest.key} a ${previous!.kind}, but production's record makes it a ${latestSummary!.kind}`);
+      // Each earlier card named the cause of the press before it: the record is on the cards, across days.
+      const named = presses.filter((press) => press.delegation?.decision === DAY_GRANT_DECISION && press.delegation.previous?.press && press.delegation.previous.cause);
+      const namedFor = (press: StartPress) => named.filter((card) => card.delegation!.previous!.press === press.key).map((card) => card.delegation!.previous!.cause!);
+      if (latest.admitted && presses.some((press) => press !== latest && press.admitted && namedFor(press).includes(previous!.cause))) {
+        refuse("SAME_CAUSE", `two attempts failed on the cause ${previous!.cause}; Decision 0173 stops here for the operator`);
+      }
+      if (!latest.admitted && presses.some((press) => press !== latest && !press.admitted && press.startedAt >= window.opensAtMs && namedFor(press).includes(previous!.cause))) {
+        refuse("SAME_REFUSAL", `the refusal named ${previous!.cause} recurred in this day; Decision 0173 stops here for the operator`);
+      }
+    }
+  }
+  if (input.attempt !== undefined && input.attempt !== attemptsSoFar + 1) refuse("ATTEMPT_MISMATCH", `this card is pinned as attempt ${input.attempt}, but ${attemptsSoFar} attempts already admitted a Session`);
+  return { window, attemptsSoFar, rePressesToday, latest: latestSummary, revision };
+}

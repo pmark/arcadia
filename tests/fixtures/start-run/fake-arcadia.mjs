@@ -59,6 +59,10 @@ switch (key2) {
   case "production status":
     ok({ read: { status: "ok", policy: { desiredState: state.production.desiredState, revision: state.production.revision, epoch: state.production.epoch, authority: state.production.authority ?? null } }, liveAdmissions: state.production.liveAdmissions });
     break;
+  case "start-run day-evidence":
+    if (state.dayEvidence === "unavailable") { process.stderr.write("the workspace database could not be read\n"); process.exit(1); }
+    ok(state.dayEvidence ?? { transitions: [], activations: [] });
+    break;
   case "production capacity":
     ok(state.capacity);
     break;

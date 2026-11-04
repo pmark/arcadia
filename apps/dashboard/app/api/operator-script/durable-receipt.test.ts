@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { dayGrantLauncher } from "../../../../../src/operatorActions/startRunDayGrant.js";
 const roots: string[] = [];
 afterEach(() => { vi.unstubAllEnvs(); vi.resetModules(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 describe("Operator endpoint projects shared runner receipts", () => {
@@ -20,6 +21,33 @@ describe("Operator endpoint projects shared runner receipts", () => {
     const run = JSON.parse(readFileSync(runPath, "utf8")) as { status: string; exitCode: number; runId: string };
     expect(run).toMatchObject({ status: "succeeded", exitCode: 0, runId: started.runId });
     expect(readFileSync(path.join(root, "runs", "operator", "example", started.runId, "stdout.log"), "utf8")).toContain("hello from operator action");
+  });
+
+  it("takes a day-grant press only from a browser request, and records that it was one", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-day-grant-press-")); roots.push(root);
+    const id = "approve-critical-path-day";
+    writeFileSync(path.join(root, `${id}.sh`), dayGrantLauncher(id), { mode: 0o755 });
+    writeFileSync(path.join(root, `${id}.json`), JSON.stringify({
+      schema: "arcadia-operator-script-v1", id, kind: "grant", script: `${id}.sh`, title: "Approve one day", problem: "Example problem", desired_effect: "Example effect", repeatable: false, expires_at: "2099-01-01T00:00:00Z",
+      authority: { does: ["One action"], never_does: ["Broaden scope"] }, success: { effect: "Done", next: "Keep receipt" }, failure: { effect: "Refused", next: "Retry exact action" },
+      dayGrant: { schema: "arcadia-day-grant-v1", decision: "0173", executorSha256: "e".repeat(64), project: "arcadia", plan: "active-plan", provider: "claude-code-cli", concurrency: 1, spendDecision: "0130" }
+    }));
+    vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_LIBRARY", root); vi.resetModules();
+    const { POST } = await import("./route");
+    const press = (headers: Record<string, string>, body: unknown) => POST(new Request("http://arcadia.test/api/operator-script", { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) }));
+    const scripted = await press({}, { id });
+    expect(scripted.status).toBe(409);
+    await expect(scripted.json()).resolves.toMatchObject({ reason: "DAY_GRANT_BROWSER_PRESS_REQUIRED" });
+    const delegated = await press({ "sec-fetch-site": "same-origin" }, { id, delegation: { decision: "0173", agent: "rowan" } });
+    expect(delegated.status).toBe(409);
+    await expect(delegated.json()).resolves.toMatchObject({ reason: "NOT_DELEGATED_CARD" });
+    expect(existsSync(path.join(root, "runs", "operator", id))).toBe(false);
+    const browser = await press({ "sec-fetch-site": "same-origin" }, { id });
+    expect(browser.status).toBe(202);
+    const { runId } = await browser.json() as { runId: string };
+    const run = JSON.parse(readFileSync(path.join(root, "runs", "operator", id, runId, "run.json"), "utf8")) as { browserPress?: boolean; press?: unknown };
+    expect(run.browserPress).toBe(true);
+    expect(run.press).toBeUndefined();
   });
 
   it("accepts an optional grant kind while descriptors without it list unchanged", async () => {

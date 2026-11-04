@@ -305,6 +305,36 @@ pinned descriptor, so per-card review is small.
   production policy revision follows that attempt with nothing in between. Any
   other Off, such as a STOP card, a Decision or a stop-the-line, ends the
   delegation. Each attempt number of a chain is claimed by one card only.
+- **Day approvals (Decision 0173, option A, START part).** The operator approves
+  one day by pressing a day-grant card on /actions. Rowan may prepare the card
+  (`arcadia start-run day-pins --plan <active Plan> --expires-hours <n>`, the
+  three-line `dayGrantLauncher`, `<id>.sh preflight`) and may never press it: the
+  press opens exactly 24 hours from itself, never renews, and starts nothing.
+  Only a press counts. Nothing can verify a chat message, and a record Rowan wrote
+  about one would be self-attesting. The runner refuses a day-grant press unless it
+  is a same-origin browser request with no delegated marker, and records that; this
+  deployment has no identity layer, so this says how it was pressed, not who did.
+  Within the day, pin a START card with
+  `arcadia start-run pins … --day-grant-from <card>/<run>`, naming the latest START
+  press's cause: `--previous-cause <stable slug> --previous-evidence <pointer>`, and
+  either `--fix-pull-request --fix-commit --reproduction` or `--observed-cleared`.
+  Run the fresh pre-mortem, put its pointer in `reviewed/<id>.json` as `premortem`,
+  preflight the card, then press it with
+  `POST /api/operator-script {"id": "<card>", "delegation": {"decision": "0173", "agent": "rowan"}}`.
+  It records as Rowan's press, never the operator's. P0 refuses unless the approval
+  is unchanged, the operator's latest and open; the card's Plan, provider,
+  concurrency and spend Decision are the approved ones; every policy move since the
+  approval is a START card's, the executor's own return to Off or Rowan's own Off
+  (request id `rowan-off-<slug>`; any other Off ends the day, so use that id or lose
+  the day); fewer than 3 activations since Decision 0170 admitted a Session; fewer
+  than 2 re-presses after a refusal ran this day and the same refusal has not
+  recurred; no two attempts share a named cause. P1 and P2 prove the Plan is active
+  and its governed queue holds the pinned Actions. The window is checked again before
+  the allowance and before activation. The cause, whether it is cleared, the
+  pre-mortem's content, the coordination Issue record and the Discord alert are
+  Rowan's duty: they are recorded or checked for presence, not proved. A new Plan or
+  a higher attempt limit needs the operator. Decision 0163's chain stays as it was,
+  bounded by its own Actions and 72 hours.
 - **Run it** with `<id>.sh preflight` first (phases P0 to P2, no mutation, no
   /actions context, writes only `runs/<id>/<run>/`), then press the card. Every
   phase rewrites `receipt.json` and `failure-handoff.md` there.
