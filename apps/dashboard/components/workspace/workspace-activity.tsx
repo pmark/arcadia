@@ -12,6 +12,7 @@ export function WorkspaceActivity() {
   const pathname = usePathname();
   const [label, setLabel] = useState<string | null>(null);
   const [slow, setSlow] = useState(false);
+  const [tapped, setTapped] = useState(0);
   const pressed = useRef<Element | null>(null);
 
   useEffect(() => {
@@ -25,6 +26,7 @@ export function WorkspaceActivity() {
       pressed.current = anchor;
       setSlow(false);
       setLabel(activityLabel(target));
+      setTapped(count => count + 1);
     };
     const clear = () => {
       pressed.current?.removeAttribute("data-opening");
@@ -32,15 +34,18 @@ export function WorkspaceActivity() {
       setLabel(null);
       setSlow(false);
     };
-    // Safari only shows :active on touch when a touch listener exists. Coming back from a page restores this one as it was left.
+    // Safari only shows :active on touch when a touch listener exists. Coming back from a page restores this one as it was
+    // left. Back or Forward before a page arrives abandons that page, and the route may never change, so it clears then too.
     const noop = () => {};
     document.addEventListener("click", onClick, true);
     document.addEventListener("touchstart", noop, { passive: true });
     window.addEventListener("pageshow", clear);
+    window.addEventListener("popstate", clear);
     return () => {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("touchstart", noop);
       window.removeEventListener("pageshow", clear);
+      window.removeEventListener("popstate", clear);
     };
   }, []);
 
@@ -56,7 +61,7 @@ export function WorkspaceActivity() {
     if (!label) return;
     const timer = setTimeout(() => setSlow(true), ACTIVITY_SLOW_MS);
     return () => clearTimeout(timer);
-  }, [label]);
+  }, [label, tapped]);
 
   return <div className="workspace-activity" role="status" aria-live="polite">
     {label && <p><span className="workspace-activity-spinner" aria-hidden="true" />{activityMessage(label, slow)}</p>}

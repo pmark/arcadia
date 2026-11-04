@@ -6,6 +6,7 @@ import { freePort, startProcess, waitForHttp } from "./fixtures/processes";
 
 const plan = { slug: "first-website", status: "active", governed: true, milestone: "A small garden on the web", isActivePlan: true, actionCounts: { open: 1, in_progress: 0, done: 0, blocked: 0 }, activationNote: null, relativePath: "docs/plans/first-website.md" };
 const portfolio = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "garden", slug: "moon-garden", name: "Moon garden", status: "active", activePlan: plan.slug, plans: [plan], error: null }] };
+const detail = { project: { id: "garden", slug: "moon-garden", name: "Moon garden" }, plan, progress: { schema: "fixture", source: { planSlug: plan.slug, planPath: plan.relativePath, updated: "2030-01-01" }, counts: { open: 1, in_progress: 0, done: 0, blocked: 0, deferred: 0, total: 1 }, isActivePlan: true, current: null, currentNote: null, next: [], blocked: [], actions: [{ key: "moon-garden/review-phone", title: "Review the page on a phone", status: "open", dependsOn: [] }] } };
 const decision = { kind: "decision", id: "0017", project: "field-notes", title: "Publish the field notes now or after review", detail: null, gateQuestion: "Publish now?", options: [{ key: "A", label: "Now", consequence: null }], blocking: true, todoKey: "decision:field-notes:0017", href: "/todo/decision/field-notes/0017", createdAt: "2030-01-01T00:00:00.000Z" };
 
 test("every tap answers at once and says what it's opening, however slow the page is", async ({ page }, testInfo) => {
@@ -20,6 +21,7 @@ test("every tap answers at once and says what it's opening, however slow the pag
   await page.route("**/api/**", route => {
     const endpoint = new URL(route.request().url()).pathname;
     if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
+    if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: detail });
     if (endpoint === "/api/approvals") return route.fulfill({ json: { source: "todo", note: null, approvals: [decision] } });
     return route.abort();
   });
@@ -57,15 +59,22 @@ test("every tap answers at once and says what it's opening, however slow the pag
     await expect(activity).toHaveText("");
 
     // A page that stays slow says the tap was received.
-    delayMs = 10_000;
+    delayMs = 14_000;
     await page.getByRole("link", { name: /Plan · active/ }).first().click({ noWaitAfter: true });
     await expect(activity).toContainText("Opening this Plan...", { timeout: 1_000 });
-    await expect(activity).toContainText("Your tap was received", { timeout: 9_500 });
-    await expect(page).toHaveURL(/\/plans\/first-website$/, { timeout: 15_000 });
+    await expect(activity).toContainText("Your tap was received", { timeout: 13_000 });
+    // A prefetch and the navigation can each be held, one after the other.
+    await expect(page).toHaveURL(/\/plans\/first-website$/, { timeout: 45_000 });
+    await expect(activity).toHaveText("");
+
+    // Back before a page arrives abandons it, so the line clears instead of claiming work that isn't happening.
+    await page.getByRole("link", { name: /Action · open/ }).first().click({ noWaitAfter: true });
+    await expect(activity).toContainText("Opening this Action...", { timeout: 1_000 });
+    await page.evaluate(() => window.dispatchEvent(new PopStateEvent("popstate")));
     await expect(activity).toHaveText("");
     delayMs = 500;
     await page.getByRole("link", { name: "Feed" }).click();
-    await expect(page).toHaveURL(/\/workspace\/feed$/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/workspace\/feed$/, { timeout: 30_000 });
 
     // A Decision says so as it opens.
     const item = page.getByRole("region", { name: "Waiting on you" }).getByRole("link").first();
