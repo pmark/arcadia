@@ -1071,7 +1071,7 @@ It never merges. Integration is refused for operator-launched candidates unless 
 Each live defect should be reproduced offline before it is fixed.
 
 **Services.**
-- The dev dashboard (:3020) runs `next dev`, so pre-load the pages after every restart.
+- The live dashboard (:3020) serves a production build of the checkout. A restart serves the last build at once and builds the current commit behind it, then switches when that passes. See `START_HERE.md`, "Stable demo deployment".
 - The stable demo (:3030, https://arcadia-1.alpine-rattlesnake.ts.net/) serves a prebuilt `rel-*` release, and dev restarts never touch it.
 - Under heavy load, a restart can stop every service (#1129). Recover as `docs/agent-guidance/pull-requests.md` describes.
 

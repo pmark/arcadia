@@ -3782,9 +3782,16 @@ state cannot select a different Node ABI.
 
 ## Stable demo deployment
 
-The development dashboard (port 3020) runs `next dev` from the primary checkout,
-so every restart cold-compiles each page and every merge changes the code under
-it. For a demo that must work at any moment there is a second, separate
+The live dashboard (port 3020) serves a production build of the primary checkout
+(`scripts/dashboard-serve.sh`). A restart serves the last build straight away. If
+the checkout has moved, `scripts/dashboard-build.sh` builds the new commit behind
+it, starts that build on a spare port to check it, and then switches over, which
+takes a few minutes. A failed build leaves the running dashboard in place: see
+`apps/dashboard/.live/build.log`. With no build yet it falls back to `next dev`,
+and `ARCADIA_DASHBOARD_MODE=dev` forces that. A merge changes nothing here until
+the next restart.
+
+For a demo that must work at any moment there is a second, separate
 dashboard: a pre-built release of a **git tag**, served by `next start` on port
 **3030**, reading the same `martianrover` workspace. `scripts/services.sh restart`
 never touches it.
