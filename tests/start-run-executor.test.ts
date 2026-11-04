@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import type { StartRunPins } from "../src/operatorActions/startRunPins.js";
@@ -27,6 +28,14 @@ const ORIGIN = "start-run-origin-20261101";
 const ORIGIN_RUN = "20261101T010000Z-111";
 const ORIGIN_PRESS = "20261101010000000-origin-press";
 type DelegationScenario = "ok" | "receipt-changed" | "origin-delegated" | "origin-scope" | "expired" | "exhausted" | "not-trigger" | "activated-other-off" | "returned-off" | "attempt-mismatch" | "no-origin" | "found-off" | "before-decision" | "production-changed";
+/** The before-decision press, 35 minutes before Decision 0163 reached main (2026-11-01T04:35:38Z, EARLIEST in the executor). */
+const BEFORE_DECISION_PRESS = "2026-11-01T04:00:24.507Z";
+/** The executor's clock for that scenario, one hour after the press: within the 72-hour window it checks first, on any real date. */
+const BEFORE_DECISION_NOW = "2026-11-01T05:00:24.507Z";
+const clockEnv = (now: string): NodeJS.ProcessEnv => ({
+  START_RUN_FAKE_NOW: now,
+  NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(path.join(fixtures, "fake-clock.mjs")).href}`].filter(Boolean).join(" ")
+});
 const LABEL = "com.arcadia.local.1.worker";
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
@@ -180,7 +189,7 @@ function box(options: BoxOptions = {}) {
     if (scenario !== "no-origin") writeFileSync(path.join(receiptDir, "receipt.json"), originReceipt);
     writeFileSync(path.join(pressDir, "run.json"), JSON.stringify({
       schema: "arcadia-operator-script-run-v1", runId: ORIGIN_PRESS, scriptId: ORIGIN, status: "failed",
-      startedAt: scenario === "before-decision" ? "2026-11-01T04:00:24.507Z" : new Date(Date.now() - (scenario === "expired" ? 73 * 3_600_000 : 30 * 60_000)).toISOString(),
+      startedAt: scenario === "before-decision" ? BEFORE_DECISION_PRESS : new Date(Date.now() - (scenario === "expired" ? 73 * 3_600_000 : 30 * 60_000)).toISOString(),
       ...(scenario === "origin-delegated" ? { press: { kind: "delegated", agent: "rowan", decision: "0163", originatingRun: "x/y" } } : {})
     }));
     writeFileSync(path.join(pressDir, "descriptor.json"), JSON.stringify({ startRun: { ...pins, ...(scenario === "origin-scope" ? { spendDecision: "0999" } : {}),
@@ -297,6 +306,7 @@ function box(options: BoxOptions = {}) {
   const env = (overrides: Record<string, string | undefined> = {}, actions = true): NodeJS.ProcessEnv => {
     const base: NodeJS.ProcessEnv = {
       ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot,
+      ...(options.delegation === "before-decision" ? clockEnv(BEFORE_DECISION_NOW) : {}),
       ...(actions ? { ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptorPath, ...pressEnv() } : {})
     };
     delete base.ANTHROPIC_API_KEY; delete base.CODEX_SANDBOX; delete base.ARCADIA_WORKSPACE; delete base.VITEST;
@@ -511,8 +521,7 @@ describe("start-run executor: Decision 0163 delegated presses", () => {
     ["a latest attempt that STARTed successfully", "not-trigger", /no Decision 0163 trigger: .* outcome succeeded/],
     ["an Off this chain did not issue", "activated-other-off", /no Decision 0163 trigger: .* Off cleanup other_grant_active/],
     ["an activation found Off by another cause (a STOP card, a Decision, a stop-the-line)", "found-off", /no Decision 0163 trigger: .* Off cleanup not_active/],
-    // Fixed time: since 2026-11-04T04:00:24Z this press is also past the 72-hour window, which the executor checks first.
-    ["an originating press made before Decision 0163 reached main", "before-decision", /more than 72 hours|predates Decision 0163 on main/],
+    ["an originating press made before Decision 0163 reached main", "before-decision", /predates Decision 0163 on main/],
     ["an Off or another transition since the latest attempt", "production-changed", /production changed after the latest attempt .* ends the delegation/]
   ])("refuses %s in P0, before anything is consumed", (_label, delegation, reason) => {
     const b = box({ delegation });
