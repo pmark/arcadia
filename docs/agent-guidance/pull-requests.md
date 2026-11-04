@@ -193,6 +193,18 @@ merge it anyway, so asking spends attention and protects nothing.
   so a missing required check or an empty `--required` list still proves
   nothing. A push that changes code resets all three, so re-check on the new
   head.
+- **Use GitHub auto-merge by default (operator, 2026-11-04).** On every Arcadia
+  Project, once an independent review of the current head has no unresolved
+  blocking finding, enable auto-merge pinned to that head instead of waiting
+  for a nudge: `gh pr merge <PR> --auto --squash --match-head-commit <sha>`. It
+  replaces the wait, not this gate: never enable it before that review, and a
+  new head needs its review again. Auto-fix stays on for the Session's PRs.
+  Merge by hand, or leave for the operator, in these special cases: a PR this
+  section excludes below; a path `classifyAuthorityPaths` gates; a publish that
+  needs a merge commit; any merge while `arcadia work monitor` reports a run
+  window; and a repository where merging deploys or publishes. Never enable it
+  on a repository with no required checks, because there GitHub merges at once;
+  say so and leave the PR for a manual merge.
 - **Squash-merge, then leave the record whole.** Confirm the PR shows merged
   and that any `Closes #<ISSUE>` Issue is closed. Restart managed services when
   the merged change is runtime code, and confirm they came back. Under heavy
