@@ -33,26 +33,31 @@ for(const i of [...s.matchAll(/^\{/gm)].map(m=>m.index).reverse()){try{JSON.pars
 process.stdout.write(s)})'
 }
 arcadia() { (cd "$ARCADIA_REPO" && timeout 180 mise exec -- pnpm -s arcadia "$@" | json_envelope); }
+# The frontmatter only: a Decision's or Plan's body may quote any answer or status.
+frontmatter_json() {
+  (cd "$ARCADIA_REPO" && node -e 'const {parse}=require("yaml");let s="";process.stdin.on("data",c=>s+=c).on("end",()=>{const m=/^---\r?\n([\s\S]*?)\r?\n---/.exec(s);if(!m)process.exit(2);process.stdout.write(JSON.stringify(parse(m[1])))})')
+}
 
+# Returns the write's status. A refusal's own receipt is best effort; the receipts a press relies on are checked by their callers.
 write_receipt() {
   jq -n --arg id "${ID:-unknown}" --arg runId "${RUN_ID:-unknown}" --arg mode "${MODE:-unknown}" --arg started "${STARTED_AT:-}" \
     --arg updated "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg outcome "$1" --arg phase "$PHASE" --argjson consumed "$CONSUMED" --arg reason "$REASON" --argjson record "$RECORD" \
     '{schema: "arcadia-day-grant-receipt-v1", id: $id, runId: $runId, mode: $mode, startedAt: $started, updatedAt: $updated,
       outcome: $outcome, phase: $phase, allowanceConsumed: $consumed, reason: $reason, record: $record}' \
-    > "${RECEIPT}.tmp" 2>/dev/null && mv "${RECEIPT}.tmp" "$RECEIPT" || true
+    > "${RECEIPT}.tmp" 2>/dev/null && mv "${RECEIPT}.tmp" "$RECEIPT" 2>/dev/null
 }
 refuse() {
   REASON="$*"
   trap - ERR
   echo "REFUSED: $*" >&2
-  write_receipt refused
+  write_receipt refused || echo "The refusal's receipt could not be written to $RECEIPT." >&2
   exit 1
 }
 on_error() {
   local code=$? command="$BASH_COMMAND"
   trap - ERR
   REASON="command failed (exit $code): $command"
-  write_receipt refused
+  write_receipt refused || echo "The refusal's receipt could not be written to $RECEIPT." >&2
   exit "$code"
 }
 
@@ -88,7 +93,7 @@ process.stdout.write(JSON.stringify({startedAt:r.startedAt,closesAt:new Date(t+2
 }
 
 check_authority() {
-  local executor_pin plan project decision status
+  local executor_pin plan project decision decision_fm project_fm plan_fm status
   jq -e '.schema == "arcadia-operator-script-v1" and .kind == "grant" and .dayGrant.schema == "arcadia-day-grant-v1" and .dayGrant.decision == "0173" and .dayGrant.concurrency == 1 and .dayGrant.provider == "claude-code-cli"' "$DESCRIPTOR" >/dev/null || refuse "the descriptor is not a Decision 0173 day-grant card"
   executor_pin="$(jq -er '.dayGrant.executorSha256' "$DESCRIPTOR")"
   [[ "$(node -e 'process.stdout.write(require("crypto").createHash("sha256").update(require("fs").readFileSync(process.argv[1])).digest("hex"))' "$SELF")" == "$executor_pin" ]] || refuse "this executor is not the one the card pins (dayGrant.executorSha256)"
@@ -98,10 +103,13 @@ check_authority() {
   plan="$(jq -er '.dayGrant.plan' "$DESCRIPTOR")"; project="$(jq -er '.dayGrant.project' "$DESCRIPTOR")"
   decision="$(find "$ARCADIA_REPO/docs/decisions" -maxdepth 1 -name '0173-*.md' -print -quit)"
   [[ -n "$decision" ]] || refuse "Decision 0173 is not in this checkout"
-  grep -q '^status: approved$' "$decision" || refuse "Decision 0173 is not approved in this checkout"
-  grep -Eq '^answer: "?A\. Daily grant' "$decision" || refuse "Decision 0173 is not answered with option A in this checkout"
-  grep -Eq "^active_plan: \"?$plan\"?\$" "$ARCADIA_REPO/PROJECT.md" || refuse "the Plan $plan is not the Project's active Plan in this checkout"
-  [[ -f "$ARCADIA_REPO/docs/plans/$plan.md" ]] && grep -q '^status: active$' "$ARCADIA_REPO/docs/plans/$plan.md" || refuse "the Plan $plan is not active in this checkout"
+  decision_fm="$(frontmatter_json < "$decision")" || refuse "Decision 0173's frontmatter could not be read in this checkout"
+  jq -e '.status == "approved" and ((.answer // "") | tostring | startswith("A. Daily grant"))' <<<"$decision_fm" >/dev/null || refuse "Decision 0173 is not approved with option A in this checkout"
+  project_fm="$(frontmatter_json < "$ARCADIA_REPO/PROJECT.md")" || refuse "PROJECT.md frontmatter could not be read in this checkout"
+  jq -e --arg p "$plan" '.active_plan == $p' <<<"$project_fm" >/dev/null || refuse "the Plan $plan is not the Project's active Plan in this checkout"
+  [[ -f "$ARCADIA_REPO/docs/plans/$plan.md" ]] || refuse "the Plan $plan is not in this checkout"
+  plan_fm="$(frontmatter_json < "$ARCADIA_REPO/docs/plans/$plan.md")" || refuse "the Plan $plan frontmatter could not be read in this checkout"
+  jq -e '.status == "active"' <<<"$plan_fm" >/dev/null || refuse "the Plan $plan is not active in this checkout"
   status="$(arcadia production status --json)" || refuse "production status could not be read"
   jq -e '.ok == true and .data.read.status == "ok"' <<<"$status" >/dev/null || refuse "production status is unreadable"
   # The baseline of "only this chain moved production": Decision 0173's check starts here.
@@ -129,12 +137,12 @@ main() {
   ATTEMPT_FILE="$LIBRARY_DIR/$ID.consumed.json"
   mkdir -p "$RUN_DIR"
   trap on_error ERR
-  write_receipt in_progress
+  write_receipt in_progress || { echo "REFUSED: the receipt $RECEIPT cannot be written; nothing was consumed or approved" >&2; return 1; }
 
   if [[ "$MODE" == run ]]; then check_press_record; fi
   check_authority
   if [[ "$MODE" == preflight ]]; then
-    write_receipt preflight_ok
+    write_receipt preflight_ok || { echo "REFUSED: the preflight receipt $RECEIPT cannot be written" >&2; return 1; }
     echo "PREFLIGHT OK: nothing was consumed or approved. Receipt: $RECEIPT"
     return 0
   fi
@@ -148,7 +156,14 @@ main() {
   rec_str windowClosesAt "$(jq -r '.closesAt' <<<"$PRESS_WINDOW")"
   rec_str authority "The operator's own press of this day-grant card from /actions under Decision 0173, the run's activation touch: Rowan may press START cards it prepared on Plan $(jq -r '.dayGrant.plan' "$DESCRIPTOR") at concurrency one until $(jq -r '.closesAt' <<<"$PRESS_WINDOW"); it never renews itself"
   REASON=""
-  write_receipt approved
+  # No approved receipt, no day: START cards read this file. The card is consumed by now and that is harmless, because it
+  # changed nothing else: the operator recovers by pressing a new day-grant card, which opens its own 24 hours.
+  if ! write_receipt approved; then
+    echo "REFUSED: this press consumed its card but the approved receipt could not be written to $RECEIPT, so NO day was approved. Nothing else changed. Fix what stopped the write, then press a new day-grant card." >&2
+    REASON="the approved receipt could not be written; no day was approved; press a new day-grant card"
+    write_receipt refused || true
+    return 1
+  fi
   echo "DAY APPROVED until $(jq -r '.closesAt' <<<"$PRESS_WINDOW"). Nothing was started. Receipt: $RECEIPT"
 }
 main "$@"; exit $?

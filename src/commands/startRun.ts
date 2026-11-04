@@ -99,8 +99,11 @@ export const realStartRunPinsDeps: StartRunPinsDeps = {
 };
 
 const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-/** Decision 0173's option A: options B and C grant less, so a card needs this answer, not merely an approved Decision. */
-const DAY_GRANT_ANSWER = /^answer: "?A\. Daily grant/m;
+/** Decision 0173's option A, from its frontmatter: options B and C grant less, and its body may quote any option. */
+const isDayGrantAnswered = (content: string): boolean => {
+  const fields = frontmatter(content, "Decision 0173");
+  return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith("A. Daily grant");
+};
 const text = (buffer: Buffer): string => buffer.toString("utf8");
 const sha256 = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
 function frontmatter(content: string, label: string): Record<string, unknown> {
@@ -179,7 +182,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     if (!file) throw validationError(`Decision ${decision} is not in docs/decisions at origin main.`);
     const content = text(show(file));
     if (!/^status: approved$/m.test(content) || !/^answer: .+/m.test(content)) throw validationError(`Decision ${decision} is not approved with a recorded answer at origin main.`);
-    if (decision === "0173" && !DAY_GRANT_ANSWER.test(content)) throw validationError("Decision 0173 is not answered with option A at origin main.");
+    if (decision === "0173" && !isDayGrantAnswered(content)) throw validationError("Decision 0173 is not answered with option A at origin main.");
   }
   for (const file of START_RUN_DEFAULTS.requiredFiles) show(file);
 
@@ -323,7 +326,7 @@ export function buildStartRunDayPins(options: StartRunDayPinsOptions, deps: Star
   const decisionFile = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").find((entry) => /^docs\/decisions\/0173-.*\.md$/.test(entry));
   if (!decisionFile) throw validationError("Decision 0173 is not in docs/decisions at origin main.");
   const content = text(show(decisionFile));
-  if (!/^status: approved$/m.test(content) || !DAY_GRANT_ANSWER.test(content)) throw validationError("Decision 0173 is not approved with option A at origin main.");
+  if (!isDayGrantAnswered(content)) throw validationError("Decision 0173 is not approved with option A at origin main.");
   const plan = frontmatter(text(show(`docs/plans/${options.plan}.md`)), `Plan ${options.plan}`);
   const project = String(plan.project ?? "");
   if (plan.status !== "active" || frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan !== options.plan) throw validationError(`Plan ${options.plan} is not the Project's active Plan at origin main.`);

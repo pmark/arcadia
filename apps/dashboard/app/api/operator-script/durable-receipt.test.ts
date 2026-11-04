@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -35,6 +35,7 @@ describe("Operator endpoint projects shared runner receipts", () => {
     const executor = readFileSync(path.join(repoRoot, "scripts", "day-grant.sh"));
     for (const dir of [path.join(repo, "scripts"), path.join(repo, "docs", "decisions"), path.join(repo, "docs", "plans"), library, bin]) mkdirSync(dir, { recursive: true });
     writeFileSync(path.join(repo, "scripts", "day-grant.sh"), executor, { mode: 0o755 });
+    symlinkSync(path.join(repoRoot, "node_modules"), path.join(repo, "node_modules"));
     writeFileSync(path.join(repo, "docs", "decisions", "0173-fixture.md"), '---\nstatus: approved\nanswer: "A. Daily grant: START and routine run operations"\n---\n');
     writeFileSync(path.join(repo, "PROJECT.md"), `---\nactive_plan: ${plan}\n---\n`);
     writeFileSync(path.join(repo, "docs", "plans", `${plan}.md`), "---\nstatus: active\n---\n");

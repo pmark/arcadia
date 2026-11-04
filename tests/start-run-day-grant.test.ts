@@ -1,13 +1,13 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync, chmodSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildStartRunDayPins, buildStartRunPins, runStartRunDayEvidenceCommand, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
-import { validateOperatorScriptContract, assertProjectLibraryEntry, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
+import { validateOperatorScriptContract, assertProjectLibraryEntry, startRunLauncher, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { dayGrantLauncher, inspectDayGrantChain, isOperatorBrowserPress, refusalKey, validateDayGrantDelegation, validateDayGrantPins, validateDayGrantPrevious } from "../src/operatorActions/startRunDayGrant.js";
 import { delegatedPressMarker, StartRunDelegationError } from "../src/operatorActions/startRunDelegation.js";
 import { validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
@@ -43,7 +43,7 @@ describe("Decision 0173 chain", () => {
   it("counts attempts across days: yesterday's attempt still uses one of the three", () => {
     const library = tempDir("arcadia-day-");
     const { approval, ...rest } = writeDayScenario(library, { label: "", code: "", approval: { pressedAt: NOW - 3_600_000, baseline: 91 } }, NOW);
-    writeStartPress(library, { card: "start-yesterday", at: NOW - 30 * 3_600_000, status: "succeeded", receipt: { outcome: "succeeded", reason: "" } }, 0);
+    writeStartPress(library, { card: "start-yesterday", at: NOW - 30 * 3_600_000, status: "succeeded", receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } }, 0);
     // Before the approval: production's record of it is older than the baseline, and it is still an attempt under Decision 0170.
     const evidence = { transitions: rest.evidence.transitions, activations: [{ requestId: "start-yesterday", revisionAfter: 90, at: new Date(NOW - 30 * 3_600_000).toISOString(), admitted: 1 }] };
     const chain = inspectDayGrantChain({
@@ -51,6 +51,34 @@ describe("Decision 0173 chain", () => {
       now: new Date(NOW), evidence, policyRevision: 91, excludePress: null, scope: SCOPE, previous: named(pressKey("start-yesterday"), "stuck-run", "failed-attempt"), attempt: 2
     });
     expect(chain).toMatchObject({ attemptsSoFar: 1, rePressesToday: 0, latest: { press: pressKey("start-yesterday"), kind: "failed-attempt" } });
+  });
+
+  it("counts a dashboard reactivation that admitted a Session as an attempt, since an undercount is the worse error", () => {
+    const library = tempDir("arcadia-day-");
+    const { approval } = writeDayScenario(library, { label: "", code: "", approval: { pressedAt: NOW - 3_600_000, baseline: 91 } }, NOW);
+    const base = { library, approvalCard: approval.card, approvalRun: approval.run, approvalReceiptSha256: approval.receiptSha256, approvalPressSha256: approval.pressSha256, now: new Date(NOW), policyRevision: 91, excludePress: null, scope: SCOPE, previous: null };
+    const evidence = { transitions: [], activations: [{ requestId: "dashboard-toggle-1-abcd", revisionAfter: 90, at: new Date(NOW - 30 * 3_600_000).toISOString(), admitted: 1 }] };
+    expect(inspectDayGrantChain({ ...base, evidence, attempt: 2 }).attemptsSoFar).toBe(1);
+    expect(code(() => inspectDayGrantChain({ ...base, evidence, attempt: 1 }))).toBe("ATTEMPT_MISMATCH");
+  });
+
+  it("refuses a press directory it cannot list, instead of reading it as no earlier press", () => {
+    const library = tempDir("arcadia-day-");
+    const { approval } = writeDayScenario(library, { label: "", code: "", approval: { pressedAt: NOW - 3_600_000 } }, NOW);
+    const unreadable = path.join(library, "runs", "operator", "start-unlistable");
+    mkdirSync(unreadable, { recursive: true });
+    chmodSync(unreadable, 0o000);
+    try {
+      expect(code(() => inspectDayGrantChain({ library, approvalCard: approval.card, approvalRun: approval.run, approvalReceiptSha256: approval.receiptSha256, approvalPressSha256: approval.pressSha256, now: new Date(NOW), evidence: { transitions: [], activations: [] }, policyRevision: 83, excludePress: null, scope: SCOPE, previous: null, attempt: 1 }))).toBe("PRESS_UNREADABLE");
+    } finally { chmodSync(unreadable, 0o755); }
+  });
+
+  it("treats a stray file in the press tree as no press", () => {
+    const library = tempDir("arcadia-day-");
+    const { approval } = writeDayScenario(library, { label: "", code: "", approval: { pressedAt: NOW - 3_600_000 } }, NOW);
+    writeFileSync(path.join(library, "runs", "operator", ".DS_Store"), "x");
+    writeFileSync(path.join(library, "runs", "operator", DAY_CARD, ".DS_Store"), "x");
+    expect(inspectDayGrantChain({ library, approvalCard: approval.card, approvalRun: approval.run, approvalReceiptSha256: approval.receiptSha256, approvalPressSha256: approval.pressSha256, now: new Date(NOW), evidence: { transitions: [], activations: [] }, policyRevision: 83, excludePress: null, scope: SCOPE, previous: null, attempt: 1 }).latest).toBeNull();
   });
 
   it("does not count a START before Decision 0170 as an attempt, on either record", () => {
@@ -138,6 +166,14 @@ describe("Decision 0173 card and block contracts", () => {
     problem: "p", desired_effect: "e", authority: { does: ["d"], never_does: ["n"] }, success: { effect: "s", next: "n" }, failure: { effect: "f", next: "n" },
     dayGrant: dayGrantPins() as never, ...overrides
   });
+  it("refuses a START card that also carries a day-grant block, so a press can never run the one under the other's gate", () => {
+    const pinsWithBoth = pins(undefined);
+    delete (pinsWithBoth as { delegation?: unknown }).delegation;
+    pinsWithBoth.requiredDecisions = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"];
+    const card = descriptor({ startRun: pinsWithBoth as never }, "approve-day");
+    expect(() => validateOperatorScriptContract(card, "approve-day", startRunLauncher("approve-day"))).toThrow(/no other capability/);
+    expect(() => validateOperatorScriptContract(card, "approve-day", dayGrantLauncher("approve-day"))).toThrow(/no other capability/);
+  });
   it("accepts the exact launcher and one-shot grant, and nothing else", () => {
     expect(validateOperatorScriptContract(descriptor(), "approve-day", dayGrantLauncher("approve-day")).dayGrant).toBeDefined();
     expect(() => validateOperatorScriptContract(descriptor(), "approve-day", "#!/bin/sh\narcadia production activate\n")).toThrow(/shared day-grant launcher/);
@@ -210,12 +246,12 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
   const PIN = "a".repeat(40);
   const decisionDoc = (answer: string) => `---\nstatus: approved\nanswer: ${answer}\n---\n`;
   const allDecisions = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170"];
-  function fixture(options: { answer?: string; planStatus?: string; pointer?: string; workers?: string; evidence?: ReturnType<typeof evidenceOf>["evidence"] } = {}) {
+  function fixture(options: { answer?: string; decisionBody?: string; planStatus?: string; pointer?: string; workers?: string; evidence?: ReturnType<typeof evidenceOf>["evidence"] } = {}) {
     const repository = tempDir("arcadia-day-pins-");
     const library = path.join(repository, "artifacts", "generated", "operator-scripts");
     mkdirSync(library, { recursive: true });
     const decisions: Record<string, string> = Object.fromEntries(allDecisions.map((id) => [id, decisionDoc("Yes")]));
-    decisions["0173"] = decisionDoc(options.answer ?? '"A. Daily grant: START and routine run operations"');
+    decisions["0173"] = decisionDoc(options.answer ?? '"A. Daily grant: START and routine run operations"') + (options.decisionBody ?? "");
     const files: Record<string, string> = {
       "scripts/start-run.sh": "#!/bin/sh\n", "scripts/day-grant.sh": "#!/bin/sh\n# day\n", "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x", "tests/replay.test.ts": "x",
       [`docs/plans/${DAY_PLAN}.md`]: `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${options.planStatus ?? "active"}\nactions:\n  - id: first-action\n    status: open\n---\n`,
@@ -287,7 +323,7 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     expect(() => validateDayGrantPrevious({ ...named(pressKey("start-a"), "x", "no-session"), evidence: "undefined" })).toThrow(/evidence/);
   });
   it("refuses an answer other than option A, a draft Plan, a Plan that is not active, and the other chain", () => {
-    const answered = fixture({ answer: "B. Daily grant: START and retries only" });
+    const answered = fixture({ answer: '"B. Daily grant: START and retries only"' });
     writeDayApproval(answered.library, { pressedAt: NOW - 3_600_000 });
     expect(() => buildStartRunPins(answered.args, answered.deps)).toThrow(/option A/);
     expect(() => buildStartRunDayPins({ plan: DAY_PLAN, expiresHours: 12, repository: answered.repository }, answered.deps)).toThrow(/option A/);
@@ -299,6 +335,12 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     const both = fixture();
     expect(() => buildStartRunPins({ ...both.args, delegatedFrom: `${DAY_CARD}/${DAY_RUN}` }, both.deps)).toThrow(/separate chains/);
   });
+  it("reads the answer from the frontmatter, not a line in the Decision's body", () => {
+    const f = fixture({ answer: '"B. Daily grant: START and retries only"', decisionBody: '\nanswer: "A. Daily grant: START and routine run operations"\n' });
+    writeDayApproval(f.library, { pressedAt: NOW - 3_600_000 });
+    expect(() => buildStartRunPins(f.args, f.deps)).toThrow(/option A/);
+    expect(() => buildStartRunDayPins({ plan: DAY_PLAN, expiresHours: 12, repository: f.repository }, f.deps)).toThrow(/option A/);
+  });
   it("prints a valid day-grant block for the operator to press, with nothing else", () => {
     const f = fixture();
     const data = buildStartRunDayPins({ plan: DAY_PLAN, expiresHours: 12, repository: f.repository }, f.deps);
@@ -308,7 +350,7 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
 });
 
 /** A throwaway checkout holding the real day-grant executor and a card, with a fake `arcadia` first on PATH. */
-function dayCard(options: { answer?: string | null; pointer?: string; executorPin?: string; expiresAt?: string; press?: "none" | "delegated" | "scripted" | "stale" | "other-parent" | "other-card" } = {}) {
+function dayCard(options: { answer?: string | null; decisionBody?: string; projectBody?: string; planBody?: string; planStatus?: string; failFinalWrite?: boolean; pointer?: string; executorPin?: string; expiresAt?: string; press?: "none" | "delegated" | "scripted" | "stale" | "other-parent" | "other-card" } = {}) {
   const root = tempDir("arcadia-day-card-");
   const repo = path.join(root, "arcadia");
   const bin = path.join(root, "bin");
@@ -321,9 +363,10 @@ function dayCard(options: { answer?: string | null; pointer?: string; executorPi
   mkdirSync(bin);
   writeFileSync(path.join(repo, "scripts", "day-grant.sh"), executor);
   chmodSync(path.join(repo, "scripts", "day-grant.sh"), 0o755);
-  if (options.answer !== null) writeFileSync(path.join(repo, "docs", "decisions", "0173-fixture.md"), `---\nstatus: approved\nanswer: ${options.answer ?? '"A. Daily grant: START and routine run operations"'}\n---\n`);
-  writeFileSync(path.join(repo, "PROJECT.md"), `---\nactive_plan: ${options.pointer ?? DAY_PLAN}\n---\n`);
-  writeFileSync(path.join(repo, "docs", "plans", `${DAY_PLAN}.md`), "---\nstatus: active\n---\n");
+  symlinkSync(path.join(repoRoot, "node_modules"), path.join(repo, "node_modules"));
+  if (options.answer !== null) writeFileSync(path.join(repo, "docs", "decisions", "0173-fixture.md"), `---\nstatus: approved\nanswer: ${options.answer ?? '"A. Daily grant: START and routine run operations"'}\n---\n${options.decisionBody ?? ""}`);
+  writeFileSync(path.join(repo, "PROJECT.md"), `---\nactive_plan: ${options.pointer ?? DAY_PLAN}\n---\n${options.projectBody ?? ""}`);
+  writeFileSync(path.join(repo, "docs", "plans", `${DAY_PLAN}.md`), `---\nstatus: ${options.planStatus ?? "active"}\n---\n${options.planBody ?? ""}`);
   const descriptor = {
     schema: "arcadia-operator-script-v1", id: DAY_CARD, kind: "grant", title: "Approve a day", script: `${DAY_CARD}.sh`, repeatable: false, expires_at: options.expiresAt ?? new Date(Date.now() + 6 * 3_600_000).toISOString().replace(/\.\d{3}Z$/, "Z"),
     problem: "p", desired_effect: "e", authority: { does: ["d"], never_does: ["n"] }, success: { effect: "s", next: "n" }, failure: { effect: "f", next: "n" },
@@ -337,6 +380,8 @@ function dayCard(options: { answer?: string | null; pointer?: string; executorPi
   writeFileSync(path.join(bin, "fake-arcadia.mjs"), readFileSync(path.join(fixtures, "fake-arcadia.mjs")));
   writeFileSync(path.join(bin, "mise"), `#!/usr/bin/env bash\nexec "${path.join(fixtures, "fake-mise")}" "$@"\n`, { mode: 0o755 });
   writeFileSync(path.join(bin, "timeout"), '#!/usr/bin/env bash\nshift; exec "$@"\n', { mode: 0o755 });
+  // A disk that stops taking writes once the one-shot marker exists: the final approved receipt cannot land.
+  if (options.failFinalWrite) writeFileSync(path.join(bin, "mv"), `#!/usr/bin/env bash\nif [[ "\${@: -1}" == */receipt.json && -e "${path.join(library, `${DAY_CARD}.consumed.json`)}" ]]; then echo "mv: disk full" >&2; exit 1; fi\nexec /bin/mv "$@"\n`, { mode: 0o755 });
   const pressId = "20261104090000000-a-press";
   const pressDir = path.join(library, "runs", "operator", DAY_CARD, pressId);
   const startedAt = new Date(Date.now() - (options.press === "stale" ? 10 * 60_000 : 1000)).toISOString();
@@ -383,6 +428,17 @@ describe("scripts/day-grant.sh", () => {
     writeFileSync(path.join(card.pressDir, "run.json"), JSON.stringify({ ...press, status: "succeeded" }));
     expect(inspectDayGrantChain({ library: card.library, approvalCard: DAY_CARD, approvalRun: result.receipt!.runId, approvalReceiptSha256: null, approvalPressSha256: null, now: new Date(), evidence: { transitions: [], activations: [] }, policyRevision: 91, excludePress: null, scope: SCOPE, previous: null, attempt: 1 }).window.closesAt).toBe(new Date(Date.parse(card.startedAt) + 24 * 3_600_000).toISOString());
   });
+  it("fails loudly when the approved receipt cannot be written: consumed, no day open, and it says how to recover", () => {
+    const card = dayCard({ failFinalWrite: true });
+    const result = card.run();
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("NO day was approved");
+    expect(result.stderr).toContain("press a new day-grant card");
+    expect(existsSync(card.marker)).toBe(true);
+    expect(result.receipt?.outcome).not.toBe("approved");
+    const run = JSON.parse(readFileSync(card.marker, "utf8")).runId as string;
+    expect(code(() => inspectDayGrantChain({ library: card.library, approvalCard: DAY_CARD, approvalRun: run, approvalReceiptSha256: null, approvalPressSha256: null, now: new Date(), evidence: { transitions: [], activations: [] }, policyRevision: 91, excludePress: null, scope: SCOPE, previous: null, attempt: 1 }))).toBe("APPROVAL_NOT_PRESSED");
+  });
   it("refuses a second press of the same card: a new day needs a new card and a new press", () => {
     const card = dayCard();
     expect(card.run().status).toBe(0);
@@ -399,8 +455,11 @@ describe("scripts/day-grant.sh", () => {
     ["a stale press record", { press: "stale" }, /not fresh/],
     ["a press record parented by another process", { press: "other-parent" }, /not parented/],
     ["a press record for another card", { press: "other-card" }, /another card/],
-    ["a Decision 0173 answered another way", { answer: "B. Daily grant: START and retries only" }, /option A/],
+    ["a Decision 0173 answered another way", { answer: '"B. Daily grant: START and retries only"' }, /option A/],
     ["a missing Decision 0173", { answer: null }, /not in this checkout/],
+    ["a Decision 0173 whose body quotes option A under another answer", { answer: '"B. Daily grant: START and retries only"', decisionBody: '\nanswer: "A. Daily grant: START and routine run operations"\n' }, /option A/],
+    ["a PROJECT.md whose body names the Plan under another pointer", { pointer: "another-plan", projectBody: `\nactive_plan: ${DAY_PLAN}\n` }, /not the Project's active Plan/],
+    ["a Plan whose body says active under another status", { planStatus: "draft", planBody: "\nstatus: active\n" }, /not active/],
     ["a Plan that is not the active Plan", { pointer: "another-plan" }, /not the Project's active Plan/],
     ["another executor than the card pins", { executorPin: "e".repeat(64) }, /not the one the card pins/],
     ["an expired card", { expiresAt: "2020-01-01T00:00:00Z" }, /expired unpressed/]

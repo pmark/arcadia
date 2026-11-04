@@ -95,7 +95,15 @@ const runIdPattern = /^[0-9]{8}T[0-9]{6}Z-[0-9]+$/;
 const sha256Hex = /^[0-9a-f]{64}$/;
 const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 const readJson = <T>(file: string): T | null => { try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return null; } };
-const listDirectory = (directory: string): string[] => { try { return readdirSync(directory); } catch { return []; } };
+/** Only a directory that is not there is empty. Any other read error could hide an earlier press, so it refuses (fail closed). */
+const listDirectory = (directory: string): string[] => {
+  try { return readdirSync(directory); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === "ENOENT" || code === "ENOTDIR") return [];
+    return refuse("PRESS_UNREADABLE", `${directory} cannot be listed (${String(code)}), so earlier presses cannot be counted or ruled out; preserve it and stop for the operator`);
+  }
+};
 const notAWord = (value: string) => value === "undefined" || value === "null";
 const pointer = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 500 && !value.includes("\n") && !notAWord(value)
   && (/^https:\/\/\S+$/.test(value) || (!path.isAbsolute(value) && !value.split("/").includes("..")));
@@ -180,9 +188,9 @@ export function dayGrantLauncher(id: string): string {
   ].join("\n");
 }
 
-interface ApprovalReceipt { schema?: string; id?: string; runId?: string; mode?: string; outcome?: string; allowanceConsumed?: boolean; record?: { operatorRunId?: string; policyRevisionAtApproval?: unknown; pressStartedAt?: string; windowClosesAt?: string } }
+interface ApprovalReceipt { schema?: string; id?: string; runId?: string; mode?: string; outcome?: string; allowanceConsumed?: boolean; record?: { operatorRunId?: string; policyRevisionAtApproval?: unknown; pressStartedAt?: string; windowClosesAt?: string; project?: unknown; plan?: unknown; provider?: unknown; spendDecision?: unknown } }
 interface PressRecord { schema?: string; scriptId?: string; runId?: string; status?: string; startedAt?: string; press?: unknown; browserPress?: unknown }
-interface StartReceipt { mode?: string; outcome?: string; reason?: string; phase?: string; record?: { operatorRunId?: string } }
+interface StartReceipt { id?: string; runId?: string; mode?: string; outcome?: string; reason?: string; phase?: string; allowanceConsumed?: boolean; offCleanup?: string; record?: { operatorRunId?: string } }
 
 export interface DayGrantWindow { opensAt: string; closesAt: string; closesAtMs: number; opensAtMs: number; baselineRevision: number; pins: DayGrantPins; receiptSha256: string; pressSha256: string }
 
@@ -221,6 +229,11 @@ export function inspectDayApproval(library: string, card: string, run: string, r
   const pins = readJson<{ dayGrant?: unknown }>(path.join(pressDir, "descriptor.json"))?.dayGrant;
   let validPins: DayGrantPins;
   try { validPins = validateDayGrantPins(pins); } catch { return refuse("APPROVAL_NOT_OPERATOR", "the approval press did not run a day-grant card"); }
+  // The press snapshot is not hashed, the receipt is: what the operator approved is what the pinned receipt recorded.
+  const recorded = receipt.record!;
+  if (recorded.project !== validPins.project || recorded.plan !== validPins.plan || recorded.provider !== validPins.provider || recorded.spendDecision !== validPins.spendDecision) {
+    refuse("APPROVAL_CHANGED", "the approval press's day-grant block is not the Project, Plan, provider and spend Decision its receipt recorded");
+  }
   const opensAtMs = Date.parse(String(press!.startedAt));
   if (!Number.isFinite(opensAtMs)) refuse("APPROVAL_NOT_OPERATOR", "the approval press has no readable start time");
   const closesAtMs = opensAtMs + DAY_GRANT_WINDOW_MS;
@@ -260,7 +273,11 @@ function assertPressRecordsReadable(library: string): void {
   for (const card of listDirectory(operatorRuns)) {
     for (const pressId of listDirectory(path.join(operatorRuns, card))) {
       const dir = path.join(operatorRuns, card, pressId);
-      try { if (!statSync(dir).isDirectory()) continue; } catch { continue; }
+      try { if (!statSync(dir).isDirectory()) continue; }
+      catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+        refuse("PRESS_UNREADABLE", `the press record ${card}/${pressId} cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator`);
+      }
       const time = pressIdTime(pressId);
       if (time !== null && time < earliest) continue;
       const run = readJson<PressRecord>(path.join(dir, "run.json"));
@@ -274,7 +291,11 @@ function assertPressRecordsReadable(library: string): void {
 
 interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean }
 
-/** Every /actions press of a START card since Decision 0170, oldest first, with whether it admitted a Session. */
+/**
+ * Every /actions press of a START card since Decision 0170, oldest first, with whether that press admitted a Session. A card
+ * is one-shot, so its activation belongs to the one press that consumed its allowance; a later refused press of the same
+ * card admitted nothing. An admitted activation that no press of its card owns is refused rather than guessed at.
+ */
 function startPresses(library: string, evidence: DayEvidence, excludePress: string | null): StartPress[] {
   const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
   const operatorRuns = path.join(library, "runs", "operator");
@@ -282,6 +303,10 @@ function startPresses(library: string, evidence: DayEvidence, excludePress: stri
   for (const card of listDirectory(operatorRuns)) {
     if (!slug.test(card)) continue;
     const receipts = listDirectory(path.join(library, "runs", card)).map((run) => readJson<StartReceipt>(path.join(library, "runs", card, run, "receipt.json")));
+    const consumedPath = path.join(library, `${card}.consumed.json`);
+    const consumedRun = readJson<{ runId?: string }>(consumedPath)?.runId;
+    const activation = evidence.activations.some((a) => a.requestId === card && a.admitted >= 1);
+    const before = presses.length;
     for (const pressId of listDirectory(path.join(operatorRuns, card))) {
       if (pressId === excludePress) continue;
       const dir = path.join(operatorRuns, card, pressId);
@@ -291,10 +316,12 @@ function startPresses(library: string, evidence: DayEvidence, excludePress: stri
       const startedAt = Date.parse(String(run.startedAt));
       if (!Number.isFinite(startedAt) || startedAt < earliest) continue;
       const receipt = receipts.find((r) => r?.mode === "run" && r.record?.operatorRunId === pressId) ?? null;
-      const admitted = evidence.activations.some((a) => a.requestId === card && a.admitted >= 1);
+      const owner = receipt?.allowanceConsumed === true || (!!receipt && !!consumedRun && receipt.runId === consumedRun) || (!receipt && existsSync(path.join(dir, "start-run.claimed")) && existsSync(consumedPath));
+      const admitted = owner && activation;
       if (receipt?.outcome === "succeeded" && !evidence.activations.some((a) => a.requestId === card)) refuse("EVIDENCE_MISMATCH", `${card} recorded a successful START but production has no activation under its request id`);
       presses.push({ card, pressId, key: `${card}/${pressId}`, startedAt, status: String(run.status), delegation: startRun.delegation ?? null, marker: run.press ?? null, receipt, admitted });
     }
+    if (activation && presses.length > before && !presses.slice(before).some((press) => press.admitted)) refuse("EVIDENCE_MISMATCH", `production records a Session admitted under ${card}, but no press of that card consumed its allowance`);
   }
   return presses.sort((a, b) => a.startedAt - b.startedAt);
 }
@@ -305,6 +332,18 @@ export function refusalKey(receipt: Pick<StartReceipt, "phase" | "reason"> | nul
   return `${String(receipt.phase)}|${receipt.reason.toLowerCase().replace(/[0-9]{4}-[0-9]{2}-[0-9]{2}t[0-9:.]+z/g, "#").replace(/\b[0-9a-f]{7,64}\b/g, "#").replace(/[0-9]+/g, "#")}`;
 }
 
+/** The exact id an executor uses to return its own Grant to Off, with the receipt of that run saying it did. */
+function isExecutorOff(requestId: string, cards: Iterable<string>, library: string): boolean {
+  for (const card of cards) {
+    if (!requestId.startsWith(`${card}-`) || !requestId.endsWith("-off")) continue;
+    const run = requestId.slice(card.length + 1, -"-off".length);
+    if (!runIdPattern.test(run)) continue;
+    const receipt = readJson<StartReceipt>(path.join(library, "runs", card, run, "receipt.json"));
+    if (receipt?.id === card && receipt.runId === run && receipt.offCleanup === "returned_off") return true;
+  }
+  return false;
+}
+
 /** Production's moves since the approval, each one this chain's or Rowan's own. Throws for anything else. */
 function checkProductionChain(evidence: DayEvidence, window: DayGrantWindow, library: string, pinnedRevision: number | null): number {
   const pressedCards = new Set(listDirectory(path.join(library, "runs", "operator")).filter((card) => listDirectory(path.join(library, "runs", "operator", card)).some((press) => !!readJson<{ startRun?: unknown }>(path.join(library, "runs", "operator", card, press, "descriptor.json"))?.startRun)));
@@ -313,7 +352,7 @@ function checkProductionChain(evidence: DayEvidence, window: DayGrantWindow, lib
     if (t.revisionBefore !== revision) refuse("PRODUCTION_CHANGED", `production policy moved from ${revision} with no receipt (next receipt is at ${t.revisionBefore}); no card may follow an unexplained move`);
     if (t.transition === "activate") {
       if (!pressedCards.has(t.requestId)) refuse("PRODUCTION_CHANGED", `production was activated by ${t.requestId}, which is no pressed START card`);
-    } else if (!ROWAN_OFF_REQUEST.test(t.requestId) && ![...pressedCards].some((card) => t.requestId.startsWith(`${card}-`) && t.requestId.endsWith("-off"))) {
+    } else if (!ROWAN_OFF_REQUEST.test(t.requestId) && !isExecutorOff(t.requestId, pressedCards, library)) {
       refuse("DAY_ENDED_BY_OPERATOR", `production was turned Off by ${t.requestId}, not by this chain or Rowan: an operator STOP or operator-issued Off ends the day`);
     }
     revision = t.revisionAfter;
@@ -362,6 +401,9 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
     refuse("SCOPE_NOT_APPROVED", `this card's scope (${scope.project}/${scope.plan}, ${scope.provider}, concurrency ${scope.concurrency}, spend Decision ${scope.spendDecision}) is not the Plan, provider and spend Decision the operator approved`);
   }
   const revision = checkProductionChain(input.evidence, window, input.library, input.policyRevision);
+  // Every activation that admitted a Session counts, a dashboard reactivation included. Decision 0170 counts a START "that
+  // admits at least one Session, whatever then stops it", and the two errors are not equal: an overcount stops Rowan early
+  // and the operator decides again, while an undercount spends Sessions and sign-ins past the limit the operator set.
   const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
   const attemptsSoFar = input.evidence.activations.filter((a) => Date.parse(a.at) >= earliest && a.admitted >= 1).length;
   if (attemptsSoFar >= DAY_GRANT_MAX_ATTEMPTS) refuse("ATTEMPTS_EXHAUSTED", `${attemptsSoFar} attempts already admitted a Session under Decision 0170; at ${DAY_GRANT_MAX_ATTEMPTS} Rowan stops and the operator decides`);

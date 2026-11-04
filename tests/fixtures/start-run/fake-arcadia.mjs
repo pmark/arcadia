@@ -37,6 +37,15 @@ if (state.clockJump && state.clockJump.at === key2 && !args.includes("--check-on
   writeFileSync(process.env.START_RUN_CLOCK_OFFSET_FILE, String(state.clockJump.byMs));
 }
 
+// A test's newer day press, finishing as this call is answered on a real press: the operator approving a later day mid-run.
+if (state.laterApproval && state.laterApproval.at === key2 && !args.includes("--check-only") && process.env.ARCADIA_OPERATOR_SCRIPT_ID) {
+  const dir = path.join(path.dirname(process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR), "runs", "operator", "approve-later-day", state.laterApproval.press);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "run.json"), JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: state.laterApproval.press, scriptId: "approve-later-day", status: "succeeded", startedAt: new Date().toISOString(), browserPress: true }));
+  writeFileSync(path.join(dir, "descriptor.json"), JSON.stringify({ dayGrant: { decision: "0173" } }));
+  writeFileSync(path.join(dir, "day-grant.claimed"), "20261104T100000Z-888\n");
+}
+
 function realScope() {
   const input = {
     intent: get("--intent"), projects: [get("--project")], plans: [get("--plan")],

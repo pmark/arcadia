@@ -88,6 +88,8 @@ interface BoxOptions {
   dayGrant?: DayScenario;
   /** Jump the executor's clock by byMs as this call is answered on a real press (fake-clock-offset.mjs). */
   clockJump?: { at: string; byMs: number };
+  /** A newer operator day press finishing as this call is answered on a real press. */
+  laterApproval?: { at: string; press: string };
   /** Leave the reviewed manifest of a Decision 0173 card without its pre-mortem pointer. */
   noPremortem?: boolean;
   /** Press a delegated card without the delegated marker (as if by the operator), or mark an ordinary card delegated. */
@@ -298,6 +300,7 @@ function box(options: BoxOptions = {}) {
     production: { desiredState: "inactive", revision: dayPolicyRevision ?? 83, epoch: 46, liveAdmissions: 0, authority: null },
     ...(dayEvidence ? { dayEvidence } : {}),
     ...(options.clockJump ? { clockJump: options.clockJump } : {}),
+    ...(options.laterApproval ? { laterApproval: options.laterApproval } : {}),
     queue: { revision: 290, orderValid: true, unpositionedCount: 0, ordered: (options.delegation ? DELEGATED_ACTIONS.map((a) => `arcadia/${a}`) : SCOPED).map((orderKey) => ({ orderKey })) },
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
@@ -694,6 +697,40 @@ describe("start-run executor: Decision 0173 presses within the operator's day ap
       expect(result.receipt!.reason).toMatch(/^Decision 0173: WINDOW_EXPIRED: the day ended before activation; no activation/);
       expect(b.sequence()).not.toContain("production activate");
     }, 120_000);
+  });
+  describe("a newer day press finishing while a press runs", () => {
+    const LATER = "20991231235959000-later-day";
+    it("refuses at P3, before the allowance", () => {
+      const b = box({ dayGrant: fresh(FIRST.label), laterApproval: { at: "production freeze-check", press: LATER } });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P3", allowanceConsumed: false, mutations: [] });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: APPROVAL_SUPERSEDED: /);
+      expect(existsSync(b.marker)).toBe(false);
+    }, 120_000);
+    it("refuses at P6, before activation", () => {
+      const b = box({ dayGrant: fresh(FIRST.label), laterApproval: { at: "start-run sign-in", press: LATER } });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: APPROVAL_SUPERSEDED: /);
+      expect(b.sequence()).not.toContain("production activate");
+    }, 120_000);
+  });
+  it("refuses a Decision whose body quotes option A while its answer is another option", () => {
+    const body = '---\nid: "0173"\nstatus: approved\nanswer: "B. Daily grant: START and retries only"\n---\n\nanswer: "A. Daily grant: START and routine run operations"\n';
+    const b = box({ dayGrant: fresh(FIRST.label), decisions: { "0173": body } });
+    expectRefusedClean(b, b.run("preflight"), "P1", /not answered with option A/, b.head());
+  });
+  it("refuses a press directory it cannot list, instead of reading it as no earlier press", () => {
+    const b = box({ dayGrant: fresh(FIRST.label) });
+    const unreadable = path.join(b.library, "runs", "operator", "start-unlistable");
+    mkdirSync(unreadable, { recursive: true });
+    chmodSync(unreadable, 0o000);
+    try {
+      const headBefore = b.head();
+      expectRefusedClean(b, b.run("preflight"), "P0", /^Decision 0173: PRESS_UNREADABLE: .*cannot be listed \(EACCES\)/, headBefore);
+    } finally { chmodSync(unreadable, 0o755); }
   });
   it("refuses a named fix whose reproduction is missing at the pin, and accepts one that is there", () => {
     const fix = (reproduction: string) => ({ label: "", code: "none", attempt: 1, presses: [{ card: "start-a", at: Date.now() - 600_000, receipt: {} }],

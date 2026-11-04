@@ -126,7 +126,7 @@ function validateStartRun(d: OperatorScriptDescriptor, id: string, script: strin
   const pins = d.startRun!;
   if (d.kind !== "grant" || d.repeatable === true || !d.expires_at || d.next_after !== undefined || d.completionSupplement !== undefined ||
       d.planAmendment !== undefined || d.agentAsk !== undefined || d.agentAskSettlement !== undefined || d.agentAskRejections !== undefined ||
-      d.workspaceConfigEdit !== undefined) {
+      d.workspaceConfigEdit !== undefined || d.dayGrant !== undefined) {
     fail("INVALID_START_RUN", "A START card is a one-shot kind \"grant\" with an expires_at and no other capability; only planActivation may sit beside startRun.");
   }
   if (d.project !== undefined && d.project !== pins.project) fail("INVALID_START_RUN", "A START card's project must equal startRun.project.");

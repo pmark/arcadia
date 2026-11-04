@@ -450,18 +450,33 @@ process.stdout.write(JSON.stringify({originatingRun:d.originatingCard+"/"+d.orig
 #   - fewer than 2 re-presses after a refusal in this day, however the card is re-prepared, and the same refusal does not recur;
 #   - the card names the latest press with its cause, evidence and clearance, and no two attempts share a named cause.
 # The cause is Rowan's judgement: it is recorded and compared here, not proved.
+# Shared by the P0 check and the later checks: fail-closed listing and reading, and the operator's latest approval.
+DAY_PRESS_SCAN_JS='
+const fs=require("fs"),p=require("path");
+const fail=(m)=>{process.stdout.write(m);process.exit(1)};
+const rj=(f)=>{try{return JSON.parse(fs.readFileSync(f,"utf8"))}catch{return null}};
+const ls=(f)=>{try{return fs.readdirSync(f)}catch(e){if(e.code==="ENOENT"||e.code==="ENOTDIR")return [];fail("PRESS_UNREADABLE: "+f+" cannot be listed ("+e.code+"), so earlier presses cannot be counted or ruled out; preserve it and stop for the operator")}};
+const EARLIEST=Date.parse("2026-11-03T19:26:51Z");
+const idTime=(name)=>{const m=/^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})-/.exec(name);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6],+m[7]):null};
+const scanPresses=(lib,opens)=>{const ops=p.join(lib,"runs","operator");
+  // Fail closed: a press since Decision 0170 that cannot be read could be a re-press to count or a later approval.
+  for(const card of ls(ops))for(const name of ls(p.join(ops,card))){const dir=p.join(ops,card,name);let isDir=false;
+    try{isDir=fs.statSync(dir).isDirectory()}catch(e){if(e.code!=="ENOENT")fail("PRESS_UNREADABLE: the press record "+card+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator")}
+    if(!isDir)continue;const time=idTime(name);if(time!==null&&time<EARLIEST)continue;
+    const run=rj(p.join(dir,"run.json"));if(time===null&&run&&Date.parse(run.startedAt)<EARLIEST)continue;
+    if(!run||!rj(p.join(dir,"descriptor.json"))||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==name)fail("PRESS_UNREADABLE: the press record "+card+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator");}
+  for(const other of ls(ops))for(const op of ls(p.join(ops,other))){const dir=p.join(ops,other,op);if(!(rj(p.join(dir,"descriptor.json"))||{}).dayGrant)continue;const r=rj(p.join(dir,"run.json"))||{};
+    if(r.status==="succeeded"&&r.press===undefined&&r.browserPress===true&&fs.existsSync(p.join(dir,"day-grant.claimed"))&&Date.parse(r.startedAt)>opens)fail("APPROVAL_SUPERSEDED: the operator approved a later day with "+other+"/"+op+"; a card names the latest approval");}};
+'
 check_day_grant() {
   local out evidence
   evidence="$(arcadia start-run day-evidence --json)" || refuse "Decision 0173: EVIDENCE_UNAVAILABLE: the production record could not be read"
   jq -e '.ok == true' <<<"$evidence" >/dev/null || refuse "Decision 0173: EVIDENCE_UNAVAILABLE: the production record is unreadable"
-  out="$(node -e '
-const fs=require("fs"),p=require("path"),c=require("crypto");
+  out="$(node -e "$DAY_PRESS_SCAN_JS"'
+const c=require("crypto");
 const [lib,id,dj,descriptorPath,evidenceJson,currentPress,mode,maxPreflightAge]=process.argv.slice(1);
 const d=JSON.parse(dj),me=JSON.parse(fs.readFileSync(descriptorPath,"utf8")).startRun,ev=JSON.parse(evidenceJson).data;
-const fail=(m)=>{process.stdout.write(m);process.exit(1)};
-const rj=(f)=>{try{return JSON.parse(fs.readFileSync(f,"utf8"))}catch{return null}};
-const ls=(f)=>{try{return fs.readdirSync(f)}catch{return []}};
-const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_ATTEMPTS=3,MAX_REPRESSES=2,EARLIEST=Date.parse("2026-11-03T19:26:51Z"),ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_ATTEMPTS=3,MAX_REPRESSES=2,ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const sha=(b)=>c.createHash("sha256").update(b).digest("hex");
 const keys=(o)=>o&&typeof o==="object"&&!Array.isArray(o)?Object.keys(o).sort().join():"";
 const SHA=/^[0-9a-f]{64}$/,word=(v)=>v==="undefined"||v==="null";
@@ -489,6 +504,8 @@ let claimed="";try{claimed=fs.readFileSync(p.join(pd,"day-grant.claimed"),"utf8"
 if(claimed!==d.approvalRun)fail("APPROVAL_NOT_OPERATOR: the approval press record was not claimed by this run");
 const g=(rj(p.join(pd,"descriptor.json"))||{}).dayGrant;
 if(keys(g)!=="concurrency,decision,executorSha256,plan,project,provider,schema,spendDecision"||g.schema!=="arcadia-day-grant-v1"||g.decision!=="0173"||!SHA.test(g.executorSha256)||!SLUG.test(g.project)||!SLUG.test(g.plan)||g.provider!=="claude-code-cli"||g.concurrency!==1||!/^[0-9]{4}$/.test(g.spendDecision))fail("APPROVAL_NOT_OPERATOR: the approval press did not run a day-grant card");
+// The press snapshot is not hashed, the receipt is: what the operator approved is what the pinned receipt recorded.
+if(a.record.project!==g.project||a.record.plan!==g.plan||a.record.provider!==g.provider||a.record.spendDecision!==g.spendDecision)fail("APPROVAL_CHANGED: the approval press day-grant block is not the Project, Plan, provider and spend Decision its receipt recorded");
 const opens=Date.parse(pr.startedAt);
 if(!Number.isFinite(opens))fail("APPROVAL_NOT_OPERATOR: the approval press has no readable start time");
 const closes=opens+WINDOW,now=Date.now();
@@ -498,39 +515,38 @@ if(now<opens)fail("WINDOW_EXPIRED: the approval press is in the future");
 const baseline=a.record.policyRevisionAtApproval;
 if(!Number.isInteger(baseline))fail("APPROVAL_NOT_PRESSED: the approval receipt records no policy revision");
 const ops=p.join(lib,"runs","operator");
-// Fail closed: a press since Decision 0170 that cannot be read could be a re-press to count or a later approval.
-const idTime=(name)=>{const m=/^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})-/.exec(name);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6],+m[7]):null};
-for(const card of ls(ops))for(const name of ls(p.join(ops,card))){const dir=p.join(ops,card,name);let isDir=false;try{isDir=fs.statSync(dir).isDirectory()}catch{}
-  if(!isDir)continue;const time=idTime(name);if(time!==null&&time<EARLIEST)continue;
-  const run=rj(p.join(dir,"run.json"));if(time===null&&run&&Date.parse(run.startedAt)<EARLIEST)continue;
-  if(!run||!rj(p.join(dir,"descriptor.json"))||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==name)fail("PRESS_UNREADABLE: the press record "+card+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator");}
-for(const other of ls(ops))for(const op of ls(p.join(ops,other))){const dir=p.join(ops,other,op);if(!(rj(p.join(dir,"descriptor.json"))||{}).dayGrant)continue;const r=rj(p.join(dir,"run.json"))||{};
-  if(r.status==="succeeded"&&r.press===undefined&&r.browserPress===true&&fs.existsSync(p.join(dir,"day-grant.claimed"))&&Date.parse(r.startedAt)>opens)fail("APPROVAL_SUPERSEDED: the operator approved a later day with "+other+"/"+op+"; a card names the latest approval");}
+scanPresses(lib,opens);
 // The scope the operator approved. P1 and P2 prove the Plan is active and the pinned Actions head its governed queue.
 if(me.project!==g.project||me.plan!==g.plan||me.provider!==g.provider||me.concurrency!==g.concurrency||me.spendDecision!==g.spendDecision)fail("SCOPE_NOT_APPROVED: this card scope ("+me.project+"/"+me.plan+", "+me.provider+", concurrency "+me.concurrency+", spend Decision "+me.spendDecision+") is not the Plan, provider and spend Decision the operator approved");
 // Every move of production since the approval.
 const startCards=new Set(ls(ops).filter((card)=>ls(p.join(ops,card)).some((press)=>!!(rj(p.join(ops,card,press,"descriptor.json"))||{}).startRun)));
+// The exact id an executor uses to return its own Grant to Off, with the receipt of that run saying it did.
+const executorOff=(req)=>[...startCards].some((card)=>{if(!req.startsWith(card+"-")||!req.endsWith("-off"))return false;const run=req.slice(card.length+1,-4);if(!RUN.test(run))return false;const r=rj(p.join(lib,"runs",card,run,"receipt.json"));return !!r&&r.id===card&&r.runId===run&&r.offCleanup==="returned_off"});
 let revision=baseline;
 for(const t of [...ev.transitions].filter((x)=>x.revisionBefore>=baseline).sort((x,y)=>x.revisionBefore-y.revisionBefore)){
   if(t.revisionBefore!==revision)fail("PRODUCTION_CHANGED: production policy moved from "+revision+" with no receipt (next receipt is at "+t.revisionBefore+"); no card may follow an unexplained move");
   if(t.transition==="activate"){if(!startCards.has(t.requestId))fail("PRODUCTION_CHANGED: production was activated by "+t.requestId+", which is no pressed START card");}
-  else if(!ROWAN_OFF.test(t.requestId)&&![...startCards].some((card)=>t.requestId.startsWith(card+"-")&&t.requestId.endsWith("-off")))fail("DAY_ENDED_BY_OPERATOR: production was turned Off by "+t.requestId+", not by this chain or Rowan: an operator STOP or operator-issued Off ends the day");
+  else if(!ROWAN_OFF.test(t.requestId)&&!executorOff(t.requestId))fail("DAY_ENDED_BY_OPERATOR: production was turned Off by "+t.requestId+", not by this chain or Rowan: an operator STOP or operator-issued Off ends the day");
   revision=t.revisionAfter;}
 if(((me.production)||{}).revision!==revision)fail("PRODUCTION_CHANGED: this card pins policy revision "+((me.production)||{}).revision+", but the chain since the approval reaches "+revision);
-// Decision 0170: a START that admitted at least one Session, across days.
+// Decision 0170: a START that admitted at least one Session, across days. Every such activation counts, a dashboard
+// reactivation included: an overcount stops Rowan early and the operator decides, an undercount spends past the limit.
 const attempts=ev.activations.filter((x)=>Date.parse(x.at)>=EARLIEST&&x.admitted>=1).length;
 if(attempts>=MAX_ATTEMPTS)fail("ATTEMPTS_EXHAUSTED: "+attempts+" attempts already admitted a Session under Decision 0170; at 3 Rowan stops and the operator decides");
 // Every /actions press of a START card since Decision 0170, except the one running now.
 const presses=[];
 for(const card of ls(ops)){if(!SLUG.test(card))continue;
   const receipts=ls(p.join(lib,"runs",card)).map((run)=>rj(p.join(lib,"runs",card,run,"receipt.json")));
+  // A card is one-shot: its activation belongs to the one press that consumed its allowance, not a later refused press.
+  const consumedPath=p.join(lib,card+".consumed.json"),consumedRun=(rj(consumedPath)||{}).runId,activation=ev.activations.some((x)=>x.requestId===card&&x.admitted>=1),before=presses.length;
   for(const pr2 of ls(p.join(ops,card))){if(pr2===currentPress)continue;
     const dir=p.join(ops,card,pr2),run=rj(p.join(dir,"run.json")),sr=(rj(p.join(dir,"descriptor.json"))||{}).startRun;
     if(!run||!sr||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==pr2)continue;
     const t=Date.parse(run.startedAt);if(!Number.isFinite(t)||t<EARLIEST)continue;
     const r=receipts.find((x)=>x&&x.mode==="run"&&(x.record||{}).operatorRunId===pr2)||null;
     if(r&&r.outcome==="succeeded"&&!ev.activations.some((x)=>x.requestId===card))fail("EVIDENCE_MISMATCH: "+card+" recorded a successful START but production has no activation under its request id");
-    presses.push({card,pr:pr2,key:card+"/"+pr2,t,status:String(run.status),del:sr.delegation||null,mark:run.press||null,r,admitted:ev.activations.some((x)=>x.requestId===card&&x.admitted>=1)});}}
+    presses.push({card,pr:pr2,key:card+"/"+pr2,t,status:String(run.status),del:sr.delegation||null,mark:run.press||null,r,admitted:activation&&((r&&r.allowanceConsumed===true)||(!!r&&!!consumedRun&&r.runId===consumedRun)||(!r&&fs.existsSync(p.join(dir,"start-run.claimed"))&&fs.existsSync(consumedPath)))});}
+  if(activation&&presses.length>before&&!presses.slice(before).some((x)=>x.admitted))fail("EVIDENCE_MISMATCH: production records a Session admitted under "+card+", but no press of that card consumed its allowance");}
 presses.sort((x,y)=>x.t-y.t);
 const latest=presses.at(-1)||null;
 if(latest&&(latest.status==="running"||(latest.r&&latest.r.outcome==="in_progress")))fail("PREVIOUS_UNSETTLED: the latest START press "+latest.key+" has not finished; read its receipt before any other press");
@@ -566,11 +582,15 @@ process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"
   rec delegation "$out"
   DAY_WINDOW_CLOSES="$(jq -r '.windowClosesAt' <<<"$out")"
   DAY_CHAIN_KEY="$(jq -r '.chainKey' <<<"$out")"
+  DAY_APPROVAL_OPENS="$(jq -r '.approvalPressAt' <<<"$out")"
 }
-# Decision 0173: every power ends at hour 24. A press that began inside the window still may not activate after it.
+# Decision 0173: every power ends at hour 24, and only the operator's latest approval opens the day. A press that began
+# inside the window still may not take its allowance or activate after it, or after a newer day press finished.
 check_day_window() {
+  local out
   [[ "$DELEGATION_DECISION" == 0173 ]] || return 0
   node -e 'process.exit(Date.now() < Date.parse(process.argv[1]) ? 0 : 1)' "$DAY_WINDOW_CLOSES" || refuse "Decision 0173: WINDOW_EXPIRED: $1"
+  out="$(node -e "$DAY_PRESS_SCAN_JS"'scanPresses(process.argv[1],Date.parse(process.argv[2]));' "$LIBRARY_DIR" "$DAY_APPROVAL_OPENS")" || refuse "Decision 0173: $out"
 }
 claim_operator_press_record() {  # exclusive; called once every other P0 check has passed
   [[ "$MODE" == run ]] || return 0
@@ -621,8 +641,9 @@ check_day_grant_at_pin() {
   local file content kind commit reproduction
   file="$(grep -E -m1 '^docs/decisions/0173-.*\.md$' <<<"$1" || true)"
   [[ -n "$file" ]] || refuse "Decision 0173 is not in docs/decisions at $PIN"
-  content="$(git_repo show "$PIN:$file")"
-  grep -Eq '^answer: "?A\. Daily grant' <<<"$content" || refuse "Decision 0173 is not answered with option A at $PIN"
+  # The frontmatter only: the Decision's body quotes every option.
+  content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision 0173's frontmatter could not be read at $PIN"
+  jq -e '.status == "approved" and ((.answer // "") | tostring | startswith("A. Daily grant"))' <<<"$content" >/dev/null || refuse "Decision 0173 is not answered with option A at $PIN"
   [[ "$(jq -r '.startRun.planActivation // .planActivation // null | type' "$DESCRIPTOR")" == null ]] || refuse "a Decision 0173 card runs on the active Plan and carries no planActivation"
   kind="$(jq -r '.previous.clearance.kind // ""' <<<"$DELEGATION")"
   if [[ "$kind" == merged-fix ]]; then

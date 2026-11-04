@@ -309,7 +309,9 @@ pinned descriptor, so per-card review is small.
   one day by pressing a day-grant card on /actions. Rowan may prepare the card
   (`arcadia start-run day-pins --plan <active Plan> --expires-hours <n>`, the
   three-line `dayGrantLauncher`, `<id>.sh preflight`) and may never press it: the
-  press opens exactly 24 hours from itself, never renews, and starts nothing.
+  press opens exactly 24 hours from itself, never renews, and starts nothing. If a
+  press consumes its card but cannot write the approved receipt, it fails loudly and
+  no day is open; the operator presses a new day-grant card, as nothing else changed.
   Only a press counts. Nothing can verify a chat message, and a record Rowan wrote
   about one would be self-attesting. The runner refuses a day-grant press unless its
   `Origin` matches its `Host` at a non-loopback address, with no delegated marker,
@@ -333,8 +335,8 @@ pinned descriptor, so per-card review is small.
   the day); fewer than 3 activations since Decision 0170 admitted a Session; fewer
   than 2 re-presses after a refusal ran this day and the same refusal has not
   recurred; no two attempts share a named cause. P1 and P2 prove the Plan is active
-  and its governed queue holds the pinned Actions. The window is checked again before
-  the allowance and before activation. The cause, whether it is cleared, the
+  and its governed queue holds the pinned Actions. The window and the latest approval
+  are checked again before the allowance and before activation. The cause, whether it is cleared, the
   pre-mortem's content, the coordination Issue record and the Discord alert are
   Rowan's duty: they are recorded or checked for presence, not proved. A new Plan or
   a higher attempt limit needs the operator. Decision 0163's chain stays as it was,
