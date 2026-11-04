@@ -8,11 +8,11 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildStartRunDayPins, buildStartRunPins, runStartRunDayEvidenceCommand, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { validateOperatorScriptContract, assertProjectLibraryEntry, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
-import { dayGrantLauncher, inspectDayGrantChain, isBrowserPress, refusalKey, validateDayGrantDelegation, validateDayGrantPins, validateDayGrantPrevious } from "../src/operatorActions/startRunDayGrant.js";
+import { dayGrantLauncher, inspectDayGrantChain, isOperatorBrowserPress, refusalKey, validateDayGrantDelegation, validateDayGrantPins, validateDayGrantPrevious } from "../src/operatorActions/startRunDayGrant.js";
 import { delegatedPressMarker, StartRunDelegationError } from "../src/operatorActions/startRunDelegation.js";
 import { validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { ensureProductionPolicyTables, readDayGrantEvidence } from "../src/production/policy.js";
-import { DAY_CARD, DAY_PLAN, DAY_RUN, dayGrantPins, dayScenarios, evidenceOf, named, pressKey, writeDayApproval, writeDayScenario, writeStartPress } from "./helpers/dayGrantFixture.js";
+import { DAY_CARD, DAY_PLAN, DAY_RUN, dayGrantPins, dayScenarios, evidenceOf, named, pressKey, TAILNET_PRESS_HEADERS, writeDayApproval, writeDayScenario, writeStartPress } from "./helpers/dayGrantFixture.js";
 
 /**
  * Decision 0173: the computation behind `start-run pins --day-grant-from`, the day-grant card and its executor, the press
@@ -106,9 +106,29 @@ describe("Decision 0173 press marker and the /actions gate", () => {
   it("leaves an ordinary operator press of an ordinary card recording nothing", () => {
     expect(delegatedPressMarker({ startRun: {} }, undefined)).toBeNull();
   });
-  it("takes only a same-origin browser request as a day-grant press", () => {
-    expect(isBrowserPress("same-origin")).toBe(true);
-    for (const value of [null, "none", "cross-site", "same-site"]) expect(isBrowserPress(value)).toBe(false);
+  it("takes a press from a browser at the Tailnet address, where browsers send Origin and no Sec-Fetch headers", () => {
+    expect(isOperatorBrowserPress(TAILNET_PRESS_HEADERS)).toBe(true);
+    // Through `tailscale serve`, if it keeps the Host: https with no port.
+    expect(isOperatorBrowserPress({ origin: "https://arcadia-1.alpine-rattlesnake.ts.net", host: "arcadia-1.alpine-rattlesnake.ts.net" })).toBe(true);
+  });
+  it.each<[string, { origin: string | null; host: string | null }]>([
+    ["a scripted POST with no Origin", { origin: null, host: TAILNET_PRESS_HEADERS.host }],
+    ["a request with no Host", { origin: TAILNET_PRESS_HEADERS.origin, host: null }],
+    ["the opaque Origin", { origin: "null", host: TAILNET_PRESS_HEADERS.host }],
+    ["an Origin on another port", { origin: "http://arcadia-1.alpine-rattlesnake.ts.net:3030", host: TAILNET_PRESS_HEADERS.host }],
+    ["an Origin on another host", { origin: "http://elsewhere.example:3020", host: TAILNET_PRESS_HEADERS.host }],
+    ["an Origin with a path", { origin: `${TAILNET_PRESS_HEADERS.origin}/actions`, host: TAILNET_PRESS_HEADERS.host }],
+    ["another scheme", { origin: "file://arcadia-1.alpine-rattlesnake.ts.net:3020", host: TAILNET_PRESS_HEADERS.host }],
+    ["the host's own browser at 127.0.0.1", { origin: "http://127.0.0.1:3020", host: "127.0.0.1:3020" }],
+    ["the host's own browser at localhost", { origin: "http://localhost:3020", host: "localhost:3020" }],
+    ["a name under localhost", { origin: "http://arcadia.localhost:3020", host: "arcadia.localhost:3020" }],
+    ["IPv6 loopback", { origin: "http://[::1]:3020", host: "[::1]:3020" }],
+    ["the rest of 127/8", { origin: "http://127.1.2.3:3020", host: "127.1.2.3:3020" }],
+    ["the IPv4-mapped loopback", { origin: "http://[::ffff:7f00:1]:3020", host: "[::ffff:7f00:1]:3020" }],
+    ["the any address", { origin: "http://0.0.0.0:3020", host: "0.0.0.0:3020" }],
+    ["a loopback Host behind a Tailnet Origin", { origin: TAILNET_PRESS_HEADERS.origin, host: "127.0.0.1:3020" }]
+  ])("refuses %s", (_label, headers) => {
+    expect(isOperatorBrowserPress(headers)).toBe(false);
   });
 });
 
@@ -254,6 +274,17 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     expect(() => buildStartRunPins({ ...f.args, ...fix, reproduction: "tests/absent.test.ts" }, f.deps)).toThrow(/absent\.test\.ts/);
     expect(() => buildStartRunPins({ ...f.args, ...fix, fixCommit: undefined }, f.deps)).toThrow(/together/);
     expect(() => buildStartRunPins({ ...f.args, ...fix, observedCleared: "docs/x.md" }, f.deps)).toThrow(/not both/);
+  });
+  it("refuses a clearance with no named cause, instead of recording a cause called undefined", () => {
+    const f = fixture();
+    writeDayApproval(f.library, { pressedAt: NOW - 3_600_000 });
+    writeStartPress(f.library, { card: "start-a", at: NOW - 600_000, receipt: {} }, 0);
+    expect(() => buildStartRunPins({ ...f.args, observedCleared: "docs/x.md" }, f.deps)).toThrow(/both --previous-cause and --previous-evidence/);
+    expect(() => buildStartRunPins({ ...f.args, previousCause: "origin-moved", observedCleared: "docs/x.md" }, f.deps)).toThrow(/both --previous-cause and --previous-evidence/);
+    expect(() => buildStartRunPins({ ...f.args, previousEvidence: "docs/y.md", observedCleared: "docs/x.md" }, f.deps)).toThrow(/both --previous-cause and --previous-evidence/);
+    expect(() => buildStartRunPins({ ...f.args, previousCause: "origin-moved", previousEvidence: "docs/y.md" }, f.deps)).toThrow(/how it was cleared/);
+    expect(() => buildStartRunPins({ ...f.args, previousCause: "undefined", previousEvidence: "docs/y.md", observedCleared: "docs/x.md" }, f.deps)).toThrow(/stable slug/);
+    expect(() => validateDayGrantPrevious({ ...named(pressKey("start-a"), "x", "no-session"), evidence: "undefined" })).toThrow(/evidence/);
   });
   it("refuses an answer other than option A, a draft Plan, a Plan that is not active, and the other chain", () => {
     const answered = fixture({ answer: "B. Daily grant: START and retries only" });

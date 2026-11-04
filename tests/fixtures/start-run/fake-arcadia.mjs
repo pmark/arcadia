@@ -32,6 +32,11 @@ if (state.worker.alive && state.worker.heartbeat === "fresh" && existsSync(heart
   writeFileSync(heartbeatFile, JSON.stringify(beat));
 }
 
+// A test's jump of the clock (fake-clock-offset.mjs) as this call is answered, on a real press only, never in a preflight.
+if (state.clockJump && state.clockJump.at === key2 && !args.includes("--check-only") && process.env.ARCADIA_OPERATOR_SCRIPT_ID) {
+  writeFileSync(process.env.START_RUN_CLOCK_OFFSET_FILE, String(state.clockJump.byMs));
+}
+
 function realScope() {
   const input = {
     intent: get("--intent"), projects: [get("--project")], plans: [get("--plan")],

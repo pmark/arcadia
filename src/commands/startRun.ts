@@ -286,11 +286,13 @@ function namedDayGrantCause(options: StartRunPinsOptions): Pick<DayGrantPrevious
   const fix = [options.fixPullRequest, options.fixCommit, options.reproduction];
   if (![options.previousCause, options.previousEvidence, options.observedCleared, ...fix].some((value) => value !== undefined)) return null;
   if (fix.some((value) => value !== undefined) && options.observedCleared !== undefined) throw validationError("Name a merged fix or an observed clearance, not both.");
+  if (options.previousCause === undefined || options.previousEvidence === undefined) throw validationError("A named cause needs both --previous-cause and --previous-evidence.");
   if (fix.some((value) => value !== undefined) && fix.some((value) => value === undefined)) throw validationError("A merged fix needs --fix-pull-request, --fix-commit and --reproduction together.");
+  if (options.observedCleared === undefined && fix.every((value) => value === undefined)) throw validationError("A named cause needs how it was cleared: --observed-cleared, or --fix-pull-request, --fix-commit and --reproduction.");
   const clearance: DayGrantClearance = options.observedCleared !== undefined
     ? { kind: "observed-cleared", observation: options.observedCleared }
     : { kind: "merged-fix", pullRequest: String(options.fixPullRequest), commit: String(options.fixCommit), reproduction: String(options.reproduction) };
-  return { cause: String(options.previousCause), evidence: String(options.previousEvidence), clearance };
+  return { cause: options.previousCause, evidence: options.previousEvidence, clearance };
 }
 
 export function runStartRunPinsCommand(options: StartRunPinsOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): CommandSuccess<StartRunPinsData> {

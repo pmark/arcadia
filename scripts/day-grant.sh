@@ -11,7 +11,8 @@
 # changes no production state, so the only mutations are this run's own files and the card's one-shot marker.
 #
 # Only an operator press counts. Nothing here can prove who pressed: this deployment has no identity layer. It requires
-# what the /actions runner records for a browser press with no delegated marker, and scripts/start-run.sh requires the same.
+# what the /actions runner records for a press from a browser at a non-loopback address with no delegated marker, and
+# scripts/start-run.sh requires the same. That stops accidents, not an agent set on forging it.
 set -Eeuo pipefail
 
 SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/$(basename "${BASH_SOURCE[0]}")"
@@ -77,7 +78,7 @@ if(!Number.isFinite(t)||age<-5000||age>Number(maxAgeMs))fail("the operator press
 if(descriptor!==p.join(dir,"descriptor.json"))fail("the operator press record does not bind the run descriptor");
 if(fs.existsSync(p.join(dir,"day-grant.claimed")))fail("the operator press record is already claimed");
 if(r.press!==undefined)fail("a delegated press never counts as the operator day approval");
-if(r.browserPress!==true)fail("the day approval is the operator press on the /actions page in a browser; this press record does not show one");
+if(r.browserPress!==true)fail("the day approval is the operator press on the /actions page in a browser at the Tailnet address; this press record does not show one");
 process.stdout.write(JSON.stringify({startedAt:r.startedAt,closesAt:new Date(t+24*3600e3).toISOString()}));
 ' "$dir" "$ARCADIA_OPERATOR_SCRIPT_RUN_ID" "$ID" "$PPID" "$PRESS_RECORD_MAX_AGE_MS" "${ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR:-}")" || refuse "${out:-the operator press record could not be checked}"
   PRESS_WINDOW="$out"

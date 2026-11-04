@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { DAY_GRANT_DECISION, StartRunDelegationError } from "./startRunDelegation.js";
 
@@ -12,9 +12,10 @@ import { DAY_GRANT_DECISION, StartRunDelegationError } from "./startRunDelegatio
  * What a machine can establish here, and what it cannot:
  *  - The press is the only approval. Decision 0173 also allows "the operator's own message in Rowan's chat", but nothing
  *    can verify a chat message and a record Rowan wrote about it would be self-attesting, so that route is not built.
- *  - "Operator press" means: through the /actions runner, without a delegated marker, from a browser request. The dashboard
- *    has no identity layer (apps/dashboard/app/lib/originGuard.ts), so this is not proof of who pressed. A process on this
- *    host able to forge request headers or rewrite these files could fabricate an approval; no check here can detect that.
+ *  - "Operator press" means: through the /actions runner, without a delegated marker, from a browser at a non-loopback
+ *    address. The dashboard has no identity layer (apps/dashboard/app/lib/originGuard.ts), so this is not proof of who
+ *    pressed. It stops accidents, not an agent set on forging it: a process on this host could send those headers, drive a
+ *    browser at the Tailnet name or rewrite these files, and no check here can detect that.
  *  - A cause is Rowan's judgement. The card must carry it and the evidence pointer; the checks here compare what was named
  *    (and, for refusals, the executor's own recorded reason). They cannot prove the cause is right or truly cleared.
  *
@@ -95,7 +96,8 @@ const sha256Hex = /^[0-9a-f]{64}$/;
 const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
 const readJson = <T>(file: string): T | null => { try { return JSON.parse(readFileSync(file, "utf8")) as T; } catch { return null; } };
 const listDirectory = (directory: string): string[] => { try { return readdirSync(directory); } catch { return []; } };
-const pointer = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 500 && !value.includes("\n")
+const notAWord = (value: string) => value === "undefined" || value === "null";
+const pointer = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 500 && !value.includes("\n") && !notAWord(value)
   && (/^https:\/\/\S+$/.test(value) || (!path.isAbsolute(value) && !value.split("/").includes("..")));
 const repoRelative = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 300 && !value.includes("\n") && !path.isAbsolute(value) && !value.split("/").some((part) => part === ".." || part === "." || part === "");
 const exactKeys = (value: unknown, keys: string[]): boolean => !!value && typeof value === "object" && !Array.isArray(value) && Object.keys(value).sort().join() === [...keys].sort().join();
@@ -130,7 +132,7 @@ export function validateDayGrantPrevious(value: unknown): DayGrantPrevious {
   if (!exactKeys(p, ["cause", "clearance", "evidence", "kind", "press"])) refuse("INVALID_DELEGATION", "startRun.delegation.previous needs exactly press, kind, cause, evidence, clearance.");
   if (typeof p.press !== "string" || !p.press.includes("/")) refuse("INVALID_DELEGATION", "previous.press must be <card>/<press run id>.");
   if (p.kind !== "failed-attempt" && p.kind !== "no-session") refuse("INVALID_DELEGATION", "previous.kind must be failed-attempt or no-session.");
-  if (typeof p.cause !== "string" || !slug.test(p.cause)) refuse("INVALID_DELEGATION", "previous.cause must be a stable slug naming the cause.");
+  if (typeof p.cause !== "string" || !slug.test(p.cause) || notAWord(p.cause)) refuse("INVALID_DELEGATION", "previous.cause must be a stable slug naming the cause.");
   if (!pointer(p.evidence)) refuse("INVALID_DELEGATION", "previous.evidence must be an https URL or a repository-relative path.");
   const c = p.clearance;
   if (c?.kind === "merged-fix") {
@@ -145,11 +147,27 @@ export function validateDayGrantPrevious(value: unknown): DayGrantPrevious {
   return p;
 }
 
+const isLoopback = (hostname: string): boolean => {
+  const name = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  return name === "localhost" || name.endsWith(".localhost") || name === "::1" || name === "::" || name === "0.0.0.0" || /^127\.\d+\.\d+\.\d+$/.test(name) || /^::ffff:7f[0-9a-f]{2}:/.test(name);
+};
+
 /**
- * The /actions runner's gate for a day-grant card: a browser request only. The dashboard has no identity layer, so this
- * cannot say who pressed; it does mean the scripted POST a delegated press uses cannot produce an approval by accident.
+ * The /actions runner's gate for a day-grant card: a browser page on this dashboard, reached at a non-loopback address.
+ * The operator is offsite and uses the Tailnet URL, which is plain HTTP, so browsers send no `Sec-Fetch-*` there; they do
+ * send `Origin` on a same-origin POST (Chromium and WebKit observed against an echo server at the Tailnet name). A scripted
+ * POST sends no `Origin`, and a browser on this host at 127.0.0.1 is refused as a loopback address. This stops accidents,
+ * not an agent set on forging it: there is no identity layer, so it says how a press came, not who made it.
  */
-export const isBrowserPress = (secFetchSite: string | null): boolean => secFetchSite === "same-origin";
+export function isOperatorBrowserPress(headers: { origin: string | null; host: string | null }): boolean {
+  if (!headers.origin || !headers.host) return false;
+  try {
+    const origin = new URL(headers.origin);
+    if ((origin.protocol !== "http:" && origin.protocol !== "https:") || origin.origin !== headers.origin) return false;
+    const host = new URL(`${origin.protocol}//${headers.host}`);
+    return origin.host === host.host && !isLoopback(origin.hostname) && !isLoopback(host.hostname);
+  } catch { return false; }
+}
 
 /** The exact launcher of a day-grant card; every pin lives in its descriptor. */
 export function dayGrantLauncher(id: string): string {
@@ -211,6 +229,7 @@ export function inspectDayApproval(library: string, card: string, run: string, r
   if (now.getTime() < opensAtMs) refuse("WINDOW_EXPIRED", "the approval press is in the future");
   const baselineRevision = receipt.record!.policyRevisionAtApproval;
   if (!Number.isInteger(baselineRevision)) refuse("APPROVAL_NOT_PRESSED", "the approval receipt records no policy revision");
+  assertPressRecordsReadable(library);
   // Only the operator's latest approval opens the day: nothing later may supersede this one.
   for (const other of listDirectory(path.join(library, "runs", "operator"))) {
     for (const otherPress of listDirectory(path.join(library, "runs", "operator", other))) {
@@ -223,6 +242,34 @@ export function inspectDayApproval(library: string, card: string, run: string, r
     }
   }
   return { opensAt: String(press!.startedAt), closesAt: new Date(closesAtMs).toISOString(), opensAtMs, closesAtMs, baselineRevision: baselineRevision as number, pins: validPins, receiptSha256, pressSha256 };
+}
+
+/** A press id's own timestamp (the runner names each press by it), or null for an id that carries none. */
+function pressIdTime(id: string): number | null {
+  const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{3})-/.exec(id);
+  return m ? Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6], +m[7]) : null;
+}
+
+/**
+ * Fail closed: every press since Decision 0170 must be readable. A press that cannot be read could be a re-press this
+ * chain must count or a later approval that supersedes this one, so it is never skipped. Older presses are out of scope.
+ */
+function assertPressRecordsReadable(library: string): void {
+  const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
+  const operatorRuns = path.join(library, "runs", "operator");
+  for (const card of listDirectory(operatorRuns)) {
+    for (const pressId of listDirectory(path.join(operatorRuns, card))) {
+      const dir = path.join(operatorRuns, card, pressId);
+      try { if (!statSync(dir).isDirectory()) continue; } catch { continue; }
+      const time = pressIdTime(pressId);
+      if (time !== null && time < earliest) continue;
+      const run = readJson<PressRecord>(path.join(dir, "run.json"));
+      if (time === null && run && Date.parse(String(run.startedAt)) < earliest) continue;
+      if (!run || !readJson(path.join(dir, "descriptor.json")) || run.schema !== "arcadia-operator-script-run-v1" || run.scriptId !== card || run.runId !== pressId) {
+        refuse("PRESS_UNREADABLE", `the press record ${card}/${pressId} cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator`);
+      }
+    }
+  }
 }
 
 interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean }
@@ -340,6 +387,7 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
     if (!latest) { if (previous !== null) refuse("PREVIOUS_MISMATCH", `this card names ${previous.press}, but no START press has happened since Decision 0170`); }
     else {
       if (previous === null) refuse("PREVIOUS_CAUSE_REQUIRED", `the latest START press ${latest.key} needs its cause named on this card, with an evidence pointer and how it was cleared`);
+      validateDayGrantPrevious(previous);
       if (previous!.press !== latest.key) refuse("PREVIOUS_MISMATCH", `this card names ${previous!.press}, but the latest START press is ${latest.key}`);
       if (previous!.kind !== latestSummary!.kind) refuse("PREVIOUS_MISMATCH", `this card calls ${latest.key} a ${previous!.kind}, but production's record makes it a ${latestSummary!.kind}`);
       // Each earlier card named the cause of the press before it: the record is on the cards, across days.

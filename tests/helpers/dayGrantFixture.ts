@@ -33,6 +33,8 @@ export interface ApprovalSpec {
   /** No press record at all: a receipt someone wrote by hand. */
   noPressRecord?: boolean;
   noConsumedMarker?: boolean;
+  /** A press record its executor run never claimed. */
+  noClaim?: boolean;
   receipt?: Record<string, unknown>;
   record?: Record<string, unknown>;
 }
@@ -61,7 +63,7 @@ export function writeDayApproval(library: string, spec: ApprovalSpec): ApprovalF
     });
     writeFileSync(pressPath, pressBytes);
     writeFileSync(path.join(pressDir, "descriptor.json"), JSON.stringify({ dayGrant: dayGrantPins(spec.pins) }));
-    writeFileSync(path.join(pressDir, "day-grant.claimed"), `${run}\n`);
+    if (!spec.noClaim) writeFileSync(path.join(pressDir, "day-grant.claimed"), `${run}\n`);
   }
   return { card, run, receiptPath, pressPath, receiptSha256: sha(receipt), pressSha256: sha(pressBytes) };
 }
@@ -145,6 +147,15 @@ export function dayScenarios(now: number): DayScenario[] {
     { label: "a forged approval: a press record not from a browser", code: "APPROVAL_NOT_OPERATOR", attempt: 1, previous: null, approval: { browser: false } },
     { label: "a forged approval: no one-shot marker", code: "APPROVAL_NOT_PRESSED", attempt: 1, previous: null, approval: { noConsumedMarker: true } },
     { label: "a forged approval: a refused day-grant run", code: "APPROVAL_NOT_PRESSED", attempt: 1, previous: null, approval: { receipt: { outcome: "refused" } } },
+    { label: "an approval press record its run never claimed", code: "APPROVAL_NOT_OPERATOR", attempt: 1, previous: null, approval: { noClaim: true } },
+    { label: "an approval press record with a loose day-grant block", code: "APPROVAL_NOT_OPERATOR", attempt: 1, previous: null, approval: { pins: { extra: 1 } } },
+    { label: "an approval press record naming another provider", code: "APPROVAL_NOT_OPERATOR", attempt: 1, previous: null, approval: { pins: { provider: "codex-cli" } } },
+    { label: "a press since Decision 0170 whose record cannot be read", code: "PRESS_UNREADABLE", attempt: 1, previous: null, after: (library) => { const dir = path.join(library, "runs", "operator", "start-a", "20261104000000000-garbled"); mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, "run.json"), "{not json"); writeFileSync(path.join(dir, "descriptor.json"), "{}"); } },
+    { label: "a press since Decision 0170 with no descriptor snapshot", code: "PRESS_UNREADABLE", attempt: 1, previous: null, after: (library) => { const dir = path.join(library, "runs", "operator", "start-a", "20261104000000000-start-a"); mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, "run.json"), JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: "20261104000000000-start-a", scriptId: "start-a", status: "failed", startedAt: iso(m(5)) })); } },
+    { label: "a later press record that may be a superseding approval and cannot be read", code: "PRESS_UNREADABLE", attempt: 1, previous: null, after: (library) => { const dir = path.join(library, "runs", "operator", "approve-later-day", "20261104100000000-later"); mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, "descriptor.json"), JSON.stringify({ dayGrant: dayGrantPins() })); } },
+    { label: "an unreadable press older than Decision 0170, which is out of scope", code: "none", attempt: 1, previous: null, after: (library) => { const dir = path.join(library, "runs", "operator", "start-old", "20261102000000000-old"); mkdirSync(dir, { recursive: true }); writeFileSync(path.join(dir, "run.json"), "{not json"); } },
+    { label: "a cause recorded as the word undefined", code: "INVALID_DELEGATION", attempt: 1, presses: [refused("start-a", 40)], previous: named(pressKey("start-a"), "undefined", "no-session") },
+    { label: "evidence recorded as the word undefined", code: "INVALID_DELEGATION", attempt: 1, presses: [refused("start-a", 40)], previous: { ...named(pressKey("start-a"), "origin-moved", "no-session"), evidence: "undefined" } },
     { label: "a delegated press as the approval", code: "APPROVAL_NOT_OPERATOR", attempt: 1, previous: null, approval: { delegated: true } },
     { label: "an approval receipt altered after pinning", code: "APPROVAL_CHANGED", attempt: 1, previous: null, after: (_l, a) => writeFileSync(a.receiptPath, readFileSync(a.receiptPath, "utf8") + " ") },
     { label: "an approval press record altered after pinning", code: "APPROVAL_CHANGED", attempt: 1, previous: null, after: (_l, a) => writeFileSync(a.pressPath, readFileSync(a.pressPath, "utf8") + " ") },
@@ -198,5 +209,8 @@ export function writeDayScenario(library: string, scenario: DayScenario, now: nu
   scenario.after?.(library, approval, now);
   return { approval, evidence, revision, policyRevision: revision + (scenario.revisionOffset ?? 0) };
 }
+
+/** The header set a real browser sends on the Tailnet URL: plain HTTP at a non-loopback name, so no `Sec-Fetch-*` at all. */
+export const TAILNET_PRESS_HEADERS = { origin: "http://arcadia-1.alpine-rattlesnake.ts.net:3020", host: "arcadia-1.alpine-rattlesnake.ts.net:3020" };
 
 export const removeFixture = (root: string) => rmSync(root, { recursive: true, force: true });

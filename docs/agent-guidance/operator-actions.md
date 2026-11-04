@@ -311,9 +311,12 @@ pinned descriptor, so per-card review is small.
   three-line `dayGrantLauncher`, `<id>.sh preflight`) and may never press it: the
   press opens exactly 24 hours from itself, never renews, and starts nothing.
   Only a press counts. Nothing can verify a chat message, and a record Rowan wrote
-  about one would be self-attesting. The runner refuses a day-grant press unless it
-  is a same-origin browser request with no delegated marker, and records that; this
-  deployment has no identity layer, so this says how it was pressed, not who did.
+  about one would be self-attesting. The runner refuses a day-grant press unless its
+  `Origin` matches its `Host` at a non-loopback address, with no delegated marker,
+  and records that. Browsers send no `Sec-Fetch-*` on the plain-HTTP Tailnet URL, so
+  those headers are not used. A press from the host's own browser at 127.0.0.1 is
+  refused. This deployment has no identity layer: this stops accidents, not an agent
+  set on forging it, and it says how a card was pressed, not who pressed it.
   Within the day, pin a START card with
   `arcadia start-run pins … --day-grant-from <card>/<run>`, naming the latest START
   press's cause: `--previous-cause <stable slug> --previous-evidence <pointer>`, and
@@ -321,8 +324,9 @@ pinned descriptor, so per-card review is small.
   Run the fresh pre-mortem, put its pointer in `reviewed/<id>.json` as `premortem`,
   preflight the card, then press it with
   `POST /api/operator-script {"id": "<card>", "delegation": {"decision": "0173", "agent": "rowan"}}`.
-  It records as Rowan's press, never the operator's. P0 refuses unless the approval
-  is unchanged, the operator's latest and open; the card's Plan, provider,
+  It records as Rowan's press, never the operator's. P0 refuses unless every press
+  record since Decision 0170 is readable; the approval is unchanged, the operator's
+  latest and open; the card's Plan, provider,
   concurrency and spend Decision are the approved ones; every policy move since the
   approval is a START card's, the executor's own return to Off or Rowan's own Off
   (request id `rowan-off-<slug>`; any other Off ends the day, so use that id or lose

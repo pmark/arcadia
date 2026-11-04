@@ -38,6 +38,7 @@ const clockEnv = (now: string): NodeJS.ProcessEnv => ({
   NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(path.join(fixtures, "fake-clock.mjs")).href}`].filter(Boolean).join(" ")
 });
 const LABEL = "com.arcadia.local.1.worker";
+const PIN_COMMIT = "0".repeat(40);
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
 const directories: string[] = [];
@@ -85,6 +86,8 @@ interface BoxOptions {
   delegation?: DelegationScenario;
   /** Decision 0173: make this Rowan's START card within an operator day approval, from the shared scenario table. */
   dayGrant?: DayScenario;
+  /** Jump the executor's clock by byMs as this call is answered on a real press (fake-clock-offset.mjs). */
+  clockJump?: { at: string; byMs: number };
   /** Leave the reviewed manifest of a Decision 0173 card without its pre-mortem pointer. */
   noPremortem?: boolean;
   /** Press a delegated card without the delegated marker (as if by the operator), or mark an ordinary card delegated. */
@@ -233,7 +236,10 @@ function box(options: BoxOptions = {}) {
     pins.requiredDecisions = [...pins.requiredDecisions, "0163", "0170", "0173"];
     pins.production = { ...pins.production, revision: written.policyRevision };
     pins.grantedBy = `Rowan, pressing this START card from /actions under Decision 0173, within the operator's day approval ${written.approval.card}/${written.approval.run}`;
-    pins.delegation = { decision: "0173", approvalCard: written.approval.card, approvalRun: written.approval.run, approvalReceiptSha256: written.approval.receiptSha256, approvalPressSha256: written.approval.pressSha256 || "0".repeat(64), attempt: scenario.attempt ?? 1, previous: scenario.previous ?? null };
+    // A merged fix's commit is only known here: PIN_COMMIT stands for the reviewed revision.
+    const previous = scenario.previous?.clearance.kind === "merged-fix" && scenario.previous.clearance.commit === PIN_COMMIT
+      ? { ...scenario.previous, clearance: { ...scenario.previous.clearance, commit: pin } } : scenario.previous ?? null;
+    pins.delegation = { decision: "0173", approvalCard: written.approval.card, approvalRun: written.approval.run, approvalReceiptSha256: written.approval.receiptSha256, approvalPressSha256: written.approval.pressSha256, attempt: scenario.attempt ?? 1, previous };
   }
   const descriptor: OperatorScriptDescriptor = {
     schema: "arcadia-operator-script-v1", id: ID, kind: "grant", title: "START: fixture", script: `${ID}.sh`, repeatable: false,
@@ -242,7 +248,8 @@ function box(options: BoxOptions = {}) {
     startRun: pins, ...(options.activation ? { planActivation: structuredClone(activationSource.planActivation!) } : {})
   };
   const script = startRunLauncher(ID);
-  validateOperatorScriptContract(descriptor, ID, script);
+  // A hand-written card the /actions runner would refuse: the executor must refuse it as well.
+  if (options.dayGrant?.code !== "INVALID_DELEGATION") validateOperatorScriptContract(descriptor, ID, script);
   const scriptPath = path.join(library, `${ID}.sh`);
   const descriptorPath = path.join(library, `${ID}.json`);
   writeFileSync(scriptPath, script, { mode: 0o755 });
@@ -290,6 +297,7 @@ function box(options: BoxOptions = {}) {
     workspace, repository: repo, plan: PLAN,
     production: { desiredState: "inactive", revision: dayPolicyRevision ?? 83, epoch: 46, liveAdmissions: 0, authority: null },
     ...(dayEvidence ? { dayEvidence } : {}),
+    ...(options.clockJump ? { clockJump: options.clockJump } : {}),
     queue: { revision: 290, orderValid: true, unpositionedCount: 0, ordered: (options.delegation ? DELEGATED_ACTIONS.map((a) => `arcadia/${a}`) : SCOPED).map((orderKey) => ({ orderKey })) },
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
@@ -331,6 +339,10 @@ function box(options: BoxOptions = {}) {
     const base: NodeJS.ProcessEnv = {
       ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot,
       ...(options.delegation === "before-decision" ? clockEnv(BEFORE_DECISION_NOW) : {}),
+      ...(options.clockJump ? {
+        START_RUN_CLOCK_OFFSET_FILE: path.join(root, "clock-offset"),
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(path.join(fixtures, "fake-clock-offset.mjs")).href}`].filter(Boolean).join(" ")
+      } : {}),
       ...(actions ? { ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptorPath, ...pressEnv() } : {})
     };
     delete base.ANTHROPIC_API_KEY; delete base.CODEX_SANDBOX; delete base.ARCADIA_WORKSPACE; delete base.VITEST;
@@ -642,6 +654,54 @@ describe("start-run executor: Decision 0173 presses within the operator's day ap
     const fix = { kind: "merged-fix" as const, pullRequest: "https://github.com/pmark/arcadia/pull/1", commit: "d".repeat(40), reproduction: "src/production/workerMerge.ts" };
     const refused = { label: "", code: "", attempt: 1, presses: [{ card: "start-a", at: Date.now() - 600_000, receipt: {} }] };
     expectP1(box({ dayGrant: { ...refused, previous: { press: "start-a/20261104000000000-start-a", kind: "no-session", cause: "launcher-bug", evidence: "docs/x.md", clearance: fix } } }), /fix commit d+ named for the previous attempt is not on the reviewed revision/);
+  });
+  it("refuses a stale preflight, and one at another revision, as no preflight", () => {
+    for (const change of [
+      (receipt: Record<string, any>) => { receipt.updatedAt = new Date(Date.now() - 3 * 3_600_000).toISOString(); },
+      (receipt: Record<string, any>) => { receipt.record.reviewedRevision = "f".repeat(40); }
+    ]) {
+      const b = box({ dayGrant: fresh(FIRST.label) });
+      const preflight = b.run("preflight");
+      expect(preflight.status, preflight.stderr).toBe(0);
+      const receipt = JSON.parse(preflight.read("receipt.json")!) as Record<string, any>;
+      change(receipt);
+      writeFileSync(path.join(preflight.dir!, "receipt.json"), JSON.stringify(receipt));
+      const headBefore = b.head();
+      expectRefusedClean(b, b.run(), "P0", /^Decision 0173: PREFLIGHT_REQUIRED: /, headBefore);
+    }
+  }, 120_000);
+  describe("the window closing while a press runs", () => {
+    // 10 minutes of the day left at P0; the jump makes it 1 minute past hour 24, well inside the card's own expiry.
+    const closing = () => ({ ...fresh(FIRST.label), approval: { pressedAt: Date.now() - 24 * 3_600_000 + 10 * 60_000 } });
+    const JUMP = 11 * 60_000;
+    it("refuses at P3, before the allowance, when it closes during the preflight phases", () => {
+      const b = box({ dayGrant: closing(), clockJump: { at: "production freeze-check", byMs: JUMP } });
+      expect(b.run("preflight").status).toBe(0);
+      const headBefore = b.head();
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P3", allowanceConsumed: false, mutations: [] });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: WINDOW_EXPIRED: the day ended during the preflight; no allowance consumed/);
+      expect(existsSync(b.marker)).toBe(false);
+      expect(existsSync(path.join(b.library, "runs", "day-grant"))).toBe(false);
+      expect(b.mutating()).toEqual([]);
+      expect(b.head()).toBe(headBefore);
+    }, 120_000);
+    it("refuses at P6, before activation, when it closes during the install and sign-in", () => {
+      const b = box({ dayGrant: closing(), clockJump: { at: "start-run sign-in", byMs: JUMP } });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: WINDOW_EXPIRED: the day ended before activation; no activation/);
+      expect(b.sequence()).not.toContain("production activate");
+    }, 120_000);
+  });
+  it("refuses a named fix whose reproduction is missing at the pin, and accepts one that is there", () => {
+    const fix = (reproduction: string) => ({ label: "", code: "none", attempt: 1, presses: [{ card: "start-a", at: Date.now() - 600_000, receipt: {} }],
+      previous: { press: "start-a/20261104000000000-start-a", kind: "no-session" as const, cause: "launcher-bug", evidence: "docs/x.md", clearance: { kind: "merged-fix" as const, pullRequest: "https://github.com/pmark/arcadia/pull/1", commit: PIN_COMMIT, reproduction } } });
+    const missing = box({ dayGrant: fix("tests/absent-replay.test.ts") });
+    expectRefusedClean(missing, missing.run("preflight"), "P1", /the reproduction tests\/absent-replay\.test\.ts named for the previous attempt is missing at/, missing.head());
+    const present = box({ dayGrant: fix("src/production/workerMerge.ts") }).run("preflight");
+    expect(present.status, present.stderr + present.stdout).toBe(0);
   });
   it("claims only one card to follow a press", () => {
     const b = box({ dayGrant: FIRST });

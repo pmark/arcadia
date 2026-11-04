@@ -463,7 +463,10 @@ const rj=(f)=>{try{return JSON.parse(fs.readFileSync(f,"utf8"))}catch{return nul
 const ls=(f)=>{try{return fs.readdirSync(f)}catch{return []}};
 const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_ATTEMPTS=3,MAX_REPRESSES=2,EARLIEST=Date.parse("2026-11-03T19:26:51Z"),ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const sha=(b)=>c.createHash("sha256").update(b).digest("hex");
-if(d.decision!=="0173"||typeof d.approvalCard!=="string"||!SLUG.test(d.approvalCard)||typeof d.approvalRun!=="string"||!RUN.test(d.approvalRun))fail("INVALID_DELEGATION: the card names a malformed day approval");
+const keys=(o)=>o&&typeof o==="object"&&!Array.isArray(o)?Object.keys(o).sort().join():"";
+const SHA=/^[0-9a-f]{64}$/,word=(v)=>v==="undefined"||v==="null";
+const pointer=(v)=>typeof v==="string"&&v.length>0&&v.length<=500&&!v.includes("\n")&&!word(v)&&(/^https:\/\/\S+$/.test(v)||(!p.isAbsolute(v)&&!v.split("/").includes("..")));
+if(keys(d)!=="approvalCard,approvalPressSha256,approvalReceiptSha256,approvalRun,attempt,decision,previous"||d.decision!=="0173"||typeof d.approvalCard!=="string"||!SLUG.test(d.approvalCard)||typeof d.approvalRun!=="string"||!RUN.test(d.approvalRun)||!SHA.test(d.approvalReceiptSha256)||!SHA.test(d.approvalPressSha256)||!Number.isInteger(d.attempt)||d.attempt<1||d.attempt>3)fail("INVALID_DELEGATION: the card names a malformed day approval");
 // The approval.
 const rp=p.join(lib,"runs",d.approvalCard,d.approvalRun,"receipt.json");
 if(!fs.existsSync(rp))fail("APPROVAL_MISSING: the approval receipt "+rp+" does not exist");
@@ -485,7 +488,7 @@ if(pr.browserPress!==true)fail("APPROVAL_NOT_OPERATOR: the approval was not pres
 let claimed="";try{claimed=fs.readFileSync(p.join(pd,"day-grant.claimed"),"utf8").trim()}catch{}
 if(claimed!==d.approvalRun)fail("APPROVAL_NOT_OPERATOR: the approval press record was not claimed by this run");
 const g=(rj(p.join(pd,"descriptor.json"))||{}).dayGrant;
-if(!g||g.schema!=="arcadia-day-grant-v1"||g.decision!=="0173")fail("APPROVAL_NOT_OPERATOR: the approval press did not run a day-grant card");
+if(keys(g)!=="concurrency,decision,executorSha256,plan,project,provider,schema,spendDecision"||g.schema!=="arcadia-day-grant-v1"||g.decision!=="0173"||!SHA.test(g.executorSha256)||!SLUG.test(g.project)||!SLUG.test(g.plan)||g.provider!=="claude-code-cli"||g.concurrency!==1||!/^[0-9]{4}$/.test(g.spendDecision))fail("APPROVAL_NOT_OPERATOR: the approval press did not run a day-grant card");
 const opens=Date.parse(pr.startedAt);
 if(!Number.isFinite(opens))fail("APPROVAL_NOT_OPERATOR: the approval press has no readable start time");
 const closes=opens+WINDOW,now=Date.now();
@@ -495,6 +498,12 @@ if(now<opens)fail("WINDOW_EXPIRED: the approval press is in the future");
 const baseline=a.record.policyRevisionAtApproval;
 if(!Number.isInteger(baseline))fail("APPROVAL_NOT_PRESSED: the approval receipt records no policy revision");
 const ops=p.join(lib,"runs","operator");
+// Fail closed: a press since Decision 0170 that cannot be read could be a re-press to count or a later approval.
+const idTime=(name)=>{const m=/^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})-/.exec(name);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6],+m[7]):null};
+for(const card of ls(ops))for(const name of ls(p.join(ops,card))){const dir=p.join(ops,card,name);let isDir=false;try{isDir=fs.statSync(dir).isDirectory()}catch{}
+  if(!isDir)continue;const time=idTime(name);if(time!==null&&time<EARLIEST)continue;
+  const run=rj(p.join(dir,"run.json"));if(time===null&&run&&Date.parse(run.startedAt)<EARLIEST)continue;
+  if(!run||!rj(p.join(dir,"descriptor.json"))||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==name)fail("PRESS_UNREADABLE: the press record "+card+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator");}
 for(const other of ls(ops))for(const op of ls(p.join(ops,other))){const dir=p.join(ops,other,op);if(!(rj(p.join(dir,"descriptor.json"))||{}).dayGrant)continue;const r=rj(p.join(dir,"run.json"))||{};
   if(r.status==="succeeded"&&r.press===undefined&&r.browserPress===true&&fs.existsSync(p.join(dir,"day-grant.claimed"))&&Date.parse(r.startedAt)>opens)fail("APPROVAL_SUPERSEDED: the operator approved a later day with "+other+"/"+op+"; a card names the latest approval");}
 // The scope the operator approved. P1 and P2 prove the Plan is active and the pinned Actions head its governed queue.
@@ -536,10 +545,12 @@ const prev=d.previous;
 if(!latest){if(prev!==null)fail("PREVIOUS_MISMATCH: this card names "+((prev||{}).press)+", but no START press has happened since Decision 0170");}
 else{
   if(prev===null||prev===undefined)fail("PREVIOUS_CAUSE_REQUIRED: the latest START press "+latest.key+" needs its cause named on this card, with an evidence pointer and how it was cleared");
+  const cl=prev.clearance||{};
+  const clearOk=cl.kind==="merged-fix"?keys(cl)==="commit,kind,pullRequest,reproduction"&&/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(cl.pullRequest)&&/^[0-9a-f]{40}$/.test(cl.commit)&&typeof cl.reproduction==="string"&&cl.reproduction.length>0&&cl.reproduction.length<=300&&!cl.reproduction.includes("\n")&&!p.isAbsolute(cl.reproduction)&&!cl.reproduction.split("/").some((x)=>x===".."||x==="."||x===""):cl.kind==="observed-cleared"&&keys(cl)==="kind,observation"&&pointer(cl.observation);
+  if(keys(prev)!=="cause,clearance,evidence,kind,press"||typeof prev.press!=="string"||!prev.press.includes("/")||(prev.kind!=="failed-attempt"&&prev.kind!=="no-session")||typeof prev.cause!=="string"||!SLUG.test(prev.cause)||word(prev.cause)||!pointer(prev.evidence)||!clearOk)fail("INVALID_DELEGATION: the cause on this card needs a stable slug, an evidence pointer and how it was cleared");
   if(prev.press!==latest.key)fail("PREVIOUS_MISMATCH: this card names "+prev.press+", but the latest START press is "+latest.key);
   const kind=latest.admitted?"failed-attempt":"no-session";
   if(prev.kind!==kind)fail("PREVIOUS_MISMATCH: this card calls "+latest.key+" a "+prev.kind+", but production record makes it a "+kind);
-  if(typeof prev.cause!=="string"||!SLUG.test(prev.cause)||typeof prev.evidence!=="string"||!prev.evidence||!prev.clearance)fail("PREVIOUS_CAUSE_REQUIRED: the cause on this card needs a slug, an evidence pointer and a clearance");
   const namedFor=(x)=>presses.filter((y)=>y.del&&y.del.decision==="0173"&&y.del.previous&&y.del.previous.press===x.key).map((y)=>y.del.previous.cause);
   if(latest.admitted&&presses.some((x)=>x!==latest&&x.admitted&&namedFor(x).includes(prev.cause)))fail("SAME_CAUSE: two attempts failed on the cause "+prev.cause+"; Decision 0173 stops here for the operator");
   if(!latest.admitted&&presses.some((x)=>x!==latest&&!x.admitted&&x.t>=opens&&namedFor(x).includes(prev.cause)))fail("SAME_REFUSAL: the refusal named "+prev.cause+" recurred in this day; Decision 0173 stops here for the operator");
