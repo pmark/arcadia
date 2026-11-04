@@ -7,10 +7,10 @@ import { listOpenRedAlerts, REVIEW_REPAIR_STOP_ALERTS } from "../src/production/
 import { citedPaths, judgeSameFindingGateDefect, REVIEW_REPAIR_ESCALATIONS, REVIEW_REPAIR_GATE_DEFECT, SAME_FINDING_TITLE_SIMILARITY, titleSimilarity, type SameFindingEvidence } from "../src/production/reviewRepair.js";
 import { resetProductionRepairBudget } from "../src/production/tick.js";
 import type { AgentSession } from "../src/sessions/index.js";
-import { getSession } from "../src/sessions/index.js";
+import { runQaPrReviewCommand } from "../src/qa/prReview.js";
 import { listReviewRepairs, type ReviewRepairCheck, type ReviewRepairFinding } from "../src/sessions/reviewRepair.js";
-import { beginIndependentVerdict, finishIndependentVerdict } from "../src/sessions/roleLineage.js";
-import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
+import { requirementForSession } from "../src/sessions/roleLineage.js";
+import { git, hostReviewer, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
 
 /**
  * The same-finding circuit breaker (src/production/reviewRepair.ts). On
@@ -139,7 +139,7 @@ describe("what keeps the repair loop running", () => {
   });
 
   it("does not fire when the two findings share no record", () => {
-    const findings = [{ ...pr2061.findings[0], evidence: "PROJECT.md is wrong.", recommendation: "Fix it." }];
+    const findings = [{ ...pr2061.findings[0], evidence: "PROJECT.md has the wrong current_action.", recommendation: "Fix it." }];
     const checks = [{ ...pr2061.checks[0], evidence: "PROJECT.md is wrong." }];
     expect(judgeSameFindingGateDefect(evidenceFor(pr2059, pr2061, { findings, checks }))).toBeNull();
   });
@@ -162,12 +162,44 @@ describe("what keeps the repair loop running", () => {
 
   it("matches an archived Ask across rounds though its file name carries a different id each time", () => {
     const finding = (id: string) => ({
-      severity: "low", title: "Settlement rewrote the archived Ask", evidence: `.arcadia/asks/archive/agent-ask-complete-x-${id}.yaml changed.`, recommendation: "Keep the bytes."
+      severity: "low", title: "Settlement rewrote candidate_revision in the archived Ask", evidence: `.arcadia/asks/archive/agent-ask-complete-x-${id}.yaml changed.`, recommendation: "Keep the bytes."
     });
     const settlementPaths = [".arcadia/asks/archive/agent-ask-complete-x-7c8d8bf7c714.yaml"];
     expect(judgeSameFindingGateDefect({
       previousFindings: [finding("4468082627ea")], previousChecks: [], findings: [finding("7c8d8bf7c714")], checks: [], settlementPaths, sessionPaths: []
     })).toMatch(/^Gate defect: /);
+  });
+
+  describe("records whose text a Session's fresh Ask can change", () => {
+    const ARCHIVED = ".arcadia/asks/archive/agent-ask-complete-x-7c8d8bf7c714.yaml";
+    const repeated = (title: string, evidence: string): SameFindingEvidence => {
+      const finding = { severity: "medium", title, evidence, recommendation: "Correct it." };
+      return { previousFindings: [finding], previousChecks: [], findings: [finding], checks: [], settlementPaths: [ARCHIVED, "MISSION_LOG.md"], sessionPaths: [] };
+    };
+
+    it("does not fire on a repeated finding about the archived Ask's content, which the next round's Ask can correct", () => {
+      expect(judgeSameFindingGateDefect(repeated("Archived Ask evidence claims a criterion the patch does not meet", `${ARCHIVED} says it is met.`))).toBeNull();
+    });
+
+    it("does not fire on an archived Ask finding that does not name the field the host writes, however it is worded", () => {
+      expect(judgeSameFindingGateDefect(repeated("The archived Ask is stale", `${ARCHIVED} is stale.`))).toBeNull();
+    });
+
+    it("does not fire when candidate_revision is only the setting for a finding about the Ask's evidence", () => {
+      expect(judgeSameFindingGateDefect(repeated("Ask evidence is stale for its candidate_revision", `${ARCHIVED} was written earlier.`))).toBeNull();
+    });
+
+    it("does not fire on the Mission Log's Result line, which quotes the Ask's evidence criteria", () => {
+      expect(judgeSameFindingGateDefect(repeated("Mission Log Result records a criterion the patch does not meet", "MISSION_LOG.md says it is met; next_action is fine."))).toBeNull();
+    });
+
+    it("does not fire on a Mission Log finding that names no field the host writes", () => {
+      expect(judgeSameFindingGateDefect(repeated("The Mission Log entry is misleading", "MISSION_LOG.md overstates this."))).toBeNull();
+    });
+
+    it("accepts a false negative: PR 2058's next_action finding also cites the archived Ask, so that shape would not fire", () => {
+      expect(judgeSameFindingGateDefect(evidenceFor(pr2059, pr2058, { findings: [pr2058.findings[0]], checks: [] }))).toBeNull();
+    });
   });
 });
 
@@ -249,8 +281,10 @@ describe("the breaker in the worker tick", () => {
     const stop = escalation(rehearsal)!;
     expect(stop.kind).toBe(REVIEW_REPAIR_GATE_DEFECT);
     expect(stop.message).toContain("Plan next_action cites an Agent Ask");
-    expect(stop.remedy).toContain("Fix the reviewer rule or the gate");
-    expect(stop.remedy).toContain("arcadia production reset-repair-budget");
+    expect(stop.remedy).toContain("fix the reviewer rule or gate");
+    expect(stop.remedy).toContain("--rerun");
+    expect(stop.remedy).toContain("governed Plan amendment");
+    expect(stop.remedy).toMatch(/reset-repair-budget .*it does not clear this stop/);
     // The failed PR is a draft carrying one comment that says why.
     const failedPr = rehearsal.github.prs.find((pr) => pr.branch === repair.branch)!;
     expect(failedPr.isDraft).toBe(true);
@@ -336,6 +370,57 @@ describe("the breaker in the worker tick", () => {
     expect(escalation(rehearsal)).toMatchObject({ kind: REVIEW_REPAIR_GATE_DEFECT, message: expect.stringContaining("Settlement records cite an Agent Ask id") });
   });
 
+  it("still launches round 2 on a repeated finding about the archived Ask's content, so a corrected Ask gets its round", () => {
+    const { rehearsal, repair } = firstRound((r, head) => {
+      const archived = git(r.repo, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", `${head}^`, head]).split("\n").map((line) => line.trim()).find((file) => file.startsWith(".arcadia/asks/archive/"))!;
+      return {
+        findings: [{ severity: "medium", title: "Archived Ask evidence claims a criterion the patch does not meet", evidence: `${archived} says the criterion is met.`, recommendation: "Correct the Ask." }],
+        checkEvidence: `${archived} says the criterion is met.`
+      };
+    });
+    finishRepair(rehearsal, repair);
+    expect(escalation(rehearsal)).toBeUndefined();
+    expect(rehearsal.tmux.launches).toHaveLength(3);
+    expect(repairs(rehearsal).map((row) => [row.round, row.outcome])).toEqual([[1, "launched"], [2, "launched"]]);
+  });
+
+  it("does not fire against a different reviewer role's previous round", () => {
+    let verdicts = 0;
+    const { rehearsal, repair } = firstRound((r, head) => pinnedWords(r, verdicts++ === 0 ? pr2058 : pr2059, head));
+    withDatabase(rehearsal.workspace, (db) => db.prepare("UPDATE production_review_repairs SET role = 'qa'").run());
+    finishRepair(rehearsal, repair);
+    expect(escalation(rehearsal)?.kind).not.toBe(REVIEW_REPAIR_GATE_DEFECT);
+    expect(rehearsal.tmux.launches).toHaveLength(3);
+  });
+
+  it("names the gate defect rather than exhaustion when the run's rounds are also spent", () => {
+    let verdicts = 0;
+    const { rehearsal, repair } = firstRound((r, head) => pinnedWords(r, verdicts++ === 0 ? pr2058 : pr2059, head));
+    withDatabase(rehearsal.workspace, (db) => {
+      for (const round of [2, 3]) {
+        db.prepare(`INSERT INTO production_review_repairs (request_id, action_key, policy_epoch, round, failed_session_id, failed_branch, failed_head,
+          start_revision, pull_request_url, role, verdict, summary, report_path, findings_json, failed_checks_json, repair_session_id, outcome, created_at, updated_at)
+          SELECT ?, action_key, policy_epoch, ?, 's', 'b', 'h', 'r', NULL, role, 'fail', 'x', NULL, '[]', '[]', ?, 'launched', created_at, updated_at FROM production_review_repairs LIMIT 1`)
+          .run(`earlier-${round}`, round, `earlier-session-${round}`);
+      }
+    });
+    finishRepair(rehearsal, repair);
+    expect(escalation(rehearsal)?.kind).toBe(REVIEW_REPAIR_GATE_DEFECT);
+    expect(rehearsal.tmux.launches).toHaveLength(2);
+  });
+
+  it("leaves an authority-adjacent verdict to the authority stop, which is checked first", () => {
+    let verdicts = 0;
+    const { rehearsal, repair } = firstRound((r, head) => {
+      const round = verdicts++;
+      const pinned = pinnedWords(r, round === 0 ? pr2058 : pr2059, head);
+      return round === 0 ? pinned : { ...pinned, findings: pinned.findings.map((finding, index) => index === 0 ? { ...finding, title: `${finding.title}, broadening the worker's merge authority` } : finding) };
+    });
+    finishRepair(rehearsal, repair);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("authority-adjacent") });
+    expect(rehearsal.tmux.launches).toHaveLength(2);
+  });
+
   it("does not fire across production runs: a finding from an earlier epoch gets this run's round", () => {
     let verdicts = 0;
     const { rehearsal, repair } = firstRound((r, head) => pinnedWords(r, verdicts++ === 0 ? pr2058 : pr2059, head));
@@ -346,13 +431,16 @@ describe("the breaker in the worker tick", () => {
   });
 
   describe("after the stop", () => {
-    const passingRerun = (rehearsal: Rehearsal, repair: AgentSession, role: "code-review" | "qa") => withDatabase(rehearsal.workspace, (db) => {
-      const session = getSession(db, repair.id)!;
-      const requestId = `${role}-operator-rerun-0001`;
-      const actorId = `${role}-reviewer:operator-rerun`;
-      beginIndependentVerdict(db, { role, session, repoRoot: rehearsal.repo, requestId, actorId, executionCwd: rehearsal.workspace, retryAuthorized: true, now: rehearsal.now });
-      finishIndependentVerdict(db, { requestId, actorId, session, repoRoot: rehearsal.repo, verdict: "passed", receipt: { reviewer: actorId }, now: rehearsal.now });
-    });
+    /** The remedy's route, through the real command: the operator marks the PR ready and reruns the code review. */
+    const operatorRerun = (rehearsal: Rehearsal, repair: AgentSession) => {
+      const pr = rehearsal.github.prs.find((candidate) => candidate.branch === repair.branch)!;
+      pr.isDraft = false;
+      return runQaPrReviewCommand(
+        { workspace: rehearsal.workspace, pullRequest: pr.url, role: "code-review", rerun: true },
+        { runCommand: rehearsal.github.runCommand, selectReviewer: () => hostReviewer(), now: () => rehearsal.now }
+      );
+    };
+    const launchedRounds = (rehearsal: Rehearsal) => repairs(rehearsal).filter((row) => row.repair_session_id !== null).length;
 
     it("the budget reset alone leaves the stop standing, as its remedy says", () => {
       const { rehearsal } = stoppedOnRound2();
@@ -363,17 +451,53 @@ describe("the breaker in the worker tick", () => {
       expect(rehearsal.tmux.launches).toHaveLength(2);
     });
 
-    it("clears only when both independent verdicts pass on the head, with no repair round spent on the way", () => {
+    it("a rerun that fails the same way stops here again, spending nothing: only a changed judgement gets past it", () => {
       const { rehearsal, repair } = stoppedOnRound2();
-      const launchedRounds = () => repairs(rehearsal).filter((row) => row.repair_session_id !== null).length;
-      passingRerun(rehearsal, repair, "code-review");
+      const before = repairs(rehearsal)[1].verdict_request_id;
+      expect(operatorRerun(rehearsal, repair).data.verdict).toBe("fail");
       rehearsal.tick();
+      rehearsal.tick();
+      expect(repairs(rehearsal)[1].verdict_request_id).not.toBe(before); // the new verdict was judged afresh
+      expect(repairs(rehearsal)[1]).toMatchObject({ outcome: "gated", repair_session_id: null });
+      expect(escalation(rehearsal)?.kind).toBe(REVIEW_REPAIR_GATE_DEFECT);
+      expect(launchedRounds(rehearsal)).toBe(1);
+      expect(rehearsal.tmux.launches).toHaveLength(2);
+    });
+
+    it("a rerun that passes clears it once the tick has run QA itself, with no repair round and no budget reset", () => {
+      const { rehearsal, repair } = stoppedOnRound2();
+      rehearsal.github.verdict = () => "pass";
+      const qaBefore = rehearsal.github.reviewerCalls.filter((call) => call.role === "qa").length;
+      expect(operatorRerun(rehearsal, repair).data.verdict).toBe("pass");
       expect(escalation(rehearsal)?.kind).toBe(REVIEW_REPAIR_GATE_DEFECT); // QA is still outstanding
-      expect(launchedRounds()).toBe(1);
-      passingRerun(rehearsal, repair, "qa");
+      rehearsal.tickUntil(() => escalation(rehearsal)?.kind !== REVIEW_REPAIR_GATE_DEFECT, 6);
+      expect(rehearsal.github.reviewerCalls.filter((call) => call.role === "qa").length).toBeGreaterThan(qaBefore);
+      expect(launchedRounds(rehearsal)).toBe(1);
+    });
+
+    it("a judgement revision bump re-reviews the head by itself and clears it, with no budget reset", () => {
+      const { rehearsal, repair } = stoppedOnRound2();
+      const reviewers = rehearsal.github.reviewerCalls.length;
+      rehearsal.github.verdict = () => "pass";
+      // As tests/fast-rehearsal/judgement-revision-rereview.test.ts: the verdict was judged under an earlier revision.
+      withDatabase(rehearsal.workspace, (db) => db.prepare("UPDATE session_role_attempts SET criteria_fingerprint = ? WHERE role = 'code-review' AND status = 'failed'")
+        .run(requirementForSession(rehearsal.repo, repair)!.criteriaFingerprint));
+      rehearsal.tickUntil(() => escalation(rehearsal)?.kind !== REVIEW_REPAIR_GATE_DEFECT, 8);
+      expect(rehearsal.github.reviewerCalls.length).toBeGreaterThan(reviewers);
+      expect(launchedRounds(rehearsal)).toBe(1);
+    });
+
+    it("a rerun that fails on a different finding a Session can fix launches the repair and clears the stop", () => {
+      const { rehearsal, repair } = stoppedOnRound2();
+      rehearsal.github.failWords = () => ({
+        findings: [{ severity: "high", title: "The marker is wrong", evidence: "MARKER.md has the wrong line.", recommendation: "Fix MARKER.md." }],
+        checkEvidence: "MARKER.md has the wrong line."
+      });
+      expect(operatorRerun(rehearsal, repair).data.verdict).toBe("fail");
       rehearsal.tick();
       expect(escalation(rehearsal)?.kind).not.toBe(REVIEW_REPAIR_GATE_DEFECT);
-      expect(launchedRounds()).toBe(1);
+      expect(launchedRounds(rehearsal)).toBe(2);
+      expect(rehearsal.tmux.launches).toHaveLength(3);
     });
   });
 });
@@ -387,7 +511,8 @@ describe("the new kind's registrations", () => {
   it("gives the operator a remedy naming the fix and the reset, and grants nothing", () => {
     const remedy = blockerRemedyFor(REVIEW_REPAIR_GATE_DEFECT)!;
     expect(remedy).toMatchObject({ remedyActionId: "operator-step", oneClick: false });
-    expect(remedy.consequence).toMatch(/reviewer rule or a gate/);
+    expect(remedy.consequence).toMatch(/reviewer rule or gate/);
+    expect(remedy.consequence).toContain("governed Plan amendment");
     expect(remedy.consequence).toContain("arcadia production reset-repair-budget");
     expect(blockerRemedyFor("repair_gate_defect")).toMatchObject({ oneClick: false, surface: "todo" });
   });

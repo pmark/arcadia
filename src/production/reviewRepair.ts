@@ -211,6 +211,26 @@ export function citedPaths(finding: ReviewRepairFinding): string[] {
   return [...new Set((text.match(CITED_PATH) ?? []).map((cited) => cited.replace(/^\.\//, "").replace(/[./-]+$/, "")))];
 }
 
+const ARCHIVED_ASK_PATH = /^\.arcadia\/asks\/archive\//;
+/** A title about what the Session's Ask says. Its evidence, notes and criteria reach the archive and the Mission Log's Result line verbatim. */
+const SESSION_AUTHORED_SUBJECT = /\b(?:evidence|criterion|criteria|notes?|result|desired_result|claims?)\b/i;
+/** What settlement itself writes in the Plan, the pointer and the Mission Log's Blockers line. */
+const HOST_WRITTEN_FIELD = /\b(?:next_action|current_action)\b|\bauto-settle-/;
+
+/**
+ * Whether a finding on settlement records is about what the host wrote, rather
+ * than what a Session's fresh Ask could change. A path alone cannot say: an
+ * archived Ask's bytes are the Session's own (settlement moves it and rewrites
+ * only `candidate_revision`), and reviewers are told to judge its content. So a
+ * finding citing one counts only when its title names `candidate_revision`.
+ * Lexical on purpose, and narrow: a miss only keeps the repair loop running.
+ */
+function aboutHostWrittenFields(finding: ReviewRepairFinding, cited: readonly string[]): boolean {
+  if (SESSION_AUTHORED_SUBJECT.test(finding.title)) return false;
+  if (cited.some((file) => ARCHIVED_ASK_PATH.test(file))) return /\bcandidate_revision\b/.test(finding.title);
+  return HOST_WRITTEN_FIELD.test(`${finding.title} ${finding.evidence}`);
+}
+
 /** A file named after an Ask carries that Ask's id, which differs each round. */
 const withoutFileId = (file: string) => file.replace(/[0-9a-f]{7,40}(?=\.[^./]+$)/, "");
 
@@ -244,9 +264,11 @@ export interface SameFindingEvidence {
  * 1. Nothing here is the Session's to change: every finding names at least one
  *    path, and every path it names is a governed settlement record that this
  *    head's settlement commit wrote and that no Session of the candidate
- *    touched. A finding naming a source or test file, or no path at all, always
- *    answers null, however often it repeats and whatever the repair did to it:
- *    a Session can still change that file, so the failure may yet be repaired.
+ *    touched, and the finding is about a field the host writes there rather
+ *    than what the Session's Ask says ({@link aboutHostWrittenFields}). A
+ *    finding naming a source or test file, or no path at all, always answers
+ *    null, however often it repeats and whatever the repair did to it: a Session
+ *    can still change that file, so the failure may yet be repaired.
  * 2. No criterion failed beyond the previous round's, and each failed criterion's
  *    evidence names one of those records: a criterion a finding does not explain
  *    may be a real defect.
@@ -267,6 +289,7 @@ export function judgeSameFindingGateDefect(evidence: SameFindingEvidence): strin
   const hostWritten = (file: string) => SETTLEMENT_RECORD_PATH.test(file) && settlement.has(file) && !session.has(file);
   const citations = findings.map(citedPaths);
   if (citations.some((cited) => cited.length === 0 || !cited.every(hostWritten))) return null;
+  if (findings.some((finding, index) => !aboutHostWrittenFields(finding, citations[index]))) return null;
   const records = [...new Set(citations.flat())];
   const previouslyFailed = new Set(previousChecks.map((check) => check.name));
   if (checks.some((check) => !previouslyFailed.has(check.name) || !records.some((record) => check.evidence.includes(record)))) return null;
@@ -277,7 +300,7 @@ export function judgeSameFindingGateDefect(evidence: SameFindingEvidence): strin
   });
   if (!repeated) return null;
   const title = repeated.title.replace(/\s+/g, " ").trim().slice(0, 200);
-  return `${GATE_DEFECT_REASON} the verdict repeats the previous repair round's finding "${title}", and every finding names only records the host writes at settlement (${records.join(", ")}), which no Session of this candidate changed. Another repair round could only reproduce it, so none is spent and no Session is launched.`;
+  return `${GATE_DEFECT_REASON} the verdict repeats the previous repair round's finding "${title}", and every finding is about what the host writes at settlement (${records.join(", ")}), which no Session of this candidate changed. Another repair round could only reproduce it, so none is spent and no Session is launched.`;
 }
 
 const changedPaths = (repoRoot: string, from: string, to: string): string[] | null => {
@@ -314,9 +337,11 @@ function repeatedFindingGateDefect(db: Database.Database, input: {
 /** What the operator does about a gate defect: the candidate is not what is wrong, so the fix lands elsewhere. */
 function gateDefectRemedy(row: ReviewRepairRow): string {
   const pr = row.pull_request_url ?? "<PR>";
-  return `Fix the reviewer rule or the gate behind this finding on the base, or the settlement step if the records on ${row.failed_head.slice(0, 12)} really are wrong. `
-    + `Then run \`arcadia production reset-repair-budget ${row.action_key}\` so the review has a fresh budget. A changed judgement revision re-reviews this head by itself; otherwise mark ${pr} ready and rerun it with \`arcadia ${row.role === "qa" ? "qa pr" : "qa code-review"} ${pr} --rerun\`. `
-    + "The reset alone does not clear this stop: it clears when the head's verdicts pass, and a newer failed verdict is judged afresh. No repair round was spent on it, and nothing integrates meanwhile.";
+  const head = row.failed_head.slice(0, 12);
+  return `The records on ${head} cannot change, so only a changed judgement clears this stop: a rerun that fails the same way stops here again. `
+    + `If the finding is wrong, fix the reviewer rule or gate behind it on the base. A fix that bumps the judgement revision re-reviews this head by itself; otherwise mark ${pr} ready and rerun it with \`arcadia ${row.role === "qa" ? "qa pr" : "qa code-review"} ${pr} --rerun\`, and the tick runs the other review. The stop clears when both pass. `
+    + `If the records really are wrong, no rerun can pass: fix the settlement step on the base, then revise the Action through a governed Plan amendment, which releases this stop and admits a fresh attempt. `
+    + `Run \`arcadia production reset-repair-budget ${row.action_key}\` only if the unattended review's budget is spent; it does not clear this stop. No repair round was spent on it, and nothing integrates meanwhile.`;
 }
 
 /** Verdict attempts each role still has for this requirement input; a repair round needs one of each. */
