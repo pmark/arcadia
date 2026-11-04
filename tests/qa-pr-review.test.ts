@@ -134,6 +134,9 @@ describe("minimal independent pull-request QA", () => {
     if (role === "code-review") {
       expect(reviewerPrompt).toContain("`auto-settle-<project>-<action>-<hash>` id");
       expect(reviewerPrompt).toContain("rewrite only the `candidate_revision` of the Ask it archives");
+      // A rename is not content-checked by Arcadia (see governedShapeViolations), so the reviewer must check it.
+      expect(reviewerPrompt).toContain("when it appears as a rename you must confirm");
+      expect(reviewerPrompt).toContain("Arcadia-Retired-Completion-Draft:");
     }
   });
   it("pins the revision, persists hardened receipts, and reuses unchanged evidence", () => {
