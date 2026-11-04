@@ -78,8 +78,10 @@ change.
    | `active_idle`, worker healthy | No effect | Production on, idle |
    | `active_building`, worker healthy | Work moving | Production building |
    | Any live Session with `observedStatus: stalled` | Blocked | A Session has stalled |
-   | Active, with the worker not running or its heartbeat stale | Blocked | Worker not responding |
-   | `observation_unavailable`, or the read failed | Signal loss | Can't read production. Never "Off" |
+   | Active or finishing, with the worker not running or its heartbeat stale | Blocked | Worker not responding |
+   | `observation_unavailable`, or any part of the read failed | Signal loss | Can't read production. Never "Off" |
+
+   Rows combine, and the worst wins, in the order Blocked, Signal loss, Needs you, Work moving, then calm.
 
 6. **"Work moving" means something is running:** live Sessions, missions or admitted work. Today any open pull request counts,
    so a stalled run can read as Work moving. Open PRs and steps waiting on others no longer change the weather. They appear as

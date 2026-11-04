@@ -18,11 +18,11 @@ Unattended production stays the first priority, and production stays Off.
 **Merged to main:** PR 2007 (Arcadia Design skill and `arcadia design check`), 2009 (Relay mode), 2010, 2014, 2016
 (`arcadia way lookup`, STOP guidance), 2019, 2020, 2022 (design record and probes).
 
-**Open, not merged.** Both are mergeable with green checks at their last read, and CodeRabbit's threads are resolved.
+**Open, not merged.** Re-read each PR's checks and merge state before relying on them. PR 2027's latest head was pushed at close.
 
 | PR | Contents | Independent review |
 |---|---|---|
-| [2027](https://github.com/pmark/arcadia/pull/2027) | The proposal, investigation, S021 to S025, the layer design and this handoff | Rounds at `977fc351e` found no blocking finding. Its later commits are reviewed in the PR's latest comment |
+| [2027](https://github.com/pmark/arcadia/pull/2027) | The proposal, investigation, S021 to S028, the layer design and this handoff | Rounds at `977fc351e` found no blocking finding. R2, R3 and R4 reviewed the layer design and later commits, and R4 at `29b69ebe7` found no blocking finding. Two one-sentence fixes after R4 aren't re-reviewed |
 | [2028](https://github.com/pmark/arcadia/pull/2028) | Three Field Notes drafts | **None, and no fact-check** |
 
 **Not built:** the structured outcome, visible answers, name matching, lookup routes, the menu, the scorecard, and

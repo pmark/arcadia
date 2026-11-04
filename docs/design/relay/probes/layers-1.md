@@ -16,7 +16,8 @@ the sky, star and weather canvases. Raw results: [`layers-1-results.json`](layer
 
 **Text and controls.** Worst case 8.59:1 (`.card p`, laptop, light palette, day), against a floor of 4.5:1. No text sits on bare sky.
 The probe samples every visible element for 24 kinds of text, control and label, including the reasons panel, menu options, starter
-suggestions and the pinned-draft line.
+suggestions and the pinned-draft line. An earlier list had a 25th, `.muted`, dropped because it shows only after a menu tap, so it
+isn't measured.
 Retry and error text aren't in the prototype, so they aren't sampled. The floor passes largely because surfaces are 88 to 95% opaque.
 
 **Open sky**, as a share of what's visible:

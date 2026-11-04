@@ -323,7 +323,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: 3e9527451386bf496dc45f65e0ee1c250c7a55e85ef52f13b43b439e35228a3b
+    sha256: e0b1ea544ba744b19994151beafc1694da5aa749cecfde504abee971092b6d6e
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent
@@ -3377,6 +3377,29 @@ scrutiny:
         note: "The gloss is labelled, and C-039 cites S023 with an aligned title."
         concepts:
           - C-039
+  - id: R4
+    path: reviews/R4-layers-final.md
+    reviewer: Critic Claudia Mason
+    independent_of_authors: true
+    lenses:
+      - mission
+      - evidence
+      - failure
+    record_hash: 493cf0260cde4a89d753d85c7e3824d5340ae47429c8a0d9ce671307615dd4bc
+    verdict: pass_with_changes
+    findings:
+      - id: R4-F1
+        severity: note
+        summary: "The production table's rows overlapped, with no written precedence, and two cases weren't covered."
+        disposition: fixed
+        note: "Rows combine and the worst wins, finishing counts with active for a silent worker, and any failed part reads as Signal loss. Not re-reviewed, because this was the last round."
+        concepts:
+          - C-066
+      - id: R4-F2
+        severity: note
+        summary: "One text kind was dropped from the probe without saying so."
+        disposition: fixed
+        note: "The write-up now says so. Not re-reviewed."
 riskiest_assumption:
   statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically.
   test: About 30 first-timer questions, answered from the guidance alone and graded by a separate judge against the cited text, the Decisions and the code.
