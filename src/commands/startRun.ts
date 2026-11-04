@@ -221,7 +221,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     const input = {
       library, approvalCard: dayGrantFrom.card, approvalRun: dayGrantFrom.run, approvalReceiptSha256: null, approvalPressSha256: null, now: deps.now(), policyRevision: production.revision, excludePress: null,
       evidence: (deps.dayEvidence ?? realStartRunPinsDeps.dayEvidence!)(production.workspacePath),
-      scope: { project, plan, provider: options.provider, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision }
+      scope: { project, plan, provider: options.provider, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision, offId: START_RUN_DEFAULTS.offId }
     };
     try {
       // The press and its kind come from the record; only the cause, its evidence and its clearance are Rowan's words.

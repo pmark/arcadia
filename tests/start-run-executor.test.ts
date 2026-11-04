@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import type { StartRunPins } from "../src/operatorActions/startRunPins.js";
-import { DAY_CARD, DAY_RUN, dayScenarios, writeDayScenario, type DayScenario } from "./helpers/dayGrantFixture.js";
+import { DAY_CARD, DAY_RUN, dayScenarios, STOP_ID, writeDayScenario, type DayScenario } from "./helpers/dayGrantFixture.js";
 
 /**
  * Hermetic cases for scripts/start-run.sh, the shared executor of every per-run START card. Each case copies the real
@@ -88,6 +88,8 @@ interface BoxOptions {
   dayGrant?: DayScenario;
   /** Jump the executor's clock by byMs as this call is answered on a real press (fake-clock-offset.mjs). */
   clockJump?: { at: string; byMs: number };
+  /** An operator STOP pressed while production is Off, as this call is answered on a real press. */
+  stopPressAt?: string;
   /** A newer operator day press finishing as this call is answered on a real press. */
   laterApproval?: { at: string; press: string };
   /** Leave the reviewed manifest of a Decision 0173 card without its pre-mortem pointer. */
@@ -177,7 +179,7 @@ function box(options: BoxOptions = {}) {
     transitions: ["validation", "acceptance", "pointer", "packet_approval"], concurrency: 1, packetApprovalHours: 24, intent: "A fixture run on the claude-code provider.",
     spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"],
     requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
-    production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
+    production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: options.dayGrant?.offId ?? STOP_ID,
     grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }]
   };
   if (options.delegation) {
@@ -301,6 +303,7 @@ function box(options: BoxOptions = {}) {
     ...(dayEvidence ? { dayEvidence } : {}),
     ...(options.clockJump ? { clockJump: options.clockJump } : {}),
     ...(options.laterApproval ? { laterApproval: options.laterApproval } : {}),
+    ...(options.stopPressAt ? { stopPress: { at: options.stopPressAt, card: STOP_ID } } : {}),
     queue: { revision: 290, orderValid: true, unpositionedCount: 0, ordered: (options.delegation ? DELEGATED_ACTIONS.map((a) => `arcadia/${a}`) : SCOPED).map((orderKey) => ({ orderKey })) },
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
@@ -695,6 +698,24 @@ describe("start-run executor: Decision 0173 presses within the operator's day ap
       const result = b.run();
       expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
       expect(result.receipt!.reason).toMatch(/^Decision 0173: WINDOW_EXPIRED: the day ended before activation; no activation/);
+      expect(b.sequence()).not.toContain("production activate");
+    }, 120_000);
+  });
+  describe("an operator STOP pressed while a press runs and production is Off", () => {
+    it("refuses at P3, before the allowance", () => {
+      const b = box({ dayGrant: fresh(FIRST.label), stopPressAt: "production freeze-check" });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P3", allowanceConsumed: false, mutations: [] });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: DAY_ENDED_BY_OPERATOR: the STOP card /);
+      expect(existsSync(b.marker)).toBe(false);
+    }, 120_000);
+    it("refuses at P6, before activation", () => {
+      const b = box({ dayGrant: fresh(FIRST.label), stopPressAt: "start-run sign-in" });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: DAY_ENDED_BY_OPERATOR: the STOP card /);
       expect(b.sequence()).not.toContain("production activate");
     }, 120_000);
   });

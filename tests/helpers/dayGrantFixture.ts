@@ -106,6 +106,19 @@ export function writeStartPress(library: string, spec: PressSpec, index: number)
   writeFileSync(path.join(library, "runs", spec.card, run, "receipt.json"), JSON.stringify({ id: spec.card, runId: run, mode: "run", outcome: "refused", phase: "P2", reason: `refused for the fixture reason of ${spec.card}`, record: { operatorRunId: id }, ...spec.receipt }));
 }
 
+/** The STOP card every fixture card pins. */
+export const STOP_ID = "restore-off-production";
+
+/** A press of a STOP card while production is Off: a press record and no policy receipt. */
+export function writeStopPress(library: string, at: number, options: { card?: string; run?: unknown } = {}): void {
+  const card = options.card ?? STOP_ID;
+  const id = "20261104000000000-stop";
+  const dir = path.join(library, "runs", "operator", card, id);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "run.json"), options.run === undefined ? JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: id, scriptId: card, status: "succeeded", startedAt: iso(at) }) : String(options.run));
+  writeFileSync(path.join(dir, "descriptor.json"), "{}");
+}
+
 /** Production's moves as `start-run day-evidence` reports them: each step moves the revision by one from `baseline`. */
 export function evidenceOf(baseline: number, now: number, steps: Array<{ activate: string; admitted?: number } | { off: string }>): { evidence: DayEvidence; revision: number } {
   const evidence: DayEvidence = { transitions: [], activations: [] };
@@ -138,6 +151,8 @@ export interface DayScenario {
   /** Change the files after the card was pinned, or add a later approval. */
   after?: (library: string, approval: ApprovalFiles, now: number) => void;
   plan?: string;
+  /** The card's pinned STOP id, when it is not the fixture's. */
+  offId?: string;
 }
 
 /** Every scenario, relative to `now` so the executor can run them on the real clock. */
@@ -172,6 +187,15 @@ export function dayScenarios(now: number): DayScenario[] {
     { label: "an operator STOP card ending the day", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "restore-off-production-20261104T100000Z-1" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
     { label: "the dashboard Off switch ending the day", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "dashboard-toggle-1-abcd" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
     { label: "Rowan's own Off, which does not end the day", code: "none", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
+    { label: "an operator STOP pressed while production is Off, with no policy receipt", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt"), after: (library) => writeStopPress(library, m(20)) },
+    { label: "a refused or failed press of the STOP card, which still ends the day", code: "DAY_ENDED_BY_OPERATOR", attempt: 1, previous: null, after: (library) => writeStopPress(library, m(20), { run: JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: "20261104000000000-stop", scriptId: STOP_ID, status: "failed", startedAt: iso(m(20)) }) }) },
+    { label: "a STOP by the id the card pins, whatever it is called", code: "DAY_ENDED_BY_OPERATOR", attempt: 1, previous: null, offId: "a-custom-stop", after: (library) => writeStopPress(library, m(20), { card: "a-custom-stop" }) },
+    { label: "a STOP of the family a card pins another id over", code: "DAY_ENDED_BY_OPERATOR", attempt: 1, previous: null, offId: "a-custom-stop", after: (library) => writeStopPress(library, m(20), { card: "restore-off-production-bug-plan" }) },
+    { label: "a STOP before the approval, which opened a new day", code: "none", attempt: 1, previous: null, after: (library) => writeStopPress(library, m(70)) },
+    { label: "a card naming the day a STOP ended after a later approval", code: "APPROVAL_SUPERSEDED", attempt: 1, previous: null, after: (library) => { writeStopPress(library, m(20)); writeDayApproval(library, { card: "approve-later-day", run: "20261104T100000Z-888", press: "20261104100000000-later", pressedAt: m(5) }); } },
+    { label: "a STOP press whose record cannot be read", code: "PRESS_UNREADABLE", attempt: 1, previous: null, after: (library) => writeStopPress(library, m(20), { run: "{not json" }) },
+    { label: "a STOP press with no readable start time", code: "PRESS_UNREADABLE", attempt: 1, previous: null, after: (library) => writeStopPress(library, m(20), { run: JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: "20261104000000000-stop", scriptId: STOP_ID, status: "succeeded", startedAt: "not a time" }) }) },
+    { label: "an approval receipt that is gone", code: "APPROVAL_MISSING", attempt: 1, previous: null, after: (_l, a) => rmSync(a.receiptPath) },
     { label: "an operator Off shaped like the executor's, naming no run", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "start-a-operator-stop-off" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
     { label: "an Off naming a run that did not return its Grant", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "start-a-20261104T100000Z-1-off" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
     { label: "a refused re-press of a card whose earlier press admitted a Session", code: "none", attempt: 2, presses: [started("start-a", 50), { card: "start-a", id: "20261104000000000-start-a-again", at: m(40), receipt: { reason: "the one-shot START allowance is consumed" } }], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named("start-a/20261104000000000-start-a-again", "consumed-card", "no-session") },

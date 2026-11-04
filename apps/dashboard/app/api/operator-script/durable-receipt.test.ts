@@ -77,7 +77,7 @@ describe("Operator endpoint projects shared runner receipts", () => {
     const consumed = JSON.parse(readFileSync(path.join(library, `${id}.consumed.json`), "utf8")) as { runId: string };
     const chain = inspectDayGrantChain({
       library, approvalCard: id, approvalRun: consumed.runId, approvalReceiptSha256: null, approvalPressSha256: null, now: new Date(), evidence: { transitions: [], activations: [] }, policyRevision: 91, excludePress: null,
-      scope: { project: "arcadia", plan, provider: "claude-code-cli", concurrency: 1, spendDecision: "0130" }, previous: null, attempt: 1
+      scope: { project: "arcadia", plan, provider: "claude-code-cli", concurrency: 1, spendDecision: "0130", offId: "restore-off-production" }, previous: null, attempt: 1
     });
     expect(chain.window.opensAt).toBe(run.startedAt);
     expect(chain.window.closesAtMs - chain.window.opensAtMs).toBe(24 * 3_600_000);

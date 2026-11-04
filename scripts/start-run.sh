@@ -458,7 +458,7 @@ const rj=(f)=>{try{return JSON.parse(fs.readFileSync(f,"utf8"))}catch{return nul
 const ls=(f)=>{try{return fs.readdirSync(f)}catch(e){if(e.code==="ENOENT"||e.code==="ENOTDIR")return [];fail("PRESS_UNREADABLE: "+f+" cannot be listed ("+e.code+"), so earlier presses cannot be counted or ruled out; preserve it and stop for the operator")}};
 const EARLIEST=Date.parse("2026-11-03T19:26:51Z");
 const idTime=(name)=>{const m=/^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})-/.exec(name);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6],+m[7]):null};
-const scanPresses=(lib,opens)=>{const ops=p.join(lib,"runs","operator");
+const scanPresses=(lib,opens,offId)=>{const ops=p.join(lib,"runs","operator");
   // Fail closed: a press since Decision 0170 that cannot be read could be a re-press to count or a later approval.
   for(const card of ls(ops))for(const name of ls(p.join(ops,card))){const dir=p.join(ops,card,name);let isDir=false;
     try{isDir=fs.statSync(dir).isDirectory()}catch(e){if(e.code!=="ENOENT")fail("PRESS_UNREADABLE: the press record "+card+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator")}
@@ -466,7 +466,13 @@ const scanPresses=(lib,opens)=>{const ops=p.join(lib,"runs","operator");
     const run=rj(p.join(dir,"run.json"));if(time===null&&run&&Date.parse(run.startedAt)<EARLIEST)continue;
     if(!run||!rj(p.join(dir,"descriptor.json"))||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==name)fail("PRESS_UNREADABLE: the press record "+card+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator");}
   for(const other of ls(ops))for(const op of ls(p.join(ops,other))){const dir=p.join(ops,other,op);if(!(rj(p.join(dir,"descriptor.json"))||{}).dayGrant)continue;const r=rj(p.join(dir,"run.json"))||{};
-    if(r.status==="succeeded"&&r.press===undefined&&r.browserPress===true&&fs.existsSync(p.join(dir,"day-grant.claimed"))&&Date.parse(r.startedAt)>opens)fail("APPROVAL_SUPERSEDED: the operator approved a later day with "+other+"/"+op+"; a card names the latest approval");}};
+    if(r.status==="succeeded"&&r.press===undefined&&r.browserPress===true&&fs.existsSync(p.join(dir,"day-grant.claimed"))&&Date.parse(r.startedAt)>opens)fail("APPROVAL_SUPERSEDED: the operator approved a later day with "+other+"/"+op+"; a card names the latest approval");}
+  // Any press of the STOP card since the approval ends the day; one before it does not, so a later approval opens a new day.
+  // A STOP pressed while production is Off writes no policy receipt, so its press is the only record.
+  for(const stop of ls(ops)){if(stop!==offId&&!/^restore-off-production(?:-|$)/.test(stop))continue;
+    for(const name of ls(p.join(ops,stop))){const dir=p.join(ops,stop,name);if(!fs.statSync(dir).isDirectory())continue;const time=idTime(name);if(time!==null&&time<EARLIEST)continue;
+      const t=Date.parse((rj(p.join(dir,"run.json"))||{}).startedAt);if(!Number.isFinite(t))fail("PRESS_UNREADABLE: the press record "+stop+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator");
+      if(t>=opens)fail("DAY_ENDED_BY_OPERATOR: the STOP card "+stop+" was pressed at "+new Date(t).toISOString()+": an operator STOP ends the day, even with production already Off");}}};
 '
 check_day_grant() {
   local out evidence
@@ -515,7 +521,7 @@ if(now<opens)fail("WINDOW_EXPIRED: the approval press is in the future");
 const baseline=a.record.policyRevisionAtApproval;
 if(!Number.isInteger(baseline))fail("APPROVAL_NOT_PRESSED: the approval receipt records no policy revision");
 const ops=p.join(lib,"runs","operator");
-scanPresses(lib,opens);
+scanPresses(lib,opens,me.offId);
 // The scope the operator approved. P1 and P2 prove the Plan is active and the pinned Actions head its governed queue.
 if(me.project!==g.project||me.plan!==g.plan||me.provider!==g.provider||me.concurrency!==g.concurrency||me.spendDecision!==g.spendDecision)fail("SCOPE_NOT_APPROVED: this card scope ("+me.project+"/"+me.plan+", "+me.provider+", concurrency "+me.concurrency+", spend Decision "+me.spendDecision+") is not the Plan, provider and spend Decision the operator approved");
 // Every move of production since the approval.
@@ -584,13 +590,13 @@ process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"
   DAY_CHAIN_KEY="$(jq -r '.chainKey' <<<"$out")"
   DAY_APPROVAL_OPENS="$(jq -r '.approvalPressAt' <<<"$out")"
 }
-# Decision 0173: every power ends at hour 24, and only the operator's latest approval opens the day. A press that began
-# inside the window still may not take its allowance or activate after it, or after a newer day press finished.
+# Decision 0173: every power ends at hour 24, only the operator's latest approval opens the day, and an operator STOP ends it.
+# A press that began inside the window still may not take its allowance or activate after any of those.
 check_day_window() {
   local out
   [[ "$DELEGATION_DECISION" == 0173 ]] || return 0
   node -e 'process.exit(Date.now() < Date.parse(process.argv[1]) ? 0 : 1)' "$DAY_WINDOW_CLOSES" || refuse "Decision 0173: WINDOW_EXPIRED: $1"
-  out="$(node -e "$DAY_PRESS_SCAN_JS"'scanPresses(process.argv[1],Date.parse(process.argv[2]));' "$LIBRARY_DIR" "$DAY_APPROVAL_OPENS")" || refuse "Decision 0173: $out"
+  out="$(node -e "$DAY_PRESS_SCAN_JS"'scanPresses(process.argv[1],Date.parse(process.argv[2]),process.argv[3]);' "$LIBRARY_DIR" "$DAY_APPROVAL_OPENS" "$OFF_ID")" || refuse "Decision 0173: $out"
 }
 claim_operator_press_record() {  # exclusive; called once every other P0 check has passed
   [[ "$MODE" == run ]] || return 0

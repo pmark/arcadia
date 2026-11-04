@@ -12,7 +12,7 @@ import { dayGrantLauncher, inspectDayGrantChain, isOperatorBrowserPress, refusal
 import { delegatedPressMarker, StartRunDelegationError } from "../src/operatorActions/startRunDelegation.js";
 import { validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { ensureProductionPolicyTables, readDayGrantEvidence } from "../src/production/policy.js";
-import { DAY_CARD, DAY_PLAN, DAY_RUN, dayGrantPins, dayScenarios, evidenceOf, named, pressKey, TAILNET_PRESS_HEADERS, writeDayApproval, writeDayScenario, writeStartPress } from "./helpers/dayGrantFixture.js";
+import { DAY_CARD, DAY_PLAN, DAY_RUN, dayGrantPins, dayScenarios, evidenceOf, named, pressKey, STOP_ID, TAILNET_PRESS_HEADERS, writeDayApproval, writeDayScenario, writeStartPress } from "./helpers/dayGrantFixture.js";
 
 /**
  * Decision 0173: the computation behind `start-run pins --day-grant-from`, the day-grant card and its executor, the press
@@ -25,7 +25,7 @@ afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, {
 const tempDir = (prefix: string) => { const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), prefix))); directories.push(dir); return dir; };
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const NOW = Date.parse("2026-11-10T12:00:00Z");
-const SCOPE = { project: "arcadia", plan: DAY_PLAN, provider: "claude-code-cli", concurrency: 1, spendDecision: "0130" };
+const SCOPE = { project: "arcadia", plan: DAY_PLAN, provider: "claude-code-cli", concurrency: 1, spendDecision: "0130", offId: STOP_ID };
 const code = (run: () => unknown) => { try { run(); } catch (error) { return error instanceof StartRunDelegationError ? error.code : String(error); } return "none"; };
 
 describe("Decision 0173 chain", () => {
@@ -34,7 +34,7 @@ describe("Decision 0173 chain", () => {
     const written = writeDayScenario(library, scenario, NOW);
     const result = code(() => inspectDayGrantChain({
       library, approvalCard: written.approval.card, approvalRun: written.approval.run, approvalReceiptSha256: written.approval.receiptSha256, approvalPressSha256: written.approval.pressSha256,
-      now: new Date(NOW), evidence: written.evidence, policyRevision: written.policyRevision, excludePress: null, scope: scenario.plan ? { ...SCOPE, plan: scenario.plan } : SCOPE,
+      now: new Date(NOW), evidence: written.evidence, policyRevision: written.policyRevision, excludePress: null, scope: { ...SCOPE, ...(scenario.plan ? { plan: scenario.plan } : {}), ...(scenario.offId ? { offId: scenario.offId } : {}) },
       previous: scenario.previous ?? null, attempt: scenario.attempt
     }));
     expect(result).toBe(scenario.code);
@@ -150,6 +150,10 @@ describe("Decision 0173 press marker and the /actions gate", () => {
     ["the host's own browser at 127.0.0.1", { origin: "http://127.0.0.1:3020", host: "127.0.0.1:3020" }],
     ["the host's own browser at localhost", { origin: "http://localhost:3020", host: "localhost:3020" }],
     ["a name under localhost", { origin: "http://arcadia.localhost:3020", host: "arcadia.localhost:3020" }],
+    ["localhost with a trailing dot", { origin: "http://localhost.:3020", host: "localhost.:3020" }],
+    ["a name under localhost with a trailing dot", { origin: "http://foo.localhost.:3020", host: "foo.localhost.:3020" }],
+    ["localhost with several trailing dots", { origin: "http://localhost..:3020", host: "localhost..:3020" }],
+    ["127.0.0.1 with a trailing dot", { origin: "http://127.0.0.1.:3020", host: "127.0.0.1.:3020" }],
     ["IPv6 loopback", { origin: "http://[::1]:3020", host: "[::1]:3020" }],
     ["the rest of 127/8", { origin: "http://127.1.2.3:3020", host: "127.1.2.3:3020" }],
     ["the IPv4-mapped loopback", { origin: "http://[::ffff:7f00:1]:3020", host: "[::ffff:7f00:1]:3020" }],

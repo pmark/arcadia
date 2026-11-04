@@ -46,6 +46,15 @@ if (state.laterApproval && state.laterApproval.at === key2 && !args.includes("--
   writeFileSync(path.join(dir, "day-grant.claimed"), "20261104T100000Z-888\n");
 }
 
+// A test's operator STOP while production is Off: the card writes no policy receipt, only its press record.
+if (state.stopPress && state.stopPress.at === key2 && !args.includes("--check-only") && process.env.ARCADIA_OPERATOR_SCRIPT_ID) {
+  const press = "20991231235959000-stop";
+  const dir = path.join(path.dirname(process.env.ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR), "runs", "operator", state.stopPress.card, press);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(path.join(dir, "run.json"), JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: press, scriptId: state.stopPress.card, status: "succeeded", startedAt: new Date().toISOString() }));
+  writeFileSync(path.join(dir, "descriptor.json"), "{}");
+}
+
 function realScope() {
   const input = {
     intent: get("--intent"), projects: [get("--project")], plans: [get("--plan")],

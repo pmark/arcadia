@@ -37,6 +37,11 @@ export const ATTEMPT_COUNT_EARLIEST = "2026-11-03T19:26:51Z";
  * paths (`<card>-<run>`, `dashboard-toggle-*`) and a receipt's id never changes afterwards.
  */
 export const ROWAN_OFF_REQUEST = /^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/**
+ * The operator's STOP card: the card's pinned `offId`, and any card of this family whatever a card pins. A STOP pressed while
+ * production is Off writes no policy receipt (it records `already_inactive`), so its press is the only record that it ended the day.
+ */
+export const STOP_CARD = /^restore-off-production(?:-|$)/;
 export const DAY_GRANT_EXECUTOR_PATH = "scripts/day-grant.sh";
 
 export interface DayGrantPins {
@@ -156,7 +161,7 @@ export function validateDayGrantPrevious(value: unknown): DayGrantPrevious {
 }
 
 const isLoopback = (hostname: string): boolean => {
-  const name = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  const name = hostname.toLowerCase().replace(/^\[|\]$/g, "").replace(/\.+$/, "");
   return name === "localhost" || name.endsWith(".localhost") || name === "::1" || name === "::" || name === "0.0.0.0" || /^127\.\d+\.\d+\.\d+$/.test(name) || /^::ffff:7f[0-9a-f]{2}:/.test(name);
 };
 
@@ -198,7 +203,7 @@ export interface DayGrantWindow { opensAt: string; closesAt: string; closesAtMs:
  * The approval itself, from the library: its receipt and press record unchanged, a press through the runner by a browser
  * request with no delegated marker, consumed by this very run, with a window of exactly 24 hours from the press.
  */
-export function inspectDayApproval(library: string, card: string, run: string, receiptSha: string | null, pressSha: string | null, now: Date): DayGrantWindow {
+export function inspectDayApproval(library: string, card: string, run: string, receiptSha: string | null, pressSha: string | null, now: Date, offId: string): DayGrantWindow {
   if (!slug.test(card) || !runIdPattern.test(run)) refuse("INVALID_DELEGATION", "the approval card or run id is malformed");
   const receiptPath = path.join(library, "runs", card, run, "receipt.json");
   if (!existsSync(receiptPath)) refuse("APPROVAL_MISSING", `the approval receipt ${receiptPath} does not exist`);
@@ -252,6 +257,19 @@ export function inspectDayApproval(library: string, card: string, run: string, r
       if (record?.status === "succeeded" && record.press === undefined && record.browserPress === true && existsSync(path.join(dir, "day-grant.claimed")) && Date.parse(String(record.startedAt)) > opensAtMs) {
         refuse("APPROVAL_SUPERSEDED", `the operator approved a later day with ${other}/${otherPress}; a card names the latest approval`);
       }
+    }
+  }
+  // Any press of the STOP card since the approval ends the day; one before it does not, so a later approval opens a new day.
+  for (const stopCard of listDirectory(path.join(library, "runs", "operator"))) {
+    if (stopCard !== offId && !STOP_CARD.test(stopCard)) continue;
+    for (const stopPress of listDirectory(path.join(library, "runs", "operator", stopCard))) {
+      const dir = path.join(library, "runs", "operator", stopCard, stopPress);
+      if (!statSync(dir).isDirectory()) continue;
+      const time = pressIdTime(stopPress);
+      if (time !== null && time < Date.parse(ATTEMPT_COUNT_EARLIEST)) continue;
+      const startedAt = Date.parse(String(readJson<PressRecord>(path.join(dir, "run.json"))?.startedAt));
+      if (!Number.isFinite(startedAt)) refuse("PRESS_UNREADABLE", `the press record ${stopCard}/${stopPress} cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator`);
+      if (startedAt >= opensAtMs) refuse("DAY_ENDED_BY_OPERATOR", `the STOP card ${stopCard} was pressed at ${new Date(startedAt).toISOString()}: an operator STOP ends the day, even with production already Off`);
     }
   }
   return { opensAt: String(press!.startedAt), closesAt: new Date(closesAtMs).toISOString(), opensAtMs, closesAtMs, baselineRevision: baselineRevision as number, pins: validPins, receiptSha256, pressSha256 };
@@ -384,7 +402,7 @@ export interface InspectDayGrantInput {
   policyRevision: number | null;
   /** The press running right now, not an earlier one. */
   excludePress: string | null;
-  scope: { project: string; plan: string; provider: string; concurrency: number; spendDecision: string };
+  scope: { project: string; plan: string; provider: string; concurrency: number; spendDecision: string; offId: string };
   /** The card's named cause; undefined computes the chain before Rowan has named one. */
   previous?: DayGrantPrevious | null;
   attempt?: number;
@@ -395,7 +413,7 @@ export interface InspectDayGrantInput {
  * StartRunDelegationError. Decision 0170's limit counts across days; refused re-presses count within this day's window.
  */
 export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain {
-  const window = inspectDayApproval(input.library, input.approvalCard, input.approvalRun, input.approvalReceiptSha256, input.approvalPressSha256, input.now);
+  const window = inspectDayApproval(input.library, input.approvalCard, input.approvalRun, input.approvalReceiptSha256, input.approvalPressSha256, input.now, input.scope.offId);
   const { scope } = input;
   if (scope.project !== window.pins.project || scope.plan !== window.pins.plan || scope.provider !== window.pins.provider || scope.concurrency !== window.pins.concurrency || scope.spendDecision !== window.pins.spendDecision) {
     refuse("SCOPE_NOT_APPROVED", `this card's scope (${scope.project}/${scope.plan}, ${scope.provider}, concurrency ${scope.concurrency}, spend Decision ${scope.spendDecision}) is not the Plan, provider and spend Decision the operator approved`);

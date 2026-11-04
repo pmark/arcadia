@@ -332,11 +332,13 @@ pinned descriptor, so per-card review is small.
   concurrency and spend Decision are the approved ones; every policy move since the
   approval is a START card's, the executor's own return to Off or Rowan's own Off
   (request id `rowan-off-<slug>`; any other Off ends the day, so use that id or lose
-  the day); fewer than 3 activations since Decision 0170 admitted a Session; fewer
+  the day); no press of the card's `offId` or any `restore-off-production-*` STOP card
+  since the approval, because a STOP while Off writes no policy receipt (a later
+  approval opens a new day); fewer than 3 activations since Decision 0170 admitted a Session; fewer
   than 2 re-presses after a refusal ran this day and the same refusal has not
   recurred; no two attempts share a named cause. P1 and P2 prove the Plan is active
-  and its governed queue holds the pinned Actions. The window and the latest approval
-  are checked again before the allowance and before activation. The cause, whether it is cleared, the
+  and its governed queue holds the pinned Actions. The window, the latest approval
+  and a STOP are checked again before the allowance and before activation. The cause, whether it is cleared, the
   pre-mortem's content, the coordination Issue record and the Discord alert are
   Rowan's duty: they are recorded or checked for presence, not proved. A new Plan or
   a higher attempt limit needs the operator. Decision 0163's chain stays as it was,
