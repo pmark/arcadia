@@ -5,6 +5,7 @@ import "./workspace.css";
 import { WorkspaceAskProvider } from "../../components/workspace/workspace-ask";
 import { WorkspaceGoProvider } from "../../components/workspace/workspace-next-move";
 import { PresenceMenu } from "../../components/workspace/presence/presence-menu";
+import { WorkspaceActivity } from "../../components/workspace/workspace-activity";
 import { SystemStatusProvider, WorkspaceStatusPill, WorkspaceWeather } from "../../components/workspace/sky/system-status";
 
 // Only this opted-in surface owns these properties; existing dashboard pages keep their theme.
@@ -15,6 +16,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
     <WorkspaceBackdrop />
     <SystemStatusProvider>
       <WorkspaceWeather />
+      <WorkspaceActivity />
       <a className="workspace-skip" href="#workspace-context">Skip to selected context</a>
       <header className="workspace-header"><Link href="/workspace" className="workspace-wordmark">arcadia</Link><span>space for your work</span><Link href="/workspace/feed">Feed</Link><Link href="/">Dashboard</Link><WorkspaceStatusPill /><PresenceMenu /></header>
       <WorkspaceAskProvider><WorkspaceGoProvider>{children}</WorkspaceGoProvider></WorkspaceAskProvider>
