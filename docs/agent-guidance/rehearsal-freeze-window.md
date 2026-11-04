@@ -23,6 +23,14 @@ arcadia production status    # Active · … means the window is open
 treat the window as open. The orchestrator also announces opening and closing
 on the round's coordination Issue; read it, but trust `production status`.
 
+A START card waiting to be pressed also opens the window for merges: its
+`startRun.reviewedRevision` pins origin/main, so a merge before the press makes
+the press refuse. `arcadia work monitor` prints `Run window: OPEN` (and
+`runWindow` in `--json`) while production is Active or a card that is not
+consumed or expired pins the local origin/main, naming the card and its
+`expires_at`. Hold merges until then. It is a signal only: it blocks nothing,
+and `UNKNOWN` means a source could not be read.
+
 ## Forbidden inside the window
 
 - `reinstall-go-broker.sh`, `arcadia go-broker install` and
