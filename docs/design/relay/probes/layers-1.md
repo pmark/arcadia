@@ -14,6 +14,15 @@ the sky, star and weather canvases. Raw results: [`layers-1-results.json`](layer
 
 ## Results
 
+**Update, 2026-11-04.** The prototype now settles its weather calmer and shows routes rather than stacked cards. A rerun gave these open-sky shares on a
+phone: 59.7% resting, 17.8% with an answer up, 9.1% with the thread open and 19% above a simulated keyboard. Relay was made modal after that run, so under
+an open overlay the sky is now dimmed as well. Worst text contrast was 7.74:1, across the 22 kinds of text that run measured.
+
+Calmer weather costs separation. Lowest colour distances at rest are now 3.6 for Work moving against Blocked, 4 for Work moving against Needs you, and 5 for
+Needs you against Blocked. Arrivals and swells aren't counted, because this measures settled weather. So the settled sky carries the feeling, and the pill's dot
+and words carry the exact state. The tables below are from the earlier version. `layers-1-results.json` holds the latest finished run, so its figures don't match them.
+
+
 **Text and controls.** Worst case 8.59:1 (`.card p`, laptop, light palette, day), against a floor of 4.5:1. No text sits on bare sky.
 The probe samples every visible element for 24 kinds of text, control and label, including the reasons panel, menu options, starter
 suggestions and the pinned-draft line. An earlier list had a 25th, `.muted`, dropped because it shows only after a menu tap, so it

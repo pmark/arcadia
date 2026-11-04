@@ -323,7 +323,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: 43485fc367d9b730281a8bab0c8616afd0bbea6e7260d1826587394d93aa3925
+    sha256: 6ab5bc2910616036f95264120c46d833ca14f2f1729aa34c4efd3f20172b33e9
   - id: S029
     title: Operator's approval of the layer design
     kind: operator
@@ -331,6 +331,20 @@ sources:
     retention: repo
     path: sources/S029-layer-design-approval.md
     sha256: ff59a6638c82eaddb848b6313758c073479d7d483f47637553ee06b5f9bfafcf
+  - id: S030
+    title: Operator's feedback after testing on an iPhone 15 Pro
+    kind: operator
+    added: 2026-11-04
+    retention: repo
+    path: sources/S030-iphone-test-feedback.md
+    sha256: cf2d23a2d688078a40cff59a5118a8593c545e620545fd12951d9e01edd58e77
+  - id: S031
+    title: Operator's direction on responsiveness and symbolic defaults
+    kind: operator
+    added: 2026-11-04
+    retention: repo
+    path: sources/S031-responsive-symbolic-default.md
+    sha256: 8664ef94879f8dde09126e261b35d68cd9ace5590085877f207dbc29cebc443d
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent
@@ -3090,6 +3104,104 @@ concepts:
         locator: 'The foreground is a conversation'
     position: rejected
     reason: S023 makes Relay an overlay above a view that defines context. Inline cards and cues survive inside the overlay.
+  - id: C-077
+    title: "The interface never waits for data"
+    kind: interface
+    statement: "A tap changes the route and screen at once, data fills in afterwards, and a line says what is being read."
+    origins:
+      - source: S031
+        locator: whole file
+      - source: S030
+        locator: activity indication
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/components/workspace/workspace-view.tsx
+    position: leaning
+    serves:
+      - REQ-010
+      - REQ-017
+    reason: Awaits the operator approving the revision after the phone test.
+  - id: C-078
+    title: "Routes as the symbolic context layer"
+    kind: interface
+    statement: "Work appears as routes showing past, present and future, with one plain sentence and depth on request. Plans and Actions stay in the agents' language behind a disclosure."
+    origins:
+      - source: S030
+        locator: simplify the context layer
+      - source: S031
+        locator: whole file
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/components/workspace/workspace-view.tsx
+    position: leaning
+    serves:
+      - REQ-015
+      - REQ-016
+    reason: Awaits the operator approving the revision after the phone test.
+  - id: C-079
+    title: "Weather with rhythm"
+    kind: interface
+    statement: "A change lands vividly and fades in about five seconds. Each state then settles to calm, with a slow breath and an occasional swell."
+    origins:
+      - source: S030
+        locator: dust storm
+    fit:
+      status: conflicts
+      evidence:
+        - apps/dashboard/lib/system-sky.ts
+        - apps/dashboard/components/workspace/sky/weather.ts
+    position: leaning
+    serves:
+      - REQ-015
+    reason: Awaits the operator approving the revision after the phone test.
+  - id: C-080
+    title: "One question at a time, answered in place"
+    kind: interface
+    statement: "What needs the operator appears in Relay as one short question with consequences on its buttons, and the full record stays behind a disclosure."
+    origins:
+      - source: S030
+        locator: Decisions seem lightweight
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/components/workspace/sky/system-status.tsx
+    position: leaning
+    serves:
+      - REQ-004
+    reason: Awaits the operator approving the revision after the phone test.
+  - id: C-081
+    title: "Open Relay is modal"
+    kind: interface
+    statement: "While open, Relay is modal on every device. The view recedes behind a scrim using only compositor effects, and tapping outside puts it down."
+    origins:
+      - source: S031
+        locator: whole file
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/app/workspace/workspace.css
+    position: leaning
+    serves:
+      - REQ-017
+    reason: Awaits the operator approving the revision after the phone test.
+  - id: C-082
+    title: "A light status read"
+    kind: interface
+    statement: "Status comes from one small cached summary of counts, rather than polling full lists from every view."
+    origins:
+      - source: S030
+        locator: slow, dense, unresponsive
+    fit:
+      status: conflicts
+      evidence:
+        - apps/dashboard/components/workspace/sky/system-status.tsx
+    position: leaning
+    serves:
+      - REQ-015
+      - REQ-010
+    reason: Awaits the operator approving the revision after the phone test.
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?

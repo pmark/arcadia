@@ -12,6 +12,73 @@ exploratory advice, not conformance to a guide. The rules below come from the op
 earlier Workspace designs (S026 to S028), the code, and one probe. The look and feel are taste, marked where it matters.
 Confidence is moderate: the structure is checked against code and pixels, but nobody has used it on a real phone yet.
 
+## Revised after the phone test
+
+**The operator tested step 1 on an iPhone 15 Pro ([S030](sources/S030-iphone-test-feedback.md), [S031](sources/S031-responsive-symbolic-default.md)). Where this section
+conflicts with the rest of this document, this section wins.** These changes are proposed and await the operator's approval. The
+[prototype](../prototypes/relay-workspace-layers.html) shows them.
+
+**Four rules:**
+
+1. **The interface never waits for data.** A tap changes the route and the screen at once. Data fills in afterwards, with a line saying
+   what it's reading. Slow data is allowed, and silent waiting isn't.
+2. **Symbols and summaries by default, with depth on request.** Plans and Actions are written for agents. The operator sees the shape of
+   the work and one plain sentence, and "Read the full record" loads the rest only when asked.
+3. **One question at a time, answered in place.** "What needs me" opens one short question in Relay, with two buttons, each with its
+   consequence on one line, and "Why?" behind a disclosure. The mission already says Arcadia "surfaces exactly one question". Moving real
+   Decision answers into Relay still needs a Decision.
+4. **Weather has rhythm.** A change lands vividly and fades in about five seconds. Each state then settles to something calm and alive: a
+   slow breath in its colour and an occasional swell. Nothing stays constant.
+
+**Open Relay is modal on every device.** The view recedes behind a scrim, and tapping outside puts Relay down. This replaces "the View makes
+room and stays usable". The status strip stays readable. The effects use only `transform`, `opacity` and `filter`, so the compositor can
+run them without layout.
+
+**What the context layer becomes.** Each piece of work is a route: where it's been, where it is, and what's ahead. A portfolio is a few
+routes, a Plan is one route with named stops, and an Action is one sentence.
+
+### Why the operator came to the Workspace
+
+| Scenario | Source | What it needs from Relay and the View |
+|---|---|---|
+| 1. Give input | S030 | One question at a time, with consequences on the buttons, answered in place |
+| 2. Create or change a Project, Design or Plan | S030 | Conversation, with the thing taking shape in the View |
+| 3. Observe and control production | S030 | The sky and routes to watch; Stop is always one obvious step away |
+| 4. Catch up: what happened while I was away? | Mine, from the mission's "almost no time" | A short summary on arrival, with what changed since last time |
+| 5. Capture a thought in five seconds | Mine, from the mission's "captures raw intent" | Type, speak or share, from anywhere, without choosing a Project |
+| 6. Judge what came back | Mine, from the north star's "product judgment, feedback" | See the Artifact, then accept it or send it back in words |
+| 7. Get set up | Mine, needed only for other operators | Connect a repository, credentials and limits. Deferred, because first-timer onboarding is |
+
+### What the phone test showed
+
+Measured on 2026-11-04 with WebKit at iPhone 15 Pro size, against the live dashboard, with machine load around 60. Treat the numbers as rough.
+
+| Measure | Live dashboard (`next dev`) | Production build |
+|---|---|---|
+| Page shell | 6.0 s | 1.5 s |
+| Tapping Feed until it shows | 79 s | 1.1 s |
+| Back and Forward | 159 ms and 105 ms, and both work | 82 ms and 58 ms |
+
+- **Back and Forward work.** The operator's correction was right: the delay looked like a broken button.
+- **The live dashboard runs `next dev`,** which compiles pages on demand and sends about 8 MB of unoptimized script. A production build is the
+  biggest single gain, and it's the operator's script to change.
+- **Step 1 made this worse.** It put the Feed's reads on every view:
+  - `/api/approvals` is about 1 MB, and it's fetched every 15 s.
+  - `/api/next-steps` took 105 s, and it's fetched every 30 s.
+  - Its 30 s production timeout then read a slow answer as "Can't read production", which is false. These need a light summary read.
+- **A Decision page is enormous.** Tapping one took 60 s and rendered about 85,000 words, or 608 phone screens.
+
+### Revised build order
+
+1. **Lighten what step 1 added:** a small cached status read with counts only, and no false "Can't read production".
+2. **Never wait:** instant feedback and a specific activity line on every tap, and a production build for the live dashboard.
+3. **Weather rhythm:** settled states, vivid arrivals, breath and swells, measured on the phone.
+4. **The overlay,** modal, with the composer in it.
+5. **Routes** as the context layer.
+6. **One question at a time,** once a Decision allows answers in Relay.
+
+The earlier steps 3 to 5 follow, unchanged.
+
 ## The operator's direction
 
 > "the UI to be layered such that the Relay interaction appears as an overlay, always available from any context. The

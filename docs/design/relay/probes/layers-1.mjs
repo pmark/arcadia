@@ -11,7 +11,7 @@ const html = readFileSync(join(here, "../../prototypes/relay-workspace-layers.ht
 const shotDir = process.argv[2] ?? null;
 const SKIES = ["dawn", "day", "dusk", "night"], SCHEMES = ["dark", "light"], STATUS = ["clear", "active", "attention", "storm", "static"];
 const VIEWPORTS = { phone: { width: 390, height: 844 }, laptop: { width: 1440, height: 900 } };
-const TEXT = ["#wordmark", "#pill-label", "#pill-weather", "#reasons li", "#read-at", ".crumbs a", ".crumbs [aria-current]", ".card h1", ".card h2", ".card p", ".card dt", ".card dd", ".row strong", ".row span", ".more summary", ".ghost", ".chip-btn", "#input", "#chip", "#pin-text", ".mine", ".where", ".reply p", ".fact"];
+const TEXT = ["#wordmark", "#pill-label", "#pill-weather", "#reasons li", "#read-at", ".crumbs a", ".crumbs [aria-current]", ".card h1", ".card h2", ".card p", ".card dt", ".card dd", ".row strong", ".row span", ".route-name", ".stop-link", ".ask", ".answer strong", ".answer span", ".depth summary", ".activity", ".ghost", ".chip-btn", "#input", "#chip", "#pin-text", ".mine", ".where", ".reply p", ".fact"];
 const KEYBOARD_H = 500;
 
 const inPage = ({ TEXT, visibleH }) => {
