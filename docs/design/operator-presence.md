@@ -66,9 +66,12 @@ layout, so it keeps the real sol sky. The header's Feed link opens it.
   Every other item links to the control that already answers it; a card step
   goes to its card on `/todo`. The page adds no write path.
   `lib/workspace-feed.ts` builds the order.
-- **Sky.** `lib/system-sky.ts` turns the feed, production and any failed reads
-  into a reading. `components/workspace/sky/system-status.tsx` holds one set of
-  reads in the workspace layout, so every view shows the sky and its status pill.
+- **Sky.** `lib/system-sky.ts` turns counts of the feed's sources, production and
+  any failed reads into a reading. `/api/workspace/status` serves those counts at
+  once and refreshes slow sources behind the request
+  (`lib/workspace-status.ts`). `components/workspace/sky/system-status.tsx` holds
+  that one small read in the workspace layout, so every view shows the sky and its
+  status pill, and only the Feed fetches the full lists.
   `components/workspace/sky/weather.ts` draws the reading on its own canvas over
   the sky.
 - **Journey.** A floating button summarizes the rover fleet at a glance:

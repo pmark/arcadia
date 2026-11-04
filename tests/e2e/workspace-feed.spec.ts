@@ -17,8 +17,6 @@ const nextSteps = { state: "now", nowStep: mergeStep, steps: [mergeStep], hidden
 const pr: DashboardOutstandingPullRequest = { projectId: "arcadia", projectName: "Arcadia", repositoryPath: "/repo", repository: "pmark/arcadia", number: 1768, title: "Propose operator presence draft Plan and prototype", url: "https://github.com/pmark/arcadia/pull/1768", state: "OPEN", isDraft: false, mergeStateStatus: "CLEAN", headBranch: "claude/presence", baseBranch: "main", author: "pmark", reviewDecision: null, createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-01-01T11:00:00Z", checks: [], readiness: "ready", readinessLabel: "Ready for review", summary: "", briefing: null };
 const inventory = { checkedAt: "2030-01-01T12:00:00Z", stale: false, refreshing: false, refreshError: null, incomplete: false, retainedProjectIds: [], snapshot: { generatedAt: "2030-01-01T12:00:00Z", projectsScanned: 1, pullRequests: [pr], errors: [], counts: { total: 1, blocked: 0, checksFailing: 0, checksPending: 0, drafts: 0, ready: 1, mergeReady: 0, unknown: 0 } } };
 
-const production = { generatedAt: "2030-01-01T12:00:00Z", production: { displayState: "inactive_idle" }, productionError: null, worker: { running: false, heartbeat: { timestamp: null, fresh: false, available: false } }, sessions: { active: [], recent: [] }, sessionsError: null };
-
 test("workspace feed shows work over a status sky, the Journey one tap away, and presence in the profile menu", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const repo = path.resolve(import.meta.dirname, "../..");
@@ -36,7 +34,14 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     if (request.method() !== "GET") { writes.push(endpoint); return route.abort(); }
     if (endpoint === "/api/approvals") return todoDown ? route.fulfill({ status: 503, json: { error: "Fixture to-do read refused" } }) : route.fulfill({ json: approvals });
     if (endpoint === "/api/next-steps") return route.fulfill({ json: todoDown ? { ...nextSteps, state: "moving", nowStep: null, steps: [], total: 0 } : nextSteps });
-    if (endpoint === "/api/production-console") return route.fulfill({ json: production });
+    if (endpoint === "/api/workspace/status") {
+      const asOf = Date.now();
+      return route.fulfill({ json: {
+        generatedAt: new Date().toISOString(), counts: todoDown ? { blocking: 0, yours: 0, failing: 0, others: 0, prs: 0 } : { blocking: 1, yours: 3, failing: 0, others: 0, prs: 1 },
+        production: { displayState: "inactive_idle", workerRunning: false, heartbeatFresh: false, liveSessions: 0, stalledSessions: 0 },
+        sources: { "To-do list": { asOf, failed: todoDown }, "next steps": { asOf, failed: false }, "pull requests": { asOf, failed: false }, production: { asOf, failed: false } }
+      } });
+    }
     if (endpoint === "/api/pull-requests") return route.fulfill({ json: todoDown ? { ...inventory, snapshot: { ...inventory.snapshot, pullRequests: [], counts: { ...inventory.snapshot.counts, total: 0, ready: 0 } } } : inventory });
     return route.abort();
   });

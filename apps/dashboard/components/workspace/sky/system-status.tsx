@@ -1,82 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useApprovals } from "../../../hooks/use-approvals";
-import { useNextSteps } from "../../../hooks/use-next-steps";
-import { useProductionCore } from "../../../hooks/use-production-core";
-import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
-import { productionFacts, readFreshness, readSky, settleSky, type SettledSky, type SkyReading } from "../../../lib/system-sky";
-import { buildFeed, type FeedItem } from "../../../lib/workspace-feed";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useWorkspaceStatus } from "../../../hooks/use-workspace-status";
+import { readSky, settleSky, type SettledSky, type SkyReading } from "../../../lib/system-sky";
+import { skySourcesFrom } from "../../../lib/workspace-status";
 import { mountWeather } from "./weather";
 
-interface SystemStatus {
-  sky: SkyReading;
-  items: FeedItem[];
-  /** Sources that could not be read, by name. */
-  problems: string[];
-  loading: boolean;
+const SystemStatusContext = createContext<SkyReading | null>(null);
+
+export function useSystemStatus(): SkyReading {
+  const sky = useContext(SystemStatusContext);
+  if (!sky) throw new Error("useSystemStatus must be used inside SystemStatusProvider.");
+  return sky;
 }
 
-const SystemStatusContext = createContext<SystemStatus | null>(null);
-
-export function useSystemStatus(): SystemStatus {
-  const status = useContext(SystemStatusContext);
-  if (!status) throw new Error("useSystemStatus must be used inside SystemStatusProvider.");
-  return status;
-}
-
-/** Mounted once in the workspace layout: one set of reads per window, and navigation never restarts them. */
+/** Mounted once in the workspace layout: one small read per window, and navigation never restarts it. */
 export function SystemStatusProvider({ children }: { children: ReactNode }) {
-  const approvals = useApprovals();
-  const nextSteps = useNextSteps();
-  const prs = usePullRequestInventory();
-  const core = useProductionCore();
-
-  const items = useMemo(() => buildFeed({ approvals: approvals.hasLoaded ? approvals.approvals : null, nextSteps: nextSteps.data, pullRequests: prs.data }), [approvals.hasLoaded, approvals.approvals, nextSteps.data, prs.data]);
-  // A failed read is a finished read: the alert says so instead of an endless "Reading…".
-  const loading = (!approvals.hasLoaded && !approvals.error) || (!nextSteps.data && !nextSteps.failed) || prs.loading;
-  const problems = useMemo(() => [approvals.error && "To-do list", nextSteps.failed && "next steps", prs.error && !prs.data && "pull requests"].filter((p): p is string => Boolean(p)), [approvals.error, nextSteps.failed, prs.error, prs.data]);
-
-  const lastGood = useRef<Record<string, number>>({});
-  const resumedAt = useRef(0);
-  const [freshness, setFreshness] = useState<{ stale: string[]; resuming: boolean }>({ stale: [], resuming: false });
-  const [tick, setTick] = useState(0);
-  const evaluate = useCallback(() => {
-    const next = readFreshness(lastGood.current, resumedAt.current, Date.now());
-    setFreshness(current => (current.resuming === next.resuming && current.stale.join("|") === next.stale.join("|") ? current : next));
-    setTick(value => value + 1);
-  }, []);
-  const stamp = useCallback((source: string, at: number) => { lastGood.current[source] = at; evaluate(); }, [evaluate]);
-  useEffect(() => { if (approvals.hasLoaded && !approvals.error) stamp("To-do list", Date.now()); }, [stamp, approvals.hasLoaded, approvals.error, approvals.approvals]);
-  useEffect(() => { if (nextSteps.data && !nextSteps.failed) stamp("next steps", Date.now()); }, [stamp, nextSteps.data, nextSteps.failed]);
-  // The inventory says when it was really checked, so remembered or retained pull requests don't count as new.
-  useEffect(() => { if (prs.checkedAt) stamp("pull requests", Date.parse(prs.checkedAt)); }, [stamp, prs.checkedAt]);
-  useEffect(() => { if (core.data && !core.failed) stamp("production", Date.now()); }, [stamp, core.data, core.failed]);
+  const [settling, setSettling] = useState(true);
+  const status = useWorkspaceStatus(settling);
+  const [clock, setClock] = useState({ now: 0, resumedAt: 0 });
   useEffect(() => {
-    resumedAt.current = Date.now();
-    const onVisible = () => { if (document.visibilityState === "visible") { resumedAt.current = Date.now(); evaluate(); } };
-    const interval = setInterval(evaluate, 15_000);
+    setClock(current => ({ ...current, now: Date.now(), resumedAt: Date.now() }));
+    const onVisible = () => { if (document.visibilityState === "visible") setClock({ now: Date.now(), resumedAt: Date.now() }); };
+    const interval = setInterval(() => setClock(current => ({ ...current, now: Date.now() })), 15_000);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [evaluate]);
+  }, []);
 
-  const production = useMemo(() => (core.failed ? null : core.data ? productionFacts(core.data) : undefined), [core.failed, core.data]);
-  const reading = useMemo(() => readSky({ items, problems, stale: freshness.stale, resuming: freshness.resuming, loading: loading || production === undefined, production }), [items, problems, freshness, loading, production]);
-
+  const reading = useMemo(() => readSky(skySourcesFrom(status.data, status.failed, clock.resumedAt + status.serverOffset, clock.now + status.serverOffset)), [status.data, status.failed, status.serverOffset, clock]);
   const [settled, setSettled] = useState<SettledSky>(() => ({ shown: reading, pending: null }));
-  useEffect(() => { setSettled(state => settleSky(state, reading, Date.now())); }, [reading, tick]);
+  useEffect(() => {
+    setSettled(state => settleSky(state, reading, Date.now()));
+    setSettling(reading.id === "reading");
+  }, [reading]);
 
-  const value = useMemo(() => ({ sky: settled.shown, items, problems, loading }), [settled.shown, items, problems, loading]);
-  return <SystemStatusContext.Provider value={value}>{children}</SystemStatusContext.Provider>;
+  return <SystemStatusContext.Provider value={settled.shown}>{children}</SystemStatusContext.Provider>;
 }
 
 /** The weather over the sol sky. The sky controller keeps the time of day; this only paints over it. */
 export function WorkspaceWeather() {
-  const { sky } = useSystemStatus();
+  const sky = useSystemStatus();
   const canvas = useRef<HTMLCanvasElement>(null);
   const skyId = useRef(sky.id);
   useEffect(() => { skyId.current = sky.id; }, [sky.id]);
@@ -89,7 +56,7 @@ export function WorkspaceWeather() {
 
 /** The sky's reading in words, so the weather is never the only way to know. */
 export function WorkspaceStatusPill() {
-  const { sky } = useSystemStatus();
+  const sky = useSystemStatus();
   const details = useRef<HTMLDetailsElement>(null);
   const close = () => { if (details.current) details.current.open = false; };
   return <details ref={details} className="workspace-status" onKeyDown={event => { if (event.key === "Escape" && details.current?.open) { close(); details.current.querySelector("summary")?.focus(); } }}>

@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { JOURNEY_FIXTURE } from "./journey-fixture";
-import { SKIES, SKY_HOLD_MS, SKY_RESUME_GRACE_MS, SKY_STALE_MS, readFreshness, readSky, settleSky, type ProductionFacts, type SkyId, type SkyReading } from "./system-sky";
+import { SKIES, SKY_HOLD_MS, SKY_RESUME_GRACE_MS, SKY_STALE_MS, readFreshness, readSky, settleSky, skyCounts, type ProductionFacts, type SkySources, type SkyId, type SkyReading } from "./system-sky";
 import type { FeedItem } from "./workspace-feed";
 
 const item = (over: Partial<FeedItem>): FeedItem => ({ key: Math.random().toString(36), kind: "todo", section: "Waiting on you", title: "t", detail: null, chip: "", href: null, external: false, at: null, urgent: false, ...over });
 const quiet = { problems: [], loading: false };
+const read = ({ items, ...rest }: { items: FeedItem[] } & Omit<SkySources, "counts">) => readSky({ ...rest, counts: skyCounts(items) });
 
 const off: ProductionFacts = { displayState: "inactive_idle", workerRunning: true, heartbeatFresh: true, liveSessions: 0, stalledSessions: 0 };
 const facts = (over: Partial<ProductionFacts>): ProductionFacts => ({ ...off, ...over });
@@ -13,79 +14,79 @@ const texts = (reasons: Array<{ text: string }>) => reasons.map(r => r.text);
 
 describe("system sky", () => {
   it("says All clear only when production is On and nothing is moving or waiting", () => {
-    expect(readSky({ ...quiet, items: [], production: on })).toMatchObject({ id: "clear", label: "All clear", production: "Production on, idle", reasons: [] });
+    expect(read({ ...quiet, items: [], production: on })).toMatchObject({ id: "clear", label: "All clear", production: "Production on, idle", reasons: [] });
   });
 
   it("never says All clear while production is Off or hasn't been read", () => {
-    expect(readSky({ ...quiet, items: [], production: off })).toMatchObject({ id: "clear", label: "Nothing waiting", production: "Production Off" });
-    expect(readSky({ ...quiet, items: [] })).toMatchObject({ id: "clear", label: "Nothing waiting", production: null });
+    expect(read({ ...quiet, items: [], production: off })).toMatchObject({ id: "clear", label: "Nothing waiting", production: "Production Off" });
+    expect(read({ ...quiet, items: [] })).toMatchObject({ id: "clear", label: "Nothing waiting", production: null });
   });
 
   it("moves the sky only for something running, and keeps open PRs and waits as reasons", () => {
     const waiting = [item({ kind: "pr", section: "Pull requests" }), item({ kind: "action", section: "Waiting on others" })];
-    const sky = readSky({ ...quiet, items: waiting, production: off });
+    const sky = read({ ...quiet, items: waiting, production: off });
     expect(sky).toMatchObject({ id: "clear", label: "Nothing waiting" });
     expect(texts(sky.reasons)).toEqual(["1 step waiting on others", "1 pull request open"]);
-    expect(readSky({ ...quiet, items: [], production: facts({ liveSessions: 1 }) }).id).toBe("active");
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "inactive_finishing" }) })).toMatchObject({ id: "active", production: "Production finishing" });
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "active_building" }) })).toMatchObject({ id: "active", production: "Production building" });
+    expect(read({ ...quiet, items: [], production: facts({ liveSessions: 1 }) }).id).toBe("active");
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "inactive_finishing" }) })).toMatchObject({ id: "active", production: "Production finishing" });
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "active_building" }) })).toMatchObject({ id: "active", production: "Production building" });
   });
 
   it("asks for attention when something waits on the operator or a PR is failing", () => {
-    expect(readSky({ ...quiet, items: [item({ kind: "action", section: "Your move", urgent: true })] }).id).toBe("attention");
-    const sky = readSky({ ...quiet, items: [item({ kind: "pr", section: "Pull requests", urgent: true })] });
+    expect(read({ ...quiet, items: [item({ kind: "action", section: "Your move", urgent: true })] }).id).toBe("attention");
+    const sky = read({ ...quiet, items: [item({ kind: "pr", section: "Pull requests", urgent: true })] });
     expect(sky.id).toBe("attention");
     expect(texts(sky.reasons)).toEqual(["1 pull request failing or blocked"]);
   });
 
   it("storms for a blocking item or a blocked mission, worst cause first", () => {
-    const sky = readSky({ ...quiet, items: [item({}), item({ urgent: true }), item({ urgent: true })] });
+    const sky = read({ ...quiet, items: [item({}), item({ urgent: true }), item({ urgent: true })] });
     expect(sky).toMatchObject({ id: "storm", label: "Blocked", weather: "Dust storm" });
     expect(texts(sky.reasons)).toEqual(["2 blocking items for you", "1 item waiting on you"]);
-    const fleet = readSky({ ...quiet, items: [], missions: JOURNEY_FIXTURE });
+    const fleet = read({ ...quiet, items: [], missions: JOURNEY_FIXTURE });
     expect(fleet.id).toBe("storm");
     expect(texts(fleet.reasons)).toEqual(["1 mission blocked", "2 missions moving"]);
   });
 
   it("storms for a stalled Session or a silent worker, which a heartbeat alone doesn't separate", () => {
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "active_building", liveSessions: 2, stalledSessions: 1 }) })).toMatchObject({ id: "storm", production: "1 Session stalled" });
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "active_building", heartbeatFresh: false }) })).toMatchObject({ id: "storm", production: "Worker not responding" });
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "inactive_finishing", workerRunning: false }) })).toMatchObject({ id: "storm", production: "Worker not responding" });
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "active_building", liveSessions: 2, stalledSessions: 1 }) })).toMatchObject({ id: "storm", production: "1 Session stalled" });
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "active_building", heartbeatFresh: false }) })).toMatchObject({ id: "storm", production: "Worker not responding" });
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "inactive_finishing", workerRunning: false }) })).toMatchObject({ id: "storm", production: "Worker not responding" });
     // With production Off, a stopped worker is expected.
-    expect(readSky({ ...quiet, items: [], production: facts({ workerRunning: false, heartbeatFresh: false }) })).toMatchObject({ id: "clear", production: "Production Off" });
+    expect(read({ ...quiet, items: [], production: facts({ workerRunning: false, heartbeatFresh: false }) })).toMatchObject({ id: "clear", production: "Production Off" });
   });
 
   it("goes static when a source could not be read or is too old, unless something is already blocking", () => {
-    const sky = readSky({ items: [item({})], problems: ["pull requests"], loading: false });
+    const sky = read({ items: [item({})], problems: ["pull requests"], loading: false });
     expect(sky.id).toBe("static");
     expect(texts(sky.reasons)).toEqual(["could not read pull requests", "1 item waiting on you"]);
-    expect(readSky({ items: [item({ urgent: true })], problems: ["pull requests"], loading: false }).id).toBe("storm");
-    expect(readSky({ ...quiet, items: [], stale: ["next steps"], production: off })).toMatchObject({ id: "static", label: "Signal loss" });
+    expect(read({ items: [item({ urgent: true })], problems: ["pull requests"], loading: false }).id).toBe("storm");
+    expect(read({ ...quiet, items: [], stale: ["next steps"], production: off })).toMatchObject({ id: "static", label: "Signal loss" });
   });
 
   it("never calls an unreadable production store Off", () => {
     for (const production of [null, facts({ displayState: "observation_unavailable" }), facts({ displayState: null }), facts({ workerRunning: null }), facts({ liveSessions: null })]) {
-      expect(readSky({ ...quiet, items: [], production })).toMatchObject({ id: "static", production: "Can't read production" });
+      expect(read({ ...quiet, items: [], production })).toMatchObject({ id: "static", production: "Can't read production" });
     }
   });
 
   it("lets the worst cause win when production's rows combine", () => {
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "observation_unavailable", liveSessions: 1, stalledSessions: 1 }) }).id).toBe("storm");
-    expect(readSky({ ...quiet, items: [item({})], production: facts({ displayState: "active_building" }) }).id).toBe("attention");
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "observation_unavailable", liveSessions: 1, stalledSessions: 1 }) }).id).toBe("storm");
+    expect(read({ ...quiet, items: [item({})], production: facts({ displayState: "active_building" }) }).id).toBe("attention");
   });
 
   it("links reasons to where the operator can act", () => {
-    const sky = readSky({ ...quiet, items: [item({ urgent: true })], production: facts({ displayState: "active_building", heartbeatFresh: false }) });
+    const sky = read({ ...quiet, items: [item({ urgent: true })], production: facts({ displayState: "active_building", heartbeatFresh: false }) });
     expect(sky.reasons).toEqual([{ text: "1 blocking item for you", href: "/workspace/feed" }, { text: "The production worker isn't responding", href: "/production" }]);
   });
 
   it("makes no calm claim until every read has landed, though bad news can show", () => {
-    expect(readSky({ items: [], problems: [], loading: true })).toMatchObject({ id: "reading", label: "Reading" });
+    expect(read({ items: [], problems: [], loading: true })).toMatchObject({ id: "reading", label: "Reading" });
     expect(SKIES.reading.draw).toEqual({});
-    const partial = readSky({ items: [item({ kind: "pr", section: "Pull requests" })], problems: [], loading: true, production: off });
+    const partial = read({ items: [item({ kind: "pr", section: "Pull requests" })], problems: [], loading: true, production: off });
     expect(partial).toMatchObject({ id: "reading", production: "Production Off" });
     expect(texts(partial.reasons)).toEqual(["1 pull request open"]);
-    expect(readSky({ items: [item({ urgent: true })], problems: [], loading: true }).id).toBe("storm");
+    expect(read({ items: [item({ urgent: true })], problems: [], loading: true }).id).toBe("storm");
   });
 
   it("draws every sky differently", () => {
@@ -146,9 +147,9 @@ describe("read freshness", () => {
   });
 
   it("makes no calm or moving claim from old data while resuming, but keeps bad news", () => {
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "active_idle" }), resuming: true }).id).toBe("reading");
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "active_building" }), resuming: true }).id).toBe("reading");
-    expect(readSky({ ...quiet, items: [item({})], production: off, resuming: true }).id).toBe("attention");
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "active_idle" }), resuming: true }).id).toBe("reading");
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "active_building" }), resuming: true }).id).toBe("reading");
+    expect(read({ ...quiet, items: [item({})], production: off, resuming: true }).id).toBe("attention");
   });
 
   it("drops a calm claim to Reading at once, but doesn't let Reading hide bad news", () => {
@@ -159,6 +160,6 @@ describe("read freshness", () => {
   });
 
   it("never calls a state it doesn't recognize Off", () => {
-    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "something_new" }) })).toMatchObject({ id: "static", production: "Can't read production" });
+    expect(read({ ...quiet, items: [], production: facts({ displayState: "something_new" }) })).toMatchObject({ id: "static", production: "Can't read production" });
   });
 });

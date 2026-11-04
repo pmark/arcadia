@@ -6,8 +6,8 @@ import type { FeedItem } from "./workspace-feed";
 /**
  * The workspace sky as system status (docs/design/operator-presence.md, and
  * docs/design/relay/workspace-layers.md). The sol sky keeps the time of day;
- * this picks the weather drawn over it from the same read-only sources as the
- * feed, plus production. The operator's own condition is separate
+ * this picks the weather drawn over it from read-only counts of the feed's
+ * sources (./workspace-status.ts), plus production. The operator's own condition is separate
  * (./operator-presence.ts) and never changes the sky.
  *
  * Worst first: storm (something is blocking), static (a read failed or is too
@@ -81,8 +81,27 @@ export function productionFacts(core: ConsoleCoreData): ProductionFacts {
   };
 }
 
+/** What the sky needs to know about the operator's lists: how many of each, not the items themselves. */
+export interface SkyCounts {
+  blocking: number;
+  yours: number;
+  failing: number;
+  others: number;
+  prs: number;
+}
+
+export function skyCounts(items: FeedItem[]): SkyCounts {
+  return {
+    blocking: items.filter(i => i.section === "Waiting on you" && i.urgent).length,
+    yours: items.filter(i => i.section === "Your move" || i.section === "Waiting on you").length,
+    failing: items.filter(i => i.kind === "pr" && i.urgent).length,
+    others: items.filter(i => i.section === "Waiting on others").length,
+    prs: items.filter(i => i.kind === "pr").length
+  };
+}
+
 export interface SkySources {
-  items: FeedItem[];
+  counts: SkyCounts;
   /** Sources that could not be read, by name. */
   problems: string[];
   /** Sources whose last good read is too old to trust, by name. */
@@ -121,14 +140,9 @@ function readProduction(p: ProductionFacts | null | undefined) {
   return { words, unreadable: false, stalled, silent, running, on };
 }
 
-export function readSky({ items, problems, stale = [], loading, missions, production, resuming = false }: SkySources): SkyReading {
+export function readSky({ counts: { blocking, yours, failing, others, prs }, problems, stale = [], loading, missions, production, resuming = false }: SkySources): SkyReading {
   const phases = (missions ?? []).map(missionPhase);
-  const blocking = items.filter(i => i.section === "Waiting on you" && i.urgent).length;
   const blocked = phases.filter(p => p === "blocked").length;
-  const yours = items.filter(i => i.section === "Your move" || i.section === "Waiting on you").length;
-  const failing = items.filter(i => i.kind === "pr" && i.urgent).length;
-  const others = items.filter(i => i.section === "Waiting on others").length;
-  const prs = items.filter(i => i.kind === "pr").length;
   const moving = phases.filter(p => MOVING.includes(p)).length;
   const prod = readProduction(production);
 
