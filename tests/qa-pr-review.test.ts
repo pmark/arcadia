@@ -983,6 +983,9 @@ describe("a Claude Code reviewer", () => {
     expect(stdin).toContain("diff --git a/docs/example.md");
     expectIdentityBlock(stdin ?? "", "claude", "heavy", "critic");
     expect(args[args.indexOf("--system-prompt") + 1]).toContain("untrusted evidence");
+    // The title the worker's QA-plan waiver recognizes (PLAN_FINDING_TITLE); format only, never about the verdict.
+    expect(args[args.indexOf("--system-prompt") + 1]).toMatch(/start its title with "Operator QA plan"/);
+    expect(args[args.indexOf("--system-prompt") + 1]).toContain("Never use that title for a finding about the code");
     expect(environment).toBeDefined();
     expect(environment!.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe("1");
     expect(Object.keys(environment!).every((key) => ["CLAUDE_CODE_DISABLE_AUTO_MEMORY", "HOME", "LOGNAME", "PATH", "SHELL", "TERM", "TMPDIR", "USER"].includes(key))).toBe(true);
