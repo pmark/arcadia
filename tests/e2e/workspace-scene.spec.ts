@@ -6,24 +6,20 @@ import { freePort, startProcess, waitForHttp } from "./fixtures/processes";
 
 const plan = { slug: "first-website", status: "active", governed: true, milestone: "A small garden on the web", isActivePlan: true, actionCounts: { open: 1, in_progress: 0, done: 0, blocked: 0 }, activationNote: null, relativePath: "docs/plans/first-website.md" };
 const portfolio = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "garden", slug: "moon-garden", name: "Moon garden", status: "active", activePlan: plan.slug, plans: [plan], error: null }] };
-const blockingDecision = { kind: "decision", id: "0017", project: "field-notes", title: "Publish the field notes now or after review", detail: null, gateQuestion: "Publish now?", options: [{ key: "A", label: "Now", consequence: null }], blocking: true };
-const noSteps = { state: "moving", nowStep: null, steps: [], hidden: 0, total: 0, ignored: 0, invalidPrs: 0, unavailable: [], waitingAhead: 0 };
-const noPullRequests = { checkedAt: "2030-01-01T12:00:00Z", stale: false, refreshing: false, refreshError: null, incomplete: false, retainedProjectIds: [], snapshot: { checkedAt: "2030-01-01T12:00:00Z", pullRequests: [], projects: [] } };
-
-type Core = { production: { displayState: string } | null; worker: { running: boolean; heartbeat: { timestamp: null; fresh: boolean; available: boolean } } | null; sessions: { active: Array<{ live: boolean; observedStatus: string }>; recent: [] } | null };
-const worker = (running: boolean, fresh: boolean) => ({ running, heartbeat: { timestamp: null, fresh, available: true } });
-const core = (displayState: string, over: Partial<Core> = {}): Core => ({ production: { displayState }, worker: worker(true, true), sessions: { active: [], recent: [] }, ...over });
+const NONE = { blocking: 0, yours: 0, failing: 0, others: 0, prs: 0 };
+type Facts = { displayState: string | null; workerRunning: boolean | null; heartbeatFresh: boolean | null; liveSessions: number | null; stalledSessions: number | null };
+const facts = (displayState: string, over: Partial<Facts> = {}): Facts => ({ displayState, workerRunning: true, heartbeatFresh: true, liveSessions: 0, stalledSessions: 0, ...over });
 
 // Each row of the production table in docs/design/relay/workspace-layers.md, Scene point 5.
-const ROWS: Array<{ name: string; read: Core | "down"; label: string; words: string }> = [
-  { name: "Off", read: core("inactive_idle", { worker: worker(false, false) }), label: "Nothing waiting", words: "Production Off" },
-  { name: "finishing", read: core("inactive_finishing"), label: "Work moving", words: "Production finishing" },
-  { name: "On and idle", read: core("active_idle"), label: "All clear", words: "Production on, idle" },
-  { name: "building", read: core("active_building"), label: "Work moving", words: "Production building" },
-  { name: "a stalled Session", read: core("active_building", { sessions: { active: [{ live: true, observedStatus: "stalled" }], recent: [] } }), label: "Blocked", words: "1 Session stalled" },
-  { name: "a silent worker", read: core("active_building", { worker: worker(true, false) }), label: "Blocked", words: "Worker not responding" },
-  { name: "an unreadable store", read: core("observation_unavailable"), label: "Signal loss", words: "Can't read production" },
-  { name: "a failed part of the read", read: core("inactive_idle", { worker: null }), label: "Signal loss", words: "Can't read production" },
+const ROWS: Array<{ name: string; read: Facts | "down"; label: string; words: string }> = [
+  { name: "Off", read: facts("inactive_idle", { workerRunning: false, heartbeatFresh: false }), label: "Nothing waiting", words: "Production Off" },
+  { name: "finishing", read: facts("inactive_finishing"), label: "Work moving", words: "Production finishing" },
+  { name: "On and idle", read: facts("active_idle"), label: "All clear", words: "Production on, idle" },
+  { name: "building", read: facts("active_building"), label: "Work moving", words: "Production building" },
+  { name: "a stalled Session", read: facts("active_building", { liveSessions: 1, stalledSessions: 1 }), label: "Blocked", words: "1 Session stalled" },
+  { name: "a silent worker", read: facts("active_building", { heartbeatFresh: false }), label: "Blocked", words: "Worker not responding" },
+  { name: "an unreadable store", read: facts("observation_unavailable"), label: "Signal loss", words: "Can't read production" },
+  { name: "a failed part of the read", read: facts("inactive_idle", { workerRunning: null }), label: "Signal loss", words: "Can't read production" },
   { name: "a failed read", read: "down", label: "Signal loss", words: "Can't read production" }
 ];
 
@@ -38,20 +34,25 @@ test("every Workspace view shows system status, and a status change moves nothin
   page.on("pageerror", error => errors.push(error.message));
   const writes: string[] = [];
   const counts: Record<string, number> = {};
-  let production: Core | "down" = core("inactive_idle");
-  let approvals: unknown[] = [];
-  let holdReads = false;
+  let production: Facts | "down" = facts("inactive_idle");
+  let counts_ = NONE;
+  let pending = false;
+  let statusDown = false;
+  const status = () => {
+    const asOf = pending ? null : Date.now();
+    const down = production === "down";
+    return {
+      generatedAt: new Date().toISOString(), counts: counts_, production: down ? null : pending ? null : production,
+      sources: { "To-do list": { asOf, failed: false }, "next steps": { asOf, failed: false }, "pull requests": { asOf, failed: false }, production: { asOf: down ? null : asOf, failed: down } }
+    };
+  };
   await page.route("**/api/**", async route => {
     const request = route.request();
     const endpoint = new URL(request.url()).pathname;
     if (request.method() !== "GET") { writes.push(endpoint); return route.abort(); }
     counts[endpoint] = (counts[endpoint] ?? 0) + 1;
-    if (holdReads && endpoint !== "/api/plans") await new Promise(resolve => setTimeout(resolve, 1_500));
     if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
-    if (endpoint === "/api/approvals") return route.fulfill({ json: { source: "todo", note: null, approvals } });
-    if (endpoint === "/api/next-steps") return route.fulfill({ json: noSteps });
-    if (endpoint === "/api/pull-requests") return route.fulfill({ json: noPullRequests });
-    if (endpoint === "/api/production-console") return production === "down" ? route.fulfill({ status: 503, json: { error: "Fixture" } }) : route.fulfill({ json: production });
+    if (endpoint === "/api/workspace/status") return statusDown ? route.fulfill({ status: 503, json: { error: "Fixture" } }) : route.fulfill({ json: status() });
     return route.abort();
   });
   const pill = page.locator(".workspace-status");
@@ -61,11 +62,11 @@ test("every Workspace view shows system status, and a status change moves nothin
     await waitForHttp(`${url}/workspace/feed`, server);
 
     // First load makes no claim: no weather, a hollow dot and "Reading", never a clear sky.
-    holdReads = true;
+    pending = true;
     await page.goto(`${url}/workspace#dusk`);
     await expect(summary).toContainText("Reading");
     await expect(page.locator(".workspace-status-dot.sky-reading")).toHaveCount(1);
-    holdReads = false;
+    pending = false;
     await expect(summary).toContainText("Nothing waiting");
     await expect(summary).toContainText("Production Off");
     await expect(summary).not.toContainText("All clear");
@@ -90,7 +91,7 @@ test("every Workspace view shows system status, and a status change moves nothin
     await draft.fill("An unsent thought");
     await draft.focus();
     const scrollBefore = await page.evaluate(() => window.scrollY);
-    approvals = [blockingDecision];
+    counts_ = { ...NONE, blocking: 1, yours: 1 };
     await nudgeReads(page);
     await expect(summary).toContainText("Blocked");
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);
@@ -108,9 +109,10 @@ test("every Workspace view shows system status, and a status change moves nothin
     await expect(summary).toBeFocused();
 
     // Better news has to hold, so a flicker can't clear the sky at the next read.
-    approvals = [];
+    counts_ = NONE;
+    const asked = counts["/api/workspace/status"];
     await nudgeReads(page);
-    await expect.poll(() => counts["/api/approvals"] ?? 0).toBeGreaterThan(0);
+    await expect.poll(() => counts["/api/workspace/status"]).toBeGreaterThan(asked);
     await page.waitForTimeout(1_000);
     await expect(summary).toContainText("Blocked");
 
@@ -123,18 +125,28 @@ test("every Workspace view shows system status, and a status change moves nothin
       await expect(summary, row.name).toContainText(row.words);
       if (row.label !== "All clear") await expect(summary, row.name).not.toContainText("All clear");
     }
-    production = core("inactive_idle");
+    production = facts("inactive_idle");
 
-    // One shared set of reads per window: navigating doesn't fetch them again.
+    // If the status read itself can't be reached, the sky says so without blaming production.
+    statusDown = true;
+    await page.reload();
+    await expect(summary).toContainText("Signal loss");
+    await expect(summary).not.toContainText("Can't read production");
+    statusDown = false;
+
+    // Views other than the Feed fetch only the small status read, never the operator's full lists.
     await page.reload();
     await expect(summary).toContainText("Nothing waiting");
     await page.waitForLoadState("networkidle");
     const before = { ...counts };
     await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);
+    expect(counts["/api/workspace/status"]).toBe(before["/api/workspace/status"]);
+    for (const endpoint of ["/api/approvals", "/api/next-steps", "/api/pull-requests", "/api/production-console"]) expect(counts[endpoint], endpoint).toBe(before[endpoint]);
+    // The Feed fetches its own lists, only while it's open.
     await page.getByRole("link", { name: "Feed" }).click();
     await expect(page).toHaveURL(/\/workspace\/feed$/);
-    for (const endpoint of ["/api/production-console", "/api/pull-requests"]) expect(counts[endpoint]).toBe(before[endpoint]);
+    await expect.poll(() => counts["/api/approvals"] ?? 0).toBeGreaterThan(before["/api/approvals"] ?? 0);
 
     // Phone width: the top strip stays open sky, and the page doesn't scroll sideways.
     await page.setViewportSize({ width: 390, height: 844 });
@@ -145,11 +157,11 @@ test("every Workspace view shows system status, and a status change moves nothin
     // A status change doesn't shift the page: the header keeps its height whatever the pill says.
     const header = page.locator(".workspace-header");
     const heightBefore = (await header.boundingBox())?.height;
-    production = core("active_building", { sessions: { active: [{ live: true, observedStatus: "stalled" }], recent: [] } });
+    production = facts("active_building", { liveSessions: 1, stalledSessions: 1 });
     await nudgeReads(page);
     await expect(summary).toContainText("1 Session stalled");
     expect((await header.boundingBox())?.height).toBe(heightBefore);
-    production = core("inactive_idle");
+    production = facts("inactive_idle");
 
     // The reasons panel stays on screen wherever the pill wraps to.
     await summary.click();
@@ -158,6 +170,7 @@ test("every Workspace view shows system status, and a status change moves nothin
     expect((panel?.x ?? 0) + (panel?.width ?? 0)).toBeLessThanOrEqual(390);
     await testInfo.attach("scene-phone", { body: await page.screenshot(), contentType: "image/png" });
 
+    expect(counts["/api/production-console"]).toBeUndefined();
     expect(writes).toEqual([]);
     expect(errors).toEqual([]);
   } finally {

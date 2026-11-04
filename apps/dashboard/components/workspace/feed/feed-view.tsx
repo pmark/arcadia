@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useApprovals } from "../../../hooks/use-approvals";
+import { useNextSteps } from "../../../hooks/use-next-steps";
+import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
 import { JOURNEY_FIXTURE } from "../../../lib/journey-fixture";
 import { fleet, fleetPhrase, loadScreen, saveScreen, urgentRovers, type JourneyScreen, type Rover } from "../../../lib/journey-fleet";
 import type { JourneyPhase } from "../../../lib/journey-types";
-import { feedSections, type FeedItem } from "../../../lib/workspace-feed";
-import { useSystemStatus } from "../sky/system-status";
+import { buildFeed, feedSections, type FeedItem } from "../../../lib/workspace-feed";
 import "./feed.css";
 
 const PHASE_LABEL: Record<JourneyPhase, string> = {
@@ -102,10 +104,16 @@ function JourneyButton({ rovers, needsYou, alert, open, onToggle }: { rovers: Ro
 export function FeedView() {
   const [view, setView] = useState<"feed" | "journey">("feed");
   const [screen, setScreen] = useState<JourneyScreen>(FLEET);
-  const { items, problems, loading } = useSystemStatus();
+  const approvals = useApprovals();
+  const nextSteps = useNextSteps();
+  const prs = usePullRequestInventory();
   const rovers = useMemo(() => fleet(JOURNEY_FIXTURE), []);
 
+  const items = useMemo(() => buildFeed({ approvals: approvals.hasLoaded ? approvals.approvals : null, nextSteps: nextSteps.data, pullRequests: prs.data }), [approvals.hasLoaded, approvals.approvals, nextSteps.data, prs.data]);
   const sections = feedSections(items);
+  // A failed read is a finished read: the alert says so instead of an endless "Reading…".
+  const loading = (!approvals.hasLoaded && !approvals.error) || (!nextSteps.data && !nextSteps.failed) || prs.loading;
+  const problems = [approvals.error && "To-do list", nextSteps.failed && "next steps", prs.error && !prs.data && "pull requests"].filter((p): p is string => Boolean(p));
   const needsYou = items.filter(i => i.section === "Your move" || i.section === "Waiting on you").length;
   const alert = items.some(i => i.urgent && i.kind !== "pr");
 
