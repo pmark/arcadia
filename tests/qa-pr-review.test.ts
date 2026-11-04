@@ -130,6 +130,8 @@ describe("minimal independent pull-request QA", () => {
     expect(invocations).toBe(1);
     expectIdentityBlock(reviewerPrompt, "codex", "standard", "critic");
     expect(reviewerPrompt).not.toContain("run `arcadia");
+    // The governed-record rule states what the deterministic check accepts, so a settlement's derived id is not a finding.
+    if (role === "code-review") expect(reviewerPrompt).toContain("`auto-settle-<project>-<action>-<hash>` id");
   });
   it("pins the revision, persists hardened receipts, and reuses unchanged evidence", () => {
     const fixture = createFixture();
