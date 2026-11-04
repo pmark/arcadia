@@ -155,7 +155,10 @@ function waitingStartCards(deps: RunWindowDeps, now: Date, unknown: string[]): R
 export function formatRunWindowLines(window: RunWindow): string[] {
   if (window.state === "closed") return [];
   if (window.state === "unknown") return [`Run window: UNKNOWN (${window.unknown.join("; ")}).`];
-  const lines = ["Run window: OPEN. Do not merge to main now: it will make a waiting START card refuse or disturb a live run."];
+  const cardWaiting = window.reasons.some((reason) => reason.kind === "start_card_waiting");
+  const lines = [cardWaiting
+    ? "Run window: OPEN. Do not merge to main now: it will make the waiting START card refuse."
+    : "Run window: OPEN. A live run is in progress: follow docs/agent-guidance/rehearsal-freeze-window.md before merging."];
   for (const reason of window.reasons) {
     lines.push(`- ${reason.detail}${reason.until ? ` (until ${reason.until})` : ""}.`);
   }

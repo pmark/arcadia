@@ -67,6 +67,8 @@ describe("work monitor run window", () => {
     expect(window.reasons[0]).toMatchObject({ kind: "production_active", until: null });
     const text = formatRunWindowLines(window).join("\n");
     expect(text).toContain("Run window: OPEN");
+    expect(text).toContain("rehearsal-freeze-window.md");
+    expect(text).not.toContain("Do not merge");
     expect(text).toContain("managed production is Active");
     expect(text).toContain("terminal production Off");
   });
@@ -78,7 +80,7 @@ describe("work monitor run window", () => {
     expect(window.reasons).toEqual([expect.objectContaining({ kind: "start_card_waiting", subject: "start-run-waiting", until: "2026-11-04T18:30:00.000Z" })]);
     const text = formatRunWindowLines(window).join("\n");
     expect(text).toContain("Do not merge to main now");
-    expect(text).toContain("refuse or disturb");
+    expect(text).toContain("waiting START card refuse");
     expect(text).toContain("start-run-waiting");
     expect(text).toContain("until 2026-11-04T18:30:00.000Z");
   });
