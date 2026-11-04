@@ -5,6 +5,7 @@
 - [Agent insignia and generation prompts](arcadia-agent-insignia-prompts.md) — Astra’s proposed visual language for identities, roles, skills and Behaviors, with reusable prompts and validation limits.
 
 - [Arcadia conversational workspace UX design specification](arcadia-conversational-workspace.md) — living product design specification, visual references, interaction rules, operator feedback, and open questions.
+- [Relay: the three Workspace layers](relay/workspace-layers.md) — the scene shows status, the view defines context, and the Relay overlay is always available; awaits the operator's approval.
 - [Session evidence](arcadia-conversational-workspace-evidence.md) — source and validation limits for the design draft.
 
 The companion [article](../articles/2026-10-14-arcadia-spatial-background.md) explains the experience conversationally.

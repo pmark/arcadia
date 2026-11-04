@@ -1,8 +1,10 @@
 # Handoff: Relay proposal
 
 **Latest (2026-11-03):** the operator answered 1A 2A 3A 4A 5B, then set the three-layer Workspace direction and froze other
-surfaces (S022, S023), and asked to capture and stop. The operator hasn't approved starting the build beyond those answers.
-The proposal is current. Usage was at about 96% of the week, resetting Nov 4 at 7:59 pm.
+surfaces (S022, S023). The next session designed the layers through Arcadia Design and brought them for approval:
+[the layer design](../../design/relay/workspace-layers.md), [the prototype](../../design/prototypes/relay-workspace-layers.html)
+and [probe layers-1](../../design/relay/probes/layers-1.md). **The operator hasn't approved it, and nothing is being built.** Two
+choices wait on them: CH-05 and CH-06. Usage limits had reset, so the earlier capacity concern no longer applies.
 
 # Objective
 
@@ -16,12 +18,12 @@ Unattended production stays the first priority, and production stays Off.
 **Merged to main:** PR 2007 (Arcadia Design skill and `arcadia design check`), 2009 (Relay mode), 2010, 2014, 2016
 (`arcadia way lookup`, STOP guidance), 2019, 2020, 2022 (design record and probes).
 
-**Open, not merged:**
+**Open, not merged.** Both are mergeable with green checks at their last read, and CodeRabbit's threads are resolved.
 
-| PR | Contents | Review | CI at last check |
-|---|---|---|---|
-| [2027](https://github.com/pmark/arcadia/pull/2027) | The proposal, investigation, S021 and this handoff | **None** | Green before this commit |
-| [2028](https://github.com/pmark/arcadia/pull/2028) | Three Field Notes drafts | **None; no fact-check** | Green at the commit before the last |
+| PR | Contents | Independent review |
+|---|---|---|
+| [2027](https://github.com/pmark/arcadia/pull/2027) | The proposal, investigation, S021 to S025, the layer design and this handoff | Rounds at `977fc351e` found no blocking finding. Its later commits are reviewed in the PR's latest comment |
+| [2028](https://github.com/pmark/arcadia/pull/2028) | Three Field Notes drafts | **None, and no fact-check** |
 
 **Not built:** the structured outcome, visible answers, name matching, lookup routes, the menu, the scorecard, and
 any companion.
@@ -35,7 +37,7 @@ any companion.
   ([report](../../design/relay/reviews/R1-relay-critique.md)). That critic shared the author's model, so it can't
   satisfy the ready gate.
 
-**Decisions:** none raised. Five questions for the operator are in the proposal.
+**Decisions:** none filed as Decision documents. The operator's answers are recorded as S022 and S023. CH-05 and CH-06 wait on them.
 
 # Resume location
 
@@ -61,7 +63,8 @@ LiteLLM, whether the 27B can stay loaded beside other work, prefix caching on Qw
 resume cost, and native discovery of both skills in fresh Codex, Claude Code and OpenCode sessions.
 
 **Not done at close:** a session ledger row in `docs/reports/session-ledger/` wasn't added, because its schema wasn't
-checked. `frame.status` in `record.yaml` stays `proposed`, and CH-03 is open.
+checked. The frame is confirmed by S022, and CH-03 is settled. REQ-015 to REQ-018 stay `proposed` until the operator approves the
+layer design. R1's eight blocking findings are still open against the earlier frame, so `--ready` still refuses.
 
 **Friction worth knowing:**
 - In worktrees, the sandbox blocks `pnpm` and `mise`. Use `node --import tsx src/cli.ts`, `node_modules/.bin/vitest`
@@ -79,12 +82,13 @@ otherwise unknown. Safe stopping point: everything is committed and pushed, with
 
 # Next action
 
-Resume with the prompt below, and run an independent review of PR 2027 first.
+The operator approves the layer design or changes it, and answers CH-05 and CH-06. Then start its build order, one PR per step, with a
+new intake Issue, because Issue 2005 is closed.
 
 ```text
-Continue the Relay proposal. Read docs/reports/handoffs/20261103T0000Z-relay-proposal.md and
-docs/proposals/relay.md, then check the state of PR 2027 and PR 2028. Check its review status. Its five decisions are answered, in S022 and S023. Bring me the design of the three layers through
-Arcadia Design first, and don't start building until I've approved it. Unattended production stays first, and production stays Off.
+Continue the Relay proposal in ~/.claude/worktrees/relay-proposal, on branch claude/relay-proposal-20261103 (PR 2027). Read
+docs/reports/handoffs/20261103T0000Z-relay-proposal.md and docs/design/relay/workspace-layers.md. Record my answers to CH-05 and CH-06, then
+start step 1 of its build order. Unattended production stays first, and production stays Off.
 ```
 
 # Stop condition

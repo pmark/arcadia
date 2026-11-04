@@ -34,7 +34,9 @@ and future AR glasses. It's neither a dashboard nor strictly a chatbot.
 
 Views and controls are cued and presented fluidly as context shifts. The existing status sky (`lib/system-sky.ts`) and
 navigation scope (`lib/workspace-scope.ts`) are starting points, but [Mira's inventory](../design/relay/reviews/mira-ask-surfaces-and-workspace.md)
-found no cued views, thread, or XR code yet. How this should feel needs its own design pass, through Arcadia Design.
+found no cued views, thread, or XR code yet. [The layer design](../design/relay/workspace-layers.md) sets what each layer does
+and who may move what, and it awaits the operator's approval. Its [prototype](../design/prototypes/relay-workspace-layers.html)
+uses the real sky.
 
 ## The rule that governs everything
 
@@ -194,8 +196,8 @@ a model could suggest options for that case, once the scorecard shows that.
 
 1. **Review and approve this proposal.** An independent agent reviews it, and the operator answers the decisions below.
 2. **Run a fresh critic round,** on a model other than the author's, against this version.
-3. **Design the three layers** through Arcadia Design, then **ship visible answers** in the overlay, using typed answers and
-   the server-side thread.
+3. **Design the three layers** through Arcadia Design ([done, awaiting approval](../design/relay/workspace-layers.md)), then
+   **follow its build order:** the scene on every view, the overlay, visible typed answers, and the server-side thread.
 4. **Add name matching and lookups, then the menu and scorecard.** That finishes Ask alone, useful even if no model
    ever ships.
 5. **Rerun the bake-off** on the companion's jobs, before choosing its model.

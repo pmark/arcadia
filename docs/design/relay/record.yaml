@@ -107,6 +107,35 @@ frame:
         - M1
         - M2
       proof: One real idea reaches an approved Plan and a deployed staging result, with every operator touch counted.
+    - id: REQ-015
+      status: proposed
+      statement: From every Workspace view, the operator can tell how the system is doing at a glance, can check the same reading in words, and is never told all is clear when production is off, stalled or unread.
+      mission:
+        - M3
+        - M4
+      proof: A Playwright test across every Workspace route showing the same reading and words, including first load, a stale read, a stale heartbeat and production Off, plus the operator judging a glance test on a real phone.
+    - id: REQ-016
+      status: proposed
+      statement: What is on screen is what Relay takes "this" to mean, every answer says which scope it used, and the view moves only as CH-05 decides, never from a status change or a model's choice.
+      mission:
+        - M1
+        - M4
+        - M5
+      proof: A Playwright test where status changes move nothing, each answer names the scope the server used, and the view moves only as CH-05's chosen option says. A hostile message cannot move the view.
+    - id: REQ-017
+      status: proposed
+      statement: Relay is available from every Workspace context, including when the view failed to load, an earlier send is uncertain, or an Artifact is open, without weakening the gates on anything that writes.
+      mission:
+        - M1
+        - M3
+      proof: A Playwright test sending from each route with the view's read failing, with an uncertain exchange pending, and with the Stage open, with no message lost or resent, and a direction refused for an unverified target.
+    - id: REQ-018
+      status: proposed
+      statement: The interface works first on a phone, also on a tablet, laptop and several monitors, and nothing built now blocks headsets or AR glasses.
+      mission:
+        - M1
+        - M3
+      proof: Playwright at phone, keyboard-height and desktop sizes, the operator using it on their phone, and a schema test that answers, blocks and cues carry no layout, markup or URL fields.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
@@ -288,6 +317,37 @@ sources:
     retention: repo
     path: reviews/mira-ask-surfaces-and-workspace.md
     sha256: 7de67176622221aaa1f94d38e3099dc4599253e614fb6f406fda487d21d4fae2
+  - id: S025
+    title: Design of the three Workspace layers
+    kind: agent
+    added: 2026-11-03
+    retention: repo
+    path: workspace-layers.md
+    sha256: c48bfaf052a1da214567c16b920db187990ffc163ecfdfaad26c922fd0fc46f7
+  - id: S026
+    title: Arcadia conversational workspace UX design specification
+    kind: agent
+    added: 2026-11-03
+    retention: pointer
+    url: https://github.com/pmark/arcadia/blob/4e1f545ed3ce39e11e3776fa8ff731a5c82ce0b1/docs/design/arcadia-conversational-workspace.md
+    revision: 4e1f545ed3ce39e11e3776fa8ff731a5c82ce0b1
+    rights: Project's own repository
+  - id: S027
+    title: "Downlink: artifacts drawn in the sky's ink"
+    kind: agent
+    added: 2026-11-03
+    retention: pointer
+    url: https://github.com/pmark/arcadia/blob/4e1f545ed3ce39e11e3776fa8ff731a5c82ce0b1/docs/design/downlink.md
+    revision: 4e1f545ed3ce39e11e3776fa8ff731a5c82ce0b1
+    rights: Project's own repository
+  - id: S028
+    title: Operator presence and the workspace feed
+    kind: agent
+    added: 2026-11-03
+    retention: pointer
+    url: https://github.com/pmark/arcadia/blob/4e1f545ed3ce39e11e3776fa8ff731a5c82ce0b1/docs/design/operator-presence.md
+    revision: 4e1f545ed3ce39e11e3776fa8ff731a5c82ce0b1
+    rights: Project's own repository
 concepts:
   - id: C-001
     title: Way-grounded answers with citations
@@ -2806,6 +2866,224 @@ concepts:
     position: chosen
     serves:
       - REQ-012
+  - id: C-062
+    title: "Who may move what"
+    kind: interface
+    statement: "System events change only the scene. Only the operator's taps or words move the view. Relay changes only when used."
+    origins:
+      - source: S025
+        locator: 'Who may move what'
+      - source: S027
+        locator: 'Choreography, Never automatic'
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/components/workspace/workspace-view.tsx
+    position: leaning
+    serves:
+      - REQ-016
+      - REQ-004
+    reason: Awaits the operator approving the layer design.
+  - id: C-063
+    title: "Words may move the view when asked"
+    kind: mechanism
+    statement: "A deterministic route that matched an explicit request to go somewhere moves the view, with a Back control. Every other view in an answer is a cue to tap."
+    origins:
+      - source: S025
+        locator: 'Decisions for the operator, 1A'
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/components/workspace/workspace-view.tsx
+    position: candidates
+    serves:
+      - REQ-016
+  - id: C-064
+    title: "Only taps move the view"
+    kind: mechanism
+    statement: "Every view in an answer is a cue, including when the message asked to go there."
+    origins:
+      - source: S025
+        locator: 'Decisions for the operator, 1B'
+      - source: S027
+        locator: 'Choreography'
+    position: candidates
+  - id: C-065
+    title: "Relay moves the view with any answer"
+    kind: mechanism
+    statement: "Any answer that has a view changes the screen behind the overlay."
+    origins:
+      - source: S025
+        locator: 'Decisions for the operator, 1C'
+    position: candidates
+  - id: C-066
+    title: "Scene on every view, in words, never falsely clear"
+    kind: interface
+    statement: "Weather and a status pill appear on every Workspace view, a strip of open sky always stays visible, a clear sky needs a fresh read, production state sits beside the reading from the existing console read, a stale heartbeat reads as blocked, and moving means something is running."
+    origins:
+      - source: S023
+        locator: 'The scene background'
+      - source: S025
+        locator: 'Scene'
+      - source: S028
+        locator: 'Purpose'
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/lib/system-sky.ts
+        - apps/dashboard/components/workspace/feed/feed-view.tsx
+        - apps/dashboard/app/workspace/layout.tsx
+        - apps/dashboard/app/api/production-console/route.ts
+    position: leaning
+    serves:
+      - REQ-015
+      - REQ-004
+    reason: Awaits the operator approving the layer design.
+  - id: C-067
+    title: "One subject in the view, and it is the context"
+    kind: interface
+    statement: "The view shows one subject, publishes its kind, ids, verification and read time, and Relay sends that with each message. Scope helps resolve meaning and grants nothing."
+    origins:
+      - source: S023
+        locator: 'The underlying view defines context'
+      - source: S025
+        locator: 'View'
+      - source: S026
+        locator: 'Navigation establishes conversational scope'
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/lib/workspace-scope.ts
+        - apps/dashboard/components/workspace/workspace-ask.tsx
+        - apps/dashboard/app/api/ask/route.ts
+    position: leaning
+    serves:
+      - REQ-016
+      - REQ-012
+    reason: Awaits the operator approving the layer design.
+  - id: C-068
+    title: "Relay as one surface with three heights"
+    kind: interface
+    statement: "A resting capsule, an answer sheet and the whole thread, on every Workspace route, available when the view fails or a send is uncertain. Directions keep their gates and name their exact target."
+    origins:
+      - source: S023
+        locator: 'always available from any context'
+      - source: S025
+        locator: 'Relay'
+    fit:
+      status: conflicts
+      evidence:
+        - apps/dashboard/components/workspace/workspace-view.tsx
+        - apps/dashboard/components/workspace/workspace-ask.tsx
+    position: leaning
+    serves:
+      - REQ-017
+      - REQ-012
+    reason: Awaits the operator approving the layer design.
+  - id: C-069
+    title: "Closed vocabulary of blocks and cues"
+    kind: interface
+    statement: "Each answer has complete plain text plus typed blocks and an optional cue from a closed list, shipped in stages as routes need them. Code alone may mark a cue as moving the view, and control targets come from a fixed table."
+    origins:
+      - source: S022
+        locator: 'views and controls are cued'
+      - source: S024
+        locator: 'Fit with the vision'
+      - source: S025
+        locator: 'Cued views'
+    fit:
+      status: missing
+      evidence:
+        - apps/dashboard/lib/types.ts
+    position: leaning
+    serves:
+      - REQ-016
+      - REQ-018
+      - REQ-006
+    reason: Awaits the operator approving the layer design.
+  - id: C-070
+    title: "Device mapping by depth"
+    kind: mechanism
+    statement: "Far, middle and near planes map to each device, and the scene is a reading rather than a canvas, because AR glasses have no backdrop."
+    origins:
+      - source: S022
+        locator: 'mobile-first, with XR'
+      - source: S025
+        locator: 'Across devices'
+    fit:
+      status: partial
+      evidence:
+        - apps/dashboard/lib/system-sky.ts
+    position: leaning
+    serves:
+      - REQ-018
+    reason: Awaits the operator approving the layer design.
+  - id: C-071
+    title: "Overlay in Workspace only at first"
+    kind: mechanism
+    statement: "The first build puts Relay on Workspace routes. Control pages are departures until they move."
+    origins:
+      - source: S025
+        locator: 'Decisions for the operator, 2A'
+    fit:
+      status: exists
+      evidence:
+        - apps/dashboard/app/workspace/layout.tsx
+    position: candidates
+    serves:
+      - REQ-017
+  - id: C-072
+    title: "Overlay also on the control pages"
+    kind: mechanism
+    statement: "Relay also mounts on the six control pages, without the sky and without changing their controls."
+    origins:
+      - source: S025
+        locator: 'Decisions for the operator, 2B'
+    position: candidates
+  - id: C-073
+    title: "Stage beneath Relay"
+    kind: interface
+    statement: "An opened Artifact lifts in the view plane instead of a native modal, so Relay stays usable and this means the Artifact."
+    origins:
+      - source: S025
+        locator: 'Who may move what'
+      - source: S027
+        locator: 'Choreography'
+    fit:
+      status: conflicts
+      evidence:
+        - apps/dashboard/components/workspace/workspace-artifact-viewer.tsx
+    position: leaning
+    serves:
+      - REQ-017
+    reason: Awaits the operator approving the layer design.
+  - id: C-074
+    title: "Relay speaks first"
+    kind: mechanism
+    statement: "Relay opens by itself or starts a message in Workspace."
+    origins:
+      - source: S025
+        locator: 'Parked'
+    position: parked
+    revival: After the scorecard ships, if the operator asks for it.
+  - id: C-075
+    title: "Background carries orientation"
+    kind: mechanism
+    statement: "The spatial hierarchy of work lives on the background layer."
+    origins:
+      - source: S026
+        locator: 'The background carries orientation'
+    position: rejected
+    reason: S023 gives the background to system status and the underlying view to context, so orientation moves to the view.
+  - id: C-076
+    title: "Conversation as the page foreground"
+    kind: mechanism
+    statement: "The conversation is the page's primary canvas, with views appearing within or beside it."
+    origins:
+      - source: S026
+        locator: 'The foreground is a conversation'
+    position: rejected
+    reason: S023 makes Relay an overlay above a view that defines context. Inline cards and cues survive inside the overlay.
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?
@@ -2853,6 +3131,22 @@ choices:
     chosen: C-033
     decided_by: operator
     decision_ref: S012
+  - id: CH-05
+    question: May the operator's words move the view?
+    options:
+      - concept: C-063
+        consequence: Fluid and honest, with Back. A wrong match moves the screen, though it never changes anything.
+      - concept: C-064
+        consequence: The most predictable. One more tap each time, and less like what the operator described.
+      - concept: C-065
+        consequence: The most fluid. The screen changes after a plain question, which breaks Downlink's rule.
+  - id: CH-06
+    question: How far does always available reach in the first build?
+    options:
+      - concept: C-071
+        consequence: Smaller, and touches no production page. Relay is left behind on control pages, just when the operator may want to ask about what they see.
+      - concept: C-072
+        consequence: Truly everywhere sooner. More to test, and it touches production pages while production is the priority.
 scrutiny:
   - id: R1
     path: reviews/R1-relay-critique.md
@@ -2937,6 +3231,91 @@ scrutiny:
         severity: note
         summary: Later-phase ordering of C-022, and whether lessons can feed the lookup.
         disposition: open
+  - id: R2
+    path: reviews/R2-layers-critique.md
+    reviewer: Critic Claudia Mason
+    independent_of_authors: true
+    lenses:
+      - mission
+      - evidence
+      - failure
+    record_hash: a91c72a99710eaa6d1df8ee1102bfbdc8af545058f86c22aa223cee77cbf90d6
+    verdict: pass_with_changes
+    findings:
+      - id: R2-F1
+        severity: blocking
+        summary: "REQ-015 to REQ-018 were added after the frame was confirmed, and REQ-016 pre-decided CH-05 and contradicted its recommended option."
+        disposition: fixed
+        note: "Each is marked proposed until the operator confirms it, and REQ-016 and its proof no longer pick an option."
+        concepts:
+          - C-062
+          - C-063
+          - C-064
+          - C-065
+      - id: R2-F2
+        severity: blocking
+        summary: "The scene didn't answer whether unattended production is alive, and the design wrongly said no production source exists."
+        disposition: fixed
+        note: "Uses the existing console read and heartbeat, moving now means something is running, a stale heartbeat reads as blocked, and all clear is never shown alone while production is Off."
+        concepts:
+          - C-066
+      - id: R2-F3
+        severity: blocking
+        summary: "The old composer's direction path and the Uplink input had no stated home, and removing the gates could let scope pick a write target."
+        disposition: fixed
+        note: "Directions keep their gates and name their exact target, only ordinary Ask loses the gate, the Uplink stays distinct, and acceptance tests it."
+        concepts:
+          - C-068
+      - id: R2-F4
+        severity: note
+        summary: "The probe named the wrong weak pair and sampled text thinly."
+        disposition: fixed
+        note: "Every visible element is sampled, and all the weak pairs are named."
+      - id: R2-F5
+        severity: note
+        summary: "Phone geometry with the keyboard and an Artifact was unproven."
+        disposition: fixed
+        note: "A simulated keyboard case was added, an Artifact drops Relay to Resting on a phone, and the lowering tap is consumed. A real keyboard stays untested."
+        concepts:
+          - C-073
+      - id: R2-F6
+        severity: note
+        summary: "Step 2 said no backend change while sending the subject, and the chip could overstate."
+        disposition: fixed
+        note: "The chip names only what is sent, the subject and scope used move to step 3, and go requests get their own step."
+        concepts:
+          - C-067
+          - C-063
+      - id: R2-F7
+        severity: note
+        summary: "The URL doesn't cover the Journey or the Stage."
+        disposition: fixed
+        note: "Their cues wait until they have addresses."
+        concepts:
+          - C-069
+      - id: R2-F8
+        severity: note
+        summary: "Read cost and multiple windows were deferred, and pill flips had no policy."
+        disposition: fixed
+        note: "A read budget is in the acceptance, a reading must hold for two reads, and the multi-window claim is qualified."
+        concepts:
+          - C-066
+      - id: R2-F9
+        severity: note
+        summary: "The thread was both a projection and a store."
+        disposition: fixed
+        note: "It is a new record of what was said, pointing to the receipt."
+        concepts:
+          - C-060
+      - id: R2-F10
+        severity: note
+        summary: "Narrowings of S022 and S023 needed saying."
+        disposition: fixed
+        note: "The narrowing, the override of the freeze in option 2B and the build order as taste are all stated, and the vocabulary ships in stages."
+        concepts:
+          - C-062
+          - C-069
+          - C-072
 riskiest_assumption:
   statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically.
   test: About 30 first-timer questions, answered from the guidance alone and graded by a separate judge against the cited text, the Decisions and the code.

@@ -1,5 +1,9 @@
 # Arcadia conversational workspace UX design specification
 
+**Proposed change, 2026-11-03:** the operator's layered direction changes two sections below, "The foreground is a
+conversation" and "The background carries orientation". The [Relay layer design](relay/workspace-layers.md) has the details and
+awaits approval. The rest of this spec stands.
+
 ## Verified delivery status — 2026-10-15
 
 The [routing and React sky scaffold](https://github.com/pmark/arcadia/pull/1427) is merged, following independent current-head review and seven passing CI jobs. It provides `/workspace`, Project/Plan/Action routes, readable scope navigation, and responsive extension regions. It does **not** yet submit Ask requests or supply conversation history. The [Ask API scenario suite](https://github.com/pmark/arcadia/pull/1422) is also merged; its disposable-workspace evidence does not prove deployed latency or worker execution.
