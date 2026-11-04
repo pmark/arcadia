@@ -26,7 +26,7 @@ import { REVIEW_REPAIR_ESCALATIONS, REVIEW_REPAIR_ROUNDS_EXHAUSTED } from "./rev
 /**
  * Operator decision 2026-10-21 (Release Manager session): an Action whose
  * review repair stopped for the operator (`review_repair_rounds_exhausted`,
- * `review_repair_gated`) is "held": its candidate stays preserved and
+ * `review_repair_gated`, `review_repair_gate_defect`) is "held": its candidate stays preserved and
  * un-integrated until the operator acts, and it must not block admission of
  * in-scope Actions that do not depend on it. Returns that open escalation, or
  * null. Read-only; a missing table answers null.

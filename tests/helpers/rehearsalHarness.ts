@@ -840,11 +840,17 @@ function hostPullRequest(branch: string, head: string) {
  */
 export type HostModelVerdict = "pass" | "fail" | "not-applicable" | "variance";
 
-function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect", failCriteria: string[] | null = null, findingSeverity = "blocker", failSummary = "A defect blocks this head."): QaPrModelVerdict {
+/** A failed verdict's exact wording, for a test pinning what a reviewer really wrote. */
+export interface FailedVerdictWords {
+  findings: Array<{ severity: string; title: string; evidence: string; recommendation: string }>;
+  checkEvidence: string;
+}
+
+function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ id: string; name: string }>, findingTitle = "Defect", failCriteria: string[] | null = null, findingSeverity = "blocker", failSummary = "A defect blocks this head.", failWords: FailedVerdictWords | null = null): QaPrModelVerdict {
   return {
     verdict: verdict === "fail" ? "fail" : verdict === "variance" ? "needs-follow-up" : "pass",
     summary: verdict === "fail" ? failSummary : verdict === "variance" ? "No defect found, but one criterion is not established." : "No defects in the exact head.",
-    findings: verdict === "fail" ? [{ severity: findingSeverity, title: findingTitle, evidence: "MARKER.md", recommendation: "Fix it." }] : [],
+    findings: verdict === "fail" ? failWords?.findings ?? [{ severity: findingSeverity, title: findingTitle, evidence: "MARKER.md", recommendation: "Fix it." }] : [],
     checks: criteria.map((criterion, index) => ({
       criterion: criterion.id as QaPrModelVerdict["checks"][number]["criterion"],
       name: criterion.name,
@@ -852,7 +858,7 @@ function hostModelVerdict(verdict: HostModelVerdict, criteria: ReadonlyArray<{ i
         : verdict === "not-applicable" && criterion.id !== "correctness" ? "not-applicable" : "pass",
       evidence: verdict === "not-applicable" && criterion.id !== "correctness"
         ? `The patch touches only MARKER.md and Arcadia's governed settlement records, none of which can affect ${criterion.name.toLowerCase()}.`
-        : `${criterion.name} judged against the patch.`
+        : verdict === "fail" && failWords ? failWords.checkEvidence : `${criterion.name} judged against the patch.`
     })),
     residualRisks: []
   };
@@ -928,6 +934,8 @@ export class FakeGitHub {
   verdict: (role: "code-review" | "qa", pr: FakePullRequest | undefined) => HostModelVerdict = () => "pass";
   /** The title of the model's finding on a failed verdict (a model may write any title). */
   findingTitle = "Defect";
+  /** Overrides the failed verdict's findings and check evidence, per pull request. */
+  failWords: (pr: FakePullRequest | undefined) => FailedVerdictWords | null = () => null;
   /** The severity of the model's finding on a failed verdict. */
   findingSeverity = "blocker";
   /** The summary of a failed verdict. */
@@ -1132,7 +1140,7 @@ export class FakeGitHub {
       const exit = this.reviewerExit(role);
       if (exit !== 0) return { status: exit, stdout: "", stderr: "reviewer capacity exhausted (simulated)", error: null };
       const criteria = role === "code-review" ? CODE_REVIEW_PR_CRITERIA : QA_PR_REVIEW_CRITERIA;
-      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role, pr), criteria, this.findingTitle, this.failCriteria, this.findingSeverity, this.failSummary))}\n`, "utf8");
+      writeFileSync(args[args.indexOf("--output-last-message") + 1], `${JSON.stringify(hostModelVerdict(this.verdict(role, pr), criteria, this.findingTitle, this.failCriteria, this.findingSeverity, this.failSummary, this.failWords(pr)))}\n`, "utf8");
       return ok('{"type":"task.completed"}\n');
     }
     return { status: 1, stdout: "", stderr: `Unexpected command: ${command} ${args.join(" ")}`, error: null };

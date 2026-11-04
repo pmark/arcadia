@@ -103,10 +103,10 @@ describe("red alert diagnosis", () => {
       for (const trigger of NOTICE_ONLY_RED_ALERT_TRIGGERS) {
         raiseRedAlert(db, { workspace, projectSlug: "test-project", actionKey: `test-project/${trigger}`, sessionId: null, trigger, detail: () => "Notice.", now: new Date("2026-09-29T00:00:00.000Z") });
       }
-      expect(listOpenRedAlerts(db)).toHaveLength(3);
+      expect(listOpenRedAlerts(db)).toHaveLength(4);
       return diagnoseOpenRedAlerts(db, enabled, () => made.deps);
     });
-    expect(NOTICE_ONLY_RED_ALERT_TRIGGERS).toEqual(["repair_rounds_exhausted", "repair_gated", "resume_no_progress"]);
+    expect(NOTICE_ONLY_RED_ALERT_TRIGGERS).toEqual(["repair_rounds_exhausted", "repair_gated", "repair_gate_defect", "resume_no_progress"]);
     expect(result).toMatchObject({ enabled: true, diagnosed: [], skipped: 0 });
     expect(made.diagnose).not.toHaveBeenCalled();
     expect(made.ghCalls).toHaveLength(0);

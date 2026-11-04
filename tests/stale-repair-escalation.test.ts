@@ -168,6 +168,18 @@ describe("a review repair escalation and the Action input it binds (Issue #1929)
     });
   });
 
+  it("releases a gate-defect stop once the input changed, the route its remedy names when a head's records really are wrong", () => {
+    const fx = fixture();
+    withDatabase(fx.workspace, (db) => {
+      recordRepairStop(db, fx, grant(db, "grant-1"), "gated");
+      recordStoppedCandidateLineage(db, fx, currentInput(fx));
+      db.prepare("UPDATE production_operator_escalations SET kind = 'review_repair_gate_defect' WHERE action_key = 'alpha/a'").run();
+      expect(operatorHeldEscalation(db, "alpha/a", { repoRoot: fx.repo, planSlug: "alpha-plan" })).toMatchObject({ kind: "review_repair_gate_defect" });
+      db.prepare("UPDATE session_role_attempts SET input_revision = 'input-before-rescope' WHERE id = 'attempt_stopped'").run();
+      expect(operatorHeldEscalation(db, "alpha/a", { repoRoot: fx.repo, planSlug: "alpha-plan" })).toBeNull();
+    });
+  });
+
   it("fails closed when the stop's candidate input cannot be judged", () => {
     const fx = fixture();
     withDatabase(fx.workspace, (db) => {
