@@ -933,6 +933,120 @@ function rawPullRequest(statusCheckRollup: Array<Record<string, unknown>>) {
   };
 }
 
+describe("a Claude Code reviewer", () => {
+  const CLAUDE_HELP = "--tools --json-schema --setting-sources --strict-mcp-config --no-session-persistence\n";
+  const claudeInit = (tools: string[] = ["StructuredOutput"], mcpServers: unknown[] = []) =>
+    JSON.stringify({ type: "system", subtype: "init", tools, mcp_servers: mcpServers });
+  const claudeResult = (verdict: QaPrModelVerdict) =>
+    JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict, usage: { input_tokens: 10, output_tokens: 5 } });
+
+  /** Runs one review with `reviewerStdout` as the Claude process's output; any Codex call fails the test. */
+  function review(
+    reviewerStdout: string,
+    options: { help?: string; reviewer?: SelectedCodingAgentConfiguration; reviewerStatus?: number } = {}
+  ) {
+    const fixture = createFixture();
+    const calls: Array<{ command: string; args: string[]; environment?: NodeJS.ProcessEnv; stdin?: string }> = [];
+    const result = runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/54" }, {
+      selectReviewer: () => options.reviewer ?? claudeReviewer(),
+      runCommand: ({ command, args, environment, stdin }) => {
+        if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
+        if (command === "gh" && args[1] === "view" && args.includes("--jq")) return success(`${HEAD_SHA}\n`);
+        if (command === "gh" && args[1] === "view") return success(JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")])));
+        if (command === "gh" && args[0] === "api") return success("diff --git a/docs/example.md b/docs/example.md\n+planned QA\n");
+        if (command === "codex") throw new Error("a Claude review must not call Codex");
+        if (command === "claude" && args[0] === "--help") return success(options.help ?? CLAUDE_HELP);
+        if (command === "claude") {
+          calls.push({ command, args, environment, stdin });
+          return { status: options.reviewerStatus ?? 0, stdout: reviewerStdout, stderr: "", error: null };
+        }
+        return failure(`Unexpected command: ${command}`);
+      }
+    });
+    return { result, calls };
+  }
+
+  it("runs with no tools, settings or MCP servers, and records the structured verdict", () => {
+    const { result, calls } = review([claudeInit(), claudeResult(passingModelVerdict("The supplied evidence passes.")), ""].join("\n"));
+    expect(result.data.verdict).toBe("pass");
+    expect(result.data.reviewerUnavailable).toBeNull();
+    expect(calls).toHaveLength(1);
+    const { args, stdin, environment } = calls[0];
+    expect(args[args.indexOf("--tools") + 1]).toBe("");
+    expect(args[args.indexOf("--setting-sources") + 1]).toBe("");
+    expect(args).toContain("--strict-mcp-config");
+    expect(args).toContain("--no-session-persistence");
+    expect(args[args.indexOf("--model") + 1]).toBe("opus");
+    expect(args[args.indexOf("--effort") + 1]).toBe("medium");
+    expect(JSON.parse(args[args.indexOf("--json-schema") + 1])).toMatchObject({ type: "object" });
+    expect(args).not.toContain("--dangerously-skip-permissions");
+    expect(stdin).toContain("diff --git a/docs/example.md");
+    expectIdentityBlock(stdin ?? "", "claude", "heavy", "critic");
+    expect(Object.keys(environment ?? {}).sort().every((key) => ["HOME", "LOGNAME", "PATH", "SHELL", "TERM", "TMPDIR", "USER"].includes(key))).toBe(true);
+  });
+
+  it.each([
+    ["a tool it should not have", () => claudeInit(["StructuredOutput", "Bash"])],
+    ["an MCP server", () => claudeInit(["StructuredOutput"], [{ name: "x", status: "connected" }])]
+  ])("fails closed when the run reports %s, even with a passing verdict", (_label, init) => {
+    const { result } = review([init(), claudeResult(passingModelVerdict("Looks fine.")), ""].join("\n"));
+    expect(result.data.verdict).not.toBe("pass");
+    expect(result.data.reviewerUnavailable).toContain("boundary failed");
+  });
+
+  it("fails closed when the run reports no init event", () => {
+    const { result } = review(`${claudeResult(passingModelVerdict("Looks fine."))}\n`);
+    expect(result.data.verdict).not.toBe("pass");
+    expect(result.data.reviewerUnavailable).toContain("no init event");
+  });
+
+  it("treats a sign-in failure as an unavailable reviewer, not a judgment", () => {
+    const stdout = [claudeInit(), JSON.stringify({ type: "result", is_error: true, structured_output: null, result: "Not logged in · Please run /login" }), ""].join("\n");
+    const { result } = review(stdout, { reviewerStatus: 1 });
+    expect(result.data.verdict).not.toBe("pass");
+    expect(result.data.reviewerUnavailable).toContain("Not logged in");
+  });
+
+  it("treats a run with no structured verdict as an unavailable reviewer", () => {
+    const stdout = [claudeInit(), JSON.stringify({ type: "result", is_error: false, result: "prose only" }), ""].join("\n");
+    const { result } = review(stdout);
+    expect(result.data.verdict).not.toBe("pass");
+    expect(result.data.reviewerUnavailable).toBeTruthy();
+  });
+
+  it("runs no model when the installed CLI lacks a boundary flag", () => {
+    const { result, calls } = review("", { help: "--json-schema --setting-sources --strict-mcp-config --no-session-persistence\n" });
+    expect(calls).toHaveLength(0);
+    expect(result.data.verdict).not.toBe("pass");
+  });
+
+  it("refuses a Claude profile that is not read-only", () => {
+    expect(() => review("", { reviewer: claudeReviewer("workspace-write") })).toThrow("read-only sandbox");
+  });
+});
+
+function claudeReviewer(sandbox: "read-only" | "workspace-write" = "read-only"): SelectedCodingAgentConfiguration {
+  return {
+    mappingId: "test-mapping",
+    bindingId: "claude-review",
+    profile: {
+      name: "claude_planning",
+      provider: "claude-code-cli",
+      package: "fake",
+      command: "claude",
+      purpose: "planning",
+      sandbox,
+      args: ["--print"]
+    },
+    provider: "claude-code-cli",
+    model: "opus",
+    capability: "c2_integrated",
+    effort: "e2_standard",
+    args: ["--model", "opus", "--effort", "medium"],
+    costRank: 0
+  };
+}
+
 function check(name: string, conclusion: string, detailsUrl: string) {
   return { name, status: "COMPLETED", conclusion, detailsUrl, workflowName: "CI" };
 }

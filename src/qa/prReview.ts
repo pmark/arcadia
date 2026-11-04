@@ -14,7 +14,7 @@ import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { observeCodingAgentAvailability } from "../codingAgents/availability.js";
 import { codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import { loadIdentityModelTierRegistry, renderReviewerIdentityBlock } from "../codingAgents/agentIdentity.js";
-import { sessionAgentForProvider } from "../sessions/index.js";
+import { sessionAgentForProvider, withClaudeCodeToken } from "../sessions/index.js";
 import { completionSupplementArtifacts, resolveCompletionSupplement, completionEvidenceForReview, settledCandidateForReview, settlementRecordFilesForReview } from "../sessions/reconciliation.js";
 import {
   selectCompliantCodingAgent,
@@ -444,11 +444,8 @@ export function runQaPrReviewCommand(
   writeFileSync(schemaPath, `${JSON.stringify(reviewSchema(profile), null, 2)}\n`, "utf8");
 
   const reviewer = (dependencies.selectReviewer ?? selectQaReviewer)(workspacePath, options.reviewerProfile);
-  if (
-    reviewer.provider !== "codex-cli" ||
-    reviewer.profile.sandbox !== "read-only" ||
-    path.basename(reviewer.profile.command) !== "codex"
-  ) {
+  const reviewerKind = qaReviewerKind(reviewer);
+  if (!reviewerKind) {
     throw validationError("Minimal PR QA currently requires a reviewer with verified structured-output support and a read-only sandbox.", {
       selectedProvider: reviewer.provider,
       selectedProfile: reviewer.profile.name,
@@ -503,13 +500,15 @@ export function runQaPrReviewCommand(
       parentRequestId: effectivenessParentRequestId(previous, begun.attempt),
     };
   });
-  const sandboxProof = runQaSandboxPreflight({
-    command: reviewer.profile.command,
-    attemptRoot,
-    evidencePath,
-    repositoryPath: project.repositoryPath,
-    runCommand
-  });
+  const sandboxProof = reviewerKind === "claude"
+    ? runClaudeReviewerPreflight({ command: reviewer.profile.command, attemptRoot, runCommand })
+    : runQaSandboxPreflight({
+        command: reviewer.profile.command,
+        attemptRoot,
+        evidencePath,
+        repositoryPath: project.repositoryPath,
+        runCommand
+      });
   writeFileSync(sandboxProofPath, `${sandboxProof.output}\n`, "utf8");
   const prompt = buildReviewPrompt(profile, candidate, pullRequest, patchResult.stdout, sandboxProof, renderReviewerIdentityBlock({
     // The reviewer judges someone else's work: named in the critic role, from
@@ -527,7 +526,15 @@ export function runQaPrReviewCommand(
   const evidenceCurrentBeforeReview = preReviewFingerprint === evidenceFingerprint;
   const reviewerInvoked = sandboxProof.passed && evidenceCurrentBeforeReview;
   const reviewStartedAtMs = reviewerInvoked ? performance.now() : null;
-  const reviewRun = reviewerInvoked
+  const reviewRun = reviewerInvoked && reviewerKind === "claude"
+    ? recordClaudeReviewerVerdict(runCommand({
+        ...withClaudeCodeToken(claudeReviewerLaunch(reviewer, schemaPath), workspacePath),
+        cwd: attemptRoot,
+        stdin: prompt,
+        timeoutMs: options.reviewerTimeoutMs ?? 30 * 60_000,
+        environment: buildClaudeReviewerEnvironment()
+      }), modelOutputPath)
+    : reviewerInvoked
     ? runCommand({
         command: reviewer.profile.command,
         args: [
@@ -617,7 +624,7 @@ export function runQaPrReviewCommand(
     configuredEffort: reviewer.effort,
     effectiveEffort: codexReasoningEffort(reviewer.effort),
     configuredEffortSource: `provider binding ${reviewer.bindingId}`,
-    effectiveEffortSource: "codex model_reasoning_effort launch argument",
+    effectiveEffortSource: reviewerKind === "claude" ? "claude --effort launch argument" : "codex model_reasoning_effort launch argument",
     usage: reviewerInvoked ? sessionTokensFromLog([reviewRun.stdout, reviewRun.stderr].filter(Boolean).join("\n")) : null,
     usageSource: reviewerInvoked ? "provider reviewer-events JSONL" : null,
     modelCallElapsedMs,
@@ -1894,6 +1901,96 @@ function runQaSandboxPreflight(input: {
   };
 }
 
+/** Which reviewer launch this selection supports: read-only, with a verified structured verdict and boundary proof. */
+function qaReviewerKind(reviewer: SelectedCodingAgentConfiguration): "codex" | "claude" | null {
+  if (reviewer.profile.sandbox !== "read-only") return null;
+  const command = path.basename(reviewer.profile.command);
+  if (reviewer.provider === "codex-cli" && command === "codex") return "codex";
+  if (reviewer.provider === "claude-code-cli" && command === "claude") return "claude";
+  return null;
+}
+
+const CLAUDE_REVIEWER_FLAGS = ["--tools", "--json-schema", "--setting-sources", "--strict-mcp-config", "--no-session-persistence"];
+/** Claude Code implements --json-schema with this one internal tool, which can only return the verdict. */
+const CLAUDE_REVIEWER_ALLOWED_TOOLS = new Set(["StructuredOutput"]);
+
+/**
+ * The Claude reviewer's boundary has no sandbox to probe: it runs with every
+ * tool removed, so it can read, write and run nothing, and judges only the
+ * prompt. This proves the installed CLI has the flags that remove them;
+ * `recordClaudeReviewerVerdict` then checks what the run itself reported.
+ */
+function runClaudeReviewerPreflight(input: {
+  command: string;
+  attemptRoot: string;
+  runCommand: NonNullable<QaPrReviewDependencies["runCommand"]>;
+}): QaSandboxProof {
+  const help = input.runCommand({
+    command: input.command,
+    args: ["--help"],
+    cwd: input.attemptRoot,
+    timeoutMs: 10_000,
+    environment: buildClaudeReviewerEnvironment()
+  });
+  const missing = CLAUDE_REVIEWER_FLAGS.filter((flag) => !help.stdout.includes(flag));
+  const lines = CLAUDE_REVIEWER_FLAGS.map((flag) => `${missing.includes(flag) ? "claude-flag-missing" : "claude-flag-present"}: ${flag}`);
+  return {
+    passed: help.status === 0 && missing.length === 0,
+    status: help.status,
+    output: ["reviewer-boundary: no tools, no settings, no MCP servers, prompt only", ...lines].join("\n"),
+    error: help.error
+  };
+}
+
+function claudeReviewerLaunch(reviewer: SelectedCodingAgentConfiguration, schemaPath: string): { command: string; args: string[] } {
+  return {
+    command: reviewer.profile.command,
+    args: [
+      "--print",
+      "--output-format", "stream-json",
+      "--verbose",
+      "--tools", "",
+      "--model", reviewer.model,
+      "--effort", codexReasoningEffort(reviewer.effort),
+      "--json-schema", readFileSync(schemaPath, "utf8"),
+      "--setting-sources", "",
+      "--strict-mcp-config",
+      "--no-session-persistence"
+    ]
+  };
+}
+
+/**
+ * Writes the verdict file only from a run that reported no usable tools and no
+ * MCP servers and returned a structured verdict. Anything else fails closed as
+ * a failed reviewer run, so `parseModelVerdict` never reads a verdict from it.
+ */
+function recordClaudeReviewerVerdict(run: CommandResult, modelOutputPath: string): CommandResult {
+  const events: Array<Record<string, unknown>> = [];
+  for (const line of run.stdout.split(/\r?\n/)) {
+    if (!line.startsWith("{")) continue;
+    try {
+      events.push(JSON.parse(line) as Record<string, unknown>);
+    } catch { /* a partial line is not an event */ }
+  }
+  const refuse = (error: string): CommandResult => ({ ...run, status: run.status === 0 || run.status === null ? 1 : run.status, error });
+  const init = events.find((event) => event.type === "system" && event.subtype === "init");
+  if (!init) return refuse(run.error ?? (run.stderr.trim() || "the Claude reviewer reported no init event"));
+  const tools = Array.isArray(init.tools) ? init.tools : null;
+  if (!tools || tools.some((tool) => !CLAUDE_REVIEWER_ALLOWED_TOOLS.has(String(tool)))) {
+    return refuse(`the Claude reviewer's boundary failed: it reported tools ${JSON.stringify(init.tools)}`);
+  }
+  if (!Array.isArray(init.mcp_servers) || init.mcp_servers.length > 0) {
+    return refuse(`the Claude reviewer's boundary failed: it reported MCP servers ${JSON.stringify(init.mcp_servers)}`);
+  }
+  const result = [...events].reverse().find((event) => event.type === "result");
+  if (run.status !== 0 || !result || result.is_error === true || result.structured_output === undefined || result.structured_output === null) {
+    return refuse(typeof result?.result === "string" && result.result ? result.result : run.error ?? (run.stderr.trim() || "the Claude reviewer returned no structured verdict"));
+  }
+  writeFileSync(modelOutputPath, JSON.stringify(result.structured_output), "utf8");
+  return run;
+}
+
 function repositoryGitHeadPath(repositoryPath: string): string | null {
   const dotGitPath = path.join(repositoryPath, ".git");
   try {
@@ -2243,6 +2340,16 @@ function buildQaReviewerEnvironment(): NodeJS.ProcessEnv {
     if (value !== undefined) {
       environment[key] = value;
     }
+  }
+  return environment;
+}
+
+/** The same minimal map, plus what Claude Code's login lookup needs on this host (a tool-free reviewer cannot read any of it). */
+function buildClaudeReviewerEnvironment(): NodeJS.ProcessEnv {
+  const environment = buildQaReviewerEnvironment();
+  for (const key of ["USER", "LOGNAME"]) {
+    const value = process.env[key];
+    if (value !== undefined) environment[key] = value;
   }
   return environment;
 }
