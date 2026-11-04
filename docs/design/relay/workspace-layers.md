@@ -63,10 +63,10 @@ change.
    reasons, each linking to the item or control it's about, which the Feed already knows. Weather is never the only channel.
 3. **The top strip stays open sky,** at every Relay height, so the Scene is never fully covered.
 4. **It can't falsely say "clear".** A clear sky is a claim that needs a fresh read.
-   - Before the first read: no weather, a hollow dot, and "Reading".
-   - A read older than the limit: Signal loss.
-   - Worse news shows at the next read. Better news has to hold for two reads, so a flicker can't briefly clear the sky. The
-     words change with the weather, and that's the only time a screen reader hears them.
+   - Until every read has landed: bad news can show, but a calm sky has no weather, a hollow dot, and "Reading".
+   - A read older than five minutes: Signal loss.
+   - Worse news shows at the next read. Better news has to hold for 30 seconds, about two reads, so a flicker can't briefly clear
+     the sky. The words change with the weather, and that's the only time a screen reader hears them.
 5. **Production gets its own line,** from `/api/production-console?part=core`, using the states Arcadia actually records.
    The heartbeat there belongs to the worker process, not to a Session, so a stalled Session is checked separately. A calm sky
    says "All clear" only when production is On. While it's Off, the most it says is "Nothing waiting".
