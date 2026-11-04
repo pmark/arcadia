@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Approval } from "./approvals";
 import type { ConsoleCoreData } from "./production-console";
 import { SKY_RESUME_GRACE_MS, SKY_STALE_MS, readSky } from "./system-sky";
-import { STATUS_SOURCES, createWorkspaceStatus, skySourcesFrom, type StatusLoaders, type WorkspaceStatus } from "./workspace-status";
+import { STATUS_READ_DEADLINE_MS, STATUS_SOURCES, createWorkspaceStatus, skySourcesFrom, type StatusLoaders, type WorkspaceStatus } from "./workspace-status";
 
 const flush = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
 const core = (displayState: string): ConsoleCoreData => ({ generatedAt: "x", production: { displayState }, productionError: null, worker: { running: true, heartbeat: { timestamp: null, fresh: true, available: true } }, sessions: { active: [], recent: [] }, sessionsError: null, pause: {} }) as unknown as ConsoleCoreData;
@@ -83,6 +83,32 @@ describe("workspace status read", () => {
     expect(status.production?.displayState).toBe("active_idle");
   });
 
+  it("counts a read that never answers as failed, and tries again later", async () => {
+    vi.useFakeTimers();
+    try {
+      let at = 0;
+      const production = vi.fn(never);
+      const read = createWorkspaceStatus(loaders({ production }), () => at);
+      read();
+      at = STATUS_READ_DEADLINE_MS;
+      await vi.advanceTimersByTimeAsync(STATUS_READ_DEADLINE_MS);
+      const status = read();
+      expect(status.sources.production).toEqual({ asOf: null, failed: true });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(production).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("uses the time the production read was really made", async () => {
+    const generatedAt = new Date(5_000).toISOString();
+    const read = createWorkspaceStatus(loaders({ production: async () => ({ ...core("active_idle"), generatedAt }) }), () => 9_000);
+    read();
+    await flush();
+    expect(read().sources.production.asOf).toBe(5_000);
+  });
+
   it("uses the inventory's own checked time for pull requests", async () => {
     const read = createWorkspaceStatus(loaders({ pullRequests: async () => ({ snapshot: { pullRequests: [] } as never, checkedAt: 500 }) }), () => 9_000);
     read();
@@ -117,10 +143,12 @@ describe("what the sky makes of it", () => {
     expect(sky(status(), true).id).toBe("static");
   });
 
-  it("says it can't read production only when production's own read failed", () => {
+  it("calls production unreadable as soon as its own read fails, even with an older answer to hand", () => {
     const sources = status().sources;
     expect(sky(status({ production: null, sources: { ...sources, production: { asOf: null, failed: true } } }))).toMatchObject({ id: "static", production: "Can't read production" });
-    expect(sky(status({ sources: { ...sources, production: { asOf: 1_000, failed: true } } }))).toMatchObject({ id: "clear", production: "Production Off" });
+    const onBefore = { ...facts, displayState: "active_idle" };
+    expect(sky(status({ production: onBefore, sources: { ...sources, production: { asOf: 1_000, failed: true } } }))).toMatchObject({ id: "static", production: "Can't read production" });
+    expect(sky(status({ production: onBefore }))).toMatchObject({ label: "All clear" });
   });
 
   it("reads a failed list as Signal loss", () => {

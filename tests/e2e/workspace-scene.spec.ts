@@ -11,7 +11,7 @@ type Facts = { displayState: string | null; workerRunning: boolean | null; heart
 const facts = (displayState: string, over: Partial<Facts> = {}): Facts => ({ displayState, workerRunning: true, heartbeatFresh: true, liveSessions: 0, stalledSessions: 0, ...over });
 
 // Each row of the production table in docs/design/relay/workspace-layers.md, Scene point 5.
-const ROWS: Array<{ name: string; read: Facts | "down"; label: string; words: string }> = [
+const ROWS: Array<{ name: string; read: Facts | "down"; label: string; words: string; refreshFailed?: boolean }> = [
   { name: "Off", read: facts("inactive_idle", { workerRunning: false, heartbeatFresh: false }), label: "Nothing waiting", words: "Production Off" },
   { name: "finishing", read: facts("inactive_finishing"), label: "Work moving", words: "Production finishing" },
   { name: "On and idle", read: facts("active_idle"), label: "All clear", words: "Production on, idle" },
@@ -20,7 +20,8 @@ const ROWS: Array<{ name: string; read: Facts | "down"; label: string; words: st
   { name: "a silent worker", read: facts("active_building", { heartbeatFresh: false }), label: "Blocked", words: "Worker not responding" },
   { name: "an unreadable store", read: facts("observation_unavailable"), label: "Signal loss", words: "Can't read production" },
   { name: "a failed part of the read", read: facts("inactive_idle", { workerRunning: null }), label: "Signal loss", words: "Can't read production" },
-  { name: "a failed read", read: "down", label: "Signal loss", words: "Can't read production" }
+  { name: "a failed read", read: "down", label: "Signal loss", words: "Can't read production" },
+  { name: "a failed refresh after a good read", read: facts("active_idle"), refreshFailed: true, label: "Signal loss", words: "Can't read production" }
 ];
 
 test("every Workspace view shows system status, and a status change moves nothing else", async ({ page }, testInfo) => {
@@ -38,12 +39,13 @@ test("every Workspace view shows system status, and a status change moves nothin
   let counts_ = NONE;
   let pending = false;
   let statusDown = false;
+  let refreshFailed = false;
   const status = () => {
     const asOf = pending ? null : Date.now();
     const down = production === "down";
     return {
       generatedAt: new Date().toISOString(), counts: counts_, production: down ? null : pending ? null : production,
-      sources: { "To-do list": { asOf, failed: false }, "next steps": { asOf, failed: false }, "pull requests": { asOf, failed: false }, production: { asOf: down ? null : asOf, failed: down } }
+      sources: { "To-do list": { asOf, failed: false }, "next steps": { asOf, failed: false }, "pull requests": { asOf, failed: false }, production: { asOf: down ? null : asOf, failed: down || refreshFailed } }
     };
   };
   await page.route("**/api/**", async route => {
@@ -120,12 +122,14 @@ test("every Workspace view shows system status, and a status change moves nothin
     await page.goto(`${url}/workspace#dusk`);
     for (const row of ROWS) {
       production = row.read;
+      refreshFailed = row.refreshFailed ?? false;
       await page.reload();
       await expect(summary, row.name).toContainText(row.label);
       await expect(summary, row.name).toContainText(row.words);
       if (row.label !== "All clear") await expect(summary, row.name).not.toContainText("All clear");
     }
     production = facts("inactive_idle");
+    refreshFailed = false;
 
     // If the status read itself can't be reached, the sky says so without blaming production.
     statusDown = true;
@@ -141,7 +145,8 @@ test("every Workspace view shows system status, and a status change moves nothin
     const before = { ...counts };
     await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);
-    expect(counts["/api/workspace/status"]).toBe(before["/api/workspace/status"]);
+    // The regular poll could land in this window, but navigating itself doesn't ask again.
+    expect(counts["/api/workspace/status"]).toBeLessThanOrEqual(before["/api/workspace/status"] + 1);
     for (const endpoint of ["/api/approvals", "/api/next-steps", "/api/pull-requests", "/api/production-console"]) expect(counts[endpoint], endpoint).toBe(before[endpoint]);
     // The Feed fetches its own lists, only while it's open.
     await page.getByRole("link", { name: "Feed" }).click();

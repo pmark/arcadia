@@ -12,19 +12,29 @@ const TIMEOUT_MS = 20_000;
 export function useWorkspaceStatus(settling: boolean) {
   const [data, setData] = useState<WorkspaceStatus | null>(null);
   const [failed, setFailed] = useState(false);
+  // How far the server's clock is ahead of this device's, so a read's age is judged on one clock.
+  const [serverOffset, setServerOffset] = useState(0);
   const latest = useRef(0);
+  const applied = useRef(0);
 
-  // Only the newest request counts, so a slow older answer can't overwrite a newer one.
+  // A newer answer always counts, even if a later request is still out, but an older answer never overwrites a newer one.
   const refresh = useCallback(async () => {
     const requested = ++latest.current;
     try {
       const response = await fetch("/api/workspace/status", { cache: "no-store", signal: AbortSignal.timeout(TIMEOUT_MS) });
       const body = response.ok ? (await response.json()) as WorkspaceStatus : null;
-      if (requested !== latest.current) return;
-      if (body) setData(body);
+      if (requested < applied.current) return;
+      applied.current = requested;
+      if (body) {
+        setData(body);
+        setServerOffset(Date.parse(body.generatedAt) - Date.now());
+      }
       setFailed(!body);
     } catch {
-      if (requested === latest.current) setFailed(true);
+      if (requested >= applied.current) {
+        applied.current = requested;
+        setFailed(true);
+      }
     }
   }, []);
 
@@ -40,5 +50,5 @@ export function useWorkspaceStatus(settling: boolean) {
     return () => clearInterval(interval);
   }, [refresh, settling]);
 
-  return { data, failed };
+  return { data, failed, serverOffset };
 }

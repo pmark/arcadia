@@ -32,6 +32,8 @@ export interface StatusLoaders {
 
 /** How often each source may be refreshed. Slower sources cost more, and none of them change by the second. */
 const REFRESH_MS: Record<StatusSource, number> = { "To-do list": 60_000, "next steps": 120_000, "pull requests": 60_000, production: 30_000 };
+/** A read that never answers counts as failed, so a source can't sit on "Reading" forever. Longer than the slowest read seen under load. */
+export const STATUS_READ_DEADLINE_MS = 180_000;
 
 interface Slot<T> { value: T | null; asOf: number | null; failed: boolean; pending: boolean; startedAt: number }
 const slot = <T>(): Slot<T> => ({ value: null, asOf: null, failed: false, pending: false, startedAt: -Infinity });
@@ -47,10 +49,12 @@ export function createWorkspaceStatus(loaders: StatusLoaders, now: () => number 
     if (target.pending || now() - target.startedAt < REFRESH_MS[name]) return;
     target.pending = true;
     target.startedAt = now();
-    void load().then(result => {
+    let timer: ReturnType<typeof setTimeout>;
+    const deadline = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`${name} read timed out.`)), STATUS_READ_DEADLINE_MS); });
+    void Promise.race([load(), deadline]).then(result => {
       if (result) { target.value = result.value; target.asOf = result.asOf; }
       target.failed = false;
-    }).catch(() => { target.failed = true; }).finally(() => { target.pending = false; });
+    }).catch(() => { target.failed = true; }).finally(() => { clearTimeout(timer); target.pending = false; });
   }
 
   return () => {
@@ -60,7 +64,11 @@ export function createWorkspaceStatus(loaders: StatusLoaders, now: () => number 
       const read = await loaders.pullRequests();
       return read && { value: read.snapshot, asOf: read.checkedAt };
     });
-    refresh("production", production, async () => ({ value: await loaders.production(), asOf: now() }));
+    // The core read is itself cached, and it says when it was really made.
+    refresh("production", production, async () => {
+      const value = await loaders.production();
+      return { value, asOf: Date.parse(value.generatedAt) || now() };
+    });
     const report = (s: Slot<unknown>) => ({ asOf: s.asOf, failed: s.failed });
     return {
       generatedAt: new Date(now()).toISOString(),
@@ -71,7 +79,10 @@ export function createWorkspaceStatus(loaders: StatusLoaders, now: () => number 
   };
 }
 
-/** Turns the status read into what the sky needs. `unreachable` means the read itself failed, which says nothing about production. */
+/**
+ * Turns the status read into what the sky needs. A failed production read means production's state is unknown, even with an
+ * older answer to hand. `unreachable` means the status read itself failed, which says nothing about production.
+ */
 export function skySourcesFrom(status: WorkspaceStatus | null, unreachable: boolean, resumedAt: number, now: number): SkySources {
   if (!status) return { counts: skyCounts([]), problems: unreachable ? ["Arcadia's status"] : [], loading: !unreachable };
   const landed = STATUS_SOURCES.every(name => status.sources[name].asOf !== null || status.sources[name].failed);
@@ -85,6 +96,6 @@ export function skySourcesFrom(status: WorkspaceStatus | null, unreachable: bool
     stale,
     resuming,
     loading: !landed,
-    production: productionRead.failed && !status.production ? null : productionRead.asOf === null ? undefined : status.production
+    production: productionRead.failed ? null : productionRead.asOf === null ? undefined : status.production
   };
 }

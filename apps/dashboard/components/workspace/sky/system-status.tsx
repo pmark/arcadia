@@ -31,7 +31,7 @@ export function SystemStatusProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const reading = useMemo(() => readSky(skySourcesFrom(status.data, status.failed, clock.resumedAt, Math.max(clock.now, status.data ? Date.parse(status.data.generatedAt) : 0))), [status.data, status.failed, clock]);
+  const reading = useMemo(() => readSky(skySourcesFrom(status.data, status.failed, clock.resumedAt + status.serverOffset, clock.now + status.serverOffset)), [status.data, status.failed, status.serverOffset, clock]);
   const [settled, setSettled] = useState<SettledSky>(() => ({ shown: reading, pending: null }));
   useEffect(() => {
     setSettled(state => settleSky(state, reading, Date.now()));
