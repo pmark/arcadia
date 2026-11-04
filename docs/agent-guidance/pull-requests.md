@@ -197,8 +197,13 @@ merge it anyway, so asking spends attention and protects nothing.
   Project, once an independent review of the current head has no unresolved
   blocking finding, enable auto-merge pinned to that head instead of waiting
   for a nudge: `gh pr merge <PR> --auto --squash --match-head-commit <sha>`. It
-  replaces the wait, not this gate: never enable it before that review, and a
-  new head needs its review again. Auto-fix stays on for the Session's PRs.
+  replaces the wait, not this gate: read new comments and reviews first, and
+  never enable it before that review. GitHub does not disarm auto-merge when a
+  new head is pushed, and it would merge that unreviewed head once checks pass.
+  So before any push to an armed PR, including an Auto-fix push, run
+  `gh pr merge <PR> --disable-auto`, and arm it again only after the new head's
+  review; the same applies if the PR comes to need special handling. Auto-fix
+  stays on for the Session's PRs.
   Merge by hand, or leave for the operator, in these special cases: a PR this
   section excludes below; a path `classifyAuthorityPaths` gates; a publish that
   needs a merge commit; any merge while `arcadia work monitor` reports a run
