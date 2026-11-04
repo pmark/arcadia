@@ -193,6 +193,10 @@ describe("what keeps the repair loop running", () => {
       expect(judgeSameFindingGateDefect(repeated("Mission Log Result records a criterion the patch does not meet", "MISSION_LOG.md says it is met; next_action is fine."))).toBeNull();
     });
 
+    it("does not fire on a plural Session-authored subject", () => {
+      expect(judgeSameFindingGateDefect(repeated("Mission Log results overstate the patch", "MISSION_LOG.md says so; next_action is fine."))).toBeNull();
+    });
+
     it("does not fire on a Mission Log finding that names no field the host writes", () => {
       expect(judgeSameFindingGateDefect(repeated("The Mission Log entry is misleading", "MISSION_LOG.md overstates this."))).toBeNull();
     });

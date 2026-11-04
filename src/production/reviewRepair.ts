@@ -213,7 +213,7 @@ export function citedPaths(finding: ReviewRepairFinding): string[] {
 
 const ARCHIVED_ASK_PATH = /^\.arcadia\/asks\/archive\//;
 /** A title about what the Session's Ask says. Its evidence, notes and criteria reach the archive and the Mission Log's Result line verbatim. */
-const SESSION_AUTHORED_SUBJECT = /\b(?:evidence|criterion|criteria|notes?|result|desired_result|claims?)\b/i;
+const SESSION_AUTHORED_SUBJECT = /\b(?:evidence|criterion|criteria|notes?|results?|desired_result|claims?)\b/i;
 /** What settlement itself writes in the Plan, the pointer and the Mission Log's Blockers line. */
 const HOST_WRITTEN_FIELD = /\b(?:next_action|current_action)\b|\bauto-settle-/;
 
