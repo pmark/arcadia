@@ -1682,8 +1682,8 @@ export function applyFixtureExitStatus(db: Database.Database, sessionId: string,
 }
 
 /**
- * Injects the operator's `CLAUDE_CODE_OAUTH_TOKEN` into the claude-code-cli
- * Session process only -- never into `codex-cli` or `opencode-cli`, and never
+ * Injects the operator's `CLAUDE_CODE_OAUTH_TOKEN` into a claude-code-cli
+ * Session or reviewer process only -- never into `codex-cli` or `opencode-cli`, and never
  * as a literal value on this command's own argv, where it would sit in `ps`
  * output for as long as the process runs.
  *
@@ -1696,7 +1696,7 @@ export function applyFixtureExitStatus(db: Database.Database, sessionId: string,
  * token value itself is read into the environment inside the shell, never
  * passed as an argument to any process.
  */
-function withClaudeCodeToken(inner: { command: string; args: string[] }, workspace: string): { command: string; args: string[] } {
+export function withClaudeCodeToken(inner: { command: string; args: string[] }, workspace: string): { command: string; args: string[] } {
   const paths = getWorkspacePaths(workspace);
   const tokenFile = readClaudeCodeTokenFile(paths.claudeCodeTokenFile, paths.config);
   if (tokenFile.status === "absent") return inner;

@@ -233,6 +233,39 @@ describe("provider-adapter selection", () => {
   });
 });
 
+describe("a review-only binding", () => {
+  const registry = adapters as unknown as ProviderAdapterRegistry;
+  const claude = registry.bindings.find((binding) => binding.provider === "claude-code-cli")!;
+  const withReviewBinding: ProviderAdapterRegistry = {
+    ...registry,
+    bindings: [...registry.bindings, { ...claude, id: "claude-review", agentProfiles: ["claude_planning"], model: "opus", costRank: 0, reviewOnly: true }]
+  };
+  const select = (phase?: "review") => selectCompliantCodingAgent({
+    profiles, adapters: withReviewBinding, requirement: resolved("operator_decision_framing"), purpose: "planning", availability, ...(phase ? { phase } : {})
+  });
+
+  it("is valid, and wins the independent-review phase on cost", () => {
+    expect(() => validateProviderAdapterRegistry(withReviewBinding, profiles)).not.toThrow();
+    expect(select("review")).toMatchObject({ bindingId: "claude-review", provider: "claude-code-cli", model: "opus", profile: { name: "claude_planning" } });
+  });
+
+  it("is never selected for planning work, even though it is the cheapest binding for that profile", () => {
+    expect(select().bindingId).not.toBe("claude-review");
+    expect(selectCompliantCodingAgent({
+      profiles, adapters: withReviewBinding, requirement: resolved("operator_decision_framing"), purpose: "planning", availability, requestedProfile: "claude_planning"
+    }).bindingId).not.toBe("claude-review");
+  });
+
+  it("is never the default configuration of a profile", () => {
+    expect(selectDefaultCodingAgentConfiguration(withReviewBinding, profiles.find((entry) => entry.name === "claude_planning")!)?.bindingId).not.toBe("claude-review");
+  });
+
+  it("refuses a non-boolean flag", () => {
+    const bad = { ...withReviewBinding, bindings: withReviewBinding.bindings.map((binding) => (binding.id === "claude-review" ? { ...binding, reviewOnly: "yes" } : binding)) };
+    expect(() => validateProviderAdapterRegistry(bad as never, profiles)).toThrow("reviewOnly must be a boolean");
+  });
+});
+
 describe("hard-evidence provider substitution (Decision 0063)", () => {
   it("pins the exact closed set of hard-evidence codes", () => {
     // A deliberate change to this list must change this assertion too — that
