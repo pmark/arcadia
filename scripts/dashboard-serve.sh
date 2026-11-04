@@ -6,7 +6,7 @@
 # on may be newer than that build, so a build starts behind the running dashboard, and
 # scripts/dashboard-build.sh switches over when it passes. With no build yet this falls back to
 # `next dev`, so a restart never depends on a build.
-# ARCADIA_DASHBOARD_MODE=dev always runs `next dev`.
+# To force `next dev`, create apps/dashboard/.live/use-next-dev, then restart.
 set -euo pipefail
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -19,14 +19,13 @@ PORT="${ARCADIA_DASHBOARD_PORT:-3020}"
 # shellcheck source=lib/dashboard-next-env.sh
 source "$SCRIPTS/lib/dashboard-next-env.sh"
 # A build killed by the last restart can't tidy up after itself. A build that's still running needs its mark, so it's left alone.
-lock_holder="$(readlink "$LIVE/build.lock" 2>/dev/null || true)"
-if [[ -z "$lock_holder" ]] || ! kill -0 "$lock_holder" 2>/dev/null; then
+if ! build_lock_is_live "$LIVE/build.lock"; then
   heal_next_env "$REPO"
 fi
 
 cd "$DASHBOARD"
 
-if [[ "${ARCADIA_DASHBOARD_MODE:-build}" == "dev" ]]; then
+if [[ "${ARCADIA_DASHBOARD_MODE:-build}" == "dev" || -f "$LIVE/use-next-dev" ]]; then
   exec node "$NEXT" dev -H 0.0.0.0 -p "$PORT"
 fi
 
@@ -35,7 +34,7 @@ commit=""
 if [[ -f "$LIVE/current" ]]; then read -r slot commit < "$LIVE/current" || true; fi
 
 head="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
-if [[ "$commit" != "$head" ]]; then
+if [[ "$commit" != "$head" || -z "$slot" || ! -f "$LIVE/$slot/BUILD_ID" ]]; then
   mkdir -p "$LIVE"
   "$SCRIPTS/dashboard-build.sh" >> "$LIVE/build.log" 2>&1 &
 fi

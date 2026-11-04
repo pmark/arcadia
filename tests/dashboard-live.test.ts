@@ -211,7 +211,11 @@ describe("live dashboard build", () => {
   it("leaves a running build's mark alone at start", () => {
     const f = fixture();
     f.build();
-    const holder = spawn("sleep", ["30"]);
+    const holderScript = path.join(f.repo, ".git", "dashboard-build.sh");
+    writeFileSync(holderScript, "#!/usr/bin/env bash\nsleep 30\n");
+    chmodSync(holderScript, 0o755);
+    const holder = spawn(holderScript);
+    spawnSync("sleep", ["0.3"]);
     git(f.repo, "update-index", "--skip-worktree", "apps/dashboard/next-env.d.ts");
     symlinkSync(String(holder.pid), path.join(f.live, "build.lock"));
     const result = f.serve();
@@ -257,9 +261,59 @@ describe("live dashboard build", () => {
     expect(f.current()).toBe(`a ${f.head()}`);
   });
 
+  it("doesn't mistake a reused process ID for a running build", () => {
+    const f = fixture();
+    const other = spawn("sleep", ["30"]);
+    mkdirSync(f.live, { recursive: true });
+    symlinkSync(String(other.pid), path.join(f.live, "build.lock"));
+    const result = f.build();
+    other.kill();
+    expect(result.status).toBe(0);
+    expect(f.current()).toBe(`a ${f.head()}`);
+    f.clean();
+  });
+
+  it("starts no build over uncommitted changes it would read", () => {
+    const f = fixture();
+    writeFileSync(path.join(f.repo, "apps/dashboard/page.tsx"), "not committed\n");
+    const result = f.build();
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("uncommitted changes");
+    expect(f.calls()).toEqual([]);
+    expect(f.current()).toBeNull();
+  });
+
+  it("rebuilds when the recorded folder has lost its build", () => {
+    const f = fixture();
+    f.build();
+    rmSync(path.join(f.live, "a", "BUILD_ID"));
+    rmSync(path.join(f.repo, "next-calls"));
+    expect(f.build().status).toBe(0);
+    expect(f.calls()).toEqual(["build .live/a", "start .live/a"]);
+    expect(f.current()).toBe(`a ${f.head()}`);
+    f.clean();
+  });
+
+  it("treats any answer on the check port as in use, even an error", () => {
+    const f = fixture();
+    const port = f.env.ARCADIA_DASHBOARD_SMOKE_PORT;
+    const other = spawn(process.execPath, ["-e", `require("http").createServer((_, r) => { r.statusCode = 404; r.end("x"); }).listen(${port}, "127.0.0.1")`]);
+    spawnSync("sleep", ["1"]);
+    const result = f.build();
+    other.kill();
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("already in use");
+    expect(f.current()).toBeNull();
+    f.clean();
+  });
+
   it("runs one build at a time", () => {
     const f = fixture();
-    const holder = spawn("sleep", ["30"]);
+    const holderScript = path.join(f.repo, ".git", "dashboard-build.sh");
+    writeFileSync(holderScript, "#!/usr/bin/env bash\nsleep 30\n");
+    chmodSync(holderScript, 0o755);
+    const holder = spawn(holderScript);
+    spawnSync("sleep", ["0.3"]);
     mkdirSync(f.live, { recursive: true });
     symlinkSync(String(holder.pid), path.join(f.live, "build.lock"));
     const result = f.build();
@@ -300,11 +354,15 @@ describe("live dashboard start", () => {
     expect(f.calls()).toContain("build .live/b");
   });
 
-  it("always runs next dev when asked", () => {
+  it("always runs next dev when asked, in a way that reaches a launchd job", () => {
     const f = fixture();
     f.build();
     rmSync(path.join(f.repo, "next-calls"));
     expect(f.serve({ ARCADIA_DASHBOARD_MODE: "dev" }).status).toBe(0);
+    expect(f.calls()).toEqual(["dev -"]);
+    rmSync(path.join(f.repo, "next-calls"));
+    writeFileSync(path.join(f.live, "use-next-dev"), "");
+    expect(f.serve().status).toBe(0);
     expect(f.calls()).toEqual(["dev -"]);
   });
 });

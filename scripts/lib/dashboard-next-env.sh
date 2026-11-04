@@ -1,6 +1,15 @@
 #!/usr/bin/env bash
 # Sourced by scripts/dashboard-build.sh and scripts/dashboard-serve.sh, not run.
-#
+
+# Whether this lock's owner is really a running build. A process ID can be reused after a crash, and that
+# process mustn't look like a build, or it would block every build until it exits.
+build_lock_is_live() {
+  local holder
+  holder="$(readlink "$1" 2>/dev/null || true)"
+  [[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null || return 1
+  [[ "$(ps -p "$holder" -o command= 2>/dev/null || true)" == *dashboard-build.sh* ]]
+}
+
 # A build rewrites the tracked next-env.d.ts and marks it so the checkout reads as clean. A build can be
 # killed at any point, so this puts it right from git, never from a saved copy. It only acts on a file
 # carrying that mark. It never fails: git can be busy, and that must not stop the dashboard starting.

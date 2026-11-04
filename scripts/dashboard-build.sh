@@ -25,20 +25,20 @@ log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 mkdir -p "$LIVE"
 # One build at a time. The lock is a symlink naming its owner, so taking it is atomic and a lock left by
 # a process that died doesn't count.
+# shellcheck source=lib/dashboard-next-env.sh
+source "$HEAL"
 if ! ln -s "$$" "$LOCK" 2>/dev/null; then
-  holder="$(readlink "$LOCK" 2>/dev/null || true)"
-  if [[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null; then log "A build is already running (pid $holder)."; exit 0; fi
+  if build_lock_is_live "$LOCK"; then log "A build is already running (pid $(readlink "$LOCK"))."; exit 0; fi
   rm -f "${LOCK:?}"
   if ! ln -s "$$" "$LOCK" 2>/dev/null; then log "Another build just started."; exit 0; fi
 fi
 
-# shellcheck source=lib/dashboard-next-env.sh
-source "$HEAL"
 smoke_pid=""
 cleanup() {
   [[ -z "$smoke_pid" ]] || kill "$smoke_pid" 2>/dev/null || true
   heal_next_env "$REPO"
-  rm -f "${LOCK:?}"
+  # Another build may have taken over a lock it judged stale, so only remove our own.
+  if [[ "$(readlink "$LOCK" 2>/dev/null || true)" == "$$" ]]; then rm -f "${LOCK:?}"; fi
 }
 trap cleanup EXIT
 # A build killed by a restart can't tidy up after itself, so this one does it first.
@@ -61,12 +61,16 @@ fi
 slot=""
 built=""
 if [[ -f "$LIVE/current" ]]; then read -r slot built < "$LIVE/current" || true; fi
-target="a"
-[[ "$slot" == "a" ]] && target="b"
-
 for attempt in 1 2; do
   head="$(git -C "$REPO" rev-parse HEAD)"
-  [[ "$head" != "$built" ]] || { log "The build is already at $head."; exit 0; }
+  if [[ "$head" == "$built" && -n "$slot" && -f "$LIVE/$slot/BUILD_ID" ]]; then log "The build is already at $head."; exit 0; fi
+
+  # A build reads the working tree but records a commit, so uncommitted changes would serve under the wrong name.
+  uncommitted="$(git -C "$REPO" status --porcelain -- apps/dashboard src package.json pnpm-lock.yaml)"
+  if [[ -n "$uncommitted" ]]; then
+    log "The checkout has uncommitted changes the build would read, so no build starts: ${uncommitted:0:200}"
+    exit 0
+  fi
 
   # Commits that can't change the dashboard don't need a build or a restart.
   if [[ -n "$slot" && -f "$LIVE/$slot/BUILD_ID" ]] && git -C "$REPO" cat-file -e "$built^{commit}" 2>/dev/null &&
@@ -76,6 +80,9 @@ for attempt in 1 2; do
     log "Nothing for the dashboard changed between $built and $head."
     exit 0
   fi
+
+  target="a"
+  if [[ "$slot" == "a" && -f "$LIVE/a/BUILD_ID" ]]; then target="b"; fi
 
   # A build rewrites this tracked file to point at its own folder. It's marked so the checkout reads as clean meanwhile, and git restores it afterwards.
   git -C "$REPO" update-index --skip-worktree "$NEXT_ENV"
@@ -111,7 +118,7 @@ done
 
 # It has to start and answer before anything switches: a page, and a route that loads the server bundles.
 # Something else already answering on this port would make the check meaningless.
-if curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$SMOKE_PORT/" 2>/dev/null; then
+if curl -sS -o /dev/null --max-time 2 "http://127.0.0.1:$SMOKE_PORT/" 2>/dev/null; then
   log "Port $SMOKE_PORT is already in use, so the new build can't be checked. The current build keeps serving."
   exit 1
 fi
