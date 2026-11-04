@@ -1,23 +1,9 @@
 /* /workspace/feed: the message feed, the Journey panel and its button, over a sky that shows system status. Scoped to the workspace surface; see docs/design/operator-presence.md. */
 .workspace-shell .feed-main { --glass: rgb(38 36 62 / .46); --glass-strong: rgb(16 20 38 / .9); --glass-line: rgb(255 255 255 / .16); --ink-soft: rgb(243 236 230 / .74); --ember: #e58f6f;
   max-width: 1240px; margin: auto; padding: 0 max(16px, env(safe-area-inset-right, 0px)) 120px max(16px, env(safe-area-inset-left, 0px)); }
-.feed-weather { position: fixed; inset: 0; z-index: -1; width: 100%; height: 100%; display: block; pointer-events: none; }
 .feed-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .phase-arrived, .group-arrived { --phase: #7fd8a4; } .phase-in-review { --phase: #8ea2ff; } .phase-driving, .group-moving { --phase: #f2b13f; } .phase-launching { --phase: #ffd27a; }
 .phase-repairing { --phase: #ef7a45; } .phase-blocked, .group-blocked { --phase: #ff6b6b; } .phase-waiting, .group-waiting { --phase: #a39bb8; } .phase-parked { --phase: #6f7890; }
-
-/* system status */
-.feed-sky { position: relative; width: fit-content; margin: 0 0 18px auto; font-size: 12px; }
-.feed-sky summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; padding: 6px 14px; border-radius: 999px; background: var(--glass-strong); border: 1px solid var(--glass-line); backdrop-filter: blur(14px); }
-.feed-sky summary::-webkit-details-marker { display: none; }
-.feed-sky .k { color: var(--ink-soft); text-transform: uppercase; font-size: 10.5px; letter-spacing: .14em; }
-.feed-sky b { font-weight: 500; }
-.feed-sky-weather { color: var(--ink-soft); }
-.feed-sky-dot { width: 8px; height: 8px; border-radius: 50%; background: #9fb7d9; }
-.feed-sky-dot.sky-active { background: #f2b13f; } .feed-sky-dot.sky-attention { background: #ffd27a; } .feed-sky-dot.sky-storm { background: #ff6b6b; } .feed-sky-dot.sky-static { background: #8f9bb0; }
-.feed-sky[open] > div { position: absolute; right: 0; top: 34px; z-index: 5; width: min(320px, calc(100vw - 32px)); background: #0c1224; border: 1px solid var(--glass-line); border-radius: 12px; padding: 10px 14px; }
-.feed-sky ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
-.workspace-shell .feed-sky p { margin: 0; }
 
 /* feed */
 .feed-grid { display: grid; grid-template-columns: minmax(0, 760px); justify-content: center; gap: 22px; align-items: start; }

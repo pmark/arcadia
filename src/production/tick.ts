@@ -28,6 +28,10 @@ import {
   ensureRedAlertTables,
   observeAdmission,
   observeReconcileFailure,
+  isOperatorHeldAction,
+  observeResumeNoProgressBudget,
+  observeReviewRepairStops,
+  raiseResumeNoProgress,
   observeReconcileSuccess,
   observeRepairBudget,
   observeScopeDriftForProject,
@@ -72,10 +76,11 @@ import { concludeOperatorLaunchExit, operatorLaunchForExit, preserveOperatorLaun
 import { candidateLandingCommand, handoffIntegrated, integrateSessionCandidate, operatorMergeCommand, preserveSessionCandidate, type IntegrateSessionDeps, type PreservationStep, type PreserveSessionDeps, type SessionHandoffResult } from "./sessionHandoff.js";
 import type { CompletionValidationOptions } from "../sessions/completionValidation.js";
 import { createId } from "../utils/id.js";
-import { independentVerdictGate, requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
+import { requirementIdentity, runHelperAttempt, type VerdictGate } from "../sessions/roleLineage.js";
 import {
   advanceIndependentReview,
   ensureProductionReviewStepTable,
+  independentVerdictGateWithQaPlanWaiver,
   REVIEW_BLOCK_CODES,
   resetReviewSteps,
   reviewApplicability,
@@ -336,13 +341,13 @@ function recoverTerminalHandoff(
         // A decided repair whose failed verdict no longer stands (a passing rerun,
         // a new head) is released before anything can launch it.
         releaseStalePendingRepair(db, { session, repoRoot, now, log });
-        const waiting = independentVerdictGate(db, { session, repoRoot });
+        const waiting = independentVerdictGateWithQaPlanWaiver(db, { session, repoRoot, now, log, runCommand: review?.deps.runCommand });
         const outcome = !waiting.satisfied && waiting.code === "awaiting_independent_verdicts" && review
           ? advanceIndependentReview(db, { workspace, repoRoot, session, now, log, heartbeat: review.heartbeat,
             deps: { ...(review.clock ? { clock: review.clock } : {}), ...review.deps } })
           : undefined;
         reviewOutcome = outcome;
-        return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome });
+        return escalatingVerdictGate(db, { session, repoRoot, now, log, review: outcome, runCommand: review?.deps.runCommand });
       } }, integrateDeps)
   };
   return { handoff, sessionId: session.id, head, refusal: null, session, review: reviewOutcome };
@@ -431,11 +436,13 @@ const VERDICT_WAIT_ESCALATIONS = new Set(["awaiting_independent_verdicts", "verd
  */
 function escalatingVerdictGate(
   db: Database.Database,
-  input: { session: AgentSession; repoRoot: string; now: Date; log?: (message: string) => void; review?: ReviewStepOutcome }
+  input: { session: AgentSession; repoRoot: string; now: Date; log?: (message: string) => void; review?: ReviewStepOutcome; runCommand?: IndependentReviewDeps["runCommand"] }
 ): VerdictGate {
   const { session, repoRoot } = input;
   const actionKey = `${session.project_slug}/${session.action_id}`;
-  const gate = independentVerdictGate(db, { session, repoRoot });
+  // Decision 0169: a QA verdict that failed only the host-written Operator QA
+  // plan does not block (the unverified step is recorded before this reads satisfied).
+  const gate = independentVerdictGateWithQaPlanWaiver(db, { session, repoRoot, now: input.now, log: input.log, runCommand: input.runCommand });
   const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
   // The verdict gate runs only after every terminal guard passed, so a
   // terminal-guard escalation still on this row is stale: it is replaced or
@@ -2114,6 +2121,10 @@ export function runManagedProductionTick(
         const continuation = getSessionContinuation(db, lease);
         const settledOnCandidate = latestCandidateSettlementCommit(db, lease, repoRoot);
         const sourceCompletion = completionCapabilityForReconciliation(workspace, lease);
+        // What the exit receipt decided about an unchanged resume, read after the receipt commits to raise the notify-only red alert.
+        let unchangedResume: { actionKey: string } | null = null;
+        // Read before the receipt write: spending the last repair attempt records `repair_budget_exhausted` over a held row.
+        const heldBeforeExit = isOperatorHeldAction(db, `${project.slug}/${lease.action_id}`);
         const result = reconcileSessionExit({
           db, sessionId: lease.id, requestId: `worker-tick-reconcile-${lease.id}`, repoRoot, workspace,
           ...sourceCompletion,
@@ -2127,9 +2138,11 @@ export function runManagedProductionTick(
           // A worker crash cannot commit one without the other; replay is a no-op.
           onReceiptWrite: (receipt) => {
             const actionKey = `${project.slug}/${lease.action_id}`;
-            const unchanged = continuation !== null && receipt.outcome === "incomplete_resumable"
-              && receipt.candidate_revision === (lease.launch_revision ?? lease.base_revision)
-              && tryGit(lease.worktree_path, ["status", "--porcelain"]) === "";
+            const unchanged = isUnchangedResumeExit({
+              resumed: continuation !== null, outcome: receipt.outcome, candidateRevision: receipt.candidate_revision,
+              startRevision: lease.launch_revision ?? lease.base_revision,
+              worktreeClean: () => tryGit(lease.worktree_path, ["status", "--porcelain"]) === ""
+            });
             if (unchanged) {
               recordRepairAttempt(db, actionKey, `Resumed Session ${lease.id} exited incomplete without changing its candidate.`, now);
               const attempts = getRepairAttempts(db, actionKey);
@@ -2137,6 +2150,7 @@ export function runManagedProductionTick(
                 recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts,
                   lastError: attempts.lastError, now, log });
               }
+              unchangedResume = { actionKey };
             } else if (receipt.outcome === "accepted_completion"
               || (continuation !== null && receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
               resetRepairAttempts(db, actionKey);
@@ -2168,7 +2182,7 @@ export function runManagedProductionTick(
         const completed = result.receipt.outcome === "accepted_completion";
         const integration = preservation.kind === "preserved" && completed && !operatorAuthorization
           ? integrateSessionCandidate({ db, workspace, repoRoot, session: lease, now, clock,
-              verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log }) }, integrateDepsWithGitHub(options))
+              verdictGate: () => escalatingVerdictGate(db, { session: lease, repoRoot, now, log, runCommand: options.review?.runCommand }) }, integrateDepsWithGitHub(options))
           : {
               kind: "refused" as const,
               reason: operatorAuthorization
@@ -2200,6 +2214,13 @@ export function runManagedProductionTick(
             log(`Operator launch authorization for Session ${lease.id} could not be concluded: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
+        // Notify only (Decision 0169): the unchanged-resume detection above already spent the repair attempt; the alert
+        // changes no attempt, launch decision or Action status, and a failure to raise it is logged and ignored.
+        safelyRaiseRedAlerts(log, "resume no progress", () => {
+          if (unchangedResume && !heldBeforeExit) {
+            raiseResumeNoProgress(alertCtx, { actionKey: unchangedResume.actionKey, sessionId: lease.id });
+          }
+        });
         safelyRaiseRedAlerts(log, "reconcile clear", () => {
           observeReconcileSuccess(alertCtx);
           observeStall(alertCtx, { session: null, stalled: false, tmux });
@@ -2344,11 +2365,33 @@ export function runManagedProductionTick(
 
     safelyRaiseRedAlerts(log, "admission", () => observeAdmission(alertCtx, launch));
     safelyRaiseRedAlerts(log, "repair budget", () => observeRepairBudget(alertCtx, launch));
+    safelyRaiseRedAlerts(log, "review repair stops", () => observeReviewRepairStops(alertCtx));
+    safelyRaiseRedAlerts(log, "resume no progress clear", () => observeResumeNoProgressBudget(alertCtx, repoRoot));
     options.heartbeat?.();
     projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, askSurfacing, reconciled, handoff, launch });
   }
 
   return { policyActive: active, scheduling, schedulingError, projects };
+}
+
+/**
+ * The tick's unchanged-resume detection at the exit receipt: a resumed Session
+ * exited `incomplete_resumable` with its candidate still at the revision it
+ * started from and a verified-clean worktree (`worktreeClean` is only called
+ * once the other conditions hold). It spends a repair attempt and drives the
+ * `resume_no_progress` alert. `classifyRecoverySignals` mirrors it
+ * (`isNoProgressExit`); tests/no-progress-red-alert.test.ts pins their parity.
+ */
+export function isUnchangedResumeExit(input: {
+  resumed: boolean;
+  outcome: string;
+  candidateRevision: string | null;
+  startRevision: string | null;
+  worktreeClean: () => boolean;
+}): boolean {
+  return input.resumed && input.outcome === "incomplete_resumable"
+    && input.candidateRevision === input.startRevision
+    && input.worktreeClean();
 }
 
 /** Development-attempt refusals that only an operator can resolve: never retried in a loop, never a repair failure. */

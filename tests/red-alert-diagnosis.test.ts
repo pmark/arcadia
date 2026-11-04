@@ -16,7 +16,7 @@ import {
   type DiagnosisSettings,
   type GhRunner
 } from "../src/production/redAlertDiagnosis.js";
-import { listOpenRedAlerts, raiseRedAlert } from "../src/production/redAlerts.js";
+import { listOpenRedAlerts, NOTICE_ONLY_RED_ALERT_TRIGGERS, raiseRedAlert } from "../src/production/redAlerts.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -90,6 +90,24 @@ describe("red alert diagnosis", () => {
       return diagnoseOpenRedAlerts(db, readDiagnosisSettings(workspace), () => made.deps);
     });
     expect(result.enabled).toBe(false);
+    expect(made.diagnose).not.toHaveBeenCalled();
+    expect(made.ghCalls).toHaveLength(0);
+    expect(made.draftAsk).not.toHaveBeenCalled();
+    withDatabase(workspace, (db) => expect(listRedAlertDiagnoses(db)).toHaveLength(0));
+  });
+
+  it("never diagnoses the Decision 0169 notices: no model call, Issue or drafted Ask for repair stops or unchanged resumes", async () => {
+    const workspace = fixture();
+    const made = makeDeps();
+    const result = await withDb(workspace, async (db) => {
+      for (const trigger of NOTICE_ONLY_RED_ALERT_TRIGGERS) {
+        raiseRedAlert(db, { workspace, projectSlug: "test-project", actionKey: `test-project/${trigger}`, sessionId: null, trigger, detail: () => "Notice.", now: new Date("2026-09-29T00:00:00.000Z") });
+      }
+      expect(listOpenRedAlerts(db)).toHaveLength(3);
+      return diagnoseOpenRedAlerts(db, enabled, () => made.deps);
+    });
+    expect(NOTICE_ONLY_RED_ALERT_TRIGGERS).toEqual(["repair_rounds_exhausted", "repair_gated", "resume_no_progress"]);
+    expect(result).toMatchObject({ enabled: true, diagnosed: [], skipped: 0 });
     expect(made.diagnose).not.toHaveBeenCalled();
     expect(made.ghCalls).toHaveLength(0);
     expect(made.draftAsk).not.toHaveBeenCalled();

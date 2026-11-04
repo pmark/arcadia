@@ -7,7 +7,7 @@ status: active
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-03
+updated: 2026-11-04
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -146,13 +146,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
-    source: Agent Ask add-pin-blast-radius-patterns-action-20261102
+    source: Agent Ask seed-serial-run-test-only-actions-20261104-r2
     why: "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision."
     acceptance_criteria:
       - A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.
       - The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.
       - docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.
-    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns]
+    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns, pin-work-monitor-malformed-record, pin-recovery-unparseable-time-order, pin-reconcile-refuses-activation-commit]
     decisions: []
     references: []
   - id: implement-a-hermetic-test-that-an
@@ -391,11 +391,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1536"]
   - id: cover-retired-descriptor-byte-change
     title: "Cover a pinned retired operator-script entry whose descriptor bytes changed while its script bytes did not, closing the first item of Issue #1262."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Cover a pinned retired operator-script entry whose descriptor bytes changed while its script bytes did not, closing the first item of Issue #1262."
+    next_action: Completed via Agent Ask complete-cover-retired-reland-20261103; no further action.
     expected_artifact: Evidence satisfying Agent Ask cover-retired-descriptor-byte-change
     clarification: clarified
     confidence: high
@@ -533,53 +533,112 @@ actions:
     references: []
   - id: qa-plan-sole-failure-spends-no-repair
     title: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what the candidate changed rather than a path a criterion names as a sample.
+    next_action: Completed via Agent Ask complete-qa-plan-sole-failure-spends-no-repair-20261103; no further action.
     expected_artifact: Evidence satisfying Agent Ask qa-plan-sole-failure-spends-no-repair
     clarification: clarified
     confidence: high
-    source: Agent Ask add-worker-recovery-build-actions-20261102
+    source: Agent Ask amend-qa-plan-renderer-non-code-path-20261102
     why: "All 3 repair rounds in run i went on a plan step no Session could change. Decision 0169 authorizes this rule, and every other failure still blocks."
     acceptance_criteria:
       - tests/qa-plan-sole-failure.test.ts asserts that a QA verdict failing only the operator-qa-plan check launches no repair Session, records no repair round, lets the independent verdict gate treat QA as not blocking on that head, and records that one operator check step went unverified.
       - The same test asserts a verdict still blocks and follows the existing repair path when any other check fails or is not-checked, when a finding concerns anything else, when the plan was refused as unavailable, and when the role is code review; it uses the mixed and sole-failure shapes from the recovery-signal classifier.
       - The same test asserts one Issue is requested per Action and head through an injected runner, a replay requests no second Issue, and a failure to file is logged without changing the verdict outcome.
-      - tests/operator-qa-plan.test.ts asserts that when a criterion names an unchanged existing path and the candidate changes a test file, the step inspects the changed test file and not the named path, and that a criterion naming a changed file keeps inspecting that file.
+      - tests/operator-qa-plan.test.ts asserts that when a criterion names an unchanged existing non-code path and the candidate changes a test file, the step inspects the changed test file and not the named path, that a criterion naming a changed file keeps inspecting that file, and that a criterion naming a source or test file is never redirected, with any substitution stated in the step.
       - src/sessions/operatorQaPlan.ts, src/production/reviewRepair.ts and src/production/independentReview.ts carry the change; the focused vitest runs of those two test files, pnpm lint and tsc pass.
     depends_on: [recovery-signal-replay-gate]
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1999", "docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
   - id: red-alerts-for-repair-stops-and-no-progress
     title: Red alerts fire and reach Discord when review repairs are exhausted, when a candidate is gated, and when a resumed Session leaves its candidate unchanged, through the existing alert path.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Red alerts fire and reach Discord when review repairs are exhausted, when a candidate is gated, and when a resumed Session leaves its candidate unchanged, through the existing alert path.
+    next_action: Completed via Agent Ask complete-red-alerts-for-repair-stops-and-no-progress-20261103; no further action.
     expected_artifact: Evidence satisfying Agent Ask red-alerts-for-repair-stops-and-no-progress
     clarification: clarified
     confidence: high
-    source: Agent Ask add-worker-recovery-build-actions-20261102
+    source: Agent Ask amend-red-alerts-classifier-parity-20261103
     why: "Run i raised no alert after 06:00 because no trigger covers review repair stops, and the first notice came from Rowan polling."
     acceptance_criteria:
       - tests/review-repair-red-alerts.test.ts asserts that a review_repair_rounds_exhausted escalation and a review_repair_gated escalation each raise one open red alert of their own trigger in src/production/redAlerts.ts, raised by the tick from production_operator_escalations rows with no change to src/production/reviewRepair.ts, queue one notification through the existing alert notification path, and do not notify again on later ticks.
       - The same test asserts each alert clears when its escalation clears, and that a raising failure is logged without changing the tick's outcome.
       - tests/no-progress-red-alert.test.ts asserts that a resumed Session exiting incomplete with its candidate unchanged raises one notify-only red alert of a new no-progress trigger, reusing the existing unchanged-resume detection at the exit receipt with no second detector, and queues one notification.
       - The same test asserts no alert for a resumed Session that changed its candidate, a fresh first Session, and an Action in an operator-held state; and that repair attempts, the next launch decision and the Action's status are identical with and without the alert.
-      - Both test files assert their triggers are produced by the recovery-signal classifier on the same fixture rows as tests/recovery-replay.test.ts.
+      - A parity test feeds the same exit rows to the recovery-signal classifier and to the tick detection, on the fixture rows of tests/recovery-replay.test.ts plus a dirty-worktree case, and asserts they agree on no-progress; tests/review-repair-red-alerts.test.ts asserts each repair trigger follows the repair row outcome on those fixture rows, and that a QA verdict the classifier reads as sole failure raises no stop alert unless its outcome is escalated.
       - tests/fast-rehearsal/review-repair-red-alerts.test.ts shows a repair loop running out of rounds raises the alert and repeated unchanged resumes raise the notice while the existing retry budget alone stops retries, and a healthy chain raises none; its focused vitest run passes.
       - tests/blocker-remedies.test.ts passes with a remedy registered in src/production/blockerRemedies.ts for each new trigger; the focused vitest runs, pnpm lint and tsc pass.
     depends_on: [recovery-signal-replay-gate, worker-reconciles-own-pointer-commits]
     decisions: []
     references: ["docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
+  - id: pin-work-monitor-malformed-record
+    title: "Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015."
+    expected_artifact: Evidence satisfying Agent Ask pin-work-monitor-malformed-record
+    clarification: clarified
+    confidence: high
+    source: Agent Ask tighten-work-monitor-malformed-record-criteria-20261104
+    why: "Removing the field-count check currently passes every test, so a malformed record could reach the monitor's safety report unnoticed."
+    acceptance_criteria:
+      - tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.
+      - The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.
+      - The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/2015"]
+  - id: pin-recovery-unparseable-time-order
+    title: "Pin how recovery signals order an unparseable time with tests, covering the epoch fallback named in Issue #2004."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Pin how recovery signals order an unparseable time with tests, covering the epoch fallback named in Issue #2004."
+    expected_artifact: Evidence satisfying Agent Ask pin-recovery-unparseable-time-order
+    clarification: clarified
+    confidence: high
+    source: Agent Ask seed-serial-run-test-only-actions-20261104-r2
+    why: "Nothing tests the fallback in epoch(), so a garbled ledger time could reorder recovery signals unnoticed."
+    acceptance_criteria:
+      - tests/recovery-replay.test.ts gains a test in which classifyRecoverySignals receives two failing operator-qa-plan repair rows, the first with an unparseable at value and the second with a parseable one, and returns the signal of the parseable row first.
+      - A second new test gives two such repair rows that both have unparseable at values and asserts that their signals keep input order.
+      - Every other test in that file passes unchanged.
+      - The change touches only tests/recovery-replay.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/2004"]
+  - id: pin-reconcile-refuses-activation-commit
+    title: "Pin that the worker's base sync refuses a local plan-activation commit with a test, recording today's behaviour named in Issue #2018."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Pin that the worker's base sync refuses a local plan-activation commit with a test, recording today's behaviour named in Issue #2018."
+    expected_artifact: Evidence satisfying Agent Ask pin-reconcile-refuses-activation-commit
+    clarification: clarified
+    confidence: high
+    source: Agent Ask seed-serial-run-test-only-actions-20261104-r2
+    why: "A run crossing a Plan boundary stops on this refusal, and pinning it means any change to the behaviour must be deliberate."
+    acceptance_criteria:
+      - "tests/worker-pointer-reconcile.test.ts gains a test in which the local base has an unpushed commit whose subject starts with chore(arcadia): activate and which changes PROJECT.md, the remote has advanced, and syncBaseWithOwnPointerCommits returns outcome refused with a reason saying the local-only commits are not pointer commits."
+      - The same test asserts that the refusal leaves the local HEAD, the checked-out branch, the git status and the remote's main unchanged.
+      - Every other test in that file passes unchanged.
+      - The change touches only tests/worker-pointer-reconcile.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/2018"]
 questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: qa-plan-sole-failure-spends-no-repair
+current_action: pin-work-monitor-malformed-record
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.

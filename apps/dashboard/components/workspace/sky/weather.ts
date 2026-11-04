@@ -2,7 +2,7 @@ import { SKIES, type SkyId } from "../../../lib/system-sky";
 
 /**
  * System status, drawn as weather over the sol sky. The sky controller
- * (../sky/controller.ts) stays untouched and keeps the time of day; this layer
+ * (./controller.ts) stays untouched and keeps the time of day; this layer
  * only paints over it. Each sky has a weight that eases toward 1 when it is
  * the current reading and 0 otherwise, so changes crossfade in about two seconds.
  */

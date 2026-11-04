@@ -15,7 +15,7 @@ import { GATE_PATH_PATTERNS } from "../soak/rehearsalSoak.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { loadWorkspaceConfig } from "../workspace/config.js";
 import type { RedAlert } from "./redAlerts.js";
-import { listOpenRedAlerts } from "./redAlerts.js";
+import { listOpenRedAlerts, NOTICE_ONLY_RED_ALERT_TRIGGERS } from "./redAlerts.js";
 
 /**
  * Bounded diagnosis of an open red alert. It reads the alert's evidence file,
@@ -363,7 +363,8 @@ export async function diagnoseOpenRedAlerts(
   deps: () => DiagnosisDeps
 ): Promise<DiagnoseOpenAlertsResult> {
   if (!settings.enabled) return { enabled: false, disabledReason: settings.disabledReason, diagnosed: [], skipped: 0 };
-  const alerts = listOpenRedAlerts(db);
+  // Notices (repair stops, unchanged resumes) are never diagnosed: no model call, Issue or drafted Ask (Decision 0169).
+  const alerts = listOpenRedAlerts(db).filter((alert) => !NOTICE_ONLY_RED_ALERT_TRIGGERS.includes(alert.trigger));
   if (alerts.length === 0) return { enabled: true, disabledReason: null, diagnosed: [], skipped: 0 };
   const resolved = deps();
   const diagnosed: RedAlertDiagnosis[] = [];

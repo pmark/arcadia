@@ -45,6 +45,8 @@ export interface ProviderAdapterBinding {
   locality: "local" | "remote";
   costRank: number;
   enabled: boolean;
+  /** Selected only for the independent-review phase, never for planning or build work. */
+  reviewOnly?: boolean;
 }
 
 export interface SelectedCodingAgentConfiguration {
@@ -143,6 +145,10 @@ export function selectCompliantCodingAgent(
     const provider = providerStates.get(binding.provider);
     if (!binding.enabled || !provider?.enabled) {
       rejected.push({ binding: binding.id, reason: provider?.unavailableReason ?? "disabled" });
+      continue;
+    }
+    if (binding.reviewOnly === true && input.phase !== "review") {
+      rejected.push({ binding: binding.id, reason: "binding is reserved for independent review" });
       continue;
     }
     const hardEvidence = hardEvidenceByProvider.get(binding.provider);
@@ -428,7 +434,7 @@ export function selectDefaultCodingAgentConfiguration(
   const providers = new Map(adapters.providers.map((provider) => [provider.id, provider]));
   const candidates = adapters.bindings.flatMap((binding) => {
     const provider = providers.get(binding.provider);
-    if (!binding.enabled || !provider?.enabled || !binding.agentProfiles.includes(profile.name)) {
+    if (!binding.enabled || binding.reviewOnly === true || !provider?.enabled || !binding.agentProfiles.includes(profile.name)) {
       return [];
     }
     const effort = leastSupportedEffort(binding, "e2_standard");
@@ -487,6 +493,9 @@ export function validateProviderAdapterRegistry(
     }
     if (!binding.model?.trim() || binding.modelArgs.length === 0) {
       throw new Error(`Provider adapter binding ${binding.id} must enforce a model.`);
+    }
+    if (binding.reviewOnly !== undefined && typeof binding.reviewOnly !== "boolean") {
+      throw new Error(`Provider adapter binding ${binding.id} reviewOnly must be a boolean.`);
     }
     if (!Number.isInteger(binding.costRank) || binding.costRank < 0) {
       throw new Error(`Provider adapter binding ${binding.id} costRank must be a non-negative integer.`);
