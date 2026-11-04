@@ -3,7 +3,9 @@
 #
 # There are two build folders, so the one being served is never touched. Nothing switches until the new
 # build has started and answered on a spare port. Any failure leaves the current build serving. While
-# production is Active the shared services are frozen, so a finished build waits for the next restart.
+# production is Active the shared services are frozen, so no build starts, and a build that finishes
+# after one begins waits for the next restart. A restart stops a running build, and the restart after
+# that starts it again.
 set -euo pipefail
 
 SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -12,6 +14,7 @@ DASHBOARD="$REPO/apps/dashboard"
 NEXT="${ARCADIA_DASHBOARD_NEXT:-$DASHBOARD/node_modules/next/dist/bin/next}"
 LIVE="$DASHBOARD/.live"
 LOCK="$LIVE/build.lock"
+HEAL="$SCRIPTS/lib/dashboard-next-env.sh"
 SMOKE_PORT="${ARCADIA_DASHBOARD_SMOKE_PORT:-3023}"
 BUILD_DEADLINE="${ARCADIA_DASHBOARD_BUILD_DEADLINE:-1200}"
 SMOKE_DEADLINE="${ARCADIA_DASHBOARD_SMOKE_DEADLINE:-60}"
@@ -20,30 +23,35 @@ NEXT_ENV="apps/dashboard/next-env.d.ts"
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
 mkdir -p "$LIVE"
-# One build at a time. A lock left by a process that died doesn't count.
-if ! mkdir "$LOCK" 2>/dev/null; then
-  holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
+# One build at a time. The lock is a symlink naming its owner, so taking it is atomic and a lock left by
+# a process that died doesn't count.
+if ! ln -s "$$" "$LOCK" 2>/dev/null; then
+  holder="$(readlink "$LOCK" 2>/dev/null || true)"
   if [[ -n "$holder" ]] && kill -0 "$holder" 2>/dev/null; then log "A build is already running (pid $holder)."; exit 0; fi
-  rm -rf "${LOCK:?}"
-  mkdir "$LOCK"
+  rm -f "${LOCK:?}"
+  if ! ln -s "$$" "$LOCK" 2>/dev/null; then log "Another build just started."; exit 0; fi
 fi
-echo "$$" > "$LOCK/pid"
 
-saved_env=""
-restore_next_env() {
-  [[ -n "$saved_env" ]] || return 0
-  cp "$saved_env" "$REPO/$NEXT_ENV"
-  git -C "$REPO" update-index --no-skip-worktree "$NEXT_ENV"
-  rm -f "${saved_env:?}"
-  saved_env=""
-}
+# shellcheck source=lib/dashboard-next-env.sh
+source "$HEAL"
 smoke_pid=""
 cleanup() {
   [[ -z "$smoke_pid" ]] || kill "$smoke_pid" 2>/dev/null || true
-  restore_next_env
-  rm -rf "${LOCK:?}"
+  heal_next_env "$REPO"
+  rm -f "${LOCK:?}"
 }
 trap cleanup EXIT
+# A build killed by a restart can't tidy up after itself, so this one does it first.
+heal_next_env "$REPO"
+
+freeze_check() {
+  if [[ -n "${ARCADIA_DASHBOARD_FREEZE_CHECK:-}" ]]; then "$ARCADIA_DASHBOARD_FREEZE_CHECK"; return; fi
+  (cd "$REPO" && pnpm -s arcadia production freeze-check services.restart --json) >/dev/null 2>&1
+}
+if ! freeze_check; then
+  log "Services are frozen or the check failed. No build starts, and the next restart tries again."
+  exit 0
+fi
 
 slot=""
 built=""
@@ -64,9 +72,7 @@ for attempt in 1 2; do
     exit 0
   fi
 
-  # A build rewrites this tracked file to point at its own folder. It's put back afterwards, and marked so the checkout reads as clean meanwhile.
-  saved_env="$(mktemp "$LIVE/next-env.XXXXXX")"
-  cp "$REPO/$NEXT_ENV" "$saved_env"
+  # A build rewrites this tracked file to point at its own folder. It's marked so the checkout reads as clean meanwhile, and git restores it afterwards.
   git -C "$REPO" update-index --skip-worktree "$NEXT_ENV"
 
   log "Building $head into .live/$target."
@@ -86,7 +92,7 @@ for attempt in 1 2; do
   done
   build_status=0
   wait "$build_pid" || build_status=$?
-  restore_next_env
+  heal_next_env "$REPO"
   if [[ "$build_status" -ne 0 || ! -f "$LIVE/$target/BUILD_ID" ]]; then
     log "The build failed (exit $build_status). The current build keeps serving."
     exit 1
@@ -98,11 +104,16 @@ for attempt in 1 2; do
   log "The checkout moved during the build. Building again."
 done
 
-# It has to start and answer before anything switches.
+# It has to start and answer before anything switches: a page, and a route that loads the server bundles.
+# Something else already answering on this port would make the check meaningless.
+if curl -fsS -o /dev/null --max-time 2 "http://127.0.0.1:$SMOKE_PORT/" 2>/dev/null; then
+  log "Port $SMOKE_PORT is already in use, so the new build can't be checked. The current build keeps serving."
+  exit 1
+fi
 (cd "$DASHBOARD" && exec node "$NEXT" start -H 127.0.0.1 -p "$SMOKE_PORT") &
 smoke_pid=$!
 waited=0
-until curl -fsS -o /dev/null --max-time 5 "http://127.0.0.1:$SMOKE_PORT/workspace"; do
+until curl -fsS -o /dev/null --max-time 5 "http://127.0.0.1:$SMOKE_PORT/workspace" && curl -fsS -o /dev/null --max-time 5 "http://127.0.0.1:$SMOKE_PORT/api/workspace/status"; do
   if [[ "$waited" -ge "$SMOKE_DEADLINE" ]] || ! kill -0 "$smoke_pid" 2>/dev/null; then
     log "The new build didn't answer on port $SMOKE_PORT. The current build keeps serving."
     exit 1
@@ -117,11 +128,7 @@ printf '%s %s\n' "$target" "$head" > "$LIVE/current.tmp"
 mv "$LIVE/current.tmp" "$LIVE/current"
 log "Build $head is ready in .live/$target."
 
-# A freeze refusal or a broken check both leave the switch for the next restart.
-freeze_check() {
-  if [[ -n "${ARCADIA_DASHBOARD_FREEZE_CHECK:-}" ]]; then "$ARCADIA_DASHBOARD_FREEZE_CHECK"; return; fi
-  (cd "$REPO" && pnpm -s arcadia production freeze-check services.restart --json) >/dev/null 2>&1
-}
+# Production may have started during the build. A freeze refusal or a broken check both leave the switch for the next restart.
 if ! freeze_check; then
   log "Services are frozen or the check failed. The next restart serves this build."
   exit 0

@@ -16,6 +16,11 @@ NEXT="${ARCADIA_DASHBOARD_NEXT:-$DASHBOARD/node_modules/next/dist/bin/next}"
 LIVE="$DASHBOARD/.live"
 PORT="${ARCADIA_DASHBOARD_PORT:-3020}"
 
+# shellcheck source=lib/dashboard-next-env.sh
+source "$SCRIPTS/lib/dashboard-next-env.sh"
+# A build killed by the last restart can't tidy up after itself. No build runs at this point, unless started by hand, and healing is harmless then.
+heal_next_env "$REPO"
+
 cd "$DASHBOARD"
 
 if [[ "${ARCADIA_DASHBOARD_MODE:-build}" == "dev" ]]; then

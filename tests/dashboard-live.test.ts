@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -9,6 +9,8 @@ const roots: string[] = [];
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
+
+const lstatExists = (file: string) => { try { lstatSync(file); return true; } catch { return false; } };
 
 const git = (repo: string, ...args: string[]) => {
   const result = spawnSync("git", ["-C", repo, "-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { encoding: "utf8" });
@@ -41,7 +43,7 @@ if (cmd === "build") {
   fs.writeFileSync(path.join(process.env.ARCADIA_DASHBOARD_DIST, "BUILD_ID"), "id");
 } else if (cmd === "start" && rest.includes("127.0.0.1")) {
   if (process.env.TEST_FAIL_START) process.exit(1);
-  http.createServer((_, res) => res.end("ok")).listen(Number(rest[rest.indexOf("-p") + 1]), "127.0.0.1");
+  http.createServer((req, res) => { if (process.env.TEST_FAIL_ROUTE && req.url.startsWith("/api/")) res.statusCode = 500; res.end("ok"); }).listen(Number(rest[rest.indexOf("-p") + 1]), "127.0.0.1");
 }
 `);
   const freeze = path.join(repo, "freeze.sh");
@@ -80,7 +82,7 @@ if (cmd === "build") {
       expect(git(repo, "status", "--porcelain")).toBe("");
       expect(git(repo, "ls-files", "-v", "apps/dashboard/next-env.d.ts")).toMatch(/^H /);
       expect(readFileSync(path.join(dashboard, "next-env.d.ts"), "utf8")).toBe("original\n");
-      expect(existsSync(path.join(live, "build.lock"))).toBe(false);
+      expect(lstatExists(path.join(live, "build.lock"))).toBe(false);
     }
   };
 }
@@ -145,19 +147,64 @@ describe("live dashboard build", () => {
     expect(existsSync(f.bounced)).toBe(false);
   });
 
-  it("doesn't bounce the dashboard while services are frozen, and leaves the build for the next start", () => {
+  it("doesn't switch to a build whose server routes fail", () => {
+    const f = fixture();
+    const result = f.build({ TEST_FAIL_ROUTE: "1" });
+    expect(result.status).toBe(1);
+    expect(f.current()).toBeNull();
+    f.clean();
+  });
+
+  it("starts no build while services are frozen", () => {
     const f = fixture();
     writeFileSync(f.freeze, "#!/usr/bin/env bash\nexit 1\n");
+    expect(f.build().status).toBe(0);
+    expect(f.calls()).toEqual([]);
+    expect(f.current()).toBeNull();
+    f.clean();
+  });
+
+  it("doesn't bounce the dashboard if production starts during the build, and leaves the build for the next start", () => {
+    const f = fixture();
+    const count = path.join(f.repo, "bounced.count");
+    writeFileSync(f.freeze, `#!/usr/bin/env bash\nif [[ -f "${count}" ]]; then exit 1; fi\ntouch "${count}"\n`);
+    writeFileSync(path.join(f.repo, ".git", "info", "exclude"), "bounced.count\n");
     expect(f.build().status).toBe(0);
     expect(f.current()).toBe(`a ${f.head()}`);
     expect(existsSync(f.bounced)).toBe(false);
     f.clean();
   });
 
+  it("heals a checkout left behind by a killed build, from git rather than a saved copy", () => {
+    const f = fixture();
+    git(f.repo, "update-index", "--skip-worktree", "apps/dashboard/next-env.d.ts");
+    writeFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "rewritten by a killed build\n");
+    expect(git(f.repo, "status", "--porcelain")).toBe("");
+    expect(f.build().status).toBe(0);
+    f.clean();
+  });
+
+  it("heals that checkout at start too, with no build needed", () => {
+    const f = fixture();
+    f.build();
+    git(f.repo, "update-index", "--skip-worktree", "apps/dashboard/next-env.d.ts");
+    writeFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "rewritten by a killed build\n");
+    expect(f.serve().status).toBe(0);
+    f.clean();
+  });
+
+  it("leaves an ordinary local edit alone", () => {
+    const f = fixture();
+    f.build();
+    writeFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "edited by hand\n");
+    expect(f.serve().status).toBe(0);
+    expect(readFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "utf8")).toBe("edited by hand\n");
+  });
+
   it("ignores a lock left by a dead process", () => {
     const f = fixture();
-    mkdirSync(path.join(f.live, "build.lock"), { recursive: true });
-    writeFileSync(path.join(f.live, "build.lock", "pid"), "999999");
+    mkdirSync(f.live, { recursive: true });
+    symlinkSync("999999", path.join(f.live, "build.lock"));
     expect(f.build().status).toBe(0);
     expect(f.current()).toBe(`a ${f.head()}`);
   });
@@ -165,8 +212,8 @@ describe("live dashboard build", () => {
   it("runs one build at a time", () => {
     const f = fixture();
     const holder = spawn("sleep", ["30"]);
-    mkdirSync(path.join(f.live, "build.lock"), { recursive: true });
-    writeFileSync(path.join(f.live, "build.lock", "pid"), String(holder.pid));
+    mkdirSync(f.live, { recursive: true });
+    symlinkSync(String(holder.pid), path.join(f.live, "build.lock"));
     const result = f.build();
     holder.kill();
     expect(result.status).toBe(0);
@@ -190,6 +237,19 @@ describe("live dashboard start", () => {
     rmSync(path.join(f.repo, "next-calls"));
     expect(f.serve().status).toBe(0);
     expect(f.calls()).toEqual(["start .live/a"]);
+  });
+
+  it("starts a build behind the running dashboard when the commit has moved", async () => {
+    const f = fixture();
+    f.build();
+    f.change("apps/dashboard/page.tsx");
+    rmSync(path.join(f.repo, "next-calls"));
+    expect(f.serve().status).toBe(0);
+    expect(f.calls()[0]).toMatch(/^(start \.live\/a|build \.live\/b)$/);
+    for (let i = 0; i < 60 && f.current() !== `b ${f.head()}`; i++) await new Promise(resolve => setTimeout(resolve, 250));
+    expect(f.current()).toBe(`b ${f.head()}`);
+    expect(f.calls()).toContain("start .live/a");
+    expect(f.calls()).toContain("build .live/b");
   });
 
   it("always runs next dev when asked", () => {
