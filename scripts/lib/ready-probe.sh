@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Readiness probing for scripts/restart-services-impl.sh, sourced, not run.
 #
-# A cold `next dev` dashboard on a loaded host can take far more than 2 s to
+# A cold dashboard on a loaded host, especially its `next dev` fallback, can take far more than 2 s to
 # answer its first request. The restart used one `curl --max-time 2` per probe
 # and a single final re-probe, so one slow answer failed the restart (curl
 # exit 28) and the rollback stopped every service (Issue #430, and again on

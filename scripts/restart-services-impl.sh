@@ -358,7 +358,7 @@ launch_service() {
     case "$service" in
       intelligence) workdir="$REPO"; args=("$MISE_BIN" -C "$workdir" exec -- node "$TSX_ENTRY" "$REPO/src/cli.ts" intelligence serve) ;;
       worker) workdir="$REPO"; args=("$MISE_BIN" -C "$workdir" exec -- node "$TSX_ENTRY" "$REPO/src/cli.ts" worker start) ;;
-      dashboard) workdir="$REPO/apps/dashboard"; args=("$MISE_BIN" -C "$workdir" exec -- node "$NEXT_ENTRY" dev -H 0.0.0.0 -p 3020) ;;
+      dashboard) workdir="$REPO/apps/dashboard"; args=("$MISE_BIN" -C "$workdir" exec -- "$REPO/scripts/dashboard-serve.sh") ;;
       discord-bot) workdir="$REPO/apps/discord-bot"; args=("$MISE_BIN" -C "$workdir" exec -- node "$DISCORD_TSX_ENTRY" "$REPO/apps/discord-bot/src/main.ts") ;;
       *) echo "Unknown service: $service" >&2; return 1 ;;
     esac
@@ -366,7 +366,7 @@ launch_service() {
     case "$service" in
       intelligence) workdir="$REPO"; args=("$NODE_BIN" "$TSX_ENTRY" "$REPO/src/cli.ts" intelligence serve) ;;
       worker) workdir="$REPO"; args=("$NODE_BIN" "$TSX_ENTRY" "$REPO/src/cli.ts" worker start) ;;
-      dashboard) workdir="$REPO/apps/dashboard"; args=("$NODE_BIN" "$NEXT_ENTRY" dev -H 0.0.0.0 -p 3020) ;;
+      dashboard) workdir="$REPO/apps/dashboard"; args=("$REPO/scripts/dashboard-serve.sh") ;;
       discord-bot) workdir="$REPO/apps/discord-bot"; args=("$NODE_BIN" "$DISCORD_TSX_ENTRY" "$REPO/apps/discord-bot/src/main.ts") ;;
       *) echo "Unknown service: $service" >&2; return 1 ;;
     esac
