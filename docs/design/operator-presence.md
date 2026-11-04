@@ -19,8 +19,14 @@ the workspace honest about what is going on:
   - *Signal loss* (overcast): a read failed, so the picture may be stale.
   - *Needs you* (warm haze): something waits on the operator, or a pull
     request is failing.
-  - *Work moving* (light wind): work is moving without the operator.
-  - *All clear* (clear skies).
+  - *Work moving* (light wind): a live Session, a mission or admitted work is
+    running. Open pull requests and steps waiting on others are reasons, not
+    weather.
+  - *All clear* (clear skies): only when production is On. While it's Off, the
+    pill says *Nothing waiting*, and beside it *Production Off*.
+
+  Until every read has landed, bad news can show, but a calm sky says *Reading*
+  instead. Worse news shows at once, and better news holds for 30 seconds.
 
   A status pill says the same thing in words, with the reasons, so the weather
   is never the only way to know. Sample missions never set the sky.
@@ -60,9 +66,11 @@ layout, so it keeps the real sol sky. The header's Feed link opens it.
   Every other item links to the control that already answers it; a card step
   goes to its card on `/todo`. The page adds no write path.
   `lib/workspace-feed.ts` builds the order.
-- **Sky.** `lib/system-sky.ts` turns the feed and the failed reads into a
-  reading. `components/workspace/feed/weather.ts` draws that reading on its own
-  canvas over the sky.
+- **Sky.** `lib/system-sky.ts` turns the feed, production and any failed reads
+  into a reading. `components/workspace/sky/system-status.tsx` holds one set of
+  reads in the workspace layout, so every view shows the sky and its status pill.
+  `components/workspace/sky/weather.ts` draws the reading on its own canvas over
+  the sky.
 - **Journey.** A floating button summarizes the rover fleet at a glance:
   - Each mission is one ring segment, colored blocked, moving, waiting or
     arrived.
