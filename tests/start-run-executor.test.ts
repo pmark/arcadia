@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import type { StartRunPins } from "../src/operatorActions/startRunPins.js";
+import { DAY_CARD, DAY_RUN, dayScenarios, STOP_ID, writeDayScenario, type DayScenario } from "./helpers/dayGrantFixture.js";
 
 /**
  * Hermetic cases for scripts/start-run.sh, the shared executor of every per-run START card. Each case copies the real
@@ -37,6 +38,7 @@ const clockEnv = (now: string): NodeJS.ProcessEnv => ({
   NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(path.join(fixtures, "fake-clock.mjs")).href}`].filter(Boolean).join(" ")
 });
 const LABEL = "com.arcadia.local.1.worker";
+const PIN_COMMIT = "0".repeat(40);
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
 const directories: string[] = [];
@@ -62,7 +64,7 @@ const planDocument = (status: "active" | "draft", done: string[] = [], actions: 
 ].join("\n");
 const projectDocument = (activePlan: string) => `---\nslug: arcadia\nactive_plan: ${activePlan}\n---\n`;
 const decisionDocument = (id: string, status = "approved", answer = "Yes") => `---\nid: "${id}"\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
-const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163"];
+const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170", "0173"];
 
 type Scenario = "same" | "behind" | "pin-unfetched" | "origin-moved" | "diverged" | "ahead";
 interface BoxOptions {
@@ -82,6 +84,16 @@ interface BoxOptions {
   press?: "none" | "stale" | "other-card" | "not-running" | "claimed" | "other-parent";
   /** Decision 0163: make this a successor card Rowan presses, delegated from an operator-pressed origin in the library. */
   delegation?: DelegationScenario;
+  /** Decision 0173: make this Rowan's START card within an operator day approval, from the shared scenario table. */
+  dayGrant?: DayScenario;
+  /** Jump the executor's clock by byMs as this call is answered on a real press (fake-clock-offset.mjs). */
+  clockJump?: { at: string; byMs: number };
+  /** An operator STOP pressed while production is Off, as this call is answered on a real press. */
+  stopPressAt?: string;
+  /** A newer operator day press finishing as this call is answered on a real press. */
+  laterApproval?: { at: string; press: string };
+  /** Leave the reviewed manifest of a Decision 0173 card without its pre-mortem pointer. */
+  noPremortem?: boolean;
   /** Press a delegated card without the delegated marker (as if by the operator), or mark an ordinary card delegated. */
   pressMarker?: "omit" | "forge";
   /** The pre-restart worker: fresh and unbound by default (a source-run worker), or stale, or not the launchd PID. */
@@ -122,7 +134,7 @@ function box(options: BoxOptions = {}) {
   for (const id of DECISIONS) {
     const body = options.decisions?.[id];
     if (body === null) continue;
-    files[`docs/decisions/${id}-fixture.md`] = body ?? decisionDocument(id);
+    files[`docs/decisions/${id}-fixture.md`] = body ?? decisionDocument(id, "approved", id === "0173" ? '"A. Daily grant: START and routine run operations"' : "Yes");
   }
   if (options.withoutFile) delete files[options.withoutFile];
   for (const [file, content] of Object.entries(files)) {
@@ -167,7 +179,7 @@ function box(options: BoxOptions = {}) {
     transitions: ["validation", "acceptance", "pointer", "packet_approval"], concurrency: 1, packetApprovalHours: 24, intent: "A fixture run on the claude-code provider.",
     spendDecision: "0130", integrationDecision: "0058", requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"],
     requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts", "src/production/workerMerge.ts"],
-    production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
+    production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: LABEL, gateCardId: "enable-capacity-gate-20261017", offId: options.dayGrant?.offId ?? STOP_ID,
     grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157", consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }]
   };
   if (options.delegation) {
@@ -217,6 +229,22 @@ function box(options: BoxOptions = {}) {
     pins.delegation = { decision: "0163", originatingCard: ORIGIN, originatingRun: ORIGIN_RUN, originatingReceiptSha256: sha(originReceipt), attempt: scenario === "exhausted" ? 5 : scenario === "attempt-mismatch" ? 3 : 2 };
     if (scenario === "receipt-changed") writeFileSync(path.join(receiptDir, "receipt.json"), originReceipt + " ");
   }
+  let dayPolicyRevision: number | null = null;
+  let dayEvidence: unknown = undefined;
+  if (options.dayGrant) {
+    const scenario = options.dayGrant;
+    const now = Date.now();
+    const written = writeDayScenario(library, scenario, now);
+    dayPolicyRevision = written.policyRevision;
+    dayEvidence = written.evidence;
+    pins.requiredDecisions = [...pins.requiredDecisions, "0163", "0170", "0173"];
+    pins.production = { ...pins.production, revision: written.policyRevision };
+    pins.grantedBy = `Rowan, pressing this START card from /actions under Decision 0173, within the operator's day approval ${written.approval.card}/${written.approval.run}`;
+    // A merged fix's commit is only known here: PIN_COMMIT stands for the reviewed revision.
+    const previous = scenario.previous?.clearance.kind === "merged-fix" && scenario.previous.clearance.commit === PIN_COMMIT
+      ? { ...scenario.previous, clearance: { ...scenario.previous.clearance, commit: pin } } : scenario.previous ?? null;
+    pins.delegation = { decision: "0173", approvalCard: written.approval.card, approvalRun: written.approval.run, approvalReceiptSha256: written.approval.receiptSha256, approvalPressSha256: written.approval.pressSha256, attempt: scenario.attempt ?? 1, previous };
+  }
   const descriptor: OperatorScriptDescriptor = {
     schema: "arcadia-operator-script-v1", id: ID, kind: "grant", title: "START: fixture", script: `${ID}.sh`, repeatable: false,
     problem: "p", desired_effect: "e", authority: { does: ["d"], never_does: ["n"] }, success: { effect: "s", next: "n" }, failure: { effect: "f", next: "n" },
@@ -224,7 +252,8 @@ function box(options: BoxOptions = {}) {
     startRun: pins, ...(options.activation ? { planActivation: structuredClone(activationSource.planActivation!) } : {})
   };
   const script = startRunLauncher(ID);
-  validateOperatorScriptContract(descriptor, ID, script);
+  // A hand-written card the /actions runner would refuse: the executor must refuse it as well.
+  if (options.dayGrant?.code !== "INVALID_DELEGATION") validateOperatorScriptContract(descriptor, ID, script);
   const scriptPath = path.join(library, `${ID}.sh`);
   const descriptorPath = path.join(library, `${ID}.json`);
   writeFileSync(scriptPath, script, { mode: 0o755 });
@@ -232,7 +261,7 @@ function box(options: BoxOptions = {}) {
   // Fixture-only wait shortening, honoured by the executor only because this marker sits in the fake library.
   writeFileSync(path.join(library, ".start-run-test-fixture"), "4");
   mkdirSync(path.join(library, "reviewed"));
-  writeFileSync(path.join(library, "reviewed", `${ID}.json`), JSON.stringify({ sh: sha(readFileSync(scriptPath)), json: sha(readFileSync(descriptorPath)), executor: sha(EXECUTOR_SOURCE) }));
+  writeFileSync(path.join(library, "reviewed", `${ID}.json`), JSON.stringify({ sh: sha(readFileSync(scriptPath)), json: sha(readFileSync(descriptorPath)), executor: sha(EXECUTOR_SOURCE), ...(options.dayGrant && !options.noPremortem ? { premortem: "https://github.com/pmark/arcadia/issues/1#issuecomment-1" } : {}) }));
   if (options.tamper === "descriptor") writeFileSync(descriptorPath, readFileSync(descriptorPath, "utf8") + "\n");
   if (options.tamper === "script") writeFileSync(scriptPath, script + "# tampered\n");
   if (options.tamper === "executor") writeFileSync(path.join(repo, "scripts", "start-run.sh"), EXECUTOR_SOURCE + "\n# tampered\n");
@@ -270,7 +299,11 @@ function box(options: BoxOptions = {}) {
 
   const state: Record<string, any> = {
     workspace, repository: repo, plan: PLAN,
-    production: { desiredState: "inactive", revision: 83, epoch: 46, liveAdmissions: 0, authority: null },
+    production: { desiredState: "inactive", revision: dayPolicyRevision ?? 83, epoch: 46, liveAdmissions: 0, authority: null },
+    ...(dayEvidence ? { dayEvidence } : {}),
+    ...(options.clockJump ? { clockJump: options.clockJump } : {}),
+    ...(options.laterApproval ? { laterApproval: options.laterApproval } : {}),
+    ...(options.stopPressAt ? { stopPress: { at: options.stopPressAt, card: STOP_ID } } : {}),
     queue: { revision: 290, orderValid: true, unpositionedCount: 0, ordered: (options.delegation ? DELEGATED_ACTIONS.map((a) => `arcadia/${a}`) : SCOPED).map((orderKey) => ({ orderKey })) },
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
@@ -301,12 +334,21 @@ function box(options: BoxOptions = {}) {
       const record = JSON.parse(readFileSync(path.join(dir, "run.json"), "utf8"));
       writeFileSync(path.join(dir, "run.json"), JSON.stringify({ ...record, press: delegatedMarker }));
     }
+    // Decision 0173: Rowan's press of a card within the day is recorded as delegated under that Decision.
+    if (options.dayGrant && options.pressMarker !== "omit") {
+      const record = JSON.parse(readFileSync(path.join(dir, "run.json"), "utf8"));
+      writeFileSync(path.join(dir, "run.json"), JSON.stringify({ ...record, press: { kind: "delegated", agent: "rowan", decision: "0173", originatingRun: `${DAY_CARD}/${DAY_RUN}` } }));
+    }
     return { ARCADIA_OPERATOR_SCRIPT_RUN_ID: runId, ARCADIA_OPERATOR_SCRIPT_RUN_DIRECTORY: dir, ARCADIA_OPERATOR_SCRIPT_RUN_DESCRIPTOR: path.join(dir, "descriptor.json") };
   };
   const env = (overrides: Record<string, string | undefined> = {}, actions = true): NodeJS.ProcessEnv => {
     const base: NodeJS.ProcessEnv = {
       ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot,
       ...(options.delegation === "before-decision" ? clockEnv(BEFORE_DECISION_NOW) : {}),
+      ...(options.clockJump ? {
+        START_RUN_CLOCK_OFFSET_FILE: path.join(root, "clock-offset"),
+        NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(path.join(fixtures, "fake-clock-offset.mjs")).href}`].filter(Boolean).join(" ")
+      } : {}),
       ...(actions ? { ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptorPath, ...pressEnv() } : {})
     };
     delete base.ANTHROPIC_API_KEY; delete base.CODEX_SANDBOX; delete base.ARCADIA_WORKSPACE; delete base.VITEST;
@@ -553,6 +595,207 @@ describe("start-run executor: Decision 0163 delegated presses", () => {
       const headBefore = b.head();
       expectRefusedClean(b, b.run(), "P0", reason, headBefore);
     }
+  });
+});
+
+describe("start-run executor: Decision 0173 presses within the operator's day approval", () => {
+  // The same table the TypeScript computation runs in tests/start-run-day-grant.test.ts: both refuse with the same code.
+  // Each case builds its scenario on the clock it runs on: the executor reads the real clock.
+  const table = dayScenarios(Date.now());
+  const fresh = (label: string) => dayScenarios(Date.now()).find((scenario) => scenario.label === label)!;
+  it.each(table.filter((scenario) => scenario.code !== "none").map((scenario) => [scenario.label] as const))("refuses %s in P0, before anything is consumed", (label) => {
+    const scenario = fresh(label);
+    const b = box({ dayGrant: scenario });
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run("preflight"), "P0", new RegExp(`^Decision 0173: ${scenario.code}: `), headBefore);
+    expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "start-run day-evidence")).toBe(true);
+  });
+  it.each(table.filter((scenario) => scenario.code === "none").map((scenario) => [scenario.label] as const))("allows %s through preflight", (label) => {
+    const scenario = fresh(label);
+    const result = box({ dayGrant: scenario }).run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", allowanceConsumed: false, mutations: [] });
+    expect(result.receipt!.record.delegation).toMatchObject({ decision: "0173", approval: `${DAY_CARD}/${DAY_RUN}`, attempt: scenario.attempt });
+  });
+  const FIRST = table[0];
+  it("runs Rowan's press to START, records it as Rowan's and never as the operator's, and needs a preflight first", () => {
+    const b = box({ dayGrant: FIRST });
+    const unpreflighted = b.run();
+    expect(unpreflighted.receipt).toMatchObject({ outcome: "refused", phase: "P0", allowanceConsumed: false });
+    expect(unpreflighted.receipt!.reason).toMatch(/^Decision 0173: PREFLIGHT_REQUIRED: /);
+    // That refusal is itself a press: the next card must name it, so re-pressing the same card refuses.
+    expect(b.run("preflight").status).toBe(1);
+    const c = box({ dayGrant: FIRST });
+    expect(c.run("preflight").status).toBe(0);
+    const result = c.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", productionActivated: true });
+    expect(result.receipt!.record.authority).toContain("Rowan's delegated press of this START card from /actions under Decision 0173, within the operator's day approval");
+    expect(result.receipt!.record.authority).toContain("never recorded as the operator's press");
+    expect(result.receipt!.record.delegation).toMatchObject({ attempt: 1, attemptsBefore: 0, rePressesToday: 0, previous: null });
+    expect(existsSync(path.join(c.library, "runs", "day-grant", `${DAY_CARD}--${DAY_RUN}`, "after-first.claimed"))).toBe(true);
+    const activate = c.calls().find((call) => call.args.slice(0, 2).join(" ") === "production activate")!;
+    expect(activate.args[activate.args.indexOf("--granted-by") + 1]).toMatch(/^Rowan, pressing this START card/);
+  }, 120_000);
+  it("refuses a Decision 0173 card pressed without the delegated marker", () => {
+    const b = box({ dayGrant: FIRST, pressMarker: "omit" });
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run(), "P0", /must be pressed through \/actions as Rowan delegated press under Decision 0173/, headBefore);
+  });
+  it("needs a fresh pre-mortem pointer on the reviewed manifest", () => {
+    const b = box({ dayGrant: FIRST, noPremortem: true });
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run("preflight"), "P0", /^Decision 0173: PREMORTEM_REQUIRED: /, headBefore);
+  });
+  it("refuses when the production record cannot be read", () => {
+    const b = box({ dayGrant: FIRST, state: (s) => { s.dayEvidence = "unavailable"; } });
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run("preflight"), "P0", /^Decision 0173: EVIDENCE_UNAVAILABLE: /, headBefore);
+  });
+  it("refuses in P1 outside the active Plan, on an answer other than option A, on a draft Plan and on an unmerged fix", () => {
+    const expectP1 = (b: Box, reason: RegExp) => expectRefusedClean(b, b.run("preflight"), "P1", reason, b.head());
+    expectP1(box({ dayGrant: FIRST, projectPointer: "something-else" }), /does not point at it/);
+    expectP1(box({ dayGrant: FIRST, decisions: { "0173": decisionDocument("0173", "approved", '"B. Daily grant: START and retries only"') } }), /not answered with option A/);
+    expectP1(box({ dayGrant: FIRST, planStatus: "draft", activation: true }), /no planActivation|covers the active Plan/);
+    const fix = { kind: "merged-fix" as const, pullRequest: "https://github.com/pmark/arcadia/pull/1", commit: "d".repeat(40), reproduction: "src/production/workerMerge.ts" };
+    const refused = { label: "", code: "", attempt: 1, presses: [{ card: "start-a", at: Date.now() - 600_000, receipt: {} }] };
+    expectP1(box({ dayGrant: { ...refused, previous: { press: "start-a/20261104000000000-start-a", kind: "no-session", cause: "launcher-bug", evidence: "docs/x.md", clearance: fix } } }), /fix commit d+ named for the previous attempt is not on the reviewed revision/);
+  });
+  it("refuses a stale preflight, and one at another revision, as no preflight", () => {
+    for (const change of [
+      (receipt: Record<string, any>) => { receipt.updatedAt = new Date(Date.now() - 3 * 3_600_000).toISOString(); },
+      (receipt: Record<string, any>) => { receipt.record.reviewedRevision = "f".repeat(40); }
+    ]) {
+      const b = box({ dayGrant: fresh(FIRST.label) });
+      const preflight = b.run("preflight");
+      expect(preflight.status, preflight.stderr).toBe(0);
+      const receipt = JSON.parse(preflight.read("receipt.json")!) as Record<string, any>;
+      change(receipt);
+      writeFileSync(path.join(preflight.dir!, "receipt.json"), JSON.stringify(receipt));
+      const headBefore = b.head();
+      expectRefusedClean(b, b.run(), "P0", /^Decision 0173: PREFLIGHT_REQUIRED: /, headBefore);
+    }
+  }, 120_000);
+  describe("the window closing while a press runs", () => {
+    // 10 minutes of the day left at P0; the jump makes it 1 minute past hour 24, well inside the card's own expiry.
+    const closing = () => ({ ...fresh(FIRST.label), approval: { pressedAt: Date.now() - 24 * 3_600_000 + 10 * 60_000 } });
+    const JUMP = 11 * 60_000;
+    it("refuses at P3, before the allowance, when it closes during the preflight phases", () => {
+      const b = box({ dayGrant: closing(), clockJump: { at: "production freeze-check", byMs: JUMP } });
+      expect(b.run("preflight").status).toBe(0);
+      const headBefore = b.head();
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P3", allowanceConsumed: false, mutations: [] });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: WINDOW_EXPIRED: the day ended during the preflight; no allowance consumed/);
+      expect(existsSync(b.marker)).toBe(false);
+      expect(existsSync(path.join(b.library, "runs", "day-grant"))).toBe(false);
+      expect(b.mutating()).toEqual([]);
+      expect(b.head()).toBe(headBefore);
+    }, 120_000);
+    it("refuses at P6, before activation, when it closes during the install and sign-in", () => {
+      const b = box({ dayGrant: closing(), clockJump: { at: "start-run sign-in", byMs: JUMP } });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: WINDOW_EXPIRED: the day ended before activation; no activation/);
+      expect(b.sequence()).not.toContain("production activate");
+    }, 120_000);
+  });
+  describe("an operator STOP pressed while a press runs and production is Off", () => {
+    it("refuses at P3, before the allowance", () => {
+      const b = box({ dayGrant: fresh(FIRST.label), stopPressAt: "production freeze-check" });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P3", allowanceConsumed: false, mutations: [] });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: DAY_ENDED_BY_OPERATOR: the STOP card /);
+      expect(existsSync(b.marker)).toBe(false);
+    }, 120_000);
+    it("refuses at P6, before activation", () => {
+      const b = box({ dayGrant: fresh(FIRST.label), stopPressAt: "start-run sign-in" });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: DAY_ENDED_BY_OPERATOR: the STOP card /);
+      expect(b.sequence()).not.toContain("production activate");
+    }, 120_000);
+  });
+  describe("a newer day press finishing while a press runs", () => {
+    const LATER = "20991231235959000-later-day";
+    it("refuses at P3, before the allowance", () => {
+      const b = box({ dayGrant: fresh(FIRST.label), laterApproval: { at: "production freeze-check", press: LATER } });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P3", allowanceConsumed: false, mutations: [] });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: APPROVAL_SUPERSEDED: /);
+      expect(existsSync(b.marker)).toBe(false);
+    }, 120_000);
+    it("refuses at P6, before activation", () => {
+      const b = box({ dayGrant: fresh(FIRST.label), laterApproval: { at: "start-run sign-in", press: LATER } });
+      expect(b.run("preflight").status).toBe(0);
+      const result = b.run();
+      expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
+      expect(result.receipt!.reason).toMatch(/^Decision 0173: APPROVAL_SUPERSEDED: /);
+      expect(b.sequence()).not.toContain("production activate");
+    }, 120_000);
+  });
+  it("refuses a Decision whose body quotes option A while its answer is another option", () => {
+    const body = '---\nid: "0173"\nstatus: approved\nanswer: "B. Daily grant: START and retries only"\n---\n\nanswer: "A. Daily grant: START and routine run operations"\n';
+    const b = box({ dayGrant: fresh(FIRST.label), decisions: { "0173": body } });
+    expectRefusedClean(b, b.run("preflight"), "P1", /not answered with option A/, b.head());
+  });
+  it("refuses a press directory it cannot list, instead of reading it as no earlier press", () => {
+    const b = box({ dayGrant: fresh(FIRST.label) });
+    const unreadable = path.join(b.library, "runs", "operator", "start-unlistable");
+    mkdirSync(unreadable, { recursive: true });
+    chmodSync(unreadable, 0o000);
+    try {
+      const headBefore = b.head();
+      expectRefusedClean(b, b.run("preflight"), "P0", /^Decision 0173: PRESS_UNREADABLE: .*cannot be listed \(EACCES\)/, headBefore);
+    } finally { chmodSync(unreadable, 0o755); }
+  });
+  it("refuses a named fix whose reproduction is missing at the pin, and accepts one that is there", () => {
+    const fix = (reproduction: string) => ({ label: "", code: "none", attempt: 1, presses: [{ card: "start-a", at: Date.now() - 600_000, receipt: {} }],
+      previous: { press: "start-a/20261104000000000-start-a", kind: "no-session" as const, cause: "launcher-bug", evidence: "docs/x.md", clearance: { kind: "merged-fix" as const, pullRequest: "https://github.com/pmark/arcadia/pull/1", commit: PIN_COMMIT, reproduction } } });
+    const missing = box({ dayGrant: fix("tests/absent-replay.test.ts") });
+    expectRefusedClean(missing, missing.run("preflight"), "P1", /the reproduction tests\/absent-replay\.test\.ts named for the previous attempt is missing at/, missing.head());
+    const present = box({ dayGrant: fix("src/production/workerMerge.ts") }).run("preflight");
+    expect(present.status, present.stderr + present.stdout).toBe(0);
+  });
+  it("claims only one card to follow a press", () => {
+    const b = box({ dayGrant: FIRST });
+    expect(b.run("preflight").status).toBe(0);
+    const dir = path.join(b.library, "runs", "day-grant", `${DAY_CARD}--${DAY_RUN}`);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(path.join(dir, "after-first.claimed"), "another-card 20261101T060000Z-1\n");
+    const headBefore = b.head();
+    const result = b.run();
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P3", allowanceConsumed: false });
+    expect(result.receipt!.reason).toMatch(/another card already followed that press; nothing was changed/);
+    expect(existsSync(b.marker)).toBe(false);
+    expect(b.head()).toBe(headBefore);
+  });
+  it("names the press a P0 refusal refused, so the refusal counts", () => {
+    const b = box({ dayGrant: FIRST, pressMarker: undefined, noPremortem: true });
+    const result = b.run();
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P0" });
+    expect(result.receipt!.record.operatorRunId).toMatch(/^20261101000000000-/);
+  });
+});
+
+describe("start-run executor: an ordinary operator press stays exactly as it was", () => {
+  it("reads no Decision 0173 record, needs no preflight, and records the operator's authority", () => {
+    const b = box();
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", productionActivated: true });
+    expect(result.receipt!.record.authority).toBe("The operator's own press of this per-run START card from /actions (launch context verified in P0), under Decisions 0156, 0157 and 0161, whose approval is verified at the reviewed revision in P1; no delegation to an agent is used or required");
+    expect(result.receipt!.record.delegation).toBeUndefined();
+    expect(b.calls().some((call) => call.args.slice(0, 2).join(" ") === "start-run day-evidence")).toBe(false);
+    expect(existsSync(path.join(b.library, "runs", "day-grant"))).toBe(false);
+  }, 120_000);
+  it("still refuses an ordinary card carrying a delegated press record", () => {
+    const b = box({ pressMarker: "forge" });
+    expectRefusedClean(b, b.run(), "P0", /only a Decision 0163 delegated card may carry a delegated press record/, b.head());
   });
 });
 

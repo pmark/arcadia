@@ -193,6 +193,8 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
     `${FROM_LIVE_TERMINAL} Experiment fixture repositories have no remote to project to.`
   ),
   "start-run pins": ALLOWED,
+  "start-run day-pins": ALLOWED,
+  "start-run day-evidence": ALLOWED,
   "start-run sign-in": guarded(
     "Claims the host's daily Claude renewal, runs the Claude CLI, publishes a diagnostic Decision to main and asks the live worker for a usage check.",
     FROM_LIVE_TERMINAL

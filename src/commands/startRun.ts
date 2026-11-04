@@ -11,8 +11,10 @@ import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
 import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
+import { ATTEMPT_COUNT_EARLIEST, DAY_GRANT_EXECUTOR_PATH, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
+import { readDayGrantEvidence } from "../production/policy.js";
 import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
 import { runProductionStatusCommand } from "./production.js";
 
@@ -41,6 +43,15 @@ export interface StartRunPinsOptions {
   expiresHours: string | number;
   /** Decision 0163: `<card>/<run>` of the operator's originating press; emits the delegation block for Rowan's successor card. */
   delegatedFrom?: string;
+  /** Decision 0173: `<card>/<run>` of the operator's day approval; emits the delegation block for Rowan's START card. */
+  dayGrantFrom?: string;
+  /** Decision 0173: Rowan's named cause of the latest START press, with its evidence pointer and how it was cleared. */
+  previousCause?: string;
+  previousEvidence?: string;
+  fixPullRequest?: string;
+  fixCommit?: string;
+  reproduction?: string;
+  observedCleared?: string;
   repository?: string;
   workspace?: string;
 }
@@ -67,6 +78,8 @@ export interface StartRunPinsDeps {
   sha256File(file: string): string;
   /** Read-only verification of a Decision 0163 delegation chain in the library (fixtures replace it). */
   inspectDelegation?: typeof inspectDelegationChain;
+  /** Decision 0173's production record, from the workspace database (fixtures replace it). */
+  dayEvidence?: (workspacePath: string) => DayEvidence;
 }
 
 export const realStartRunPinsDeps: StartRunPinsDeps = {
@@ -80,11 +93,17 @@ export const realStartRunPinsDeps: StartRunPinsDeps = {
     return { workspacePath, desiredState: data.read.policy.desiredState, revision: data.read.policy.revision, epoch: data.read.policy.epoch, liveAdmissions: data.liveAdmissions };
   },
   queue: (workspacePath) => withReadOnlyDatabase(workspacePath, (db) => buildAgentQueue(db)),
+  dayEvidence: (workspacePath) => withReadOnlyDatabase(workspacePath, (db) => readDayGrantEvidence(db, ATTEMPT_COUNT_EARLIEST)),
   listFiles: (directory) => { try { return readdirSync(directory); } catch { return []; } },
   sha256File: (file) => createHash("sha256").update(readFileSync(file)).digest("hex")
 };
 
 const slug = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+/** Decision 0173's option A, from its frontmatter: options B and C grant less, and its body may quote any option. */
+const isDayGrantAnswered = (content: string): boolean => {
+  const fields = frontmatter(content, "Decision 0173");
+  return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith("A. Daily grant");
+};
 const text = (buffer: Buffer): string => buffer.toString("utf8");
 const sha256 = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
 function frontmatter(content: string, label: string): Record<string, unknown> {
@@ -145,13 +164,25 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     if (!match) throw validationError("--delegated-from must be <card id>/<executor run id> of the operator's originating press.");
     delegatedFrom = { card: match[1], run: match[2] };
   }
-  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(delegatedFrom ? ["0163"] : [])];
+  let dayGrantFrom: { card: string; run: string } | null = null;
+  if (options.dayGrantFrom !== undefined) {
+    if (delegatedFrom) throw validationError("--day-grant-from and --delegated-from are separate chains; name one.");
+    const match = /^([a-z0-9]+(?:-[a-z0-9]+)*)\/([0-9]{8}T[0-9]{6}Z-[0-9]+)$/.exec(options.dayGrantFrom);
+    if (!match) throw validationError("--day-grant-from must be <card id>/<executor run id> of the operator's day approval.");
+    dayGrantFrom = { card: match[1], run: match[2] };
+    // Decision 0173: on the active Plan only; a draft Plan's pinned activation is not part of this grant.
+    if (planStatus !== "active") throw validationError(`Plan ${plan} is ${planStatus}; a Decision 0173 card needs the active Plan.`);
+    const pointer = frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan;
+    if (pointer !== plan) throw validationError(`Plan ${plan} is not the Project's active Plan (${String(pointer)}); a Decision 0173 card needs the active Plan.`);
+  }
+  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(delegatedFrom ? ["0163"] : []), ...(dayGrantFrom ? ["0163", "0170", "0173"] : [])];
   const decisionFiles = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n");
   for (const decision of requiredDecisions) {
     const file = decisionFiles.find((entry) => new RegExp(`^docs/decisions/${decision}-.*\\.md$`).test(entry));
     if (!file) throw validationError(`Decision ${decision} is not in docs/decisions at origin main.`);
     const content = text(show(file));
     if (!/^status: approved$/m.test(content) || !/^answer: .+/m.test(content)) throw validationError(`Decision ${decision} is not approved with a recorded answer at origin main.`);
+    if (decision === "0173" && !isDayGrantAnswered(content)) throw validationError("Decision 0173 is not answered with option A at origin main.");
   }
   for (const file of START_RUN_DEFAULTS.requiredFiles) show(file);
 
@@ -170,7 +201,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
 
   const main = mainCheckout(toplevel, deps);
   const library = path.join(main, "artifacts", "generated", "operator-scripts");
-  let delegation: StartRunDelegation | undefined;
+  let delegation: StartRunDelegation | DayGrantDelegation | undefined;
   if (delegatedFrom) {
     try {
       const chain = (deps.inspectDelegation ?? inspectDelegationChain)(library, delegatedFrom.card, delegatedFrom.run, null, deps.now(), null, production.revision);
@@ -178,6 +209,33 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
       notes.push(`Decision 0163 delegated successor: attempt ${delegation.attempt} of at most 5 after ${chain.latest.card}/${chain.latest.run} (${chain.trigger}); the operator's press at ${chain.originatingStartedAt} is the one activation touch.`);
     } catch (error) {
       throw validationError(`No delegated successor may be pinned: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  if (dayGrantFrom) {
+    const named = namedDayGrantCause(options);
+    if (named?.clearance.kind === "merged-fix") {
+      try { deps.git(toplevel, ["merge-base", "--is-ancestor", named.clearance.commit, originMain]); }
+      catch { throw validationError(`The fix commit ${named.clearance.commit} is not on origin main ${originMain}; a retry waits for the merged pull request.`); }
+      show(named.clearance.reproduction);
+    }
+    const input = {
+      library, approvalCard: dayGrantFrom.card, approvalRun: dayGrantFrom.run, approvalReceiptSha256: null, approvalPressSha256: null, now: deps.now(), policyRevision: production.revision, excludePress: null,
+      evidence: (deps.dayEvidence ?? realStartRunPinsDeps.dayEvidence!)(production.workspacePath),
+      scope: { project, plan, provider: options.provider, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision, offId: START_RUN_DEFAULTS.offId }
+    };
+    try {
+      // The press and its kind come from the record; only the cause, its evidence and its clearance are Rowan's words.
+      const { latest } = inspectDayGrantChain(input);
+      if (named && !latest) throw validationError("A cause was named, but no START press has happened since Decision 0170.");
+      const previous: DayGrantPrevious | null = named && latest ? validateDayGrantPrevious({ ...latest, ...named }) : null;
+      const chain = inspectDayGrantChain({ ...input, previous });
+      delegation = {
+        decision: "0173", approvalCard: dayGrantFrom.card, approvalRun: dayGrantFrom.run, approvalReceiptSha256: chain.window.receiptSha256, approvalPressSha256: chain.window.pressSha256,
+        attempt: chain.attemptsSoFar + 1, previous
+      };
+      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} of at most 3 under Decision 0170 if it admits a Session; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
+    } catch (error) {
+      throw validationError(`No Decision 0173 card may be pinned: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
   // N6: the gate and STOP cards the handoffs and refusals name must exist in the library.
@@ -213,7 +271,9 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     workerLabel: labels[0],
     gateCardId: START_RUN_DEFAULTS.gateCardId,
     offId: START_RUN_DEFAULTS.offId,
-    grantedBy: delegation
+    grantedBy: delegation?.decision === "0173"
+      ? `Rowan, pressing this START card from /actions under Decision 0173, within the operator's day approval ${delegation.approvalCard}/${delegation.approvalRun}`
+      : delegation
       ? `Rowan, pressing this successor START card from /actions under Decision 0163, delegated from the operator's originating press ${delegation.originatingCard}/${delegation.originatingRun}`
       : "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
     consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) })),
@@ -224,9 +284,67 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   return { startRun, expires_at: expiresAt, observations: { repository: toplevel, originMain, planStatus, queueTop, workerLabel: labels[0], notes } };
 }
 
+/** Rowan's named cause, from the flags; null when none was named (the chain refuses when one is needed). */
+function namedDayGrantCause(options: StartRunPinsOptions): Pick<DayGrantPrevious, "cause" | "evidence" | "clearance"> | null {
+  const fix = [options.fixPullRequest, options.fixCommit, options.reproduction];
+  if (![options.previousCause, options.previousEvidence, options.observedCleared, ...fix].some((value) => value !== undefined)) return null;
+  if (fix.some((value) => value !== undefined) && options.observedCleared !== undefined) throw validationError("Name a merged fix or an observed clearance, not both.");
+  if (options.previousCause === undefined || options.previousEvidence === undefined) throw validationError("A named cause needs both --previous-cause and --previous-evidence.");
+  if (fix.some((value) => value !== undefined) && fix.some((value) => value === undefined)) throw validationError("A merged fix needs --fix-pull-request, --fix-commit and --reproduction together.");
+  if (options.observedCleared === undefined && fix.every((value) => value === undefined)) throw validationError("A named cause needs how it was cleared: --observed-cleared, or --fix-pull-request, --fix-commit and --reproduction.");
+  const clearance: DayGrantClearance = options.observedCleared !== undefined
+    ? { kind: "observed-cleared", observation: options.observedCleared }
+    : { kind: "merged-fix", pullRequest: String(options.fixPullRequest), commit: String(options.fixCommit), reproduction: String(options.reproduction) };
+  return { cause: options.previousCause, evidence: options.previousEvidence, clearance };
+}
+
 export function runStartRunPinsCommand(options: StartRunPinsOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): CommandSuccess<StartRunPinsData> {
   const data = buildStartRunPins(options, deps);
   return createSuccess({ command: "start-run.pins", data, warnings: data.observations.notes });
+}
+
+export interface StartRunDayPinsOptions { plan: string; expiresHours: string | number; repository?: string; workspace?: string }
+export interface StartRunDayPinsData { dayGrant: DayGrantPins; expires_at: string }
+
+/**
+ * `arcadia start-run day-pins`: the pins of one day-grant card, for the operator to press. It writes nothing and grants
+ * nothing: Rowan may prepare the card, and only the operator's press on /actions opens the day.
+ */
+export function buildStartRunDayPins(options: StartRunDayPinsOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): StartRunDayPinsData {
+  if (!slug.test(options.plan)) throw validationError("--plan must be a Plan slug.");
+  const hours = Number(options.expiresHours);
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) throw validationError("--expires-hours must be greater than 0 and at most 24.");
+  let toplevel: string;
+  try { toplevel = realpathSync(options.repository ?? text(deps.git(process.cwd(), ["rev-parse", "--show-toplevel"])).trim()); }
+  catch { throw validationError("Run this inside the Arcadia repository or pass --repository."); }
+  const originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? "";
+  if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
+  const show = (file: string): Buffer => {
+    try { return deps.git(toplevel, ["show", `${originMain}:${file}`]); }
+    catch { throw validationError(`${file} is not readable at origin main ${originMain}; fetch origin (git fetch origin main) or merge it first.`); }
+  };
+  const decisionFile = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").find((entry) => /^docs\/decisions\/0173-.*\.md$/.test(entry));
+  if (!decisionFile) throw validationError("Decision 0173 is not in docs/decisions at origin main.");
+  const content = text(show(decisionFile));
+  if (!isDayGrantAnswered(content)) throw validationError("Decision 0173 is not approved with option A at origin main.");
+  const plan = frontmatter(text(show(`docs/plans/${options.plan}.md`)), `Plan ${options.plan}`);
+  const project = String(plan.project ?? "");
+  if (plan.status !== "active" || frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan !== options.plan) throw validationError(`Plan ${options.plan} is not the Project's active Plan at origin main.`);
+  const dayGrant = validateDayGrantPins({
+    schema: "arcadia-day-grant-v1", decision: "0173", executorSha256: sha256(show(DAY_GRANT_EXECUTOR_PATH)), project, plan: options.plan,
+    provider: START_RUN_DEFAULTS.provider, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision
+  });
+  return { dayGrant, expires_at: new Date(deps.now().getTime() + hours * 3_600_000).toISOString().replace(/\.\d{3}Z$/, "Z") };
+}
+
+export function runStartRunDayPinsCommand(options: StartRunDayPinsOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): CommandSuccess<StartRunDayPinsData> {
+  return createSuccess({ command: "start-run.day-pins", data: buildStartRunDayPins(options, deps) });
+}
+
+/** `arcadia start-run day-evidence`: Decision 0173's read-only production record, which the START executor reads in P0. */
+export function runStartRunDayEvidenceCommand(options: { workspace?: string }): CommandSuccess<DayEvidence> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  return createSuccess({ command: "start-run.day-evidence", workspace: workspacePath, data: withReadOnlyDatabase(workspacePath, (db) => readDayGrantEvidence(db, ATTEMPT_COUNT_EARLIEST)) });
 }
 
 export function renderStartRunPinsSuccess(response: CommandSuccess<StartRunPinsData>): string[] {

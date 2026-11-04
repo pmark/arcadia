@@ -14,6 +14,7 @@ import { loadLatestRunReceipts, type RunReceiptSummary } from "../../../lib/oper
 import { operatorScriptRunnerSource } from "../../../lib/operatorScriptRunner";
 import { discoverProjectOperatorLibraries, parseOperatorScriptKey, projectLibraryKey, projectLibraryStateDir } from "../../../../../src/operatorActions/projectLibraries.js";
 import { delegatedPressMarker, StartRunDelegationError, type DelegatedPress } from "../../../../../src/operatorActions/startRunDelegation.js";
+import { isOperatorBrowserPress } from "../../../../../src/operatorActions/startRunDayGrant.js";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -70,6 +71,8 @@ export interface OperatorScriptRun {
   scriptId: string;
   /** Decision 0163: present only on Rowan's delegated press; an operator press carries no marker. */
   press?: DelegatedPress;
+  /** Decision 0173: a day-grant card's press came from a browser at a non-loopback address. No identity layer: it says how, not who. */
+  browserPress?: true;
   status: "running" | "succeeded" | "failed";
   startedAt: string;
   finishedAt?: string;
@@ -275,6 +278,12 @@ export async function POST(request: Request) {
       if (error instanceof StartRunDelegationError) return NextResponse.json({ error: error.message, reason: error.code }, { status: 409 });
       throw error;
     }
+    // Decision 0173: a day approval is the operator's press on the /actions page at the Tailnet address. A scripted POST
+    // or a browser on this host at a loopback address cannot make one. This stops accidents, not an agent set on forging it.
+    const browserPress = descriptor.dayGrant !== undefined && isOperatorBrowserPress({ origin: request.headers.get("origin"), host: request.headers.get("host") });
+    if (descriptor.dayGrant !== undefined && !browserPress) {
+      return NextResponse.json({ error: "A day-grant card is pressed by the operator on the /actions page, in a browser at the Tailnet address.", reason: "DAY_GRANT_BROWSER_PRESS_REQUIRED" }, { status: 409 });
+    }
     const state = await loadState(id);
     const receipt = await loadOperatorScriptReceipt(entry.stateLibrary, entry.id);
     if ((state?.status === "running" && processIsRunning(state.pid)) || (receipt?.status === "running" && processIsRunning(receipt.pid))) {
@@ -317,6 +326,7 @@ export async function POST(request: Request) {
       runId,
       scriptId: id,
       ...(press ? { press } : {}),
+      ...(browserPress ? { browserPress: true as const } : {}),
       status: "running",
       startedAt,
       runDirectory: relativeRunDirectory,
