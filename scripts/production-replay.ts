@@ -632,7 +632,7 @@ export function installGuards(root: string, effectsLog: string, simulateVerdict?
   // Providers answer the launch preflight's read-only probes like an installed,
   // signed-in CLI (the real flags and sign-in are not replayed); anything else is refused.
   const probes: Record<string, string> = {
-    claude: `  --help|-h) echo "Usage: claude [options] --print --output-format --permission-mode --settings --setting-sources --verbose --model"; exit 0 ;;
+    claude: `  --help|-h) echo "Usage: claude [options] --print --output-format --permission-mode --settings --setting-sources --verbose --model --tools --json-schema --strict-mcp-config --no-session-persistence"; exit 0 ;;
   --version|-v) echo "0.0.0 (production replay)"; exit 0 ;;
   auth) echo '{"loggedIn":true,"authMethod":"replay"}'; exit 0 ;;`,
     codex: `  --version) echo "codex 0.0.0 (production replay)"; exit 0 ;;
@@ -650,10 +650,16 @@ export function installGuards(root: string, effectsLog: string, simulateVerdict?
     probes.codex = `  --version) echo "codex 0.0.0 (production replay)"; exit 0 ;;
   sandbox) printf 'sandbox-evidence-readable\\nsandbox-home-denied\\nsandbox-repository-denied\\nsandbox-network-denied\\n'; exit 0 ;;
   app-server) exit 1 ;;`;
+    // A Claude reviewer invocation (--print ... --tools "") answers from the same simulated reviewer; any other claude call stays refused.
+    probes.claude += `
+  --print) tools_off=0; prev=""; for a in "$@"; do if [ "$prev" = "--tools" ] && [ -z "$a" ]; then tools_off=1; fi; prev="$a"; done
+    if [ "$tools_off" = 1 ]; then
+      exec ${shellQuote(process.execPath)} ${shellQuote(simulatedReviewer)} ${shellQuote(simulateVerdict)} ${shellQuote(effectsLog)} claude "$@"
+    fi ;;`;
     // The reviewer's Codex rate-limit read (\`codex app-server\`) reports nothing in a simulation.
     probes.codex += `
   exec) case "$2" in --help|-h) echo "Usage: codex exec --json --sandbox"; exit 0 ;; esac
-    exec ${shellQuote(process.execPath)} ${shellQuote(simulatedReviewer)} ${shellQuote(simulateVerdict)} ${shellQuote(effectsLog)} "$@" ;;`;
+    exec ${shellQuote(process.execPath)} ${shellQuote(simulatedReviewer)} ${shellQuote(simulateVerdict)} ${shellQuote(effectsLog)} codex "$@" ;;`;
   }
   for (const [name, answers] of Object.entries(probes)) {
     if (name === "codex" && realCodex) {
@@ -967,7 +973,7 @@ process.exit(recorded.status);
 const SIMULATED_REVIEWER = String.raw`import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-const [simulated, effectsLog, ...args] = process.argv.slice(2);
+const [simulated, effectsLog, flavor, ...args] = process.argv.slice(2);
 const prompt = readFileSync(0, "utf8");
 const role = prompt.includes("Exact-Head Code Review") ? "code-review" : "qa";
 const criteria = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "review-criteria.json"), "utf8"))[role];
@@ -990,9 +996,15 @@ const verdict = {
     evidence: "SIMULATED by the production replay; no reviewer judged " + criterion.name + "." })),
   residualRisks: []
 };
-writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(verdict) + "\n");
 appendFileSync(effectsLog, JSON.stringify({ kind: "simulated:reviewer", detail: role + " " + verdict.verdict }) + "\n");
-process.stdout.write('{"type":"task.completed"}\n');
+if (flavor === "claude") {
+  // The stream-json lines recordClaudeReviewerVerdict reads: no tools but StructuredOutput, no MCP servers, a structured verdict.
+  process.stdout.write(JSON.stringify({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [] }) + "\n");
+  process.stdout.write(JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict }) + "\n");
+} else {
+  writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(verdict) + "\n");
+  process.stdout.write('{"type":"task.completed"}\n');
+}
 `;
 
 /** Preloaded into the child and every node descendant: no network, every attempt recorded. */
