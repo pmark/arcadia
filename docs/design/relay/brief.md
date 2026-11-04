@@ -4,11 +4,10 @@
 
 ## Where it stands
 
-**The frame is confirmed (S022), and the three Workspace layers are designed and await the operator's approval.** The
+**The frame is confirmed (S022), and the operator approved the three Workspace layers with 1A and 2A (S029).** The
 [layer design](workspace-layers.md) sets what the scene, the view and the Relay overlay each do and who may move what, with a
-[throwaway prototype](../prototypes/relay-workspace-layers.html) and [one probe](probes/layers-1.md). Nothing is being built.
-Two choices wait on the operator: CH-05 (may their words move the view?) and CH-06 (how far does "always available" reach in
-the first build?). S014 refocused Relay on the operator's own critical path, from idea to planned, autonomously produced
+[throwaway prototype](../prototypes/relay-workspace-layers.html) and [one probe](probes/layers-1.md). Its build order is starting, one
+PR per step. S014 refocused Relay on the operator's own critical path, from idea to planned, autonomously produced
 work, with arbitrary text starting a conversation at once and much of it at zero cost. Unattended production stays first,
 and first-timer onboarding is deferred, though nothing built now should require special knowledge. Critic R1's hold still
 stands against the earlier frame ([report](reviews/R1-relay-critique.md)). A thin [local model probe](probes/local-model-1.md)
@@ -31,8 +30,8 @@ routing scores a lot, ahead of a proper bake-off. Way lookup is built as evidenc
 - **Routing direction (S017):** the local model routes and uses tools, Ask comes first, engines are
   pluggable with none added now, and supervisors supply rich context ([probe 3](probes/routing-3.md),
   [ladder](decision-interface.md)).
-- **Being worked on:** the three Workspace layers. **Next move:** the operator approves the layer design and answers CH-05
-  and CH-06. Then its build order starts, once production can spare the capacity.
+- **Being worked on:** step 1 of the layer design's build order, the Scene on every view. Production work goes first whenever
+  they compete.
 - **Riskiest assumption about the layers, probed once:** that one sky can carry status behind a view and an overlay. Text
   held and the sky stayed visible ([probe](probes/layers-1.md)), but nobody has used it on a real phone.
 - **Riskiest assumption about Way knowledge, probed once, failed:** 73% fully correct against S012's default 90%, and

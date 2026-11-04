@@ -1,7 +1,7 @@
 # Relay: the three Workspace layers
 
-Status: design for the operator's approval, 2026-11-03. It authorizes nothing and starts no build. Unattended
-production stays first, and production stays Off. Built through [Arcadia Design](../../../.agents/skills/arcadia-design/SKILL.md)
+Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). Each build step is its
+own PR under the usual gates. Unattended production stays first, and production stays Off. Built through [Arcadia Design](../../../.agents/skills/arcadia-design/SKILL.md)
 as part of [the Relay brief](brief.md). Recorded as source S025.
 
 **Try it:** [`prototypes/relay-workspace-layers.html`](../prototypes/relay-workspace-layers.html) is a throwaway
@@ -265,6 +265,8 @@ Then you try it on your phone. Playwright can't reproduce iOS Safari's keyboard,
 
 ## Decisions for the operator
 
+**Answered 2026-11-04: 1A and 2A.** The options stay here as they were put.
+
 **1. May your words move the View?** The operator's call, because it sets how the whole thing feels.
 
 - **A. Yes, when you ask to go somewhere (recommended).** Fluid and honest: "take me to the Plan" takes you there, with
@@ -285,7 +287,7 @@ controls stay on their own pages for now, by your freeze.
   overrides your freeze for those pages. It's more surface to test and it touches production pages while production is the
   priority.
 
-**Approving this also confirms four new requirements,** REQ-015 to REQ-018 in the record. They're proposed until you do.
+**Approving this confirmed four new requirements,** REQ-015 to REQ-018 in the record.
 
 **Decided by me, yours to overrule:**
 

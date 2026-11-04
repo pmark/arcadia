@@ -108,14 +108,14 @@ frame:
         - M2
       proof: One real idea reaches an approved Plan and a deployed staging result, with every operator touch counted.
     - id: REQ-015
-      status: proposed
+      confirmed_ref: S029
       statement: From every Workspace view, the operator can tell how the system is doing at a glance, can check the same reading in words, and is never told all is clear when production is off, stalled or unread.
       mission:
         - M3
         - M4
       proof: A Playwright test across every Workspace route showing the same reading and words, covering each production state in the design's table, first load and a stale read, plus the operator judging a glance test on a real phone.
     - id: REQ-016
-      status: proposed
+      confirmed_ref: S029
       statement: What is on screen is what Relay takes "this" to mean, every answer says which scope it used, and the view moves only as CH-05 decides, never from a status change or a model's choice.
       mission:
         - M1
@@ -123,14 +123,14 @@ frame:
         - M5
       proof: A Playwright test where status changes move nothing, each answer names the scope the server used, and the view moves only as CH-05's chosen option says. A hostile message cannot move the view.
     - id: REQ-017
-      status: proposed
+      confirmed_ref: S029
       statement: Relay is available from every Workspace context, including when the view failed to load, an earlier send is uncertain, or an Artifact is open, without weakening the gates on anything that writes.
       mission:
         - M1
         - M3
       proof: A Playwright test sending from each route with the view's read failing, with an uncertain exchange pending, and with the Stage open, with no message lost or resent, and a direction refused for an unverified target.
     - id: REQ-018
-      status: proposed
+      confirmed_ref: S029
       statement: The interface works first on a phone, also on a tablet, laptop and several monitors, and nothing built now blocks headsets or AR glasses.
       mission:
         - M1
@@ -323,7 +323,14 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: e0b1ea544ba744b19994151beafc1694da5aa749cecfde504abee971092b6d6e
+    sha256: 3f54cb6bccddd715299230e9854675352635169ae235fd093af8e9882f2345f8
+  - id: S029
+    title: Operator's approval of the layer design
+    kind: operator
+    added: 2026-11-04
+    retention: repo
+    path: sources/S029-layer-design-approval.md
+    sha256: ff59a6638c82eaddb848b6313758c073479d7d483f47637553ee06b5f9bfafcf
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent
@@ -2881,11 +2888,10 @@ concepts:
       status: missing
       evidence:
         - apps/dashboard/components/workspace/workspace-view.tsx
-    position: leaning
+    position: chosen
     serves:
       - REQ-016
       - REQ-004
-    reason: Awaits the operator approving the layer design.
   - id: C-063
     title: "Words may move the view when asked"
     kind: mechanism
@@ -2897,7 +2903,7 @@ concepts:
       status: missing
       evidence:
         - apps/dashboard/components/workspace/workspace-view.tsx
-    position: candidates
+    position: chosen
     serves:
       - REQ-016
   - id: C-064
@@ -2909,7 +2915,8 @@ concepts:
         locator: 'Decisions for the operator, 1B'
       - source: S027
         locator: 'Choreography'
-    position: candidates
+    position: rejected
+    reason: The operator chose words as well as taps (S029).
   - id: C-065
     title: "Relay moves the view with any answer"
     kind: mechanism
@@ -2917,7 +2924,8 @@ concepts:
     origins:
       - source: S025
         locator: 'Decisions for the operator, 1C'
-    position: candidates
+    position: rejected
+    reason: The operator chose only explicit requests (S029), which keeps the rule that the screen does not change after a plain question.
   - id: C-066
     title: "Scene on every view, in words, never falsely clear"
     kind: interface
@@ -2937,11 +2945,10 @@ concepts:
         - apps/dashboard/app/workspace/layout.tsx
         - apps/dashboard/app/api/production-console/route.ts
         - src/production/activation.ts
-    position: leaning
+    position: chosen
     serves:
       - REQ-015
       - REQ-004
-    reason: Awaits the operator approving the layer design.
   - id: C-067
     title: "One subject in the view, and it is the context"
     kind: interface
@@ -2959,11 +2966,10 @@ concepts:
         - apps/dashboard/lib/workspace-scope.ts
         - apps/dashboard/components/workspace/workspace-ask.tsx
         - apps/dashboard/app/api/ask/route.ts
-    position: leaning
+    position: chosen
     serves:
       - REQ-016
       - REQ-012
-    reason: Awaits the operator approving the layer design.
   - id: C-068
     title: "Relay as one surface with three heights"
     kind: interface
@@ -2978,11 +2984,10 @@ concepts:
       evidence:
         - apps/dashboard/components/workspace/workspace-view.tsx
         - apps/dashboard/components/workspace/workspace-ask.tsx
-    position: leaning
+    position: chosen
     serves:
       - REQ-017
       - REQ-012
-    reason: Awaits the operator approving the layer design.
   - id: C-069
     title: "Closed vocabulary of blocks and cues"
     kind: interface
@@ -2998,12 +3003,11 @@ concepts:
       status: missing
       evidence:
         - apps/dashboard/lib/types.ts
-    position: leaning
+    position: chosen
     serves:
       - REQ-016
       - REQ-018
       - REQ-006
-    reason: Awaits the operator approving the layer design.
   - id: C-070
     title: "Device mapping by depth"
     kind: mechanism
@@ -3017,10 +3021,9 @@ concepts:
       status: partial
       evidence:
         - apps/dashboard/lib/system-sky.ts
-    position: leaning
+    position: chosen
     serves:
       - REQ-018
-    reason: Awaits the operator approving the layer design.
   - id: C-071
     title: "Overlay in Workspace only at first"
     kind: mechanism
@@ -3032,7 +3035,7 @@ concepts:
       status: exists
       evidence:
         - apps/dashboard/app/workspace/layout.tsx
-    position: candidates
+    position: chosen
     serves:
       - REQ-017
   - id: C-072
@@ -3042,7 +3045,8 @@ concepts:
     origins:
       - source: S025
         locator: 'Decisions for the operator, 2B'
-    position: candidates
+    position: parked
+    revival: The operator first answers a Decision on a control page and misses Relay there, or a control page moves into Workspace.
   - id: C-073
     title: "Stage beneath Relay"
     kind: interface
@@ -3056,10 +3060,9 @@ concepts:
       status: conflicts
       evidence:
         - apps/dashboard/components/workspace/workspace-artifact-viewer.tsx
-    position: leaning
+    position: chosen
     serves:
       - REQ-017
-    reason: Awaits the operator approving the layer design.
   - id: C-074
     title: "Relay speaks first"
     kind: mechanism
@@ -3143,6 +3146,9 @@ choices:
         consequence: The most predictable. One more tap each time, and less like what the operator described.
       - concept: C-065
         consequence: The most fluid. The screen changes after a plain question, which breaks Downlink's rule.
+    chosen: C-063
+    decided_by: operator
+    decision_ref: S029
   - id: CH-06
     question: How far does always available reach in the first build?
     options:
@@ -3150,6 +3156,9 @@ choices:
         consequence: Smaller, and touches no production page. Relay is left behind on control pages, just when the operator may want to ask about what they see.
       - concept: C-072
         consequence: Truly everywhere sooner. More to test, and it touches production pages while production is the priority.
+    chosen: C-071
+    decided_by: operator
+    decision_ref: S029
 scrutiny:
   - id: R1
     path: reviews/R1-relay-critique.md

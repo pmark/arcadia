@@ -1,10 +1,8 @@
 # Handoff: Relay proposal
 
-**Latest (2026-11-03):** the operator answered 1A 2A 3A 4A 5B, then set the three-layer Workspace direction and froze other
-surfaces (S022, S023). The next session designed the layers through Arcadia Design and brought them for approval:
-[the layer design](../../design/relay/workspace-layers.md), [the prototype](../../design/prototypes/relay-workspace-layers.html)
-and [probe layers-1](../../design/relay/probes/layers-1.md). **The operator hasn't approved it, and nothing is being built.** Two
-choices wait on them: CH-05 and CH-06. Usage limits had reset, so the earlier capacity concern no longer applies.
+**Latest (2026-11-04):** the operator approved [the layer design](../../design/relay/workspace-layers.md) with 1A and 2A (S029). Build
+step 1, the Scene on every view, is starting as its own PR off main. PR 2027 still carries the operator's decisions, so it waits for
+them to merge. Earlier, they answered 1A 2A 3A 4A 5B on the proposal and set the Workspace direction and freeze (S022, S023).
 
 # Objective
 
@@ -37,7 +35,7 @@ any companion.
   ([report](../../design/relay/reviews/R1-relay-critique.md)). That critic shared the author's model, so it can't
   satisfy the ready gate.
 
-**Decisions:** none filed as Decision documents. The operator's answers are recorded as S022 and S023. CH-05 and CH-06 wait on them.
+**Decisions:** none filed as Decision documents. The operator's answers are recorded as S022, S023 and S029.
 
 # Resume location
 
@@ -63,8 +61,7 @@ LiteLLM, whether the 27B can stay loaded beside other work, prefix caching on Qw
 resume cost, and native discovery of both skills in fresh Codex, Claude Code and OpenCode sessions.
 
 **Not done at close:** a session ledger row in `docs/reports/session-ledger/` wasn't added, because its schema wasn't
-checked. The frame is confirmed by S022, and CH-03 is settled. REQ-015 to REQ-018 stay `proposed` until the operator approves the
-layer design. R1's eight blocking findings are still open against the earlier frame, so `--ready` still refuses.
+checked. The frame is confirmed by S022, and CH-03 is settled. REQ-015 to REQ-018 are confirmed by S029. R1's eight blocking findings are still open against the earlier frame, so `--ready` still refuses.
 
 **Friction worth knowing:**
 - In worktrees, the sandbox blocks `pnpm` and `mise`. Use `node --import tsx src/cli.ts`, `node_modules/.bin/vitest`
@@ -82,13 +79,12 @@ otherwise unknown. Safe stopping point: everything is committed and pushed, with
 
 # Next action
 
-The operator approves the layer design or changes it, and answers CH-05 and CH-06. Then start its build order, one PR per step, with a
-new intake Issue, because Issue 2005 is closed.
+Follow the layer design's build order, one PR per step, with production work first whenever they compete.
 
 ```text
-Continue the Relay proposal in ~/.claude/worktrees/relay-proposal, on branch claude/relay-proposal-20261103 (PR 2027). Read
-docs/reports/handoffs/20261103T0000Z-relay-proposal.md and docs/design/relay/workspace-layers.md. If I've approved the design, record my
-answers to CH-05 and CH-06 and start step 1 of its build order. If not, bring me what's still open. Unattended production stays first, and production stays Off.
+Continue the Relay build. Read docs/reports/handoffs/20261103T0000Z-relay-proposal.md on PR 2027's branch and
+docs/design/relay/workspace-layers.md, then check which build step's PR is open and continue from there. Unattended production stays
+first, and production stays Off.
 ```
 
 # Stop condition

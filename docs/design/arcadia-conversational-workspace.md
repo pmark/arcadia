@@ -1,8 +1,8 @@
 # Arcadia conversational workspace UX design specification
 
-**Proposed change, 2026-11-03:** the operator's layered direction changes two sections below, "The foreground is a
-conversation" and "The background carries orientation". The [Relay layer design](relay/workspace-layers.md) has the details and
-awaits approval. The rest of this spec stands.
+**Changed 2026-11-04:** the operator's layered direction changes two sections below, "The foreground is a conversation" and "The
+background carries orientation". The approved [Relay layer design](relay/workspace-layers.md) has the details. The rest of this
+spec stands.
 
 ## Verified delivery status — 2026-10-15
 
