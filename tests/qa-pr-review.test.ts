@@ -2,7 +2,9 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync,
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
+import { installGuards } from "../scripts/production-replay.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
 import type { SelectedCodingAgentConfiguration } from "../src/codingAgents/providerAdapters.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -951,11 +953,11 @@ describe("a Claude Code reviewer", () => {
   /** Runs one review with `reviewerStdout` as the Claude process's output; any Codex call fails the test. */
   function review(
     reviewerStdout: string,
-    options: { help?: string; reviewer?: SelectedCodingAgentConfiguration; reviewerStatus?: number } = {}
+    options: { help?: string; reviewer?: SelectedCodingAgentConfiguration; reviewerStatus?: number; claudeGuard?: string; role?: "qa" | "code-review" } = {}
   ) {
     const fixture = createFixture();
     const calls: Array<{ command: string; args: string[]; environment?: NodeJS.ProcessEnv; stdin?: string }> = [];
-    const result = runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/54" }, {
+    const result = runQaPrReviewCommand({ workspace: fixture.workspace, pullRequest: "https://github.com/pmark/arcadia/pull/54", role: options.role }, {
       selectReviewer: () => options.reviewer ?? claudeReviewer(),
       runCommand: ({ command, args, environment, stdin }) => {
         if (command === "git") return success("https://github.com/pmark/arcadia.git\n");
@@ -963,6 +965,12 @@ describe("a Claude Code reviewer", () => {
         if (command === "gh" && args[1] === "view") return success(JSON.stringify(rawPullRequest([check("fast", "SUCCESS", "https://ci/fast")])));
         if (command === "gh" && args[0] === "api") return success("diff --git a/docs/example.md b/docs/example.md\n+planned QA\n");
         if (command === "codex") throw new Error("a Claude review must not call Codex");
+        if (command === "claude" && options.claudeGuard) {
+          // The production replay's claude guard stands in for the CLI.
+          const ran = spawnSync(options.claudeGuard, args, { input: stdin, encoding: "utf8", env: { PATH: process.env.PATH } });
+          if (args[0] !== "--help") calls.push({ command, args, environment, stdin });
+          return { status: ran.status ?? 1, stdout: ran.stdout, stderr: ran.stderr, error: null };
+        }
         if (command === "claude" && args[0] === "--help") return success(options.help ?? CLAUDE_HELP);
         if (command === "claude") {
           calls.push({ command, args, environment, stdin });
@@ -973,6 +981,22 @@ describe("a Claude Code reviewer", () => {
     });
     return { result, calls };
   }
+
+  it.each([["pass", "qa", "pass"], ["pass", "code-review", "pass"], ["fail-always", "code-review", "fail"]] as const)("reads the production replay's simulated %s %s reviewer as a %s verdict, preflight included", (simulated, role, expected) => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-claude-review-")));
+    try {
+      const effectsLog = path.join(root, "effects.jsonl");
+      writeFileSync(effectsLog, "");
+      installGuards(root, effectsLog, simulated);
+      const { result, calls } = review("", { claudeGuard: path.join(root, "bin", "claude"), role });
+      expect(result.data.reviewerUnavailable).toBeNull();
+      expect(result.data.verdict).toBe(expected);
+      expect(calls).toHaveLength(1);
+      expect(readFileSync(effectsLog, "utf8")).toContain("simulated:reviewer");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 
   it("runs with no tools, settings or MCP servers, and records the structured verdict", () => {
     const { result, calls } = review([claudeInit(), claudeResult(passingModelVerdict("The supplied evidence passes.")), ""].join("\n"));
