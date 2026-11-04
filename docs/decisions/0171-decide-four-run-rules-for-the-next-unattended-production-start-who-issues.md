@@ -4,7 +4,7 @@ type: decision
 id: "0171"
 slug: decide-four-run-rules-for-the-next-unattended-production-start-who-issues
 project: arcadia
-status: open
+status: approved
 question: "Decide four run rules for the next unattended production START: who issues production Off at scope complete, whether a failed required CI job may be re-run, whether each retry needs a press, and whether three open documentation PRs wait."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
-updated: 2026-11-04
+updated: 2026-11-03
+answer: A. Accept all four run rules
+decided: 2026-11-03
 ---
 
 # Decision 0171: Decide four run rules for the next unattended production START: who issues production Off at scope complete, whether a failed required CI job may be re-run, whether each retry needs a press, and whether three open documentation PRs wait.
