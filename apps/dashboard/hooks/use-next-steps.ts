@@ -26,8 +26,14 @@ export function useNextSteps() {
 
   useEffect(() => {
     void refresh();
-    const interval = setInterval(() => void refresh(), POLL_MS);
-    return () => clearInterval(interval);
+    // A hidden tab does not poll; coming back refreshes straight away.
+    const poll = () => { if (document.visibilityState !== "hidden") void refresh(); };
+    const interval = setInterval(poll, POLL_MS);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", poll);
+    };
   }, [refresh]);
 
   return { data, failed };

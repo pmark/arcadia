@@ -17,6 +17,8 @@ const nextSteps = { state: "now", nowStep: mergeStep, steps: [mergeStep], hidden
 const pr: DashboardOutstandingPullRequest = { projectId: "arcadia", projectName: "Arcadia", repositoryPath: "/repo", repository: "pmark/arcadia", number: 1768, title: "Propose operator presence draft Plan and prototype", url: "https://github.com/pmark/arcadia/pull/1768", state: "OPEN", isDraft: false, mergeStateStatus: "CLEAN", headBranch: "claude/presence", baseBranch: "main", author: "pmark", reviewDecision: null, createdAt: "2030-01-01T10:00:00Z", updatedAt: "2030-01-01T11:00:00Z", checks: [], readiness: "ready", readinessLabel: "Ready for review", summary: "", briefing: null };
 const inventory = { checkedAt: "2030-01-01T12:00:00Z", stale: false, refreshing: false, refreshError: null, incomplete: false, retainedProjectIds: [], snapshot: { generatedAt: "2030-01-01T12:00:00Z", projectsScanned: 1, pullRequests: [pr], errors: [], counts: { total: 1, blocked: 0, checksFailing: 0, checksPending: 0, drafts: 0, ready: 1, mergeReady: 0, unknown: 0 } } };
 
+const production = { generatedAt: "2030-01-01T12:00:00Z", production: { displayState: "inactive_idle" }, productionError: null, worker: { running: false, heartbeat: { timestamp: null, fresh: false, available: false } }, sessions: { active: [], recent: [] }, sessionsError: null };
+
 test("workspace feed shows work over a status sky, the Journey one tap away, and presence in the profile menu", async ({ page }, testInfo) => {
   test.setTimeout(120_000);
   const repo = path.resolve(import.meta.dirname, "../..");
@@ -34,11 +36,12 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     if (request.method() !== "GET") { writes.push(endpoint); return route.abort(); }
     if (endpoint === "/api/approvals") return todoDown ? route.fulfill({ status: 503, json: { error: "Fixture to-do read refused" } }) : route.fulfill({ json: approvals });
     if (endpoint === "/api/next-steps") return route.fulfill({ json: todoDown ? { ...nextSteps, state: "moving", nowStep: null, steps: [], total: 0 } : nextSteps });
+    if (endpoint === "/api/production-console") return route.fulfill({ json: production });
     if (endpoint === "/api/pull-requests") return route.fulfill({ json: todoDown ? { ...inventory, snapshot: { ...inventory.snapshot, pullRequests: [], counts: { ...inventory.snapshot.counts, total: 0, ready: 0 } } } : inventory });
     return route.abort();
   });
   // Alpha-weighted red minus blue across the bottom fifth of the weather canvas.
-  const weatherWarmth = () => page.locator(".feed-weather").evaluate(node => {
+  const weatherWarmth = () => page.locator(".workspace-weather").evaluate(node => {
     const canvas = node as HTMLCanvasElement;
     const data = canvas.getContext("2d")?.getImageData(0, Math.floor(canvas.height * 0.8), canvas.width, Math.floor(canvas.height * 0.2)).data;
     let warmth = 0, weight = 0;
@@ -58,12 +61,13 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
 
     // The sky shows system status, in words as well as weather: a blocking Decision is a storm.
     await expect.poll(() => page.locator(".workspace-sky").evaluate(c => (c as HTMLCanvasElement).getContext("2d")?.getImageData(0, 0, 1, 1).data[3])).toBe(255);
-    await expect(page.locator(".feed-weather")).toHaveCount(1);
-    const sky = page.locator(".feed-sky");
+    await expect(page.locator(".workspace-weather")).toHaveCount(1);
+    const sky = page.locator(".workspace-status");
     await expect(sky.locator("summary")).toContainText("Blocked");
-    await expect(sky.locator("summary")).toContainText("Dust storm");
+    await expect(sky.locator("summary")).toContainText("Production Off");
     await sky.locator("summary").click();
     await expect(sky).toContainText("1 blocking item for you");
+    await expect(sky).toContainText("Dust storm");
     await sky.locator("summary").click();
     // The weather canvas paints that reading: a storm's rust haze runs red over blue near the ground.
     await expect.poll(weatherWarmth, { timeout: 10_000 }).toBeGreaterThan(40);

@@ -2,15 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useApprovals } from "../../../hooks/use-approvals";
-import { useNextSteps } from "../../../hooks/use-next-steps";
-import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
 import { JOURNEY_FIXTURE } from "../../../lib/journey-fixture";
 import { fleet, fleetPhrase, loadScreen, saveScreen, urgentRovers, type JourneyScreen, type Rover } from "../../../lib/journey-fleet";
 import type { JourneyPhase } from "../../../lib/journey-types";
-import { readSky, type SkyReading } from "../../../lib/system-sky";
-import { buildFeed, feedSections, type FeedItem } from "../../../lib/workspace-feed";
-import { mountWeather } from "./weather";
+import { feedSections, type FeedItem } from "../../../lib/workspace-feed";
+import { useSystemStatus } from "../sky/system-status";
 import "./feed.css";
 
 const PHASE_LABEL: Record<JourneyPhase, string> = {
@@ -29,17 +25,6 @@ function FeedMessage({ item }: { item: FeedItem }) {
       : <Link className="feed-bubble" href={item.href}>{body}<span className="feed-go" aria-hidden="true">→</span></Link>)
       : <div className="feed-bubble">{body}</div>}
   </li>;
-}
-
-/** The sky's reading in words, so the weather is never the only way to know. */
-function SkyStatus({ sky }: { sky: SkyReading }) {
-  return <details className="feed-sky">
-    <summary><span className={`feed-sky-dot sky-${sky.id}`} aria-hidden="true" /><span className="k">System</span><b aria-live="polite">{sky.label}</b><span className="feed-sky-weather">{sky.weather}</span></summary>
-    <div>
-      {sky.reasons.length ? <ul>{sky.reasons.map(r => <li key={r}>{r}</li>)}</ul> : <p>Nothing is moving or waiting.</p>}
-      <p className="feed-note">The weather shows system status from the feed&apos;s live reads. The sol sky keeps the time of day, and sample missions never change it.</p>
-    </div>
-  </details>;
 }
 
 function Track({ rover }: { rover: Rover }) {
@@ -117,34 +102,18 @@ function JourneyButton({ rovers, needsYou, alert, open, onToggle }: { rovers: Ro
 export function FeedView() {
   const [view, setView] = useState<"feed" | "journey">("feed");
   const [screen, setScreen] = useState<JourneyScreen>(FLEET);
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const skyId = useRef<SkyReading["id"]>("clear");
-  const approvals = useApprovals();
-  const nextSteps = useNextSteps();
-  const prs = usePullRequestInventory();
+  const { items, problems, loading } = useSystemStatus();
   const rovers = useMemo(() => fleet(JOURNEY_FIXTURE), []);
 
-  const items = useMemo(() => buildFeed({ approvals: approvals.hasLoaded ? approvals.approvals : null, nextSteps: nextSteps.data, pullRequests: prs.data }), [approvals.hasLoaded, approvals.approvals, nextSteps.data, prs.data]);
   const sections = feedSections(items);
-  // A failed read is a finished read: the alert says so instead of an endless "Reading…".
-  const loading = (!approvals.hasLoaded && !approvals.error) || (!nextSteps.data && !nextSteps.failed) || prs.loading;
-  const problems = [approvals.error && "To-do list", nextSteps.failed && "next steps", prs.error && !prs.data && "pull requests"].filter((p): p is string => Boolean(p));
-  const sky = readSky({ items, problems, loading });
   const needsYou = items.filter(i => i.section === "Your move" || i.section === "Waiting on you").length;
   const alert = items.some(i => i.urgent && i.kind !== "pr");
 
-  useEffect(() => { skyId.current = sky.id; }, [sky.id]);
   useEffect(() => { setScreen(loadScreen(storage(), rovers)); }, [rovers]);
-  useEffect(() => {
-    if (!canvas.current) return;
-    return mountWeather(canvas.current, () => skyId.current);
-  }, []);
 
   function show(next: JourneyScreen) { setScreen(next); saveScreen(storage(), next); }
 
   return <main className={`feed-main view-${view}`}>
-    <canvas ref={canvas} className="feed-weather" aria-hidden="true" />
-    <SkyStatus sky={sky} />
     <div className="feed-grid">
       <section className="feed-feed" aria-labelledby="feed-title">
         <h1 id="feed-title" className="feed-sr">Messages from Arcadia</h1>
