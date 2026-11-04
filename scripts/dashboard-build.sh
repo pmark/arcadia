@@ -44,12 +44,17 @@ trap cleanup EXIT
 # A build killed by a restart can't tidy up after itself, so this one does it first.
 heal_next_env "$REPO"
 
+# Being frozen is expected. A check that can't run isn't, so the log says which it was.
+freeze_output=""
 freeze_check() {
   if [[ -n "${ARCADIA_DASHBOARD_FREEZE_CHECK:-}" ]]; then "$ARCADIA_DASHBOARD_FREEZE_CHECK"; return; fi
-  (cd "$REPO" && pnpm -s arcadia production freeze-check services.restart --json) >/dev/null 2>&1
+  freeze_output="$(cd "$REPO" && pnpm -s arcadia production freeze-check services.restart --json 2>&1)"
+}
+freeze_reason() {
+  if [[ "$freeze_output" == *PRODUCTION_ACTIVE_FREEZE* ]]; then echo "Services are frozen because production is Active."; else echo "The freeze check failed, so this needs a look: ${freeze_output:0:200}"; fi
 }
 if ! freeze_check; then
-  log "Services are frozen or the check failed. No build starts, and the next restart tries again."
+  log "$(freeze_reason) No build starts, and the next restart tries again."
   exit 0
 fi
 
@@ -130,7 +135,7 @@ log "Build $head is ready in .live/$target."
 
 # Production may have started during the build. A freeze refusal or a broken check both leave the switch for the next restart.
 if ! freeze_check; then
-  log "Services are frozen or the check failed. The next restart serves this build."
+  log "$(freeze_reason) The next restart serves this build."
   exit 0
 fi
 

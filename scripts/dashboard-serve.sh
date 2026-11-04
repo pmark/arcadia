@@ -18,8 +18,11 @@ PORT="${ARCADIA_DASHBOARD_PORT:-3020}"
 
 # shellcheck source=lib/dashboard-next-env.sh
 source "$SCRIPTS/lib/dashboard-next-env.sh"
-# A build killed by the last restart can't tidy up after itself. No build runs at this point, unless started by hand, and healing is harmless then.
-heal_next_env "$REPO"
+# A build killed by the last restart can't tidy up after itself. A build that's still running needs its mark, so it's left alone.
+lock_holder="$(readlink "$LIVE/build.lock" 2>/dev/null || true)"
+if [[ -z "$lock_holder" ]] || ! kill -0 "$lock_holder" 2>/dev/null; then
+  heal_next_env "$REPO"
+fi
 
 cd "$DASHBOARD"
 

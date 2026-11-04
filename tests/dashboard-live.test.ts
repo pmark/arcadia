@@ -193,6 +193,54 @@ describe("live dashboard build", () => {
     f.clean();
   });
 
+  it("still starts the dashboard when git is too busy to heal, and heals on a later start", () => {
+    const f = fixture();
+    f.build();
+    rmSync(path.join(f.repo, "next-calls"));
+    git(f.repo, "update-index", "--skip-worktree", "apps/dashboard/next-env.d.ts");
+    writeFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "rewritten by a killed build\n");
+    const index = path.join(f.repo, ".git", "index.lock");
+    writeFileSync(index, "");
+    expect(f.serve().status).toBe(0);
+    expect(f.calls()).toEqual(["start .live/a"]);
+    rmSync(index);
+    expect(f.serve().status).toBe(0);
+    f.clean();
+  });
+
+  it("leaves a running build's mark alone at start", () => {
+    const f = fixture();
+    f.build();
+    const holder = spawn("sleep", ["30"]);
+    git(f.repo, "update-index", "--skip-worktree", "apps/dashboard/next-env.d.ts");
+    symlinkSync(String(holder.pid), path.join(f.live, "build.lock"));
+    const result = f.serve();
+    holder.kill();
+    expect(result.status).toBe(0);
+    expect(git(f.repo, "ls-files", "-v", "apps/dashboard/next-env.d.ts")).toMatch(/^S /);
+  });
+
+  it("won't check a build on a port something else is answering", () => {
+    const f = fixture();
+    const port = f.env.ARCADIA_DASHBOARD_SMOKE_PORT;
+    const other = spawn(process.execPath, ["-e", `require("http").createServer((_, r) => r.end("x")).listen(${port}, "127.0.0.1")`]);
+    spawnSync("sleep", ["1"]);
+    const result = f.build();
+    other.kill();
+    expect(result.status).toBe(1);
+    expect(result.stdout).toContain("already in use");
+    expect(f.current()).toBeNull();
+    f.clean();
+  });
+
+  it("says when the freeze check is broken rather than frozen", () => {
+    const f = fixture();
+    const broken = spawnSync(path.join(scripts, "dashboard-build.sh"), { env: { ...f.env, ARCADIA_DASHBOARD_FREEZE_CHECK: "", PATH: `${path.dirname(process.execPath)}:/usr/bin:/bin` }, encoding: "utf8" });
+    expect(broken.status).toBe(0);
+    expect(broken.stdout).toContain("The freeze check failed");
+    expect(f.calls()).toEqual([]);
+  });
+
   it("leaves an ordinary local edit alone", () => {
     const f = fixture();
     f.build();
