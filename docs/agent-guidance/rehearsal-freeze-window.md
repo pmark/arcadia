@@ -23,6 +23,15 @@ arcadia production status    # Active · … means the window is open
 treat the window as open. The orchestrator also announces opening and closing
 on the round's coordination Issue; read it, but trust `production status`.
 
+A START card waiting to be pressed also opens the window for merges: its
+`startRun.reviewedRevision` pins origin/main, so a merge before the press makes
+the press refuse. `arcadia work monitor` prints `Run window: OPEN` (and
+`runWindow` in `--json`) while production is Active or a card that is not
+consumed or expired pins the local origin/main, naming the card and its
+`expires_at`. While a card waits, hold merges until it is consumed or expires.
+While production is Active, the rules below apply. It is a signal only: it
+blocks nothing, and `UNKNOWN` means a source could not be read.
+
 ## Forbidden inside the window
 
 - `reinstall-go-broker.sh`, `arcadia go-broker install` and
@@ -62,8 +71,9 @@ procedure: no code stops them, so do not do them.
 ## What continues
 
 - Worktree commits, pull requests and reviews.
-- Merges on origin. The main checkout is not fast-forwarded past a
-  runtime-path commit until the window closes.
+- Merges on origin, except while a START card waits to be pressed. The main
+  checkout is not fast-forwarded past a runtime-path commit until the window
+  closes.
 - Arcadia-only Agent Ask settles from the main checkout, when the fast-forward
   range they need is docs-only.
 - Read-only commands, including `production status`, `go-broker status` and

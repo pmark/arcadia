@@ -7,11 +7,14 @@ import { openReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { sharesRepository } from "../git/worktrees.js";
 import { formatWorkingCopySafetyLines, scanProjectWorkingCopies } from "../workMonitoring/scanner.js";
+import { defaultRunWindowDeps, formatRunWindowLines, observeRunWindow, type RunWindow, type RunWindowDeps } from "../workMonitoring/runWindow.js";
 import type { WorkMonitorProject, WorkMonitorSnapshot } from "../workMonitoring/types.js";
 
 export interface WorkMonitorCommandData {
   snapshot: WorkMonitorSnapshot;
   attentionLines: string[];
+  /** Additive: whether merging to main now would disturb a live run or a waiting START card. A signal only. */
+  runWindow: RunWindow;
 }
 
 export function listMonitoredProjects(
@@ -52,6 +55,8 @@ export function runWorkMonitorCommand(options: {
   includePullRequests?: boolean;
   /** Restrict the scan to the Project that owns this repository. */
   repositoryPath?: string;
+  /** Test seam for the run-window sources. */
+  runWindowDeps?: RunWindowDeps;
 }): CommandSuccess<WorkMonitorCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const db = openReadOnlyDatabase(workspacePath);
@@ -63,7 +68,11 @@ export function runWorkMonitorCommand(options: {
     return createSuccess({
       command: "work.monitor",
       workspace: workspacePath,
-      data: { snapshot, attentionLines: formatWorkingCopySafetyLines(snapshot) }
+      data: {
+        snapshot,
+        attentionLines: formatWorkingCopySafetyLines(snapshot),
+        runWindow: observeRunWindow(db, options.runWindowDeps ?? defaultRunWindowDeps(options.repositoryPath ?? process.cwd()))
+      }
     });
   } finally {
     db.close();
@@ -71,8 +80,9 @@ export function runWorkMonitorCommand(options: {
 }
 
 export function renderWorkMonitorSuccess(response: CommandSuccess<WorkMonitorCommandData>): string[] {
-  const { snapshot, attentionLines } = response.data;
+  const { snapshot, attentionLines, runWindow } = response.data;
   const lines = [
+    ...(runWindow ? formatRunWindowLines(runWindow) : []),
     "Working-copy safety",
     `Projects scanned: ${snapshot.totals.projects}`,
     `Working copies and unmerged branches: ${snapshot.totals.workingCopies}`,
