@@ -18,7 +18,7 @@ Unattended production stays the first priority, and production stays Off.
 **Merged to main:** PR 2007 (Arcadia Design skill and `arcadia design check`), 2009 (Relay mode), 2010, 2014, 2016
 (`arcadia way lookup`, STOP guidance), 2019, 2020, 2022 (design record and probes).
 
-**Open, not merged.** Re-read each PR's checks and merge state before relying on them. PR 2027's latest head was pushed at close.
+**Open, not merged.** Re-read each PR's checks and merge state before relying on them. PR 2027's latest head was pushed at close. Its required checks go red from [Issue 2043](https://github.com/pmark/arcadia/issues/2043), an expired test fixture unrelated to this PR that blocks every branch.
 
 | PR | Contents | Independent review |
 |---|---|---|
