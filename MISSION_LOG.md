@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-03
+updated: 2026-11-04
 ---
 
 # Mission Log: Arcadia
@@ -2907,3 +2907,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/review-repair-red-alerts.test.ts asserts that a review_repair_rounds_exhausted escalation and a review_repair_gated escalation each raise one open red alert of their own trigger in src/production/redAlerts.ts, raised by the tick from production_operator_escalations rows with no change to src/production/reviewRepair.ts, queue one notification through the existing alert notification path, and do not notify again on later ticks."; "The same test asserts each alert clears when its escalation clears, and that a raising failure is logged without changing the tick's outcome."; "tests/no-progress-red-alert.test.ts asserts that a resumed Session exiting incomplete with its candidate unchanged raises one notify-only red alert of a new no-progress trigger, reusing the existing unchanged-resume detection at the exit receipt with no second detector, and queues one notification."; "The same test asserts no alert for a resumed Session that changed its candidate, a fresh first Session, and an Action in an operator-held state; and that repair attempts, the next launch decision and the Action's status are identical with and without the alert."; "A parity test feeds the same exit rows to the recovery-signal classifier and to the tick detection, on the fixture rows of tests/recovery-replay.test.ts plus a dirty-worktree case, and asserts they agree on no-progress; tests/review-repair-red-alerts.test.ts asserts each repair trigger follows the repair row outcome on those fixture rows, and that a QA verdict the classifier reads as sole failure raises no stop alert unless its outcome is escalated."; "tests/fast-rehearsal/review-repair-red-alerts.test.ts shows a repair loop running out of rounds raises the alert and repeated unchanged resumes raise the notice while the existing retry budget alone stops retries, and a healthy chain raises none; its focused vitest run passes."; "tests/blocker-remedies.test.ts passes with a remedy registered in src/production/blockerRemedies.ts for each new trigger; the focused vitest runs, pnpm lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-red-alerts-for-repair-stops-and-no-progress-20261103).
+
+## 2026-11-04 — Completed arcadia/cover-retired-descriptor-byte-change
+
+- **Did:** Completed Action arcadia/cover-retired-descriptor-byte-change from accepted evidence (Candidate ac6d957324ab15f33504ea53022161fe94dd6c90).
+- **Result:** Every declared acceptance criterion was accepted as met: "apps/dashboard/app/api/operator-script/retired-entries.test.ts gains a test in which the retirement pins the sha256 of the original descriptor and the original script, only the written descriptor bytes differ (for example a trailing newline) while the script bytes equal the pinned bytes, the changed descriptor stays invalid, and GET returns no scripts with console.error called exactly once."; "Every other test in that file passes unchanged."; "The change touches only apps/dashboard/app/api/operator-script/retired-entries.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-cover-retired-reland-20261103).

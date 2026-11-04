@@ -8,10 +8,10 @@ afterEach(() => { vi.unstubAllEnvs(); vi.doUnmock("../../../../../src/operatorAc
 const sha = (text: string) => createHash("sha256").update(text).digest("hex");
 
 describe("GET lists the library without reporting hash-pinned retired entries as errors (#1257)", () => {
-  async function list(retire: boolean, scriptBytes = "#!/bin/sh\nexit 0\n") {
+  async function list(retire: boolean, scriptBytes = "#!/bin/sh\nexit 0\n", writtenDescriptor?: string) {
     const dir = mkdtempSync(path.join(os.tmpdir(), "arcadia-retired-route-")); roots.push(dir);
     const descriptor = JSON.stringify({ id: "legacy-entry" });
-    writeFileSync(path.join(dir, "legacy-entry.json"), descriptor);
+    writeFileSync(path.join(dir, "legacy-entry.json"), writtenDescriptor ?? descriptor);
     writeFileSync(path.join(dir, "legacy-entry.sh"), scriptBytes, { mode: 0o755 });
     vi.doMock("../../../../../src/operatorActions/legacyRetirements.json", () => ({ default: {
       schema: "arcadia-operator-script-retirements-v1",
@@ -33,6 +33,10 @@ describe("GET lists the library without reporting hash-pinned retired entries as
   });
   it("still reports a pinned id whose script bytes changed", async () => {
     const { body, error } = await list(true, "#!/bin/sh\nexit 1\n");
+    expect(body.scripts).toEqual([]); expect(error).toHaveBeenCalledTimes(1);
+  });
+  it("still reports a pinned id whose descriptor bytes changed while its script bytes did not", async () => {
+    const { body, error } = await list(true, "#!/bin/sh\nexit 0\n", `${JSON.stringify({ id: "legacy-entry" })}\n`);
     expect(body.scripts).toEqual([]); expect(error).toHaveBeenCalledTimes(1);
   });
 });
