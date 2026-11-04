@@ -16,5 +16,5 @@
     "plugins": [{ "name": "next" }]
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".live/a/types/**/*.ts", ".live/b/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", ".live"]
 }
