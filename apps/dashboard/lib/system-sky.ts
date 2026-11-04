@@ -92,17 +92,20 @@ export interface SkySources {
   missions?: PlanJourney[] | null;
   /** Null when the read failed; undefined until the first read lands. */
   production?: ProductionFacts | null;
+  /** Back from being hidden with old data, and the new reads haven't landed yet. */
+  resuming?: boolean;
 }
 
 const MOVING: JourneyPhase[] = ["launching", "driving", "repairing", "in-review"];
 const FEED = "/workspace/feed";
 const PRODUCTION = "/production";
+const RECORDED_STATES = new Set(["active_building", "active_idle", "inactive_finishing", "inactive_idle"]);
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** Maps a production read to its words and what it does to the sky. The heartbeat is the worker's, not a Session's. */
 function readProduction(p: ProductionFacts | null | undefined) {
   if (p === undefined) return { words: null, unreadable: false, stalled: 0, silent: false, running: 0, on: false };
-  const known = p && p.displayState !== null && p.displayState !== "observation_unavailable" && p.workerRunning !== null && p.liveSessions !== null;
+  const known = p && p.displayState !== null && RECORDED_STATES.has(p.displayState) && p.workerRunning !== null && p.liveSessions !== null;
   if (!p || !known) return { words: "Can't read production", unreadable: true, stalled: p?.stalledSessions ?? 0, silent: false, running: 0, on: false };
   const on = p.displayState === "active_building" || p.displayState === "active_idle";
   const finishing = p.displayState === "inactive_finishing";
@@ -118,7 +121,7 @@ function readProduction(p: ProductionFacts | null | undefined) {
   return { words, unreadable: false, stalled, silent, running, on };
 }
 
-export function readSky({ items, problems, stale = [], loading, missions, production }: SkySources): SkyReading {
+export function readSky({ items, problems, stale = [], loading, missions, production, resuming = false }: SkySources): SkyReading {
   const phases = (missions ?? []).map(missionPhase);
   const blocking = items.filter(i => i.section === "Waiting on you" && i.urgent).length;
   const blocked = phases.filter(p => p === "blocked").length;
@@ -151,8 +154,8 @@ export function readSky({ items, problems, stale = [], loading, missions, produc
     : yours || failing ? "attention"
     : moving || prod.running > 0 ? "active"
     : "clear";
-  // Until every read has landed, bad news can show but a calm sky makes no claim.
-  if (loading && id === "clear") return { ...sky("reading"), reasons: reasons.length ? reasons : [{ text: "reading your work" }], production: prod.words };
+  // Until every read has landed, bad news can show but a calm sky makes no claim. Old data can't claim work is moving either.
+  if ((loading && id === "clear") || (resuming && (id === "clear" || id === "active"))) return { ...sky("reading"), reasons: reasons.length ? reasons : [{ text: "reading your work" }], production: prod.words };
   const label = id === "clear" && !prod.on ? CALM_WITHOUT_PRODUCTION : SKIES[id].label;
   return { ...sky(id), label, reasons, production: prod.words };
 }
@@ -163,6 +166,8 @@ function sky(id: SkyId): Sky { return { id, label: SKIES[id].label, weather: SKI
 export const SKY_HOLD_MS = 30_000;
 /** A source whose last good read is older than this no longer counts. Several polls of the slowest source. */
 export const SKY_STALE_MS = 5 * 60_000;
+/** After being hidden, how long new reads get to land before old data counts as Signal loss. */
+export const SKY_RESUME_GRACE_MS = 30_000;
 
 const WORSE: Record<SkyId, number> = { reading: 0, clear: 1, active: 2, attention: 3, static: 4, storm: 5 };
 
@@ -177,12 +182,19 @@ export interface SettledSky {
  * clear the sky. A reading of the same status always takes the latest words.
  */
 export function settleSky(state: SettledSky | null, next: SkyReading, now: number): SettledSky {
-  if (!state || state.shown.id === "reading" || WORSE[next.id] >= WORSE[state.shown.id]) return { shown: next, pending: null };
+  // Dropping a calm claim to Reading is never held back: it claims less, not more.
+  const claimsLess = next.id === "reading" && WORSE[state?.shown.id ?? "reading"] <= WORSE.active;
+  if (!state || state.shown.id === "reading" || claimsLess || WORSE[next.id] >= WORSE[state.shown.id]) return { shown: next, pending: null };
   const pending = state.pending?.id === next.id ? state.pending : { id: next.id, since: now };
   return now - pending.since >= SKY_HOLD_MS ? { shown: next, pending: null } : { shown: state.shown, pending };
 }
 
-/** Which sources have gone too long without a good read. Time spent hidden doesn't count against them. */
-export function staleSources(lastGood: Record<string, number>, resumedAt: number, now: number): string[] {
-  return Object.entries(lastGood).filter(([, at]) => now - Math.max(at, resumedAt) > SKY_STALE_MS).map(([name]) => name);
+/**
+ * Which sources have gone too long without a good read. Being hidden forgives nothing, because the data is still old.
+ * Coming back gets a short grace for new reads to land, and the sky claims no calm meanwhile.
+ */
+export function readFreshness(lastGood: Record<string, number>, resumedAt: number, now: number): { stale: string[]; resuming: boolean } {
+  const old = Object.entries(lastGood).filter(([, at]) => now - at > SKY_STALE_MS).map(([name]) => name);
+  if (!old.length) return { stale: [], resuming: false };
+  return now - resumedAt <= SKY_RESUME_GRACE_MS ? { stale: [], resuming: true } : { stale: old, resuming: false };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { JOURNEY_FIXTURE } from "./journey-fixture";
-import { SKIES, SKY_HOLD_MS, SKY_STALE_MS, readSky, settleSky, staleSources, type ProductionFacts, type SkyId, type SkyReading } from "./system-sky";
+import { SKIES, SKY_HOLD_MS, SKY_RESUME_GRACE_MS, SKY_STALE_MS, readFreshness, readSky, settleSky, type ProductionFacts, type SkyId, type SkyReading } from "./system-sky";
 import type { FeedItem } from "./workspace-feed";
 
 const item = (over: Partial<FeedItem>): FeedItem => ({ key: Math.random().toString(36), kind: "todo", section: "Waiting on you", title: "t", detail: null, chip: "", href: null, external: false, at: null, urgent: false, ...over });
@@ -131,10 +131,34 @@ describe("settling the sky", () => {
   });
 });
 
-describe("stale sources", () => {
-  it("names sources past the limit, and doesn't count hidden time against them", () => {
-    const lastGood = { "next steps": 0, production: SKY_STALE_MS };
-    expect(staleSources(lastGood, 0, SKY_STALE_MS + 1)).toEqual(["next steps"]);
-    expect(staleSources(lastGood, SKY_STALE_MS, SKY_STALE_MS + 1)).toEqual([]);
+describe("read freshness", () => {
+  const lastGood = { "next steps": 0, production: SKY_STALE_MS };
+
+  it("names sources past the limit", () => {
+    expect(readFreshness(lastGood, 0, SKY_STALE_MS + SKY_RESUME_GRACE_MS + 1)).toEqual({ stale: ["next steps"], resuming: false });
+  });
+
+  it("doesn't forgive time spent hidden: old data can't read as fresh after coming back", () => {
+    const hour = 60 * 60_000;
+    expect(readFreshness({ production: 0 }, hour, hour)).toEqual({ stale: [], resuming: true });
+    expect(readFreshness({ production: 0 }, hour, hour + SKY_RESUME_GRACE_MS + 1)).toEqual({ stale: ["production"], resuming: false });
+    expect(readFreshness({ production: hour }, hour, hour + 1)).toEqual({ stale: [], resuming: false });
+  });
+
+  it("makes no calm or moving claim from old data while resuming, but keeps bad news", () => {
+    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "active_idle" }), resuming: true }).id).toBe("reading");
+    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "active_building" }), resuming: true }).id).toBe("reading");
+    expect(readSky({ ...quiet, items: [item({})], production: off, resuming: true }).id).toBe("attention");
+  });
+
+  it("drops a calm claim to Reading at once, but doesn't let Reading hide bad news", () => {
+    const at = (id: SkyId): SkyReading => ({ id, label: id, weather: "w", reasons: [], production: null });
+    expect(settleSky({ shown: at("clear"), pending: null }, at("reading"), 1).shown.id).toBe("reading");
+    expect(settleSky({ shown: at("active"), pending: null }, at("reading"), 1).shown.id).toBe("reading");
+    expect(settleSky({ shown: at("storm"), pending: null }, at("reading"), 1).shown.id).toBe("storm");
+  });
+
+  it("never calls a state it doesn't recognize Off", () => {
+    expect(readSky({ ...quiet, items: [], production: facts({ displayState: "something_new" }) })).toMatchObject({ id: "static", production: "Can't read production" });
   });
 });

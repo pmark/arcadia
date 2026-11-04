@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useApprovals } from "../../../hooks/use-approvals";
 import { useNextSteps } from "../../../hooks/use-next-steps";
 import { useProductionCore } from "../../../hooks/use-production-core";
 import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
-import { productionFacts, readSky, settleSky, staleSources, type SettledSky, type SkyReading } from "../../../lib/system-sky";
+import { productionFacts, readFreshness, readSky, settleSky, type SettledSky, type SkyReading } from "../../../lib/system-sky";
 import { buildFeed, type FeedItem } from "../../../lib/workspace-feed";
 import { mountWeather } from "./weather";
 
@@ -40,18 +40,21 @@ export function SystemStatusProvider({ children }: { children: ReactNode }) {
 
   const lastGood = useRef<Record<string, number>>({});
   const resumedAt = useRef(0);
-  const [stale, setStale] = useState<string[]>([]);
+  const [freshness, setFreshness] = useState<{ stale: string[]; resuming: boolean }>({ stale: [], resuming: false });
   const [tick, setTick] = useState(0);
-  useEffect(() => { if (approvals.hasLoaded && !approvals.error) lastGood.current["To-do list"] = Date.now(); }, [approvals.hasLoaded, approvals.error, approvals.approvals]);
-  useEffect(() => { if (nextSteps.data && !nextSteps.failed) lastGood.current["next steps"] = Date.now(); }, [nextSteps.data, nextSteps.failed]);
-  useEffect(() => { if (prs.data && !prs.error) lastGood.current["pull requests"] = Date.now(); }, [prs.data, prs.error]);
-  useEffect(() => { if (core.data && !core.failed) lastGood.current.production = Date.now(); }, [core.data, core.failed]);
+  const evaluate = useCallback(() => {
+    const next = readFreshness(lastGood.current, resumedAt.current, Date.now());
+    setFreshness(current => (current.resuming === next.resuming && current.stale.join("|") === next.stale.join("|") ? current : next));
+    setTick(value => value + 1);
+  }, []);
+  const stamp = useCallback((source: string, at: number) => { lastGood.current[source] = at; evaluate(); }, [evaluate]);
+  useEffect(() => { if (approvals.hasLoaded && !approvals.error) stamp("To-do list", Date.now()); }, [stamp, approvals.hasLoaded, approvals.error, approvals.approvals]);
+  useEffect(() => { if (nextSteps.data && !nextSteps.failed) stamp("next steps", Date.now()); }, [stamp, nextSteps.data, nextSteps.failed]);
+  // The inventory says when it was really checked, so remembered or retained pull requests don't count as new.
+  useEffect(() => { if (prs.checkedAt) stamp("pull requests", Date.parse(prs.checkedAt)); }, [stamp, prs.checkedAt]);
+  useEffect(() => { if (core.data && !core.failed) stamp("production", Date.now()); }, [stamp, core.data, core.failed]);
   useEffect(() => {
-    const evaluate = () => {
-      const next = staleSources(lastGood.current, resumedAt.current, Date.now());
-      setStale(current => (current.join("|") === next.join("|") ? current : next));
-      setTick(value => value + 1);
-    };
+    resumedAt.current = Date.now();
     const onVisible = () => { if (document.visibilityState === "visible") { resumedAt.current = Date.now(); evaluate(); } };
     const interval = setInterval(evaluate, 15_000);
     document.addEventListener("visibilitychange", onVisible);
@@ -59,10 +62,10 @@ export function SystemStatusProvider({ children }: { children: ReactNode }) {
       clearInterval(interval);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, []);
+  }, [evaluate]);
 
   const production = useMemo(() => (core.failed ? null : core.data ? productionFacts(core.data) : undefined), [core.failed, core.data]);
-  const reading = useMemo(() => readSky({ items, problems, stale, loading: loading || production === undefined, production }), [items, problems, stale, loading, production]);
+  const reading = useMemo(() => readSky({ items, problems, stale: freshness.stale, resuming: freshness.resuming, loading: loading || production === undefined, production }), [items, problems, freshness, loading, production]);
 
   const [settled, setSettled] = useState<SettledSky>(() => ({ shown: reading, pending: null }));
   useEffect(() => { setSettled(state => settleSky(state, reading, Date.now())); }, [reading, tick]);

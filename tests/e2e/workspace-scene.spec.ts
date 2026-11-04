@@ -142,6 +142,15 @@ test("every Workspace view shows system status, and a status change moves nothin
     await expect(summary).toContainText("Production Off");
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await expect(page.locator(".workspace-header")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    // A status change doesn't shift the page: the header keeps its height whatever the pill says.
+    const header = page.locator(".workspace-header");
+    const heightBefore = (await header.boundingBox())?.height;
+    production = core("active_building", { sessions: { active: [{ live: true, observedStatus: "stalled" }], recent: [] } });
+    await nudgeReads(page);
+    await expect(summary).toContainText("1 Session stalled");
+    expect((await header.boundingBox())?.height).toBe(heightBefore);
+    production = core("inactive_idle");
+
     // The reasons panel stays on screen wherever the pill wraps to.
     await summary.click();
     const panel = await page.locator(".workspace-status-panel").boundingBox();
