@@ -15,7 +15,8 @@ the sky, star and weather canvases. Raw results: [`layers-1-results.json`](layer
 ## Results
 
 **Text and controls.** Worst case 8.59:1 (`.card p`, laptop, light palette, day), against a floor of 4.5:1. No text sits on bare sky.
-The probe samples every visible element for 25 kinds of text, control and label, including the reasons panel and menu options.
+The probe samples every visible element for 24 kinds of text, control and label, including the reasons panel, menu options, starter
+suggestions and the pinned-draft line.
 Retry and error text aren't in the prototype, so they aren't sampled. The floor passes largely because surfaces are 88 to 95% opaque.
 
 **Open sky**, as a share of what's visible:
@@ -46,18 +47,18 @@ near 2 is about the limit of perception for patches side by side, so treat them 
 
 On the dark palette, Needs you and Blocked are far apart at most times of day.
 
-**Draw cost.** Script time per frame with a 4x CPU slowdown was 0.3 to 0.8 ms. That counts only issuing the drawing commands, not
+**Draw cost.** Script time per frame with a 4x CPU slowdown was 0.3 to 0.8 ms across runs. That counts only issuing the drawing commands, not
 painting them, so it isn't evidence of phone performance.
 
 ## Reading
 
 - **Supported:** sampled text stays legible on every sky, and the sky stays visible at every Relay height, though on a phone with the
   overlay up it's mainly the top strip and the edges.
-- **Weak spots, all on the light palette:** Work moving against Needs you, Needs you against Blocked, and All clear against Signal
-  loss. The first is the costly one, because it means missing something that needs the operator. The dust, the dot and the words do
-  differ. These need a look on a real phone before any colour changes.
+- **Weak spots, all on the light palette:** Work moving against Blocked, Work moving against Needs you, Needs you against Blocked, and
+  All clear against Signal loss. On the keyboard case, Work moving against Signal loss (4.5) and Needs you against Signal loss (5.1)
+  are also low. Mistaking Blocked or Needs you for Work moving is the costly mistake. The dust, the dot and the words do differ. These need a look on a real phone before any colour changes.
 - **Accepted, with a condition:** All clear and Work moving differ by motion, so under reduced motion only the words separate them.
-  That's acceptable only if a hung run reads as Blocked, which the design now requires.
+  That's acceptable only if a flagged stall or a silent worker reads as Blocked, which the design now requires.
 - **Not probed:** the Reading state's look, because it draws nothing.
 
 ## Limits

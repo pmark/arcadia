@@ -6,7 +6,7 @@
      "dark dawn": {
       "skyFraction": 0.388,
       "dist": {
-       "clear-storm": 36.9,
+       "clear-storm": 37.1,
        "clear-static": 8.5,
        "active-clear": 2.1,
        "active-attention": 17.3,
@@ -26,7 +26,7 @@
       "skyFraction": 0.388,
       "dist": {
        "clear-storm": 19.3,
-       "clear-static": 12.1,
+       "clear-static": 12.2,
        "active-clear": 3.2,
        "active-attention": 11.5,
        "active-storm": 18.4,
@@ -44,32 +44,32 @@
      "dark dusk": {
       "skyFraction": 0.388,
       "dist": {
-       "clear-storm": 38.6,
+       "clear-storm": 38.8,
        "clear-static": 7.7,
-       "active-clear": 2.4,
+       "active-clear": 2.3,
        "active-attention": 17.9,
        "active-storm": 38.1,
        "active-static": 6.8,
-       "attention-clear": 18.8,
+       "attention-clear": 18.9,
        "attention-storm": 22.8,
        "attention-static": 15.3,
        "static-storm": 35.1
       },
       "closest": [
        "active-clear",
-       2.4
+       2.3
       ]
      },
      "dark night": {
       "skyFraction": 0.388,
       "dist": {
-       "clear-storm": 43.1,
+       "clear-storm": 43.3,
        "clear-static": 8.9,
        "active-clear": 3.5,
        "active-attention": 20.3,
        "active-storm": 43,
        "active-static": 9.3,
-       "attention-clear": 21.2,
+       "attention-clear": 21.3,
        "attention-storm": 24.7,
        "attention-static": 17.7,
        "static-storm": 38.7
@@ -82,13 +82,13 @@
      "light dawn": {
       "skyFraction": 0.388,
       "dist": {
-       "clear-storm": 32.7,
+       "clear-storm": 32.8,
        "clear-static": 10.7,
        "active-clear": 2,
        "active-attention": 13.4,
        "active-storm": 31.8,
        "active-static": 10.6,
-       "attention-clear": 15,
+       "attention-clear": 15.1,
        "attention-storm": 21.7,
        "attention-static": 15.1,
        "static-storm": 28.3
@@ -120,7 +120,7 @@
      "light dusk": {
       "skyFraction": 0.388,
       "dist": {
-       "clear-storm": 28.6,
+       "clear-storm": 28.7,
        "clear-static": 7,
        "active-clear": 2.2,
        "active-attention": 12.5,
@@ -139,7 +139,7 @@
      "light night": {
       "skyFraction": 0.388,
       "dist": {
-       "clear-storm": 37.4,
+       "clear-storm": 37.6,
        "clear-static": 8,
        "active-clear": 1.8,
        "active-attention": 16.7,
@@ -160,13 +160,13 @@
      "dark dawn": {
       "skyFraction": 0.114,
       "dist": {
-       "clear-storm": 33.1,
-       "clear-static": 10.7,
+       "clear-storm": 33.3,
+       "clear-static": 10.8,
        "active-clear": 2.1,
        "active-attention": 14,
        "active-storm": 32.7,
        "active-static": 10.5,
-       "attention-clear": 14.7,
+       "attention-clear": 14.8,
        "attention-storm": 21.1,
        "attention-static": 8.3,
        "static-storm": 26.5
@@ -180,7 +180,7 @@
       "skyFraction": 0.114,
       "dist": {
        "clear-storm": 21.7,
-       "clear-static": 10.4,
+       "clear-static": 10.6,
        "active-clear": 3.1,
        "active-attention": 10.2,
        "active-storm": 21,
@@ -198,13 +198,13 @@
      "dark dusk": {
       "skyFraction": 0.114,
       "dist": {
-       "clear-storm": 34,
-       "clear-static": 9.4,
+       "clear-storm": 34.3,
+       "clear-static": 9.5,
        "active-clear": 3,
        "active-attention": 14.1,
        "active-storm": 33.8,
        "active-static": 9.5,
-       "attention-clear": 15.1,
+       "attention-clear": 15.2,
        "attention-storm": 21.4,
        "attention-static": 11.2,
        "static-storm": 29.3
@@ -217,13 +217,13 @@
      "dark night": {
       "skyFraction": 0.114,
       "dist": {
-       "clear-storm": 35.1,
-       "clear-static": 9.5,
+       "clear-storm": 35.5,
+       "clear-static": 9.7,
        "active-clear": 3.4,
        "active-attention": 13.5,
        "active-storm": 34.9,
        "active-static": 11,
-       "attention-clear": 14.4,
+       "attention-clear": 14.6,
        "attention-storm": 22.7,
        "attention-static": 13.6,
        "static-storm": 31.4
@@ -236,13 +236,13 @@
      "light dawn": {
       "skyFraction": 0.114,
       "dist": {
-       "clear-storm": 30.9,
+       "clear-storm": 31,
        "clear-static": 12.6,
        "active-clear": 1.5,
        "active-attention": 11.5,
        "active-storm": 30.3,
        "active-static": 12.2,
-       "attention-clear": 12.5,
+       "attention-clear": 12.6,
        "attention-storm": 21.2,
        "attention-static": 10,
        "static-storm": 22.4
@@ -256,12 +256,12 @@
       "skyFraction": 0.114,
       "dist": {
        "clear-storm": 8,
-       "clear-static": 15.8,
+       "clear-static": 15.9,
        "active-clear": 3.4,
        "active-attention": 4.8,
        "active-storm": 5.2,
        "active-static": 18.5,
-       "attention-clear": 7.5,
+       "attention-clear": 7.6,
        "attention-storm": 6,
        "attention-static": 21.9,
        "static-storm": 22.4
@@ -274,13 +274,13 @@
      "light dusk": {
       "skyFraction": 0.114,
       "dist": {
-       "clear-storm": 24.4,
+       "clear-storm": 24.6,
        "clear-static": 5.8,
        "active-clear": 2.3,
        "active-attention": 9.9,
        "active-storm": 23,
        "active-static": 5.5,
-       "attention-clear": 11.6,
+       "attention-clear": 11.7,
        "attention-storm": 15.2,
        "attention-static": 13,
        "static-storm": 25.9
@@ -293,13 +293,13 @@
      "light night": {
       "skyFraction": 0.114,
       "dist": {
-       "clear-storm": 31.9,
-       "clear-static": 8.2,
+       "clear-storm": 32.2,
+       "clear-static": 8.3,
        "active-clear": 2.1,
        "active-attention": 12.9,
        "active-storm": 31.3,
        "active-static": 7.1,
-       "attention-clear": 13.9,
+       "attention-clear": 14,
        "attention-storm": 20.4,
        "attention-static": 8.4,
        "static-storm": 26.9
@@ -314,13 +314,13 @@
      "dark dawn": {
       "skyFraction": 0.091,
       "dist": {
-       "clear-storm": 32.6,
-       "clear-static": 9.6,
+       "clear-storm": 32.8,
+       "clear-static": 9.7,
        "active-clear": 2.2,
        "active-attention": 13.9,
        "active-storm": 32.1,
        "active-static": 9.2,
-       "attention-clear": 14.7,
+       "attention-clear": 14.8,
        "attention-storm": 20.6,
        "attention-static": 8.8,
        "static-storm": 27
@@ -334,12 +334,12 @@
       "skyFraction": 0.091,
       "dist": {
        "clear-storm": 21.2,
-       "clear-static": 9.5,
+       "clear-static": 9.8,
        "active-clear": 3.1,
        "active-attention": 10.2,
        "active-storm": 20.6,
        "active-static": 12,
-       "attention-clear": 11.1,
+       "attention-clear": 11.2,
        "attention-storm": 12.2,
        "attention-static": 16.4,
        "static-storm": 26
@@ -352,13 +352,13 @@
      "dark dusk": {
       "skyFraction": 0.091,
       "dist": {
-       "clear-storm": 34,
-       "clear-static": 8.4,
+       "clear-storm": 34.3,
+       "clear-static": 8.5,
        "active-clear": 3.1,
        "active-attention": 14.1,
        "active-storm": 33.7,
        "active-static": 8.2,
-       "attention-clear": 15.2,
+       "attention-clear": 15.4,
        "attention-storm": 21.3,
        "attention-static": 11.4,
        "static-storm": 29.8
@@ -371,13 +371,13 @@
      "dark night": {
       "skyFraction": 0.091,
       "dist": {
-       "clear-storm": 35.2,
-       "clear-static": 8.1,
+       "clear-storm": 35.7,
+       "clear-static": 8.2,
        "active-clear": 3.3,
        "active-attention": 13.7,
        "active-storm": 35.1,
        "active-static": 9.5,
-       "attention-clear": 14.6,
+       "attention-clear": 14.8,
        "attention-storm": 22.7,
        "attention-static": 13.4,
        "static-storm": 31.9
@@ -390,32 +390,32 @@
      "light dawn": {
       "skyFraction": 0.091,
       "dist": {
-       "clear-storm": 30.3,
-       "clear-static": 12,
-       "active-clear": 1.5,
+       "clear-storm": 30.4,
+       "clear-static": 12.1,
+       "active-clear": 1.6,
        "active-attention": 11.4,
        "active-storm": 29.6,
        "active-static": 11.6,
-       "attention-clear": 12.5,
+       "attention-clear": 12.6,
        "attention-storm": 20.7,
        "attention-static": 10.5,
        "static-storm": 22.8
       },
       "closest": [
        "active-clear",
-       1.5
+       1.6
       ]
      },
      "light day": {
       "skyFraction": 0.091,
       "dist": {
-       "clear-storm": 8,
-       "clear-static": 14.8,
+       "clear-storm": 8.1,
+       "clear-static": 14.9,
        "active-clear": 3.4,
        "active-attention": 4.9,
        "active-storm": 5.3,
        "active-static": 17.5,
-       "attention-clear": 7.6,
+       "attention-clear": 7.7,
        "attention-storm": 6.1,
        "attention-static": 21,
        "static-storm": 21.3
@@ -428,13 +428,13 @@
      "light dusk": {
       "skyFraction": 0.091,
       "dist": {
-       "clear-storm": 24.6,
+       "clear-storm": 24.9,
        "clear-static": 5.9,
        "active-clear": 2.3,
        "active-attention": 10,
        "active-storm": 23.3,
        "active-static": 5.6,
-       "attention-clear": 11.7,
+       "attention-clear": 11.8,
        "attention-storm": 15.4,
        "attention-static": 13.2,
        "static-storm": 25.9
@@ -447,13 +447,13 @@
      "light night": {
       "skyFraction": 0.091,
       "dist": {
-       "clear-storm": 31.9,
-       "clear-static": 7.6,
+       "clear-storm": 32.2,
+       "clear-static": 7.7,
        "active-clear": 2,
        "active-attention": 13.1,
        "active-storm": 31.4,
        "active-static": 6.4,
-       "attention-clear": 14.1,
+       "attention-clear": 14.2,
        "attention-storm": 20.3,
        "attention-static": 9.1,
        "static-storm": 27.4
@@ -468,8 +468,8 @@
      "dark dawn": {
       "skyFraction": 0.113,
       "dist": {
-       "clear-storm": 32,
-       "clear-static": 10.7,
+       "clear-storm": 32.2,
+       "clear-static": 10.9,
        "active-clear": 2.1,
        "active-attention": 12.6,
        "active-storm": 31.9,
@@ -487,13 +487,13 @@
      "dark day": {
       "skyFraction": 0.113,
       "dist": {
-       "clear-storm": 23.3,
-       "clear-static": 9,
+       "clear-storm": 23.4,
+       "clear-static": 9.3,
        "active-clear": 3.1,
        "active-attention": 9.6,
        "active-storm": 22.8,
        "active-static": 11.4,
-       "attention-clear": 10.5,
+       "attention-clear": 10.6,
        "attention-storm": 14.3,
        "attention-static": 14.9,
        "static-storm": 26.8
@@ -506,32 +506,32 @@
      "dark dusk": {
       "skyFraction": 0.113,
       "dist": {
-       "clear-storm": 31.5,
-       "clear-static": 9.2,
-       "active-clear": 3.5,
+       "clear-storm": 31.7,
+       "clear-static": 9.4,
+       "active-clear": 3.4,
        "active-attention": 12,
        "active-storm": 31.3,
        "active-static": 9.5,
-       "attention-clear": 13.1,
+       "attention-clear": 13.2,
        "attention-storm": 20.5,
        "attention-static": 8.6,
        "static-storm": 26.5
       },
       "closest": [
        "active-clear",
-       3.5
+       3.4
       ]
      },
      "dark night": {
       "skyFraction": 0.113,
       "dist": {
-       "clear-storm": 31,
-       "clear-static": 9.2,
+       "clear-storm": 31.3,
+       "clear-static": 9.5,
        "active-clear": 3.4,
        "active-attention": 9.8,
        "active-storm": 30.7,
        "active-static": 11.2,
-       "attention-clear": 10.8,
+       "attention-clear": 11,
        "attention-storm": 21.6,
        "attention-static": 10.6,
        "static-storm": 27.6
@@ -544,13 +544,13 @@
      "light dawn": {
       "skyFraction": 0.113,
       "dist": {
-       "clear-storm": 31,
-       "clear-static": 12.8,
+       "clear-storm": 31.1,
+       "clear-static": 12.9,
        "active-clear": 1.2,
        "active-attention": 10.7,
        "active-storm": 30.6,
        "active-static": 12.1,
-       "attention-clear": 11.5,
+       "attention-clear": 11.6,
        "attention-storm": 21.4,
        "attention-static": 7.4,
        "static-storm": 20.7
@@ -564,7 +564,7 @@
       "skyFraction": 0.113,
       "dist": {
        "clear-storm": 7,
-       "clear-static": 15.6,
+       "clear-static": 15.7,
        "active-clear": 3.4,
        "active-attention": 4.1,
        "active-storm": 3.9,
@@ -582,13 +582,13 @@
      "light dusk": {
       "skyFraction": 0.113,
       "dist": {
-       "clear-storm": 21.8,
+       "clear-storm": 21.9,
        "clear-static": 5,
        "active-clear": 2.3,
        "active-attention": 8.3,
        "active-storm": 20.3,
        "active-static": 4.5,
-       "attention-clear": 10,
+       "attention-clear": 10.1,
        "attention-storm": 13.4,
        "attention-static": 11.1,
        "static-storm": 23.6
@@ -601,13 +601,13 @@
      "light night": {
       "skyFraction": 0.113,
       "dist": {
-       "clear-storm": 29.1,
-       "clear-static": 7.7,
+       "clear-storm": 29.3,
+       "clear-static": 7.8,
        "active-clear": 2.2,
        "active-attention": 10.8,
        "active-storm": 28.5,
        "active-static": 6.5,
-       "attention-clear": 11.8,
+       "attention-clear": 11.9,
        "attention-storm": 19.2,
        "attention-static": 5.7,
        "static-storm": 23.8
@@ -615,6 +615,160 @@
       "closest": [
        "active-clear",
        2.2
+      ]
+     }
+    },
+    "extras": {
+     "dark dawn": {
+      "skyFraction": 0.147,
+      "dist": {
+       "clear-storm": 34,
+       "clear-static": 12.6,
+       "active-clear": 2,
+       "active-attention": 14.5,
+       "active-storm": 33.5,
+       "active-static": 12.3,
+       "attention-clear": 15.2,
+       "attention-storm": 21.5,
+       "attention-static": 7.9,
+       "static-storm": 25.7
+      },
+      "closest": [
+       "active-clear",
+       2
+      ]
+     },
+     "dark day": {
+      "skyFraction": 0.147,
+      "dist": {
+       "clear-storm": 22,
+       "clear-static": 12.4,
+       "active-clear": 3.2,
+       "active-attention": 10.4,
+       "active-storm": 21.3,
+       "active-static": 14.7,
+       "attention-clear": 11.4,
+       "attention-storm": 12.6,
+       "attention-static": 18.2,
+       "static-storm": 27.6
+      },
+      "closest": [
+       "active-clear",
+       3.2
+      ]
+     },
+     "dark dusk": {
+      "skyFraction": 0.147,
+      "dist": {
+       "clear-storm": 34.4,
+       "clear-static": 11.1,
+       "active-clear": 2.9,
+       "active-attention": 14.4,
+       "active-storm": 34,
+       "active-static": 11.3,
+       "attention-clear": 15.4,
+       "attention-storm": 21.4,
+       "attention-static": 11.3,
+       "static-storm": 28.8
+      },
+      "closest": [
+       "active-clear",
+       2.9
+      ]
+     },
+     "dark night": {
+      "skyFraction": 0.147,
+      "dist": {
+       "clear-storm": 35.7,
+       "clear-static": 12.1,
+       "active-clear": 3.5,
+       "active-attention": 13.6,
+       "active-storm": 35.1,
+       "active-static": 13.4,
+       "attention-clear": 14.9,
+       "attention-storm": 22.7,
+       "attention-static": 14.3,
+       "static-storm": 30.9
+      },
+      "closest": [
+       "active-clear",
+       3.5
+      ]
+     },
+     "light dawn": {
+      "skyFraction": 0.147,
+      "dist": {
+       "clear-storm": 31.7,
+       "clear-static": 13.6,
+       "active-clear": 1.4,
+       "active-attention": 11.9,
+       "active-storm": 31.1,
+       "active-static": 13.2,
+       "attention-clear": 12.9,
+       "attention-storm": 21.6,
+       "attention-static": 9.8,
+       "static-storm": 21.7
+      },
+      "closest": [
+       "active-clear",
+       1.4
+      ]
+     },
+     "light day": {
+      "skyFraction": 0.147,
+      "dist": {
+       "clear-storm": 7.7,
+       "clear-static": 17.7,
+       "active-clear": 3.3,
+       "active-attention": 4.9,
+       "active-storm": 4.9,
+       "active-static": 20.4,
+       "attention-clear": 7.6,
+       "attention-storm": 5.9,
+       "attention-static": 23.7,
+       "static-storm": 24.2
+      },
+      "closest": [
+       "active-clear",
+       3.3
+      ]
+     },
+     "light dusk": {
+      "skyFraction": 0.147,
+      "dist": {
+       "clear-storm": 24.5,
+       "clear-static": 5.6,
+       "active-clear": 2.2,
+       "active-attention": 9.9,
+       "active-storm": 22.9,
+       "active-static": 5.4,
+       "attention-clear": 11.7,
+       "attention-storm": 15.1,
+       "attention-static": 12.9,
+       "static-storm": 26
+      },
+      "closest": [
+       "active-clear",
+       2.2
+      ]
+     },
+     "light night": {
+      "skyFraction": 0.147,
+      "dist": {
+       "clear-storm": 32.3,
+       "clear-static": 9.3,
+       "active-clear": 2.1,
+       "active-attention": 13.1,
+       "active-storm": 31.5,
+       "active-static": 8.1,
+       "attention-clear": 14.3,
+       "attention-storm": 20.4,
+       "attention-static": 7.8,
+       "static-storm": 26.4
+      },
+      "closest": [
+       "active-clear",
+       2.1
       ]
      }
     }
@@ -651,14 +805,14 @@
      "at": "light day storm rest"
     },
     ".crumbs [aria-current]": {
-     "worst": 11.87,
+     "worst": 11.7,
      "bare": false,
-     "at": "light day storm rest"
+     "at": "light day storm extras"
     },
     ".card h1": {
-     "worst": 13.86,
+     "worst": 13.37,
      "bare": false,
-     "at": "light dawn active rest"
+     "at": "light day active extras"
     },
     ".card p": {
      "worst": 9.35,
@@ -666,9 +820,9 @@
      "at": "light day active rest"
     },
     ".card dt": {
-     "worst": 9.8,
+     "worst": 9.48,
      "bare": false,
-     "at": "light dawn storm rest"
+     "at": "light day attention extras"
     },
     ".card dd": {
      "worst": 13.35,
@@ -676,9 +830,9 @@
      "at": "light dawn active rest"
     },
     ".row strong": {
-     "worst": 13.83,
+     "worst": 13.21,
      "bare": false,
-     "at": "light day attention rest"
+     "at": "light dawn active extras"
     },
     ".row span": {
      "worst": 10.87,
@@ -724,6 +878,21 @@
      "worst": 12.7,
      "bare": false,
      "at": "light dawn active open"
+    },
+    ".card h2": {
+     "worst": 14,
+     "bare": false,
+     "at": "light dawn storm extras"
+    },
+    ".chip-btn": {
+     "worst": 15.99,
+     "bare": false,
+     "at": "light dawn active extras"
+    },
+    "#pin-text": {
+     "worst": 10.94,
+     "bare": false,
+     "at": "light dawn attention extras"
     }
    },
    "geometry": {
@@ -746,14 +915,19 @@
      "chipTop": 135,
      "composerBottom": 491,
      "visibleH": 500
+    },
+    "extras": {
+     "chipTop": 475,
+     "composerBottom": 835,
+     "visibleH": 844
     }
    },
    "drawMsPerFrame": {
-    "clear": 0.29,
-    "active": 0.32,
-    "attention": 0.3,
-    "storm": 0.78,
-    "static": 0.42
+    "clear": 0.25,
+    "active": 0.26,
+    "attention": 0.28,
+    "storm": 0.51,
+    "static": 0.31
    }
   },
   "laptop": {
@@ -763,7 +937,7 @@
       "skyFraction": 0.758,
       "dist": {
        "clear-storm": 36.5,
-       "clear-static": 9.1,
+       "clear-static": 9.2,
        "active-clear": 2,
        "active-attention": 16.8,
        "active-storm": 35.8,
@@ -782,7 +956,7 @@
       "skyFraction": 0.758,
       "dist": {
        "clear-storm": 20.8,
-       "clear-static": 10.5,
+       "clear-static": 10.6,
        "active-clear": 3.2,
        "active-attention": 11.6,
        "active-storm": 20,
@@ -819,7 +993,7 @@
      "dark night": {
       "skyFraction": 0.758,
       "dist": {
-       "clear-storm": 41,
+       "clear-storm": 41.1,
        "clear-static": 7.9,
        "active-clear": 3.6,
        "active-attention": 18.5,
@@ -974,12 +1148,12 @@
       "skyFraction": 0.653,
       "dist": {
        "clear-storm": 39.8,
-       "clear-static": 7.2,
+       "clear-static": 7.3,
        "active-clear": 3.6,
        "active-attention": 17.5,
        "active-storm": 39.4,
        "active-static": 8,
-       "attention-clear": 18.5,
+       "attention-clear": 18.6,
        "attention-storm": 23.7,
        "attention-static": 15.8,
        "static-storm": 36.2
@@ -1070,7 +1244,7 @@
      "dark dawn": {
       "skyFraction": 0.523,
       "dist": {
-       "clear-storm": 36.1,
+       "clear-storm": 36.2,
        "clear-static": 8.8,
        "active-clear": 2,
        "active-attention": 16.6,
@@ -1095,7 +1269,7 @@
        "active-attention": 11.4,
        "active-storm": 19.3,
        "active-static": 12.7,
-       "attention-clear": 12.4,
+       "attention-clear": 12.5,
        "attention-storm": 10.3,
        "attention-static": 19.1,
        "static-storm": 26.9
@@ -1133,7 +1307,7 @@
        "active-attention": 18.6,
        "active-storm": 40.8,
        "active-static": 7.9,
-       "attention-clear": 19.6,
+       "attention-clear": 19.7,
        "attention-storm": 24.1,
        "attention-static": 16.8,
        "static-storm": 37.5
@@ -1219,6 +1393,160 @@
        1.8
       ]
      }
+    },
+    "extras": {
+     "dark dawn": {
+      "skyFraction": 0.597,
+      "dist": {
+       "clear-storm": 35.2,
+       "clear-static": 8.5,
+       "active-clear": 2,
+       "active-attention": 15.9,
+       "active-storm": 34.6,
+       "active-static": 7.8,
+       "attention-clear": 16.7,
+       "attention-storm": 21.4,
+       "attention-static": 11.8,
+       "static-storm": 30.8
+      },
+      "closest": [
+       "active-clear",
+       2
+      ]
+     },
+     "dark day": {
+      "skyFraction": 0.597,
+      "dist": {
+       "clear-storm": 20.8,
+       "clear-static": 9.3,
+       "active-clear": 3.1,
+       "active-attention": 11.2,
+       "active-storm": 20.1,
+       "active-static": 11.6,
+       "attention-clear": 12.2,
+       "attention-storm": 11,
+       "attention-static": 17.9,
+       "static-storm": 26.7
+      },
+      "closest": [
+       "active-clear",
+       3.1
+      ]
+     },
+     "dark dusk": {
+      "skyFraction": 0.597,
+      "dist": {
+       "clear-storm": 36.2,
+       "clear-static": 6.7,
+       "active-clear": 2.6,
+       "active-attention": 16.2,
+       "active-storm": 35.7,
+       "active-static": 5.9,
+       "attention-clear": 17.1,
+       "attention-storm": 21.7,
+       "attention-static": 13.7,
+       "static-storm": 33
+      },
+      "closest": [
+       "active-clear",
+       2.6
+      ]
+     },
+     "dark night": {
+      "skyFraction": 0.597,
+      "dist": {
+       "clear-storm": 39.4,
+       "clear-static": 6.6,
+       "active-clear": 3.5,
+       "active-attention": 17.1,
+       "active-storm": 39,
+       "active-static": 7.5,
+       "attention-clear": 18.2,
+       "attention-storm": 23.6,
+       "attention-static": 15.5,
+       "static-storm": 36
+      },
+      "closest": [
+       "active-clear",
+       3.5
+      ]
+     },
+     "light dawn": {
+      "skyFraction": 0.597,
+      "dist": {
+       "clear-storm": 31.9,
+       "clear-static": 11.1,
+       "active-clear": 1.7,
+       "active-attention": 12.6,
+       "active-storm": 31.1,
+       "active-static": 11,
+       "attention-clear": 13.9,
+       "attention-storm": 21.5,
+       "attention-static": 13.1,
+       "static-storm": 26.3
+      },
+      "closest": [
+       "active-clear",
+       1.7
+      ]
+     },
+     "light day": {
+      "skyFraction": 0.597,
+      "dist": {
+       "clear-storm": 8.4,
+       "clear-static": 13.7,
+       "active-clear": 3.3,
+       "active-attention": 5.5,
+       "active-storm": 5.8,
+       "active-static": 16.2,
+       "attention-clear": 8.2,
+       "attention-storm": 7.2,
+       "attention-static": 20.6,
+       "static-storm": 20.2
+      },
+      "closest": [
+       "active-clear",
+       3.3
+      ]
+     },
+     "light dusk": {
+      "skyFraction": 0.597,
+      "dist": {
+       "clear-storm": 25.8,
+       "clear-static": 6.5,
+       "active-clear": 2.2,
+       "active-attention": 11,
+       "active-storm": 24.4,
+       "active-static": 6.2,
+       "attention-clear": 12.9,
+       "attention-storm": 16.1,
+       "attention-static": 15.2,
+       "static-storm": 27.2
+      },
+      "closest": [
+       "active-clear",
+       2.2
+      ]
+     },
+     "light night": {
+      "skyFraction": 0.597,
+      "dist": {
+       "clear-storm": 34.8,
+       "clear-static": 7.3,
+       "active-clear": 1.9,
+       "active-attention": 15,
+       "active-storm": 34.1,
+       "active-static": 5.9,
+       "attention-clear": 16,
+       "attention-storm": 21.6,
+       "attention-static": 12.2,
+       "static-storm": 31
+      },
+      "closest": [
+       "active-clear",
+       1.9
+      ]
+     }
     }
    },
    "worstText": {
@@ -1228,9 +1556,9 @@
      "at": "light day storm rest"
     },
     "#pill-label": {
-     "worst": 16.45,
+     "worst": 16.18,
      "bare": false,
-     "at": "light day static rest"
+     "at": "light day clear rest"
     },
     "#pill-weather": {
      "worst": 12.94,
@@ -1278,9 +1606,9 @@
      "at": "light day attention peek"
     },
     ".row strong": {
-     "worst": 13.77,
+     "worst": 13.31,
      "bare": false,
-     "at": "light dawn attention peek"
+     "at": "light dawn active extras"
     },
     ".row span": {
      "worst": 10.66,
@@ -1303,9 +1631,9 @@
      "at": "light dawn attention rest"
     },
     "#chip": {
-     "worst": 11.25,
+     "worst": 11.22,
      "bare": false,
-     "at": "light dawn attention peek"
+     "at": "light dawn attention extras"
     },
     ".mine": {
      "worst": 9.76,
@@ -1326,6 +1654,21 @@
      "worst": 12.79,
      "bare": false,
      "at": "light dawn attention peek"
+    },
+    ".card h2": {
+     "worst": 14.08,
+     "bare": false,
+     "at": "light dawn storm extras"
+    },
+    ".chip-btn": {
+     "worst": 15.91,
+     "bare": false,
+     "at": "light dawn attention extras"
+    },
+    "#pin-text": {
+     "worst": 11.03,
+     "bare": false,
+     "at": "light dawn attention extras"
     }
    },
    "geometry": {
@@ -1341,6 +1684,11 @@
     },
     "open": {
      "chipTop": 82,
+     "composerBottom": 879,
+     "visibleH": 900
+    },
+    "extras": {
+     "chipTop": 576,
      "composerBottom": 879,
      "visibleH": 900
     }

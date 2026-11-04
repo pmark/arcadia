@@ -64,7 +64,7 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-013 Mostly zero cost | S014 | Mine: "paid models only when they add value", and the proof |
 | REQ-014 Idea to autonomous production | S014 | Mine: the proof |
 | REQ-015 Status at a glance from every view | S023 | Mine: every Workspace view, words as well as weather, never falsely clear, and the proof |
-| REQ-016 The view defines context | S023 | Mine: only the operator's taps or words move it, each answer names its scope, and the proof |
+| REQ-016 The view defines context | S023 | Mine: it moves only as CH-05 decides, each answer names its scope, and the proof |
 | REQ-017 Relay always available | S023 | Mine: including a failed view, an uncertain send and an open Artifact, and the proof |
 | REQ-018 Mobile-first, XR as the horizon | S022 | Mine: the proof |
 

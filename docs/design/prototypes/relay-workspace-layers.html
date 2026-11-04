@@ -126,7 +126,7 @@ dl { margin: 10px 0 0; font-size: 14px; } dt { color: var(--eyebrow); font-size:
 
 /* Prototype controls are not part of the design. */
 #proto-toggle { position: absolute; z-index: 5; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); min-height: 40px; padding: 4px 12px; font-size: 12px; border: 1px dashed #aab0be; border-radius: 10px; background: rgb(0 0 0 / .55); }
-@media (max-width: 460px) { #proto-toggle { min-height: 32px; top: calc(14px + env(safe-area-inset-top, 0px)); padding: 2px 6px; font-size: 11px; left: 92px; transform: none; } #pill { padding-inline: 10px; } }
+@media (max-width: 460px) { #proto-toggle { min-height: 32px; top: calc(14px + env(safe-area-inset-top, 0px)); padding: 2px 6px; font-size: 11px; left: 104px; transform: none; } #pill { padding-inline: 10px; } }
 #proto { position: absolute; z-index: 6; top: calc(58px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%); width: min(380px, calc(100vw - 32px)); max-height: calc(100dvh - 90px); overflow-y: auto; padding: 14px; border: 1px dashed #aab0be; border-radius: 14px; background: rgb(4 6 14 / .96); font-size: 13px; display: grid; gap: 12px; }
 #proto h2 { margin: 0; font-size: 13px; font-weight: 600; }
 #proto p { margin: 0; color: var(--soft); font-size: 12px; }
@@ -308,7 +308,8 @@ function drawStars() {
 }
 // Copied from lib/system-sky.ts.
 const SKIES = {
-  clear: { label: "All clear", weather: "Clear skies", draw: { tint: ["#8a6fd0", 0.04], dust: 10, wind: 0.15 } },
+  // Production is Off in this sample, so a calm sky says "Nothing waiting". "All clear" is only for when it's On.
+  clear: { label: "Nothing waiting", weather: "Clear skies", draw: { tint: ["#8a6fd0", 0.04], dust: 10, wind: 0.15 } },
   active: { label: "Work moving", weather: "Light wind", draw: { dust: 46, wind: 0.6 } },
   attention: { label: "Needs you", weather: "Warm haze", draw: { haze: ["#ffbf5a", 0.22], dust: 26, wind: 0.3, rise: 16 } },
   storm: { label: "Blocked", weather: "Dust storm", draw: { haze: ["#c8743f", 0.55], tint: ["#a5502a", 0.2], dust: 300, wind: 2.4 } },
@@ -379,7 +380,7 @@ addEventListener("resize", resize);
 // ---------------- the Scene's words ----------------
 const FEEDLINK = { level: "feed" };
 const REASONS = {
-  clear: [["Nothing is waiting on you."]],
+  clear: [["Nothing is waiting on you."], ["1 pull request open", FEEDLINK]],
   active: [["1 live Session"], ["1 pull request open", FEEDLINK]],
   attention: [["2 items waiting on you", FEEDLINK], ["1 live Session"]],
   storm: [["1 blocking item for you", FEEDLINK], ["1 mission blocked"]],

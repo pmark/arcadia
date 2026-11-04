@@ -65,15 +65,25 @@ change.
 4. **It can't falsely say "clear".** A clear sky is a claim that needs a fresh read.
    - Before the first read: no weather, a hollow dot, and "Reading".
    - A read older than the limit: Signal loss.
-   - A reading has to hold for two reads before the weather changes, so a brief flicker doesn't crossfade the sky. The words
-     change with it, and that's the only time a screen reader hears them.
-5. **Production gets its own line,** from `/api/production-console?part=core`, which already serves production state, a
-   worker heartbeat with a freshness flag, and live Sessions, behind a short cache.
-   - Off is your choice, so it draws no weather, and the pill reads "All clear · Production Off". All clear is never shown
-     alone while production is Off.
-   - Running with a stale heartbeat, stopped, or failed all count as Blocked. A hung run has to look like a problem.
-6. **"Work moving" means something is running:** live Sessions or missions. Today any open pull request counts, so a stalled
-   run can read as Work moving. An open PR becomes a reason on the pill.
+   - Worse news shows at the next read. Better news has to hold for two reads, so a flicker can't briefly clear the sky. The
+     words change with the weather, and that's the only time a screen reader hears them.
+5. **Production gets its own line,** from `/api/production-console?part=core`, using the states Arcadia actually records.
+   The heartbeat there belongs to the worker process, not to a Session, so a stalled Session is checked separately. A calm sky
+   says "All clear" only when production is On. While it's Off, the most it says is "Nothing waiting".
+
+   | What the read says | Scene | Pill adds |
+   |---|---|---|
+   | `inactive_idle` | No effect | Production Off |
+   | `inactive_finishing` | Work moving | Production finishing |
+   | `active_idle`, worker healthy | No effect | Production on, idle |
+   | `active_building`, worker healthy | Work moving | Production building |
+   | Any live Session with `observedStatus: stalled` | Blocked | A Session has stalled |
+   | Active, with the worker not running or its heartbeat stale | Blocked | Worker not responding |
+   | `observation_unavailable`, or the read failed | Signal loss | Can't read production. Never "Off" |
+
+6. **"Work moving" means something is running:** live Sessions, missions or admitted work. Today any open pull request counts,
+   so a stalled run can read as Work moving. Open PRs and steps waiting on others no longer change the weather. They appear as
+   reasons, and a calm sky may carry reasons. A failing PR stays Needs you, as it is today.
 
 The Scene never speaks, opens anything or takes focus. Discord pings keep their existing rules.
 
@@ -100,13 +110,13 @@ The View shows one thing and leaves the sky visible around it. This is what keep
 | **Thread** | The whole conversation | Pull up or tap the chevron | Phone: inert behind it. Wide screen: it makes room and stays usable |
 
 - **Always available means always.** It works when the View is loading, failed or unknown, falling back to the whole
-  portfolio and saying so. It works while an earlier send is uncertain: that exchange keeps its own Retry, and a new
-  message gets a new request id.
+  portfolio and saying so. An ordinary Ask can also go out while an earlier send is uncertain: that exchange moves to history
+  with its Retry kept, and the new message gets a new request id. Today you have to clear it first.
 - **The keyboard is part of the design.** On a phone the scope chip stays above the keyboard, so you can still see what
   "this" means when the View is covered.
 - **Directions keep their gates.** "Send as a direction" writes a durable instruction, and there scope picks the target, so
-  it isn't a hint. It stays an explicit choice that names the exact Plan or Action, and it's unavailable when that target can't
-  be verified. Only ordinary, read-side Ask loses the availability gate.
+  it isn't a hint. It stays an explicit choice that names the exact Plan or Action. It's unavailable when that target can't be
+  verified or while an earlier direction is uncertain, so an instruction can't be sent twice. Only ordinary Ask loses these gates.
 - **Talking to a Session stays separate.** Downlink's Uplink has its own input aimed at a live Session. When it ships, its
   field must name that Session, and Relay drops to Resting while it's open, so there's never doubt about who you're talking to.
 - **Tapping the View to put Relay down only puts it down.** That tap doesn't also press what's under it.
@@ -163,7 +173,8 @@ server-side thread, scope as a value, and this closed vocabulary.
 | Reduced motion | Still weather, no lift or drawing animation. The pill's words are unchanged |
 | A hostile message or document | It stays text. No block can run anything, and `prepare` only ever shows a card you confirm |
 | A status change while you're mid-sentence | Weather changes. Nothing else moves |
-| A production run hangs | Its heartbeat goes stale, and the Scene reads Blocked rather than Work moving |
+| A Session hangs, or the worker stops responding | The Scene reads Blocked rather than Work moving. A Session that hangs without being flagged as stalled isn't caught, which is a limit of what Arcadia records today |
+| Production's state can't be read | Signal loss, and the pill says it can't read production. It never says "Off" |
 | A direction aimed at a Plan or Action that's gone or can't be read | It can't be sent. Your draft stays, and it says why |
 | Two windows open before the thread is on the server | They share one browser store and can overwrite each other's draft. That's today's behaviour, and step 4 fixes the thread |
 
@@ -174,6 +185,7 @@ server-side thread, scope as a value, and this closed vocabulary.
 | Sol sky, weather, status reading | **Partial:** weather draws only on the Feed | `app/workspace/layout.tsx:14`, `components/workspace/feed/feed-view.tsx:132,146` |
 | Status covers production and live missions | **Partial:** the source exists, but the sky doesn't read it. The Feed passes no missions, so any open PR counts as moving | `app/api/production-console/route.ts`, `lib/system-sky.ts:49-56,85`, `feed-view.tsx:132` |
 | Never falsely clear | **Conflicts:** first load draws clear weather | `lib/system-sky.ts:88` |
+| Production states and stall signal | **Exists:** five display states, a worker heartbeat, and a stalled status per Session | `src/production/activation.ts:249-275`, `lib/production-console.ts:92,370`, `lib/system-status.ts:328-339` |
 | Scope from the URL | **Exists** | `lib/workspace-scope.ts` |
 | Relay gets the whole scope | **Partial:** an ordinary Ask sends only the Project; Plan and Action go only with a direction | `components/workspace/workspace-ask.tsx:121`, `app/api/ask/route.ts` |
 | Composer available everywhere | **Conflicts:** it's in one panel, off when the context can't be verified, and off while a send is uncertain. The Feed has none | `workspace-view.tsx:153`, `workspace-ask.tsx:170,185` |
@@ -205,11 +217,12 @@ statuses and each Relay height, using the real drawing code.
   and 11% of what's visible above a simulated keyboard, where the scope chip and field both stay on screen. On a laptop, 76%, 65%
   and 52%. A first version with cards stacked like today's Workspace left 17% on a phone at rest, which is why the View shows one
   subject.
-- **Weak pairs, all on the light palette:** Work moving against Needs you (colour distance 4.1 to 6), Needs you against Blocked
-  (4.3 to 8.6), and All clear against Signal loss (5 to 7). Missing a Needs you is the costly mistake. The dot and words always
-  differ, and I'd judge these by eye on a phone before changing any colours.
+- **Weak pairs, all on the light palette:** Work moving against Blocked (colour distance 3.9 to 6.9), Work moving against Needs
+  you (4.1 to 6), Needs you against Blocked (4.3 to 8.6), and All clear against Signal loss (5 to 7). Mistaking Blocked or Needs you
+  for Work moving is the costly mistake. The dot and words always differ, and I'd judge these by eye on a phone before changing
+  any colours.
 - **All clear and Work moving differ only by motion** (distance 1.2 to 1.8, about the limit of perception). With reduced motion only
-  the words separate them. This is acceptable only because a hung run reads as Blocked rather than either of these.
+  the words separate them. This is acceptable only because a flagged stall or a silent worker reads as Blocked rather than either of these.
 
 **Not known:** how it feels on a real phone, whether weather reads as status at a glance, the real keyboard behaviour on
 iOS Safari, frame rate and battery with three canvases on a phone, and the cost of status reads from every view.
@@ -221,8 +234,9 @@ first whenever they compete. The Scene comes first because it also helps you wat
 yours to swap.
 
 1. **Scene everywhere.** Move weather and the pill to the layout, with one shared read, freshness, and the production line.
-2. **Relay overlay.** Move the existing composer into the three-height overlay, with its receipt loop unchanged and no backend
-   change. The chip names only the Project. Ordinary Ask loses its availability gates, and directions keep theirs.
+2. **Relay overlay.** Move the existing composer into the three-height overlay, with no backend change. The chip names only the
+   Project. Ordinary Ask loses its availability gates and can send past an uncertain exchange, and directions keep their gates.
+   The rest of the receipt loop stays as it is.
 3. **Visible, typed answers.** The proposal's first step, as typed answers in the overlay, so "Status shown." finally shows the
    status. The Ask route starts accepting the View's subject and returning the scope it used.
 4. **Thread on the server.** A new record holding each typed answer as it was given, pointing to Ask's receipt. What Relay said
@@ -236,12 +250,13 @@ Then the proposal's name matching, lookups, menu and scorecard follow in their e
 
 - text and controls at 4.5:1 or better across every sky and status;
 - a status change moving nothing but the Scene;
-- first load, a stale read, a stale heartbeat and production Off, none of which may read as plain All clear;
+- each row of the production table, first load and a stale read, none of which may read as All clear;
 - navigation keeping the draft's target;
 - Relay usable with the View's read failing;
-- a direction refused for an unverified or vanished target;
+- a direction refused for an unverified or vanished target, or while an earlier direction is uncertain;
 - keyboard use, reduced motion and blocked storage;
-- status reads per minute and per open window, against a budget set in step 1;
+- status reads per minute and per open window, against a budget set in step 1. The starting proposal is one read a minute while
+  visible, and the budget has to cover the production read's real cost. A change can take up to one read to show;
 - the existing Workspace tests still passing.
 
 Then you try it on your phone. Playwright can't reproduce iOS Safari's keyboard, so that's the test that counts.

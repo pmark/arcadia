@@ -22,7 +22,7 @@ special knowledge.
 
 ## The interface: three layers
 
-By the operator's direction ([their words](../design/relay/sources/S023-layered-overlay.md)), Arcadia Workspace is the
+By the operator's direction ([S022](../design/relay/sources/S022-decisions-and-interface-direction.md), [S023](../design/relay/sources/S023-layered-overlay.md)), Arcadia Workspace is the
 primary interface, mobile-first, with XR as the horizon, across phone, tablet, laptop, multi-monitor desktop, headsets
 and future AR glasses. It's neither a dashboard nor strictly a chatbot.
 
@@ -195,7 +195,7 @@ a model could suggest options for that case, once the scorecard shows that.
 ## Recommended order
 
 1. **Review and approve this proposal.** An independent agent reviews it, and the operator answers the decisions below.
-2. **Run a fresh critic round,** on a model other than the author's, against this version.
+2. **Run a fresh critic round,** on a model other than the author's. Done for the layer design ([R2](../design/relay/reviews/R2-layers-critique.md), [R3](../design/relay/reviews/R3-layers-recheck.md)). The wider proposal's R1 findings stay open.
 3. **Design the three layers** through Arcadia Design ([done, awaiting approval](../design/relay/workspace-layers.md)), then
    **follow its build order:** the scene on every view, the overlay, visible typed answers, and the server-side thread.
 4. **Add name matching and lookups, then the menu and scorecard.** That finishes Ask alone, useful even if no model
@@ -242,7 +242,7 @@ models until the companion step.
 - **Critic R1's hold stands,** against the earlier frame, with eight blocking findings open. A fresh critic round on
   this proposal hasn't run, and the ready gate refuses the design. That critic also shared the author's model, so
   a different agent should run the next round.
-- **This proposal hasn't had independent review** of its own, because the session ran out of capacity.
+- **Independent review so far:** rounds at `977fc351e` found no blocking finding, and [R3](../design/relay/reviews/R3-layers-recheck.md) reviewed the later commits.
 - **Local model memory:** 18 GB on a laptop shared with coding agents and production.
 - **Native discovery** of the `arcadia-design` and `arcadia-relay` skills in fresh sessions hasn't been run.
 

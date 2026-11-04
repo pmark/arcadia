@@ -11,7 +11,7 @@ const html = readFileSync(join(here, "../../prototypes/relay-workspace-layers.ht
 const shotDir = process.argv[2] ?? null;
 const SKIES = ["dawn", "day", "dusk", "night"], SCHEMES = ["dark", "light"], STATUS = ["clear", "active", "attention", "storm", "static"];
 const VIEWPORTS = { phone: { width: 390, height: 844 }, laptop: { width: 1440, height: 900 } };
-const TEXT = ["#wordmark", "#pill-label", "#pill-weather", "#reasons li", "#read-at", ".crumbs a", ".crumbs [aria-current]", ".card h1", ".card h2", ".card p", ".card dt", ".card dd", ".row strong", ".row span", ".more summary", ".muted", ".ghost", ".chip-btn", "#input", "#chip", "#pin-text", ".mine", ".where", ".reply p", ".fact"];
+const TEXT = ["#wordmark", "#pill-label", "#pill-weather", "#reasons li", "#read-at", ".crumbs a", ".crumbs [aria-current]", ".card h1", ".card h2", ".card p", ".card dt", ".card dd", ".row strong", ".row span", ".more summary", ".ghost", ".chip-btn", "#input", "#chip", "#pin-text", ".mine", ".where", ".reply p", ".fact"];
 const KEYBOARD_H = 500;
 
 const inPage = ({ TEXT, visibleH }) => {
@@ -62,7 +62,8 @@ for (const [vpName, viewport] of Object.entries(VIEWPORTS)) {
   const page = await ctx.newPage();
   await page.setContent(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"></head><body>${html}</body></html>`);
   const res = { states: {}, worstText: {} };
-  const heights = vpName === "phone" ? ["rest", "peek", "open", "keyboard"] : ["rest", "peek", "open"];
+  // "extras" adds the Plan view's headings, the starter suggestions and the pinned-draft line. Its sky isn't reported.
+  const heights = vpName === "phone" ? ["rest", "peek", "open", "keyboard", "extras"] : ["rest", "peek", "open", "extras"];
   for (const relay of heights) {
     // "keyboard" simulates the soft keyboard as a 344 px inset; it can't reproduce iOS Safari's own behaviour.
     const visibleH = relay === "keyboard" ? KEYBOARD_H : viewport.height;
@@ -73,7 +74,12 @@ for (const [vpName, viewport] of Object.entries(VIEWPORTS)) {
       p.setHeight("rest");
       // The reasons panel and a menu answer, so their text and controls get sampled too.
       document.getElementById("reasons").hidden = r !== "rest";
-      if (r !== "rest") { p.send("the qa thing from before"); p.send("What needs me?"); p.setHeight(r === "keyboard" ? "peek" : r); }
+      if (r === "extras") {
+        const input = document.getElementById("input");
+        input.value = "A draft"; input.dispatchEvent(new Event("input", { bubbles: true }));
+        document.querySelector(".crumbs a:nth-of-type(3)")?.click();
+        p.setHeight("peek");
+      } else if (r !== "rest") { p.send("the qa thing from before"); p.send("What needs me?"); p.setHeight(r === "keyboard" ? "peek" : r); }
     }, [relay, viewport.height - visibleH]);
     const grid = {};
     for (const scheme of SCHEMES) for (const sky of SKIES) {

@@ -87,8 +87,8 @@ new intake Issue, because Issue 2005 is closed.
 
 ```text
 Continue the Relay proposal in ~/.claude/worktrees/relay-proposal, on branch claude/relay-proposal-20261103 (PR 2027). Read
-docs/reports/handoffs/20261103T0000Z-relay-proposal.md and docs/design/relay/workspace-layers.md. Record my answers to CH-05 and CH-06, then
-start step 1 of its build order. Unattended production stays first, and production stays Off.
+docs/reports/handoffs/20261103T0000Z-relay-proposal.md and docs/design/relay/workspace-layers.md. If I've approved the design, record my
+answers to CH-05 and CH-06 and start step 1 of its build order. If not, bring me what's still open. Unattended production stays first, and production stays Off.
 ```
 
 # Stop condition

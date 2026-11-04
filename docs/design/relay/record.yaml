@@ -113,7 +113,7 @@ frame:
       mission:
         - M3
         - M4
-      proof: A Playwright test across every Workspace route showing the same reading and words, including first load, a stale read, a stale heartbeat and production Off, plus the operator judging a glance test on a real phone.
+      proof: A Playwright test across every Workspace route showing the same reading and words, covering each production state in the design's table, first load and a stale read, plus the operator judging a glance test on a real phone.
     - id: REQ-016
       status: proposed
       statement: What is on screen is what Relay takes "this" to mean, every answer says which scope it used, and the view moves only as CH-05 decides, never from a status change or a model's choice.
@@ -302,7 +302,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: sources/S022-decisions-and-interface-direction.md
-    sha256: 5821d8910b897e3a54afd5ba78377b51d24c63993569781d5d996f15eed86a54
+    sha256: 4942a319c65e74b81539a508c6bdededed3cb856767e7bcd84aa473847671ea9
   - id: S023
     title: Operator's direction on the layered Workspace
     kind: operator
@@ -323,7 +323,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: c48bfaf052a1da214567c16b920db187990ffc163ecfdfaad26c922fd0fc46f7
+    sha256: 3e9527451386bf496dc45f65e0ee1c250c7a55e85ef52f13b43b439e35228a3b
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent
@@ -2494,7 +2494,7 @@ concepts:
     position: merged
     merged_into: C-029
   - id: C-039
-    title: Relay's front door at existing Ask surfaces
+    title: Relay's front door in Arcadia Workspace
     kind: mechanism
     statement: "Questions reach Relay through Arcadia Workspace, where code routes them before any model and a coding agent runs only for code. The operator refined this: Workspace is the primary interface, and how other Ask surfaces converge on it is under investigation."
     origins:
@@ -2503,6 +2503,8 @@ concepts:
         locator: reviews/R1-relay-critique.md
       - source: S022
         locator: whole file
+      - source: S023
+        locator: item 1
     fit:
       status: partial
       evidence:
@@ -2919,7 +2921,7 @@ concepts:
   - id: C-066
     title: "Scene on every view, in words, never falsely clear"
     kind: interface
-    statement: "Weather and a status pill appear on every Workspace view, a strip of open sky always stays visible, a clear sky needs a fresh read, production state sits beside the reading from the existing console read, a stale heartbeat reads as blocked, and moving means something is running."
+    statement: "Weather and a status pill appear on every Workspace view, a strip of open sky always stays visible, a clear sky needs a fresh read, production state sits beside the reading, mapped from the states Arcadia records, a stalled Session or silent worker reads as blocked, an unreadable store is never called off, and moving means something is running."
     origins:
       - source: S023
         locator: 'The scene background'
@@ -2934,6 +2936,7 @@ concepts:
         - apps/dashboard/components/workspace/feed/feed-view.tsx
         - apps/dashboard/app/workspace/layout.tsx
         - apps/dashboard/app/api/production-console/route.ts
+        - src/production/activation.ts
     position: leaning
     serves:
       - REQ-015
@@ -2964,7 +2967,7 @@ concepts:
   - id: C-068
     title: "Relay as one surface with three heights"
     kind: interface
-    statement: "A resting capsule, an answer sheet and the whole thread, on every Workspace route, available when the view fails or a send is uncertain. Directions keep their gates and name their exact target."
+    statement: "A resting capsule, an answer sheet and the whole thread, on every Workspace route, available when the view fails or a send is uncertain. An ordinary Ask may send past an uncertain exchange. Directions keep their gates, including the uncertain one, and name their exact target."
     origins:
       - source: S023
         locator: 'always available from any context'
@@ -3316,6 +3319,64 @@ scrutiny:
           - C-062
           - C-069
           - C-072
+  - id: R3
+    path: reviews/R3-layers-recheck.md
+    reviewer: Critic Claudia Mason
+    independent_of_authors: true
+    lenses:
+      - mission
+      - evidence
+      - failure
+    record_hash: fe0a16dd346bbd46478149f0f47a35a2806259d39a2c536d455f0553b6ec10f3
+    verdict: pass_with_changes
+    findings:
+      - id: R3-F1
+        severity: blocking
+        summary: "The design's production words weren't the source's states, and a hung Session under a healthy worker would read as Work moving."
+        disposition: fixed
+        note: "A mapping table uses the recorded states and the per-Session stall status, an unreadable store is Signal loss, and the limit for a stall nobody flagged is stated."
+        concepts:
+          - C-066
+      - id: R3-F2
+        severity: blocking
+        summary: "REQ-015 forbade the words the pill showed."
+        disposition: fixed
+        note: "While production is Off, the pill says Nothing waiting and never All clear."
+        concepts:
+          - C-066
+      - id: R3-F3
+        severity: note
+        summary: "The write-up claimed more than the data showed."
+        disposition: fixed
+        note: "Moving against Blocked is named, and a new probe state measures the kinds that were missed."
+      - id: R3-F4
+        severity: note
+        summary: "Holding for two reads delayed bad news."
+        disposition: fixed
+        note: "Worse news shows at the next read, and better news waits for two."
+        concepts:
+          - C-066
+      - id: R3-F5
+        severity: note
+        summary: "Sending past an uncertain exchange conflicted with an unchanged receipt loop."
+        disposition: fixed
+        note: "Step 2 names the change, and directions keep the uncertain gate."
+        concepts:
+          - C-068
+      - id: R3-F6
+        severity: note
+        summary: "Open PRs had no stated effect on the status."
+        disposition: fixed
+        note: "Open PRs and steps waiting on others are reasons, a calm sky may carry reasons, and a failing PR stays Needs you."
+        concepts:
+          - C-066
+      - id: R3-F7
+        severity: note
+        summary: "S022 mixed an agent gloss with verbatim words, and C-039 cited S022 only."
+        disposition: fixed
+        note: "The gloss is labelled, and C-039 cites S023 with an aligned title."
+        concepts:
+          - C-039
 riskiest_assumption:
   statement: The checked-in guidance is enough for an agent to answer a first-time operator correctly and practically.
   test: About 30 first-timer questions, answered from the guidance alone and graded by a separate judge against the cited text, the Decisions and the code.
