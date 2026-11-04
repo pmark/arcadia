@@ -87,7 +87,7 @@ describe("each repair trigger follows the repair row outcome on every fixture ro
     rehearsal.tick();
     const raised = new Map(open(rehearsal).map((alert) => [alert.actionKey, alert.trigger]));
     for (const { key, expected } of cases) expect(raised.get(key) ?? null, key).toBe(expected);
-    expect(cases.filter((c) => c.expected).length).toBe(2); // the escalated 07:58 row and the gated 08:10 row
+    expect(cases.filter((c) => c.expected).length).toBe(3); // the escalated 07:58 row, and the gated 08:10 row under each of the two kinds that stop on `gated`
     // The verdicts the classifier reads as a QA sole failure raise no stop alert unless the outcome is escalated.
     const sole = signals.filter((signal) => signal.kind === "qa_plan" && signal.failureClass === "sole_failure");
     expect(sole.map((signal) => signal.at.slice(11, 19))).toEqual(["07:26:46", "07:42:16", "07:58:37"]);

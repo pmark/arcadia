@@ -41,7 +41,7 @@ describe("blocker-kind remedy registry (#1284)", () => {
   });
 
   it("registers a notice-only remedy for each Decision 0169 alert, none of which clears or grants anything", () => {
-    for (const trigger of ["repair_rounds_exhausted", "repair_gated", "resume_no_progress"]) {
+    for (const trigger of ["repair_rounds_exhausted", "repair_gated", "repair_gate_defect", "resume_no_progress"]) {
       expect(RED_ALERT_TRIGGERS).toContain(trigger);
       expect(blockerRemedyFor(trigger)).toMatchObject({ kind: trigger, oneClick: false, surface: "todo" });
       expect(blockerRemedyFor(trigger)?.remedyActionId).not.toBe("reset-repair-budget");

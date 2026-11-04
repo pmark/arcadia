@@ -28,6 +28,7 @@ export const RED_ALERT_TRIGGERS = [
   "scope_successor_held",
   "repair_rounds_exhausted",
   "repair_gated",
+  "repair_gate_defect",
   "resume_no_progress"
 ] as const;
 export type RedAlertTrigger = (typeof RED_ALERT_TRIGGERS)[number];
@@ -548,9 +549,11 @@ export function raiseScopeSuccessorHeld(ctx: AlertContext, input: { planKey: str
 // Literals, not imports from reviewRepair.ts (a load-order cycle); the red alert test pins them to its constants.
 const REVIEW_REPAIR_ROUNDS_EXHAUSTED = "review_repair_rounds_exhausted";
 const REVIEW_REPAIR_GATED = "review_repair_gated";
+const REVIEW_REPAIR_GATE_DEFECT = "review_repair_gate_defect";
 export const REVIEW_REPAIR_STOP_ALERTS: Readonly<Record<string, { trigger: RedAlertTrigger; outcome: "escalated" | "gated" }>> = Object.freeze({
   [REVIEW_REPAIR_ROUNDS_EXHAUSTED]: { trigger: "repair_rounds_exhausted", outcome: "escalated" },
-  [REVIEW_REPAIR_GATED]: { trigger: "repair_gated", outcome: "gated" }
+  [REVIEW_REPAIR_GATED]: { trigger: "repair_gated", outcome: "gated" },
+  [REVIEW_REPAIR_GATE_DEFECT]: { trigger: "repair_gate_defect", outcome: "gated" }
 });
 
 /**
@@ -558,7 +561,7 @@ export const REVIEW_REPAIR_STOP_ALERTS: Readonly<Record<string, { trigger: RedAl
  * resume): they are notices, never diagnosed by a model and never filed as an
  * Issue or drafted Ask (Decision 0169 declined that for them).
  */
-export const NOTICE_ONLY_RED_ALERT_TRIGGERS: readonly RedAlertTrigger[] = ["repair_rounds_exhausted", "repair_gated", "resume_no_progress"];
+export const NOTICE_ONLY_RED_ALERT_TRIGGERS: readonly RedAlertTrigger[] = ["repair_rounds_exhausted", "repair_gated", "repair_gate_defect", "resume_no_progress"];
 
 const BOUNDED_FIELD_MAX = 60;
 const bounded = (value: string): string => {
@@ -569,8 +572,8 @@ const bounded = (value: string): string => {
 /**
  * Observe the Project's review repair stops from `production_operator_escalations`
  * (written by the repair loop; this reads them and changes nothing there).
- * An Action holding a `review_repair_rounds_exhausted` or `review_repair_gated`
- * escalation whose latest repair row carries the matching outcome has one open
+ * An Action holding a `review_repair_rounds_exhausted`, `review_repair_gated` or
+ * `review_repair_gate_defect` escalation whose latest repair row carries the matching outcome has one open
  * alert of its own trigger; an alert whose escalation is gone, changed kind or
  * no longer matches its repair outcome clears. The message is fixed text plus
  * bounded fields (Action key, round, role): never a finding, commit subject or
@@ -580,8 +583,8 @@ export function observeReviewRepairStops(ctx: AlertContext): void {
   const { db, projectSlug, now } = ctx;
   const wanted = new Map<string, RedAlertTrigger>();
   const rows = db
-    .prepare("SELECT action_key, kind FROM production_operator_escalations WHERE action_key LIKE ? AND kind IN (?, ?)")
-    .all(`${projectSlug}/%`, REVIEW_REPAIR_ROUNDS_EXHAUSTED, REVIEW_REPAIR_GATED) as Array<{ action_key: string; kind: string }>;
+    .prepare("SELECT action_key, kind FROM production_operator_escalations WHERE action_key LIKE ? AND kind IN (?, ?, ?)")
+    .all(`${projectSlug}/%`, REVIEW_REPAIR_ROUNDS_EXHAUSTED, REVIEW_REPAIR_GATED, REVIEW_REPAIR_GATE_DEFECT) as Array<{ action_key: string; kind: string }>;
   for (const row of rows) {
     const stop = REVIEW_REPAIR_STOP_ALERTS[row.kind];
     let repair: { outcome: string; round: number; role: string } | undefined;
@@ -606,7 +609,9 @@ export function observeReviewRepairStops(ctx: AlertContext): void {
         const todoKey = `escalation:${row.kind}:${row.action_key}`;
         const what = stop.trigger === "repair_rounds_exhausted"
           ? `Review repair stopped for ${row.action_key}: the repair loop cannot run another round`
-          : `Review repair gated for ${row.action_key}: a gate stopped the repair loop`;
+          : stop.trigger === "repair_gate_defect"
+            ? `Review repair stopped for ${row.action_key}: a repeated finding no repair Session can address points at a reviewer rule or gate`
+            : `Review repair gated for ${row.action_key}: a gate stopped the repair loop`;
         return `${what} (round ${repair.round}, ${bounded(repair.role)} review). The candidate stays preserved and nothing integrates. ` +
           `Open /todo item ${todoKey}: it names the reason and the step. This notice clears when that item does.`;
       },
@@ -614,7 +619,7 @@ export function observeReviewRepairStops(ctx: AlertContext): void {
     });
   }
   const open = db
-    .prepare("SELECT id, action_key, trigger FROM production_red_alerts WHERE project_slug = ? AND status = 'open' AND trigger IN ('repair_rounds_exhausted', 'repair_gated')")
+    .prepare("SELECT id, action_key, trigger FROM production_red_alerts WHERE project_slug = ? AND status = 'open' AND trigger IN ('repair_rounds_exhausted', 'repair_gated', 'repair_gate_defect')")
     .all(projectSlug) as Array<{ id: string; action_key: string; trigger: string }>;
   for (const alert of open) {
     if (wanted.has(`${alert.trigger}\u0000${alert.action_key}`)) continue;
@@ -679,7 +684,7 @@ export function observeResumeNoProgressBudget(ctx: AlertContext, repoRoot: strin
  */
 export function isOperatorHeldAction(db: Database.Database, actionKey: string): boolean {
   const row = db
-    .prepare("SELECT 1 FROM production_operator_escalations WHERE action_key = ? AND kind IN (?, ?, 'operator_gate_pending')")
-    .get(actionKey, REVIEW_REPAIR_ROUNDS_EXHAUSTED, REVIEW_REPAIR_GATED);
+    .prepare("SELECT 1 FROM production_operator_escalations WHERE action_key = ? AND kind IN (?, ?, ?, 'operator_gate_pending')")
+    .get(actionKey, REVIEW_REPAIR_ROUNDS_EXHAUSTED, REVIEW_REPAIR_GATED, REVIEW_REPAIR_GATE_DEFECT);
   return row !== undefined;
 }

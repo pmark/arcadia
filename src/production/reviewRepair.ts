@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { appendReviewRepairJourneyLog } from "./journeyLog.js";
 import { isAncestor, refExists, tryGit } from "../git/worktrees.js";
-import { agentChangedPaths, candidateChangeGate } from "./candidateChangeGate.js";
+import { agentChangedPaths, candidateChangeGate, SETTLEMENT_RECORD_PATH } from "./candidateChangeGate.js";
 export { candidateChangeGate, REPAIR_GATED_PATHS, testWeakeningGates } from "./candidateChangeGate.js";
 import { runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
 // A leaf module: importing these through prReview.js can see them undefined at
@@ -24,6 +24,8 @@ import {
   getSessionRepair,
   launchedRepairRounds,
   MAX_REVIEW_REPAIR_ROUNDS,
+  parseRepairChecks,
+  parseRepairFindings,
   renderRepairFindings,
   REQUIRED_CHECKS_ROLE,
   requiredChecksRepairRequestId,
@@ -55,9 +57,10 @@ import { policyAuthorizesPullRequestReadiness, readProductionPolicySafely, type 
  *    candidate is on Decision 0098's gate list (checked-in authority paths,
  *    launch-authority and repair-loop code, deleted or skipped tests, a changed
  *    check threshold), when no verdict attempt is left to review a repaired
- *    head, when its PR is no longer open, or when this run
- *    already spent its {@link MAX_REVIEW_REPAIR_ROUNDS} repair rounds for the
- *    Action;
+ *    head, when its PR is no longer open, when the verdict repeats the previous
+ *    round's finding about records no repair Session can change (a gate defect:
+ *    {@link judgeSameFindingGateDefect}), or when this run already spent its
+ *    {@link MAX_REVIEW_REPAIR_ROUNDS} repair rounds for the Action;
  * 3. otherwise launches a repair Session for the same Action through the
  *    ordinary guarded standing-policy launch, on a NEW branch cut from the
  *    failed candidate's work before its completion settlement, with the
@@ -77,7 +80,9 @@ type RunCommand = NonNullable<QaPrReviewDependencies["runCommand"]>;
 
 export const REVIEW_REPAIR_ROUNDS_EXHAUSTED = "review_repair_rounds_exhausted";
 export const REVIEW_REPAIR_GATED = "review_repair_gated";
-export const REVIEW_REPAIR_ESCALATIONS: ReadonlySet<string> = new Set([REVIEW_REPAIR_ROUNDS_EXHAUSTED, REVIEW_REPAIR_GATED]);
+/** A reviewer repeats a finding no repair Session can address: a defect in a rule or gate, not in the candidate. */
+export const REVIEW_REPAIR_GATE_DEFECT = "review_repair_gate_defect";
+export const REVIEW_REPAIR_ESCALATIONS: ReadonlySet<string> = new Set([REVIEW_REPAIR_ROUNDS_EXHAUSTED, REVIEW_REPAIR_GATED, REVIEW_REPAIR_GATE_DEFECT]);
 
 export type ReviewRepairStep =
   | { kind: "not_applicable"; reason: string }
@@ -178,6 +183,140 @@ export function unrepairableReason(findings: ReviewRepairFinding[], checks: Revi
   return refusal
     ? "The verdict's only failure is the deterministic patch check refusing the reviewer's not-applicable claims; a repair Session cannot change the reviewer's claim, so the repair loop stops for the operator."
     : "The verdict records no reviewer finding or failed criterion a repair could address (an empty or unreadable report, or only not-checked criteria), so the repair loop stops for the operator.";
+}
+
+/* ------------------------------------------------------------------------ */
+/* The same-finding circuit breaker.                                         */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The shared share of title words at which two findings read as one. The
+ * reviewer rewords a finding each round (2026-11-04: "Settlement next_action
+ * names an Agent Ask...", "Plan next_action cites an Agent Ask...", "Settlement
+ * records cite an Agent Ask id...": 0.59 to 0.63), so exact text never matches;
+ * tests pin those titles against this bound.
+ */
+export const SAME_FINDING_TITLE_SIMILARITY = 0.5;
+
+/** Starts the `reason` of a row the breaker stopped; `outcome` stays `gated`, so every gated-row reader keeps working. */
+const GATE_DEFECT_REASON = "Gate defect:";
+const isGateDefectRow = (row: Pick<ReviewRepairRow, "outcome" | "reason">) => row.outcome === "gated" && (row.reason?.startsWith(GATE_DEFECT_REASON) ?? false);
+
+/** A slash-separated path, or a bare file name. Deliberately greedy: a stray match ("and/or", a URL) only stops the breaker firing. */
+const CITED_PATH = /[\w.@-]*(?:\/[\w.@-]+)+\/?|[\w@-][\w.@-]*\.[A-Za-z][A-Za-z0-9]{1,7}\b/g;
+
+/** Every path a finding names, in its title, evidence or recommendation. */
+export function citedPaths(finding: ReviewRepairFinding): string[] {
+  const text = `${finding.title} ${finding.evidence} ${finding.recommendation}`;
+  return [...new Set((text.match(CITED_PATH) ?? []).map((cited) => cited.replace(/^\.\//, "").replace(/[./-]+$/, "")))];
+}
+
+/** A file named after an Ask carries that Ask's id, which differs each round. */
+const withoutFileId = (file: string) => file.replace(/[0-9a-f]{7,40}(?=\.[^./]+$)/, "");
+
+/** A title's words; a word with a digit in it is a hash, id, number or round, which differ each round. */
+const titleWords = (title: string) => new Set(title.toLowerCase().split(/[^a-z0-9_]+/).filter((word) => word && !/\d/.test(word)));
+
+export function titleSimilarity(left: string, right: string): number {
+  const a = titleWords(left);
+  const b = titleWords(right);
+  const shared = [...a].filter((word) => b.has(word)).length;
+  const union = a.size + b.size - shared;
+  return union === 0 ? 0 : shared / union;
+}
+
+export interface SameFindingEvidence {
+  previousFindings: readonly ReviewRepairFinding[];
+  previousChecks: readonly ReviewRepairCheck[];
+  findings: readonly ReviewRepairFinding[];
+  checks: readonly ReviewRepairCheck[];
+  /** What this head's own settlement commit changes. */
+  settlementPaths: readonly string[];
+  /** What any Session of this candidate changed before settlement, the last repair's own change included. */
+  sessionPaths: readonly string[];
+}
+
+/**
+ * Whether another repair round can only reproduce this verdict. The reason to
+ * stop, or null to let the repair loop run exactly as it otherwise would; every
+ * doubt answers null, because that loop is what fixes real defects. All of:
+ *
+ * 1. Nothing here is the Session's to change: every finding names at least one
+ *    path, and every path it names is a governed settlement record that this
+ *    head's settlement commit wrote and that no Session of the candidate
+ *    touched. A finding naming a source or test file, or no path at all, always
+ *    answers null, however often it repeats and whatever the repair did to it:
+ *    a Session can still change that file, so the failure may yet be repaired.
+ * 2. No criterion failed beyond the previous round's, and each failed criterion's
+ *    evidence names one of those records: a criterion a finding does not explain
+ *    may be a real defect.
+ * 3. It already survived a round: some finding repeats one of the previous
+ *    round's, by title words at {@link SAME_FINDING_TITLE_SIMILARITY} and at
+ *    least one shared record. The first sighting always gets its round, since a
+ *    Session's fresh completion Ask can change what settlement writes.
+ *
+ * Other findings may be new (a new finding about the records is equally out of
+ * a Session's reach). Pure, and never decides whether the verdict stands: it
+ * only stops a repair earlier.
+ */
+export function judgeSameFindingGateDefect(evidence: SameFindingEvidence): string | null {
+  const { findings, checks, previousFindings, previousChecks } = evidence;
+  if (findings.length === 0 || previousFindings.length === 0) return null;
+  const settlement = new Set(evidence.settlementPaths);
+  const session = new Set(evidence.sessionPaths);
+  const hostWritten = (file: string) => SETTLEMENT_RECORD_PATH.test(file) && settlement.has(file) && !session.has(file);
+  const citations = findings.map(citedPaths);
+  if (citations.some((cited) => cited.length === 0 || !cited.every(hostWritten))) return null;
+  const records = [...new Set(citations.flat())];
+  const previouslyFailed = new Set(previousChecks.map((check) => check.name));
+  if (checks.some((check) => !previouslyFailed.has(check.name) || !records.some((record) => check.evidence.includes(record)))) return null;
+  const repeated = findings.find((finding, index) => {
+    const cited = new Set(citations[index].map(withoutFileId));
+    return previousFindings.some((earlier) => titleSimilarity(finding.title, earlier.title) >= SAME_FINDING_TITLE_SIMILARITY
+      && citedPaths(earlier).some((file) => cited.has(withoutFileId(file))));
+  });
+  if (!repeated) return null;
+  const title = repeated.title.replace(/\s+/g, " ").trim().slice(0, 200);
+  return `${GATE_DEFECT_REASON} the verdict repeats the previous repair round's finding "${title}", and every finding names only records the host writes at settlement (${records.join(", ")}), which no Session of this candidate changed. Another repair round could only reproduce it, so none is spent and no Session is launched.`;
+}
+
+const changedPaths = (repoRoot: string, from: string, to: string): string[] | null => {
+  const output = tryGit(repoRoot, ["-c", "core.quotepath=false", "diff", "--no-renames", "--name-only", `${from}...${to}`]);
+  return output === null ? null : output.split("\n").map((line) => line.trim()).filter(Boolean);
+};
+
+/**
+ * {@link judgeSameFindingGateDefect} for a repair Session's failed head, against
+ * the round that launched it. Null unless that round is this run's and the same
+ * reviewer's, and when Git cannot show who changed what.
+ */
+function repeatedFindingGateDefect(db: Database.Database, input: {
+  repoRoot: string; session: AgentSession; actionKey: string; epoch: number; role: string; head: string; start: string;
+  findings: ReviewRepairFinding[]; checks: ReviewRepairCheck[];
+}): string | null {
+  const previous = getSessionRepair(db, input.session.id);
+  if (!previous || previous.action_key !== input.actionKey || previous.policy_epoch !== input.epoch || previous.role !== input.role) return null;
+  const settlementPaths = changedPaths(input.repoRoot, input.start, input.head);
+  const candidate = changedPaths(input.repoRoot, input.session.base_revision, input.start);
+  // A repair that changed a record and changed it back nets out of the candidate's whole diff.
+  const repair = changedPaths(input.repoRoot, previous.start_revision, input.start);
+  if (!settlementPaths || !candidate || !repair) return null;
+  return judgeSameFindingGateDefect({
+    previousFindings: parseRepairFindings(previous),
+    previousChecks: parseRepairChecks(previous),
+    findings: input.findings,
+    checks: input.checks,
+    settlementPaths,
+    sessionPaths: [...candidate, ...repair]
+  });
+}
+
+/** What the operator does about a gate defect: the candidate is not what is wrong, so the fix lands elsewhere. */
+function gateDefectRemedy(row: ReviewRepairRow): string {
+  const pr = row.pull_request_url ?? "<PR>";
+  return `Fix the reviewer rule or the gate behind this finding on the base, or the settlement step if the records on ${row.failed_head.slice(0, 12)} really are wrong. `
+    + `Then run \`arcadia production reset-repair-budget ${row.action_key}\` so the review has a fresh budget. A changed judgement revision re-reviews this head by itself; otherwise mark ${pr} ready and rerun it with \`arcadia ${row.role === "qa" ? "qa pr" : "qa code-review"} ${pr} --rerun\`. `
+    + "The reset alone does not clear this stop: it clears when the head's verdicts pass, and a newer failed verdict is judged afresh. No repair round was spent on it, and nothing integrates meanwhile.";
 }
 
 /** Verdict attempts each role still has for this requirement input; a repair round needs one of each. */
@@ -374,12 +513,18 @@ export function attemptReviewRepair(input: ReviewRepairInput): ReviewRepairStep 
     const adjacent = verdictIsAuthorityAdjacent(context.findings, context.judgedChecks);
     const gate = adjacent ? null : candidateChangeGate(repoRoot, session.base_revision, start);
     const rounds = launchedRepairRounds(db, actionKey, policy.epoch);
+    const repairable = verdictIsRepairable(context.findings, context.checks);
+    const gateDefect = adjacent || gate || !repairable ? null : repeatedFindingGateDefect(db, {
+      repoRoot, session, actionKey, epoch: policy.epoch, role: failed.role, head: failed.head, start, findings: context.findings, checks: context.checks
+    });
     if (adjacent) {
       outcome = "gated"; reason = `The verdict is authority-adjacent (${adjacent}); a repair is never launched unattended for it.`;
     } else if (gate) {
       outcome = "gated"; reason = `The candidate is on Decision 0098's gate list: ${gate}. The repair loop stops for the operator.`;
-    } else if (!verdictIsRepairable(context.findings, context.checks)) {
+    } else if (!repairable) {
       outcome = "gated"; reason = unrepairableReason(context.findings, context.checks);
+    } else if (gateDefect) {
+      outcome = "gated"; reason = gateDefect;
     } else if (rounds >= MAX_REVIEW_REPAIR_ROUNDS) {
       outcome = "escalated"; reason = `The ${MAX_REVIEW_REPAIR_ROUNDS} repair rounds for ${actionKey} in this production run (epoch ${policy.epoch}) are spent, and the latest repaired head still failed.`;
     }
@@ -485,10 +630,11 @@ function finishRepairStep(input: ReviewRepairInput, decided: ReviewRepairRow, co
 
   const findings = renderRepairFindings(row).join("\n");
   if (row.outcome === "gated" || row.outcome === "escalated") {
-    const escalation = row.outcome === "gated" ? REVIEW_REPAIR_GATED : REVIEW_REPAIR_ROUNDS_EXHAUSTED;
+    const gateDefect = isGateDefectRow(row);
+    const escalation = gateDefect ? REVIEW_REPAIR_GATE_DEFECT : row.outcome === "gated" ? REVIEW_REPAIR_GATED : REVIEW_REPAIR_ROUNDS_EXHAUSTED;
     input.escalate(escalation,
       `${context.describe(row)} ${row.reason ?? "the repair loop stopped"} ${context.findingsLabel(row)}:\n${findings}`,
-      context.stoppedRemedy(row));
+      gateDefect ? gateDefectRemedy(row) : context.stoppedRemedy(row));
     return { kind: "stopped", escalation, reason: row.reason ?? row.outcome };
   }
   if (row.outcome !== "pending") return { kind: "not_applicable", reason: `The repair for this failed head is already ${row.outcome}.` };
