@@ -146,13 +146,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
-    source: Agent Ask add-pin-blast-radius-patterns-action-20261102
+    source: Agent Ask seed-serial-run-test-only-actions-20261104-r2
     why: "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision."
     acceptance_criteria:
       - A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.
       - The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.
       - docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.
-    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns]
+    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns, pin-work-monitor-malformed-record, pin-recovery-unparseable-time-order, pin-reconcile-refuses-activation-commit]
     decisions: []
     references: []
   - id: implement-a-hermetic-test-that-an
@@ -575,11 +575,70 @@ actions:
     depends_on: [recovery-signal-replay-gate, worker-reconciles-own-pointer-commits]
     decisions: []
     references: ["docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
+  - id: pin-work-monitor-malformed-record
+    title: "Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015."
+    expected_artifact: Evidence satisfying Agent Ask pin-work-monitor-malformed-record
+    clarification: clarified
+    confidence: high
+    source: Agent Ask tighten-work-monitor-malformed-record-criteria-20261104
+    why: "Removing the field-count check currently passes every test, so a malformed record could reach the monitor's safety report unnoticed."
+    acceptance_criteria:
+      - tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.
+      - The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.
+      - The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/2015"]
+  - id: pin-recovery-unparseable-time-order
+    title: "Pin how recovery signals order an unparseable time with tests, covering the epoch fallback named in Issue #2004."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Pin how recovery signals order an unparseable time with tests, covering the epoch fallback named in Issue #2004."
+    expected_artifact: Evidence satisfying Agent Ask pin-recovery-unparseable-time-order
+    clarification: clarified
+    confidence: high
+    source: Agent Ask seed-serial-run-test-only-actions-20261104-r2
+    why: "Nothing tests the fallback in epoch(), so a garbled ledger time could reorder recovery signals unnoticed."
+    acceptance_criteria:
+      - tests/recovery-replay.test.ts gains a test in which classifyRecoverySignals receives two failing operator-qa-plan repair rows, the first with an unparseable at value and the second with a parseable one, and returns the signal of the parseable row first.
+      - A second new test gives two such repair rows that both have unparseable at values and asserts that their signals keep input order.
+      - Every other test in that file passes unchanged.
+      - The change touches only tests/recovery-replay.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/2004"]
+  - id: pin-reconcile-refuses-activation-commit
+    title: "Pin that the worker's base sync refuses a local plan-activation commit with a test, recording today's behaviour named in Issue #2018."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Pin that the worker's base sync refuses a local plan-activation commit with a test, recording today's behaviour named in Issue #2018."
+    expected_artifact: Evidence satisfying Agent Ask pin-reconcile-refuses-activation-commit
+    clarification: clarified
+    confidence: high
+    source: Agent Ask seed-serial-run-test-only-actions-20261104-r2
+    why: "A run crossing a Plan boundary stops on this refusal, and pinning it means any change to the behaviour must be deliberate."
+    acceptance_criteria:
+      - "tests/worker-pointer-reconcile.test.ts gains a test in which the local base has an unpushed commit whose subject starts with chore(arcadia): activate and which changes PROJECT.md, the remote has advanced, and syncBaseWithOwnPointerCommits returns outcome refused with a reason saying the local-only commits are not pointer commits."
+      - The same test asserts that the refusal leaves the local HEAD, the checked-out branch, the git status and the remote's main unchanged.
+      - Every other test in that file passes unchanged.
+      - The change touches only tests/worker-pointer-reconcile.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/2018"]
 questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: first-unattended-run
+current_action: pin-work-monitor-malformed-record
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
