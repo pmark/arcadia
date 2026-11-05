@@ -318,7 +318,8 @@ describe("the live rehearsal's captured code review", () => {
     expect(qa.result.data.verdict).toBe("pass");
     expect(qa.calls.prompt).toContain("Report each as pass, fail, or not-checked with concrete evidence. Absence of evidence is never Pass.");
     expect(qa.calls.prompt).not.toContain("not-applicable");
-    expect(qa.calls.prompt).not.toContain("Governed records");
+    // QA gets the governed-record facts, never the status vocabulary (the line above).
+    expect(qa.calls.prompt).toContain("Governed records");
     expect(JSON.parse(qa.calls.schema).properties.checks.items.properties.status.enum).toEqual(["pass", "fail", "not-checked"]);
 
     // QA may not mark an acceptance criterion not-applicable: that is no valid structured verdict.

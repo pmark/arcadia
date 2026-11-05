@@ -120,6 +120,8 @@ describe("settlement records in the reviewer's scope judgement", () => {
     expect(section).toContain(r.evidence);
     expect(section).toContain(r.settlement);
     expect(section).toMatch(/Operator QA plan.*preserved commit.*not a defect/s);
+    // The plan's required-checks step reads the pull request's head, not the preserved commit it may name.
+    expect(section).toContain(`reads this pull request's current head, ${r.settlement}: that is this Candidate too, not a mismatch with the preserved commit`);
     expect(scopeJudgementSection(RECORDS).join("\n")).not.toContain("preserved commit");
   });
 

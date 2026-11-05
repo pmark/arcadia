@@ -1,5 +1,11 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { renderPreservedOperatorQaPlan } from "../src/sessions/candidatePreservation.js";
 import {
+  detectTestRun,
   OPERATOR_QA_PLAN_MAX_CHARS,
   operatorQaPlanSource,
   renderOperatorQaPlan,
@@ -464,6 +470,190 @@ describe("Operator QA plan rendering", () => {
     expect(result).toMatchObject({ status: "refused", reason: "the candidate's changed files could not be read from Git." });
   });
 
+  // Real Actions and the real report wording, 2026-11-05: "Step 5 claims a diff shows tests pass, and Step 6
+  // claims one file's contents show the set of changed files and CI results ... no step runs the named tests or checks CI."
+  describe("a step's expected result is only what its command can show", () => {
+    const VITEST = { setup: "bridge", runner: "pnpm exec vitest run" } as const;
+    const SCOPE_AND_CI = (file: string) => `The change touches only ${file}. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.`;
+    const stepOf = (body: string, n: number) => body.slice(body.indexOf(`### Step ${n} `), body.indexOf(`### Step ${n + 1} `));
+    const stepsThatClaim = (body: string) => body.split("\n").filter((line) => line.startsWith("- **Expected:**") && line.includes("shows this criterion holds"));
+
+    const TEST_FILE = "tests/recovery-replay.test.ts";
+    const SELF_CHECK = "node scripts/preservation-self-check.mjs";
+    const recoverySource = source({
+      actionKey: "arcadia/pin-recovery-unparseable-time-order",
+      acceptanceCriteria: [
+        `${TEST_FILE} gains a test in which classifyRecoverySignals receives two failing operator-qa-plan repair rows, the first with an unparseable at value and the second with a parseable one, and returns the signal of the parseable row first.`,
+        "A second new test gives two such repair rows that both have unparseable at values and asserts that their signals keep input order.",
+        "Every other test in that file passes unchanged.",
+        SCOPE_AND_CI(TEST_FILE)
+      ],
+      validationCommands: [SELF_CHECK]
+    });
+    const recoveryFacts = facts({
+      branch: "claude/pin-recovery-unparseable-time-order-20261105T040649785Z",
+      changedFiles: [{ status: "A", path: ".arcadia/asks/agent-ask-complete-x.yaml" }, { status: "M", path: TEST_FILE }],
+      testRun: VITEST
+    });
+
+    it("renders the real pin-recovery-unparseable-time-order plan truthfully, step by step", () => {
+      const body = rendered(recoverySource, recoveryFacts);
+      // A diff shows the file was not edited; it never shows a test passing, and the step says who does.
+      expect(stepOf(body, 5)).toBe([
+        "### Step 5 — Acceptance criterion 3 of 4",
+        "",
+        `- **Do:** read the change with \`git diff ${BASE} ${COMMIT}\`.`,
+        `- **Expected:** the diff shows what changed. That is all this inspection shows: a diff never shows that a test passes. Whether those tests pass is shown only by Step 8, which runs \`${TEST_FILE}\`: its exit-zero result is that proof. Any other part of this criterion must show in this step's output. The criterion, exactly as worded: “Every other test in that file passes unchanged.”`,
+        "",
+        ""
+      ].join("\n"));
+      // Nothing to inspect: one file's content cannot show the changed-file set or a CI result.
+      expect(stepOf(body, 6)).toBe([
+        "### Step 6 — Acceptance criterion 4 of 4",
+        "",
+        "- **Do:** compare Step 2's changed-file list with this criterion; then read the required checks in Step 9.",
+        `- **Expected:** Step 2's list shows every file the candidate changes: apart from Arcadia's governed records (this Action's Agent Ask under \`.arcadia/asks/\` and, on a settled head, \`MISSION_LOG.md\`, \`PROJECT.md\` and the Plan), it names only the files this criterion allows. Step 9's output shows each required check passing on the pull request's head. This step inspects no file: one file's content cannot show that. The criterion, exactly as worded: “${SCOPE_AND_CI(TEST_FILE)}”`,
+        "",
+        ""
+      ].join("\n"));
+      expect(stepOf(body, 7)).toContain(`### Step 7 — Run the Project's declared validation\n\n- **Do:** run \`${SELF_CHECK}\`.`);
+      expect(stepOf(body, 8)).toBe([
+        "### Step 8 — Run the named test file",
+        "",
+        `- **Do:** run \`node scripts/bridge-worktree-deps.mjs\` to link the clone's installed dependencies into this throwaway worktree (a clone with none needs \`pnpm install\` first); then run \`pnpm exec vitest run ${TEST_FILE}\`.`,
+        "- **Expected:** the run's summary reports every test passed and none failed, and `echo $?` immediately after it prints `0`. This runs that file at this commit and nothing else in the suite.",
+        "",
+        ""
+      ].join("\n"));
+      expect(body.slice(body.indexOf("### Step 9 "))).toBe([
+        "### Step 9 — Read the required checks on the pull request's head",
+        "",
+        "- **Do:** run `gh pr checks claude/pin-recovery-unparseable-time-order-20261105T040649785Z --required`.",
+        "- **Expected:** every listed check reads `pass` and `echo $?` immediately after it prints `0`; `8` means a check is still pending and `1` that one failed. It reads the pull request for this branch at its current head: this commit, or this commit with a governed settlement commit on top. It shows each job's result, not what the job ran.",
+        "",
+        "Merge, deployment and publication remain separate operator gates."
+      ].join("\n"));
+      expect(body).toContain("Every later step except the named test run and the declared validation only reads Git data or, in Step 9, the pull request's checks on GitHub, and only those run candidate code.");
+      // Only the two criteria inspection can show keep the plain claim.
+      expect(stepsThatClaim(body)).toHaveLength(2);
+      expect(stepsThatClaim(body).join("\n")).not.toMatch(/passes unchanged|required CI/);
+      expect(rendered(recoverySource, recoveryFacts)).toBe(body);
+    });
+
+    it("renders the real pin-work-monitor-malformed-record compound criterion, keeping its diff for the parts a diff shows", () => {
+      const file = "tests/work-monitor-failures.test.ts";
+      const body = rendered(source({
+        acceptanceCriteria: [
+          "The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.",
+          `${file} gains a test.`,
+          SCOPE_AND_CI(file)
+        ],
+        validationCommands: [SELF_CHECK]
+      }), facts({ changedFiles: [{ status: "M", path: file }], testRun: VITEST }));
+      expect(stepOf(body, 3)).toContain(`read the change with \`git diff ${BASE} ${COMMIT}\``);
+      expect(stepOf(body, 3)).toContain("a diff never shows that a test passes");
+      expect(stepOf(body, 3)).toContain("Any other part of this criterion must show in this step's output.");
+      expect(stepOf(body, 3)).not.toContain("shows this criterion holds");
+      expect(body).toContain(`pnpm exec vitest run ${file}`);
+    });
+
+    it("never pastes a CI or scope claim onto a file's content when the criterion also needs that file read", () => {
+      const body = rendered(source({ acceptanceCriteria: ["src/a.ts gains a guard. The change touches only src/a.ts and required CI is green."], validationCommands: [] }), facts({
+        changedFiles: [{ status: "M", path: "src/a.ts" }]
+      }));
+      const step = stepOf(body, 3);
+      expect(step).toContain(`inspect \`src/a.ts\` with \`git show ${COMMIT}:src/a.ts\``);
+      expect(step).toContain("Showing a file's source never shows that a required check passes or which files changed.");
+      expect(step).toContain("The changed-file limit is judged on Step 2's list");
+      expect(step).toContain("Whether required CI passes is shown only by Step 5's read of the pull request's required checks.");
+      expect(step).not.toContain("shows this criterion holds");
+    });
+
+    it("says it has no run when the repository shows no runner, rather than inventing a command", () => {
+      const body = rendered(recoverySource, { ...recoveryFacts, testRun: null });
+      expect(body).not.toContain("vitest");
+      expect(body).not.toContain("Run the named test");
+      expect(stepOf(body, 5)).toContain("No step in this plan runs those tests, so it offers no direct proof that they pass.");
+      expect(stepOf(body, 6)).toContain("Step 8's output shows each required check passing");
+      expect(body).toContain("Every later step except the declared validation only reads Git data or, in Step 8, the pull request's checks on GitHub, and only the declared validation runs candidate code.");
+    });
+
+    it("runs a named test file instead of pointing at a validation that does not run it", () => {
+      const named = "tests/marker.test.ts";
+      const body = rendered(source({ acceptanceCriteria: [`${named} exists and passes.`], validationCommands: [SELF_CHECK] }), facts({
+        changedFiles: [{ status: "A", path: named }], testRun: VITEST
+      }));
+      expect(stepOf(body, 3)).toContain("A named test file passing is shown only by a run, never by its source; Step 5 runs it, and its exit-zero result is that proof.");
+      expect(stepOf(body, 3)).not.toContain("the run this plan offers is Step 4");
+      expect(body).toContain(`pnpm exec vitest run ${named}`);
+    });
+
+    it("takes only paths from criterion text, and only test files that exist at the commit", () => {
+      const run = (criterion: string, changedFiles = [{ status: "M", path: "src/a.ts" }], pathExists?: (candidate: string) => boolean) =>
+        rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({ changedFiles, testRun: VITEST, ...(pathExists ? { pathExists } : {}) }));
+      // Absent, deleted, a fixture rather than a test, or a flag-shaped name: no run.
+      expect(run("tests/gone.test.ts is deleted.", [{ status: "D", path: "tests/gone.test.ts" }])).not.toContain("vitest");
+      expect(run("tests/fixtures/x.json is added.", [{ status: "A", path: "tests/fixtures/x.json" }])).not.toContain("vitest");
+      expect(run("-x/y.test.ts is added.", [{ status: "A", path: "-x/y.test.ts" }], () => true)).not.toContain("vitest");
+      // A file name is shell-quoted when it needs to be; a backticked command never becomes the run.
+      const quoted = run("tests/a b.test.ts gains a test.", [{ status: "A", path: "tests/a b.test.ts" }]);
+      expect(quoted).toContain("`pnpm exec vitest run 'tests/a b.test.ts'`");
+      expect(run("`rm -rf tests` is never run, and tests/a.test.ts gains a test.", [{ status: "M", path: "tests/a.test.ts" }])).not.toContain("run `rm");
+      // A test-passing claim with no named file runs the candidate's own changed test files.
+      const fallback = run("Every test passes.", [{ status: "M", path: "tests/a.test.ts" }, { status: "D", path: "tests/b.test.ts" }, { status: "M", path: "src/a.ts" }]);
+      expect(fallback).toContain("`pnpm exec vitest run tests/a.test.ts`");
+      expect(fallback).not.toContain("vitest run tests/a.test.ts tests/b.test.ts");
+    });
+
+    it("names the branch for the checks step, since the first render has no pull request yet, and quotes it", () => {
+      const body = rendered(source({ acceptanceCriteria: ["Required CI passes."], validationCommands: [] }), facts({ branch: "claude/x`$(touch y)" }));
+      expect(body).toContain("``gh pr checks 'claude/x`$(touch y)' --required``");
+    });
+
+    it("keeps the ordinary wording, and adds no step, for wording that claims none of this", () => {
+      for (const criterion of [
+        "The test passes a stub to `parse`.",
+        "A test does not pass an empty list.",
+        "The new test never passes on the old tree.",
+        "Every test passes on main but fails on the candidate.",
+        "The CI workflow gains a lint job.",
+        "`.github/workflows/ci.yml` does not require CI to pass for drafts.",
+        "The function changes only the timestamp.",
+        "MARKER.md has no other content."
+      ]) {
+        const body = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({
+          changedFiles: [{ status: "M", path: "tests/a.test.ts" }], testRun: VITEST
+        }));
+        expect(body, criterion).toContain("shows this criterion holds, exactly as worded");
+        expect(body, criterion).not.toContain("gh pr checks");
+        expect(body, criterion).not.toContain("Run the named test");
+      }
+    });
+
+    it("gives a command the criterion assigns to required CI that proof, not a statement that none exists", () => {
+      const body = rendered(source({ acceptanceCriteria: ["`pnpm lint` passes in required CI."], validationCommands: [SELF_CHECK] }), facts());
+      expect(stepOf(body, 3)).toContain("Whether required CI passes is shown only by Step 5's read");
+      expect(stepOf(body, 3)).not.toContain("no direct proof");
+    });
+
+    it("reads the runner from the candidate's own manifest, and names none it cannot see", () => {
+      const manifest = (fields: object) => JSON.stringify({ name: "x", ...fields });
+      const has = (...paths: string[]) => (candidate: string) => paths.includes(candidate);
+      const vitest = { devDependencies: { vitest: "^4.1.0" } };
+      expect(detectTestRun(manifest({ ...vitest, packageManager: "pnpm@11.7.0" }), has("scripts/bridge-worktree-deps.mjs"))).toEqual({ setup: "bridge", runner: "pnpm exec vitest run" });
+      expect(detectTestRun(manifest(vitest), has("pnpm-lock.yaml"))).toEqual({ setup: "install", runner: "pnpm exec vitest run" });
+      expect(detectTestRun(manifest(vitest), has())).toBeNull();
+      expect(detectTestRun(manifest({ packageManager: "pnpm@11.7.0" }), has())).toBeNull();
+      expect(detectTestRun("{not json", has("pnpm-lock.yaml"))).toBeNull();
+      expect(detectTestRun("null", has("pnpm-lock.yaml"))).toBeNull();
+      expect(detectTestRun(null, has("pnpm-lock.yaml"))).toBeNull();
+      const installed = rendered(source({ acceptanceCriteria: ["tests/a.test.ts gains a test."], validationCommands: [] }), facts({
+        changedFiles: [{ status: "A", path: "tests/a.test.ts" }], testRun: { setup: "install", runner: "pnpm exec vitest run" }
+      }));
+      expect(installed).toContain("run `pnpm install --frozen-lockfile` to install dependencies in this throwaway worktree; then run `pnpm exec vitest run tests/a.test.ts`.");
+    });
+  });
+
   it("builds its source only from the bound Action definition and declared commands", () => {
     expect(operatorQaPlanSource({ actionKey: "p/a", action: undefined, validationCommands: undefined })).toEqual({
       kind: "action-acceptance", actionKey: "p/a", actionTitle: null, acceptanceCriteria: [], validationCommands: []
@@ -473,5 +663,37 @@ describe("Operator QA plan rendering", () => {
       action: { title: "T", acceptanceCriteria: ["one", 2, "two"] },
       validationCommands: ["pnpm test", null]
     })).toEqual({ kind: "action-acceptance", actionKey: "p/a", actionTitle: "T", acceptanceCriteria: ["one", "two"], validationCommands: ["pnpm test"] });
+  });
+});
+
+describe("host preservation's plan facts", () => {
+  it("reads the test runner from the candidate commit, not the working tree", () => {
+    const repo = mkdtempSync(path.join(tmpdir(), "operator-qa-plan-"));
+    try {
+      const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: repo, encoding: "utf8" }).trim();
+      git("init", "-q", "-b", "main");
+      writeFileSync(path.join(repo, "README.md"), "base\n");
+      git("add", ".");
+      git("commit", "-qm", "base");
+      const base = git("rev-parse", "HEAD");
+      mkdirSync(path.join(repo, "tests"));
+      writeFileSync(path.join(repo, "tests/a.test.ts"), "// test\n");
+      writeFileSync(path.join(repo, "package.json"), JSON.stringify({ devDependencies: { vitest: "^4.1.0" }, packageManager: "pnpm@11.7.0" }));
+      git("add", ".");
+      git("commit", "-qm", "candidate");
+      const commitSha = git("rev-parse", "HEAD");
+      rmSync(path.join(repo, "package.json"));
+      const plan = (commit: string) => renderPreservedOperatorQaPlan(source({ acceptanceCriteria: ["tests/a.test.ts gains a test."], validationCommands: [] }), {
+        repositoryPath: repo, branch: "claude/x", baseBranch: "main", baseRevision: base, commitSha: commit
+      }).body;
+      expect(plan(commitSha)).toContain("then run `pnpm exec vitest run tests/a.test.ts`.");
+      expect(plan(commitSha)).toContain("run `pnpm install --frozen-lockfile` to install dependencies");
+      // A candidate whose manifest shows no runner gets no run step.
+      git("add", "-A");
+      git("commit", "-qm", "no manifest");
+      expect(plan(git("rev-parse", "HEAD"))).not.toContain("vitest");
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 });
