@@ -34,7 +34,7 @@ RECOVER_DESCRIPTOR_SHA256="4e6186613c03c86a67f8ee8cccdeb6adaf1a979e677ab621d07cc
 # scripts/services.sh (tracked, clean main) delegates to this implementation,
 # and refuses to run any other file when given this pin (PR #1247).
 RESTART_IMPL="$ARCADIA_REPO/scripts/restart-services-impl.sh"
-RESTART_IMPL_SHA256="9c8b207e9c46be45ff7008713326faf1f3a9724886ef345d3ea05dddf567f8c8"
+RESTART_IMPL_SHA256="e00f3b1403b00837fc1be8a0458acf3fd9fb3e75a7d7da7c40889c83abb0060a"
 WORKER_LOG_GLOB="$HOME/Library/Logs/arcadia-services-*"
 DRAIN_DEADLINE_SECONDS=1800
 OBSERVATION_INTERVAL_SECONDS=15
