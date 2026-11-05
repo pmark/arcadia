@@ -350,6 +350,45 @@ test("gates stay: an unverified view, a vanished target and an earlier uncertain
     await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden");
     await expect(page.getByText(/Your unsent draft keeps its original target/)).toBeVisible();
 
+    // Typed while one View reads, then moved to another before it verifies: that other View isn't a target it chose.
+    await page.evaluate(() => localStorage.clear());
+    world.plans = "slow";
+    await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
+    await field(page).fill("About the Action I was on");
+    await put(page).click();
+    await page.getByRole("link", { name: "moon-garden", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Moon garden" })).toBeVisible({ timeout: 15_000 });
+    await field(page).focus();
+    await expect(relay(page).locator(".relay-chip")).toContainText("Choose where this draft goes");
+    await expect(send()).toBeDisabled();
+    await expect(direction()).toBeDisabled();
+    // More typing doesn't choose for it, and neither does a reload.
+    await field(page).fill("About the Action I was on, still");
+    await expect(send()).toBeDisabled();
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Moon garden" })).toBeVisible({ timeout: 15_000 });
+    await field(page).focus();
+    await expect(send()).toBeDisabled();
+    expect(world.posts).toEqual([]);
+    // Only an explicit tap gives it this View.
+    await page.getByRole("button", { name: "Use this view", exact: true }).click();
+    await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden");
+    await expect(send()).toBeEnabled();
+    // Coming back to the View it was typed on, once that verifies, does give it that View.
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
+    await field(page).fill("Back where I began");
+    await put(page).click();
+    await page.getByRole("link", { name: "Feed" }).click();
+    await expect(page).toHaveURL(/\/workspace\/feed$/, { timeout: 15_000 });
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible({ timeout: 15_000 });
+    await field(page).focus();
+    await expect(send()).toBeEnabled({ timeout: 15_000 });
+    await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden");
+    await expect.poll(() => page.evaluate(() => (JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { target: { context: string } | null }).target?.context)).toContain("Review the page on a phone");
+    world.plans = "ready";
+
     // A direction names its exact target. A refusal from Arcadia (a vanished target) is shown and never resent.
     await page.evaluate(() => localStorage.clear());
     await page.goto(`${ctx.url}${ACTION_URL}#dusk`);

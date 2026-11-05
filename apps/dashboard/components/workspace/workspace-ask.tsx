@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { AskTrailResponse } from "../../lib/arcadia-cli";
 import type { AskResponse } from "../../lib/types";
@@ -10,11 +11,12 @@ import type { DirectionView } from "../../../../src/ask/directionTypes.js";
 
 type Target = { projectId?: string; plan?: string; action?: string; label: string; context: string };
 type Exchange = { id: string; text: string; target: Target; mode?: "direction"; phase: "sending" | "acknowledged" | "uncertain"; summary?: string; status?: string; lookupOnly?: boolean };
-type Saved = { draft: string; target: Target | null; exchange: Exchange | null; history: Exchange[] };
+/** `typedOn` is the route of a draft typed before its View was verified. Only that route's View may become its target. */
+type Saved = { draft: string; target: Target | null; typedOn?: string; exchange: Exchange | null; history: Exchange[] };
 const empty: Saved = { draft: "", target: null, exchange: null, history: [] };
 const storageKey = "arcadia.workspace.ask.v1";
 /** What the View on screen says Ask may use. A route that publishes nothing, like the Feed, has no subject to verify, so Ask uses portfolio routing there. */
-type ViewTarget = { target: Target; available: boolean; reading: boolean };
+type ViewTarget = { target: Target; available: boolean; reading: boolean; path?: string };
 const PORTFOLIO: Target = { label: "Portfolio", context: "Portfolio" };
 const noView: ViewTarget = { target: PORTFOLIO, available: true, reading: false };
 type AskState = {
@@ -120,7 +122,7 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
     lock.current = true; setBusy(true); setTrail(null); setReadError(null); setMissing(false); ++reading.current;
     // Synchronous storage attempt precedes fetch; the exact payload stays pinned even if navigation changes.
     const before = current.current;
-    update({ ...selectExchange(before, { ...exchange, phase: "sending" }), ...(fresh ? { draft: "", target: null } : {}) });
+    update({ ...selectExchange(before, { ...exchange, phase: "sending" }), ...(fresh ? { draft: "", target: null, typedOn: undefined } : {}) });
     const url = new URL(window.location.href); url.searchParams.set("receipt", exchange.id); window.history.replaceState(null, "", url);
     try {
       const response = await fetch("/api/ask", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ request: exchange.text, requestId: exchange.id,
@@ -159,10 +161,10 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
     // Initialization only reads the server; a reload never calls send.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  // A draft typed while the View was reading belongs to that View once it's verified, so navigation can't retarget it.
+  // A draft typed while its View was reading belongs to that View once it's verified, so navigation can't retarget it.
   useEffect(() => {
     const draft = current.current;
-    if (view?.available && draft.draft && draft.target === null) update({ ...draft, target: view.target });
+    if (view?.available && draft.draft && draft.target === null && (draft.typedOn === undefined || draft.typedOn === view.path)) update({ ...draft, target: view.target, typedOn: undefined });
   }, [view, saved.draft, saved.target]);
   return <AskContext.Provider value={{ saved, update, busy, warning, trail, readError, missing, inspect, send, view: view ?? noView, publishView }}>{children}</AskContext.Provider>;
 }
@@ -170,10 +172,11 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
 /** The View on screen says what Ask may use, and draws nothing: the composer lives in Relay, which the layout mounts once. */
 export function WorkspaceAskTarget({ target, available, reading }: { target: Target; available: boolean; reading: boolean }) {
   const publish = useContext(AskContext)?.publishView;
-  const key = JSON.stringify([target, available, reading]);
+  const path = usePathname();
+  const key = JSON.stringify([target, available, reading, path]);
   useEffect(() => {
     if (!publish) return;
-    publish({ target, available, reading });
+    publish({ target, available, reading, path });
     return () => publish(null);
     // The key holds every field, so a new object with the same values changes nothing.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -195,6 +198,7 @@ type ComposerProps = {
 export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldFocus }: ComposerProps) {
   const [directionFor, setDirectionFor] = useState<string | null>(null);
   const state = useContext(AskContext);
+  const path = usePathname();
   if (!state) return null;
   const { saved, update, busy, warning, trail, readError, missing, inspect, send, view: { target, available, reading } } = state;
   const draftTarget = saved.target ?? target;
@@ -205,7 +209,9 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
   const changedScope = draftTarget.context !== target.context || draftTarget.projectId !== target.projectId;
   // Nothing is sent about a View that can't be verified. A draft explicitly on the whole portfolio doesn't depend on that View.
   const pinnedToPortfolio = saved.target !== null && !saved.target.projectId;
-  const sendable = available || pinnedToPortfolio;
+  // A draft typed on a View that never verified has no target yet, and the View now on screen is not one it chose.
+  const orphaned = saved.target === null && Boolean(saved.draft.trim()) && saved.typedOn !== undefined && saved.typedOn !== path;
+  const sendable = (available && !orphaned) || pinnedToPortfolio;
   const e = saved.exchange;
   const retryable = e?.phase === "uncertain" && missing && !e.lookupOnly;
   const receiptHref = e ? `/workspace?receipt=${encodeURIComponent(e.id)}` : null;
@@ -218,7 +224,7 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
   return <div className="workspace-ask relay-body">
     <div className="relay-head" inert={!open}>
       <span className="relay-grip" aria-hidden="true" />
-      <p className="relay-chip">{reading && saved.target === null ? "Reading this view…" : draftTarget.projectId ? <>To Project <b>{draftTarget.label}</b></> : <>To your <b>whole portfolio</b></>}</p>
+      <p className="relay-chip">{orphaned ? "Choose where this draft goes" : reading && saved.target === null ? "Reading this view…" : draftTarget.projectId ? <>To Project <b>{draftTarget.label}</b></> : <>To your <b>whole portfolio</b></>}</p>
       {head}
     </div>
     <form onSubmit={event => { event.preventDefault(); submit(); }}>
@@ -226,12 +232,16 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
       <div className="relay-field">
         <textarea id="workspace-ask-text" ref={field} rows={1} placeholder="What would you like to do?" value={saved.draft}
           onFocus={event => onFieldFocus(event.relatedTarget instanceof Element ? event.relatedTarget : null)}
-          onChange={event => update({ ...saved, draft: event.target.value, target: saved.target ?? (available ? target : null) })} />
+          onChange={event => {
+            const pin = saved.target ?? (available && !orphaned ? target : null);
+            update({ ...saved, draft: event.target.value, target: pin, typedOn: pin ? undefined : saved.draft.trim() ? saved.typedOn ?? path : path });
+          }} />
         {fieldControl}
       </div>
       <div className="relay-send" inert={!open}>
-        {reading && !sendable && <p className="relay-why" role="status">Reading this view. Keep typing; sending waits for it.</p>}
-        {!reading && !sendable && <p className="relay-why" role="status">Arcadia couldn&apos;t confirm this view, so Ask can&apos;t use it. Your draft stays. <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO })}>Ask the whole portfolio instead</button></p>}
+        {orphaned && <p className="relay-why" role="status">You started this draft on a view that wasn&apos;t confirmed, so it has no target yet. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target, typedOn: undefined })}>Use this view</button></p>}
+        {reading && !sendable && !orphaned && <p className="relay-why" role="status">Reading this view. Keep typing; sending waits for it.</p>}
+        {!reading && !sendable && !available && <p className="relay-why" role="status">Arcadia couldn&apos;t confirm this view, so Ask can&apos;t use it. Your draft stays. <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO, typedOn: undefined })}>Ask the whole portfolio instead</button></p>}
         <div className="relay-send-row">
           <label><input type="checkbox" checked={directionMode} disabled={!draftTarget.projectId || !sendable || busy} onChange={event => setDirectionFor(event.target.checked ? draftKey : null)} />Send as a direction to this context</label>
           <button type="submit" disabled={blocked}>{busy ? "Sending…" : directionMode ? "Send direction" : "Send new Ask"}</button>
@@ -240,7 +250,7 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
       </div>
     </form>
     <div className="relay-scroll" inert={!open}>
-      {changedScope && <p role="status">Your unsent draft keeps its original target. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target })}>Use this view</button></p>}
+      {changedScope && <p role="status">Your unsent draft keeps its original target. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target, typedOn: undefined })}>Use this view</button></p>}
       {thread && draftTarget.context !== draftTarget.label && <p className="workspace-muted">Selected: {draftTarget.context}. Selecting a Plan or Action doesn&apos;t change where an ordinary Ask goes.</p>}
       {warning && <p role="alert">{warning}</p>}
       {e && <section aria-label="Latest Ask" className="workspace-ask-receipt" aria-live="polite">
