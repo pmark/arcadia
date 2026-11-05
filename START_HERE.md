@@ -53,40 +53,46 @@ exercise recipient consume/ack, correlated completion and independent QA; a
 self-report, altered report, negative check, wrong managed Action or mismatched
 revision must never produce verified. Existing ordinary Asks remain ordinary.
 
-The workspace has three areas:
-- **Context** lists what is in the selected scope.
-- **Work** shows the selected record.
-- **Direction** holds the **Next move** and the Ask.
+Each piece of work is shown as a route: where it's been, where it is, and what's ahead.
+- **A portfolio** is a few routes, one for each active Project, with the ones needing a look first. Every other Project is under **All other Projects**.
+- **A Project** leads with one Plan's route. Other Plans wait behind counts.
+- **A Plan** is one route with named stops: how many are done, the current Action, the next two, and how many more are ahead.
+- **An Action** is one sentence and its place on the route.
 
-Select a Project and **Next move** shows Go's own resolution for it:
+A tap changes the address and the screen at once, and a line says what's being read. Slow reads are allowed, and after a few seconds the line says your tap was received.
+
+The words on a route are never more than the record says. A name comes from a current plain-language summary, or it's the record's own text cut short and marked with an ellipsis. Status comes from the record, and a route only shows movement when an Action is recorded as in progress.
+
+**Read the full record** draws and reads the rest only when you ask: the agents' own text, every Action, what Go has for this Action, and the Journey. **Direction** holds the **Next move** and the Ask.
+
+**Next move** is one line until you open it, because Go's read is the slowest thing on the page. On the Action the record says is current, Go is read at once, and **Next move** opens by itself when Go says it's ready. Open it and it shows Go's own resolution for the Project:
 - **Ready to continue** with Go's current Action and its next step;
 - **Waiting** with Go's question and every blocker, each with its own remedy;
 - **Not an agent's to take** with Go's authorization text, when nothing blocks the Action but it is the operator's or an outside party's;
 - or **No current Action**.
 
-It says whether the selected Plan or Action is Go's current work, and links to it when it is not. A Project's Plan list leads with **Go's current Plan**, taken from Go's last good read and labelled so after a failed one. Before Go has been read, or when Go names a Plan the list doesn't include yet, the recorded active Plan leads under its own label. Other Plans still marked active follow. Plans that aren't active yet, and finished Plans, sit behind collapsed sections with their counts. The Context list marks **Go's current Action**, and Work shows Go's next step, expected result, needed Decisions and acceptance criteria for it.
+It says whether the selected Plan or Action is Go's current work, and links to it when it is not. A Project's Plan list leads with **Go's current Plan**, taken from Go's last good read and labelled so after a failed one. Before Go has been read, or when Go names a Plan the list doesn't include yet, the recorded active Plan leads under its own label. Other Plans still marked active follow. Plans that aren't active yet, and finished Plans, sit behind collapsed sections with their counts. The route marks **Go's current Action**, and its full record shows Go's next step, expected result, needed Decisions and acceptance criteria.
 
 Each read uses the journal-free `go-context` observer over Go's existing resolver. The workspace never polls. Go is read:
-- the first time a page loads for a Project;
-- on the next workspace navigation more than five minutes after the last attempt, including a failed one;
+- when you open **Next move**, or arrive on the Action the record says is current;
+- when you move to another view with **Next move** asked for, more than five minutes after the last attempt, including a failed one;
 - on **Read again**.
 
 Only one read per Project runs at a time. A reload or new tab starts fresh and reads again.
 
-A failed read keeps the last good one, labelled with its time in Direction and Work. The Context marker and **Continue** are withheld until Go reads cleanly again.
+A failed read keeps the last good one, labelled with its time in Direction and the full record. The route's marker and **Continue** are withheld until Go reads cleanly again.
 
 For a dispatchable Action, **Continue** shows **Reading preview…** immediately, then focuses a bordered protected preview of its target, owner, configured provider/model/effort and limits. It does not start work. The preview keeps the existing planning, packet approval, credential and launch gates; a gated preview cannot be confirmed. **Confirm Continue for this Action** uses the same protected Session launch as the Project page and the same explicit browser confirmation under Decision 0096. It covers one Action and at most one Session, never an automatic next Action, merge or Production start. The preview states the existing exit-time validation, commit, push and draft-PR authorization and its 24-hour/first-exit expiry. There is no per-launch time-limit override; the existing Session/provider limits and recorded Plan budget apply.
 
 Repeated presses and tabs use the same request identity for the same governed resolution. Changed Go facts or a changed launch preview refuse with the current facts; choose **Read Go again** and inspect a fresh preview. A successful confirmation keeps a **Session launched** or **Reused existing Session** receipt visible, with the actual Session identity, its log and a **View Session** link opening that exact Session at `/sessions/<id>` with its details and log expanded. Returning to, reloading, or refocusing the workspace on an Action reads its recorded Session from Arcadia and makes **View Session** the primary control; an active Session hides Continue. A finished Session keeps further Continue options collapsed. Missing or unreadable Session evidence is shown explicitly, never treated as proof that a fresh launch is safe. The selected Action retains its Session link even after Go selects another Action. An uncertain network or server outcome keeps the request identity visible and disables further launch attempts in this control; use **Check Sessions and runs** to reconcile it through the existing Session receipts before trying again. Source tests, installed adoption and a real operator-assisted delivery are separate evidence stages; a source change alone proves no live delivery. After a successful required environment probe, a Session continues the same authorized Action. An exit without current Session evidence remains missing evidence; earlier Runs for the Action are not proof of that Session. This does not authorize an automatic retry or relax any launch gate.
 
-On a phone, Work comes first, then Direction, then Context, and **Go's next move and your Ask ↓** jumps to Direction.
+On a phone, the route comes first, then Direction.
 
 Where a Plan has a plain-language summary in `docs/generated/plan-summaries/`, the workspace uses it:
 - Plans and Actions show their plain title and a one-line why.
-- The Plan and Action views show why each exists, what it serves and what "done" looks like.
-- The recorded milestone and title stay alongside.
+- The full record shows why each exists, what it serves and what "done" looks like, with the recorded milestone and title.
 
-Every summary is labelled as a reading aid, because the record governs. One written before its record changed is labelled as such, and a Plan without a summary shows its record as before. `pnpm -s check:plan-summaries` reports which summaries are missing or stale, without changing anything.
+Every summary is labelled as a reading aid, because the record governs. One written before its record changed names nothing on the route, and waits in the full record, labelled as such. A Plan without a summary shows its record, cut short and marked. `pnpm -s check:plan-summaries` reports which summaries are missing or stale, without changing anything.
 
 See [the Ask-loop guide and QA](docs/design/workspace-ask-receipt-loop.md) and
 [the shell routes](docs/design/conversational-ui-shell.md), and
