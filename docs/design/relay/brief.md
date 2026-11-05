@@ -30,7 +30,7 @@ routing scores a lot, ahead of a proper bake-off. Way lookup is built as evidenc
 - **Routing direction (S017):** the local model routes and uses tools, Ask comes first, engines are
   pluggable with none added now, and supervisors supply rich context ([probe 3](probes/routing-3.md),
   [ladder](decision-interface.md)).
-- **Being worked on:** items 1 and 2 of the revised build order have merged. Item 3, weather rhythm, waits for the operator. Production
+- **Being worked on:** items 1 and 2 of the revised build order have merged, and the operator started item 3, weather rhythm (S032). Production
   work goes first whenever they compete.
 - **Riskiest assumption about the layers, probed once:** that one sky can carry status behind a view and an overlay. Text
   held and the sky stayed visible ([probe](probes/layers-1.md)). The operator's phone test found the weather too noisy (S030), which the

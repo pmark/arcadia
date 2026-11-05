@@ -323,7 +323,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: 44f610b8680982bb03fe0b36fb730a1ac6662f9715f9a4a946fe99dd8f479ef4
+    sha256: 92df1fe2c928fe9d5a4c46b9e4336f0eaa0a584b1a41db08afce5df358937b6f
   - id: S029
     title: Operator's approval of the layer design
     kind: operator
@@ -345,6 +345,13 @@ sources:
     retention: repo
     path: sources/S031-responsive-symbolic-default.md
     sha256: 8664ef94879f8dde09126e261b35d68cd9ace5590085877f207dbc29cebc443d
+  - id: S032
+    title: Operator's phone test of item 2, and the go-ahead for item 3
+    kind: operator
+    added: 2026-11-05
+    retention: repo
+    path: sources/S032-start-weather-rhythm.md
+    sha256: 6eb0aaddc946328e2bf662955ac44a52ffcaacd8ab7ebba5f6c569dd6d983c7b
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent
@@ -3147,15 +3154,19 @@ concepts:
     origins:
       - source: S030
         locator: dust storm
+      - source: S032
+        locator: Start item 3
     fit:
-      status: conflicts
+      status: exists
       evidence:
+        - apps/dashboard/lib/weather-rhythm.ts
         - apps/dashboard/lib/system-sky.ts
         - apps/dashboard/components/workspace/sky/weather.ts
+        - docs/design/relay/probes/weather-1.md
     position: leaning
     serves:
       - REQ-015
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Built because the operator started item 3 (S032). The operator hasn't yet judged it on a phone, and the rest of the revision still awaits approval.
   - id: C-080
     title: "One question at a time, answered in place"
     kind: interface
