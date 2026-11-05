@@ -325,9 +325,9 @@ export function materializeCandidateTree(repository: string, tree: string, desti
 const MAX_BLOB_BYTES = 64 * 1024 * 1024;
 
 /** Finite, private regular-file stdin avoids the synchronous pipe/EOF deadlock
- * from #1414. Shared by hash/index input, size-bounded blob batch requests and
- * the privileged reader. */
-function withRegularFileStdin<T>(input: Buffer | string, scratch: string, run: (stdin: number) => T): T {
+ * from #1414. Shared by hash/index input, size-bounded blob batch requests, the
+ * privileged reader and the patch-equivalence proof. */
+export function withRegularFileStdin<T>(input: Buffer | string, scratch: string, run: (stdin: number) => T): T {
   const inputPath = path.join(scratch, "stdin");
   writeFileSync(inputPath, input, { flag: "wx", mode: 0o600 });
   let fd: number | undefined;

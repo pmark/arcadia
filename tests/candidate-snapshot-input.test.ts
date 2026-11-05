@@ -1,8 +1,9 @@
-import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
+import { execFileSync, spawnSync, type ExecFileSyncOptions, type SpawnSyncOptions } from "node:child_process";
 import { createHash } from "node:crypto";
-import { closeSync, constants, fstatSync, openSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, writeSync } from "node:fs";
+import { closeSync, constants, fstatSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync, writeSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { isPatchEquivalent } from "../src/git/worktrees.js";
 import { snapshotCandidate } from "../src/sessions/candidateSnapshot.js";
 import { validateCompletionCandidate } from "../src/sessions/completionValidation.js";
 import { systemTmux } from "../src/sessions/index.js";
@@ -11,7 +12,7 @@ import { installTimeoutFixtureHooks, observeCandidate, plainFixture } from "./pr
 
 vi.mock("node:child_process", async importOriginal => {
   const actual = await importOriginal<typeof import("node:child_process")>();
-  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync), spawnSync: vi.fn(actual.spawnSync) };
 });
 
 const READER = "/usr/bin/python3";
@@ -19,9 +20,13 @@ const READER_BOUND_MS = 700;
 
 installTimeoutFixtureHooks();
 let realExec: typeof execFileSync;
+let realSpawn: typeof spawnSync;
 beforeEach(async () => {
-  realExec = (await vi.importActual<typeof import("node:child_process")>("node:child_process")).execFileSync;
+  const actual = await vi.importActual<typeof import("node:child_process")>("node:child_process");
+  realExec = actual.execFileSync;
+  realSpawn = actual.spawnSync;
   vi.mocked(execFileSync).mockImplementation(realExec);
+  vi.mocked(spawnSync).mockImplementation(realSpawn);
 });
 
 describe("candidate snapshot subprocess input", () => {
@@ -227,4 +232,83 @@ describe("candidate capture reader outside any preservation attempt (#2084)", ()
     expect(() => systemTmux.killSession("s")).not.toThrow();
     expect(seen.map(options => [options.killSignal, typeof options.timeout])).toEqual(Array(4).fill(["SIGKILL", "number"]));
   });
+});
+
+describe("patch-equivalence proof on the worker's thread (#2084)", () => {
+  /** A branch whose only commit base carries as a cherry-pick: equivalent, never an ancestor. */
+  function equivalentBranch(root: string): string {
+    const repo = path.join(root, "equivalent");
+    mkdirSync(repo);
+    const git = (...args: string[]) => realExec("git", ["-c", "user.name=t", "-c", "user.email=t@t", "-c", "core.hooksPath=/dev/null", ...args], { cwd: repo, stdio: "ignore" });
+    git("init", "-q", "-b", "base");
+    writeFileSync(path.join(repo, "a.txt"), "a\n");
+    git("add", ".");
+    git("commit", "-qm", "start");
+    git("switch", "-qc", "side");
+    writeFileSync(path.join(repo, "picked.txt"), "picked\n");
+    git("add", ".");
+    git("commit", "-qm", "picked");
+    git("switch", "-q", "base");
+    writeFileSync(path.join(repo, "other.txt"), "other\n");
+    git("add", ".");
+    git("commit", "-qm", "other");
+    git("cherry-pick", "side");
+    return repo;
+  }
+
+  /** Stall one Git subcommand under the bound it was given; every other call keeps a long bound. */
+  function stallGit(subcommand: string, stall: (options: SpawnSyncOptions) => ReturnType<typeof spawnSync>) {
+    vi.stubEnv("ARCADIA_PRESERVATION_GIT_TIMEOUT_MS", "700");
+    // Recorded, not asserted here: the function under test catches what this throws.
+    const stalled: Array<{ timeout?: number; killSignal?: unknown; status: number | null; input: unknown }> = [];
+    vi.mocked(spawnSync).mockImplementation(((command: string, args: string[], options: SpawnSyncOptions = {}) => {
+      if (command !== "git" || args[0] !== subcommand) return realSpawn(command, args, { ...options, timeout: 15_000 });
+      if (options.timeout === undefined) throw new Error("A Git call ran with no bound; injecting the stall would hang the suite.");
+      const result = stall(options);
+      stalled.push({ timeout: options.timeout, killSignal: options.killSignal, status: result.status, input: options.input });
+      return result;
+    }) as typeof spawnSync);
+    return stalled;
+  }
+  const killedAtBound = [{ timeout: 700, killSignal: "SIGKILL", status: null, input: undefined }];
+
+  it("proves real equivalence through private regular-file stdin", () => {
+    const repo = equivalentBranch(plainFixture().root);
+    const stdins: Array<{ regular: boolean; links: number }> = [];
+    vi.mocked(spawnSync).mockImplementation(((command: string, args: string[], options: SpawnSyncOptions = {}) => {
+      if (command === "git" && args[0] === "apply") {
+        expect(options.input).toBeUndefined();
+        const stat = fstatSync((options.stdio as unknown[])[0] as number);
+        stdins.push({ regular: stat.isFile(), links: stat.nlink });
+      }
+      return realSpawn(command, args, options);
+    }) as typeof spawnSync);
+    expect(isPatchEquivalent(repo, "base", "side")).toBe(true);
+    expect(stdins).toEqual([{ regular: true, links: 0 }]);
+  }, 15_000);
+
+  it("reads withheld EOF on the proof as not proven, without hanging or throwing", () => {
+    const f = plainFixture();
+    const repo = equivalentBranch(f.root);
+    const stalled = stallGit("apply", options => {
+      const fifo = path.join(f.root, "withheld-apply-eof");
+      realExec("mkfifo", [fifo]);
+      const fd = openSync(fifo, constants.O_RDWR);
+      try {
+        return realSpawn("git", ["apply", "--cached", "--reverse", "--check", "--whitespace=nowarn", "-"], { ...options, input: undefined, stdio: [fd, "ignore", "ignore"] });
+      } finally {
+        closeSync(fd);
+        rmSync(fifo);
+      }
+    });
+    expect(isPatchEquivalent(repo, "base", "side")).toBe(false);
+    expect(stalled).toEqual(killedAtBound);
+  }, 15_000);
+
+  it.each(["cherry", "merge-base", "diff", "read-tree"])("reads a hung git %s as not proven, without throwing into the tick", subcommand => {
+    const repo = equivalentBranch(plainFixture().root);
+    const stalled = stallGit(subcommand, options => realSpawn("/bin/sh", ["-c", "exec sleep 30"], options));
+    expect(isPatchEquivalent(repo, "base", "side")).toBe(false);
+    expect(stalled).toEqual(killedAtBound);
+  }, 15_000);
 });
