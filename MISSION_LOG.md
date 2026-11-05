@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-04
+updated: 2026-11-05
 ---
 
 # Mission Log: Arcadia
@@ -2914,3 +2914,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "apps/dashboard/app/api/operator-script/retired-entries.test.ts gains a test in which the retirement pins the sha256 of the original descriptor and the original script, only the written descriptor bytes differ (for example a trailing newline) while the script bytes equal the pinned bytes, the changed descriptor stays invalid, and GET returns no scripts with console.error called exactly once."; "Every other test in that file passes unchanged."; "The change touches only apps/dashboard/app/api/operator-script/retired-entries.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-cover-retired-reland-20261103).
+
+## 2026-11-05 — Completed arcadia/pin-work-monitor-malformed-record
+
+- **Did:** Completed Action arcadia/pin-work-monitor-malformed-record from accepted evidence (Candidate 884ae53002840807071f04a128148d73ae181ce7).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration."; "The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged."; "The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-work-monitor-malformed-record-cc321b0a5fd6).
