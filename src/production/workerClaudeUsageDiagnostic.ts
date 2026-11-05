@@ -165,12 +165,23 @@ const inFlight = new Map<string, {
 }>();
 const exactKeys = (value: object, keys: string) => Object.keys(value).sort().join() === keys;
 const canonicalTime = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
+/**
+* Operator ruling A (2026-11-05), reading Decision 0161's "both usage windows below 100%": the weekly (7d) window is
+* required, with a future reset. An absent 5-hour window is no limit. A reported 5-hour window must be readable: in range
+* with a future reset, or at 0% (an idle window has no reset yet). A reported window above 0% with no usable reset fails.
+*/
 function safeReading(reading: ProviderUsageReading, now: Date) {
-  const windows = reading.windows.filter(w => ["5h", "7d"].includes(w.label) && Number.isFinite(w.usedPercentage) && w.usedPercentage >= 0 && w.usedPercentage <= 100 && canonicalTime(w.resetsAt) && Date.parse(w.resetsAt!) > now.getTime())
-    .map(w => ({ label: w.label, usedPercentage: w.usedPercentage, resetsAt: new Date(w.resetsAt!).toISOString() }));
+  const inRange = (w: ProviderUsageReading["windows"][number]) => Number.isFinite(w.usedPercentage) && w.usedPercentage >= 0 && w.usedPercentage <= 100;
+  const futureReset = (w: ProviderUsageReading["windows"][number]) => canonicalTime(w.resetsAt) && Date.parse(w.resetsAt!) > now.getTime();
+  const weekly = reading.windows.filter(w => w.label === "7d");
+  const fiveHour = reading.windows.filter(w => w.label === "5h");
+  const weeklyReadable = weekly.length === 1 && inRange(weekly[0]) && futureReset(weekly[0]);
+  const fiveHourReadable = fiveHour.length === 0 || (fiveHour.length === 1 && inRange(fiveHour[0]) && (futureReset(fiveHour[0]) || fiveHour[0].usedPercentage === 0));
+  const windows = [...fiveHour, ...weekly]
+    .map(w => ({ label: w.label, usedPercentage: w.usedPercentage, resetsAt: futureReset(w) ? new Date(w.resetsAt!).toISOString() : null }));
   const source = ["environment", "file", "keychain", "auto"].includes(reading.credentialSource) ? reading.credentialSource : "unknown";
   const outcome = ["no_credentials", "credential_expired", "transport", "parse", "http_error", "not_reported", "ok"].includes(reading.outcome) ? reading.outcome : "unavailable";
-  const success = reading.httpStatus === 200 && outcome === "ok" && windows.some(w => w.label === "5h") && windows.some(w => w.label === "7d");
+  const success = reading.httpStatus === 200 && outcome === "ok" && weeklyReadable && fiveHourReadable;
   return { credentialSource: source, credentialExpiresAt: canonicalTime(reading.credentialExpiresAt) ? new Date(reading.credentialExpiresAt!).toISOString() : null,
     requestAttempted: reading.requestAttempted === true, httpStatus: Number.isInteger(reading.httpStatus) && reading.httpStatus! >= 100 && reading.httpStatus! <= 599 ? reading.httpStatus : null,
     outcome, windows: success ? windows : [], source: reading.requestAttempted ? "worker_live_request" : "worker_no_request", success };

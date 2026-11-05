@@ -167,7 +167,10 @@ switch (key2) {
       schema: "arcadia-worker-claude-usage-receipt-v1", nonce, repository: state.repository, workspace, pid: binding.pid, release: binding.release, handlerHash: binding.handlerHash,
       approval: { decision, digest: "d".repeat(64) }, startedAt: new Date(now - 2000).toISOString(), finishedAt: new Date(now - 1000).toISOString(),
       credentialExpiresAt: new Date(now + (signin.expiresInMs ?? 3 * 3_600_000)).toISOString(), requestAttempted: true, httpStatus: 200, outcome: "ok", success: true,
-      windows: [{ label: "5h", usedPercentage: signin.windowPercent ?? 20, resetsAt: new Date(now + 3_600_000).toISOString() }, { label: "7d", usedPercentage: 30, resetsAt: new Date(now + 86_400_000).toISOString() }]
+      windows: [
+        ...(signin.omitFiveHour ? [] : [{ label: "5h", usedPercentage: signin.windowPercent ?? 20, resetsAt: new Date(now + 3_600_000).toISOString() }]),
+        ...(signin.omitWeekly ? [] : [{ label: "7d", usedPercentage: signin.weeklyPercent ?? 30, resetsAt: new Date(now + 86_400_000).toISOString() }])
+      ]
     }), { mode: 0o600 });
     const sha256 = createHash("sha256").update(readFileSync(receiptPath)).digest("hex");
     ok({ mode: "run", outcome: mode === "reused" ? "reused" : "checked", date, sequenceClaimed: mode !== "reused", receipt: { path: receiptPath, sha256 }, binding, ...(decision ? { decision, digest: "d".repeat(64), nonce, publicationHead } : {}) });

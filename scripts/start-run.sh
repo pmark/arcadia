@@ -238,7 +238,8 @@ check_reviewed_hashes() {  # REF:L161: the card pair and this executor against t
 # The only ledger refusal is an overlapping in-flight sequence, checked by `start-run sign-in` (read-only in P2).
 # REF:L245-L248 and L364 as replaced by Decision 0161: START needs the bound worker's own usage receipt from this card's sequence (or a
 # fresh reused one of the same bound worker): its bytes unchanged, a successful approved live check, the credential expiring more than
-# 5 minutes from now and both usage windows below 100%. Read-only; never a new probe.
+# 5 minutes from now and every reported usage window below 100% (operator ruling A, 2026-11-05: the 7d window is required;
+# an absent 5h window is no limit; a reported 5h window must still be below 100%). Read-only; never a new probe.
 check_signin_receipt() {
   local out
   out="$(node -e '
@@ -255,7 +256,7 @@ try{
   need(r.success===true&&r.httpStatus===200&&r.outcome==="ok"&&r.requestAttempted===true,"the worker usage check did not succeed");
   need(Date.parse(r.credentialExpiresAt)>Date.now()+5*60000,"credential expiry: the sign-in has expired or expires within 5 minutes");
   const w=l=>(Array.isArray(r.windows)?r.windows:[]).filter(x=>x.label===l);
-  need(["5h","7d"].every(l=>w(l).length===1&&Number.isFinite(w(l)[0].usedPercentage)&&w(l)[0].usedPercentage>=0&&w(l)[0].usedPercentage<100),"usage window unknown or at 100%");
+  need(["5h","7d"].every(l=>(l==="5h"&&w(l).length===0)||w(l).length===1&&Number.isFinite(w(l)[0].usedPercentage)&&w(l)[0].usedPercentage>=0&&w(l)[0].usedPercentage<100),"usage window unknown or at 100%");
   process.stdout.write(JSON.stringify({path:s.path,sha256:s.sha256,credentialExpiresAt:r.credentialExpiresAt,windows:r.windows,release:r.release,handlerHash:r.handlerHash,finishedAt:r.finishedAt??null}));
 }catch(e){process.stdout.write("REFUSED: "+e.message);process.exit(1)}
 ' "$SIGN_IN_RECEIPT" "$PIN" "$BOUND_HANDLER")" || refuse "sign-in and credential-expiry gate: ${out#REFUSED: }"

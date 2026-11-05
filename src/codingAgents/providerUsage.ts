@@ -1,6 +1,6 @@
 import { readOpenCodeUsage, type OpenCodeUsageDependencies, type OpenCodeSessionUsage } from "./opencodeUsage.js";
 import {
-  loadClaudeOAuthCredentials, readClaudeStatusLineTelemetry, readCodexRateLimitsLive,
+  claudeUsageWindowAbsent, loadClaudeOAuthCredentials, readClaudeStatusLineTelemetry, readCodexRateLimitsLive,
   requestClaudeUsage,
   type ClaudeCredentialSource, type ClaudeOAuthCredentials, type CodingAgentRateLimit,
 } from "./availability.js";
@@ -91,14 +91,22 @@ export async function readProviderUsage(options: ProviderUsageOptions = {}, deps
     claude.httpStatus = response.status || null;
     claude.outcome = response.failure ?? (response.status < 200 || response.status >= 300 ? "http_error" : "not_reported");
     if (response.status >= 200 && response.status < 300 && response.body) {
+      // Operator ruling A (2026-11-05): a window the provider does not report is no limit and is skipped;
+      // a reported window that cannot be read makes the whole response unreadable rather than silently dropping it.
+      const windows: CodingAgentRateLimit[] = [];
+      let unreadable = false;
       for (const [label, window] of [["5h", response.body.five_hour], ["7d", response.body.seven_day]] as const) {
+        if (claudeUsageWindowAbsent(window)) continue;
         if (typeof window?.utilization === "number" && Number.isFinite(window.utilization)
           && window.utilization >= 0 && window.utilization <= 100) {
-          claude.windows.push({ label, usedPercentage: window.utilization,
+          windows.push({ label, usedPercentage: window.utilization,
             resetsAt: typeof window.resets_at === "string" && Number.isFinite(Date.parse(window.resets_at)) ? window.resets_at : null });
+        } else {
+          unreadable = true;
         }
       }
-      if (claude.windows.length) {
+      if (!unreadable && windows.length) {
+        claude.windows = windows;
         claude.observation = "live";
         claude.observedAt = now.toISOString();
         claude.outcome = "ok";

@@ -101,8 +101,19 @@ export interface ClaudeUsageResponse {
 }
 
 interface ClaudeUsageWindow {
-  utilization?: number;
+  utilization?: number | null;
   resets_at?: string | null;
+}
+
+/**
+ * Operator ruling A (2026-11-05), reading Decision 0161: a Claude usage window the provider does not report (missing,
+ * `null`, or an object with neither a utilization nor a reset time) is no limit. Plans whose usage card shows only weekly
+ * windows report no 5-hour window. A window that is reported is never treated as absent.
+ */
+export function claudeUsageWindowAbsent(window: unknown): boolean {
+  if (window === undefined || window === null) return true;
+  const record = objectValue(window);
+  return record !== null && record.utilization == null && record.resets_at == null;
 }
 
 /** One provider's last-read account telemetry, as cached and as injected by a caller that read it live. */
@@ -262,6 +273,10 @@ export async function refreshClaudeCodeUsageTelemetry(
 
   const current = readJsonRecord(snapshotPath) ?? existing ?? {};
   const currentRateLimits = objectValue(current.rate_limits);
+  // A fresh reading with no 5-hour window means the plan has none (ruling A): drop any cached one instead of keeping
+  // a stale 5-hour figure that admission would otherwise keep reading.
+  const { five_hour: _staleFiveHour, ...keptRateLimits } = currentRateLimits ?? {};
+  const fiveHourAbsent = claudeUsageWindowAbsent(response.body.five_hour);
   writeClaudeSnapshot(snapshotPath, {
     ...current,
     arcadia_captured_at: now.toISOString(),
@@ -271,11 +286,13 @@ export async function refreshClaudeCodeUsageTelemetry(
     arcadia_usage_unauthorized_since: null,
     arcadia_usage_unauthorized_signalled: null,
     rate_limits: {
-      ...(currentRateLimits ?? {}),
-      five_hour: mergeClaudeUsageWindow(
-        objectValue(currentRateLimits?.five_hour),
-        response.body.five_hour,
-      ),
+      ...keptRateLimits,
+      ...(fiveHourAbsent ? {} : {
+        five_hour: mergeClaudeUsageWindow(
+          objectValue(currentRateLimits?.five_hour),
+          response.body.five_hour,
+        ),
+      }),
       seven_day: mergeClaudeUsageWindow(
         objectValue(currentRateLimits?.seven_day),
         response.body.seven_day,
