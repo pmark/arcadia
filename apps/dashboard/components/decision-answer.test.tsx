@@ -135,10 +135,31 @@ describe("DecisionAnswerView", () => {
     expect(html).toMatch(/<details class="mt-1"><summary[^>]*>Answer from the to-do card/);
   });
 
-  it("does the same when the card can't be read", () => {
+  it("never moves a Decision to the unpinned control because a read failed", () => {
     const html = render({ view: null, meta: null, cardFailed: true });
-    expect(html).toContain("The pinned answer buttons couldn&#x27;t be read.");
-    expect(html).toContain("Answer from the to-do card");
+    expect(html).toContain("so nothing can be pressed yet");
+    expect(html).not.toContain("Answer from the to-do card");
+    expect(html).not.toContain("Approve");
+    expect(html).not.toContain("aria-pressed");
+  });
+
+  it("keeps a pinned card pressable through a failed poll", () => {
+    const html = render({ cardFailed: true });
+    expect(html.match(/aria-pressed/g)).toHaveLength(2);
+    expect(html).not.toContain("so nothing can be pressed yet");
+  });
+
+  it("always shows the record's question, with a worded gate question only beside it", () => {
+    const html = render({ meta: { ...meta, question: "Delete production database", gateQuestion: "Should we proceed?" } });
+    expect(html).toContain("Delete production database");
+    expect(html).toContain("The record gives only this title, not a full question.");
+    expect(html).toContain("Its gate asks: Should we proceed?");
+    expect(html.indexOf("Delete production database")).toBeLessThan(html.indexOf("Should we proceed?"));
+  });
+
+  it("doesn't leave an old refusal showing while another press is working", () => {
+    const html = render({ pendingId: "decision-k.alpha.0042:option-1", outcome: { ok: false, reason: "stale_state_hash", message: "Old." } });
+    expect(html).not.toContain("decision-refused");
   });
 
   it("offers nothing for a Decision the card read says is no longer open", () => {

@@ -39,10 +39,10 @@ const RECORD = "# Decision 0003\n\n## Rationale\n\nThe whole reasoning lives her
 // The list a Decision page used to download whole: the same size as the real one on the day this was written.
 const wholeList = { source: "todo", note: null, approvals: Array.from({ length: 447 }, (_, index) => ({ ...row, id: `a${index}`, todoKey: `agent_ask:site/a${index}`, kind: "agent_ask", detail: "x".repeat(2600) })) };
 
-interface Fixture { requested: string[]; bytes: Map<string, number>; card: () => unknown; record: () => Promise<void>; press: (route: Route) => Promise<unknown> }
+interface Fixture { requested: string[]; bytes: Map<string, number>; card: () => unknown; record: () => Promise<void>; press: (route: Route) => Promise<unknown>; reads: () => Promise<void> }
 
 async function serveFixtures(page: Page, overrides: Partial<Fixture> = {}): Promise<Fixture> {
-  const fixture: Fixture = { requested: [], bytes: new Map(), card: () => ({ cards: [view()], refused: [], decision: meta }), record: async () => undefined, press: route => route.abort(), ...overrides };
+  const fixture: Fixture = { requested: [], bytes: new Map(), card: () => ({ cards: [view()], refused: [], decision: meta }), record: async () => undefined, press: route => route.abort(), reads: async () => undefined, ...overrides };
   await page.route("**/api/**", async route => {
     const url = new URL(route.request().url());
     fixture.requested.push(`${route.request().method()} ${url.pathname}`);
@@ -54,10 +54,12 @@ async function serveFixtures(page: Page, overrides: Partial<Fixture> = {}): Prom
     if (route.request().method() !== "GET") return route.abort();
     // Slow reads, as real ones are, so the screen has to say something in the meantime.
     if (url.pathname === "/api/todo-item") {
+      await fixture.reads();
       await new Promise(resolve => setTimeout(resolve, 300));
       return reply({ source: "todo", note: null, approvals: [row] });
     }
     if (url.pathname === "/api/todo-item/decision") {
+      await fixture.reads();
       await new Promise(resolve => setTimeout(resolve, 900));
       return reply(fixture.card());
     }
@@ -100,12 +102,17 @@ test("a Decision opens small and at once, on one phone screen, with the full rec
     page.on("pageerror", error => errors.push(error.message));
     let releaseRecord = () => undefined as void;
     const recordHeld = new Promise<void>(resolve => { releaseRecord = resolve; });
-    const fixture = await serveFixtures(page, { record: () => recordHeld });
+    let releaseReads = () => undefined as void;
+    const readsHeld = new Promise<void>(resolve => { releaseReads = resolve; });
+    const fixture = await serveFixtures(page, { record: () => recordHeld, reads: () => readsHeld });
 
-    // The shell and a specific line come before any data.
+    // The shell and a specific line come with no data at all: both reads are held until this has been seen.
     await page.goto(`${url}/todo/decision/site/0003`, { waitUntil: "commit" });
-    await expect(page.getByRole("status").filter({ hasText: /this Decision/ })).toBeVisible({ timeout: 800 });
+    await expect(page.getByRole("status").filter({ hasText: /this Decision/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Open menu" })).toBeVisible();
+    await expect(page.getByTestId("decision-answer")).toHaveCount(0);
+    await testInfo.attach("shell", { body: await page.screenshot(), contentType: "image/png" });
+    releaseReads();
 
     // The row fills in first, then the card; there's no way to answer from the row's text.
     await expect(page.getByTestId("decision-question")).toBeVisible();
@@ -235,6 +242,27 @@ test("a next-step link opens the Decision instead of the whole list, and Back ne
     await page.goto(`${url}/todo#card-script-rotate-logs`);
     await expect(page.getByTestId("todo-summary")).toBeVisible();
     await expect(page).toHaveURL(/\/todo#card-script-rotate-logs$/);
+  });
+});
+
+test("a failed read says so and offers nothing to press, and the next read brings the pinned card back", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  await withServer(testInfo, async url => {
+    let failing = true;
+    await page.route("**/api/**", route => {
+      const endpoint = new URL(route.request().url()).pathname;
+      if (route.request().method() !== "GET") return route.abort();
+      if (endpoint === "/api/todo-item") return route.fulfill({ json: { source: "todo", note: null, approvals: [row] } });
+      if (endpoint === "/api/todo-item/decision") return failing ? route.fulfill({ status: 503, json: { error: "This Decision could not be read.", reason: "decision_unreadable" } }) : route.fulfill({ json: { cards: [view()], refused: [], decision: meta } });
+      return route.abort();
+    });
+    await page.goto(`${url}/todo/decision/site/0003`);
+    await expect(page.getByRole("alert").filter({ hasText: "so nothing can be pressed yet" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Defer entirely/ })).toHaveCount(0);
+    await expect(page.getByText("Answer from the to-do card")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
+    failing = false;
+    await expect(page.getByRole("button", { name: /Defer entirely/ })).toBeVisible({ timeout: 30_000 });
   });
 });
 

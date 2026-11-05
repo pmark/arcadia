@@ -3,11 +3,14 @@
  * where the record has no clean question or no consequence, the summary says so instead of filling the gap. Every word
  * it returns is the record's own, in the record's order. `rest` keeps whatever `headline` leaves out, so the caller can
  * always show all of it.
+ *
+ * The record's question is always the one shown, however thin, because it's what a card's pin binds: an operator must
+ * never answer with some other text standing in for it. A worded gate question only ever appears beside it.
  */
 import { decodeIdPart } from "./decision-cards";
 import { todoHrefOf } from "./approvals";
 
-/** "question": reads as a question or a sentence. "title": only a few words of title. "none": nothing usable. */
+/** "question": reads as a question or a sentence. "title": only a few words of title. "none": the record holds no text. */
 export type QuestionKind = "question" | "title" | "none";
 
 export interface DecisionSummaryOption {
@@ -25,6 +28,8 @@ export interface DecisionSummary {
   headline: string | null;
   /** The rest of the question after the first sentence; null when nothing is left. */
   rest: string | null;
+  /** The record's gate question, when it's in words and the question itself is only a title or absent. Extra, never a substitute. */
+  gateQuestion: string | null;
   options: DecisionSummaryOption[];
   /** The record's recommendation, kept only when there are no options to carry it. */
   recommendation: string | null;
@@ -39,11 +44,10 @@ export interface DecisionSummaryInput {
   recommendedLabels?: ReadonlyArray<string>;
 }
 
-const PLACEHOLDER = /^(?:tbd|todo|n\/a|none|untitled|unknown|\?+|\.+|-+)$/i;
 /** A full stop after these does not end a sentence. */
 const NOT_A_SENTENCE_END = /(?:^|[\s(])(?:e\.g|i\.e|etc|vs|cf|no|nos|dr|mr|mrs|ms|st|pr|[A-Za-z])\.$/i;
 
-const tidy = (value: string | null | undefined): string => (value ?? "").replace(/\s+/g, " ").replace(/^#+\s+/, "").trim();
+const tidy = (value: string | null | undefined): string => (value ?? "").replace(/\s+/g, " ").trim();
 
 /** Split at the first real sentence end. Text with no clear one stays whole; a caller clamps it visually if it's long. */
 export function splitFirstSentence(text: string): { head: string; rest: string | null } {
@@ -57,11 +61,11 @@ export function splitFirstSentence(text: string): { head: string; rest: string |
   return { head: text, rest: null };
 }
 
-/** A gate question is either an enum like `approval_boundary` or real words; only real words ending in "?" can stand in. */
+/** A gate question is either an enum like `approval_boundary` or real words; only real words ending in "?" are shown. */
 const isWordedQuestion = (value: string): boolean => value.endsWith("?") && /\s/.test(value);
 
 function classify(question: string): QuestionKind {
-  if (question === "" || PLACEHOLDER.test(question)) return "none";
+  if (question === "") return "none";
   if (question.endsWith("?")) return "question";
   return question.split(" ").length >= 5 ? "question" : "title";
 }
@@ -69,14 +73,8 @@ function classify(question: string): QuestionKind {
 export function summarizeDecision(input: DecisionSummaryInput): DecisionSummary {
   const question = tidy(input.question);
   const gate = tidy(input.gateQuestion);
-  let kind = classify(question);
-  let text = kind === "none" ? "" : question;
-  // Only when the question itself is weak: the gate question is the record's own words too.
-  if (kind !== "question" && isWordedQuestion(gate)) {
-    kind = "question";
-    text = gate;
-  }
-  const { head, rest } = text === "" ? { head: null, rest: null } : splitFirstSentence(text);
+  const kind = classify(question);
+  const { head, rest } = question === "" ? { head: null, rest: null } : splitFirstSentence(question);
   const recommended = new Set((input.recommendedLabels ?? []).map((label) => label.trim().toLowerCase()));
   const options = (input.options ?? []).flatMap((option): DecisionSummaryOption[] => {
     const label = (option.label ?? "").trim();
@@ -90,7 +88,7 @@ export function summarizeDecision(input: DecisionSummaryInput): DecisionSummary 
     }];
   });
   const recommendation = tidy(input.recommendation);
-  return { kind, headline: head, rest, options, recommendation: options.length === 0 && recommendation !== "" ? recommendation : null };
+  return { kind, headline: head, rest, gateQuestion: kind !== "question" && isWordedQuestion(gate) ? gate : null, options, recommendation: options.length === 0 && recommendation !== "" ? recommendation : null };
 }
 
 /** How tightly an option is clamped before it's chosen, so that a whole Decision fits one phone screen. */

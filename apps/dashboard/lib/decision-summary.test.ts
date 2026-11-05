@@ -16,6 +16,7 @@ describe("summarizeDecision", () => {
       kind: "question",
       headline: "Which port should the service use?",
       rest: null,
+      gateQuestion: null,
       recommendation: null,
       options: [
         { id: "option-1", label: "Use 8080", consequence: "Binds 8080 on the next restart.", recommended: true },
@@ -37,16 +38,26 @@ describe("summarizeDecision", () => {
     expect(summarizeDecision({ question: "Copy production model" })).toMatchObject({ kind: "title", headline: "Copy production model" });
   });
 
-  it("says there is no question when the record has none, and invents nothing", () => {
-    for (const question of [null, undefined, "", "   ", "TBD", "???"]) {
+  it("says there is no question only when the record holds no text, and invents nothing", () => {
+    for (const question of [null, undefined, "", "   "]) {
       expect(summarizeDecision({ question })).toMatchObject({ kind: "none", headline: null, rest: null });
     }
   });
 
-  it("borrows a worded gate question only when the question is weak, and never an enum", () => {
-    expect(summarizeDecision({ question: "Publish", gateQuestion: "Publish now or after review?" })).toMatchObject({ kind: "question", headline: "Publish now or after review?" });
-    expect(summarizeDecision({ question: "Publish", gateQuestion: "approval_boundary" })).toMatchObject({ kind: "title", headline: "Publish" });
-    expect(summarizeDecision({ question: "Should we publish the notes today?", gateQuestion: "Other words?" }).headline).toBe("Should we publish the notes today?");
+  it("shows a placeholder or a markdown-looking question as written, because the pin binds it", () => {
+    expect(summarizeDecision({ question: "TBD" })).toMatchObject({ kind: "title", headline: "TBD" });
+    expect(summarizeDecision({ question: "## Heading words here for this one" }).headline).toBe("## Heading words here for this one");
+  });
+
+  it("never lets a gate question stand in for the question", () => {
+    const summary = summarizeDecision({ question: "Delete production database", gateQuestion: "Should we proceed?" });
+    expect(summary).toMatchObject({ kind: "title", headline: "Delete production database", gateQuestion: "Should we proceed?" });
+    expect(summarizeDecision({ question: null, gateQuestion: "Should we proceed?" })).toMatchObject({ kind: "none", headline: null, gateQuestion: "Should we proceed?" });
+  });
+
+  it("adds a gate question only in words, and only when the question is thin", () => {
+    expect(summarizeDecision({ question: "Publish", gateQuestion: "approval_boundary" }).gateQuestion).toBeNull();
+    expect(summarizeDecision({ question: "Should we publish the notes today?", gateQuestion: "Other words?" }).gateQuestion).toBeNull();
   });
 
   it("never drops very long text", () => {

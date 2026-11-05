@@ -1,4 +1,4 @@
-import { readFile, realpath } from "node:fs/promises";
+import { open, realpath } from "node:fs/promises";
 import path from "node:path";
 import { resolveReadyWorkspace } from "../../../src/cli/workspace";
 import { withReadOnlyDatabase } from "../../../src/db/connection";
@@ -56,9 +56,18 @@ export async function loadDecisionRecord(project: string, id: string): Promise<D
   if (inside === "" || inside.startsWith("..") || path.isAbsolute(inside) || path.extname(absolute).toLowerCase() !== ".md") {
     return { ok: false, status: 400, error: "This Decision's path is outside its repository." };
   }
-  const bytes = await readFile(absolute);
-  const truncated = bytes.byteLength > DECISION_RECORD_MAX_BYTES;
-  const text = bytes.subarray(0, DECISION_RECORD_MAX_BYTES).toString("utf8");
+  // Reads at most the cap, so an oversized file never lands in memory whole.
+  const file = await open(absolute, "r");
+  let text: string;
+  let truncated: boolean;
+  try {
+    const buffer = Buffer.alloc(DECISION_RECORD_MAX_BYTES);
+    const { bytesRead } = await file.read(buffer, 0, DECISION_RECORD_MAX_BYTES, 0);
+    truncated = (await file.stat()).size > bytesRead;
+    text = buffer.subarray(0, bytesRead).toString("utf8");
+  } finally {
+    await file.close();
+  }
   return {
     ok: true,
     record: { id: decision.id, relativePath: decision.relativePath, updated: String(decision.updated), ...splitDecisionRecord(text), truncated }
