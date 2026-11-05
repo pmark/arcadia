@@ -491,7 +491,7 @@ test("only transform and opacity animate, none under reduced motion, and opening
     await testInfo.attach("motion-measurements", { body: JSON.stringify(report, null, 2), contentType: "application/json" });
     console.log(`relay motion: ${JSON.stringify(report)}`);
     // The composer is compositor-only: anything else moving here would mean per-frame layout or paint.
-    for (const property of [...opened.properties, ...closed.properties]) expect(["transform", "opacity", "filter"], property).toContain(property);
+    for (const property of [...opened.properties, ...closed.properties]) expect(["transform", "opacity"], property).toContain(property);
     expect(opened.properties).toContain("transform");
     expect(opened.properties).toContain("opacity");
     // One layout at the change of height, not one per frame of a transition that lasts many frames.
@@ -520,6 +520,60 @@ test("only transform and opacity animate, none under reduced motion, and opening
     await expect(page.locator(".relay-view")).toHaveAttribute("inert", "");
     await page.keyboard.press("Escape");
     await expectHeight(page, "rest");
+  } finally { await stop(ctx); }
+});
+
+test("a phone keyboard covering the page leaves the chip, field and Send above it", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  const world = newWorld();
+  const ctx = await serve(page, world);
+  await page.setViewportSize({ width: 390, height: 844 });
+  // iOS doesn't resize the page for its keyboard: only the visual viewport shrinks, and it can also scroll within the page.
+  await page.addInitScript(() => {
+    const viewport = Object.assign(new EventTarget(), { height: innerHeight, width: innerWidth, offsetTop: 0, offsetLeft: 0, scale: 1 });
+    Object.defineProperty(window, "visualViewport", { value: viewport, configurable: true });
+    (window as unknown as { keyboard: (height: number, offsetTop: number) => void }).keyboard = (height, offsetTop) => { viewport.height = height; viewport.offsetTop = offsetTop; viewport.dispatchEvent(new Event("resize")); };
+  });
+  const keyboard = (height: number, offsetTop: number) => page.evaluate(([h, t]) => (window as unknown as { keyboard: (height: number, offsetTop: number) => void }).keyboard(h, t), [height, offsetTop]);
+  const insideVisible = async (top: number, bottom: number) => {
+    await expect.poll(async () => {
+      await settled(page);
+      for (const part of [relay(page).locator(".relay-chip"), field(page), page.getByRole("button", { name: "Send new Ask", exact: true })]) {
+        const box = await part.boundingBox();
+        if (!box || box.y < top || box.y + box.height > bottom) return false;
+      }
+      return true;
+    }).toBe(true);
+  };
+  try {
+    await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
+    await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
+    await field(page).focus();
+    await expectHeight(page, "answer");
+    await insideVisible(0, 844);
+    // The keyboard rises, then Safari scrolls the page within the viewport to show the field.
+    await keyboard(500, 0);
+    await insideVisible(0, 500);
+    await testInfo.attach("keyboard-covering", { body: await page.screenshot(), contentType: "image/png" });
+    await keyboard(500, 60);
+    await insideVisible(60, 560);
+    // The whole thread fits too, and the end of it can be reached.
+    await page.getByRole("button", { name: "Whole thread", exact: true }).click();
+    await expectHeight(page, "thread");
+    await insideVisible(60, 560);
+    await page.getByText(/One exchange is shown at a time/).scrollIntoViewIfNeeded();
+    const end = await page.getByText(/One exchange is shown at a time/).boundingBox();
+    expect(end!.y + end!.height).toBeLessThanOrEqual(560);
+    // The keyboard goes away, and Relay goes back to using the room.
+    await keyboard(844, 0);
+    await insideVisible(0, 844);
+    await page.keyboard.press("Escape");
+    await expectHeight(page, "answer");
+    await put(page).click();
+    await expectHeight(page, "rest");
+    await settled(page);
+    const rest = await field(page).boundingBox();
+    expect(rest!.y + rest!.height).toBeLessThanOrEqual(844);
   } finally { await stop(ctx); }
 });
 
