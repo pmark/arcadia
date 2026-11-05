@@ -66,7 +66,9 @@ export function writeSuccess<TData>(
     return;
   }
 
-  process.stdout.write(`${renderHuman(response).join("\n")}\n`);
+  // A renderer with nothing to say writes nothing, not a blank line.
+  const lines = renderHuman(response);
+  if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);
 }
 
 export function writeFailure(response: CommandFailure, context: CommandContext): void {

@@ -294,6 +294,13 @@ export function evaluateLaunchAgent(
     return { ...base, verdict: "unreadable", program, pathHead, detail: "No ProgramArguments." };
   }
 
+  // Deliberately outside mise: this timer must survive whatever happens to the
+  // checkout mise reads, so it runs a compiled release under the runtime that
+  // release recorded when it was built.
+  if (label.endsWith(".liveness-check") && /\/go-broker\/releases\/[^/]+\/dist\/src\/cli\.js$/.test(invocation.argv[1] ?? "")) {
+    return { ...base, verdict: "pinned", program, pathHead, detail: "Runs an immutable go-broker release under that release's recorded runtime." };
+  }
+
   if (!isMiseExecutable(program)) {
     return {
       ...base,

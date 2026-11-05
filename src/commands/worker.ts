@@ -374,7 +374,7 @@ interface WorkerRecord extends WorkerIdentity {
   at: number;
 }
 
-function readWorkerRecord(workspacePath: string): WorkerRecord | null {
+export function readWorkerRecord(workspacePath: string): WorkerRecord | null {
   try {
     const raw = readFileSync(pidfilePath(workspacePath), "utf8").trim();
     const value = JSON.parse(raw) as { pid?: unknown; owner?: unknown; at?: unknown };
@@ -433,7 +433,7 @@ function clearTickMarker(workspacePath: string): void {
 
 /** Only a marker written by the record's own owner counts -- a marker left by
  * a since-replaced worker must not indict its successor. */
-function readTickStartedAt(workspacePath: string, owner: WorkerIdentity): number | null {
+export function readTickStartedAt(workspacePath: string, owner: WorkerIdentity): number | null {
   try {
     const raw = readFileSync(tickMarkerPath(workspacePath), "utf8");
     const value = JSON.parse(raw) as { pid?: unknown; owner?: unknown; at?: unknown };
