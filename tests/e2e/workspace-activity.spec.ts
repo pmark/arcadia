@@ -38,38 +38,43 @@ test("every tap answers at once and says what it's opening, however slow the pag
     await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
     await expect(activity).toHaveText("");
 
-    // The tap answers before the page does, and names what's opening.
-    const project = page.getByRole("link", { name: /Project · active Moon garden/ });
+    // A route needs no page: the tap moves the address and the screen before any page could arrive.
+    const project = page.getByRole("link", { name: /Moon garden/ });
     const tapped = Date.now();
     await project.click({ noWaitAfter: true });
-    await expect(activity).toContainText("Opening this Project...", { timeout: 1_000 });
-    expect(Date.now() - tapped).toBeLessThan(delayMs);
-    await expect(project).toHaveAttribute("data-opening", "");
-    await testInfo.attach("activity-phone", { body: await page.screenshot(), contentType: "image/png" });
-
-    // It clears when the page arrives, and Back works and clears it too.
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);
+    await expect(page.locator("#workspace-title")).toHaveText("Moon garden");
+    expect(Date.now() - tapped).toBeLessThan(delayMs);
     await expect(activity).toHaveText("");
+
+    // A link to a page says what it's opening, before the page does, and clears when it arrives. Back works and clears it too.
     await page.getByRole("link", { name: "Feed" }).click({ noWaitAfter: true });
     await expect(activity).toContainText("Opening what's waiting...", { timeout: 1_000 });
+    await expect(page.getByRole("link", { name: "Feed" })).toHaveAttribute("data-opening", "");
+    await testInfo.attach("activity-phone", { body: await page.screenshot(), contentType: "image/png" });
     await expect(page).toHaveURL(/\/workspace\/feed$/);
     await expect(activity).toHaveText("");
     await page.goBack();
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);
     await expect(activity).toHaveText("");
 
-    // A page that stays slow says the tap was received.
+    // A page that stays slow says the tap was received. A fresh load empties the router's cache, and this address isn't delayed.
     delayMs = 14_000;
-    await page.getByRole("link", { name: /Plan · active/ }).first().click({ noWaitAfter: true });
-    await expect(activity).toContainText("Opening this Plan...", { timeout: 1_000 });
+    await page.goto(`${url}/workspace`);
+    await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
+    await page.getByRole("link", { name: "Feed" }).click({ noWaitAfter: true });
+    await expect(activity).toContainText("Opening what's waiting...", { timeout: 1_000 });
     await expect(activity).toContainText("Your tap was received", { timeout: 13_000 });
     // A prefetch and the navigation can each be held, one after the other.
-    await expect(page).toHaveURL(/\/plans\/first-website$/, { timeout: 45_000 });
+    await expect(page).toHaveURL(/\/workspace\/feed$/, { timeout: 45_000 });
     await expect(activity).toHaveText("");
+    delayMs = 5_000;
+    await page.goto(`${url}/workspace`);
+    await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
 
     // Back before a page arrives abandons it, so the line clears instead of claiming work that isn't happening.
-    await page.getByRole("link", { name: /Action · open/ }).first().click({ noWaitAfter: true });
-    await expect(activity).toContainText("Opening this Action...", { timeout: 1_000 });
+    await page.getByRole("link", { name: "Feed" }).click({ noWaitAfter: true });
+    await expect(activity).toContainText("Opening what's waiting...", { timeout: 1_000 });
     await page.evaluate(() => window.dispatchEvent(new PopStateEvent("popstate")));
     await expect(activity).toHaveText("");
     delayMs = 500;

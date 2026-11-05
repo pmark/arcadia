@@ -1,0 +1,135 @@
+/*
+ * Routes: the Workspace's context layer. Text always sits on its own surface, so the contrast holds over any sky,
+ * in dark and light, and the sky shows in the gaps between surfaces. Phone first.
+ */
+.route-main {
+  --route-surface: rgb(12 18 36 / .88);
+  --route-line: rgb(236 226 211 / .22);
+  --route-ink: #f5f2ed;
+  --route-soft: #ced4e1;
+  --route-been: #f5f2ed;
+  --route-ahead: rgb(236 226 211 / .5);
+  --route-tone-blocked: #ff9a85;
+  --route-tone-moving: #8fd3ff;
+  --route-tone-open: #ffd9aa;
+  --route-tone-arrived: #a8e6b8;
+  --route-tone-empty: #aab0be;
+  --route-tone-unread: #aab0be;
+  max-width: 1100px;
+  overflow-wrap: anywhere;
+}
+.route-layout { display: grid; gap: 12px; align-items: start; grid-template-columns: minmax(0, 1fr); }
+/* workspace.css names a grid area for this panel, which would add tracks here. */
+.route-layout > .route-direction { grid-area: auto; }
+.route-layout > .route-subject { grid-area: auto; }
+@media (min-width: 1100px) { .route-layout { grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr); gap: 20px; } }
+
+.route-crumbs { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; width: fit-content; max-width: 100%; margin: 0 0 10px; padding: 2px 12px; border-radius: 14px; background: var(--route-surface); font-size: 12px; color: var(--route-soft); }
+.route-crumbs a, .route-crumbs [aria-current="page"] { display: inline-flex; align-items: center; min-height: 40px; }
+.route-crumbs [aria-current="page"] { color: #ffe0bd; }
+
+.route-subject { display: grid; gap: 10px; min-width: 0; }
+.route-card { position: relative; padding: 16px 18px; border-radius: 20px; background: var(--route-surface); border: 1px solid var(--route-line); }
+.route-card:focus { outline: none; }
+.route-kind { margin: 0; padding-right: 64px; font-size: 12px; color: var(--route-soft); }
+.route-title { margin: 4px 0 0; font-size: clamp(20px, 5.4vw, 26px); font-weight: 450; line-height: 1.25; }
+.route-sentence { margin: 10px 0 0; font-size: 15px; line-height: 1.45; }
+.route-source { margin: 8px 0 0; font-size: 11px; color: var(--route-soft); }
+.route-empty, .route-note { margin: 8px 0; font-size: 13px; line-height: 1.5; color: var(--route-soft); }
+.route-card > .route-empty:last-child { margin-bottom: 0; }
+
+.route-reading { display: flex; align-items: center; gap: 10px; margin: 0; font-size: 13px; color: var(--route-soft); }
+.route-reading:not(:empty) { margin-top: 10px; }
+.route-reading .workspace-activity-spinner { flex: none; }
+.route-bones { display: grid; gap: 8px; margin-top: 12px; }
+.route-bones i { display: block; height: 12px; border-radius: 6px; background: rgb(236 226 211 / .12); }
+.route-bones i.short { width: 60%; }
+
+.route-problem { margin: 10px 0 0; font-size: 14px; line-height: 1.45; }
+.route-problem h2 { margin: 0 0 4px; font-size: 15px; font-weight: 500; color: var(--route-tone-blocked); }
+.route-problem p { margin: 4px 0; }
+.route-problem a { display: inline-flex; align-items: center; min-height: 44px; text-decoration: underline; }
+
+/* The line itself. Its only words are next to it. */
+.route-line { display: block; width: 100%; height: auto; overflow: visible; }
+.route-ahead { stroke: var(--route-ahead); stroke-width: 1.5; stroke-dasharray: 2 4; }
+.route-been { stroke: var(--route-been); stroke-width: 2; stroke-linecap: round; }
+.route-stop.stop-done { fill: var(--route-been); }
+.route-stop.stop-ahead, .route-stop.stop-here { fill: var(--route-ahead); }
+.route-stop.stop-deferred { fill: none; stroke: var(--route-ahead); stroke-width: 1; }
+.route-stop.stop-blocked { fill: var(--route-tone-blocked); }
+.route-rover { stroke: rgb(12 18 36); stroke-width: 2; fill: var(--route-tone-open); }
+.tone-blocked .route-rover { fill: var(--route-tone-blocked); }
+.tone-moving .route-rover { fill: var(--route-tone-moving); }
+.tone-arrived .route-rover { fill: var(--route-tone-arrived); }
+.tone-empty .route-rover, .tone-unread .route-rover { fill: var(--route-tone-empty); }
+
+.route-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.route-row { display: grid; gap: 6px; min-height: 44px; padding: 12px 14px; border-radius: 16px; background: var(--route-surface); border: 1px solid var(--route-line); color: inherit; text-decoration: none; }
+.route-main .route-row:hover { text-decoration: none; border-color: rgb(236 226 211 / .5); }
+.route-row:active, .route-stop-row a:active, .route-more > summary:active, .route-record > summary:active, .route-next > summary:active { background: rgb(255 255 255 / .16); }
+.route-row-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; font-size: 15px; line-height: 1.3; }
+.route-row-name strong { font-weight: 450; }
+.route-row-words { font-size: 12px; color: var(--route-soft); }
+.route-tag { display: inline-block; padding: 0 7px; border: 1px solid var(--route-line); border-radius: 10px; font-size: 11px; line-height: 16px; color: var(--route-soft); white-space: nowrap; }
+
+/* These sit on the sky, so each carries its own surface. */
+.route-project { display: grid; gap: 10px; }
+.route-group, .route-project > .route-note, .route-project > .route-empty, .route-more > .route-note { width: fit-content; max-width: 100%; margin: 0; padding: 4px 12px; border-radius: 10px; background: var(--route-surface); font-size: 12px; font-weight: 500; color: var(--route-soft); }
+.route-group + .route-rows { margin-top: -4px; }
+.route-more > .route-note { margin-bottom: 8px; }
+.route-subject > .route-empty { margin: 0; padding: 12px 14px; border-radius: 14px; background: var(--route-surface); }
+.route-more { margin: 0; }
+.route-more > summary, .route-record > summary, .route-next > summary, .route-stops-more > summary { display: flex; align-items: center; gap: 8px; min-height: 44px; cursor: pointer; font-size: 13px; list-style: none; }
+:is(.route-more, .route-record, .route-next, .route-stops-more) > summary::-webkit-details-marker { display: none; }
+:is(.route-more, .route-record, .route-next, .route-stops-more) > summary::after { content: ""; flex: none; width: 7px; height: 7px; margin-left: 2px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(-45deg); opacity: .8; }
+:is(.route-more, .route-record, .route-next, .route-stops-more)[open] > summary::after { transform: rotate(45deg); }
+.route-more > summary { width: fit-content; max-width: 100%; padding: 0 14px; border-radius: 14px; background: var(--route-surface); color: var(--route-soft); }
+.route-more[open] > summary { margin-bottom: 8px; }
+
+.route-figure { margin: 12px 0 0; }
+.route-figure figcaption { margin-top: 2px; font-size: 12px; color: var(--route-soft); }
+
+/* Named stops: the vertical form of the same route. */
+.route-stops, .route-stops-more ol { list-style: none; margin: 0; padding: 0; }
+.route-stops { margin-top: 10px; }
+.route-stop-row { position: relative; display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 8px; align-items: start; }
+.route-stop-row::before { content: ""; position: absolute; left: 8px; top: 0; bottom: 0; border-left: 1.5px solid var(--route-ahead); }
+.route-stop-row:first-child::before { top: 22px; }
+.route-stop-row:last-child::before { bottom: calc(100% - 22px); }
+.route-stop-row.mark-done::before { border-left: 2px solid var(--route-been); }
+.route-stop-mark { position: relative; z-index: 1; display: block; width: 10px; height: 10px; margin: 17px 0 0 4px; border-radius: 50%; border: 1.5px solid var(--route-ahead); background: rgb(12 18 36); }
+.mark-done > .route-stop-mark { background: var(--route-been); border-color: var(--route-been); }
+.mark-here > .route-stop-mark { width: 14px; height: 14px; margin: 15px 0 0 2px; background: var(--route-tone-open); border-color: var(--route-tone-open); box-shadow: 0 0 0 3px rgb(255 217 170 / .22); }
+.mark-blocked > .route-stop-mark { background: var(--route-tone-blocked); border-color: var(--route-tone-blocked); border-radius: 2px; transform: rotate(45deg); }
+.mark-deferred > .route-stop-mark { border-style: dotted; }
+.route-stop-row > a { display: grid; align-content: center; gap: 2px; min-height: 44px; padding: 8px 8px; border-radius: 10px; font-size: 14px; line-height: 1.35; color: inherit; text-decoration: none; }
+.route-stop-row.mark-here > a { font-weight: 500; }
+.route-stop-tags { font-size: 11px; font-weight: 400; color: var(--route-soft); }
+.route-stops-more > summary { padding: 0 8px; color: var(--route-soft); width: fit-content; }
+.route-stops-more ol .route-stop-row::before { display: none; }
+
+.route-card-foot { margin: 10px 0 -8px; border-top: 1px solid rgb(236 226 211 / .14); padding-top: 2px; }
+.route-refresh { position: absolute; top: 4px; right: 14px; min-height: 44px; padding: 0 2px; background: transparent; border: 0; color: var(--route-soft); font-size: 12px; text-decoration: underline; text-underline-offset: 4px; cursor: pointer; }
+.route-record > summary { color: var(--route-ink); }
+.route-record-body { display: grid; gap: 10px; padding: 4px 0 12px; font-size: 13px; line-height: 1.55; }
+.route-record-body h3, .route-record-body h4 { margin: 10px 0 4px; font-size: 13px; font-weight: 500; color: #d8bea0; }
+.route-record-body ul, .route-record-body ol { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
+.route-record-body p { margin: 0; }
+.route-record-body a { text-decoration: underline; }
+.route-record-body .workspace-facts { margin: 0; }
+.route-record-actions a { display: block; padding: 4px 0; min-height: 28px; }
+
+/* Direction: Go's next move, one line until it's asked for or belongs to this subject. */
+.route-direction.workspace-panel { padding: 4px 18px; border-radius: 20px; }
+.route-next > summary { color: var(--route-ink); }
+.route-next-state { color: var(--route-soft); }
+.route-next-state.ready { color: var(--route-tone-arrived); }
+.route-next-state.gated, .route-next-state.not-agent { color: var(--route-tone-open); }
+.route-next-state.failed { color: var(--route-tone-blocked); }
+.route-next .workspace-go { border-bottom: 0; padding: 0 0 12px; }
+.route-next .workspace-go .workspace-section-heading { justify-content: flex-end; margin: 0; }
+.route-next .workspace-go .workspace-section-heading h2 { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.route-direction .route-next:not(:last-child) { border-bottom: 1px solid rgb(236 226 211 / .14); margin-bottom: 8px; }
+
+@media (prefers-reduced-motion: reduce) { .route-row, .route-stop-row a { transition: none; } }
