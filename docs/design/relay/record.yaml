@@ -323,7 +323,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: 13098a8d7570ab8a4f4281540c89db1f4119b83b14509553affc809fd54af1e9
+    sha256: c0edc212c6c4a1796dbfe671ba0b31ddb68a0c614bfc7b17ebf8a38a6410207c
   - id: S029
     title: Operator's approval of the layer design
     kind: operator
@@ -352,6 +352,13 @@ sources:
     retention: repo
     path: sources/S032-start-weather-rhythm.md
     sha256: 6eb0aaddc946328e2bf662955ac44a52ffcaacd8ab7ebba5f6c569dd6d983c7b
+  - id: S033
+    title: Operator's direction for overnight progress
+    kind: operator
+    added: 2026-11-05
+    retention: repo
+    path: sources/S033-overnight-progress.md
+    sha256: 850244ab7fd4f6e164e16703b6f0efb10f1ed68b28ab6d4ed877f8109cbde714
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent
@@ -3121,14 +3128,14 @@ concepts:
       - source: S030
         locator: activity indication
     fit:
-      status: missing
+      status: partial
       evidence:
-        - apps/dashboard/components/workspace/workspace-view.tsx
+        - apps/dashboard/components/workspace/workspace-activity.tsx
     position: leaning
     serves:
       - REQ-010
       - REQ-017
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Tap feedback is merged, and routes extend it in PR 2107. Awaits the operator approving the revision.
   - id: C-078
     title: "Routes as the symbolic context layer"
     kind: interface
@@ -3146,7 +3153,7 @@ concepts:
     serves:
       - REQ-015
       - REQ-016
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Built in PR 2107 because the operator asked for overnight progress (S033), and not yet judged on a phone. Awaits the operator approving the revision.
   - id: C-079
     title: "Weather with rhythm"
     kind: interface
@@ -3181,7 +3188,7 @@ concepts:
     position: leaning
     serves:
       - REQ-004
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Not built. PR 2109 lightens the Decision page, and answers stay on the To-do page. Moving them into Relay needs a Decision.
   - id: C-081
     title: "Open Relay is modal"
     kind: interface
@@ -3196,7 +3203,7 @@ concepts:
     position: leaning
     serves:
       - REQ-017
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Built in PR 2101 because the operator asked for overnight progress (S033), and not yet judged on a phone. Awaits the operator approving the revision.
   - id: C-082
     title: "A light status read"
     kind: interface
@@ -3205,14 +3212,14 @@ concepts:
       - source: S030
         locator: slow, dense, unresponsive
     fit:
-      status: conflicts
+      status: exists
       evidence:
-        - apps/dashboard/components/workspace/sky/system-status.tsx
+        - apps/dashboard/lib/workspace-status.ts
     position: leaning
     serves:
       - REQ-015
       - REQ-010
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Merged in PR 2077. Awaits the operator approving the revision.
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?
