@@ -38,13 +38,30 @@ liveness_dashboard_url() {
     return 0
   fi
   [[ -f "$repo/apps/discord-bot/.env" ]] || return 0
-  sed -n 's/^ARCADIA_DASHBOARD_URL=//p' "$repo/apps/discord-bot/.env" | tail -n 1 | tr -d "\"'"
+  local raw
+  raw="$(sed -n 's/^ARCADIA_DASHBOARD_URL=//p' "$repo/apps/discord-bot/.env" | tail -n 1)"
+  # As dotenv reads it: a quoted value is whole, and an unquoted one ends at `#`.
+  case "$raw" in
+    \"*) raw="${raw#\"}"; printf '%s' "${raw%%\"*}" ;;
+    \'*) raw="${raw#\'}"; printf '%s' "${raw%%\'*}" ;;
+    *) raw="${raw%%#*}"; printf '%s' "${raw%"${raw##*[![:space:]]}"}" ;;
+  esac
+}
+
+# The rule `production liveness-check --stale-seconds` enforces. A value it would
+# refuse must not reach the plist, where it would fail every run in silence.
+liveness_stale_seconds_valid() {
+  local value="${ARCADIA_LIVENESS_STALE_SECONDS:-}"
+  [[ -z "$value" ]] && return 0
+  [[ "$value" =~ ^[0-9]+$ ]] && (( 10#$value >= 30 ))
 }
 
 # The command after the program, one argument per line, for both launch routes.
+# It names no workspace on purpose: run from the checkout with launchd's bare
+# environment, it resolves the workspace exactly as the worker's agent does.
 liveness_command_args() {
-  local workspace="$1" repo="$2" url
-  printf '%s\n' production liveness-check --workspace "$workspace"
+  local repo="$1" url
+  printf '%s\n' production liveness-check
   url="$(liveness_dashboard_url "$repo")"
   if [[ -n "$url" ]]; then printf '%s\n' --dashboard-url "$url"; fi
   if [[ -n "${ARCADIA_LIVENESS_STALE_SECONDS:-}" ]]; then printf '%s\n' --stale-seconds "$ARCADIA_LIVENESS_STALE_SECONDS"; fi

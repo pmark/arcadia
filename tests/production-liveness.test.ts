@@ -2,7 +2,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   LIVENESS_DEFAULT_STALE_SECONDS,
   decideLiveness,
@@ -22,6 +22,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { listPendingOperatorPings } from "../src/ping/operatorPing.js";
 import { withPrReviewExecutionClaim } from "../src/qa/executionClaim.js";
 import { evaluateLaunchAgent } from "../src/runtime/launchAgents.js";
+import { systemTmux } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -178,6 +179,61 @@ describe("the liveness state table, end to end through the ping outbox", () => {
     expect(pending(off)).toEqual([]);
   });
 
+  it("pages when the progress read fails just after production turned Active, whatever Off the state last saw", () => {
+    const root = workspace();
+    check(root, at("02:00:00"), false);
+    expect(state(root).productionActive).toBe(false);
+    const result = check(root, at("02:01:00"));
+    expect(result.ping).toBe("read_failed_alert");
+    expect(result.message).toContain("production is Active");
+    expect(state(root).productionActive).toBe(true);
+  });
+
+  it("does not page twice when the state file cannot be written, however long that lasts", () => {
+    const root = workspace();
+    writeBeaconRecord(root, at("02:10:30"));
+    writeTickMarker(root, at("02:05:30"));
+    const stateDirectory = dotfile(root, "production-liveness.json");
+    mkdirSync(stateDirectory);
+    writeFileSync(path.join(stateDirectory, "blocks-the-rename"), "");
+    for (const when of ["02:10:30", "02:11:30", "02:40:00"]) {
+      expect(() => check(root, at(when))).toThrow();
+    }
+    expect(pending(root)).toHaveLength(1);
+  });
+
+  it("pages again for a worker stuck across Off and a new Active, though its last progress is unchanged", () => {
+    const root = workspace();
+    writeBeaconRecord(root, at("02:10:30"));
+    writeTickMarker(root, at("02:05:30"));
+    expect(check(root, at("02:10:30")).ping).toBe("stale_alert");
+    expect(check(root, at("02:20:00"), false).ping).toBe("closed_by_off");
+    expect(check(root, at("03:00:00")).ping).toBe("stale_alert");
+    expect(pending(root)).toHaveLength(3);
+  });
+
+  it("restarts the episode when a current-schema state holds a malformed open alert", () => {
+    const root = workspace();
+    writeBeaconRecord(root, at("02:10:30"));
+    writeTickMarker(root, at("02:05:30"));
+    writeFileSync(dotfile(root, "production-liveness.json"), JSON.stringify({ schema: "arcadia-production-liveness-v1", productionActive: true, openAlert: { kind: "stale" } }));
+    expect(() => check(root, at("02:10:30"))).toThrow("malformed open alert");
+    expect(pending(root)).toHaveLength(1);
+    expect(state(root).openAlert).toMatchObject({ kind: "stale" });
+  });
+
+  it("still queues the alert when the configured dashboard link is unusable", () => {
+    const root = workspace();
+    writeBeaconRecord(root, at("02:10:30"));
+    writeTickMarker(root, at("02:05:30"));
+    const result = runProductionLivenessCheckCommand(
+      { workspace: root, dashboardUrl: "http://host.example # Tailnet dashboard" },
+      { now: () => at("02:10:30"), readProductionActive: () => true, listProcesses: () => PROCESSES }
+    ).data;
+    expect(result.ping).toBe("stale_alert");
+    expect(pending(root)[0]?.link).toBe("http://127.0.0.1:3020/production");
+  });
+
   it("leaves the state alone and fails loudly when the ping cannot be queued, so the next run retries", () => {
     const root = workspace();
     writeTickMarker(root, at("02:05:30"));
@@ -229,15 +285,18 @@ describe("the liveness state table, end to end through the ping outbox", () => {
     const base = (kind: "stale" | "read_failed" | null, productionActive: boolean | null = true): LivenessState => ({
       schema: "arcadia-production-liveness-v1",
       productionActive,
-      openAlert: kind ? { kind, alertedAt: "2026-11-05T02:00:00.000Z", pingId: "ping_x" } : null
+      openAlert: kind ? { kind, alertedAt: "2026-11-05T02:00:00.000Z", pingId: "ping_x" } : null,
+      closedAt: null
     });
     const stale = { kind: "stale", progressAt: 0, ageMs: 1, limitMs: 1, signal: "tick-marker", workerPid: 1 } as const;
     const fresh = { kind: "fresh", ageMs: 1, limitMs: 1, signal: "tick-marker", workerPid: 1 } as const;
-    const failed = { kind: "read_failed", what: "x", reason: "y" } as const;
+    const failed = { kind: "read_failed", what: "x", reason: "y", policyActive: false } as const;
     expect(decideLiveness(base("read_failed"), stale)).toMatchObject({ ping: "stale_alert", openAlert: "stale" });
     expect(decideLiveness(base("stale"), failed)).toMatchObject({ ping: null, openAlert: "stale", logOnly: "Could not read x: y" });
     expect(decideLiveness(base(null), fresh)).toMatchObject({ ping: null, openAlert: null, productionActive: true });
     expect(decideLiveness(base("read_failed"), { kind: "inactive" })).toMatchObject({ ping: "closed_by_off", openAlert: null });
+    expect(decideLiveness(base(null, false), failed)).toMatchObject({ ping: null, productionActive: false });
+    expect(decideLiveness(base(null, false), { ...failed, policyActive: true })).toMatchObject({ ping: "read_failed_alert", productionActive: true });
   });
 });
 
@@ -349,6 +408,22 @@ describe("the signal, against the hang of 2026-11-05 (Issue #2084)", () => {
   });
 });
 
+describe("what could hold the write lock against the alert", () => {
+  it("gives up on a stalled tmux capture, which the tick runs inside a write transaction", () => {
+    const bin = tempDir("arcadia-liveness-tmux-");
+    writeFileSync(path.join(bin, "tmux"), "#!/bin/sh\nexec sleep 30\n");
+    chmodSync(path.join(bin, "tmux"), 0o755);
+    vi.stubEnv("PATH", `${bin}:${process.env["PATH"] ?? ""}`);
+    try {
+      const started = Date.now();
+      expect(systemTmux.capturePane?.("stalled")).toBeNull();
+      expect(Date.now() - started).toBeLessThan(15_000);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  }, 30_000);
+});
+
 describe("the alert's details", () => {
   it("names the capture reader ahead of an older child, and never the beacon", () => {
     const rows: ProcessRow[] = [
@@ -393,7 +468,7 @@ describe("the launchd agent", () => {
   const UID = String(process.getuid?.() ?? 0);
 
   /** A host with every system command stubbed: nothing here can reach the real launchd, ports or processes. */
-  function host(options: { release?: boolean; loaded?: boolean } = {}) {
+  function host(options: { release?: boolean; loaded?: boolean; bootstrapFailures?: number } = {}) {
     const root = tempDir("arcadia-liveness-host-");
     const bin = path.join(root, "bin");
     const home = path.join(root, "home");
@@ -414,7 +489,9 @@ describe("the launchd agent", () => {
       chmodSync(file, 0o755);
     };
     stub("uname", 'echo Darwin');
-    stub("launchctl", `echo "$*" >> "${calls}"\nif [[ "$1" == "print" ]]; then ${options.loaded ? 'echo "	last exit code = 0"; exit 0' : "exit 113"}; fi\nexit 0`);
+    const failures = path.join(root, "bootstrap-failures");
+    writeFileSync(failures, String(options.bootstrapFailures ?? 0));
+    stub("launchctl", `echo "$*" >> "${calls}"\nif [[ "$1" == "print" ]]; then ${options.loaded ? 'echo "	last exit code = 0"; exit 0' : "exit 113"}; fi\nif [[ "$1" == "bootstrap" ]]; then n=$(cat "${failures}"); if [[ "$n" -gt 0 ]]; then echo $((n - 1)) > "${failures}"; exit 5; fi; fi\nexit 0`);
     stub("lsof", "exit 0");
     stub("ps", "exit 0");
     stub("curl", "exit 1");
@@ -449,7 +526,7 @@ describe("the launchd agent", () => {
       return path.join(agentsDir, `com.arcadia.local.${key}.liveness-check.plist`);
     };
     const launchctlCalls = () => (existsSync(calls) ? readFileSync(calls, "utf8") : "");
-    return { root, home, fakeRepo, fakeWorkspace, releaseDir, run, plistPath, launchctlCalls, bin };
+    return { root, home, fakeRepo, fakeWorkspace, releaseDir, run, plistPath, launchctlCalls, bin, failures };
   }
 
   function plistJson(file: string): { Label: string; ProgramArguments: string[]; StartInterval: number; RunAtLoad: boolean; KeepAlive?: unknown; StandardOutPath: string; StandardErrorPath: string; WorkingDirectory: string; EnvironmentVariables: Record<string, string> } {
@@ -472,18 +549,61 @@ describe("the launchd agent", () => {
     expect(plist.Label).toMatch(/^com\.arcadia\.local\.\d+\.liveness-check$/);
     expect(plist.StandardOutPath).toMatch(/Library\/Logs\/arcadia-services-\d+\/liveness-check\.out\.log$/);
     expect(plist.StandardErrorPath).toMatch(/Library\/Logs\/arcadia-services-\d+\/liveness-check\.err\.log$/);
-    expect(plist.WorkingDirectory).toBe(fixture.releaseDir);
+    // The worker's agent: this checkout as cwd, no workspace in its environment. Same resolution, same workspace.
+    expect(plist.WorkingDirectory).toBe(realpathSync(fixture.fakeRepo));
+    expect(Object.keys(plist.EnvironmentVariables).sort()).toEqual(["HOME", "NODE_PATH", "PATH"]);
     expect(plist.EnvironmentVariables.NODE_PATH).toBe(`${fixture.releaseDir}/node_modules`);
     expect(plist.ProgramArguments).toEqual([
       path.join(fixture.root, "release-node"),
       `${fixture.releaseDir}/dist/src/cli.js`,
       "production", "liveness-check",
-      "--workspace", fixture.fakeWorkspace,
       "--dashboard-url", "http://arcadia.example.ts.net"
     ]);
     expect(readFileSync(fixture.plistPath(), "utf8")).not.toContain("do-not-read");
     expect(fixture.launchctlCalls()).toContain(`bootstrap gui/${UID} ${fixture.plistPath()}`);
-    expect(evaluateLaunchAgent(plist.Label, fixture.plistPath(), { argv: plist.ProgramArguments, pathValue: plist.EnvironmentVariables.PATH ?? null }).verdict).toBe("pinned");
+    const audit = (argv: string[]) => evaluateLaunchAgent(plist.Label, fixture.plistPath(), { argv, pathValue: plist.EnvironmentVariables.PATH ?? null }).verdict;
+    expect(audit(plist.ProgramArguments)).toBe("pinned");
+    expect(audit(["/opt/homebrew/bin/node", ...plist.ProgramArguments.slice(1)])).toBe("unpinned");
+  });
+
+  it("reads the dashboard URL from the bot's .env as dotenv does", () => {
+    const read = (line: string) => {
+      const fixture = host();
+      writeFileSync(path.join(fixture.fakeRepo, "apps", "discord-bot", ".env"), `${line}\n`);
+      const result = spawnSync("bash", ["-c", 'source "$1"; liveness_dashboard_url "$2"', "--", lib, fixture.fakeRepo], { encoding: "utf8", env: { PATH: "/usr/bin:/bin" } });
+      return result.stdout;
+    };
+    expect(read("ARCADIA_DASHBOARD_URL=http://host.example  # Tailnet dashboard")).toBe("http://host.example");
+    expect(read("ARCADIA_DASHBOARD_URL=http://host.example")).toBe("http://host.example");
+    expect(read('ARCADIA_DASHBOARD_URL="http://host.example:3020/#/x" # note')).toBe("http://host.example:3020/#/x");
+    expect(read("ARCADIA_DASHBOARD_URL='http://host.example'")).toBe("http://host.example");
+  });
+
+  it("refuses a threshold the command would refuse, and leaves the running timer in place", () => {
+    const fixture = host({ release: true });
+    fixture.run("liveness");
+    const before = readFileSync(fixture.plistPath(), "utf8");
+    const calls = fixture.launchctlCalls();
+    for (const value of ["soon", "5"]) {
+      const result = fixture.run("liveness", { ARCADIA_LIVENESS_STALE_SECONDS: value });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain("must be a whole number of at least 30");
+    }
+    expect(readFileSync(fixture.plistPath(), "utf8")).toBe(before);
+    expect(fixture.launchctlCalls()).toBe(calls);
+  });
+
+  it("puts the previous timer back when launchd refuses its replacement", () => {
+    const fixture = host({ release: true });
+    fixture.run("liveness");
+    const before = readFileSync(fixture.plistPath(), "utf8");
+    writeFileSync(fixture.failures, "1");
+    const result = fixture.run("liveness", { ARCADIA_LIVENESS_STALE_SECONDS: "420" });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("failed to load");
+    expect(readFileSync(fixture.plistPath(), "utf8")).toBe(before);
+    expect(existsSync(`${fixture.plistPath()}.prev`)).toBe(false);
+    expect(fixture.launchctlCalls().match(/bootstrap /g)).toHaveLength(3);
   });
 
   it("falls back to the checkout through mise until a release has the command, and says so", () => {

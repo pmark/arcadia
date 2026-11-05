@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -297,7 +297,7 @@ export function evaluateLaunchAgent(
   // Deliberately outside mise: this timer must survive whatever happens to the
   // checkout mise reads, so it runs a compiled release under the runtime that
   // release recorded when it was built.
-  if (label.endsWith(".liveness-check") && /\/go-broker\/releases\/[^/]+\/dist\/src\/cli\.js$/.test(invocation.argv[1] ?? "")) {
+  if (label.endsWith(".liveness-check") && runsReleaseUnderItsRuntime(program, invocation.argv[1] ?? "")) {
     return { ...base, verdict: "pinned", program, pathHead, detail: "Runs an immutable go-broker release under that release's recorded runtime." };
   }
 
@@ -356,6 +356,17 @@ export function readLaunchAgentInvocation(plistPath: string): LaunchAgentInvocat
 function auditOne(plistPath: string): LaunchAgentAudit {
   const label = path.basename(plistPath).replace(/\.plist$/, "");
   return evaluateLaunchAgent(label, plistPath, readLaunchAgentInvocation(plistPath));
+}
+
+/** A release's CLI, run by the very runtime that release's manifest recorded. */
+function runsReleaseUnderItsRuntime(program: string, cli: string): boolean {
+  if (!/\/go-broker\/releases\/[^/]+\/dist\/src\/cli\.js$/.test(cli)) return false;
+  try {
+    const manifest = JSON.parse(readFileSync(path.resolve(cli, "../../../broker-manifest.json"), "utf8")) as { runtimeExecutable?: unknown };
+    return manifest.runtimeExecutable === program;
+  } catch {
+    return false;
+  }
 }
 
 function isMiseExecutable(program: string): boolean {

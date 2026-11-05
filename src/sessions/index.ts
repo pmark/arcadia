@@ -314,6 +314,8 @@ export function tmuxQueryEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+const TMUX_CAPTURE_TIMEOUT_MS = 5_000;
+
 export const systemTmux: TmuxAdapter = {
   available() {
     try { execFileSync("tmux", ["-V"], { stdio: "ignore", env: tmuxQueryEnv() }); return true; } catch { return false; }
@@ -369,6 +371,9 @@ export const systemTmux: TmuxAdapter = {
     try {
       return execFileSync("tmux", ["capture-pane", "-t", `=${name}:`, "-p", "-S", "-2000"], {
         encoding: "utf8",
+        // The tick calls this inside a write transaction. A stalled tmux must not
+        // hold the write lock, which would also stop the liveness check's alert.
+        timeout: TMUX_CAPTURE_TIMEOUT_MS,
         maxBuffer: 8 * 1024 * 1024,
         env: tmuxQueryEnv()
       });

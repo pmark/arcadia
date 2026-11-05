@@ -43,7 +43,7 @@ WORKSPACE="${ARCADIA_WORKSPACE:-$ARCADIA_WORKSPACE_DEFAULT}"
 
 REPO="$(cd "$REPO_ARG" && pwd -P)"
 
-if [[ ( "$ACTION" == "restart" || "$ACTION" == "liveness" ) && ! -d "$WORKSPACE" ]]; then
+if [[ "$ACTION" == "restart" && ! -d "$WORKSPACE" ]]; then
   echo "Arcadia workspace not found: $WORKSPACE" >&2
   echo "Set ARCADIA_WORKSPACE to this checkout's real workspace path." >&2
   exit 2
@@ -499,18 +499,22 @@ stop_all() {
 
 # --- liveness-check timer -----------------------------------------------------
 # Kept out of SERVICES: it has no pid to wait on between runs, and stop_all must
-# leave it alone, so a failed restart that leaves the worker down still alerts.
+# leave it alone, so a failed restart that leaves the worker down still queues an
+# alert. Rollback stops the Discord bot too, so delivery waits until the bot is back.
 
 install_liveness_agent() {
-  local label plist out err release runtime workdir path_value node_path="" mise_bin line
+  local label plist out err release runtime path_value node_path="" mise_bin line
   local -a argv command_args=()
+  if ! liveness_stale_seconds_valid; then
+    echo "liveness-check not changed: ARCADIA_LIVENESS_STALE_SECONDS must be a whole number of at least 30, got: $ARCADIA_LIVENESS_STALE_SECONDS" >&2
+    return 1
+  fi
   label="$(service_label "$LIVENESS_SERVICE")"
   plist="$(plist_for "$LIVENESS_SERVICE")"
   out="$(out_log_for "$LIVENESS_SERVICE")"
   err="$(err_log_for "$LIVENESS_SERVICE")"
-  while IFS= read -r line; do command_args+=("$line"); done < <(liveness_command_args "$WORKSPACE" "$REPO")
+  while IFS= read -r line; do command_args+=("$line"); done < <(liveness_command_args "$REPO")
   if release="$(liveness_release_dir "$HOME")" && runtime="$(liveness_release_runtime "$release")"; then
-    workdir="$release"
     path_value="/usr/bin:/bin:/usr/sbin:/sbin"
     node_path="$release/node_modules"
     argv=("$runtime" "$release/dist/src/cli.js" "${command_args[@]}")
@@ -521,16 +525,30 @@ install_liveness_agent() {
       return 1
     fi
     echo "note: no installed go-broker release has liveness-check yet, so it runs from this checkout until one does and services restart." >&2
-    workdir="$REPO"
     path_value="${mise_bin%/*}:/usr/bin:/bin:/usr/sbin:/sbin"
     argv=("$mise_bin" -C "$REPO" exec -- node "$TSX_ENTRY" "$REPO/src/cli.ts" "${command_args[@]}")
   fi
-  unload_service "$LIVENESS_SERVICE"
-  write_liveness_plist "$label" "$workdir" "$path_value" "$HOME" "$out" "$err" "$plist" "$node_path" "${argv[@]}"
-  if ! launchctl bootstrap "$DOMAIN" "$plist"; then
-    echo "liveness-check failed to load into launchd." >&2
+  # launchd holds one job per label, so the old timer must go before the new one
+  # loads. Everything that can fail first happens first, and a refused load puts
+  # the old timer back: a bad replacement must not leave nothing watching.
+  if ! write_liveness_plist "$label" "$REPO" "$path_value" "$HOME" "$out" "$err" "$plist.new" "$node_path" "${argv[@]}"; then
+    rm -f "$plist.new"
+    echo "liveness-check not changed: could not write its plist." >&2
     return 1
   fi
+  if [[ -f "$plist" ]]; then cp -p "$plist" "$plist.prev"; fi
+  unload_service "$LIVENESS_SERVICE"
+  mv "$plist.new" "$plist"
+  if launchctl bootstrap "$DOMAIN" "$plist"; then
+    rm -f "$plist.prev"
+    return 0
+  fi
+  echo "liveness-check failed to load into launchd." >&2
+  if [[ -f "$plist.prev" ]]; then
+    mv "$plist.prev" "$plist"
+    launchctl bootstrap "$DOMAIN" "$plist" || echo "The previous liveness-check could not be reloaded either; nothing is watching the worker." >&2
+  fi
+  return 1
 }
 
 remove_liveness_agent() {

@@ -39,8 +39,9 @@ import { readTickStartedAt, readWorkerRecord } from "./worker.js";
  *
  * It restarts and kills nothing, and calls no model. It opens the database
  * read-only and writes only one outbox row, through `arcadia ping`, on a
- * transition. That route survives a stuck worker: the Discord bot is its own
- * service, and a ping queued at 02:59:05 in that hang was delivered 5s later.
+ * transition; nothing slow runs inside that short transaction. That route
+ * survives a stuck worker: the Discord bot is its own service, and a ping queued
+ * at 02:59:05 in that hang was delivered 5s later.
  */
 
 export const LIVENESS_DEFAULT_STALE_SECONDS = 300;
@@ -59,6 +60,8 @@ export interface LivenessState {
   /** The last confirmed production state; null until one has been read. */
   productionActive: boolean | null;
   openAlert: { kind: LivenessAlertKind; alertedAt: string; pingId: string } | null;
+  /** When the last alert closed; an outbox row older than this is another episode's. */
+  closedAt: string | null;
 }
 
 export interface ProcessRow {
@@ -78,7 +81,8 @@ export type LivenessObservation =
   | { kind: "inactive" }
   | { kind: "fresh"; ageMs: number; limitMs: number; signal: WorkerProgress["signal"]; workerPid: number | null }
   | { kind: "stale"; progressAt: number; ageMs: number; limitMs: number; signal: WorkerProgress["signal"]; workerPid: number | null }
-  | { kind: "read_failed"; what: string; reason: string };
+  /** `policyActive`: the policy itself was read and says Active, so this is no confirmed Off. */
+  | { kind: "read_failed"; what: string; reason: string; policyActive: boolean };
 
 export type LivenessPing = "stale_alert" | "read_failed_alert" | "recovered" | "closed_by_off";
 
@@ -103,16 +107,17 @@ export function decideLiveness(state: LivenessState, observation: LivenessObserv
       return { ping: open === "stale" ? null : "stale_alert", openAlert: "stale", productionActive: true, logOnly: null };
     case "read_failed": {
       const failure = `Could not read ${observation.what}: ${observation.reason}`;
-      if (open) return { ping: null, openAlert: open, productionActive: state.productionActive, logOnly: failure };
+      const productionActive = observation.policyActive ? true : state.productionActive;
+      if (open) return { ping: null, openAlert: open, productionActive, logOnly: failure };
       // A confirmed Off has nobody to page about; the failure still reaches the log and the exit code.
-      if (state.productionActive === false) return { ping: null, openAlert: null, productionActive: false, logOnly: failure };
-      return { ping: "read_failed_alert", openAlert: "read_failed", productionActive: state.productionActive, logOnly: null };
+      if (productionActive === false) return { ping: null, openAlert: null, productionActive, logOnly: failure };
+      return { ping: "read_failed_alert", openAlert: "read_failed", productionActive, logOnly: null };
     }
   }
 }
 
 function emptyState(): LivenessState {
-  return { schema: STATE_SCHEMA, productionActive: null, openAlert: null };
+  return { schema: STATE_SCHEMA, productionActive: null, openAlert: null, closedAt: null };
 }
 
 function statePath(workspacePath: string): string {
@@ -131,10 +136,20 @@ function readState(workspacePath: string): { state: LivenessState; problem: stri
   try {
     const value = JSON.parse(raw) as Partial<LivenessState>;
     if (value.schema !== STATE_SCHEMA) throw new Error("unknown schema");
-    return { state: { schema: STATE_SCHEMA, productionActive: value.productionActive ?? null, openAlert: value.openAlert ?? null }, problem: null };
+    const openAlert = value.openAlert ?? null;
+    if (openAlert !== null && !validOpenAlert(openAlert)) throw new Error("malformed open alert");
+    return { state: { schema: STATE_SCHEMA, productionActive: value.productionActive ?? null, openAlert, closedAt: value.closedAt ?? null }, problem: null };
   } catch (error) {
     return { state: emptyState(), problem: errorText(error) };
   }
+}
+
+/** A half-formed alert would read as "already paged" and silence a real one. */
+function validOpenAlert(alert: NonNullable<LivenessState["openAlert"]>): boolean {
+  return (alert.kind === "stale" || alert.kind === "read_failed")
+    && typeof alert.pingId === "string"
+    && typeof alert.alertedAt === "string"
+    && Number.isFinite(Date.parse(alert.alertedAt));
 }
 
 function writeState(workspacePath: string, state: LivenessState): void {
@@ -186,7 +201,7 @@ export function observeProgress(workspacePath: string, staleMs: number, now: num
   try {
     progress = readWorkerProgress(workspacePath);
   } catch (error) {
-    return { kind: "read_failed", what: "the worker's progress signal", reason: errorText(error) };
+    return { kind: "read_failed", what: "the worker's progress signal", reason: errorText(error), policyActive: true };
   }
   const ageMs = Math.max(0, now - progress.progressAt);
   const fresh = { signal: progress.signal, workerPid: progress.workerPid };
@@ -198,6 +213,11 @@ export function observeProgress(workspacePath: string, staleMs: number, now: num
     : Math.max(staleMs, claimedAt + PRODUCTION_CONTROL_DEADLINES.tickReviewerTimeoutMs + staleMs - progress.progressAt);
   if (ageMs < limitMs) return { kind: "fresh", ageMs, limitMs, ...fresh };
   return { kind: "stale", progressAt: progress.progressAt, ageMs, limitMs, ...fresh };
+}
+
+/** Fixed for the whole silence, so the outbox can recognise a retry of this alert. */
+export function staleEpisodeKey(progressAt: number): string {
+  return `since ${new Date(progressAt).toISOString()}`;
 }
 
 /** `ps` elapsed time, `[[dd-]hh:]mm:ss`, in seconds; NaN for anything else. */
@@ -241,10 +261,6 @@ export function formatDuration(ms: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-function clockTime(ms: number): string {
-  return `${new Date(ms).toISOString().slice(11, 19)} UTC`;
-}
-
 function describeChild(child: ProcessRow): string {
   const [program = "", ...rest] = child.command.trim().split(/\s+/);
   const elapsed = Number.isFinite(child.elapsedSeconds) ? `, running ${formatDuration(child.elapsedSeconds * 1000)}` : "";
@@ -262,7 +278,7 @@ export function staleMessage(
   const child = pid === null || rows === null ? null : suspectChild(rows, pid);
   const children = rows === null ? "Children unknown (ps failed)." : child ? `Long-lived child ${describeChild(child)}.` : "No long-lived child.";
   return [
-    `🚨 Worker silent ${formatDuration(observation.ageMs)} with production Active: no tick progress since ${clockTime(observation.progressAt)}.`,
+    `🚨 Worker silent ${formatDuration(observation.ageMs)} with production Active: no tick progress ${staleEpisodeKey(observation.progressAt)}.`,
     `${worker}. ${children}`,
     "Look: a silent worker.log and a `Python -I -c` child older than a few seconds is #2084. Before any kill, `sample` both and `lsof -p` the child.",
     "Nothing was restarted."
@@ -270,19 +286,24 @@ export function staleMessage(
 }
 
 function readFailedMessage(observation: Extract<LivenessObservation, { kind: "read_failed" }>): string {
-  return `⚠️ The liveness check could not read ${observation.what}, so the worker's progress is unknown while production may be Active: ${observation.reason.replace(/\s+/g, " ").slice(0, 200)}`;
+  return `⚠️ The liveness check could not read ${observation.what}, so the worker's progress is unknown while production ${observation.policyActive ? "is" : "may be"} Active: ${observation.reason.replace(/\s+/g, " ").slice(0, 200)}`;
 }
 
-function closingMessage(kind: LivenessAlertKind, ping: "recovered" | "closed_by_off", alertedAt: string, now: number): string {
-  const open = formatDuration(Math.max(0, now - Date.parse(alertedAt)));
+function closingMessage(alert: NonNullable<LivenessState["openAlert"]>, ping: "recovered" | "closed_by_off", now: number): string {
+  const open = formatDuration(Math.max(0, now - Date.parse(alert.alertedAt)));
+  const closes = closingEpisodeKey(alert.pingId);
   if (ping === "closed_by_off") {
-    return kind === "stale"
-      ? `Production went Off ${open} after the worker-silent alert. The watch has closed, and the worker is not confirmed recovered.`
-      : `Production is Off and the liveness check can read again, ${open} after its alert.`;
+    return alert.kind === "stale"
+      ? `Production went Off ${open} after the worker-silent alert ${closes}. The watch has closed, and the worker is not confirmed recovered.`
+      : `Production is Off and the liveness check can read again, ${open} after its alert ${closes}.`;
   }
-  return kind === "stale"
-    ? `✅ Worker progressing again, ${open} after the silent-worker alert.`
-    : `✅ The liveness check can read again, ${open} after its alert, and the worker is progressing.`;
+  return alert.kind === "stale"
+    ? `✅ Worker progressing again, ${open} after the silent-worker alert ${closes}.`
+    : `✅ The liveness check can read again, ${open} after its alert ${closes}, and the worker is progressing.`;
+}
+
+function closingEpisodeKey(pingId: string): string {
+  return `(${pingId})`;
 }
 
 export interface ProductionLivenessOptions {
@@ -291,11 +312,22 @@ export interface ProductionLivenessOptions {
   dashboardUrl?: string;
 }
 
+interface LivenessPingInput {
+  workspace: string;
+  message: string;
+  kind: string;
+  link: string;
+  agent: string;
+  episodeKey?: string;
+  episodeAfter?: string | null;
+  now: Date;
+}
+
 export interface ProductionLivenessDependencies {
   now?: () => number;
   readProductionActive?: (workspacePath: string) => boolean;
   listProcesses?: () => ProcessRow[];
-  queuePing?: (input: { workspace: string; message: string; kind: string; link: string; agent: string }) => { id: string };
+  queuePing?: (input: LivenessPingInput) => { id: string };
 }
 
 export interface ProductionLivenessData {
@@ -323,7 +355,7 @@ export function parseStaleSeconds(value: number | string | undefined): number {
   return seconds;
 }
 
-function queueThroughPing(input: { workspace: string; message: string; kind: string; link: string; agent: string }): { id: string } {
+function queueThroughPing(input: LivenessPingInput): { id: string } {
   return runPingSendCommand(input).data.ping;
 }
 
@@ -347,16 +379,24 @@ export function runProductionLivenessCheckCommand(
       ? observeProgress(workspacePath, staleMs, now)
       : { kind: "inactive" };
   } catch (error) {
-    observation = { kind: "read_failed", what: "the production policy", reason: errorText(error) };
+    observation = { kind: "read_failed", what: "the production policy", reason: errorText(error), policyActive: false };
   }
 
   const decision = decideLiveness(state, observation);
-  const message = pingMessage(decision.ping, state, observation, now, dependencies.listProcesses ?? listProcesses);
+  const outgoing = pingMessage(decision.ping, state, observation, now, dependencies.listProcesses ?? listProcesses);
+  const message = outgoing?.message ?? null;
   let pingId: string | null = state.openAlert?.pingId ?? null;
-  if (message !== null) {
-    const base = (options.dashboardUrl || process.env["ARCADIA_DASHBOARD_URL"] || DEFAULT_DASHBOARD_URL).replace(/\/+$/, "");
+  if (outgoing) {
     try {
-      pingId = (dependencies.queuePing ?? queueThroughPing)({ workspace: workspacePath, message, kind: "attention", link: `${base}/production`, agent: "Liveness check" }).id;
+      pingId = (dependencies.queuePing ?? queueThroughPing)({
+        workspace: workspacePath,
+        message: outgoing.message,
+        kind: "attention",
+        link: productionLink(options.dashboardUrl),
+        agent: "Liveness check",
+        now: new Date(now),
+        ...(outgoing.episodeKey ? { episodeKey: outgoing.episodeKey, episodeAfter: state.closedAt } : {})
+      }).id;
     } catch (error) {
       throw validationError(`The liveness alert was not queued and will be retried on the next run: ${errorText(error)}`, { message });
     }
@@ -367,7 +407,8 @@ export function runProductionLivenessCheckCommand(
     : decision.ping === null && state.openAlert
       ? state.openAlert
       : { kind: decision.openAlert, alertedAt: new Date(now).toISOString(), pingId: pingId ?? "" };
-  const next: LivenessState = { schema: STATE_SCHEMA, productionActive: decision.productionActive, openAlert };
+  const closedAt = decision.ping === "recovered" || decision.ping === "closed_by_off" ? new Date(now).toISOString() : state.closedAt;
+  const next: LivenessState = { schema: STATE_SCHEMA, productionActive: decision.productionActive, openAlert, closedAt };
   if (stateProblem !== null || JSON.stringify(next) !== JSON.stringify(state)) writeState(workspacePath, next);
   if (stateProblem !== null) throw validationError(`The liveness state file was unreadable and has been replaced: ${stateProblem}`);
   if (decision.logOnly !== null) throw validationError(decision.logOnly, { openAlert: decision.openAlert });
@@ -379,21 +420,32 @@ export function runProductionLivenessCheckCommand(
   });
 }
 
+/** A link that would make the ping refuse must not cost the alert; a bad setting falls back to the local dashboard. */
+function productionLink(configured: string | undefined): string {
+  const base = (configured || process.env["ARCADIA_DASHBOARD_URL"] || DEFAULT_DASHBOARD_URL).trim().replace(/\/+$/, "");
+  const link = `${base}/production`;
+  try {
+    const { protocol } = new URL(link);
+    if (protocol === "http:" || protocol === "https:") return link;
+  } catch { /* falls through */ }
+  return `${DEFAULT_DASHBOARD_URL}/production`;
+}
+
 function pingMessage(
   ping: LivenessPing | null,
   state: LivenessState,
   observation: LivenessObservation,
   now: number,
   processes: () => ProcessRow[]
-): string | null {
+): { message: string; episodeKey?: string } | null {
   if (ping === "stale_alert" && observation.kind === "stale") {
     let rows: ProcessRow[] | null = null;
     try { rows = processes(); } catch { /* the alert matters more than its detail */ }
-    return staleMessage(observation, rows);
+    return { message: staleMessage(observation, rows), episodeKey: staleEpisodeKey(observation.progressAt) };
   }
-  if (ping === "read_failed_alert" && observation.kind === "read_failed") return readFailedMessage(observation);
+  if (ping === "read_failed_alert" && observation.kind === "read_failed") return { message: readFailedMessage(observation) };
   if ((ping === "recovered" || ping === "closed_by_off") && state.openAlert) {
-    return closingMessage(state.openAlert.kind, ping, state.openAlert.alertedAt, now);
+    return { message: closingMessage(state.openAlert, ping, now), episodeKey: closingEpisodeKey(state.openAlert.pingId) };
   }
   return null;
 }
