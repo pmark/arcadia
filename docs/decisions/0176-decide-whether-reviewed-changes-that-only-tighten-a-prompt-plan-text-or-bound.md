@@ -4,7 +4,7 @@ type: decision
 id: "0176"
 slug: decide-whether-reviewed-changes-that-only-tighten-a-prompt-plan-text-or-bound
 project: arcadia
-status: open
+status: approved
 question: Decide whether reviewed changes that only tighten a prompt, plan text or bound may merge without the operator's word, or whether the word stays and only the wait is reduced.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -28,6 +28,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-11-05
+answer: A. Keep the word, remove the wait
+decided: 2026-11-05
 ---
 
 # Decision 0176: Decide whether reviewed changes that only tighten a prompt, plan text or bound may merge without the operator's word, or whether the word stays and only the wait is reduced.

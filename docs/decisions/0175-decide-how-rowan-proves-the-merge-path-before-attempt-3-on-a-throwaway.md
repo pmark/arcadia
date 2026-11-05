@@ -4,7 +4,7 @@ type: decision
 id: "0175"
 slug: decide-how-rowan-proves-the-merge-path-before-attempt-3-on-a-throwaway
 project: arcadia
-status: open
+status: approved
 question: Decide how Rowan proves the merge path before attempt 3, on a throwaway repository, and whether recovery that ships in the system keeps a real run clean.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -28,6 +28,8 @@ options:
 confidence: high
 plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 updated: 2026-11-05
+answer: A. Merge probe, no practice attempt
+decided: 2026-11-05
 ---
 
 # Decision 0175: Decide how Rowan proves the merge path before attempt 3, on a throwaway repository, and whether recovery that ships in the system keeps a real run clean.
