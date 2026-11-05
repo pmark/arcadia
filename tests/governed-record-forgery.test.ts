@@ -11,6 +11,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { autoSettleRequestId } from "../src/ask/autoSettleRequestId.js";
 import { checkGovernedRecords, classifyPatchApplicability, type CommitObjectFile } from "../src/qa/patchApplicability.js";
 import { governedRecordCheckSection } from "../src/qa/prReview.js";
 
@@ -78,6 +79,11 @@ function repository() {
     git(["add", "-A"]);
     git(["commit", "-q", "--no-verify", "-F", "-"], message);
   };
+  const commitAs = (author: { name: string; email: string }, files: Record<string, string | null>, message: string) => {
+    write(files);
+    git(["add", "-A"]);
+    git(["commit", "-q", "--no-verify", `--author=${author.name} <${author.email}>`, "-F", "-"], message);
+  };
   git(["init", "-q", "-b", "main"]);
   commit({ [PLAN_PATH]: plan("open", "Do it.", ACTION), "PROJECT.md": project(ACTION), "MISSION_LOG.md": "# Mission Log\n", "README.md": "# Fixture\n" }, "base");
   const base = git(["rev-parse", "HEAD"]).trim();
@@ -102,7 +108,7 @@ function repository() {
     const { patch, files, commits, commitFiles } = read();
     return governedRecordCheckSection(patch, files, commits, commitFiles).join("\n");
   };
-  return { commit, read, section };
+  return { commit, commitAs, read, section };
 }
 
 const blobId = (content: string) => createHash("sha1").update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest("hex");
@@ -265,7 +271,8 @@ describe("real commits a Session can make", () => {
     const { patch, files, commits, commitFiles } = repo.read();
     const check = checkGovernedRecords(patch, { declaredFiles: files, declaredCommits: commits, commitFiles });
     expect(check.problems).toEqual([]);
-    expect(check.archives.map((fact) => fact.verified)).toEqual([true, false]);
+    // Was [true, false], which pinned the defect round 3 found: the first copy's comparison says nothing about the head's.
+    expect(check.archives.map((fact) => fact.verified)).toEqual([false, false]);
   });
 
   it("states a retirement's From: header as text a Session can set, not as who wrote it", () => {
@@ -278,3 +285,132 @@ describe("real commits a Session can make", () => {
     expect(section).toContain("by its From: header, trailers and content");
   });
 });
+
+/** The last commit's id, as the section must name it. */
+const headOf = (repo: ReturnType<typeof repository>) => {
+  const { commits } = repo.read();
+  return commits[commits.length - 1];
+};
+
+describe("a Verified fact holds at the head: any later commit touching its record voids it, by name", () => {
+  const editedCopy = ask({ candidate_revision: "1234567", notes: "edited after review" });
+  const laterCommits: Array<[string, (repo: ReturnType<typeof repository>, message: string) => void]> = [
+    ["edit", (repo, message) => repo.commit({ [ARCHIVE]: editedCopy }, message)],
+    ["delete", (repo, message) => repo.commit({ [ARCHIVE]: null }, message)],
+    ["re-add", (repo, message) => {
+      repo.commit({ [ARCHIVE]: null }, message);
+      repo.commit({ [ARCHIVE]: editedCopy }, message);
+    }],
+    ["rename", (repo, message) => repo.commit({ [ARCHIVE]: null, [".arcadia/asks/archive/agent-ask-moved.yaml"]: ARCHIVE_CONTENT }, message)]
+  ];
+  const messages: Array<[string, string]> = [["plain", "chore: later\n"], ["attested", `chore(arcadia): later\n\n${SETTLED}\n`]];
+
+  for (const [change, later] of laterCommits) {
+    for (const [kind, message] of messages) {
+      it(`a later ${change} of the archive, ${kind}, voids the archive, its citation and its shape`, () => {
+        const repo = repository();
+        settle(repo);
+        const before = repo.section();
+        expect(before).toContain(`- Verified (Archived Ask): ${JSON.stringify(ARCHIVE)}`);
+        expect(before).toContain(`- Verified (Agent Ask citation): "complete-a"`);
+        const settled = headOf(repo);
+        later(repo, message);
+        const section = repo.section();
+        expect(section).not.toContain("Nothing below is verified");
+        expect(section).not.toContain(`- Verified (Archived Ask): ${JSON.stringify(ARCHIVE)}`);
+        expect(section).not.toContain(`- Verified (Agent Ask citation): "complete-a"`);
+        expect(section).not.toContain(`- Verified (Record shape): ${JSON.stringify(ARCHIVE)}`);
+        const firstLater = repo.read().commits[repo.read().commits.indexOf(settled) + 1];
+        expect(section).toContain(`- Not verified (Archived Ask): ${JSON.stringify(ARCHIVE)} differs from the draft this patch deletes only in candidate_revision, but commit ${firstLater} touches this record afterwards`);
+        expect(section).toMatch(new RegExp(`- Not verified \\(Agent Ask citation\\): "complete-a" .*but commit ${firstLater} touches this record afterwards`));
+        expect(section).toMatch(new RegExp(`- Not verified \\(Record shape\\): ${JSON.stringify(ARCHIVE).replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")} .*commit ${firstLater} touches`));
+      });
+    }
+  }
+
+  it("a later touch of the record the citation sits in voids the citation and that shape, not the archive", () => {
+    for (const [file, content] of [[PLAN_PATH, `${completed("complete-a")}Trailing note.\n`], ["MISSION_LOG.md", "# Mission Log\n\n## 2026-10-04 — Completed it\n\nAnother line.\n"]] as const) {
+      for (const [kind, message] of messages) {
+        const repo = repository();
+        settle(repo);
+        repo.commit({ [file]: content }, message);
+        const toucher = headOf(repo);
+        const section = repo.section();
+        expect(section, `${file} ${kind}`).toMatch(new RegExp(`- Not verified \\(Record shape\\): "${file.replace(".", "\\.")}" .*commit ${toucher} touches`));
+        if (file === PLAN_PATH) expect(section, kind).toMatch(new RegExp(`- Not verified \\(Agent Ask citation\\): "complete-a" .*but commit ${toucher} touches this record afterwards`));
+        expect(section, `${file} ${kind}`).toContain(`- Verified (Archived Ask): ${JSON.stringify(ARCHIVE)}`);
+      }
+    }
+  });
+
+  it("a citation found only in the Mission Log reads Verified until a later commit touches the Mission Log", () => {
+    const id = autoSettleRequestId("p", ACTION, DRAFT_CONTENT);
+    const log = `# Mission Log\n\n## 2026-10-04 — Completed it\n\nSettled by ${id}.\n`;
+    const repo = repository();
+    repo.commit({ [DRAFT]: DRAFT_CONTENT }, `chore(candidate): preserve\n\n${PRESERVED}\n`);
+    repo.commit({ [DRAFT]: null, [ARCHIVE]: ARCHIVE_CONTENT, [PLAN_PATH]: completed("complete-a"), "PROJECT.md": project("next-one"), "MISSION_LOG.md": log }, `chore(arcadia): settle\n\n${SETTLED}\n`);
+    expect(repo.section()).toContain(`- Verified (Agent Ask citation): ${JSON.stringify(id)}`);
+    repo.commit({ "MISSION_LOG.md": `${log}\nAnother line.\n` }, `chore(arcadia): log\n\n${SETTLED}\n`);
+    const section = repo.section();
+    expect(section).not.toContain(`- Verified (Agent Ask citation): ${JSON.stringify(id)}`);
+    expect(section).toMatch(new RegExp(`- Not verified \\(Agent Ask citation\\): ${JSON.stringify(id)} .*but commit ${headOf(repo)} touches this record afterwards`));
+  });
+
+  it("a draft edited between preservation and settlement voids the citation that names it", () => {
+    const repo = repository();
+    repo.commit({ [DRAFT]: DRAFT_CONTENT }, `chore(candidate): preserve\n\n${PRESERVED}\n`);
+    repo.commit({ [DRAFT]: `${DRAFT_CONTENT}\n` }, `chore(candidate): edit\n\n${PRESERVED}\n`);
+    const edited = headOf(repo);
+    repo.commit({ [DRAFT]: null, [ARCHIVE]: ARCHIVE_CONTENT, [PLAN_PATH]: completed("complete-a"), "PROJECT.md": project("next-one") }, `chore(arcadia): settle\n\n${SETTLED}\n`);
+    const section = repo.section();
+    expect(section).toMatch(new RegExp(`- Not verified \\(Agent Ask citation\\): "complete-a" .*but commit ${edited} touches this record afterwards`));
+  });
+
+  it("a draft re-created after its settlement voids the archive, the citation and the draft's shape", () => {
+    const repo = repository();
+    settle(repo);
+    repo.commit({ [DRAFT]: DRAFT_CONTENT }, `chore(candidate): preserve\n\n${PRESERVED}\n`);
+    const again = headOf(repo);
+    const section = repo.section();
+    expect(section).toContain(`but commit ${again} touches this record afterwards`);
+    expect(section).not.toContain("- Verified (Archived Ask):");
+    expect(section).not.toContain("- Verified (Agent Ask citation):");
+    expect(section).not.toContain(`- Verified (Record shape): ${JSON.stringify(DRAFT)}`);
+  });
+
+  it("a retired draft brought back voids the retirement, which otherwise reads Verified", () => {
+    const CONTROLLER = { name: "Arcadia Controller", email: "controller@arcadia.local" };
+    const repo = repository();
+    settleWithRetirement(repo, CONTROLLER);
+    const honest = repo.section();
+    expect(honest).toContain("- Verified (Draft retirement):");
+    const { commits } = repo.read();
+    repo.commit({ [DRAFT]: DRAFT_CONTENT }, `chore(candidate): preserve again\n\n${PRESERVED}\n`);
+    const again = repo.read().commits[commits.length];
+    const section = repo.section();
+    expect(section).not.toContain("- Verified (Draft retirement):");
+    expect(section).toMatch(new RegExp(`- Not verified \\(Draft retirement\\): .*but commit ${again} touches this record afterwards`));
+  });
+
+  it("names nothing and voids nothing on an honest settlement, where a draft's archive is its expected second touch", () => {
+    const repo = repository();
+    settle(repo);
+    const section = repo.section();
+    expect(section).not.toContain("touches this record afterwards");
+    expect(section).not.toContain("touches it after");
+    expect(section).toContain("A Verified entry holds at the head");
+  });
+});
+
+/** A failed candidate's draft, its host retirement under the Controller's identity, then a second draft settled. */
+function settleWithRetirement(repo: ReturnType<typeof repository>, controller: { name: string; email: string }) {
+  repo.commit({ [DRAFT]: DRAFT_CONTENT }, `chore(candidate): preserve\n\n${PRESERVED}\n`);
+  repo.commitAs(controller, { [DRAFT]: null }, "chore(arcadia): retire the failed candidate's completion draft\n\nArcadia-Retired-Completion-Draft: complete-a\n");
+  const second = ".arcadia/asks/agent-ask-complete-b.yaml";
+  const secondArchive = ".arcadia/asks/archive/agent-ask-complete-b.yaml";
+  repo.commit({ [second]: ask({ request_id: "complete-b", candidate_revision: "abcdef1" }, 2) }, `chore(candidate): preserve\n\n${PRESERVED}\n`);
+  repo.commit({
+    [second]: null, [secondArchive]: ask({ request_id: "complete-b", candidate_revision: "1234567" }), [PLAN_PATH]: completed("complete-b"), "PROJECT.md": project("next-one"),
+    "MISSION_LOG.md": "# Mission Log\n\n## 2026-10-04 — Completed it\n"
+  }, `chore(arcadia): settle\n\n${SETTLED}\n`);
+}
