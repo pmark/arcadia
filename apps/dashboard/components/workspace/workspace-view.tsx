@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRead } from "./use-read";
-import { WorkspaceAsk } from "./workspace-ask";
+import { WorkspaceAskTarget } from "./workspace-ask";
 import { GoSource, WorkspaceNextMove, useGoRead, type GoRead } from "./workspace-next-move";
 import type { AllPlansResponse, PlanDetailResponse, PlanRow, PlanSummariesResponse } from "../../lib/plans-types";
 import { actionSummaryView, planSummaryView, type ActionSummaryView, type PlanSummaryView } from "../../lib/workspace-summaries";
@@ -150,7 +150,7 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
       </section>
       <section className="workspace-direction workspace-panel" aria-label="Direction">
         <WorkspaceNextMove go={go} project={goProject} relation={relation} selectedAction={scope?.plan && scope.action && action ? { plan: scope.plan, action: scope.action } : undefined} />
-        <WorkspaceAsk available={Boolean(scope && !loading && !failure && !missing)} target={{ projectId: project?.id, ...(scope?.plan ? { plan: scope.plan } : {}), ...(scope?.action ? { action: scope.action } : {}), label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
+        <WorkspaceAskTarget available={Boolean(scope && !loading && !failure && !missing)} reading={loading} target={{ projectId: project?.id, ...(scope?.plan ? { plan: scope.plan } : {}), ...(scope?.action ? { action: scope.action } : {}), label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
       </section>
       <aside className="workspace-context-panel workspace-panel" aria-label="Context">
         <div className="workspace-section-heading"><h2>In this {listed.toLowerCase()}</h2><button type="button" onClick={() => setRevision(v => v + 1)}>Refresh</button></div>

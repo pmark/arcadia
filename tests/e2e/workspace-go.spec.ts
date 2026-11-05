@@ -319,10 +319,13 @@ test("workspace renders Go's next move for the selected Project without choosing
 
     // Draft keeps its target through navigation, as before.
     await page.getByRole("textbox").fill("Make the welcome friendlier");
+    await page.getByRole("button", { name: "Put down", exact: true }).click();
     await direction(page).getByRole("link", { name: "Review the page on a phone" }).click();
     await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
     await expect(page.getByRole("textbox")).toHaveValue("Make the welcome friendlier");
+    await page.getByRole("textbox").focus();
     await expect(page.getByText("Your unsent draft keeps its original target.")).toBeVisible();
+    await page.getByRole("button", { name: "Put down", exact: true }).click();
 
     // Go's current Action: Work shows what Go has for it, with acceptance behind disclosure.
     await expect(result(page).getByText("This is Go's current Action.")).toBeVisible();

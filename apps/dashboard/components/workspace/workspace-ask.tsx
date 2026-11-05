@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import type { AskTrailResponse } from "../../lib/arcadia-cli";
 import type { AskResponse } from "../../lib/types";
 import { WorkspaceArtifactViewer } from "./workspace-artifact-viewer";
@@ -13,10 +13,15 @@ type Exchange = { id: string; text: string; target: Target; mode?: "direction"; 
 type Saved = { draft: string; target: Target | null; exchange: Exchange | null; history: Exchange[] };
 const empty: Saved = { draft: "", target: null, exchange: null, history: [] };
 const storageKey = "arcadia.workspace.ask.v1";
+/** What the View on screen says Ask may use. A route that publishes nothing, like the Feed, has no subject to verify, so Ask uses portfolio routing there. */
+type ViewTarget = { target: Target; available: boolean; reading: boolean };
+const PORTFOLIO: Target = { label: "Portfolio", context: "Portfolio" };
+const noView: ViewTarget = { target: PORTFOLIO, available: true, reading: false };
 type AskState = {
   saved: Saved; update: (next: Saved) => void; busy: boolean; warning: string | null;
   trail: AskTrailResponse | null; readError: string | null; missing: boolean;
   inspect: (id: string) => Promise<boolean>; send: (exchange: Exchange, fresh?: boolean) => Promise<void>;
+  view: ViewTarget; publishView: (view: ViewTarget | null) => void;
 };
 const AskContext = createContext<AskState | null>(null);
 
@@ -63,6 +68,7 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
   const [trail, setTrail] = useState<AskTrailResponse | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
+  const [view, publishView] = useState<ViewTarget | null>(null);
 
   function update(next: Saved) {
     preserveRaw.current = false;
@@ -153,54 +159,101 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
     // Initialization only reads the server; a reload never calls send.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  return <AskContext.Provider value={{ saved, update, busy, warning, trail, readError, missing, inspect, send }}>{children}</AskContext.Provider>;
+  return <AskContext.Provider value={{ saved, update, busy, warning, trail, readError, missing, inspect, send, view: view ?? noView, publishView }}>{children}</AskContext.Provider>;
 }
 
-export function WorkspaceAsk({ target, available }: { target: Target; available: boolean }) {
-  const [directionMode, setDirectionMode] = useState(false);
+/** The View on screen says what Ask may use, and draws nothing: the composer lives in Relay, which the layout mounts once. */
+export function WorkspaceAskTarget({ target, available, reading }: { target: Target; available: boolean; reading: boolean }) {
+  const publish = useContext(AskContext)?.publishView;
+  const key = JSON.stringify([target, available, reading]);
+  useEffect(() => {
+    if (!publish) return;
+    publish({ target, available, reading });
+    return () => publish(null);
+    // The key holds every field, so a new object with the same values changes nothing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, publish]);
+  return null;
+}
+
+/** What the capsule needs to show without opening: a send still in flight, or one whose outcome is unknown. */
+export function useAskPhase(): Exchange["phase"] | null {
+  return useContext(AskContext)?.saved.exchange?.phase ?? null;
+}
+
+type ComposerProps = {
+  open: boolean; thread: boolean; head: ReactNode; fieldControl: ReactNode;
+  field: RefObject<HTMLTextAreaElement | null>; onFieldFocus: (from: Element | null) => void;
+};
+
+/** Everything below the field waits behind `open`, inert, so the same field is the capsule at rest and the composer when open. */
+export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldFocus }: ComposerProps) {
+  const [directionFor, setDirectionFor] = useState<string | null>(null);
   const state = useContext(AskContext);
   if (!state) return null;
-  const { saved, update, busy, warning, trail, readError, missing, inspect, send } = state;
+  const { saved, update, busy, warning, trail, readError, missing, inspect, send, view: { target, available, reading } } = state;
   const draftTarget = saved.target ?? target;
+  // A direction is an explicit choice of one target, so the choice ends if the target changes.
+  const draftKey = JSON.stringify(draftTarget);
+  const directionMode = directionFor === draftKey;
   const changedScope = draftTarget.context !== target.context || draftTarget.projectId !== target.projectId;
+  // Nothing is sent about a View that can't be verified. A draft explicitly on the whole portfolio doesn't depend on that View.
+  const pinnedToPortfolio = saved.target !== null && !saved.target.projectId;
+  const sendable = available || pinnedToPortfolio;
   const e = saved.exchange;
   const retryable = e?.phase === "uncertain" && missing && !e.lookupOnly;
   const receiptHref = e ? `/workspace?receipt=${encodeURIComponent(e.id)}` : null;
+  const blocked = !sendable || busy || !saved.draft.trim() || e?.phase === "uncertain" || (directionMode && !draftTarget.projectId);
   function submit() {
-    if (!available || busy || !saved.draft.trim() || e?.phase === "uncertain") return;
-    if (directionMode && !draftTarget.projectId) return;
+    if (blocked) return;
     const exchange: Exchange = { id: newRequestId("workspace"), text: saved.draft.trim(), target: draftTarget, phase: "sending", ...(directionMode ? { mode: "direction" as const } : {}) };
     void send(exchange, true);
   }
-  return <div className="workspace-ask">
-    <p>{draftTarget.projectId ? `Ask routes to Project ${draftTarget.label}.` : "Ask uses portfolio routing."}</p>
-    <p className="workspace-muted">Selected: {draftTarget.context}. Selecting a Plan or Action does not automatically change it.</p>
-    {changedScope && <p role="status">Your unsent draft keeps its original target. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target })}>Use selected context for draft</button></p>}
-    {!available && <p role="status">Ask is unavailable until the selected context can be verified.</p>}
+  return <div className="workspace-ask relay-body">
+    <div className="relay-head" inert={!open}>
+      <span className="relay-grip" aria-hidden="true" />
+      <p className="relay-chip">{reading && saved.target === null ? "Reading this view…" : draftTarget.projectId ? <>To Project <b>{draftTarget.label}</b></> : <>To your <b>whole portfolio</b></>}</p>
+      {head}
+    </div>
     <form onSubmit={event => { event.preventDefault(); submit(); }}>
-      <label htmlFor="workspace-ask-text">What would you like to do?</label>
-      <textarea id="workspace-ask-text" rows={4} value={saved.draft} disabled={!available} onChange={event => update({ ...saved, draft: event.target.value, target: saved.target ?? target })} />
-      <label><input type="checkbox" checked={directionMode} disabled={!draftTarget.projectId || busy} onChange={event => setDirectionMode(event.target.checked)} />Send as a direction to this context</label>
-      {directionMode && <p>Records a direction for this Project, Plan or Action. Delivery appears after the recipient records its checkpoint.</p>}
-      <button type="submit" disabled={!available || busy || !saved.draft.trim() || e?.phase === "uncertain"}>{busy ? "Sending…" : directionMode ? "Send direction" : "Send new Ask"}</button>
+      <label htmlFor="workspace-ask-text" className="workspace-sr">What would you like to do?</label>
+      <div className="relay-field">
+        <textarea id="workspace-ask-text" ref={field} rows={1} placeholder="What would you like to do?" value={saved.draft}
+          onFocus={event => onFieldFocus(event.relatedTarget instanceof Element ? event.relatedTarget : null)}
+          onChange={event => update({ ...saved, draft: event.target.value, target: saved.target ?? (available ? target : null) })} />
+        {fieldControl}
+      </div>
+      <div className="relay-send" inert={!open}>
+        {reading && !sendable && <p className="relay-why" role="status">Reading this view. Keep typing; sending waits for it.</p>}
+        {!reading && !sendable && <p className="relay-why" role="status">Arcadia couldn&apos;t confirm this view, so Ask can&apos;t use it. Your draft stays. <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO })}>Ask the whole portfolio instead</button></p>}
+        <div className="relay-send-row">
+          <label><input type="checkbox" checked={directionMode} disabled={!draftTarget.projectId || !sendable || busy} onChange={event => setDirectionFor(event.target.checked ? draftKey : null)} />Send as a direction to this context</label>
+          <button type="submit" disabled={blocked}>{busy ? "Sending…" : directionMode ? "Send direction" : "Send new Ask"}</button>
+        </div>
+        {directionMode && <p className="relay-why">Records a direction for <b>{draftTarget.context}</b>. Delivery appears after the recipient records its checkpoint.</p>}
+      </div>
     </form>
-    {warning && <p role="alert">{warning}</p>}
-    {e && <section aria-label="Latest Ask" className="workspace-ask-receipt" aria-live="polite">
-      <h2>Your Ask</h2><p>{trail?.capture?.originalText ?? e.text}</p>
-      <p>Sent context: {e.target.context} · {e.target.label}</p>
-      <p>{e.phase === "sending" ? "Sending — durable capture is not confirmed yet." : e.phase === "uncertain" ? "Submission outcome unknown. Inspect the receipt before retrying." : `Submission recorded${e.status ? ` · ${e.status}` : " via receipt"}.`}</p>
-      {trail?.direction ? <DirectionCard view={trail.direction} /> : e.mode === "direction" && e.phase === "uncertain" ? <section aria-label="Direction receipt"><h3>Direction · unknown</h3><p>The submission outcome is unknown. Refresh reads the original receipt; nothing is resent automatically.</p><p>Evidence: {e.id} · workspace.submission · browser transport observation</p></section> : null}
-      {e.summary && <><h3>{e.phase === "acknowledged" ? "Arcadia" : "Transport response"}</h3><p>{e.summary}</p></>}
-      <details><summary>Receipt details</summary><p>Request: <code>{e.id}</code></p><a href={receiptHref!}>Receipt link (read only)</a></details><button type="button" disabled={busy} onClick={() => void inspect(e.id)}>Refresh receipt</button>
-      {readError && <p role="alert">Receipt read failed: {readError} Any evidence below is from the last successful read. {e.phase === "acknowledged" ? "Your submission receipt is retained." : "No automatic resubmission was made."}</p>}
-      {retryable && <button type="button" disabled={busy || !available} onClick={() => void send(e)}>Retry original unchanged Ask</button>}
-      {e.phase === "uncertain" && !busy && <button type="button" onClick={() => {
-        update({ ...saved, exchange: null, history: [e, ...saved.history].slice(0, 5) });
-        const url = new URL(window.location.href); url.searchParams.delete("receipt"); window.history.replaceState(null, "", url);
-      }}>Keep in history and start a new Ask</button>}
-      {trail && <TrailCards trail={trail} receipt={e.id} />}
-    </section>}
-    <details className="workspace-history"><summary>History & recovery</summary><p>One exchange is shown at a time. This browser keeps up to five earlier receipt identities; reopening only reads records.</p>{saved.history.map((old, index) => <p key={`${old.id}-${index}`}><button type="button" disabled={busy} onClick={() => { update(selectExchange(saved, recoverExchange(old))); const url = new URL(window.location.href); url.searchParams.set("receipt", old.id); window.history.replaceState(null, "", url); void inspect(old.id); }}>{old.target.label} · {old.id}</button></p>)}</details>
+    <div className="relay-scroll" inert={!open}>
+      {changedScope && <p role="status">Your unsent draft keeps its original target. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target })}>Use this view</button></p>}
+      {thread && draftTarget.context !== draftTarget.label && <p className="workspace-muted">Selected: {draftTarget.context}. Selecting a Plan or Action doesn&apos;t change where an ordinary Ask goes.</p>}
+      {warning && <p role="alert">{warning}</p>}
+      {e && <section aria-label="Latest Ask" className="workspace-ask-receipt" aria-live="polite">
+        <h2>Your Ask</h2><p>{trail?.capture?.originalText ?? e.text}</p>
+        {e.summary && <><h3>{e.phase === "acknowledged" ? "Arcadia" : "Transport response"}</h3><p>{e.summary}</p></>}
+        <p>Sent context: {e.target.context} · {e.target.label}</p>
+        <p>{e.phase === "sending" ? "Sending — durable capture is not confirmed yet." : e.phase === "uncertain" ? "Submission outcome unknown. Inspect the receipt before retrying." : `Submission recorded${e.status ? ` · ${e.status}` : " via receipt"}.`}</p>
+        {trail?.direction ? <DirectionCard view={trail.direction} /> : e.mode === "direction" && e.phase === "uncertain" ? <section aria-label="Direction receipt"><h3>Direction · unknown</h3><p>The submission outcome is unknown. Refresh reads the original receipt; nothing is resent automatically.</p><p>Evidence: {e.id} · workspace.submission · browser transport observation</p></section> : null}
+        <details><summary>Receipt details</summary><p>Request: <code>{e.id}</code></p><a href={receiptHref!}>Receipt link (read only)</a></details><button type="button" disabled={busy} onClick={() => void inspect(e.id)}>Refresh receipt</button>
+        {readError && <p role="alert">Receipt read failed: {readError} Any evidence below is from the last successful read. {e.phase === "acknowledged" ? "Your submission receipt is retained." : "No automatic resubmission was made."}</p>}
+        {retryable && <button type="button" disabled={busy || !sendable} onClick={() => void send(e)}>Retry original unchanged Ask</button>}
+        {e.phase === "uncertain" && !busy && <button type="button" onClick={() => {
+          update({ ...saved, exchange: null, history: [e, ...saved.history].slice(0, 5) });
+          const url = new URL(window.location.href); url.searchParams.delete("receipt"); window.history.replaceState(null, "", url);
+        }}>Keep in history and start a new Ask</button>}
+        {trail && <TrailCards trail={trail} receipt={e.id} />}
+      </section>}
+      <details className="workspace-history" open={thread}><summary>History & recovery</summary><p>One exchange is shown at a time. This browser keeps up to five earlier receipt identities; reopening only reads records.</p>{saved.history.map((old, index) => <p key={`${old.id}-${index}`}><button type="button" disabled={busy} onClick={() => { update(selectExchange(saved, recoverExchange(old))); const url = new URL(window.location.href); url.searchParams.set("receipt", old.id); window.history.replaceState(null, "", url); void inspect(old.id); }}>{old.target.label} · {old.id}</button></p>)}</details>
+    </div>
   </div>;
 }
 
