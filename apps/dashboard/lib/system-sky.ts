@@ -28,6 +28,9 @@ export interface Weather {
   clouds?: number;
 }
 
+/** What a change adds on top of a settled sky. Colours stay the sky's own, so these are only amounts. */
+export type WeatherArrival = Partial<Record<keyof Weather, number>>;
+
 export interface Sky {
   id: SkyId;
   /** The system's state in a word or two. */
@@ -36,13 +39,17 @@ export interface Sky {
   weather: string;
 }
 
-export const SKIES: Record<SkyId, Sky & { draw: Weather }> = {
-  reading: { id: "reading", label: "Reading", weather: "No reading yet", draw: {} },
-  clear: { id: "clear", label: "All clear", weather: "Clear skies", draw: { tint: ["#8a6fd0", 0.04], dust: 10, wind: 0.15 } },
-  active: { id: "active", label: "Work moving", weather: "Light wind", draw: { dust: 46, wind: 0.6 } },
-  attention: { id: "attention", label: "Needs you", weather: "Warm haze", draw: { haze: ["#ffbf5a", 0.22], dust: 26, wind: 0.3, rise: 16 } },
-  storm: { id: "storm", label: "Blocked", weather: "Dust storm", draw: { haze: ["#c8743f", 0.55], tint: ["#a5502a", 0.2], dust: 300, wind: 2.4 } },
-  static: { id: "static", label: "Signal loss", weather: "Overcast", draw: { clouds: 0.7, veil: ["#2f3440", 0.24], dust: 6, wind: 0.2 } }
+/**
+ * `draw` is the settled sky. `arrive` is added while a change lands, then fades (lib/weather-rhythm.ts).
+ * `swell` is how far toward that arrival an occasional swell rises.
+ */
+export const SKIES: Record<SkyId, Sky & { draw: Weather; arrive: WeatherArrival; swell: number }> = {
+  reading: { id: "reading", label: "Reading", weather: "No reading yet", draw: {}, arrive: {}, swell: 0 },
+  clear: { id: "clear", label: "All clear", weather: "Clear skies", draw: { tint: ["#8a6fd0", 0.03], dust: 5, wind: 0.08 }, arrive: { dust: 36, wind: 0.5 }, swell: 0.2 },
+  active: { id: "active", label: "Work moving", weather: "Light wind", draw: { dust: 14, wind: 0.28 }, arrive: { dust: 60, wind: 0.9 }, swell: 0.35 },
+  attention: { id: "attention", label: "Needs you", weather: "Warm haze", draw: { haze: ["#ffbf5a", 0.15], dust: 8, wind: 0.1, rise: 5 }, arrive: { dust: 40, wind: 0.5, rise: 28, haze: 0.14 }, swell: 0.16 },
+  storm: { id: "storm", label: "Blocked", weather: "Dust storm", draw: { haze: ["#c8743f", 0.32], tint: ["#a5502a", 0.08], dust: 22, wind: 0.26 }, arrive: { dust: 280, wind: 2.3, haze: 0.22 }, swell: 0.2 },
+  static: { id: "static", label: "Signal loss", weather: "Overcast", draw: { clouds: 0.5, veil: ["#2f3440", 0.18], dust: 3, wind: 0.1 }, arrive: { clouds: 0.3 }, swell: 0.3 }
 };
 
 /** A calm sky only says "All clear" when production is On. Otherwise it claims no more than this. */

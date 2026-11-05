@@ -15,9 +15,12 @@ while script loads.
 
 **Not yet shown:** the automatic switch hasn't fired on the live job. A temporary launchd job proved it through the real serve path, and the
 first real proof comes with the next merge that changes the dashboard or `src`, then a restart: `apps/dashboard/.live/build.log` should say
-"Switching to the new build." The operator's own phone test of item 2 is also outstanding.
+"Switching to the new build." The operator tested item 2 on an iPhone and reports it's "a lot better" (S032).
 
-**Next, once the operator says go:** item 3 weather rhythm, then 4 modal overlay, 5 routes as the context layer, and 6 one question at a time,
+**Item 3, weather rhythm:** the operator started it (S032). [Probe weather-1](../../design/relay/probes/weather-1.md) has the measurements, and the
+operator hasn't judged it on a phone yet.
+
+**Next, once the operator says go:** 4 modal overlay, 5 routes as the context layer, and 6 one question at a time,
 which needs a Decision before real Decision answers move into Relay. C-077 to C-082 stay `leaning` until the operator approves the revision.
 The operator had PR 2027 merged on 2026-11-05, which doesn't approve the revision. Earlier, they answered 1A 2A 3A 4A 5B on the proposal and set the
 Workspace direction and freeze (S022, S023).

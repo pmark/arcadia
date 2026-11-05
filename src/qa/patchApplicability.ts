@@ -18,6 +18,17 @@
  *   the pull request declares is in it, below the GitHub CLI's 100-file and
  *   100-commit caps.
  *
+ * What this text parser cannot do alone: format-patch writes a commit message
+ * verbatim, so a message can hold `---`, a diffstat and a whole `diff --git`
+ * entry with a self-computed blob id, indistinguishable from a real one. A
+ * forged entry only ever adds to the commit's real ones, so
+ * {@link checkGovernedRecords}, whose Verified facts a reviewer relies on,
+ * also requires each commit's entries to be exactly the files its Git object
+ * changes ({@link CommitObjectFiles}). The not-applicable classifier does not
+ * (it has no such evidence): a forged entry cannot hide a real code file from
+ * it, but could excuse a real shape-limited change, which the same reviewer
+ * backstops named below still judge.
+ *
  * Anything else (code, scripts, workflows, configuration, manifests,
  * authority-bearing or agent-instruction documents, any dot directory, an
  * executable or symlink mode, binaries, an unparseable header or hunk, a
@@ -87,7 +98,24 @@ export interface PatchEvidence {
    * only by callers that classify a patch without pull-request evidence.
    */
   declaredCommits?: readonly string[] | null;
+  /**
+   * What each commit's own Git object changes, by full commit id; null or
+   * omitted when it could not be read. {@link checkGovernedRecords} verifies
+   * nothing without it.
+   */
+  commitFiles?: CommitObjectFiles | null;
 }
+
+/** One file a commit changes, read from the commit's Git object rather than from patch text, so no commit message reaches it. */
+export interface CommitObjectFile {
+  path: string;
+  /** The path it was renamed or copied from, when the object read reports one. */
+  previousPath: string | null;
+  /** The file's full blob id: the new one, or the old one for a deletion. */
+  blob: string | null;
+}
+
+export type CommitObjectFiles = Readonly<Record<string, readonly CommitObjectFile[]>>;
 
 export interface NotApplicableClaim {
   criterion: string;
@@ -175,6 +203,178 @@ function boundaryProblems(commits: ParsedCommit[]): string[] {
 }
 
 export function classifyPatchApplicability(patch: string, evidence: PatchEvidence = {}): PatchApplicability {
+  return analyzePatch(patch, evidence).applicability;
+}
+
+/** One governed-record fact as Arcadia's check found it, on this exact patch. */
+export interface GovernedRecordFact {
+  verified: boolean;
+  /** Which thing the fact is about: a request id or a path. Untrusted patch text; encode it when shown. */
+  subject: string;
+  /** What was or was not established. Host wording around untrusted text. */
+  detail: string;
+}
+
+/** What the deterministic check establishes about a patch's governed records, for a reviewer who cannot recompute it. */
+export interface GovernedRecordCheck {
+  /** Patch-level reasons nothing here can be verified (the facts then all read not verified). */
+  problems: string[];
+  /** The Agent Ask ids the Plan's completed next_action and the Mission Log cite. */
+  citations: GovernedRecordFact[];
+  /** Each Ask file under `.arcadia/asks/archive/` the patch adds. */
+  archives: GovernedRecordFact[];
+  /** Each commit presenting itself as a review repair's retirement of a completion draft. */
+  retirements: GovernedRecordFact[];
+  /** Each governed-record path the patch touches, against its allowed shape. */
+  shapes: GovernedRecordFact[];
+}
+
+const AUTO_SETTLE_CITATION = /\bauto-settle-[A-Za-z0-9][\w.-]*[\w-]/g;
+
+/**
+ * Runs the classifier's own checks and reports them per fact, so a review that
+ * makes no not-applicable claim is told what was actually established instead
+ * of being told it is. Nothing here is a second derivation: citations use the
+ * same carried Asks and `autoSettleRequestId`, archives the same split-archive
+ * recognition, retirements the same commit recognition, shapes the same
+ * per-path classification. Fails closed: any patch-level problem (a merge
+ * commit GitHub's patch omits, an unreadable commit list, a truncated list, a
+ * commit's entries differing from its Git object) leaves every fact not
+ * verified. A verified fact is about files the commit objects really change,
+ * and never that a real settlement wrote them: a governed marker, a retirement
+ * trailer and the `From:` header are still text a Session can write, so a
+ * forged commit of the same shape verifies too, as the module header says. It
+ * also holds at the head, since a reviewer reads it as a statement about the
+ * candidate: any later commit touching the record it is about leaves it not
+ * verified, naming that commit, whether or not that commit is itself in shape.
+ */
+export function checkGovernedRecords(patch: string, evidence: PatchEvidence = {}): GovernedRecordCheck {
+  const { commits, files, applicability, shapes, retired, splitArchives } = analyzePatch(patch, evidence);
+  const problems = [...applicability.problems, ...commitObjectProblems(commits, files, evidence.commitFiles)];
+  const clean = problems.length === 0;
+  const fact = (verified: boolean, subject: string, detail: string): GovernedRecordFact => ({ verified: clean && verified, subject, detail });
+  /** The first commit after `after` (other than `except`) touching any of these paths, by id; null when none does. */
+  const laterTouch = (paths: readonly string[], after: number, except?: number): string | null => {
+    const found = files.find((file) => file.commit > after && file.commit !== except && file.paths.some((filePath) => paths.includes(filePath)));
+    return found ? commits[found.commit]?.sha ?? "(no commit id)" : null;
+  };
+  /** A fact established at one commit, kept only when no later commit touched its record. */
+  const heldAtHead = (subject: string, detail: string, toucher: string | null): GovernedRecordFact => toucher
+    ? fact(false, subject, `${detail}, but commit ${toucher} touches this record afterwards, so that is not known to hold at the head`)
+    : fact(true, subject, detail);
+  const { carriedAsks } = shapes;
+  const archivedNames = new Set(files.flatMap((file) => file.newPath?.startsWith(".arcadia/asks/archive/") ? [basename(file.newPath)] : []));
+  const actionOf = (ask: CarriedAsk) => ask.targetRef.startsWith("action/") ? ask.targetRef.slice("action/".length) : ask.targetRef.split("#")[1] ?? null;
+
+  /** The Ask this patch carries and archives that an id names: as its own request_id, or as the id derived from its content. */
+  const namedAsk = (requestId: string, actionId: string | null) => carriedAsks.find((ask) => {
+    const action = actionOf(ask);
+    return action !== null && (actionId === null || action === actionId) && archivedNames.has(basename(ask.path))
+      && (ask.requestId === requestId || autoSettleRequestId(ask.project, action, ask.content) === requestId);
+  });
+  /** A later touch of the citation's own line, or of the Ask's draft or archive beyond the one commit archiving it. */
+  const citationToucher = (ask: CarriedAsk, source: string, citedAt: number): string | null => {
+    const name = basename(ask.path);
+    const archivePath = `.arcadia/asks/archive/${name}`;
+    const archivedAt = files.find((file) => file.newPath === archivePath && (file.created || file.renamed))?.commit ?? ask.commit;
+    return laterTouch([source], citedAt) ?? laterTouch([ask.path, archivePath, `.arcadia/asks/${name}`], Math.min(ask.commit, archivedAt), archivedAt);
+  };
+  const citation = (source: string, requestId: string, actionId: string | null, citedAt: number): GovernedRecordFact => {
+    const ask = namedAsk(requestId, actionId);
+    return ask
+      ? heldAtHead(requestId, `cited in ${JSON.stringify(source)}: names the Agent Ask ${JSON.stringify(ask.path)} (request_id ${JSON.stringify(ask.requestId)}) that this patch carries whole and archives, ${ask.requestId === requestId ? "by its own request_id" : "as the auto-settle id derived from its content"}, whose target_ref is ${JSON.stringify(ask.targetRef)}`, citationToucher(ask, source, citedAt))
+      : fact(false, requestId, `cited in ${JSON.stringify(source)}: names no Agent Ask this patch carries whole and archives for ${actionId ? `this Action, ${JSON.stringify(actionId)}` : "any Action"}, by its request_id or by the id derived from its content`);
+  };
+  const citations = [...shapes.nextActionRewrites].flatMap(([plan, rewrites]) => rewrites.map((entry) => citation(plan, entry.requestId, entry.id, entry.commit)));
+  const cited = new Set(citations.map((entry) => entry.subject));
+  for (const file of files) {
+    if (file.newPath !== "MISSION_LOG.md") continue;
+    const added = file.hunks.flatMap((lines) => lines.filter((line) => line.startsWith("+")));
+    for (const id of new Set(added.flatMap((line) => line.match(AUTO_SETTLE_CITATION) ?? []))) {
+      if (!cited.has(id)) citations.push(citation("MISSION_LOG.md", id, null, file.commit));
+    }
+  }
+
+  // Per commit, not per path: the comparison was of that commit's copy, and a later commit can change the path.
+  const splitTargets = new Set([...splitArchives].map((file) => `${file.commit}:.arcadia/asks/archive/${basename(file.oldPath!)}`));
+  const archives = files.flatMap((file): GovernedRecordFact[] => {
+    const target = file.newPath;
+    if (!target?.startsWith(".arcadia/asks/archive/") || file.deleted || !(file.created || file.renamed)) return [];
+    if (splitTargets.has(`${file.commit}:${target}`)) {
+      return [heldAtHead(target, "differs from the draft this patch deletes only in candidate_revision", laterTouch([target, `.arcadia/asks/${basename(target)}`], file.commit))];
+    }
+    return [fact(false, target, file.renamed
+      ? "archived by a rename, whose changed lines this check does not compare"
+      : "added with no deleted draft this check could show it matches apart from candidate_revision")];
+  });
+
+  const retirements = commits.flatMap((commit, index): GovernedRecordFact[] => {
+    if ((commit.retiredDraftIds ?? []).length === 0) return [];
+    const entries = files.filter((file) => file.commit === index);
+    const paths = entries.flatMap((file) => file.oldPath ? [file.oldPath] : []);
+    const recognized = entries.length > 0 && entries.every((file) => retired.has(file) && !shapes.violations.has(file.oldPath!));
+    if (!recognized) return [fact(false, commit.sha ?? "(no commit id)", "carries a retirement trailer but is not a retirement this check recognizes by its From: header, trailers and content")];
+    return [heldAtHead(commit.sha ?? "(no commit id)", `only deletes ${JSON.stringify(paths)}, each a whole complete-intent draft an earlier commit in this series created under a governed marker, named by its trailers, for the Action this patch marks done. Its From: header names the Arcadia Controller, which a Session can set, so this says nothing about who wrote it`, laterTouch(paths, index))];
+  });
+
+  /** A touch that ends a draft's life here (its archive or retirement) is that draft's expected second commit, when nothing follows it. */
+  const endsDraft = (file: ParsedFile, draft: string) => file.oldPath === draft
+    && (retired.has(file) || splitArchives.has(file) || (file.renamed && file.newPath === `.arcadia/asks/archive/${basename(draft)}`));
+  /** The first commit touching this path after the one that wrote it, apart from a draft's last touch ending it. */
+  const shapeToucher = (filePath: string): string | null => {
+    const touching = files.filter((file) => file.paths.includes(filePath));
+    const ended = touching.length > 0 && endsDraft(touching[touching.length - 1], filePath);
+    const second = ended ? touching.slice(0, -1)[1] : touching[1];
+    return second ? commits[second.commit]?.sha ?? "(no commit id)" : null;
+  };
+  const shapeFact = (file: PatchFileClassification): GovernedRecordFact => {
+    const toucher = shapeToucher(file.path);
+    if (file.class === "governed-record") return heldAtHead(file.path, "stays within its allowed shape, in commits whose message carries a governed marker, which is text a Session can write", toucher);
+    return fact(false, file.path, `${JSON.stringify(file.reason)}${toucher ? `; commit ${toucher} touches it after the commit that first did` : ""}`);
+  };
+  const governed = applicability.files.filter((file) => isGovernedRecordPath(file.path));
+  return {
+    problems,
+    citations,
+    archives,
+    retirements,
+    shapes: governed.map(shapeFact)
+  };
+}
+
+/** Whether the patch shows a governed record, so the check has anything to report. */
+export function patchTouchesGovernedRecord(patch: string): boolean {
+  return parsePatch(patch).files.some((file) => file.paths.some(isGovernedRecordPath));
+}
+
+/**
+ * Why a commit's entries in the patch cannot be trusted as its real files. A
+ * message can add entries but never remove a real one, so an exact match of
+ * paths, counted (a forged entry for a really changed path shows it twice), rules
+ * forgery out; rename detection may differ between GitHub's two reads, so a
+ * rename and a delete-plus-add count the same. The blob ids then tie each
+ * entry's content, which the facts hash against them, to the object.
+ */
+function commitObjectProblems(commits: ParsedCommit[], files: ParsedFile[], objects: CommitObjectFiles | null | undefined): string[] {
+  if (!objects) return ["the commits' Git objects could not be read, so a diff entry written inside a commit message cannot be told from a real one"];
+  return commits.flatMap((commit, index) => {
+    const label = commit.sha ?? "(no commit id)";
+    const real = commit.sha !== null && Object.hasOwn(objects, commit.sha) ? objects[commit.sha] : null;
+    if (!real) return [`no Git object was read for commit ${label}`];
+    const shown = files.filter((file) => file.commit === index);
+    const sorted = (paths: string[]) => paths.sort().join("\0");
+    if (sorted(shown.flatMap((file) => file.paths)) !== sorted(real.flatMap((file) => file.previousPath && file.previousPath !== file.path ? [file.previousPath, file.path] : [file.path]))) {
+      return [`commit ${label}'s entries in the patch are not exactly the files its Git object changes, as when its message carries a forged diff entry`];
+    }
+    const blobsMatch = shown.every((file) => {
+      const [filePath, blob] = file.deleted ? [file.oldPath, file.oldBlob] : [file.newPath, file.newBlob];
+      return !blob || real.some((entry) => entry.path === filePath && entry.blob?.startsWith(blob));
+    });
+    return blobsMatch ? [] : [`a blob id in commit ${label}'s entries in the patch is not the one its Git object records`];
+  });
+}
+
+function analyzePatch(patch: string, evidence: PatchEvidence) {
   const { commits, files, formatPatch } = parsePatch(patch);
   const problems: string[] = [];
   if (!formatPatch) problems.push("the patch is not a git format-patch series, so its commits cannot be checked");
@@ -201,7 +401,8 @@ export function classifyPatchApplicability(patch: string, evidence: PatchEvidenc
     files.filter((file) => file.commit === index).every((file) => !file.special && !file.executableMode && file.paths.every(isGovernedRecordPath)));
   const retired = retiredCompletionDrafts(files, commits);
   const splitArchives = splitArchiveMoves(files, governedCommit);
-  const shapeViolations = governedShapeViolations(files, retired, splitArchives);
+  const shapes = governedShapeViolations(files, retired, splitArchives);
+  const shapeViolations = shapes.violations;
   const consumed = consumedCompletionDraftCreations(files, commits, governedCommit, retired, splitArchives);
   const byPath = new Map<string, PathEntry>();
   for (const file of files) {
@@ -221,12 +422,13 @@ export function classifyPatchApplicability(patch: string, evidence: PatchEvidenc
     }
   }
   const classified = [...byPath.entries()].map(([filePath, entry]) => classifyPath(filePath, entry));
-  return {
+  const applicability: PatchApplicability = {
     inert: problems.length === 0 && classified.length > 0 &&
       classified.every((file) => file.class === "inert-document" || file.class === "governed-record"),
     files: classified,
     problems
   };
+  return { commits, files, applicability, shapes, retired, splitArchives };
 }
 
 export interface NotApplicableContext {
@@ -694,11 +896,11 @@ const NEXT_ACTION_CANONICAL_COMPLETED = /^ {4}next_action: Completed via Agent A
  */
 function governedShapeViolations(
   files: ParsedFile[], retired: Map<ParsedFile, string> = new Map(), splitArchives: Set<ParsedFile> = new Set()
-): Map<string, string> {
+): { violations: Map<string, string>; carriedAsks: CarriedAsk[]; nextActionRewrites: Map<string, Array<{ id: string; requestId: string; commit: number }>> } {
   const violations = new Map<string, string>();
   const violate = (filePath: string, reason: string) => { if (!violations.has(filePath)) violations.set(filePath, reason); };
   const done = new Map<string, string[]>();
-  const nextActionRewrites = new Map<string, Array<{ id: string; requestId: string }>>();
+  const nextActionRewrites = new Map<string, Array<{ id: string; requestId: string; commit: number }>>();
   const planMoves = new Map<string, string[]>();
   const projectMoves: string[] = [];
   // Every Agent Ask id this same patch series makes available: drafted
@@ -709,7 +911,7 @@ function governedShapeViolations(
   // these are the only shapes an id can actually appear under).
   const availableAskIds = new Set<string>();
   /** Agent Asks this patch carries whose whole content it proves (see verifiedNewContent). */
-  const carriedAsks: Array<{ content: string; project: string; targetRef: string }> = [];
+  const carriedAsks: CarriedAsk[] = [];
   /**
    * An auto-settle names its content-addressed proposal id, not the draft's
    * file name (src/ask/autoSettleBeforeDispatch.ts): accepted only when it is
@@ -745,7 +947,7 @@ function governedShapeViolations(
         const targetRef = content === null ? null : askScalar(content, "target_ref");
         const requestId = content === null ? null : askScalar(content, "request_id");
         if (requestId) availableAskIds.add(requestId);
-        if (content !== null && project && targetRef) carriedAsks.push({ content, project, targetRef });
+        if (content !== null && project && targetRef) carriedAsks.push({ path: target, content, project, targetRef, requestId, commit: file.commit });
       }
       continue;
     }
@@ -838,7 +1040,7 @@ function governedShapeViolations(
         const owner = lines.slice(0, index).reverse().find((candidate) => ACTION_ID.test(candidate.slice(1)));
         const id = owner?.startsWith(" ") ? ACTION_ID.exec(owner.slice(1))?.[1] : undefined;
         if (!id) violateFile("the Action whose next_action changes is not shown in the hunk's context");
-        else nextActionRewrites.set(target, [...(nextActionRewrites.get(target) ?? []), { id, requestId: match[1] }]);
+        else nextActionRewrites.set(target, [...(nextActionRewrites.get(target) ?? []), { id, requestId: match[1], commit: file.commit }]);
       });
     }
   }
@@ -890,7 +1092,7 @@ function governedShapeViolations(
       }
     }
   }
-  return violations;
+  return { violations, carriedAsks, nextActionRewrites };
 }
 
 const DATED_UPDATED = /^updated: (\d{4}-\d{2}-\d{2})$/;
@@ -921,6 +1123,17 @@ function frontMatterUpdatedBump(lines: string[], oldStart: number | undefined): 
 
 function sameMembers(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value) => right.includes(value));
+}
+
+/** An Agent Ask this patch shows whole (see verifiedNewContent). */
+interface CarriedAsk {
+  path: string;
+  content: string;
+  project: string;
+  targetRef: string;
+  requestId: string | null;
+  /** The commit whose copy this is. */
+  commit: number;
 }
 
 interface PathEntry {

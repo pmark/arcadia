@@ -18,6 +18,9 @@ export interface PingSendOptions {
   link?: string;
   todo?: string;
   agent?: string;
+  episodeKey?: string;
+  episodeAfter?: string | null;
+  now?: Date;
 }
 
 export function runPingSendCommand(options: PingSendOptions): CommandSuccess<QueuedOperatorPing> {

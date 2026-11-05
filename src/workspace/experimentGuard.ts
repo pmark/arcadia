@@ -201,6 +201,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   ),
   "production status": ALLOWED,
   "production freeze-check": ALLOWED,
+  "production liveness-check": exempt("A launchd timer reads the named workspace read-only each minute; a row a minute would be noise, and only a page writes, through the ping outbox."),
   "production runtime-check": exempt("Compares the installed broker release with a named repository's HEAD; reads no workspace and records nothing."),
   "production preview": ALLOWED,
   "production activate": guarded("Grants the standing production authorization and its Grants.", PRODUCTION_ALTERNATIVE),

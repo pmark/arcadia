@@ -49,8 +49,9 @@ case "$TARGET" in
   errors) patterns=("*.err.log") ;;
   dashboard | intelligence) patterns=("$TARGET.out.log" "$TARGET.err.log") ;;
   discord) patterns=("discord-bot.out.log" "discord-bot.err.log") ;;
+  liveness) patterns=("liveness-check.out.log" "liveness-check.err.log") ;;
   *)
-    echo "usage: $0 [all|worker|errors|dashboard|intelligence|discord] | session [name]" >&2
+    echo "usage: $0 [all|worker|errors|dashboard|intelligence|discord|liveness] | session [name]" >&2
     exit 2
     ;;
 esac

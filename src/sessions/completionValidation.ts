@@ -276,6 +276,13 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
   if (!candidate.commands.length) return unavailable("the Project declares no validation commands.");
   const timeoutMs = options.timeoutMs ?? COMPLETION_VALIDATION_TIMEOUT_MS;
   const deadline = performance.now() + timeoutMs;
+  // A killed capture child is a host stall, never a verdict on the candidate's files (Issue #2084).
+  const stopped = (step: string, error: unknown): CompletionValidationResult | null => {
+    const failure = normalizeError(error);
+    return failure.code === "PRESERVATION_GIT_TIMEOUT"
+      ? timeout(`the candidate could not be ${step} because a host process did not finish (${untrusted(failure.message, 300)}). This is a host stall or a hung reader, not a refusal of the candidate's files.`)
+      : null;
+  };
 
   let tree: string;
   try {
@@ -284,7 +291,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     // A required lint script is owned by the authorized base, never by its candidate.
     bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands, ...(requiredChecks.length ? ["node package.json"] : [])]);
   } catch (error) {
-    return deny(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
+    return stopped("captured for validation", error) ?? deny(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
   }
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-completion-")));
   const source = path.join(root, "source");
@@ -299,7 +306,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     try {
       materializeCandidateTree(candidate.repository, tree, source);
     } catch (error) {
-      return deny(`the candidate tree could not be materialized (${untrusted(normalizeError(error).message, 300)}).`);
+      return stopped("materialized", error) ?? deny(`the candidate tree could not be materialized (${untrusted(normalizeError(error).message, 300)}).`);
     }
     const missing = namedTests.filter((file) => !lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
     if (missing.length) return deny("the candidate does not contain every test file its acceptance criteria name.", missing.map((file) => `${file} (missing)`));

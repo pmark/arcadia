@@ -13,6 +13,7 @@ import { completionEvidenceForReview, findAcceptedTerminalCompletion, getSession
 import { fileIsHeldOpen } from "./worktreeLiveness.js";
 import {
   refusedOperatorQaPlan,
+  detectTestRun,
   renderOperatorQaPlan,
   type ChangedFile,
   type OperatorQaPlanResult,
@@ -1039,10 +1040,12 @@ export function renderPreservedOperatorQaPlan(
   // A rendering failure of any kind (a Git read, a timeout, a renderer defect)
   // becomes an explicit refusal body: it must never stop the push.
   try {
+    const pathExists = (candidate: string) => !candidate.startsWith("-") && tryGit(repositoryPath, ["cat-file", "-e", `${commitSha}:${candidate}`]) !== null;
     return renderOperatorQaPlan(plan, {
       ...facts,
       changedFiles: readChangedFiles(repositoryPath, input.baseRevision, commitSha),
-      pathExists: (candidate) => !candidate.startsWith("-") && tryGit(repositoryPath, ["cat-file", "-e", `${commitSha}:${candidate}`]) !== null
+      pathExists,
+      testRun: detectTestRun(tryGit(repositoryPath, ["show", `${commitSha}:package.json`]), pathExists)
     });
   } catch (error) {
     return refusedOperatorQaPlan(plan, facts,

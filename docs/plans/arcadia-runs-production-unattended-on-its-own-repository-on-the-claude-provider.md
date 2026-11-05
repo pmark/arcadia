@@ -146,13 +146,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
-    source: Agent Ask seed-serial-run-test-only-actions-20261104-r2
+    source: Agent Ask seed-third-serial-action-20261105-r3
     why: "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision."
     acceptance_criteria:
       - A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.
       - The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.
       - docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.
-    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns, pin-work-monitor-malformed-record, pin-recovery-unparseable-time-order, pin-reconcile-refuses-activation-commit]
+    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns, pin-work-monitor-malformed-record, pin-recovery-unparseable-time-order, pin-reconcile-refuses-activation-commit, pin-qa-plan-status-must-be-fail]
     decisions: []
     references: []
   - id: implement-a-hermetic-test-that-an
@@ -585,12 +585,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-work-monitor-malformed-record
     clarification: clarified
     confidence: high
-    source: Agent Ask tighten-work-monitor-malformed-record-criteria-20261104
+    source: Agent Ask amend-pin-work-monitor-criteria-20261105
     why: "Removing the field-count check currently passes every test, so a malformed record could reach the monitor's safety report unnoticed."
     acceptance_criteria:
       - tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.
       - The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.
-      - The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+      - Apart from the settlement records Arcadia writes, the change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/2015"]
@@ -634,6 +634,26 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/2018"]
+  - id: pin-qa-plan-status-must-be-fail
+    title: "Pin that a QA repair row whose operator-qa-plan check did not fail raises no recovery signal, with a test covering the status check named in Issue #2004."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Pin that a QA repair row whose operator-qa-plan check did not fail raises no recovery signal, with a test covering the status check named in Issue #2004."
+    expected_artifact: Evidence satisfying Agent Ask pin-qa-plan-status-must-be-fail
+    clarification: clarified
+    confidence: high
+    source: Agent Ask seed-third-serial-action-20261105-r3
+    why: "Dropping the fail-status check in classifyRecoverySignals passes every test today, so a not-checked QA plan could raise a stop signal unnoticed."
+    acceptance_criteria:
+      - tests/recovery-replay.test.ts gains a test in which classifyRecoverySignals receives a qa review repair row whose only failed check is operator-qa-plan with status not-checked, and one with status inherited, and one with status not-applicable, and returns no signal for each.
+      - The same test gives each of those three statuses on operator-qa-plan beside a second check, tests-and-evidence with status fail, and asserts no signal is returned for each.
+      - Every other test in that file passes unchanged.
+      - Apart from the settlement records Arcadia writes, the change touches only tests/recovery-replay.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/2004"]
 questions: []
 decisions: []
 recommended_model: standard

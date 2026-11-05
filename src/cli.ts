@@ -80,6 +80,11 @@ import {
   runPingSentCommand
 } from "./commands/ping.js";
 import {
+  LIVENESS_DEFAULT_STALE_SECONDS,
+  renderProductionLivenessCheckSuccess,
+  runProductionLivenessCheckCommand
+} from "./commands/productionLiveness.js";
+import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
   renderBackBurnerPromoteSuccess,
@@ -1536,6 +1541,16 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path")
   ).action((operation: string, options: { workspace?: string; json?: boolean }) =>
     runCliAction("production.freeze-check", options, () => runProductionFreezeCheckCommand({ operation, workspace: options.workspace }), renderProductionFreezeCheckSuccess)
+  );
+  addJsonOption(
+    production
+      .command("liveness-check")
+      .description("One timer run: page once when the worker stops making progress while production is Active, and once when it recovers. Reads the database read-only; restarts nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--stale-seconds <seconds>", `Silence that counts as stuck, outside a code review (default ${LIVENESS_DEFAULT_STALE_SECONDS})`)
+      .option("--dashboard-url <url>", "Dashboard base for the /production link (default ARCADIA_DASHBOARD_URL)")
+  ).action((options: { workspace: string; staleSeconds?: string; dashboardUrl?: string; json?: boolean }) =>
+    runCliAction("production.liveness-check", options, () => runProductionLivenessCheckCommand(options), renderProductionLivenessCheckSuccess)
   );
   addJsonOption(
     production
@@ -6034,7 +6049,7 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
-  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check"].includes(second ?? "")) {
+  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check", "liveness-check"].includes(second ?? "")) {
     return `production.${second}`;
   }
 

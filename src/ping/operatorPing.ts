@@ -32,6 +32,14 @@ export interface OperatorPingInput {
   /** `<kind>:<project>/<id>`: the /todo item this ping is about; the bot turns it into a dashboard deep link. */
   todo?: string | null;
   agent?: string | null;
+  /**
+   * Text in `message` that identifies one episode. A row from the same agent
+   * containing it is this ping, whatever its age, so a retry after the caller
+   * lost its own record cannot page twice. Inside the insert's transaction.
+   */
+  episodeKey?: string;
+  /** Rows at or before this time belong to an earlier, closed episode. */
+  episodeAfter?: string | null;
   now?: Date;
 }
 
@@ -82,6 +90,13 @@ export function queueOperatorPing(db: Database.Database, input: OperatorPingInpu
   const now = input.now ?? new Date();
   const createdAt = now.toISOString();
   return writeTransaction(db, () => {
+    if (input.episodeKey) {
+      const episode = db.prepare(`SELECT * FROM operator_pings
+        WHERE agent = ? AND instr(message, ?) > 0 AND created_at > ?
+        ORDER BY created_at DESC LIMIT 1`)
+        .get(fields.agent, input.episodeKey, input.episodeAfter ?? "");
+      if (episode) return { ping: toPing(episode as PingRow), deduplicated: true, warnings: linkWarnings(fields) };
+    }
     const duplicate = db.prepare(`SELECT * FROM operator_pings
       WHERE message = ? AND COALESCE(channel, '') = ? AND COALESCE(todo_key, '') = ? AND created_at >= ?
       ORDER BY created_at DESC LIMIT 1`)

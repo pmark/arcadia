@@ -1580,6 +1580,11 @@ trigger, first-seen time, and an evidence file under
 failure resolves, and each new alert posts once to Discord. Alerts only
 report: they never change admission, approvals, or credentials.
 
+Beside each evidence file, `<alert id>-e<episode>/bundle.json` lists what was
+saved for that episode: the verdict report and prompt for a review stop, the
+worker log tail, and a process tree with `lsof` and `sample` for a stalled
+Session. Anything it could not capture is stated there, not left out.
+
 **Red alert diagnosis is off by default and costs nothing until you turn it
 on.** It calls a model, so it is behind an explicit flag in the workspace
 `config/arcadia.json`:
@@ -3739,6 +3744,8 @@ for the full control record.
 
 The optional iCloud file-ingress job also starts automatically and checks its drop folder once a minute. It is not required for the Today page.
 
+A **liveness check** also runs once a minute, outside all of the above. While production is Active, it sends one Discord ping if the worker stops making progress for 5 minutes, naming how long, the worker's pid and any long-lived child, with a link to `/production`. It sends one more line when the worker recovers. If the worker is in a code review, it waits until the reviewer's own 15-minute timeout plus those 5 minutes. It only alerts: it restarts nothing, and recovery stays with you. `ARCADIA_LIVENESS_STALE_SECONDS` at restart changes the 5 minutes. `pnpm logs liveness` shows its runs, and `scripts/services.sh status` shows whether it is installed.
+
 Do not start separate legacy processes manually. Anything outside this list is not part of the normal local service set.
 
 Intelligence defaults to independent cloud, Codex CLI, Claude Code CLI, and local
@@ -3775,7 +3782,7 @@ pnpm logs errors     # every service's stderr
 pnpm logs session    # watch the newest live coding-agent Session, read-only
 ```
 
-`dashboard`, `intelligence`, and `discord` select one service. `session` attaches
+`dashboard`, `intelligence`, `discord`, and `liveness` select one service. `session` attaches
 read-only to the agent's tmux pane, so you see exactly what the agent sees
 without being able to type into it (detach with Ctrl-b d); `pnpm logs session
 <name>` picks a specific one. `LOG_LINES=100 pnpm logs` shows more history first.

@@ -64,7 +64,7 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart (Issue 
     const { impl, calls } = stubImpl(1);
     const result = runRestart(impl, "2");
     expect(result.stderr).toContain("retrying");
-    expect(readFileSync(calls, "utf8").trim().split("\n")).toHaveLength(2);
+    expect(readFileSync(calls, "utf8").trim().split("\n")).toEqual(["restart", "restart", "liveness"]);
   });
 
   it("still fails, with the original exit code, once the bounded attempts are spent", () => {
@@ -139,7 +139,7 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart impleme
     const { impl, calls } = stubImpl(0);
     const result = runRestart(impl, "1", { ARCADIA_RESTART_IMPL_SHA256: sha(impl) });
     expect(result.status).toBe(0);
-    expect(readFileSync(calls, "utf8").trim()).toBe("restart");
+    expect(readFileSync(calls, "utf8").trim().split("\n")).toEqual(["restart", "liveness"]);
   });
 });
 
