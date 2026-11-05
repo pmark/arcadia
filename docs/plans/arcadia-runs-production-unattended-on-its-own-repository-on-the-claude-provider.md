@@ -616,11 +616,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2004"]
   - id: pin-reconcile-refuses-activation-commit
     title: "Pin that the worker's base sync refuses a local plan-activation commit with a test, recording today's behaviour named in Issue #2018."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin that the worker's base sync refuses a local plan-activation commit with a test, recording today's behaviour named in Issue #2018."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-reconcile-refuses-activation-commit-cb47d0d0f3ae; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-reconcile-refuses-activation-commit
     clarification: clarified
     confidence: high
@@ -658,7 +658,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-reconcile-refuses-activation-commit
+current_action: pin-qa-plan-status-must-be-fail
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.

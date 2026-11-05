@@ -182,6 +182,13 @@ describe("a local base ahead only by its own pointer commits", () => {
       expectRefused(/not pointer commits/);
     });
 
+    it("a local plan-activation commit that changes PROJECT.md, since only a pointer commit is reconcilable", () => {
+      writeDoc(repo, "PROJECT.md", projectDoc("a1", "2026-11-02", "plan-y"));
+      commitAll(repo, "chore(arcadia): activate plan-y");
+      remoteAdvances();
+      expectRefused(/local-only commits that are not pointer commits/);
+    });
+
     it("a dirty checkout", () => {
       pointer(repo, "a2");
       remoteAdvances();
