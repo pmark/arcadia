@@ -377,8 +377,8 @@ export interface OpenDecisionItem {
   updated: string;
 }
 
-export async function loadOpenDecisions(): Promise<ArcadiaJsonSuccess<{ decisions: OpenDecisionItem[] }>> {
-  return runArcadiaCliJson<{ decisions: OpenDecisionItem[] }>(["decision", "list", "--status", "open"]);
+export async function loadOpenDecisions(project?: string): Promise<ArcadiaJsonSuccess<{ decisions: OpenDecisionItem[] }>> {
+  return runArcadiaCliJson<{ decisions: OpenDecisionItem[] }>(["decision", "list", "--status", "open", ...(project ? ["--project", project] : [])]);
 }
 
 /** One row of `arcadia todo --json` (schema arcadia-todo-v1): a derived, read-only view of what the operator owes an answer on. */

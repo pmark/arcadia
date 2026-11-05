@@ -39,8 +39,8 @@ function Notices({ error, note, message }: Pick<TodoCommon, "error" | "note" | "
   );
 }
 
-function Loading() {
-  return <p className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />Loading…</p>;
+function Loading({ label = "Loading…" }: { label?: string }) {
+  return <p role="status" aria-live="polite" className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden="true" />{label}</p>;
 }
 
 /** The /todo list: single column, blocking first, then Decisions, Asks, others, with stale items collapsed. */
@@ -121,8 +121,9 @@ export function TodoItemView({
   target,
   approvals,
   source,
+  readingLabel,
   ...common
-}: TodoCommon & { target: TodoTarget | null; approvals: Approval[]; source: ApprovalList["source"] | null }) {
+}: TodoCommon & { target: TodoTarget | null; approvals: Approval[]; source: ApprovalList["source"] | null; readingLabel?: string }) {
   const back = <Link href="/todo" className={BACK_LINK}>All to-dos</Link>;
   if (!target) {
     return (
@@ -148,7 +149,7 @@ export function TodoItemView({
     return (
       <div>
         <div className="mb-3">{back}</div>
-        <Loading />
+        <Loading label={readingLabel} />
       </div>
     );
   }

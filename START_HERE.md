@@ -3667,6 +3667,15 @@ The default view hides stale items (on `/todo`, in a collapsed **Done elsewhere*
 `--stale` lists only them, each with a `stale:` reason; `--all` shows every
 item, stale last.
 
+A Decision's own page, `/todo/decision/<project>/<id>`, is short: the question,
+each option with its consequence, compact enough for one phone screen. Tap an
+option to open the whole text of every option and get its **Answer** button, then
+tap that to answer. A `#card-…` link to a Decision opens the same page.
+**Read the full record** loads the document only when you ask. A Decision with no
+options, or no pinned card, shows what its record has and says why it can't be
+pressed here. If the record changes while you're reading, the answer is refused,
+nothing is written, and you read it again.
+
 Projects whose slug contains `rehearsal`, or whose `repo_path` is under the OS
 temp directory or `~/tmp`, are fixtures: their non-blocking items appear only as
 one `Fixture Projects collapsed` line (`counts.fixture`). A Project with no

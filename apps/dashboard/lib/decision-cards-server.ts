@@ -6,7 +6,7 @@ import type { DecisionCard } from "../../../src/decisions/card";
 import type { DecisionOptionEffect } from "../../../src/docs/types";
 import { LIBRARY_PATH, GET as listOperatorScripts, POST as launchOperatorScript, SAFE_ID } from "../app/api/operator-script/route";
 import { GET as readProductionControl } from "../app/api/production-control/route";
-import { loadOpenDecisions } from "./arcadia-cli";
+import { loadOpenDecisions, type OpenDecisionItem } from "./arcadia-cli";
 import { decisionOptionsDigest } from "../../../src/decisions/optionsDigest";
 import { decisionCardKey, hasDuplicateOptionLabels, type CardTarget, type DecisionCardRefusalView } from "./decision-cards";
 import { deriveNextOperatorAction, offPathConfirmation, productionObservation, type NextOperatorAction, type SequencedScript } from "./nextOperatorAction";
@@ -71,6 +71,151 @@ async function deriveNext(scripts: ListedScript[], now: number): Promise<NextOpe
 }
 
 /**
+ * Turn open Decisions into card sources. The one place a Decision becomes a card, so the single-Decision read below
+ * cannot pin anything different from what a press regenerates.
+ */
+function addDecisionSources(
+  decisions: ReadonlyArray<OpenDecisionItem>,
+  { sources, refused, claim }: { sources: CardSourceInput[]; refused: DecisionCardRefusalView[]; claim: (cardId: string, target: CardTarget) => void }
+): void {
+  for (const decision of decisions) {
+    const key = decisionCardKey(decision.projectSlug, decision.id);
+    const cardId = `decision-${key}`;
+    const labels = decision.options.map((option) => option.label);
+    const hasDefer = decision.options.some((option) => option.effect === "defer");
+    const actionId = typeof decision.action === "string" && decision.action.trim() !== "" ? decision.action : null;
+    const deferProject = decision.project ?? decision.projectSlug;
+    if (hasDefer && actionId === null) {
+      // The writer would refuse this on press; never offer a defer option that has no Action to park.
+      refused.push({
+        id: cardId,
+        reason: "defer_without_action",
+        message: `Decision ${decision.projectSlug}/${decision.id} has a defer option but names no action, so no card button is offered.`
+      });
+      continue;
+    }
+    if (hasDuplicateOptionLabels(labels)) {
+      // The writer answers with the FIRST label equal after trim and case-fold; a repeat could record the wrong option.
+      refused.push({
+        id: cardId,
+        reason: "duplicate_option_labels",
+        message: `Decision ${decision.projectSlug}/${decision.id} has options whose labels match after case-folding, so no card button is offered. Answer it from its to-do row.`
+      });
+      continue;
+    }
+    sources.push({
+      kind: "decision",
+      decision: {
+        id: key,
+        status: decision.status,
+        question: decision.question,
+        // The effect is passed through unchanged: the card renders and pins it, and the generator refuses unknown ones.
+        options: decision.options.map((option) => ({
+          label: option.label,
+          // A defer option applies its effect to the Decision's own `action` in its own `project`; show that target
+          // in the consequence (which is pinned). The generator refuses over-long text rather than truncating.
+          consequence: option.effect === "defer" ? `${option.consequence} Parks ${deferProject}/${actionId}. Refused if this is the current Action; answer that case from the CLI.` : option.consequence,
+          recommended: option.recommended,
+          effect: (option.effect ?? null) as DecisionOptionEffect | null
+        })),
+        updated: decision.updated
+      }
+    });
+    claim(cardId, {
+      kind: "decision",
+      projectSlug: decision.projectSlug,
+      decisionId: decision.id,
+      labels,
+      status: decision.status,
+      updated: String(decision.updated),
+      // The same function the writer uses, over the question and options exactly as they were read for this card.
+      optionsDigest: decisionOptionsDigest(
+        decision.question,
+        decision.options.map((option) => ({ label: option.label, consequence: option.consequence, effect: option.effect ?? null })),
+        { action: decision.action ?? null, project: decision.project ?? null }
+      )
+    });
+  }
+}
+
+/** What the short view shows beside a card: the record's own fields, read together with the card. */
+export interface DecisionCardMeta {
+  id: string;
+  question: string;
+  gateQuestion: string | null;
+  recommendation: string | null;
+  recommendedLabels: string[];
+  relativePath: string;
+  updated: string;
+}
+
+export interface LoadedDecisionCard {
+  cards: DecisionCard[];
+  targets: Map<string, CardTarget>;
+  refused: DecisionCardRefusalView[];
+  /** Null when no open Decision has this id or slug in this Project. */
+  decision: DecisionCardMeta | null;
+}
+
+/**
+ * One Decision's card, without the operator-script listing and the production read that the full list pays for. A
+ * read for display only: a press still goes through `loadCurrentCards` and its pins, so nothing here can loosen one.
+ * Every open Decision in the Project goes through the same steps, so two that share an id still refuse each other.
+ */
+export async function loadCurrentDecisionCard(projectSlug: string, decisionId: string, now: Date = new Date()): Promise<LoadedDecisionCard> {
+  const { data } = await loadOpenDecisions(projectSlug);
+  const decisions = data.decisions.filter((decision) => decision.projectSlug === projectSlug);
+  const found = decisions.find((decision) => decision.id === decisionId) ?? decisions.find((decision) => decision.slug === decisionId) ?? null;
+  if (found === null) return { cards: [], targets: new Map(), refused: [], decision: null };
+
+  const sources: CardSourceInput[] = [];
+  const refused: DecisionCardRefusalView[] = [];
+  const byCard = new Map<string, CardTarget>();
+  const ambiguous = new Set<string>();
+  addDecisionSources(decisions, {
+    sources,
+    refused,
+    claim: (cardId, target) => {
+      if (byCard.has(cardId) || ambiguous.has(cardId)) {
+        ambiguous.add(cardId);
+        byCard.delete(cardId);
+        refused.push({ id: cardId, reason: "conflicting_card_id", message: "Two sources map to one card id, so neither is offered." });
+        return;
+      }
+      byCard.set(cardId, target);
+    }
+  });
+  const generation = generateCardsFromSources({ sources, now, expires: new Date(now.getTime() + CARD_TTL_MS).toISOString() });
+  for (const refusal of generation.refusals) {
+    refused.push({ id: refusal.sourceId ?? "source", reason: refusal.code, message: refusal.message });
+  }
+
+  const cardId = `decision-${decisionCardKey(found.projectSlug, found.id)}`;
+  const targets = new Map<string, CardTarget>();
+  const cards: DecisionCard[] = [];
+  for (const generated of generation.cards) {
+    const target = byCard.get(generated.card.id);
+    if (generated.card.id !== cardId || target === undefined) continue;
+    targets.set(generated.card.id, target);
+    cards.push(generated.card);
+  }
+  return {
+    cards,
+    targets,
+    refused: refused.filter((entry) => entry.id === cardId),
+    decision: {
+      id: found.id,
+      question: found.question,
+      gateQuestion: found.gateQuestion,
+      recommendation: found.recommendation,
+      recommendedLabels: found.options.filter((option) => option.recommended).map((option) => option.label),
+      relativePath: found.relativePath,
+      updated: String(found.updated)
+    }
+  };
+}
+
+/**
  * Regenerate the current cards from current source state: open Decisions through the CLI read the dashboard already
  * uses, and the operator-script library through the existing listing. Pull-request cards are not built here (their
  * facts need `gh`; the merge verb is the batch-merge script's), so a PR card is never offered a button by this page.
@@ -94,64 +239,7 @@ export async function loadCurrentCards(now: Date = new Date()): Promise<LoadedCa
 
   try {
     const { data } = await loadOpenDecisions();
-    for (const decision of data.decisions) {
-      const key = decisionCardKey(decision.projectSlug, decision.id);
-      const cardId = `decision-${key}`;
-      const labels = decision.options.map((option) => option.label);
-      const hasDefer = decision.options.some((option) => option.effect === "defer");
-      const actionId = typeof decision.action === "string" && decision.action.trim() !== "" ? decision.action : null;
-      const deferProject = decision.project ?? decision.projectSlug;
-      if (hasDefer && actionId === null) {
-        // The writer would refuse this on press; never offer a defer option that has no Action to park.
-        refused.push({
-          id: cardId,
-          reason: "defer_without_action",
-          message: `Decision ${decision.projectSlug}/${decision.id} has a defer option but names no action, so no card button is offered.`
-        });
-        continue;
-      }
-      if (hasDuplicateOptionLabels(labels)) {
-        // The writer answers with the FIRST label equal after trim and case-fold; a repeat could record the wrong option.
-        refused.push({
-          id: cardId,
-          reason: "duplicate_option_labels",
-          message: `Decision ${decision.projectSlug}/${decision.id} has options whose labels match after case-folding, so no card button is offered. Answer it from its to-do row.`
-        });
-        continue;
-      }
-      sources.push({
-        kind: "decision",
-        decision: {
-          id: key,
-          status: decision.status,
-          question: decision.question,
-          // The effect is passed through unchanged: the card renders and pins it, and the generator refuses unknown ones.
-          options: decision.options.map((option) => ({
-            label: option.label,
-            // A defer option applies its effect to the Decision's own `action` in its own `project`; show that target
-            // in the consequence (which is pinned). The generator refuses over-long text rather than truncating.
-            consequence: option.effect === "defer" ? `${option.consequence} Parks ${deferProject}/${actionId}. Refused if this is the current Action; answer that case from the CLI.` : option.consequence,
-            recommended: option.recommended,
-            effect: (option.effect ?? null) as DecisionOptionEffect | null
-          })),
-          updated: decision.updated
-        }
-      });
-      claim(cardId, {
-        kind: "decision",
-        projectSlug: decision.projectSlug,
-        decisionId: decision.id,
-        labels,
-        status: decision.status,
-        updated: String(decision.updated),
-        // The same function the writer uses, over the question and options exactly as they were read for this card.
-        optionsDigest: decisionOptionsDigest(
-          decision.question,
-          decision.options.map((option) => ({ label: option.label, consequence: option.consequence, effect: option.effect ?? null })),
-          { action: decision.action ?? null, project: decision.project ?? null }
-        )
-      });
-    }
+    addDecisionSources(data.decisions, { sources, refused, claim });
   } catch {
     refused.push({ id: "decisions", reason: "decisions_unreadable", message: "Open Decisions could not be read, so no Decision cards are shown." });
   }

@@ -63,9 +63,10 @@ export function cardKey(approval: Approval): string {
 /**
  * Loads GET /api/approvals, polls it every 15 seconds while `enabled`, and
  * settles an item through POST /api/approvals. Shared by the /runs queue and
- * the /todo pages so both read and write the same list the same way.
+ * the /todo pages so both read and write the same list the same way. `url` narrows the read to what the page needs;
+ * it must answer in the same shape. Writes are the same either way.
  */
-export function useApprovals({ enabled = true, refreshSignal = 0 }: { enabled?: boolean; refreshSignal?: number } = {}) {
+export function useApprovals({ enabled = true, refreshSignal = 0, url = "/api/approvals" }: { enabled?: boolean; refreshSignal?: number; url?: string } = {}) {
   const [approvals, setApprovals] = useState<Approval[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
@@ -76,7 +77,7 @@ export function useApprovals({ enabled = true, refreshSignal = 0 }: { enabled?: 
 
   const refresh = useCallback(async () => {
     const requested = ++approvalRefreshSequence;
-    await fetch("/api/approvals", { cache: "no-store" })
+    await fetch(url, { cache: "no-store" })
       .then(async (response) => {
         const body = (await response.json()) as Partial<ApprovalList> & { error?: string };
         if (!response.ok) throw new Error(body.error ?? "Could not load pending approvals.");
@@ -93,7 +94,7 @@ export function useApprovals({ enabled = true, refreshSignal = 0 }: { enabled?: 
           setError(err instanceof Error ? err.message : String(err));
         }
       });
-  }, []);
+  }, [url]);
 
   useEffect(() => {
     if (!enabled) return undefined;
