@@ -184,5 +184,23 @@ describe("recovery signal replay of 2026-11-02 ledger rows", () => {
       const instants = signals.map((s) => Date.parse(s.at));
       expect(instants).toEqual([...instants].sort((a, b) => a - b));
     });
+    it("orders a parseable signal before one with an unparseable time", () => {
+      const out = classifyRecoverySignals({
+        reviewRepairs: [
+          repairRow({ requestId: "unparseable", at: "not-a-time" }),
+          repairRow({ requestId: "parseable", at: "2026-11-02T10:00:00.000Z" })
+        ]
+      });
+      expect(out.map((s) => s.source)).toEqual(["parseable", "unparseable"]);
+    });
+    it("keeps input order for signals whose times are both unparseable", () => {
+      const out = classifyRecoverySignals({
+        reviewRepairs: [
+          repairRow({ requestId: "first", at: "not-a-time" }),
+          repairRow({ requestId: "second", at: "also-not-a-time" })
+        ]
+      });
+      expect(out.map((s) => s.source)).toEqual(["first", "second"]);
+    });
   });
 });
