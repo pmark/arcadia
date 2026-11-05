@@ -1,4 +1,5 @@
 import { assertLocalBrowserAuditReady } from "./localBrowserAuditReadiness.js";
+import { preservationProcessLimits } from "./preservationStages.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
@@ -314,12 +315,27 @@ export function tmuxQueryEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/** A wedged tmux server must not stop the worker's only thread (Issue #2084). */
+const TMUX_QUERY_LIMITS = { timeout: 15_000, killSignal: "SIGKILL" } as const;
+
+/** Whether a tmux query exits zero. A timeout is not an answer: "no such
+ * session" would read as a dead Session, so it throws for the tick to log. */
+function tmuxQuerySucceeds(args: string[]): boolean {
+  try {
+    execFileSync("tmux", args, { ...TMUX_QUERY_LIMITS, stdio: "ignore", env: tmuxQueryEnv() });
+    return true;
+  } catch (error) {
+    if ((error as { code?: unknown }).code === "ETIMEDOUT") throw error;
+    return false;
+  }
+}
+
 export const systemTmux: TmuxAdapter = {
   available() {
-    try { execFileSync("tmux", ["-V"], { stdio: "ignore", env: tmuxQueryEnv() }); return true; } catch { return false; }
+    return tmuxQuerySucceeds(["-V"]);
   },
   hasSession(name) {
-    try { execFileSync("tmux", ["has-session", "-t", `=${name}`], { stdio: "ignore", env: tmuxQueryEnv() }); return true; } catch { return false; }
+    return tmuxQuerySucceeds(["has-session", "-t", `=${name}`]);
   },
   launch(input) {
     const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
@@ -350,7 +366,7 @@ export const systemTmux: TmuxAdapter = {
     // `kill-session` only; never the worktree or branch. A session that is
     // already gone is the goal state, so a failure is swallowed -- the caller
     // re-checks `hasSession`.
-    try { execFileSync("tmux", ["kill-session", "-t", `=${name}`], { stdio: "ignore", env: tmuxQueryEnv() }); } catch { /* already gone */ }
+    try { execFileSync("tmux", ["kill-session", "-t", `=${name}`], { ...TMUX_QUERY_LIMITS, stdio: "ignore", env: tmuxQueryEnv() }); } catch { /* already gone */ }
   },
   capturePane(name) {
     // The trailing colon matters: `capture-pane` takes a *pane* target, and
@@ -368,6 +384,7 @@ export const systemTmux: TmuxAdapter = {
     // past the default 1 MiB as a second margin against the same failure.
     try {
       return execFileSync("tmux", ["capture-pane", "-t", `=${name}:`, "-p", "-S", "-2000"], {
+        ...TMUX_QUERY_LIMITS,
         encoding: "utf8",
         maxBuffer: 8 * 1024 * 1024,
         env: tmuxQueryEnv()
@@ -825,6 +842,7 @@ export function launchPreparedSession(
   let observedRevision: string;
   try {
     observedRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+      ...preservationProcessLimits("git", ["rev-parse", "HEAD"]),
       cwd: session.worktree_path,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
@@ -1229,7 +1247,8 @@ export function expiredClaimStillHeld(claim: Pick<AgentWorktreeReservation, "rep
  * ref, so any other outcome is "unknown" and must never release a claim.
  */
 function localBranchState(repo: string, branch: string): "present" | "absent" | "unknown" {
-  const result = spawnSync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: repo, stdio: "ignore" });
+  const args = ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`];
+  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd: repo, stdio: "ignore" });
   if (result.status === 0) return "present";
   if (result.status === 1) return "absent";
   return "unknown";
