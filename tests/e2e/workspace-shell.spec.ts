@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -10,6 +10,10 @@ type SavedExchange = { id: string; target: { projectId?: string; context: string
 const plan = { slug: "first-website", status: "active", governed: true, milestone: "A small garden on the web", isActivePlan: true, actionCounts: { open: 1, in_progress: 0, done: 0, blocked: 0 }, activationNote: null, relativePath: "docs/plans/first-website.md" };
 const portfolio: AllPlansResponse = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "garden", slug: "moon-garden", name: "Moon garden", status: "active", activePlan: plan.slug, plans: [plan], error: null }] };
 const detail: PlanDetailResponse = { project: { id: "garden", slug: "moon-garden", name: "Moon garden" }, plan, progress: { schema: "fixture", source: { planSlug: plan.slug, planPath: plan.relativePath, updated: "2030-01-01" }, counts: { open: 1, in_progress: 0, done: 0, blocked: 0, deferred: 0, total: 1 }, isActivePlan: true, current: null, currentNote: null, next: [], blocked: [], actions: [{ key: "moon-garden/review-phone", title: "Review the page on a phone", status: "open", dependsOn: [] }], note: "Fixture records" } };
+
+// The composer lives in Relay now: focusing the field opens it, and open Relay is modal until it's put down.
+const openRelay = (page: Page) => page.getByRole("textbox").focus();
+const putRelayDown = (page: Page) => page.getByRole("button", { name: "Put down", exact: true }).click();
 
 test("direction receipts show supported evidence and held/unknown recovery never resends", async ({ page }) => {
   test.setTimeout(120_000);
@@ -51,8 +55,11 @@ test("direction receipts show supported evidence and held/unknown recovery never
       await page.getByText("Direction evidence", { exact: true }).click();
       if (state === "held" || state === "unknown") {
         await page.reload();
+        await openRelay(page);
         await expect(page.getByRole("heading", { name: `Direction · ${state}`, exact: true })).toBeVisible();
+        await putRelayDown(page);
         await page.getByRole("link", { name: "Portfolio", exact: true }).click();
+        await openRelay(page);
         await expect(page.getByRole("heading", { name: `Direction · ${state}`, exact: true })).toBeVisible();
         expect(posts).toHaveLength(1);
       }
@@ -120,9 +127,11 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await expect(page).toHaveURL(/\/workspace\/projects\/moon-garden\/plans\/first-website\/actions\/review-phone$/);
     await expect(page.locator(".workspace-sky")).toHaveAttribute("data-persistent-proof", "original");
     await expect(page.getByRole("textbox")).toBeEnabled();
+    await openRelay(page);
     await page.getByText("History & recovery", { exact: true }).click();
     await expect(page.getByText(/One exchange is shown at a time/)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await putRelayDown(page);
     await page.goBack();
     await expect(page.getByRole("heading", { name: "A small garden on the web", exact: true })).toBeVisible();
     await page.goForward();
@@ -146,14 +155,18 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await expect(page.getByRole("checkbox", { name: "Send as a direction to this context", exact: true })).toBeFocused();
     await page.getByRole("checkbox", { name: "Send as a direction to this context", exact: true }).press("Tab");
     await expect(page.getByRole("button", { name: "Send new Ask", exact: true })).toBeFocused();
+    await putRelayDown(page);
     await page.getByRole("link", { name: "Portfolio", exact: true }).click();
     await expect(page.getByRole("textbox")).toHaveValue("Improve the Arcadia dashboard despite selected garden.");
+    await openRelay(page);
     await expect(page.getByText(/Your unsent draft keeps its original target/)).toBeVisible();
     postMode = "delayed";
     await page.getByRole("button", { name: "Send new Ask", exact: true }).click();
     await expect.poll(() => posts.length).toBe(1);
     await expect(page.getByText(/Sending — durable capture/)).toBeVisible();
+    await putRelayDown(page);
     await page.getByRole("link", { name: /Moon garden: Project/ }).click();
+    await openRelay(page);
     await expect(page.getByRole("button", { name: "Sending…", exact: true })).toBeDisabled();
     releasePost?.();
     await expect(page.getByText("Recorded your garden request.", { exact: true })).toBeVisible();
@@ -168,14 +181,12 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await page.getByText("Routing & provenance", { exact: true }).click();
     await page.getByText("Artifact evidence", { exact: true }).first().click();
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath("workspace-ask-phone-top.png"), fullPage: false });
-    await page.locator(".workspace-ask-receipt").evaluate(element => window.scrollBy(0, element.getBoundingClientRect().top - 24));
+    await page.locator(".workspace-ask-receipt").scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath("workspace-ask-phone.png"), fullPage: false });
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: testInfo.outputPath("workspace-ask-desktop-top.png"), fullPage: false });
-    await page.locator(".workspace-ask-receipt").evaluate(element => window.scrollBy(0, element.getBoundingClientRect().top - 24));
+    await page.locator(".workspace-ask-receipt").scrollIntoViewIfNeeded();
     await page.screenshot({ path: testInfo.outputPath("workspace-ask-desktop.png"), fullPage: false });
     await testInfo.attach("acknowledged-phone", { path: testInfo.outputPath("workspace-ask-phone.png"), contentType: "image/png" });
     await testInfo.attach("acknowledged-desktop", { path: testInfo.outputPath("workspace-ask-desktop.png"), contentType: "image/png" });
@@ -229,6 +240,7 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
       return { receipt: b, target: a.target };
     }, { aId: receiptA.requestId, bId: receiptB.requestId });
     await page.goto(`${url}/workspace?receipt=${encodeURIComponent(receiptB.requestId)}`);
+    await expect(page.getByRole("dialog", { name: "Relay", exact: true })).toBeVisible();
     await expect(page.getByRole("textbox")).toHaveValue("Draft retained across receipt links");
     await expect(page.getByText(/Sent context:/)).toContainText(recoverySeed.receipt.target.context);
     const afterLink = await page.evaluate(() => JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { exchange: SavedExchange; history: SavedExchange[]; target: SavedExchange["target"] | null });
@@ -251,6 +263,7 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     // Malformed but valid JSON is visible and stays untouched by recovery reads.
     await page.evaluate(() => localStorage.setItem("arcadia.workspace.ask.v1", JSON.stringify({ draft: 42 })));
     await page.reload();
+    await expect(page.getByRole("dialog", { name: "Relay", exact: true })).toBeVisible();
     await expect(page.getByRole("alert").filter({ hasText: "Saved Ask recovery data is invalid" })).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("arcadia.workspace.ask.v1"))).toBe('{"draft":42}');
     expect(posts).toHaveLength(5);
@@ -266,8 +279,12 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.goto(`${url}/workspace/projects/unknown`);
-    await expect(page.getByRole("textbox")).toBeDisabled();
+    await page.getByRole("textbox").fill("A draft on an address nobody can verify");
+    await expect(page.getByRole("button", { name: "Send new Ask", exact: true })).toBeDisabled();
+    await expect(page.getByText(/couldn't confirm this view/)).toBeVisible();
+    await putRelayDown(page);
     await expect(page.getByRole("heading", { name: "Context not found" })).toBeVisible();
+    await page.evaluate(() => localStorage.removeItem("arcadia.workspace.ask.v1"));
     await page.goto(`${url}/workspace/projects/moon-garden/plans/absent-plan`);
     await expect(page.getByRole("heading", { name: "Context not found" })).toBeVisible();
     await expect(page.getByText("This Plan is not in the selected Project.")).toBeVisible();

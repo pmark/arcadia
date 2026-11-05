@@ -104,6 +104,7 @@ test("every Workspace view shows system status, and a status change moves nothin
     await expect(pill).not.toHaveAttribute("open");
 
     // Reasons link to where the operator can act.
+    await page.getByRole("button", { name: "Put down", exact: true }).click();
     await summary.click();
     await expect(pill.getByRole("link", { name: "1 blocking item for you" })).toHaveAttribute("href", "/workspace/feed");
     await page.keyboard.press("Escape");
