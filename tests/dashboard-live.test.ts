@@ -62,6 +62,7 @@ if (cmd === "build") {
     ARCADIA_DASHBOARD_SMOKE_PORT: String(40_000 + Math.floor(Math.random() * 20_000)),
     ARCADIA_DASHBOARD_SMOKE_DEADLINE: "6",
     ARCADIA_DASHBOARD_MODE: "build",
+    ARCADIA_DASHBOARD_JOB: "",
     XPC_SERVICE_NAME: ""
   };
   const live = path.join(dashboard, ".live");
@@ -86,6 +87,75 @@ if (cmd === "build") {
     }
   };
 }
+
+/** A stand-in `launchctl` on the PATH, which records how it was called and exits with the given status. */
+function fakeLaunchctl(status = 0) {
+  const bin = mkdtempSync(path.join(os.tmpdir(), "arcadia-dashboard-launchctl-"));
+  roots.push(bin);
+  const calls = path.join(bin, "calls");
+  const launchctl = path.join(bin, "launchctl");
+  writeFileSync(launchctl, `#!/usr/bin/env bash\necho "$*" >> "${calls}"\nexit ${status}\n`);
+  chmodSync(launchctl, 0o755);
+  return {
+    env: { ARCADIA_DASHBOARD_BOUNCE: "", PATH: `${bin}${path.delimiter}${process.env.PATH ?? ""}` },
+    calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : [])
+  };
+}
+
+const job = "com.arcadia.local.test.dashboard";
+const uid = process.getuid?.() ?? 0;
+
+describe("switching to a new build", () => {
+  it("restarts the launchd job it was given, and says so", () => {
+    const f = fixture();
+    const launchctl = fakeLaunchctl();
+    const result = f.build({ ...launchctl.env, ARCADIA_DASHBOARD_JOB: job });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain("Switching to the new build.");
+    expect(launchctl.calls()).toEqual([`kickstart -k gui/${uid}/${job}`]);
+    f.clean();
+  });
+
+  // macOS sets XPC_SERVICE_NAME to "0" in anything a launchd job forks, which is what the live builder saw.
+  it("says the next restart serves the build when it has no job, rather than stopping silently", () => {
+    const f = fixture();
+    const launchctl = fakeLaunchctl();
+    const result = f.build({ ...launchctl.env, XPC_SERVICE_NAME: "0" });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain("the next restart serves it");
+    expect(launchctl.calls()).toEqual([]);
+    expect(f.current()).toBe(`a ${f.head()}`);
+    f.clean();
+  });
+
+  it("won't restart a job that isn't one of Arcadia's", () => {
+    const f = fixture();
+    const launchctl = fakeLaunchctl();
+    const result = f.build({ ...launchctl.env, ARCADIA_DASHBOARD_JOB: "com.example.other" });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain("the next restart serves it");
+    expect(launchctl.calls()).toEqual([]);
+  });
+
+  it("says so when the switch fails, and keeps the finished build for the next restart", () => {
+    const f = fixture();
+    const launchctl = fakeLaunchctl(3);
+    const result = f.build({ ...launchctl.env, ARCADIA_DASHBOARD_JOB: job });
+    expect(result.status, result.stdout + result.stderr).toBe(0);
+    expect(result.stdout).toContain("The switch failed. The next restart serves this build.");
+    expect(f.current()).toBe(`a ${f.head()}`);
+    f.clean();
+  });
+
+  // Setting a job's name by hand makes macOS stop the process, so this runs in CI, on Linux.
+  it.skipIf(process.platform === "darwin")("hands the job's name to the build it starts in the background", async () => {
+    const f = fixture();
+    const launchctl = fakeLaunchctl();
+    expect(f.serve({ ...launchctl.env, XPC_SERVICE_NAME: job }).status).toBe(0);
+    for (let i = 0; i < 60 && launchctl.calls().length === 0; i++) await new Promise(resolve => setTimeout(resolve, 250));
+    expect(launchctl.calls()).toEqual([`kickstart -k gui/${uid}/${job}`]);
+  });
+});
 
 describe("live dashboard build", () => {
   it("builds, checks the build on a spare port, switches, and leaves the checkout clean", () => {

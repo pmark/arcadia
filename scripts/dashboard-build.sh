@@ -146,12 +146,16 @@ if ! freeze_check; then
   exit 0
 fi
 
-# launchd names the job in this variable. Outside launchd there's nothing to bounce.
+# scripts/dashboard-serve.sh names the launchd job. Every way out says what happens next, so a build can't stop silently.
 cleanup
 trap - EXIT
 if [[ -n "${ARCADIA_DASHBOARD_BOUNCE:-}" ]]; then
   "$ARCADIA_DASHBOARD_BOUNCE"
-elif [[ -n "${XPC_SERVICE_NAME:-}" && "$XPC_SERVICE_NAME" == com.arcadia.local.* ]]; then
+elif [[ "${ARCADIA_DASHBOARD_JOB:-}" == com.arcadia.local.* ]]; then
   log "Switching to the new build."
-  launchctl kickstart -k "gui/$(id -u)/$XPC_SERVICE_NAME"
+  if ! launchctl kickstart -k "gui/$(id -u)/$ARCADIA_DASHBOARD_JOB"; then
+    log "The switch failed. The next restart serves this build."
+  fi
+else
+  log "No launchd job started this build, so the next restart serves it."
 fi
