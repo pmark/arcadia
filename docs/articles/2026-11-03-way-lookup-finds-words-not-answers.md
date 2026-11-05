@@ -3,7 +3,7 @@ title: "Way lookup finds words, not answers"
 date: "2026-11-03"
 type: essay
 slug: "way-lookup-finds-words-not-answers"
-summary: "arcadia way lookup is a deterministic search over Arcadia's own guidance. On 30 newcomer questions it reached the right material in its top three results for 16, and nearly half of its matches were wrong. It did refuse all 17 off-topic queries."
+summary: "arcadia way lookup is a deterministic search over Arcadia's own guidance. On 30 newcomer questions it reached the right material in its top three results for 16, and 9 of its 20 matches missed the right material. It did refuse all 17 off-topic queries."
 author: "Arcadia (drafted by Claudia Mason as Clara, technical writer)"
 status: draft
 claims_receipt: "docs/articles/receipts/way-lookup-finds-words-not-answers.md"
@@ -26,7 +26,7 @@ It searches a fixed list of Arcadia's checked-in guidance: the guidance folder, 
 
 By default you get at most three passages and 1,500 bytes of excerpt. Each comes with an address (`path#heading`) and a note when it was cut. Sections headed superseded, historical, obsolete or outdated are left out. The Constitution, and any passage that states a rule with an exception, come back whole when they fit.
 
-The [command reference](../COMMANDS.md#look-up-the-exact-way-passage) is blunt about one field. `matched` is true when the question's words were found together in one chunk. It is about wording, not correctness. Output opens by saying the results may not answer the question. When nothing matches, the command says the Way does not clearly answer and lists only nearby addresses.
+The [command reference](../COMMANDS.md#look-up-the-exact-way-passage) is blunt about one field. `matched` is true when enough of the question's words were found in one chunk. It is about wording, not correctness. Output opens by saying the results may not answer the question. When nothing matches, the command says the Way does not clearly answer and lists only nearby addresses.
 
 ## What was measured
 
@@ -49,9 +49,9 @@ These are development data. The same author wrote the questions and built the lo
 
 The useful half is the refusals. Given 17 off-topic queries, it declined every one, so it is not a tool that always returns something plausible.
 
-The weak half is that a match is not an answer. Nine of the 20 matches pointed at the wrong material. The probe's example is the question about stopping everything. It matches. On the checkout used for this note, the first result is the guidance on what an agent does before it stops. The question was about the operator's stop control, which the probe found documented elsewhere and missing from the operator's start guide.
+The weak half is that a match is not an answer. Nine of the 20 matches pointed at the wrong material. The probe's example is the question about stopping everything. It matches. At commit `74dc1f07c`, on 2026-11-05, the first result is still the guidance on what an agent does before it stops. The question was about the operator's stop control. The probe found that documented elsewhere and missing from the operator's start guide. A paragraph on it was added to the guide afterwards, and the lookup's numbers have not been measured again since.
 
-Part of this is the guidance, not the search. The probe also had an agent answer the 30 questions from the same material, with ordinary file search and before the lookup existed. A judge found 22 fully correct and 8 partial. One answer wrongly said there was no one-press stop. The judge tied several misses to gaps in the guidance, and eight defects were filed as [Issue 2013](https://github.com/pmark/arcadia/issues/2013). A better search cannot find a passage that is missing.
+Part of this is the guidance, not the search. The probe also had an agent answer the 30 questions from the same material, with ordinary file search and before the lookup existed. A judge found 22 fully correct and 8 partial. That is 73% fully correct, short of the probe's 90% pass mark. One answer wrongly said there was no one-press stop. The judge tied several misses to gaps in the guidance, and eight defects were filed as [Issue 2013](https://github.com/pmark/arcadia/issues/2013). A better search cannot find a passage that is missing.
 
 ## How to use it
 

@@ -14,7 +14,7 @@ channels: [site, rss]
 
 # Relay mode labels what the agent made up
 
-Relay is a proposed conversational interface for Arcadia: one chat in plain language, in place of commands and file paths. **It is not built.** What exists is a [design record](../design/relay/brief.md), which an independent critic put on hold against its earlier frame, and a skill called Relay mode.
+Relay is a proposed conversational interface for Arcadia: one chat in plain language, in place of commands and file paths. **It is not built.** What exists is a [design record](../design/relay/brief.md), which a read-only critic put on hold against its earlier frame, and a skill called Relay mode.
 
 Relay mode lets any coding agent play the part now. Its real subject is how to keep an agent honest while it plays.
 
@@ -70,7 +70,7 @@ If you build with coding agents, the pattern carries over. Make the agent separa
 
 ## What is not done
 
-- Relay does not exist. The design record has nine blocking findings from one review, eight of them open, and its frame is still proposed.
+- Relay does not exist. The review of the design's original frame raised nine blocking findings, and eight are still open. The frame has since been confirmed, and three later reviews covered the Workspace layers design.
 - The label audit has not run. Whether agents follow the labels, and whether operators find them useful, is unmeasured.
 - No session transcripts are cited here, so this note makes no claim about how Relay mode has gone in use.
 - The cross-device conversation, reaching out first and channel watching are missing, and the skill does not pretend otherwise.
