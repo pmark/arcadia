@@ -11,7 +11,7 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
-import { observeCodingAgentAvailability } from "../codingAgents/availability.js";
+import { observeCodingAgentAvailability, type CodingAgentAvailabilitySnapshot } from "../codingAgents/availability.js";
 import { codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import { loadIdentityModelTierRegistry, renderReviewerIdentityBlock } from "../codingAgents/agentIdentity.js";
 import { sessionAgentForProvider, withClaudeCodeToken } from "../sessions/index.js";
@@ -1105,7 +1105,7 @@ function toCandidate(
   };
 }
 
-function selectQaReviewer(workspace: string, requestedProfile?: string): SelectedCodingAgentConfiguration {
+function selectQaReviewer(workspace: string, requestedProfile?: string, availability?: CodingAgentAvailabilitySnapshot): SelectedCodingAgentConfiguration {
   const registries = loadPhase3Registries(workspace);
   validatePhase3Registries(registries);
   if (!registries.providerAdapters) {
@@ -1136,7 +1136,7 @@ function selectQaReviewer(workspace: string, requestedProfile?: string): Selecte
     requirement,
     phase: "review",
     purpose: "planning",
-    availability: observeCodingAgentAvailability(registries.codingAgents.profiles),
+    availability: availability ?? observeCodingAgentAvailability(registries.codingAgents.profiles),
     requestedProfile
   });
 }
@@ -2486,3 +2486,25 @@ function escapeTable(value: string): string {
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
+
+/**
+ * The real Claude reviewer route's own pieces, for the read-only replay
+ * (src/qa/reviewerReplay.ts), so it runs this code and not a copy of it. Nothing
+ * here persists anything: recording a verdict stays in `runQaPrReviewCommand`.
+ */
+export const CLAUDE_REVIEWER_ROUTE = {
+  roles: PR_REVIEW_ROLES,
+  schema: reviewSchema,
+  select: selectQaReviewer,
+  kind: qaReviewerKind,
+  environment: buildClaudeReviewerEnvironment,
+  preflight: runClaudeReviewerPreflight,
+  systemPrompt: CLAUDE_REVIEWER_SYSTEM_PROMPT,
+  launch: claudeReviewerLaunch,
+  record: recordClaudeReviewerVerdict,
+  parse: parseModelVerdict,
+  gate: evaluateDeterministicEvidence,
+  combine: combineVerdicts,
+  unavailability: deterministicReviewerUnavailability,
+  summary: verdictSummary
+};
