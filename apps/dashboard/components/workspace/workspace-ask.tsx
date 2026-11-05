@@ -255,7 +255,7 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
         {fieldControl}
       </div>
       <div className="relay-send" inert={!open}>
-        {orphaned && <p className="relay-why" role="status">You started this draft on a view that wasn&apos;t confirmed, so it has no target yet. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target, typedOn: undefined })}>Use this view</button></p>}
+        {orphaned && <p className="relay-why" role="status">You started this draft on a view that wasn&apos;t confirmed, so it has no target yet. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target, typedOn: undefined })}>Use this view</button>{longReadOn === path && <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO, typedOn: undefined })}>Ask the whole portfolio instead</button>}</p>}
         {reading && !sendable && !orphaned && <p className="relay-why" role="status">{longReadOn === path ? <>This view is taking a while. Keep typing, and sending waits for it. <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO, typedOn: undefined })}>Ask the whole portfolio instead</button></> : "Reading this view. Keep typing; sending waits for it."}</p>}
         {!reading && !sendable && !available && <p className="relay-why" role="status">Arcadia couldn&apos;t confirm this view, so Ask can&apos;t use it. Your draft stays. <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO, typedOn: undefined })}>Ask the whole portfolio instead</button></p>}
         <div className="relay-send-row">

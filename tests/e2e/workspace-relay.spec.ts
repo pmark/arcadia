@@ -394,6 +394,30 @@ test("a read that never lands offers a way out, and only an explicit tap takes i
   } finally { release(); await stop(ctx); }
 });
 
+test("a draft with no target on a view that never lands still has a way out", async ({ page }) => {
+  test.setTimeout(120_000);
+  let release = () => {};
+  const world = newWorld({ plans: "hung", hung: new Promise<void>(resolve => { release = resolve; }) });
+  const ctx = await serve(page, world);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const fallback = page.getByRole("button", { name: "Ask the whole portfolio instead", exact: true });
+  try {
+    await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
+    await field(page).fill("Begun on the Action");
+    await put(page).click();
+    await page.getByRole("navigation", { name: "Selected context" }).locator("a[href=\"/workspace/projects/moon-garden\"]").click();
+    await expect(page).toHaveURL(/\/projects\/moon-garden$/);
+    await field(page).focus();
+    await expect(relay(page).locator(".relay-chip")).toContainText("Choose where this draft goes");
+    await expect(page.getByRole("button", { name: "Use this view", exact: true }).first()).toBeDisabled();
+    await expect(fallback).toBeVisible({ timeout: 20_000 });
+    expect(world.posts).toEqual([]);
+    await fallback.click();
+    await expect(relay(page).locator(".relay-chip")).toContainText("whole portfolio");
+    await expect(page.getByRole("button", { name: "Send new Ask", exact: true })).toBeEnabled();
+  } finally { release(); await stop(ctx); }
+});
+
 test("only the Feed itself uses the whole portfolio by default, and a new route doesn't borrow the last one's word", async ({ page }) => {
   test.setTimeout(120_000);
   const world = newWorld();
