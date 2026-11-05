@@ -34,7 +34,8 @@ Unattended production stays the first priority, and production stays Off.
 **Merged to main:** PR 2007 (Arcadia Design skill and `arcadia design check`), 2009 (Relay mode), 2010, 2014, 2016
 (`arcadia way lookup`, STOP guidance), 2019, 2020, 2022 (design record and probes), and
 [2027](https://github.com/pmark/arcadia/pull/2027) (the proposal, investigation, S021 to S031, the layer design and this handoff).
-Reviews of PR 2027 found no blocking finding at `977fc351e`, at `29b69ebe7` (R2 to R4), or at `b37680630`. That last round was the only
+Reviews of PR 2027 found no blocking finding at `977fc351e`. R2 and R3 raised five blocking findings on the layer design, all fixed, and R4 at
+`29b69ebe7` found none. The review at `b37680630` found none either. That last round was the only
 independent read of everything after `29b69ebe7`, including the phone-test revision. Its findings are on the PR.
 
 **Open, not merged.** Re-read each PR's checks and merge state before relying on them.
@@ -64,14 +65,14 @@ any companion.
   `.claude/worktrees/agent-aea5b03a6340935af`, on a differently named local branch.
 - **Superseded worktrees, safe to retire once their branches are confirmed merged:** `relay-design-record`,
   `relay-design-extract`, `relay-design-speed`, `relay-way-slice`, `relay-critical-path`, `relay-model-bakeoff`,
-  `relay-routing`, `arcadia-design-fill-gaps`.
+  `relay-routing`, `arcadia-design-fill-gaps`, and `relay-proposal` once its follow-up merges (its old branch, `claude/relay-proposal-20261103`,
+  merged through PR 2027).
 - **Running operations:** none known.
 
 # Authority and custody
 
 The operator holds every decision here. Nothing is claimed, and this hands off no custody. Merge rules are the
-usual ones. Field
-Notes publishing stays under Decision 0120, and PR 2028 merging isn't approval to publish.
+usual ones. Field Notes publishing stays under Decision 0120, and PR 2028 merging isn't approval to publish.
 
 # Unresolved
 
