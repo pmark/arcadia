@@ -1,6 +1,6 @@
 # Relay: the three Workspace layers
 
-Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). Each build step is its
+Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). The "Revised after the phone test" section below is proposed, not approved. Items 1 and 2 of its build order have merged. Each build step is its
 own PR under the usual gates. Unattended production stays first, and production stays Off. Built through [Arcadia Design](../../../.agents/skills/arcadia-design/SKILL.md)
 as part of [the Relay brief](brief.md). Recorded as source S025.
 
