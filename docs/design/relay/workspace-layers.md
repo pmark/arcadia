@@ -83,7 +83,7 @@ The earlier steps 3 to 5 follow, unchanged.
 
 [Probe weather-1](probes/weather-1.md) measured it. `lib/weather-rhythm.ts` holds the timing, and `SKIES` in `lib/system-sky.ts` holds the amounts.
 
-- **A landing** peaks in 0.4 s and fades by 5 s. Only the arriving sky lifts, so a storm that's clearing fades without surging on its way out.
+- **A landing** peaks in 0.4 s and fades by 5 s. It belongs to the sky that landed, so a sky flipping back during it doesn't inherit it. A sky that's leaving fades what it had.
 - **A settled sky** breathes over 17 s. A swell of about 8 s comes every 28 s to 2 minutes, irregularly, and rises only part of the way to a landing.
 - **Reopening on the sky you last saw stays calm.** This browser remembers it. A different sky lands, even if it changed while you were away.
 - **The same sky landing again within 5 minutes only crossfades,** so a flapping status can't keep flashing. A different sky still lands.

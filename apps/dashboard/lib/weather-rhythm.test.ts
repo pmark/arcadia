@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { SKIES, type SkyId } from "./system-sky";
-import { ARRIVAL_COOLDOWN_MS, ARRIVAL_MS, BREATH_MS, SWELL_MS, SWELL_REST_MS, arrivalLift, breathAt, shouldArrive, swellLift, weatherAt } from "./weather-rhythm";
+import { ARRIVAL_COOLDOWN_MS, ARRIVAL_MS, BREATH_MS, SWELL_MS, SWELL_REST_MS, arrivalLift, breathAt, landingLift, shouldArrive, swellLift, weatherAt } from "./weather-rhythm";
 
 const SKY_IDS = Object.keys(SKIES) as SkyId[];
 
@@ -19,6 +19,13 @@ describe("a change landing", () => {
     expect(shouldArrive("storm", null, undefined, 0)).toBe(true);
     expect(shouldArrive("storm", "storm", undefined, 0)).toBe(false);
     expect(shouldArrive("reading", "storm", undefined, 0)).toBe(false);
+  });
+
+  it("belongs to the sky that landed, so a sky flipping back during it stays calm", () => {
+    const landing = { id: "attention" as const, at: 1_000 };
+    expect(landingLift("attention", landing, 1_500)).toBeGreaterThan(0.9);
+    expect(landingLift("storm", landing, 1_500)).toBe(0);
+    expect(landingLift("storm", null, 1_500)).toBe(0);
   });
 
   it("doesn't repeat for a sky that keeps coming back, but still lands a different one", () => {

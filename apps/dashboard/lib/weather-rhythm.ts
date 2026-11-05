@@ -35,6 +35,11 @@ export function swellLift(nowMs: number): number {
   return t > 0 && t < 1 ? Math.sin(Math.PI * t) ** 2 : 0;
 }
 
+/** How vivid `current` is from its own landing. A sky that arrives during another's landing doesn't inherit it. */
+export function landingLift(current: SkyId, landing: { id: SkyId; at: number } | null, now: number): number {
+  return landing?.id === current ? arrivalLift(now - landing.at) : 0;
+}
+
 /** The slow rise and fall in a settled sky's colour, as a multiplier around 1. */
 export function breathAt(nowMs: number): number {
   return 1 + BREATH_DEPTH * Math.sin((nowMs / BREATH_MS) * 2 * Math.PI);

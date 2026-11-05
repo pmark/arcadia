@@ -1,5 +1,5 @@
 import { SKIES, type SkyId } from "../../../lib/system-sky";
-import { arrivalLift, breathAt, shouldArrive, swellLift, weatherAt } from "../../../lib/weather-rhythm";
+import { breathAt, landingLift, shouldArrive, swellLift, weatherAt } from "../../../lib/weather-rhythm";
 
 /**
  * System status, drawn as weather over the sol sky. The sky controller
@@ -30,8 +30,8 @@ function readSeen(): SkyId | null {
 function writeSeen(id: SkyId) {
   try { localStorage.setItem(SEEN_KEY, id); } catch { /* Without storage, a reopened page lands its sky again. */ }
 }
-/** Particles fade over this many places in the count, so a falling count thins the dust rather than removing specks. */
-const FADE_PLACES = 20;
+/** The last specks in the count fade, so a falling count thins the dust. The band stays narrow for a small count, which would otherwise all be faint. */
+const fadeBand = (count: number) => Math.max(1, Math.min(20, count / 4));
 /** Per-frame drift was written for 60 frames a second, so other refresh rates move the same. */
 const FRAME_MS = 1000 / 60;
 
@@ -45,13 +45,15 @@ export function mountWeather(canvas: HTMLCanvasElement, read: () => SkyId) {
   let dust: Array<{ x: number; y: number; s: number; v: number; o: number }> = [];
   let motes: typeof dust = [];
   let clouds: Array<{ x: number; y: number; r: number; v: number; o: number }> = [];
-  let shown: SkyId | null = null, seen = readSeen(), arrivedAt: number | null = null;
+  let shown: SkyId | null = null, seen = readSeen(), landing: { id: SkyId; at: number } | null = null;
   const landedAt: Partial<Record<SkyId, number>> = {};
+  // A sky that's leaving keeps fading what it had, so a storm clearing mid-landing never drops its dust in one frame.
+  const lifts = Object.fromEntries(SKY_IDS.map(id => [id, 0])) as Record<SkyId, number>;
 
   function notice(current: SkyId, now: number) {
     if (current === shown) return;
     shown = current;
-    if (shouldArrive(current, seen, landedAt[current], now)) arrivedAt = landedAt[current] = now;
+    if (shouldArrive(current, seen, landedAt[current], now)) { landedAt[current] = now; landing = { id: current, at: now }; }
     if (current !== "reading" && current !== seen) { seen = current; writeSeen(current); }
   }
 
@@ -68,14 +70,14 @@ export function mountWeather(canvas: HTMLCanvasElement, read: () => SkyId) {
     draw(performance.now());
   }
 
-  function blend(current: SkyId, now: number, still: boolean, breath: number): Blend {
+  function blend(current: SkyId, now: number, still: boolean, breath: number, k: number): Blend {
     const out = { tint: [[0, 0, 0], 0], haze: [[0, 0, 0], 0], veil: [[0, 0, 0], 0], dust: 0, wind: 0, rise: 0, clouds: 0 } as Blend;
-    // Only the sky arriving lifts, so a storm that's clearing fades rather than surging on its way out.
-    const lift = still ? 0 : Math.max(arrivedAt === null ? 0 : arrivalLift(now - arrivedAt), swellLift(now) * SKIES[current].swell);
+    const lift = still ? 0 : Math.max(landingLift(current, landing, now), swellLift(now) * SKIES[current].swell);
+    for (const id of SKY_IDS) lifts[id] = id === current ? lift : lifts[id] * (1 - k);
     let sum = 0;
     for (const id of SKY_IDS) {
       const w = weights[id]; if (w < 0.001) continue; sum += w;
-      const weather = weatherAt(id, id === current ? lift : 0, breath);
+      const weather = weatherAt(id, lifts[id], breath);
       for (const c of COLORED) { const p = weather[c]; if (p) { const col = hex(p[0]), alpha = p[1] * w; out[c] = [out[c][0].map((v, i) => v + col[i] * alpha) as RGB, out[c][1] + alpha]; } }
       for (const n of NUMERIC) out[n] += (weather[n] ?? 0) * w;
     }
@@ -85,11 +87,12 @@ export function mountWeather(canvas: HTMLCanvasElement, read: () => SkyId) {
   }
 
   function draw(now: number) {
-    const dt = Math.min(100, now - last); last = now;
+    const dt = Math.max(0, Math.min(100, now - last)); last = now;
     const still = reduce.matches, k = still ? 1 : 1 - Math.exp(-dt / 600), current = read();
-    notice(current, now);
+    // A tab opened in the background shouldn't spend a landing nobody sees.
+    if (!document.hidden) notice(current, now);
     for (const id of SKY_IDS) weights[id] += ((id === current ? 1 : 0) - weights[id]) * k;
-    const breath = still ? 1 : breathAt(now), b = blend(current, now, still, breath), move = still ? 0 : 1, frames = dt / FRAME_MS;
+    const breath = still ? 1 : breathAt(now), b = blend(current, now, still, breath, k), move = still ? 0 : 1, frames = dt / FRAME_MS;
     g.clearRect(0, 0, W, H);
     if (b.clouds > 0.01) for (const c of clouds) {
       if (move) { c.x += c.v * dt * 0.01; if (c.x - c.r * 2 > W) c.x = -c.r * 2; }
@@ -105,7 +108,7 @@ export function mountWeather(canvas: HTMLCanvasElement, read: () => SkyId) {
     for (let i = 0; i < Math.ceil(b.dust) && i < dust.length; i++) {
       const d = dust[i];
       if (move) { d.x += d.v * (b.wind + 0.08) * dt * 0.06; d.y += Math.sin(now / 1200 + d.o * 9) * 0.15 * (1 + b.wind) * frames; if (d.x > W + 4) { d.x = -4; d.y = Math.random() * H; } }
-      g.globalAlpha = (0.2 + d.o * 0.45) * Math.min(1, 0.3 + b.wind) * Math.min(1, (b.dust - i) / FADE_PLACES) * breath; g.beginPath(); g.arc(d.x, d.y, d.s * (1 + b.wind * 0.3), 0, 7); g.fill();
+      g.globalAlpha = (0.2 + d.o * 0.45) * Math.min(1, 0.3 + b.wind) * Math.min(1, (b.dust - i) / fadeBand(b.dust)) * breath; g.beginPath(); g.arc(d.x, d.y, d.s * (1 + b.wind * 0.3), 0, 7); g.fill();
     }
     g.fillStyle = "#ffd27a";
     for (let i = 0; i < Math.ceil(b.rise) && i < motes.length; i++) {

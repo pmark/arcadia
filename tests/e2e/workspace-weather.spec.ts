@@ -56,10 +56,12 @@ test("a change lands vividly and settles, reopening on the same news stays calm,
     counts = { ...NONE, blocking: 3, yours: 3 };
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     await label(page, "Blocked");
-    const landing = await motion(page, 4);
+    // The colour crossfade moves the whole canvas at first, so this waits for it and measures the dust alone.
+    await pause(1_000);
+    const landing = await motion(page, 3);
 
     // Then it settles, still plainly a storm's colour but with the dust almost gone.
-    await pause(5_000);
+    await pause(4_000);
     const settled = await motion(page, 4);
     expect(landing.most, `landing ${landing.most}, settled ${settled.least}`).toBeGreaterThan(settled.least * 4);
     expect((await sample(page)).alpha).toBeGreaterThan(0.1);
@@ -71,7 +73,7 @@ test("a change lands vividly and settles, reopening on the same news stays calm,
     await installSampler(page);
     await pause(1_500);
     const reopened = await motion(page, 4);
-    expect(reopened.most, `reopened ${reopened.most}, landing ${landing.most}`).toBeLessThan(landing.most / 2);
+    expect(reopened.most, `reopened ${reopened.most}, landing ${landing.most}`).toBeLessThan(landing.most / 3);
 
     // Reduced motion: the same colour, with nothing moving at all.
     const still = await browser.newContext({ reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
