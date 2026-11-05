@@ -585,12 +585,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-work-monitor-malformed-record
     clarification: clarified
     confidence: high
-    source: Agent Ask tighten-work-monitor-malformed-record-criteria-20261104
+    source: Agent Ask amend-pin-work-monitor-criteria-20261105
     why: "Removing the field-count check currently passes every test, so a malformed record could reach the monitor's safety report unnoticed."
     acceptance_criteria:
       - tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.
       - The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.
-      - The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+      - Apart from the settlement records Arcadia writes, the change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/2015"]
