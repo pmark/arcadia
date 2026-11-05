@@ -6,6 +6,7 @@ import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
+import { collectHangEvidence, type HangEvidence, type HangEvidenceInput } from "../production/evidenceBundle.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely } from "../production/policy.js";
 import { PRESERVATION_HEARTBEAT_SCHEMA, readTransportHeartbeat } from "../sessions/transportHeartbeat.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
@@ -328,6 +329,14 @@ export interface ProductionLivenessDependencies {
   readProductionActive?: (workspacePath: string) => boolean;
   listProcesses?: () => ProcessRow[];
   queuePing?: (input: LivenessPingInput) => { id: string };
+  collectHangEvidence?: (input: HangEvidenceInput) => HangEvidence;
+}
+
+/** Where a hung worker's evidence went. Local logs only: the ping is read off-site, so it never carries this. */
+export interface LivenessHangEvidence {
+  status: HangEvidence["status"];
+  directory: string | null;
+  note: string | null;
 }
 
 export interface ProductionLivenessData {
@@ -336,6 +345,8 @@ export interface ProductionLivenessData {
   pingId: string | null;
   message: string | null;
   openAlert: LivenessAlertKind | null;
+  /** Set only on the run that raised a stale alert. */
+  hangEvidence: LivenessHangEvidence | null;
 }
 
 function readProductionActiveFromDatabase(workspacePath: string): boolean {
@@ -410,14 +421,42 @@ export function runProductionLivenessCheckCommand(
   const closedAt = decision.ping === "recovered" || decision.ping === "closed_by_off" ? new Date(now).toISOString() : state.closedAt;
   const next: LivenessState = { schema: STATE_SCHEMA, productionActive: decision.productionActive, openAlert, closedAt };
   if (stateProblem !== null || JSON.stringify(next) !== JSON.stringify(state)) writeState(workspacePath, next);
+  // Last, so the page and the episode record are already out. It runs once per
+  // episode (only the run that decided `stale_alert`), outside any transaction.
+  // The root is the worker's pid from `worker.pid`, which names the main loop
+  // (the beacon stamps that file's time, not its pid; see `readWorkerProgress`).
+  // Its 12-second budget is the most a timer run is delayed.
+  const hangEvidence = observation.kind === "stale" && decision.ping === "stale_alert"
+    ? captureHangEvidence(workspacePath, observation, now, dependencies.collectHangEvidence ?? collectHangEvidence)
+    : null;
   if (stateProblem !== null) throw validationError(`The liveness state file was unreadable and has been replaced: ${stateProblem}`);
   if (decision.logOnly !== null) throw validationError(decision.logOnly, { openAlert: decision.openAlert });
 
   return createSuccess({
     command: "production.liveness-check",
     workspace: workspacePath,
-    data: { observation, ping: decision.ping, pingId: message === null ? null : pingId, message, openAlert: decision.openAlert }
+    data: { observation, ping: decision.ping, pingId: message === null ? null : pingId, message, openAlert: decision.openAlert, hangEvidence }
   });
+}
+
+/** Never throws: a capture that fails costs the capture, not the alert already sent. */
+function captureHangEvidence(
+  workspacePath: string,
+  observation: Extract<LivenessObservation, { kind: "stale" }>,
+  now: number,
+  collect: (input: HangEvidenceInput) => HangEvidence
+): LivenessHangEvidence {
+  try {
+    const result = collect({
+      workspace: workspacePath,
+      label: `liveness-${new Date(observation.progressAt).toISOString()}`,
+      rootPid: observation.workerPid,
+      now: new Date(now)
+    });
+    return { status: result.status, directory: result.directory, note: result.note };
+  } catch (error) {
+    return { status: "failed", directory: null, note: errorText(error) };
+  }
 }
 
 /** A link that would make the ping refuse must not cost the alert; a bad setting falls back to the local dashboard. */
@@ -452,8 +491,13 @@ function pingMessage(
 
 /** Quiet on a run with nothing to say: launchd keeps this output, once a minute. */
 export function renderProductionLivenessCheckSuccess(response: CommandSuccess<ProductionLivenessData>): string[] {
-  const { message, pingId } = response.data;
-  return message === null ? [] : [`${new Date().toISOString()} queued ping ${pingId}: ${message}`];
+  const { message, pingId, hangEvidence } = response.data;
+  const stamp = new Date().toISOString();
+  const lines = message === null ? [] : [`${stamp} queued ping ${pingId}: ${message}`];
+  if (hangEvidence) {
+    lines.push(`${stamp} hang evidence ${hangEvidence.status}: ${hangEvidence.directory ?? "not written"}${hangEvidence.note ? ` (${hangEvidence.note})` : ""}`);
+  }
+  return lines;
 }
 
 function errorText(error: unknown): string {

@@ -1,4 +1,4 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { execFileSync, spawn, spawnSync, type ChildProcess } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,6 +20,7 @@ import { createWorkerTick } from "../src/commands/worker.js";
 import { startHeartbeatBeacon } from "../src/commands/workerHeartbeatBeaconExecutor.js";
 import { withDatabase } from "../src/db/connection.js";
 import { listPendingOperatorPings } from "../src/ping/operatorPing.js";
+import { collectHangEvidence, type HangEvidenceInput } from "../src/production/evidenceBundle.js";
 import { withPrReviewExecutionClaim } from "../src/qa/executionClaim.js";
 import { evaluateLaunchAgent } from "../src/runtime/launchAgents.js";
 import { systemTmux } from "../src/sessions/index.js";
@@ -405,6 +406,79 @@ describe("the signal, against the hang of 2026-11-05 (Issue #2084)", () => {
     writeHeartbeat(root, at("02:10:29"));
     writeTickMarker(root, at("02:05:30"));
     expect(check(root, at("02:10:30")).ping).toBe("stale_alert");
+  });
+});
+
+describe("hang evidence saved with the stale alert", () => {
+  const sleepers: ChildProcess[] = [];
+  afterEach(() => {
+    for (const sleeper of sleepers.splice(0)) sleeper.kill("SIGKILL");
+  });
+
+  function staleWorkerRoot(): { root: string; pid: number } {
+    const sleeper = spawn("sleep", ["300"], { stdio: "ignore" });
+    sleepers.push(sleeper);
+    const pid = sleeper.pid as number;
+    const root = workspace();
+    writeBeaconRecord(root, at("02:10:30"), { pid, owner: "worker-owner" });
+    writeTickMarker(root, at("02:05:30"), { pid, owner: "worker-owner" });
+    return { root, pid };
+  }
+
+  function run(root: string, now: number, collect: NonNullable<Parameters<typeof runProductionLivenessCheckCommand>[1]>["collectHangEvidence"]) {
+    return runProductionLivenessCheckCommand(
+      { workspace: root, dashboardUrl: "http://arcadia.example.ts.net/" },
+      { now: () => now, readProductionActive: () => true, listProcesses: () => PROCESSES, collectHangEvidence: collect }
+    );
+  }
+
+  it("captures the worker's process once per episode, after the ping, and keeps host paths out of the ping", () => {
+    const { root, pid } = staleWorkerRoot();
+    const calls: number[] = [];
+    const collect = (input: HangEvidenceInput) => {
+      // The page is already queued when the slow part starts.
+      calls.push(pending(root).length);
+      return collectHangEvidence({ ...input, limits: { budgetMs: 8_000 } });
+    };
+
+    const first = run(root, at("02:10:30"), collect);
+    expect(first.data.ping).toBe("stale_alert");
+    expect(calls).toEqual([1]);
+    const evidence = first.data.hangEvidence;
+    expect(evidence?.directory).toContain(path.join("artifacts", "generated", "red-alerts", "liveness-2026-11-05T02-05-30.000Z", "hang"));
+    const record = JSON.parse(readFileSync(path.join(evidence?.directory as string, "hang-evidence.json"), "utf8")) as { rootPid: number; status: string };
+    expect(record).toMatchObject({ rootPid: pid, status: "captured" });
+    expect(renderProductionLivenessCheckSuccess(first).join("\n")).toContain(evidence?.directory as string);
+    const [ping] = pending(root);
+    expect(ping?.message).not.toContain(root);
+    expect(ping?.message).not.toContain("red-alerts");
+
+    const before = readFileSync(path.join(evidence?.directory as string, "hang-evidence.json"), "utf8");
+    for (const later of ["02:11:30", "02:20:00"]) {
+      const repeat = run(root, at(later), collect);
+      expect(repeat.data).toMatchObject({ ping: null, hangEvidence: null });
+    }
+    expect(calls).toHaveLength(1);
+    expect(pending(root)).toHaveLength(1);
+    expect(readFileSync(path.join(evidence?.directory as string, "hang-evidence.json"), "utf8")).toBe(before);
+  }, 30_000);
+
+  it("still raises and records the alert when the capture throws", () => {
+    const { root } = staleWorkerRoot();
+    const result = run(root, at("02:10:30"), () => { throw new Error("sample exploded"); });
+    expect(result.data.ping).toBe("stale_alert");
+    expect(result.data.hangEvidence).toMatchObject({ status: "failed", directory: null, note: "sample exploded" });
+    expect(pending(root)).toHaveLength(1);
+    expect(state(root).openAlert).toMatchObject({ kind: "stale", pingId: result.data.pingId });
+  });
+
+  it("makes no capture while the alert is quiet or fresh", () => {
+    const root = workspace();
+    writeBeaconRecord(root, at("02:00:00"));
+    writeTickMarker(root, at("02:00:00"));
+    const collect = vi.fn();
+    expect(run(root, at("02:01:00"), collect).data.hangEvidence).toBeNull();
+    expect(collect).not.toHaveBeenCalled();
   });
 });
 
