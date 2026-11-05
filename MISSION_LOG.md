@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-04
+updated: 2026-11-05
 ---
 
 # Mission Log: Arcadia
@@ -2914,3 +2914,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "apps/dashboard/app/api/operator-script/retired-entries.test.ts gains a test in which the retirement pins the sha256 of the original descriptor and the original script, only the written descriptor bytes differ (for example a trailing newline) while the script bytes equal the pinned bytes, the changed descriptor stays invalid, and GET returns no scripts with console.error called exactly once."; "Every other test in that file passes unchanged."; "The change touches only apps/dashboard/app/api/operator-script/retired-entries.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-cover-retired-reland-20261103).
+
+## 2026-11-05 — Completed arcadia/pin-recovery-unparseable-time-order
+
+- **Did:** Completed Action arcadia/pin-recovery-unparseable-time-order from accepted evidence (Candidate edc9eb228428a4dd09b253d22f37a948f90c87a4).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/recovery-replay.test.ts gains a test in which classifyRecoverySignals receives two failing operator-qa-plan repair rows, the first with an unparseable at value and the second with a parseable one, and returns the signal of the parseable row first."; "A second new test gives two such repair rows that both have unparseable at values and asserts that their signals keep input order."; "Every other test in that file passes unchanged."; "The change touches only tests/recovery-replay.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-recovery-unparseable-time-order-de9051cea659).

@@ -7,7 +7,7 @@ status: active
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-04
+updated: 2026-11-05
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -596,11 +596,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2015"]
   - id: pin-recovery-unparseable-time-order
     title: "Pin how recovery signals order an unparseable time with tests, covering the epoch fallback named in Issue #2004."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin how recovery signals order an unparseable time with tests, covering the epoch fallback named in Issue #2004."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-recovery-unparseable-time-order-de9051cea659; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-recovery-unparseable-time-order
     clarification: clarified
     confidence: high
@@ -638,7 +638,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-recovery-unparseable-time-order
+current_action: pin-work-monitor-malformed-record
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
