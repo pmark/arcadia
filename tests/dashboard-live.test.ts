@@ -399,7 +399,8 @@ describe("live dashboard start", () => {
     const f = fixture();
     mkdirSync(f.live, { recursive: true });
     writeFileSync(path.join(f.live, "current"), `a ${f.head()}\n`);
-    expect(f.serve().status).toBe(0);
+    // A frozen check stops the build this starts in the background, which would otherwise race to log its own calls.
+    expect(f.serve({ ARCADIA_DASHBOARD_FREEZE_CHECK: "false" }).status).toBe(0);
     expect(f.calls()).toEqual(["dev -"]);
   });
 

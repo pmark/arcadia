@@ -9,6 +9,9 @@ const portfolio = { generatedAt: "2030-01-01T00:00:00.000Z", projects: [{ id: "g
 const detail = { project: { id: "garden", slug: "moon-garden", name: "Moon garden" }, plan, progress: { schema: "fixture", source: { planSlug: plan.slug, planPath: plan.relativePath, updated: "2030-01-01" }, counts: { open: 1, in_progress: 0, done: 0, blocked: 0, deferred: 0, total: 1 }, isActivePlan: true, current: null, currentNote: null, next: [], blocked: [], actions: [{ key: "moon-garden/review-phone", title: "Review the page on a phone", status: "open", dependsOn: [] }] } };
 const decision = { kind: "decision", id: "0017", project: "field-notes", title: "Publish the field notes now or after review", detail: null, gateQuestion: "Publish now?", options: [{ key: "A", label: "Now", consequence: null }], blocking: true, todoKey: "decision:field-notes:0017", href: "/todo/decision/field-notes/0017", createdAt: "2030-01-01T00:00:00.000Z" };
 
+/** How long a tap on a route may take to change the address and the screen. About ten times what it takes today, and fixed, so a slower page delay can't loosen it. */
+const TAP_LIMIT_MS = 1_000;
+
 test("every tap answers at once and says what it's opening, however slow the page is", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const repo = path.resolve(import.meta.dirname, "../..");
@@ -39,12 +42,24 @@ test("every tap answers at once and says what it's opening, however slow the pag
     await expect(activity).toHaveText("");
 
     // A route needs no page: the tap moves the address and the screen before any page could arrive.
+    // Timed inside the page, so it counts the browser's work and not the test runner's round trips.
     const project = page.getByRole("link", { name: /Moon garden/ });
-    const tapped = Date.now();
+    await page.evaluate(() => {
+      document.addEventListener("click", () => {
+        const tapped = performance.now();
+        const check = () => {
+          if (location.pathname.endsWith("/projects/moon-garden") && document.querySelector("#workspace-title")?.textContent === "Moon garden") (window as unknown as { tapMs: number }).tapMs = performance.now() - tapped;
+          else requestAnimationFrame(check);
+        };
+        check();
+      }, { capture: true, once: true });
+    });
     await project.click({ noWaitAfter: true });
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);
     await expect(page.locator("#workspace-title")).toHaveText("Moon garden");
-    expect(Date.now() - tapped).toBeLessThan(delayMs);
+    // The page's check runs on its next frame, which can come just after the waits above.
+    await page.waitForFunction(() => (window as unknown as { tapMs?: number }).tapMs !== undefined);
+    expect(await page.evaluate(() => (window as unknown as { tapMs: number }).tapMs)).toBeLessThan(TAP_LIMIT_MS);
     await expect(activity).toHaveText("");
 
     // A link to a page says what it's opening, before the page does, and clears when it arrives. Back works and clears it too.
