@@ -158,11 +158,13 @@ describe("work monitor failure handling", () => {
     const plainCalls = control.calls.length;
     // The first record loses every field after its object id, so it no longer has the expected shape.
     const changed: boolean[] = [];
+    const alteredNames: string[] = [];
     control.alterListing = (stdout) => {
       const [first, ...rest] = stdout.split("\n");
       const [name, sha] = first.split("\0");
       const altered = [`${name}\0${sha}`, ...rest].join("\n");
       changed.push(altered !== stdout);
+      alteredNames.push(name);
       return altered;
     };
     control.calls = [];
@@ -171,6 +173,9 @@ describe("work monitor failure handling", () => {
     expect(changed.some(Boolean)).toBe(true);
     // The per-ref reads add git calls on top of the batched listing.
     expect(control.calls.length).toBeGreaterThan(plainCalls);
+    // A per-ref read named the branch whose batched record was altered.
+    const [alteredName] = alteredNames;
+    expect(control.calls.some((call) => call[0] === "git" && call[1] !== "for-each-ref" && call.some((arg) => arg.includes(alteredName)))).toBe(true);
   });
 
   it("keeps a subject that contains the old record delimiters intact", () => {
