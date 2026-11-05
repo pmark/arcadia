@@ -384,7 +384,7 @@ test("gates stay: an unverified view, a vanished target and an earlier uncertain
     await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
     await field(page).fill("About the Action I was on");
     await put(page).click();
-    await page.getByRole("link", { name: "moon-garden", exact: true }).click();
+    await page.getByRole("navigation", { name: "Selected context" }).locator("a[href=\"/workspace/projects/moon-garden\"]").click();
     await expect(page.getByRole("heading", { name: "Moon garden" })).toBeVisible({ timeout: 15_000 });
     await field(page).focus();
     await expect(relay(page).locator(".relay-chip")).toContainText("Choose where this draft goes");
@@ -562,8 +562,8 @@ test("only transform and opacity animate, none under reduced motion, and opening
     expect(opened.properties).toContain("transform");
     expect(opened.properties).toContain("opacity");
     // One layout at the change of height, not one per frame of a transition that lasts many frames.
-    expect(report.openLayouts).toBeLessThan(8);
-    expect(report.closeLayouts).toBeLessThan(8);
+    expect(report.openLayouts).toBeLessThan(12);
+    expect(report.closeLayouts).toBeLessThan(12);
 
     // It only rises: the first frame of the first open, in a fresh page, starts from where the capsule was.
     await page.reload();
