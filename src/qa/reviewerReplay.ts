@@ -70,6 +70,8 @@ export const REPLAY_FIDELITY_LIMITS: readonly string[] = [
   "Read back from the saved prompt, so this checkout's settlement code is not re-run: the settlement records and the preserved commit.",
   "Plan inputs are read back from the rendered plan (whitespace collapsed); a truncated criterion or command refuses unless --plan-source supplies it.",
   "Declared commits come from local Git, not GitHub, and only for a not-applicable claim.",
+  "Not run: classifyReviewerVariance, which the live route runs on the verdict and gate, so no table shows a variance reason: a needs-follow-up row here may be one the live route records as reviewer variance.",
+  "The system prompt is this checkout's on every run, --prompt saved included: a saved attempt records neither it nor its hash, so a saved run is the old user message under today's system prompt, not the old reviewer. Each run states the sha256; compare tables as old and new only where it matches, or run each side from its own checkout.",
   "The model and CLI are today's: the `opus` alias and Claude Code may have moved since the attempt ran, and the working directory differs.",
   "The reviewer varies run to run: compare distributions across runs, never one run against one run."
 ];
@@ -117,6 +119,8 @@ export interface ReplayRunResult {
   run: number;
   verdict: QaPrVerdict;
   pass: boolean;
+  /** Of the `--system-prompt` this run's launch actually passed. */
+  systemPromptSha256: string;
   modelVerdict: QaPrVerdict;
   gateVerdict: QaPrVerdict | "pass";
   gateReasons: string[];
@@ -147,6 +151,8 @@ export interface ReviewerReplayReport {
     path: string;
   };
   reviewer: { bindingId: string; provider: string; model: string; effort: string; authMethod: string | null } | null;
+  /** Always this checkout's: a saved attempt records neither the system prompt it ran under nor a hash of it. */
+  systemPrompt: { source: "this-checkout"; sha256: string; bytes: number };
   scratch: string;
   runsRequested: number;
   runs: ReplayRunResult[];
@@ -218,6 +224,7 @@ export function runReviewerReplay(options: ReviewerReplayOptions, dependencies: 
     evidence: { kind: evidence.kind, path: evidence.path, role: evidence.role, pullRequest: `${evidence.candidate.repository}#${evidence.candidate.number}`, head: evidence.candidate.headSha, original: evidence.original },
     prompt: { source, sha256: "", bytes: 0, savedComparison: null, planRebuild: null, substitutions: [], path: "" },
     reviewer: null,
+    systemPrompt: { source: "this-checkout", sha256: sha256Of(CLAUDE_REVIEWER_ROUTE.systemPrompt), bytes: Buffer.byteLength(CLAUDE_REVIEWER_ROUTE.systemPrompt) },
     scratch,
     runsRequested: runs,
     runs: [],
@@ -246,7 +253,7 @@ export function runReviewerReplay(options: ReviewerReplayOptions, dependencies: 
     if (substituted.applied.length > 0) writeFileSync(path.join(scratch, "substitutions.json"), `${JSON.stringify(substituted.applied, null, 2)}\n`, "utf8");
     report.prompt = {
       source,
-      sha256: createHash("sha256").update(prompt).digest("hex"),
+      sha256: sha256Of(prompt),
       bytes: Buffer.byteLength(prompt),
       savedComparison: evidence.savedPrompt === null ? null : comparePrompts(evidence.savedPrompt, prompt),
       planRebuild: built.planRebuild,
@@ -355,9 +362,13 @@ function runOnce(input: {
   mkdirSync(directory);
   const modelOutputPath = path.join(directory, "model-verdict.json");
   const profile = CLAUDE_REVIEWER_ROUTE.roles[evidence.role];
+  const launch = CLAUDE_REVIEWER_ROUTE.launch(reviewer, input.schemaPath);
+  const systemPromptFlag = launch.args.indexOf("--system-prompt");
+  if (systemPromptFlag < 0) throw new ReplayStop("preflight", "The real route's launch names no --system-prompt, so what the reviewer would run under cannot be stated, and no reviewer ran.");
+  const systemPromptSha256 = sha256Of(launch.args[systemPromptFlag + 1]);
   const startedAt = performance.now();
   const raw = runCommand({
-    ...withClaudeCodeToken(CLAUDE_REVIEWER_ROUTE.launch(reviewer, input.schemaPath), input.workspacePath),
+    ...withClaudeCodeToken(launch, input.workspacePath),
     cwd: directory,
     stdin: input.prompt,
     timeoutMs: input.timeoutMs,
@@ -399,6 +410,7 @@ function runOnce(input: {
     run: input.run,
     verdict,
     pass: verdict === "pass",
+    systemPromptSha256,
     modelVerdict: parsed.verdict.verdict,
     gateVerdict: gate.gate ?? "pass",
     gateReasons: gate.reasons,
@@ -624,6 +636,9 @@ export function applySubstitutions(prompt: string, substitutions: readonly Repla
     if (typeof substitution.find !== "string" || !substitution.find || typeof substitution.replace !== "string") {
       throw new ReplayInputError(`Substitution ${index + 1} needs a non-empty find and a replace string.`);
     }
+    if (substitution.find === substitution.replace) {
+      throw new ReplayInputError(`Substitution ${index + 1} replaces its text with the same text, so it would report a change the prompt does not have. Text: ${JSON.stringify(substitution.find.slice(0, 120))}`);
+    }
     const occurrences = text.split(substitution.find).length - 1;
     const expected = substitution.count ?? 1;
     if (occurrences !== expected) {
@@ -782,6 +797,10 @@ function parseJson<T>(text: string, what: string): T {
   }
 }
 
+function sha256Of(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -799,9 +818,11 @@ export function renderReplayReport(report: ReviewerReplayReport): string[] {
   if (report.evidence.original) lines.push(`original attempt: ${report.evidence.original.verdict ?? "unknown"}${report.evidence.original.findings.length ? `; ${report.evidence.original.findings.length} model finding(s)` : ""}`);
   for (const title of report.evidence.original?.findings ?? []) lines.push(`  original finding: ${oneLine(title)}`);
   if (report.reviewer) lines.push(`reviewer: binding ${report.reviewer.bindingId}, model ${report.reviewer.model}, effort ${report.reviewer.effort}${report.reviewer.authMethod ? `, auth ${report.reviewer.authMethod}` : ""}`);
+  lines.push(`system prompt: this checkout's, ${report.systemPrompt.bytes} bytes, sha256 ${report.systemPrompt.sha256}; a saved attempt records neither the one it ran under nor its hash`);
   if (report.prompt.sha256) {
     const comparison = report.prompt.savedComparison;
-    lines.push(`prompt: ${report.prompt.source}, ${report.prompt.bytes} bytes, sha256 ${report.prompt.sha256.slice(0, 12)}; ${comparison === null ? "no saved prompt to compare" : comparison.identical ? "identical to the saved prompt" : `differs from the saved prompt from line ${comparison.firstDifferenceLine}`}`);
+    const promptLabel = report.prompt.source === "saved" ? "saved user message, under this checkout's system prompt (not the attempt's)" : report.prompt.source;
+    lines.push(`prompt: ${promptLabel}, ${report.prompt.bytes} bytes, sha256 ${report.prompt.sha256.slice(0, 12)}; ${comparison === null ? "no saved prompt to compare" : comparison.identical ? "identical to the saved prompt" : `differs from the saved prompt from line ${comparison.firstDifferenceLine}`}`);
     if (comparison && !comparison.identical) {
       lines.push(`  saved:   ...${oneLine(comparison.savedContext ?? "", 160)}`, `  this:    ...${oneLine(comparison.promptContext ?? "", 160)}`);
     }
@@ -811,10 +832,10 @@ export function renderReplayReport(report: ReviewerReplayReport): string[] {
   }
   lines.push(`scratch: ${report.scratch}`, "");
   if (report.runs.length > 0) {
-    lines.push("run  pass  verdict          model            sec  tokens in/cached/out");
+    lines.push("run  pass  verdict          model            sec  system prompt  tokens in/cached/out");
     for (const run of report.runs) {
       const tokens = run.usage ? `${run.usage.inputTokens}/${run.usage.cachedInputTokens}/${run.usage.outputTokens}` : "not reported";
-      lines.push(`${String(run.run).padEnd(4)} ${(run.pass ? "yes" : "NO").padEnd(5)} ${run.verdict.padEnd(16)} ${run.modelVerdict.padEnd(16)} ${String(Math.round(run.elapsedMs / 1000)).padEnd(4)} ${tokens}`);
+      lines.push(`${String(run.run).padEnd(4)} ${(run.pass ? "yes" : "NO").padEnd(5)} ${run.verdict.padEnd(16)} ${run.modelVerdict.padEnd(16)} ${String(Math.round(run.elapsedMs / 1000)).padEnd(4)} ${run.systemPromptSha256.slice(0, 12).padEnd(14)} ${tokens}`);
       for (const check of run.failedChecks) lines.push(`     failed check: ${check.name} (${check.status})`);
       for (const finding of run.findings) lines.push(`     finding [${finding.severity}]: ${oneLine(finding.title)}`);
       for (const reason of run.gateReasons) lines.push(`     gate: ${oneLine(reason)}`);

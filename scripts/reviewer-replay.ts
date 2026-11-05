@@ -28,7 +28,8 @@ import type { OperatorQaPlanSource } from "../src/sessions/operatorQaPlan.js";
 const USAGE = `Usage: pnpm reviewer-replay (--attempt <saved attempt dir> | --fixture <json>) [options]
 
 Which prompt the reviewer judges:
-  --prompt saved          the exact bytes the attempt judged
+  --prompt saved          the exact user message the attempt judged, under this checkout's
+                          system prompt: a saved attempt does not record the one it ran under
   --prompt rebuild        this checkout's prompt builder; the saved plan text stays
   --prompt rebuild-plan   this checkout's prompt builder and plan renderer (default)
   --prompt-file <path>    a prepared prompt, verbatim

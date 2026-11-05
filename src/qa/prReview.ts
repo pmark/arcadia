@@ -2409,6 +2409,7 @@ export const CLAUDE_REVIEWER_ROUTE = {
   kind: qaReviewerKind,
   environment: buildClaudeReviewerEnvironment,
   preflight: runClaudeReviewerPreflight,
+  systemPrompt: CLAUDE_REVIEWER_SYSTEM_PROMPT,
   launch: claudeReviewerLaunch,
   record: recordClaudeReviewerVerdict,
   parse: parseModelVerdict,

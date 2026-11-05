@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { installGuards } from "../scripts/production-replay.js";
 import { parseReplayArguments } from "../scripts/reviewer-replay.js";
 import { loadIdentityModelTierRegistry, renderReviewerIdentityBlock } from "../src/codingAgents/agentIdentity.js";
@@ -17,6 +17,7 @@ import { assemblePrReviewPrompt, CLAUDE_REVIEWER_ROUTE, parsePersistedQaContext,
 import {
   applySubstitutions,
   parseRenderedOperatorQaPlan,
+  REPLAY_FIDELITY_LIMITS,
   renderReplayReport,
   replayExitCode,
   ReplayInputError,
@@ -589,6 +590,12 @@ describe("comparing old and new prompts on the same evidence", () => {
     expect(candidate.number).toBe(2062);
   });
 
+  it("refuses a substitution that changes nothing, rather than reporting a change the prompt does not have", () => {
+    expect(() => applySubstitutions("one two", [{ find: "two", replace: "two" }])).toThrow(ReplayInputError);
+    expect(() => applySubstitutions("one two", [{ find: "one", replace: "1" }, { find: "two", replace: "two" }])).toThrow("Substitution 2 replaces its text with the same text");
+    expect(applySubstitutions("one two", [{ find: "two", replace: "Two" }]).prompt).toBe("one Two");
+  });
+
   it("runs from a fixture of real prompt inputs, re-rendering its plan from the inputs it carries", () => {
     const { candidate, pullRequest, patch, sandboxProof } = createAttempt("qa");
     const workspace = createReadyWorkspace();
@@ -619,6 +626,91 @@ describe("comparing old and new prompts on the same evidence", () => {
     expect(() => runReviewerReplay({ ...base, attempt }, select)).toThrow("does not match the sha256");
     expect(existsSync(path.join(root, "missing"))).toBe(false);
     expect(() => runReviewerReplay({ ...base, attempt: path.join(root, "missing") }, select)).toThrow("Cannot read");
+  });
+});
+
+describe("the system prompt a replay runs under", () => {
+  const sha256 = (text: string) => createHash("sha256").update(text).digest("hex");
+  const answering = (seen: Array<{ args: string[] }>) => (input: { args: string[] }) => {
+    seen.push(input);
+    if (input.args[0] === "--help") return { status: 0, stdout: BOUNDARY_FLAGS, stderr: "", error: null };
+    if (input.args[0] === "auth") return { status: 0, stdout: SUBSCRIPTION_AUTH, stderr: "", error: null };
+    return { status: 0, stdout: `${INIT}\n${JSON.stringify({ type: "result", is_error: false, structured_output: modelVerdict() })}\n`, stderr: "", error: null };
+  };
+
+  it("states the sha256 of what each launch actually passed, in the report and the table", () => {
+    const { attempt, repository } = createAttempt("qa");
+    const workspace = createReadyWorkspace();
+    const seen: Array<{ args: string[] }> = [];
+    const report = runReviewerReplay({ attempt, workspace, repositoryPath: repository, scratchParent: path.join(root, "scratch"), runs: 2, prompt: "saved" }, { selectReviewer: () => claudeReviewer(), runCommand: answering(seen) });
+    const launches = seen.filter((call) => call.args.includes("--print"));
+    expect(launches).toHaveLength(2);
+    const expected = launches.map((launch) => sha256(launch.args[launch.args.indexOf("--system-prompt") + 1]));
+    expect(report.runs.map((run) => run.systemPromptSha256)).toEqual(expected);
+    expect(report.systemPrompt).toEqual({ source: "this-checkout", sha256: expected[0], bytes: Buffer.byteLength(CLAUDE_REVIEWER_ROUTE.systemPrompt) });
+    const table = renderReplayReport(report);
+    expect(table.join("\n")).toContain(`sha256 ${expected[0]}`);
+    expect(table.filter((line) => /^\d+\s+(?:yes|NO)\s/.test(line) && line.includes(expected[0].slice(0, 12)))).toHaveLength(2);
+    expect(JSON.parse(readFileSync(path.join(report.runs[1].directory, "replay-run.json"), "utf8"))).toMatchObject({ systemPromptSha256: expected[0] });
+  });
+
+  it("changes the stated hash when the route's system prompt changes, on the same saved prompt", () => {
+    const { attempt, repository } = createAttempt("qa");
+    const workspace = createReadyWorkspace();
+    const launch = CLAUDE_REVIEWER_ROUTE.launch;
+    const spy = vi.spyOn(CLAUDE_REVIEWER_ROUTE, "launch").mockImplementation((reviewer, schemaPath) => {
+      const real = launch(reviewer, schemaPath);
+      return { ...real, args: real.args.map((arg) => arg === CLAUDE_REVIEWER_ROUTE.systemPrompt ? "A changed system prompt." : arg) };
+    });
+    try {
+      const report = runReviewerReplay({ attempt, workspace, repositoryPath: repository, scratchParent: path.join(root, "scratch"), runs: 1, prompt: "saved" }, { selectReviewer: () => claudeReviewer(), runCommand: answering([]) });
+      expect(report.runs[0].systemPromptSha256).toBe(sha256("A changed system prompt."));
+      expect(report.prompt.savedComparison?.identical).toBe(true);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("stops before any reviewer runs when the launch names no system prompt", () => {
+    const { attempt, repository } = createAttempt("qa");
+    const workspace = createReadyWorkspace();
+    const seen: Array<{ args: string[] }> = [];
+    const spy = vi.spyOn(CLAUDE_REVIEWER_ROUTE, "launch").mockReturnValue({ command: "claude", args: ["--print"] });
+    try {
+      const report = runReviewerReplay({ attempt, workspace, repositoryPath: repository, scratchParent: path.join(root, "scratch"), runs: 1, prompt: "saved" }, { selectReviewer: () => claudeReviewer(), runCommand: answering(seen) });
+      expect(report.stopped?.reason).toBe("preflight");
+      expect(report.stopped?.message).toContain("--system-prompt");
+      expect(seen.some((call) => call.args.includes("--print"))).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("says a saved prompt runs under this checkout's system prompt, and never labels another source that way", () => {
+    const { attempt, repository } = createAttempt("qa");
+    const workspace = createReadyWorkspace();
+    const select = { selectReviewer: () => claudeReviewer() };
+    const base = { attempt, workspace, repositoryPath: repository, scratchParent: path.join(root, "scratch"), promptOnly: true };
+    const saved = renderReplayReport(runReviewerReplay({ ...base, prompt: "saved" }, select)).join("\n");
+    expect(saved).toContain("prompt: saved user message, under this checkout's system prompt (not the attempt's)");
+    expect(saved).toContain("a saved attempt records neither the one it ran under nor its hash");
+    const rebuilt = renderReplayReport(runReviewerReplay({ ...base, prompt: "rebuild" }, select)).join("\n");
+    expect(rebuilt).toContain("prompt: rebuild,");
+    expect(rebuilt).toContain("system prompt: this checkout's");
+  });
+
+  it("states the hash on a report that stopped before any run", () => {
+    const { attempt, repository } = createAttempt("qa");
+    const workspace = createReadyWorkspace();
+    const report = runReviewerReplay({ attempt, workspace, repositoryPath: repository, scratchParent: path.join(root, "scratch"), prompt: "saved" }, { selectReviewer: () => claudeReviewer({ bindingId: "claude-planning" }) });
+    expect(report.stopped?.reason).toBe("binding");
+    expect(renderReplayReport(report).join("\n")).toContain(`sha256 ${sha256(CLAUDE_REVIEWER_ROUTE.systemPrompt)}`);
+  });
+
+  it("names both limits in what every report repeats", () => {
+    const limits = REPLAY_FIDELITY_LIMITS.join("\n");
+    expect(limits).toContain("system prompt is this checkout's on every run");
+    expect(limits).toContain("classifyReviewerVariance");
   });
 });
 
