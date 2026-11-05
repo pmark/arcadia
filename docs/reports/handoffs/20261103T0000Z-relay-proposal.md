@@ -19,7 +19,9 @@ first real proof comes with the next merge that changes the dashboard or `src`, 
 
 **Built overnight and waiting for the operator (S032, S033), none tried on a real phone:**
 
-| Merge in this order | What it is |
+PR 2095 goes before this handoff's own PR, whose branch contains it. PR 2107 should go before PR 2101, whose branch contains it. PR 2109 is independent of them all.
+
+| Suggested order | What it is |
 |---|---|
 | [PR 2095](https://github.com/pmark/arcadia/pull/2095) | Item 3, weather rhythm. [Probe weather-1](../../design/relay/probes/weather-1.md) has the measurements |
 | [PR 2107](https://github.com/pmark/arcadia/pull/2107) | Item 5, routes as the context layer |
