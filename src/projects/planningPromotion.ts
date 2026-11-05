@@ -1,5 +1,5 @@
 import { isolatedGitEnvironment } from "../git/isolatedGitEnvironment.js";
-import { preservationProcessLimits, PRESERVATION_GIT_TIMEOUT_MS } from "../sessions/preservationStages.js";
+import { preservationProcessLimits } from "../sessions/preservationStages.js";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -331,7 +331,7 @@ export function replayAcceptedPromotionAssignment(db: Database.Database, workspa
     buildProfile: receipt.buildProfile, fields
   };
   const plan = path.join("docs", "plans", `${prepared.planSlug}.md`);
-  const git = (args: string[]) => execFileSync("git", args, { timeout: PRESERVATION_GIT_TIMEOUT_MS, ...preservationProcessLimits("git", args), env: isolatedGitEnvironment(), cwd: prepared.repoPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const git = (args: string[]) => execFileSync("git", args, { ...preservationProcessLimits("git", args), env: isolatedGitEnvironment(), cwd: prepared.repoPath, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const base = git(["rev-parse", "HEAD"]).trim();
   const originalProject = git(["show", `${base}:PROJECT.md`]);
   const originalPlan = git(["show", `${base}:${plan}`]);
