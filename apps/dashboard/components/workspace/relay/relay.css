@@ -74,6 +74,8 @@
 .workspace-ask.relay-body .relay-head-actions button { min-height: 32px; padding: 4px 10px; font-size: 12px; border-radius: 10px; background: transparent; border-color: rgb(236 226 211 / .35); }
 
 .workspace-ask.relay-body form { flex: none; display: block; margin: 0; padding: 0 12px; }
+/* On a very short screen, like a landscape phone with its keyboard up, the composer scrolls so Send stays reachable. */
+.relay:not([data-height="rest"]) .workspace-ask.relay-body form { flex: 0 1 auto; min-height: 0; overflow: auto; margin-top: -6px; padding: 6px 12px; }
 .relay-field { position: relative; pointer-events: auto; }
 /* Sixteen pixels keeps iOS from zooming the page when the field takes focus. */
 .workspace-ask.relay-body textarea { display: block; height: var(--capsule); padding: 13px 52px 13px 18px; font-size: 16px; line-height: 1.4; resize: none; border-radius: 25px; background: #101d35; box-shadow: 0 10px 34px rgb(0 0 0 / .38); }

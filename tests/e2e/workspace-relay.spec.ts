@@ -55,7 +55,12 @@ async function serve(page: Page, world: World): Promise<{ url: string; server: T
     }
     return route.abort();
   });
-  await waitForHttp(`http://127.0.0.1:${port}/workspace`, server);
+  try {
+    await waitForHttp(`http://127.0.0.1:${port}/workspace`, server);
+  } catch (error) {
+    await stop({ server, temp });
+    throw error;
+  }
   return { url: `http://127.0.0.1:${port}`, server, temp };
 }
 
@@ -263,6 +268,34 @@ test("the keyboard works it: slash, Escape down a height, focus returns, and foc
     await page.keyboard.press("Escape");
     await expect(page.locator("#fixture")).toHaveCount(0);
     await expectHeight(page, "answer");
+  } finally { await stop(ctx); }
+});
+
+test("a receipt link opens Relay with focus inside it, Shift+Tab stays in, and a wheel doesn't scroll the View", async ({ page }) => {
+  test.setTimeout(120_000);
+  const world = newWorld();
+  const ctx = await serve(page, world);
+  await page.setViewportSize({ width: 390, height: 500 });
+  try {
+    await page.goto(`${ctx.url}/workspace?receipt=workspace-fixture`);
+    await expectHeight(page, "answer");
+    await settled(page);
+    await expect(relay(page)).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    expect(await page.evaluate(() => Boolean(document.activeElement?.closest(".relay")))).toBe(true);
+    // Over the chip, which doesn't scroll, the wheel goes nowhere.
+    await page.locator(".workspace-shell").evaluate(el => { (el as HTMLElement).style.minHeight = "3000px"; });
+    const chip = await relay(page).locator(".relay-chip").boundingBox();
+    await page.mouse.move(chip!.x + 10, chip!.y + 5);
+    await page.mouse.wheel(0, 400);
+    await page.waitForTimeout(150);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    await put(page).click();
+    await expectHeight(page, "rest");
+    // At rest the View is usable, so the wheel scrolls it.
+    await page.mouse.move(195, 200);
+    await page.mouse.wheel(0, 400);
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   } finally { await stop(ctx); }
 });
 

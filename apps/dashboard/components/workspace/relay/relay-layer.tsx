@@ -141,7 +141,7 @@ export function RelayLayer({ children }: { children: ReactNode }) {
         const active = document.activeElement;
         const first = stops[0], last = stops[stops.length - 1];
         const outside = !(active instanceof Element && sheet.current.contains(active));
-        if (event.shiftKey && (active === first || outside)) { event.preventDefault(); last.focus(); }
+        if (event.shiftKey && (active === first || active === sheet.current || outside)) { event.preventDefault(); last.focus(); }
         else if (!event.shiftKey && (active === last || outside)) { event.preventDefault(); first.focus(); }
       }
     };
@@ -156,14 +156,19 @@ export function RelayLayer({ children }: { children: ReactNode }) {
     if (active === document.body || active === null) sheet.current?.focus({ preventScroll: true });
   }, [open]);
 
-  // A mouse wheel over the scrim shouldn't scroll the View behind it.
+  // A mouse wheel over open Relay scrolls what it's over, if that scrolls, and never the View behind it.
   const scrim = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const element = scrim.current;
-    if (!element) return;
-    const stop = (event: WheelEvent) => event.preventDefault();
-    element.addEventListener("wheel", stop, { passive: false });
-    return () => element.removeEventListener("wheel", stop);
+    const parts = [scrim.current, sheet.current];
+    const stop = (event: WheelEvent) => {
+      if (heightNow.current === "rest") return;
+      for (let node = event.target instanceof Element ? event.target : null; node && node !== sheet.current; node = node.parentElement) {
+        if (node.scrollHeight > node.clientHeight && /auto|scroll/.test(getComputedStyle(node).overflowY)) return;
+      }
+      event.preventDefault();
+    };
+    for (const part of parts) part?.addEventListener("wheel", stop, { passive: false });
+    return () => { for (const part of parts) part?.removeEventListener("wheel", stop); };
   }, []);
 
   /** Pulling the grip follows the finger with a transform only, then settles on the next height or back where it was. */
