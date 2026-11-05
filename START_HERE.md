@@ -3782,9 +3782,19 @@ state cannot select a different Node ABI.
 
 ## Stable demo deployment
 
-The development dashboard (port 3020) runs `next dev` from the primary checkout,
-so every restart cold-compiles each page and every merge changes the code under
-it. For a demo that must work at any moment there is a second, separate
+The live dashboard (port 3020) serves a production build of the primary checkout
+(`scripts/dashboard-serve.sh`). A restart serves the last build straight away. If
+the checkout has moved, `scripts/dashboard-build.sh` builds the new commit behind
+it, starts that build on a spare port to check it, and then switches over, which
+takes a few minutes. A failed build leaves the running dashboard in place: see
+`apps/dashboard/.live/build.log`. With no build yet it falls back to `next dev`.
+To force that, create `apps/dashboard/.live/use-next-dev` and restart. A merge
+changes nothing here until the next restart, unless it lands while a build is
+running, when the build starts again on the new commit. A restart also stops a
+running build, and the next start begins it again. No build starts while production
+is Active, or while the checkout has uncommitted changes to the dashboard or `src`.
+
+For a demo that must work at any moment there is a second, separate
 dashboard: a pre-built release of a **git tag**, served by `next start` on port
 **3030**, reading the same `martianrover` workspace. `scripts/services.sh restart`
 never touches it.

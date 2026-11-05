@@ -210,6 +210,21 @@ describe("selectNextPlan", () => {
     }
   });
 
+  it("names an honest remedy for the Decision 0169 alerts: not the tick clearing them, nothing to press", () => {
+    const remedyFor = (trigger: string) => selectNextPlan(deepFreeze(base({ redAlerts: [{ id: "alert-1", project: "arcadia", trigger }] })))
+      .preflight.find(c => c.check === "no_open_red_alert")!;
+    for (const trigger of ["repair_rounds_exhausted", "repair_gated", "repair_gate_defect"]) {
+      const check = remedyFor(trigger);
+      expect(check.ok).toBe(false);
+      expect(check.remedy).toContain("/todo");
+      expect(check.remedy).not.toMatch(/clears this alert itself|nothing to press/);
+    }
+    const resume = remedyFor("resume_no_progress");
+    expect(resume.remedy).toContain("reset-repair-budget");
+    expect(resume.remedy).not.toMatch(/clears this alert itself|nothing to press/);
+    expect(remedyFor("session_stalled").remedy).toMatch(/clears this alert itself/);
+  });
+
   it("reports close-out absent as a failure and evidence none as unknown", () => {
     const queues = [{ project: "arcadia", orderValid: true, unpositionedCount: 0, runningActions: [], activePlan: "closing-plan", activePlanWaitsOnOperator: false }];
     const plans = [...base().plans, plan("arcadia", "closing-plan", "complete")];

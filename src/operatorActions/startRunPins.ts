@@ -1,5 +1,6 @@
 import path from "node:path";
-import { DELEGATION_DECISION, DELEGATION_SCOPE, validateDelegationBlock, type StartRunDelegation } from "./startRunDelegation.js";
+import { validateDayGrantDelegation, type DayGrantDelegation } from "./startRunDayGrant.js";
+import { DAY_GRANT_DECISION, DELEGATION_DECISION, DELEGATION_SCOPE, validateDelegationBlock, type StartRunDelegation } from "./startRunDelegation.js";
 
 /**
  * The pinned facts of one per-run START card (Decisions 0156 and 0157). The card is a thin launcher plus a
@@ -52,8 +53,8 @@ export interface StartRunPins {
   consumedHistory: Array<{ path: string; sha256: string }>;
   // Decision 0161 replaced the retained pre-press sign-in receipt (the former signInEvidence pin): the card itself renews
   // the sign-in once and has the bound worker check usage after its protected install (scripts/start-run.sh, P4).
-  /** Decision 0163: present only on a successor card Rowan presses, delegated from the operator's originating press. */
-  delegation?: StartRunDelegation;
+  /** Present only on a card Rowan presses: Decision 0163's successor block, or Decision 0173's press within the operator's day approval. */
+  delegation?: StartRunDelegation | DayGrantDelegation;
 }
 
 export class StartRunPinsError extends Error {
@@ -90,7 +91,12 @@ export function validateStartRunPins(value: unknown): StartRunPins {
   const hasDelegation = !!value && typeof value === "object" && "delegation" in value;
   exactKeys(value, hasDelegation ? [...START_RUN_KEYS, "delegation"] : START_RUN_KEYS, "startRun");
   const p = value as StartRunPins;
-  if (hasDelegation) {
+  if (hasDelegation && (p.delegation as { decision?: unknown } | undefined)?.decision === DAY_GRANT_DECISION) {
+    try { validateDayGrantDelegation(p.delegation); } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
+    for (const needed of [DAY_GRANT_DECISION, "0170", DELEGATION_DECISION]) {
+      if (!Array.isArray(p.requiredDecisions) || !p.requiredDecisions.includes(needed)) fail(`startRun.requiredDecisions must include Decision ${needed} on a Decision 0173 card.`);
+    }
+  } else if (hasDelegation) {
     try { validateDelegationBlock(p.delegation); } catch (error) { fail(error instanceof Error ? error.message : String(error)); }
     if (!Array.isArray(p.requiredDecisions) || !p.requiredDecisions.includes(DELEGATION_DECISION)) fail("startRun.requiredDecisions must include Decision 0163 on a delegated card.");
     // The delegated scope is fixed by Decision 0163.

@@ -1,7 +1,7 @@
 .workspace-shell { position:relative; isolation:isolate; min-height:100dvh; color:#f5f2ed; font-family:system-ui,sans-serif; background:linear-gradient(180deg,var(--sky-zenith,#1f3f80),var(--sky-mid,#3f7fd0) 55%,var(--sky-horizon,#9fd0f5)) fixed; color-scheme:dark; }
 @media(prefers-color-scheme:dark){.workspace-shell:not([data-theme="light"]){background:linear-gradient(180deg,var(--sky-zenith,#081230),var(--sky-mid,#123a80) 55%,var(--sky-horizon,#2f7fd0)) fixed;}}
 .workspace-shell[data-theme="dark"] {background:linear-gradient(180deg,var(--sky-zenith,#081230),var(--sky-mid,#123a80) 55%,var(--sky-horizon,#2f7fd0)) fixed;}
-.workspace-sky,.workspace-stars { position:fixed; inset:0; z-index:-1; width:100%; height:100%; display:block; pointer-events:none; }
+.workspace-sky,.workspace-stars,.workspace-weather { position:fixed; inset:0; z-index:-1; width:100%; height:100%; display:block; pointer-events:none; }
 .workspace-shell * { box-sizing:border-box; }
 .workspace-shell a { text-underline-offset:4px; }
 .workspace-shell a:hover {text-decoration:underline;}
@@ -65,8 +65,10 @@
 .workspace-ask .workspace-history {padding:16px 0;margin-top:20px;}
 @media(max-width:760px){.workspace-conversation-slot{padding:20px;}.workspace-main{padding-bottom:calc(24px + env(safe-area-inset-bottom));}}
 
-/* The sky can be pale at any hour; navigation keeps its own readable surface. */
-.workspace-header {background:rgb(12 18 36 / .82);border-radius:0 0 18px 18px;}
+/* The top strip stays open sky, so the scene is never covered. The sky can be pale at any hour, so each control keeps its own readable surface. */
+.workspace-header {flex-wrap:wrap;gap:8px 12px;}
+.workspace-header>:is(a,span) {background:rgb(12 18 36 / .88);border-radius:12px;padding:8px 12px;}
+.workspace-header>span {flex:none;margin-right:auto;}
 .workspace-breadcrumbs {background:rgb(12 18 36 / .82);border-radius:12px;padding:10px 14px;width:fit-content;}
 
 .workspace-artifact-viewer { color: #f5f2ed; background: #0c1224; border: 1px solid #59647b; border-radius: 16px; padding: 20px; width: min(900px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; box-sizing: border-box; }
@@ -129,3 +131,37 @@
 .workspace-continue-feedback h3 {font-size:16px;margin:0 0 12px;scroll-margin:24px;}
 .workspace-continue-feedback h3:focus {outline:2px solid #ffd9aa;outline-offset:5px;}
 .workspace-continue-feedback code {overflow-wrap:anywhere;}
+
+/* System status: the sky's reading in words, on every view. */
+.workspace-status {position:relative;font-size:13px;}
+.workspace-status summary {cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;height:40px;white-space:nowrap;max-width:calc(100vw - 96px);overflow:hidden;padding:6px 14px;border-radius:999px;background:rgb(10 15 30 / .95);border:1px solid rgb(236 226 211 / .22);}
+.workspace-status summary::-webkit-details-marker {display:none;}
+.workspace-status b {font-weight:500;}
+.workspace-status-production {font-size:12px;color:#d6d9e4;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.workspace-status-dot {width:9px;height:9px;border-radius:50%;flex:none;background:#a8e6b8;}
+.workspace-status-dot.sky-reading {background:transparent;box-shadow:inset 0 0 0 1.5px #aab0be;}
+.workspace-status-dot.sky-active {background:#8fd3ff;}
+.workspace-status-dot.sky-attention {background:#ffbf5a;}
+.workspace-status-dot.sky-storm {background:#ff8a5c;box-shadow:0 0 0 3px rgb(255 138 92 / .3);}
+.workspace-status-dot.sky-static {background:#aab0be;}
+.workspace-status-panel {position:absolute;right:0;top:46px;z-index:5;width:min(320px,calc(100vw - 32px));padding:12px 14px;border:1px solid rgb(236 226 211 / .22);border-radius:14px;background:#0a0f1e;}
+/* On a phone the pill can wrap to the left, so the panel spans the header instead of hanging from the pill. */
+@media(max-width:760px){.workspace-header{position:relative;}.workspace-status{position:static;}.workspace-status-panel{left:16px;right:16px;top:auto;width:auto;margin-top:6px;}}
+.workspace-status-panel ul {margin:0;padding:0;list-style:none;display:grid;gap:2px;}
+.workspace-status-panel li {min-height:32px;align-content:center;}
+.workspace-status-panel a {text-decoration:underline;}
+.workspace-shell .workspace-status-panel p {margin:6px 0 0;font-size:13px;}
+.workspace-shell .workspace-status-panel p.workspace-status-note {color:#d6d9e4;font-size:12px;line-height:1.5;}
+
+/* Every tap answers at once: the control presses, the link stays marked, and a line says what's opening. These use only transform and opacity, so they stay smooth however busy the page is. */
+.workspace-shell :is(a,button,summary) {-webkit-tap-highlight-color:transparent;touch-action:manipulation;}
+.workspace-shell :is(a,button,summary):not(:disabled,[aria-disabled="true"]):active {transform:scale(.98);opacity:.75;}
+.workspace-shell a[data-opening] {opacity:.75;outline:2px solid #ffd9aa;outline-offset:2px;}
+/* At the bottom left, clear of the header's controls and the Journey button. */
+.workspace-activity {position:fixed;z-index:20;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom,0px));display:flex;justify-content:flex-start;pointer-events:none;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(88px,env(safe-area-inset-right,0px));}
+.workspace-activity p {margin:0;display:flex;align-items:center;gap:10px;max-width:100%;padding:8px 14px;font-size:13px;line-height:1.35;border-radius:14px;border:1px solid rgb(236 226 211 / .3);background:#0a0f1e;box-shadow:0 6px 24px rgb(0 0 0 / .4);animation:workspace-activity-in .12s ease-out;}
+.workspace-shell .workspace-activity p {margin:0;font-size:13px;line-height:1.35;}
+.workspace-activity-spinner {width:12px;height:12px;flex:none;border-radius:50%;border:2px solid rgb(236 226 211 / .25);border-top-color:#ffd9aa;animation:workspace-activity-turn .9s linear infinite;}
+@keyframes workspace-activity-turn {to {transform:rotate(360deg);}}
+@keyframes workspace-activity-in {from {opacity:0;transform:translateY(4px);}}
+@media(prefers-reduced-motion:reduce){.workspace-shell :is(a,button,summary):not(:disabled,[aria-disabled="true"]):active{transform:none;}.workspace-activity p{animation:none;}.workspace-activity-spinner{animation:none;}}

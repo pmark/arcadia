@@ -42,6 +42,7 @@ dist/
 build/
 out/
 .next/
+apps/dashboard/.live/
 coverage/
 
 # Environment and secrets

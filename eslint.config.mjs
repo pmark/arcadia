@@ -12,6 +12,7 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/dist/**",
       "**/.next/**",
+      "apps/dashboard/.live/**",
       "**/coverage/**",
       "**/test-results/**",
       "**/playwright-report/**",

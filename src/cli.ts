@@ -69,7 +69,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
-import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunPinsCommand, runStartRunSignInCommand } from "./commands/startRun.js";
+import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunDayPinsCommand, runStartRunPinsCommand, runStartRunSignInCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -1165,8 +1165,27 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
     .option("--delegated-from <card/run>", "Decision 0163: pin Rowan's successor card, delegated from the operator's originating press (card id / executor run id)")
-  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; json?: boolean }) =>
+    .option("--day-grant-from <card/run>", "Decision 0173: pin Rowan's START card within the operator's day approval (day-grant card id / executor run id)")
+    .option("--previous-cause <slug>", "Decision 0173: the stable name of the latest START press's cause; recorded, not machine-proved")
+    .option("--previous-evidence <pointer>", "Decision 0173: https URL or repository path of that cause's evidence")
+    .option("--fix-pull-request <url>", "Decision 0173: the merged pull request that fixed the cause")
+    .option("--fix-commit <sha>", "Decision 0173: that fix's commit, which must be on origin main")
+    .option("--reproduction <path>", "Decision 0173: the repository fixture or replay that reproduces the cause")
+    .option("--observed-cleared <pointer>", "Decision 0173: for an outside cause with no code fix, where it was observed cleared")
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; observedCleared?: string; json?: boolean }) =>
     runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
+  addJsonOption(startRun.command("day-pins")
+    .description("Decision 0173: print the pins of one day-grant card for the operator to press; writes nothing and grants nothing")
+    .requiredOption("--plan <slug>", "The active Plan the day would cover")
+    .requiredOption("--expires-hours <n>", "Hours until the card expires unpressed (at most 24)")
+    .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
+  ).action((options: { plan: string; expiresHours: string; repository?: string; json?: boolean }) =>
+    runCliAction("start-run.day-pins", options, () => runStartRunDayPinsCommand(options), (response) => JSON.stringify(response.data, null, 2).split("\n")));
+  addJsonOption(startRun.command("day-evidence")
+    .description("Decision 0173: print production's policy transitions and admitted Sessions since Decision 0170; read-only")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace?: string; json?: boolean }) =>
+    runCliAction("start-run.day-evidence", options, () => runStartRunDayEvidenceCommand(options), (response) => JSON.stringify(response.data, null, 2).split("\n")));
   addJsonOption(startRun.command("sign-in")
     .description("Run only by a per-run START card: the Decision 0161 / 0143 sign-in renewal and bound-worker usage check, once (or --check-only)")
     .requiredOption("--repository <path>", "The Arcadia main checkout the bound worker serves")

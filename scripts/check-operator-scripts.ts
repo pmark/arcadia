@@ -80,6 +80,11 @@ function checkLibrary(library: string, project: string | null): LibraryResult {
         accessSync(executor, constants.X_OK);
         if (createHash("sha256").update(readFileSync(executor)).digest("hex") !== descriptor.startRun.executorSha256) result.staleExecutorPins.push(id);
       }
+      if (descriptor.dayGrant) {
+        const executor = path.resolve(import.meta.dirname, "../scripts/day-grant.sh");
+        accessSync(executor, constants.X_OK);
+        if (createHash("sha256").update(readFileSync(executor)).digest("hex") !== descriptor.dayGrant.executorSha256) result.staleExecutorPins.push(id);
+      }
       // A "Do this next" hint must name a published prerequisite; voided_by may name host-local entries.
       if (descriptor.next_after && !existsSync(path.join(library, `${descriptor.next_after.id}.json`))) {
         throw new OperatorScriptContractError("UNKNOWN_NEXT_AFTER_PREREQUISITE", `next_after names ${descriptor.next_after.id}, which is not in this library.`);

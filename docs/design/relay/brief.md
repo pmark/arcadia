@@ -4,15 +4,16 @@
 
 ## Where it stands
 
-**The frame changed, and the revision waits on the operator.** S014 refocuses Relay on the
-operator's own critical path, from idea to planned, autonomously produced work, with arbitrary
-text starting a conversation at once and much of it at zero cost. Unattended production stays
-first, and first-timer onboarding is deferred, though nothing built now should require special
-knowledge. Critic R1's hold still stands against the earlier frame
-([report](reviews/R1-relay-critique.md)). A thin [local model probe](probes/local-model-1.md) suggests
-conversation is viable on the operator's MacBook Air, and [a second](probes/local-model-2.md)
-shows tuning moves routing scores a lot, ahead of a proper bake-off. Way lookup is built as evidence tooling,
-and the decision interface is a [written contract](decision-interface.md).
+**The frame is confirmed (S022), and the operator approved the three Workspace layers with 1A and 2A (S029).** The
+[layer design](workspace-layers.md) sets what the scene, the view and the Relay overlay each do and who may move what, with a
+[throwaway prototype](../prototypes/relay-workspace-layers.html) and [one probe](probes/layers-1.md). The operator's phone test revised its build order, and that revision
+is proposed (S030, S031). S014 refocused Relay on the operator's own critical path, from idea to planned, autonomously produced
+work, with arbitrary text starting a conversation at once and much of it at zero cost. Unattended production stays first,
+and first-timer onboarding is deferred, though nothing built now should require special knowledge. Critic R1's hold still
+stands against the earlier frame ([report](reviews/R1-relay-critique.md)). A thin [local model probe](probes/local-model-1.md)
+suggests conversation is viable on the operator's MacBook Air, and [a second](probes/local-model-2.md) shows tuning moves
+routing scores a lot, ahead of a proper bake-off. Way lookup is built as evidence tooling, and the decision interface is a
+[written contract](decision-interface.md).
 
 - **Experience target (operator's words):** "I should be able to just go from idea to planned
   project work that is autonomously produced." The earlier first-timer target (S001) is deferred.
@@ -29,9 +30,12 @@ and the decision interface is a [written contract](decision-interface.md).
 - **Routing direction (S017):** the local model routes and uses tools, Ask comes first, engines are
   pluggable with none added now, and supervisors supply rich context ([probe 3](probes/routing-3.md),
   [ladder](decision-interface.md)).
-- **Being worked on:** the revised frame and the first conversation. **Next move:** the operator
-  confirms building the conversation surface first (C-042, C-043), which would also settle CH-03.
-- **Riskiest assumption, probed once, failed:** 73% fully correct against S012's default 90%, and
+- **Being worked on:** items 1 and 2 of the revised build order have merged. Item 3, weather rhythm, waits for the operator. Production
+  work goes first whenever they compete.
+- **Riskiest assumption about the layers, probed once:** that one sky can carry status behind a view and an overlay. Text
+  held and the sky stayed visible ([probe](probes/layers-1.md)). The operator's phone test found the weather too noisy (S030), which the
+  revision addresses.
+- **Riskiest assumption about Way knowledge, probed once, failed:** 73% fully correct against S012's default 90%, and
   wrong on stopping ([result](probes/way-knowledge-1.md)).
 - **Open blocking findings:** R1-F1, F2, F4, F5, F6, F7, F8 and F9. My reading of S014: a dashboard
   conversation gives the interface its caller (F1) and fits the spending order (F2), no write tools
@@ -59,6 +63,10 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-012 Arbitrary text starts a conversation | S014 | Mine: "changes no state by itself", and the proof |
 | REQ-013 Mostly zero cost | S014 | Mine: "paid models only when they add value", and the proof |
 | REQ-014 Idea to autonomous production | S014 | Mine: the proof |
+| REQ-015 Status at a glance from every view | S023 | Mine: every Workspace view, words as well as weather, never falsely clear, and the proof |
+| REQ-016 The view defines context | S023 | Mine: it moves only as CH-05 decides, each answer names its scope, and the proof |
+| REQ-017 Relay always available | S023 | Mine: including a failed view, an uncertain send and an open Artifact, and the proof |
+| REQ-018 Mobile-first, XR as the horizon | S022 | Mine: the proof |
 
 The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
 implementation" of DeepSeek's benefits; "no OpenAI integration" is my reading of that.

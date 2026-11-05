@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
+import type { DayGrantDelegation } from "./startRunDayGrant.js";
 
 /**
  * Decision 0163 (option A): the operator's press of a per-run START card for the scope below delegates to Rowan, the
@@ -19,6 +20,8 @@ import path from "node:path";
  * read-only computation `arcadia start-run pins --delegated-from` uses to emit the block.
  */
 export const DELEGATION_DECISION = "0163";
+/** Decision 0173: Rowan's press within the operator's day approval (src/operatorActions/startRunDayGrant.ts). */
+export const DAY_GRANT_DECISION = "0173";
 export const DELEGATION_MAX_ATTEMPTS = 5;
 export const DELEGATION_WINDOW_MS = 72 * 3_600_000;
 export const DELEGATION_AGENT = "rowan";
@@ -46,7 +49,7 @@ export interface StartRunDelegation {
 export const DELEGATION_KEYS = ["attempt", "decision", "originatingCard", "originatingReceiptSha256", "originatingRun"];
 
 /** The press marker the /actions runner records for Rowan's delegated press (never an operator press). */
-export interface DelegatedPress { kind: "delegated"; agent: typeof DELEGATION_AGENT; decision: typeof DELEGATION_DECISION; originatingRun: string }
+export interface DelegatedPress { kind: "delegated"; agent: typeof DELEGATION_AGENT; decision: typeof DELEGATION_DECISION | typeof DAY_GRANT_DECISION; originatingRun: string }
 
 export class StartRunDelegationError extends Error {
   constructor(readonly code: string, message: string) { super(message); }
@@ -72,17 +75,20 @@ export function validateDelegationBlock(value: unknown): StartRunDelegation {
  * Rowan's press must ask for the delegated marker, and only a card carrying a delegation block accepts it; a delegated
  * card is never pressed as if by the operator.
  */
-export function delegatedPressMarker(descriptor: { startRun?: { delegation?: StartRunDelegation } }, requested: unknown): DelegatedPress | null {
+export function delegatedPressMarker(descriptor: { startRun?: { delegation?: StartRunDelegation | DayGrantDelegation } }, requested: unknown): DelegatedPress | null {
   const delegation = descriptor.startRun?.delegation;
   if (requested === undefined || requested === null) {
-    if (delegation) refuse("DELEGATED_CARD", "This START card was minted for Rowan's delegated press under Decision 0163; it is pressed with the delegated marker, never as an operator press.");
+    if (delegation) refuse("DELEGATED_CARD", `This START card was minted for Rowan's delegated press under Decision ${delegation.decision}; it is pressed with the delegated marker, never as an operator press.`);
     return null;
   }
   const r = requested as { decision?: unknown; agent?: unknown };
-  if (typeof r !== "object" || Object.keys(r).sort().join() !== "agent,decision" || r.decision !== DELEGATION_DECISION || r.agent !== DELEGATION_AGENT) {
-    refuse("INVALID_DELEGATED_PRESS", "A delegated press names exactly { decision: \"0163\", agent: \"rowan\" }.");
+  if (typeof r !== "object" || Object.keys(r).sort().join() !== "agent,decision" || (r.decision !== DELEGATION_DECISION && r.decision !== DAY_GRANT_DECISION) || r.agent !== DELEGATION_AGENT) {
+    refuse("INVALID_DELEGATED_PRESS", "A delegated press names exactly { decision: \"0163\" or \"0173\", agent: \"rowan\" }.");
   }
-  if (!delegation) refuse("NOT_DELEGATED_CARD", "Only a START card carrying a Decision 0163 delegation block can be pressed as delegated.");
+  // A day-grant card carries no delegation block, so a delegated press of one is refused here: it never counts as the approval.
+  if (!delegation) refuse("NOT_DELEGATED_CARD", "Only a START card carrying a Decision 0163 or 0173 delegation block can be pressed as delegated.");
+  if (delegation!.decision !== r.decision) refuse("INVALID_DELEGATED_PRESS", `This card is delegated under Decision ${delegation!.decision}, not ${String(r.decision)}.`);
+  if (delegation!.decision === DAY_GRANT_DECISION) return { kind: "delegated", agent: DELEGATION_AGENT, decision: DAY_GRANT_DECISION, originatingRun: `${delegation!.approvalCard}/${delegation!.approvalRun}` };
   return { kind: "delegated", agent: DELEGATION_AGENT, decision: DELEGATION_DECISION, originatingRun: `${delegation!.originatingCard}/${delegation!.originatingRun}` };
 }
 

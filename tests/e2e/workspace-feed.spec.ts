@@ -34,11 +34,19 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     if (request.method() !== "GET") { writes.push(endpoint); return route.abort(); }
     if (endpoint === "/api/approvals") return todoDown ? route.fulfill({ status: 503, json: { error: "Fixture to-do read refused" } }) : route.fulfill({ json: approvals });
     if (endpoint === "/api/next-steps") return route.fulfill({ json: todoDown ? { ...nextSteps, state: "moving", nowStep: null, steps: [], total: 0 } : nextSteps });
+    if (endpoint === "/api/workspace/status") {
+      const asOf = Date.now();
+      return route.fulfill({ json: {
+        generatedAt: new Date().toISOString(), counts: todoDown ? { blocking: 0, yours: 0, failing: 0, others: 0, prs: 0 } : { blocking: 1, yours: 3, failing: 0, others: 0, prs: 1 },
+        production: { displayState: "inactive_idle", workerRunning: false, heartbeatFresh: false, liveSessions: 0, stalledSessions: 0 },
+        sources: { "To-do list": { asOf, failed: todoDown }, "next steps": { asOf, failed: false }, "pull requests": { asOf, failed: false }, production: { asOf, failed: false } }
+      } });
+    }
     if (endpoint === "/api/pull-requests") return route.fulfill({ json: todoDown ? { ...inventory, snapshot: { ...inventory.snapshot, pullRequests: [], counts: { ...inventory.snapshot.counts, total: 0, ready: 0 } } } : inventory });
     return route.abort();
   });
   // Alpha-weighted red minus blue across the bottom fifth of the weather canvas.
-  const weatherWarmth = () => page.locator(".feed-weather").evaluate(node => {
+  const weatherWarmth = () => page.locator(".workspace-weather").evaluate(node => {
     const canvas = node as HTMLCanvasElement;
     const data = canvas.getContext("2d")?.getImageData(0, Math.floor(canvas.height * 0.8), canvas.width, Math.floor(canvas.height * 0.2)).data;
     let warmth = 0, weight = 0;
@@ -58,12 +66,13 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
 
     // The sky shows system status, in words as well as weather: a blocking Decision is a storm.
     await expect.poll(() => page.locator(".workspace-sky").evaluate(c => (c as HTMLCanvasElement).getContext("2d")?.getImageData(0, 0, 1, 1).data[3])).toBe(255);
-    await expect(page.locator(".feed-weather")).toHaveCount(1);
-    const sky = page.locator(".feed-sky");
+    await expect(page.locator(".workspace-weather")).toHaveCount(1);
+    const sky = page.locator(".workspace-status");
     await expect(sky.locator("summary")).toContainText("Blocked");
-    await expect(sky.locator("summary")).toContainText("Dust storm");
+    await expect(sky.locator("summary")).toContainText("Production Off");
     await sky.locator("summary").click();
     await expect(sky).toContainText("1 blocking item for you");
+    await expect(sky).toContainText("Dust storm");
     await sky.locator("summary").click();
     // The weather canvas paints that reading: a storm's rust haze runs red over blue near the ground.
     await expect.poll(weatherWarmth, { timeout: 10_000 }).toBeGreaterThan(40);

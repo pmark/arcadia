@@ -476,7 +476,7 @@ function runPosition(db: Database.Database, has: (table: string) => boolean, act
 
 /** Escalation kinds that describe an ordinary wait the worker resolves itself. */
 const WAITING_ESCALATIONS: ReadonlySet<string> = new Set(["awaiting_independent_verdicts"]);
-const REVIEW_REPAIR_ESCALATION_KINDS: ReadonlySet<string> = new Set(["review_repair_gated", "review_repair_rounds_exhausted"]);
+const REVIEW_REPAIR_ESCALATION_KINDS: ReadonlySet<string> = new Set(["review_repair_gated", "review_repair_gate_defect", "review_repair_rounds_exhausted"]);
 /** The current-state table each `action_journey_log` source journals. */
 const JOURNEY_LOG_TABLES: Record<string, string> = {
   escalation: "production_operator_escalations",

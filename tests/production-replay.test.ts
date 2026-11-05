@@ -429,6 +429,41 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
     // Anything else is still a refused provider run.
     expect(spawnSync("codex", ["login"], { cwd: root, env: bare, encoding: "utf8" }).status).toBe(97);
   });
+
+  it("answers the Claude reviewer's preflight and --print --tools \"\" run with a SIMULATED stream-json verdict, and refuses other claude calls", () => {
+    writeFileSync(effectsLog, "");
+    const bare = { PATH: env.PATH };
+    const help = spawnSync("claude", ["--help"], { cwd: root, env: bare, encoding: "utf8" });
+    for (const flag of ["--tools", "--json-schema", "--setting-sources", "--strict-mcp-config", "--no-session-persistence"]) expect(help.stdout).toContain(flag);
+    const launch = ["--print", "--output-format", "stream-json", "--verbose", "--tools", "", "--json-schema", "{}", "--setting-sources", "", "--strict-mcp-config", "--no-session-persistence"];
+    const review = (input: string) => {
+      const result = spawnSync("claude", launch, { cwd: root, env: bare, encoding: "utf8", input });
+      expect(result.status, result.stderr).toBe(0);
+      const events = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(events[0]).toEqual({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [] });
+      return events[1] as { type: string; is_error: boolean; structured_output: { verdict: string; summary: string } };
+    };
+    const first = review(`## Exact-Head Code Review\n## Candidate\n${JSON.stringify({ repository: "fixture/repo", headSha: "a".repeat(40) })}\n## Pull-request body`);
+    expect(first).toMatchObject({ type: "result", is_error: false, structured_output: { verdict: "fail" } });
+    expect(first.structured_output.summary).toContain("SIMULATED");
+    expect(review("Pull-Request QA").structured_output.verdict).toBe("pass");
+    expect(effects()).toEqual([{ kind: "simulated:reviewer", detail: "code-review fail" }, { kind: "simulated:reviewer", detail: "qa pass" }]);
+    // A claude call that is not a reviewer invocation (tools not removed) is still refused and recorded.
+    expect(spawnSync("claude", ["--print", "hello"], { cwd: root, env: bare, encoding: "utf8" }).status).toBe(97);
+    expect(spawnSync("claude", ["login"], { cwd: root, env: bare, encoding: "utf8" }).status).toBe(97);
+    expect(effects().slice(2).map((effect) => effect.kind)).toEqual(["provider:claude", "provider:claude"]);
+  });
+
+  it("refuses a Claude reviewer invocation as a real provider call without --simulate-verdict", () => {
+    const plain = path.join(root, "plain");
+    mkdirSync(plain);
+    const log = path.join(plain, "effects.jsonl");
+    writeFileSync(log, "");
+    installGuards(plain, log);
+    const result = spawnSync(path.join(plain, "bin", "claude"), ["--print", "--tools", "", "--json-schema", "{}"], { cwd: root, env: { PATH: env.PATH }, encoding: "utf8", input: "Exact-Head Code Review" });
+    expect(result.status).toBe(97);
+    expect(readFileSync(log, "utf8")).toContain("provider:claude");
+  });
 });
 
 const cardScript = (source: Rehearsal) => `#!/usr/bin/env bash

@@ -71,7 +71,8 @@ describe("fast rehearsal: the nine-Action chain stops on a failed QA verdict at 
       expect(status.text).toContain(`${key} [review_repair_gated]`);
       expect(status.data.operatorEscalations[0].message).toContain("Widens the operator's approval authority");
       expect(status.data.operatorEscalations[0].remedy).toContain(`arcadia qa pr ${five.view.url} --rerun`);
-      expect(status.data.redAlerts).toEqual([]);
+      // Decision 0169: the gated stop raises its own single red alert (one, however many ticks still see it).
+      expect(status.data.redAlerts.map((a) => [a.trigger, a.actionKey])).toEqual([["repair_gated", key]]);
       expect(status.data.liveAdmissions).toBe(0);
     }
     // The row is refreshed by every tick: the blocker is current, not a stale record.

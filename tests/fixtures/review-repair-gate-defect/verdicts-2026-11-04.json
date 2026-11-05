@@ -1,0 +1,112 @@
+{
+  "source": "The independent code-review verdicts on the three candidates of pin-work-monitor-malformed-record, 2026-11-04: findings and failed checks verbatim from each attempt's qa-report.md, the text production_review_repairs stores (the PR comments carry the same text cut to 600 characters). settlementPaths and sessionPaths are `git diff --no-renames --name-only` over each head, read from the repository.",
+  "rounds": [
+    {
+      "pullRequest": 2058,
+      "head": "e37720d26cf5e7d34be94f3c8df09c39391843f9",
+      "start": "7f508496b",
+      "settlementPaths": [
+        ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml",
+        ".arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml",
+        "MISSION_LOG.md",
+        "PROJECT.md",
+        "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md"
+      ],
+      "sessionPaths": [
+        ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml",
+        "tests/work-monitor-failures.test.ts"
+      ],
+      "findings": [
+        {
+          "severity": "medium",
+          "title": "Settlement next_action names an Agent Ask that this patch series does not carry",
+          "evidence": "Commit e37720d26 changes the Plan's `next_action` to `Completed via Agent Ask auto-settle-arcadia-pin-work-monitor-malformed-record-24225dfa6b74; no further action.` The only Ask drafted and archived in the patch is `.arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml`, whose request_id is `complete-pin-work-monitor-malformed-record-4468082627ea`. No Ask with the auto-settle id appears anywhere in the patch. The new `MISSION_LOG.md` Blockers line cites the same id, while the preceding Mission Log entry cites `Agent Ask complete-cover-retired-reland-20261103`, a request id in the `complete-` form. The brief allows this `next_action` change only when the request id names an Ask carried by the same series, and says to judge anything else like any other change.",
+          "recommendation": "Re-settle so that `next_action` and the Mission Log entry name `complete-pin-work-monitor-malformed-record-4468082627ea`, or include the auto-settle Ask in the series. If the auto-settle id is meant to identify a settlement rather than an Ask, do not record it as an `Agent Ask` id in these records."
+        },
+        {
+          "severity": "low",
+          "title": "Operator QA plan step 5 cannot demonstrate the criterion it cites",
+          "evidence": "Step 5 runs `git show e37720d26cf5e7d34be94f3c8df09c39391843f9:tests/work-monitor-failures.test.ts` and claims the output shows that the change touches only that file and that CI proves the file, lint and tsc pass. A single file's content shows neither which files changed nor any CI result.",
+          "recommendation": "Have step 5 compare the preserved commit's `git diff --name-status` output, allowing for the governed settlement records, and read the required CI check results for the pull request's head."
+        }
+      ],
+      "checks": [
+        {
+          "name": "Correctness",
+          "status": "fail",
+          "evidence": "The test logic in `tests/work-monitor-failures.test.ts` is sound: it takes the baseline before setting the alteration, keeps only name and sha of the first newline-separated record, then asserts equality with the baseline and `control.alterations >= 1`. The settlement record is wrong: `next_action` and `MISSION_LOG.md` cite Agent Ask `auto-settle-arcadia-pin-work-monitor-malformed-record-24225dfa6b74`, while the carried Ask's request_id is `complete-pin-work-monitor-malformed-record-4468082627ea`."
+        }
+      ]
+    },
+    {
+      "pullRequest": 2059,
+      "head": "e64586031d0209d2ac1a69d23a1c6f0689b7ad4f",
+      "start": "b17c283e1",
+      "settlementPaths": [
+        ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml",
+        ".arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml",
+        "MISSION_LOG.md",
+        "PROJECT.md",
+        "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md"
+      ],
+      "sessionPaths": [
+        ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml",
+        ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml",
+        "tests/work-monitor-failures.test.ts"
+      ],
+      "findings": [
+        {
+          "severity": "medium",
+          "title": "Plan next_action cites an Agent Ask that the patch series does not carry",
+          "evidence": "In docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md, next_action becomes `Completed via Agent Ask auto-settle-arcadia-pin-work-monitor-malformed-record-7c40096dd13d; no further action.` The only Asks in the series have request_id complete-pin-work-monitor-malformed-record-4468082627ea (drafted, then retired) and complete-pin-work-monitor-malformed-record-7c8d8bf7c714 (the archived Ask). No drafted or archived Ask has the auto-settle id, and the same id appears in the MISSION_LOG.md Blockers line and the settlement commit subject. The governed-record rule allows this next_action only when the request id names an Ask the same patch series carries.",
+          "recommendation": "Regenerate the settlement so next_action and the Mission Log cite complete-pin-work-monitor-malformed-record-7c8d8bf7c714, or carry the auto-settle Ask in this series. If settlement ids are meant to differ from Ask ids, fix the settlement machinery so the Plan cites the Ask that was actually archived."
+        },
+        {
+          "severity": "low",
+          "title": "Settlement rewrote candidate_revision in the archived Ask instead of only moving it",
+          "evidence": "The rename to .arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml has 97% similarity. candidate_revision changes from 7c8d8bf7c71487e51fdc533168bf2dcfdd389a94 to b17c283e1a8a5089a22f937a944cd0294a9a880d, while the request_id suffix and the evidence notes stay as drafted. The governed shape says Asks are only added or moved to the archive. The new value does match the Mission Log's Candidate, and b17c differs from 7c8d only by adding the Ask file, so the test content the evidence describes is unchanged.",
+          "recommendation": "Confirm that rebinding candidate_revision during settlement is intended and is allowed by the governed-record rule. Otherwise keep the drafted bytes and record the preserved commit only in the settlement records."
+        }
+      ],
+      "checks": [
+        {
+          "name": "Correctness",
+          "status": "fail",
+          "evidence": "The test in tests/work-monitor-failures.test.ts keeps only the first two NUL-separated fields of the first newline-separated record, compares scan(repository) with the unaltered baseline, and asserts control.alterations >= 1, as criterion 1 asks. The Plan's next_action and MISSION_LOG.md, however, cite Ask id auto-settle-arcadia-pin-work-monitor-malformed-record-7c40096dd13d, while the archived Ask is complete-pin-work-monitor-malformed-record-7c8d8bf7c714. That record does not meet the governed next_action rule. The move of current_action to pin-recovery-unparseable-time-order cannot be confirmed because the queue order is not in the patch."
+        }
+      ]
+    },
+    {
+      "pullRequest": 2061,
+      "head": "a18e352eedeeecb4e2015f4e4993e4615b0f75b3",
+      "start": "a4e5cf535",
+      "settlementPaths": [
+        ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml",
+        ".arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml",
+        "MISSION_LOG.md",
+        "PROJECT.md",
+        "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md"
+      ],
+      "sessionPaths": [
+        ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml",
+        ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml",
+        "tests/work-monitor-failures.test.ts"
+      ],
+      "findings": [
+        {
+          "severity": "medium",
+          "title": "Settlement records cite an Agent Ask id that the patch series does not carry",
+          "evidence": "In `docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md`, patch 6 sets `next_action` to `Completed via Agent Ask auto-settle-arcadia-pin-work-monitor-malformed-record-11d562c8227e; no further action.` The `MISSION_LOG.md` Blockers line cites the same id. The Asks drafted or archived in this series have request ids `complete-pin-work-monitor-malformed-record-4468082627ea`, `-7c8d8bf7c714` and `-b6eac9b1e477`, and only the last is archived. No file or request_id uses the auto-settle id. The governed shape allows this `next_action` change only when the id names an Ask the same patch series carries. The preceding `MISSION_LOG.md` entry shown in the diff context cites `complete-cover-retired-reland-20261103`, a differently shaped id. The archived Ask's note also shows that an earlier review raised the Plan `next_action`, and that the Session left it unedited as out of scope.",
+          "recommendation": "Have the governed settlement cite `complete-pin-work-monitor-malformed-record-b6eac9b1e477` in both the Plan `next_action` and the `MISSION_LOG.md` entry, or have it carry the Ask named by the auto-settle id. A Session repair of the test file cannot fix this, so it needs to go through the settlement path."
+        }
+      ],
+      "checks": [
+        {
+          "name": "Correctness",
+          "status": "fail",
+          "evidence": "The test meets criteria 1 and 2. It keeps only name and sha for the first record of the for-each-ref output, asserts `scan(repository)` equals the baseline, and asserts `control.alterations >= 1`. The settlement records are wrong: the Plan `next_action` and `MISSION_LOG.md` cite the auto-settle Ask id, which the series does not carry, while the archived Ask's request_id is `complete-pin-work-monitor-malformed-record-b6eac9b1e477`. The target of the pointer move to `pin-recovery-unparseable-time-order` is not visible in the patch, so its eligibility is unconfirmed."
+        }
+      ]
+    }
+  ]
+}

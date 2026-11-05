@@ -25,7 +25,11 @@ export const RED_ALERT_TRIGGERS = [
   "reconcile_failed",
   "repair_budget_repeat",
   "scope_pointer_mismatch",
-  "scope_successor_held"
+  "scope_successor_held",
+  "repair_rounds_exhausted",
+  "repair_gated",
+  "repair_gate_defect",
+  "resume_no_progress"
 ] as const;
 export type RedAlertTrigger = (typeof RED_ALERT_TRIGGERS)[number];
 
@@ -189,8 +193,9 @@ function enqueueNotification(db: Database.Database, row: AlertRow): void {
   const requestId = requestIdFor(row);
   const desired =
     `RED ALERT (${row.trigger}) on ${row.action_key ?? row.project_slug}` +
-    `${row.session_id ? `, Session ${row.session_id}` : ""}: ${row.detail.split("\n")[0]} ` +
-    `Evidence: file://${row.evidence_path}`;
+    `${row.session_id ? `, Session ${row.session_id}` : ""}: ${row.detail.split("\n")[0]}` +
+    // The new notices are read off-site: their text is self-contained, so a host file path is left out.
+    (NOTICE_ONLY_RED_ALERT_TRIGGERS.includes(row.trigger) ? "" : ` Evidence: file://${row.evidence_path}`);
   const request = JSON.stringify({
     agent_ask: "v1",
     request_id: requestId,
@@ -532,4 +537,154 @@ export function raiseScopeSuccessorHeld(ctx: AlertContext, input: { planKey: str
       `Remedy: ${SCOPE_DRIFT_REMEDY}`,
     now
   });
+}
+
+/**
+ * Escalation kind -> red alert trigger and the `production_review_repairs.outcome`
+ * the stop must carry. The alert keys on the repair `outcome`, not on the
+ * recovery-signal classifier, which ignores outcome for QA signals (the
+ * 2026-11-02 07:58 `escalated` row classifies as a QA sole failure like the
+ * launched rows before it).
+ */
+// Literals, not imports from reviewRepair.ts (a load-order cycle); the red alert test pins them to its constants.
+const REVIEW_REPAIR_ROUNDS_EXHAUSTED = "review_repair_rounds_exhausted";
+const REVIEW_REPAIR_GATED = "review_repair_gated";
+const REVIEW_REPAIR_GATE_DEFECT = "review_repair_gate_defect";
+export const REVIEW_REPAIR_STOP_ALERTS: Readonly<Record<string, { trigger: RedAlertTrigger; outcome: "escalated" | "gated" }>> = Object.freeze({
+  [REVIEW_REPAIR_ROUNDS_EXHAUSTED]: { trigger: "repair_rounds_exhausted", outcome: "escalated" },
+  [REVIEW_REPAIR_GATED]: { trigger: "repair_gated", outcome: "gated" },
+  [REVIEW_REPAIR_GATE_DEFECT]: { trigger: "repair_gate_defect", outcome: "gated" }
+});
+
+/**
+ * Triggers raised from other records' state (an escalation row, an unchanged
+ * resume): they are notices, never diagnosed by a model and never filed as an
+ * Issue or drafted Ask (Decision 0169 declined that for them).
+ */
+export const NOTICE_ONLY_RED_ALERT_TRIGGERS: readonly RedAlertTrigger[] = ["repair_rounds_exhausted", "repair_gated", "repair_gate_defect", "resume_no_progress"];
+
+const BOUNDED_FIELD_MAX = 60;
+const bounded = (value: string): string => {
+  const flat = value.replace(/\s+/g, " ").trim();
+  return flat.length <= BOUNDED_FIELD_MAX ? flat : `${flat.slice(0, BOUNDED_FIELD_MAX - 1)}…`;
+};
+
+/**
+ * Observe the Project's review repair stops from `production_operator_escalations`
+ * (written by the repair loop; this reads them and changes nothing there).
+ * An Action holding a `review_repair_rounds_exhausted`, `review_repair_gated` or
+ * `review_repair_gate_defect` escalation whose latest repair row carries the matching outcome has one open
+ * alert of its own trigger; an alert whose escalation is gone, changed kind or
+ * no longer matches its repair outcome clears. The message is fixed text plus
+ * bounded fields (Action key, round, role): never a finding, commit subject or
+ * Git/gh error, which stay in the escalation entry and the PR comment.
+ */
+export function observeReviewRepairStops(ctx: AlertContext): void {
+  const { db, projectSlug, now } = ctx;
+  const wanted = new Map<string, RedAlertTrigger>();
+  const rows = db
+    .prepare("SELECT action_key, kind FROM production_operator_escalations WHERE action_key LIKE ? AND kind IN (?, ?, ?)")
+    .all(`${projectSlug}/%`, REVIEW_REPAIR_ROUNDS_EXHAUSTED, REVIEW_REPAIR_GATED, REVIEW_REPAIR_GATE_DEFECT) as Array<{ action_key: string; kind: string }>;
+  for (const row of rows) {
+    const stop = REVIEW_REPAIR_STOP_ALERTS[row.kind];
+    let repair: { outcome: string; round: number; role: string } | undefined;
+    try {
+      repair = db
+        // The latest row of the stop's own outcome, as `latestRepairStop` does: a later write to an older
+        // `launched` row (`closeSupersededPullRequests` bumps `updated_at`) must not end a stop that stands.
+        .prepare("SELECT outcome, round, role FROM production_review_repairs WHERE action_key = ? AND outcome = ? ORDER BY updated_at DESC, rowid DESC LIMIT 1")
+        .get(row.action_key, stop?.outcome ?? "") as typeof repair;
+    } catch (error) {
+      if (!(error instanceof Error && error.message.includes("no such table"))) throw error;
+    }
+    if (!stop || !repair || repair.outcome !== stop.outcome) continue;
+    wanted.set(`${stop.trigger}\u0000${row.action_key}`, stop.trigger);
+    raiseRedAlert(db, {
+      workspace: ctx.workspace,
+      projectSlug,
+      actionKey: row.action_key,
+      sessionId: null,
+      trigger: stop.trigger,
+      detail: () => {
+        const todoKey = `escalation:${row.kind}:${row.action_key}`;
+        const what = stop.trigger === "repair_rounds_exhausted"
+          ? `Review repair stopped for ${row.action_key}: the repair loop cannot run another round`
+          : stop.trigger === "repair_gate_defect"
+            ? `Review repair stopped for ${row.action_key}: a repeated finding no repair Session can address points at a reviewer rule or gate`
+            : `Review repair gated for ${row.action_key}: a gate stopped the repair loop`;
+        return `${what} (round ${repair.round}, ${bounded(repair.role)} review). The candidate stays preserved and nothing integrates. ` +
+          `Open /todo item ${todoKey}: it names the reason and the step. This notice clears when that item does.`;
+      },
+      now
+    });
+  }
+  const open = db
+    .prepare("SELECT id, action_key, trigger FROM production_red_alerts WHERE project_slug = ? AND status = 'open' AND trigger IN ('repair_rounds_exhausted', 'repair_gated', 'repair_gate_defect')")
+    .all(projectSlug) as Array<{ id: string; action_key: string; trigger: string }>;
+  for (const alert of open) {
+    if (wanted.has(`${alert.trigger}\u0000${alert.action_key}`)) continue;
+    db.prepare("UPDATE production_red_alerts SET status = 'cleared', cleared_at = ? WHERE id = ?").run(now.toISOString(), alert.id);
+  }
+}
+
+/**
+ * A resumed Session exited incomplete with its candidate unchanged. Notify
+ * only: the caller has already recorded the repair attempt (the existing
+ * retry budget alone stops retries); this changes no attempt, launch decision
+ * or Action status. One alert per Action episode, so repeated unchanged
+ * resumes raise occurrences, not further notifications.
+ */
+export function raiseResumeNoProgress(ctx: AlertContext, input: { actionKey: string; sessionId: string }): void {
+  const max = PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction;
+  raiseRedAlert(ctx.db, {
+    workspace: ctx.workspace,
+    projectSlug: ctx.projectSlug,
+    actionKey: input.actionKey,
+    sessionId: null,
+    trigger: "resume_no_progress",
+    detail: () =>
+      `A resumed Session (${bounded(input.sessionId)}) for ${input.actionKey} exited incomplete without changing its candidate. ` +
+      `Notice only, nothing to press now: the existing repair budget (${max} attempts) alone stops further resumes and then raises its own blocker with its remedy. ` +
+      `This notice clears when the budget is reset or the Action finishes.`,
+    now: ctx.now
+  });
+}
+
+/**
+ * Ends the notice once the Action has no recorded repair attempts left (an
+ * operator reset, or a Session that made progress, which resets them), or the
+ * Action is done or gone from its Project's Plans. Attempt rows outlive their
+ * Actions, so the Plan is read too; unreadable documents leave the notice open.
+ * An Action that merely leaves the production scope is not detected here.
+ */
+export function observeResumeNoProgressBudget(ctx: AlertContext, repoRoot: string): void {
+  const open = ctx.db
+    .prepare("SELECT id, action_key FROM production_red_alerts WHERE project_slug = ? AND trigger = 'resume_no_progress' AND status = 'open'")
+    .all(ctx.projectSlug) as Array<{ id: string; action_key: string }>;
+  if (open.length === 0) return;
+  let docs: ReturnType<typeof discoverDocs>["docs"] | null;
+  try { docs = discoverDocs(repoRoot).docs; } catch { docs = null; }
+  for (const row of open) {
+    const attempts = ctx.db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get(row.action_key) as { attempts: number } | undefined;
+    let finished = false;
+    if (docs) {
+      const actionId = row.action_key.slice(row.action_key.indexOf("/") + 1);
+      const statuses = docs.flatMap((doc) => doc.type === "plan" && doc.project === ctx.projectSlug ? doc.actions.filter((action) => action.id === actionId).map((action) => action.status) : []);
+      finished = statuses.every((status) => status === "done");
+    }
+    if (!attempts || attempts.attempts < 1 || finished) {
+      ctx.db.prepare("UPDATE production_red_alerts SET status = 'cleared', cleared_at = ? WHERE id = ?").run(ctx.now.toISOString(), row.id);
+    }
+  }
+}
+
+/**
+ * An Action the operator owns: a review repair stop or a pending Decision gate
+ * holds it, so a resumed Session's unchanged exit raises no notice.
+ */
+export function isOperatorHeldAction(db: Database.Database, actionKey: string): boolean {
+  const row = db
+    .prepare("SELECT 1 FROM production_operator_escalations WHERE action_key = ? AND kind IN (?, ?, ?, 'operator_gate_pending')")
+    .get(actionKey, REVIEW_REPAIR_ROUNDS_EXHAUSTED, REVIEW_REPAIR_GATED, REVIEW_REPAIR_GATE_DEFECT);
+  return row !== undefined;
 }
