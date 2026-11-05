@@ -18,6 +18,17 @@
  *   the pull request declares is in it, below the GitHub CLI's 100-file and
  *   100-commit caps.
  *
+ * What this text parser cannot do alone: format-patch writes a commit message
+ * verbatim, so a message can hold `---`, a diffstat and a whole `diff --git`
+ * entry with a self-computed blob id, indistinguishable from a real one. A
+ * forged entry only ever adds to the commit's real ones, so
+ * {@link checkGovernedRecords}, whose Verified facts a reviewer relies on,
+ * also requires each commit's entries to be exactly the files its Git object
+ * changes ({@link CommitObjectFiles}). The not-applicable classifier does not
+ * (it has no such evidence): a forged entry cannot hide a real code file from
+ * it, but could excuse a real shape-limited change, which the same reviewer
+ * backstops named below still judge.
+ *
  * Anything else (code, scripts, workflows, configuration, manifests,
  * authority-bearing or agent-instruction documents, any dot directory, an
  * executable or symlink mode, binaries, an unparseable header or hunk, a
@@ -87,7 +98,24 @@ export interface PatchEvidence {
    * only by callers that classify a patch without pull-request evidence.
    */
   declaredCommits?: readonly string[] | null;
+  /**
+   * What each commit's own Git object changes, by full commit id; null or
+   * omitted when it could not be read. {@link checkGovernedRecords} verifies
+   * nothing without it.
+   */
+  commitFiles?: CommitObjectFiles | null;
 }
+
+/** One file a commit changes, read from the commit's Git object rather than from patch text, so no commit message reaches it. */
+export interface CommitObjectFile {
+  path: string;
+  /** The path it was renamed or copied from, when the object read reports one. */
+  previousPath: string | null;
+  /** The file's full blob id: the new one, or the old one for a deletion. */
+  blob: string | null;
+}
+
+export type CommitObjectFiles = Readonly<Record<string, readonly CommitObjectFile[]>>;
 
 export interface NotApplicableClaim {
   criterion: string;
@@ -210,14 +238,17 @@ const AUTO_SETTLE_CITATION = /\bauto-settle-[A-Za-z0-9][\w.-]*[\w-]/g;
  * same carried Asks and `autoSettleRequestId`, archives the same split-archive
  * recognition, retirements the same commit recognition, shapes the same
  * per-path classification. Fails closed: any patch-level problem (a merge
- * commit GitHub's patch omits, an unreadable commit list, a truncated list)
- * leaves every fact not verified. A verified fact is about this patch's shape
- * and never that a real settlement wrote it; a forged one of the same shape
- * verifies too, as the module header says.
+ * commit GitHub's patch omits, an unreadable commit list, a truncated list, a
+ * commit's entries differing from its Git object) leaves every fact not
+ * verified. A verified fact is about files the commit objects really change,
+ * and never that a real settlement wrote them: a governed marker, a retirement
+ * trailer and the `From:` header are still text a Session can write, so a
+ * forged commit of the same shape verifies too, as the module header says.
  */
 export function checkGovernedRecords(patch: string, evidence: PatchEvidence = {}): GovernedRecordCheck {
   const { commits, files, applicability, shapes, retired, splitArchives } = analyzePatch(patch, evidence);
-  const clean = applicability.problems.length === 0;
+  const problems = [...applicability.problems, ...commitObjectProblems(commits, files, evidence.commitFiles)];
+  const clean = problems.length === 0;
   const fact = (verified: boolean, subject: string, detail: string): GovernedRecordFact => ({ verified: clean && verified, subject, detail });
   const { carriedAsks } = shapes;
   const archivedNames = new Set(files.flatMap((file) => file.newPath?.startsWith(".arcadia/asks/archive/") ? [basename(file.newPath)] : []));
@@ -245,11 +276,12 @@ export function checkGovernedRecords(patch: string, evidence: PatchEvidence = {}
     }
   }
 
-  const splitTargets = new Set([...splitArchives].map((file) => `.arcadia/asks/archive/${basename(file.oldPath!)}`));
+  // Per commit, not per path: the comparison was of that commit's copy, and a later commit can re-add the path with other content.
+  const splitTargets = new Set([...splitArchives].map((file) => `${file.commit}:.arcadia/asks/archive/${basename(file.oldPath!)}`));
   const archives = files.flatMap((file): GovernedRecordFact[] => {
     const target = file.newPath;
     if (!target?.startsWith(".arcadia/asks/archive/") || file.deleted || !(file.created || file.renamed)) return [];
-    if (splitTargets.has(target)) return [fact(true, target, "differs from the draft this patch deletes only in candidate_revision")];
+    if (splitTargets.has(`${file.commit}:${target}`)) return [fact(true, target, "differs from the draft this patch deletes only in candidate_revision")];
     return [fact(false, target, file.renamed
       ? "archived by a rename, whose changed lines this check does not compare"
       : "added with no deleted draft this check could show it matches apart from candidate_revision")];
@@ -261,18 +293,50 @@ export function checkGovernedRecords(patch: string, evidence: PatchEvidence = {}
     const paths = entries.flatMap((file) => file.oldPath ? [file.oldPath] : []);
     const recognized = entries.length > 0 && entries.every((file) => retired.has(file) && !shapes.violations.has(file.oldPath!));
     return [fact(recognized, commit.sha ?? "(no commit id)", recognized
-      ? `by the Arcadia Controller, only deletes ${JSON.stringify(paths)}, each a whole complete-intent draft an earlier attested commit in this series created, named by its trailers, for the Action this patch marks done`
-      : "carries a retirement trailer but is not a retirement this check recognizes by author, trailers and content")];
+      ? `only deletes ${JSON.stringify(paths)}, each a whole complete-intent draft an earlier commit in this series created under a governed marker, named by its trailers, for the Action this patch marks done. Its From: header names the Arcadia Controller, which a Session can set, so this says nothing about who wrote it`
+      : "carries a retirement trailer but is not a retirement this check recognizes by its From: header, trailers and content")];
   });
 
   const governed = applicability.files.filter((file) => isGovernedRecordPath(file.path));
   return {
-    problems: applicability.problems,
+    problems,
     citations,
     archives,
     retirements,
-    shapes: governed.map((file) => fact(file.class === "governed-record", file.path, file.class === "governed-record" ? "stays within its allowed shape, in attested commits only" : JSON.stringify(file.reason)))
+    shapes: governed.map((file) => fact(file.class === "governed-record", file.path, file.class === "governed-record" ? "stays within its allowed shape, in commits whose message carries a governed marker, which is text a Session can write" : JSON.stringify(file.reason)))
   };
+}
+
+/** Whether the patch shows a governed record, so the check has anything to report. */
+export function patchTouchesGovernedRecord(patch: string): boolean {
+  return parsePatch(patch).files.some((file) => file.paths.some(isGovernedRecordPath));
+}
+
+/**
+ * Why a commit's entries in the patch cannot be trusted as its real files. A
+ * message can add entries but never remove a real one, so an exact match of
+ * paths, counted (a forged entry for a really changed path shows it twice), rules
+ * forgery out; rename detection may differ between GitHub's two reads, so a
+ * rename and a delete-plus-add count the same. The blob ids then tie each
+ * entry's content, which the facts hash against them, to the object.
+ */
+function commitObjectProblems(commits: ParsedCommit[], files: ParsedFile[], objects: CommitObjectFiles | null | undefined): string[] {
+  if (!objects) return ["the commits' Git objects could not be read, so a diff entry written inside a commit message cannot be told from a real one"];
+  return commits.flatMap((commit, index) => {
+    const label = commit.sha ?? "(no commit id)";
+    const real = commit.sha !== null && Object.hasOwn(objects, commit.sha) ? objects[commit.sha] : null;
+    if (!real) return [`no Git object was read for commit ${label}`];
+    const shown = files.filter((file) => file.commit === index);
+    const sorted = (paths: string[]) => paths.sort().join("\0");
+    if (sorted(shown.flatMap((file) => file.paths)) !== sorted(real.flatMap((file) => file.previousPath && file.previousPath !== file.path ? [file.previousPath, file.path] : [file.path]))) {
+      return [`commit ${label}'s entries in the patch are not exactly the files its Git object changes, as when its message carries a forged diff entry`];
+    }
+    const blobsMatch = shown.every((file) => {
+      const [filePath, blob] = file.deleted ? [file.oldPath, file.oldBlob] : [file.newPath, file.newBlob];
+      return !blob || real.some((entry) => entry.path === filePath && entry.blob?.startsWith(blob));
+    });
+    return blobsMatch ? [] : [`a blob id in commit ${label}'s entries in the patch is not the one its Git object records`];
+  });
 }
 
 function analyzePatch(patch: string, evidence: PatchEvidence) {

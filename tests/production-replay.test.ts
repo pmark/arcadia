@@ -730,6 +730,8 @@ describe("production replay past launch (--executor, --reviewers)", () => {
     const patch = run(["api", "--method", "GET", `repos/acme/widgets/compare/${base}...${head}`, "-H", "Accept: application/vnd.github.patch"]);
     expect(patch.status).toBe(0);
     expect(patch.stdout).toContain(`From ${head}`);
+    const commitObject = run(["api", "--method", "GET", `repos/acme/widgets/commits/${head}`, "--jq", "{files: [.files[] | {filename, previous_filename, sha}]}"]);
+    expect(JSON.parse(commitObject.stdout).files).toEqual([{ filename: "b.txt", previous_filename: null, sha: expect.stringMatching(/^[0-9a-f]{40}$/) }]);
     expect(run(["pr", "edit", url, "--body", "B2"]).status).toBe(0);
     expect(run(["pr", "ready", url]).status).toBe(0);
     expect(JSON.parse(run(["pr", "view", url, "--json", "isDraft,body"]).stdout)).toEqual({ isDraft: false, body: "B2" });

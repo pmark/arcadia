@@ -53,7 +53,7 @@ describe("QA's governed-record facts on the real #2062 inputs", () => {
   it("verifies nothing when the id's hash is wrong, the Ask is not carried, or the commit list is unreadable", () => {
     const fixture = loadQaPromptFixture();
     const files = (fixture.pullRequest.files ?? []).map((file) => file.path);
-    const section = (patch: string, commits: readonly string[] | null) => governedRecordCheckSection(patch, files, commits).join("\n");
+    const section = (patch: string, commits: readonly string[] | null) => governedRecordCheckSection(patch, files, commits, fixture.commitFiles).join("\n");
     // A real id with one hex digit changed, in the Plan and the Mission Log.
     const wrongHash = fixture.patch.replaceAll(AUTO_SETTLE, `${AUTO_SETTLE.slice(0, -1)}0`);
     const wrong = section(wrongHash, fixture.declaredCommits ?? null);
@@ -75,8 +75,8 @@ describe("QA's governed-record facts on the real #2062 inputs", () => {
       const lines = content.split("\n").slice(0, -1);
       return [`@@ -${prefix === "-" ? `1,${lines.length}` : "0,0"} +${prefix === "+" ? `1,${lines.length}` : "0,0"} @@`, ...lines.map((line) => `${prefix}${line}`)].join("\n");
     };
+    const draft = "request_id: complete-a\nproject: p\ntarget_ref: action/a\ncandidate_revision: abcdef1\nnotes: real\n";
     const patch = (archive: string) => {
-      const draft = "request_id: complete-a\nproject: p\ntarget_ref: action/a\ncandidate_revision: abcdef1\nnotes: real\n";
       return [
         "From 1111111111111111111111111111111111111111 Mon Sep 17 00:00:00 2001",
         "Subject: [PATCH] chore(arcadia): settle",
@@ -100,7 +100,8 @@ describe("QA's governed-record facts on the real #2062 inputs", () => {
     };
     const files = [".arcadia/asks/agent-ask-complete-a.yaml", ".arcadia/asks/archive/agent-ask-complete-a.yaml"];
     const commits = ["1".repeat(40)];
-    const section = (archive: string) => governedRecordCheckSection(patch(archive), files, commits).join("\n");
+    const object = (archive: string) => ({ [commits[0]]: [{ path: files[0], previousPath: null, blob: blob(draft) }, { path: files[1], previousPath: null, blob: blob(archive) }] });
+    const section = (archive: string) => governedRecordCheckSection(patch(archive), files, commits, object(archive)).join("\n");
     expect(section("request_id: complete-a\nproject: p\ntarget_ref: action/a\ncandidate_revision: 1234567\nnotes: real\n"))
       .toContain("- Verified (Archived Ask):");
     // The review's case: an archive re-added with edited evidence notes.

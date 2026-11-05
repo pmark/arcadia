@@ -1,5 +1,5 @@
 {
-  "source": "pmark/arcadia#2062, QA attempt 2026-11-05T02-01-35-880Z-826061c956cd: the real inputs of the prompt that attempt judged. The plan inputs below re-render its Operator QA plan.",
+  "source": "pmark/arcadia#2062, QA attempt 2026-11-05T02-01-35-880Z-826061c956cd: the real inputs of the prompt that attempt judged. The plan inputs below re-render its Operator QA plan. commitFiles is what GitHub reads from those commits (gh api repos/pmark/arcadia/commits/<sha>).",
   "candidate": {
     "projectId": "proj_ccdbfb22a7e4415ca7",
     "projectName": "Arcadia",
@@ -254,6 +254,84 @@
     "c54b01148403a74893275aa8b084b7b9f796d639",
     "192fab64f8818fb631e65a1e302e6a264a605479"
   ],
+  "commitFiles": {
+    "7f508496bab3970a74e354eb93d45a94da4c2a6d": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml",
+        "previousPath": null,
+        "blob": "7cb4739e56c09727de6cfb8124ec752a07b55727"
+      },
+      {
+        "path": "tests/work-monitor-failures.test.ts",
+        "previousPath": null,
+        "blob": "859ac619e3648e591e9585cd123cf43ee56a7f6d"
+      }
+    ],
+    "7c8d8bf7c71487e51fdc533168bf2dcfdd389a94": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml",
+        "previousPath": null,
+        "blob": "7cb4739e56c09727de6cfb8124ec752a07b55727"
+      }
+    ],
+    "b17c283e1a8a5089a22f937a944cd0294a9a880d": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml",
+        "previousPath": null,
+        "blob": "39e41a95326ca6a6d2ee23f5a911051849008104"
+      }
+    ],
+    "b6eac9b1e4772b59c0d63fe00d7f77d8a572fbac": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml",
+        "previousPath": null,
+        "blob": "39e41a95326ca6a6d2ee23f5a911051849008104"
+      }
+    ],
+    "a4e5cf535440aa4f8462492c5135250ec6776f82": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml",
+        "previousPath": null,
+        "blob": "e9e6491f899c4c6fcd5e9c1df1d0f5a7fcf1a8c9"
+      }
+    ],
+    "9a54ef9501c0aedcc583e67135a724d8b7259da7": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml",
+        "previousPath": null,
+        "blob": "e9e6491f899c4c6fcd5e9c1df1d0f5a7fcf1a8c9"
+      }
+    ],
+    "c54b01148403a74893275aa8b084b7b9f796d639": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml",
+        "previousPath": null,
+        "blob": "f1d2685977dd7aa3adb68c81711057d2c7607a5d"
+      }
+    ],
+    "192fab64f8818fb631e65a1e302e6a264a605479": [
+      {
+        "path": ".arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml",
+        "previousPath": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml",
+        "blob": "8e1440a7b64b842f8e2c23803e0ab308f97b9eef"
+      },
+      {
+        "path": "MISSION_LOG.md",
+        "previousPath": null,
+        "blob": "a25c841e5cf85852c5ac651256c1c2a7ab8f2a74"
+      },
+      {
+        "path": "PROJECT.md",
+        "previousPath": null,
+        "blob": "652a0c5551aab83c06b78109426c2f1293c5890b"
+      },
+      {
+        "path": "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md",
+        "previousPath": null,
+        "blob": "fd4013b40fe94426a772b65888ba87fee662428c"
+      }
+    ]
+  },
   "planSource": {
     "kind": "action-acceptance",
     "actionKey": "arcadia/pin-work-monitor-malformed-record",

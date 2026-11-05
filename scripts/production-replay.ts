@@ -884,6 +884,21 @@ if (simPrs && args[0] === "api") {
       if (patch) { writeOut(patch); process.exit(0); }
     }
   }
+  // GitHub's read of one commit object, for the governed-record check: the filtered shape its --jq asks for.
+  const commitRead = args.map((value) => /\/commits\/([0-9a-f]{40})$/.exec(value)).find(Boolean);
+  if (commitRead) {
+    for (const entry of Object.values(readPrs())) {
+      const raw = gitOut(entry.bare, "diff-tree", "-r", "-M", "--root", "--no-commit-id", "--raw", "--no-abbrev", commitRead[1]);
+      if (raw === null) continue;
+      const files = raw.split("\n").filter(Boolean).map((line) => {
+        const [meta, ...paths] = line.split("\t");
+        const [, , oldBlob, newBlob, status] = meta.split(" ");
+        return { filename: paths[paths.length - 1], previous_filename: paths.length > 1 ? paths[0] : null, sha: status === "D" ? oldBlob : newBlob };
+      });
+      writeOut(JSON.stringify({ files }) + "\n");
+      process.exit(0);
+    }
+  }
 }
 const SIMULATED_PR_WRITES = ["ready", "comment", "close", "edit", "merge"];
 if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "pr" && SIMULATED_PR_WRITES.includes(args[1]) && args[2]) {

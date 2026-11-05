@@ -287,8 +287,12 @@ function renderPlan(
       const namedTests = named.filter((candidate) => TEST_PATH.test(candidate));
       const runsNamed = namedTests.length > 0 && namedTests.every((candidate) => runTargets.includes(candidate));
       const changedPaths = facts.changedFiles.filter((file) => !file.status.startsWith("D")).map((file) => file.path);
-      const runTied = runTargets.length === 1 && claims.testsPass !== null && claims.testsPass !== "unscoped"
-        && (claims.testsPass !== "changed-file" || changedPaths.includes(runTargets[0]));
+      // "That file" means a test file the Action names, here or in an earlier criterion. The only check on that
+      // is wording, so the one run must cover every one it names: if a named file is gone, the run is some other file.
+      const actionTests = judged.flatMap((entry) => entry.named).filter((candidate) => TEST_PATH.test(candidate));
+      const runCoversNames = actionTests.every((candidate) => runTargets.includes(candidate));
+      const runTied = runTargets.length === 1 && runCoversNames
+        && (claims.testsPass === "one-file" ? actionTests.length > 0 : claims.testsPass === "changed-file" && changedPaths.includes(runTargets[0]));
       const ran = runTargets.map((target) => code(target)).join(", ");
       const proofs = [
         ...(check ? passProof(check, validation, validationStep, runsNamed ? runStep : null) : []),

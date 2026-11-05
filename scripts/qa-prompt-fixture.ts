@@ -46,7 +46,8 @@ export function fixturePrompt(role: "qa" | "code-review" = "qa"): string {
     identity: fixture.identity,
     settlementRecords: fixture.settlementRecords,
     settled: fixture.settled,
-    declaredCommits: fixture.declaredCommits
+    declaredCommits: fixture.declaredCommits,
+    commitFiles: fixture.commitFiles
   });
 }
 

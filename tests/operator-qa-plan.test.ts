@@ -631,6 +631,14 @@ describe("Operator QA plan rendering", () => {
       for (const criteria of [["tests/a.test.ts gains a test.", "Every other test in that file passes unchanged."], ["Every other test in the changed file passes unchanged."]]) {
         expect(run(criteria, tests("tests/a.test.ts")), criteria[0]).toContain("which runs `tests/a.test.ts`: its exit-zero result is that proof.");
       }
+      // "That file" is wording: a run of some other file is no proof when the file the Action names is gone, or none is named.
+      const namedIsGone = run(["tests/old.test.ts gains a test.", "Every other test in that file passes unchanged."], tests("tests/new.test.ts"), (candidate) => candidate === "tests/new.test.ts");
+      expect(namedIsGone).toContain("`pnpm exec vitest run tests/new.test.ts`");
+      expect(stepOf(namedIsGone, 4)).toContain(`Step 6 runs \`tests/new.test.ts\`. ${NO_CLAIM}`);
+      expect(stepOf(namedIsGone, 4)).not.toContain("that proof");
+      const changedIsGone = run(["tests/old.test.ts gains a test.", "Every other test in the changed file passes unchanged."], tests("tests/new.test.ts"), (candidate) => candidate === "tests/new.test.ts");
+      expect(stepOf(changedIsGone, 4)).toContain(NO_CLAIM);
+      expect(stepOf(run(["Every other test in that file passes unchanged."], tests("tests/a.test.ts")), 3)).toContain(NO_CLAIM);
       const twoFiles = run(["Every other test in that file passes unchanged."], tests("tests/a.test.ts", "tests/b.test.ts"));
       expect(stepOf(twoFiles, 3)).toContain(NO_CLAIM);
       const namesBoth = run(["tests/a.test.ts and tests/b.test.ts exist and pass."], tests("tests/a.test.ts", "tests/b.test.ts"));
