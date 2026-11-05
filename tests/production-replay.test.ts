@@ -440,7 +440,7 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
       const result = spawnSync("claude", launch, { cwd: root, env: bare, encoding: "utf8", input });
       expect(result.status, result.stderr).toBe(0);
       const events = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(events[0]).toEqual({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [] });
+      expect(events[0]).toEqual({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [], apiKeySource: "none" });
       return events[1] as { type: string; is_error: boolean; structured_output: { verdict: string; summary: string } };
     };
     const first = review(`## Exact-Head Code Review\n## Candidate\n${JSON.stringify({ repository: "fixture/repo", headSha: "a".repeat(40) })}\n## Pull-request body`);

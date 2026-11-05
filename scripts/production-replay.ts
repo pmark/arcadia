@@ -999,7 +999,7 @@ const verdict = {
 appendFileSync(effectsLog, JSON.stringify({ kind: "simulated:reviewer", detail: role + " " + verdict.verdict }) + "\n");
 if (flavor === "claude") {
   // The stream-json lines recordClaudeReviewerVerdict reads: no tools but StructuredOutput, no MCP servers, a structured verdict.
-  process.stdout.write(JSON.stringify({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [] }) + "\n");
+  process.stdout.write(JSON.stringify({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [], apiKeySource: "none" }) + "\n");
   process.stdout.write(JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict }) + "\n");
 } else {
   writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(verdict) + "\n");
