@@ -263,6 +263,29 @@ test("a failed read says so and offers nothing to press, and the next read bring
     await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
     failing = false;
     await expect(page.getByRole("button", { name: /Defer entirely/ })).toBeVisible({ timeout: 30_000 });
+
+    // A later failed poll keeps the pinned card: a press is still checked by the server, and nothing moves to the row's control.
+    failing = true;
+    await page.waitForResponse(response => new URL(response.url()).pathname === "/api/todo-item/decision" && response.status() === 503, { timeout: 30_000 });
+    await expect(page.getByRole("button", { name: /Defer entirely/ })).toBeVisible();
+    await expect(page.getByText("Answer from the to-do card")).toHaveCount(0);
+  });
+});
+
+test("a failed read can't call an absent Decision done", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  await withServer(testInfo, async url => {
+    await page.route("**/api/**", route => {
+      const endpoint = new URL(route.request().url()).pathname;
+      if (route.request().method() !== "GET") return route.abort();
+      // A complete list without this row, which alone would mean done, and a Decision read that failed.
+      if (endpoint === "/api/todo-item") return route.fulfill({ json: { source: "todo", note: null, approvals: [] } });
+      if (endpoint === "/api/todo-item/decision") return route.fulfill({ status: 503, json: { error: "This Decision could not be read.", reason: "decision_unreadable" } });
+      return route.abort();
+    });
+    await page.goto(`${url}/todo/decision/site/0003`);
+    await expect(page.getByRole("region", { name: "State unknown" })).toContainText("may still be waiting on you");
+    await expect(page.getByRole("region", { name: "Done" })).toHaveCount(0);
   });
 });
 

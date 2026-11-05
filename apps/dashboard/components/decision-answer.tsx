@@ -93,7 +93,7 @@ export function DecisionAnswerView(props: DecisionAnswerViewProps) {
   // A Decision refused a pinned card keeps its row's existing control, as the to-do list has always done. A failed read is
   // not a refusal, so it never moves a Decision to the unpinned path: it says so and the next read tries again.
   const fallback = row !== null && !notOpen && !noOptions && view === null && refusal !== null;
-  const readFailed = cardFailed && view === null && refusal === null;
+  const readFailed = cardFailed && view === null;
   const blocked = view !== null && !answered && Object.keys(view.pressable).length === 0 ? view.notExecutableReason : null;
   const heading = meta?.id ?? row?.id ?? id;
   const clampLines = optionClampLines(summary.options.length);
@@ -117,7 +117,7 @@ export function DecisionAnswerView(props: DecisionAnswerViewProps) {
       )}
       {summary.kind === "title" ? <p className="mt-1 text-xs text-muted">The record gives only this title, not a full question.</p> : null}
       {summary.kind === "none" && (row !== null || meta !== null) ? <p className="mt-1 text-xs text-muted">The record states no question.</p> : null}
-      {summary.gateQuestion !== null ? <p className="mt-1 text-sm text-muted [overflow-wrap:anywhere]" data-testid="decision-gate-question">Its gate asks: {summary.gateQuestion}</p> : null}
+      {summary.gateQuestion !== null ? <p className={`mt-1 text-sm text-muted [overflow-wrap:anywhere] ${expanded ? "" : "line-clamp-2"}`} data-testid="decision-gate-question">Its gate asks: {summary.gateQuestion}</p> : null}
 
       {summary.options.length > 0 ? (
         <ul className="mt-2 grid min-w-0 grid-cols-1 gap-1" aria-label="Options">
@@ -149,7 +149,8 @@ export function DecisionAnswerView(props: DecisionAnswerViewProps) {
         {!cardLoaded && !fallback ? <Activity>{row ? "Getting the answer buttons ready..." : "Reading this Decision..."}</Activity> : null}
         {cardLoaded && !rowSettled && !answered ? <Activity>Checking whether this is still waiting on you...</Activity> : null}
         {changed ? <p role="alert" className="text-sm text-clay">This Decision changed while you were reading it. Read it again and choose.</p> : null}
-        {readFailed ? <p role="alert" className="text-sm text-clay">Couldn&apos;t read this Decision&apos;s answer buttons, so nothing can be pressed yet. Trying again every 15 seconds.</p> : null}
+        {readFailed ? <p role="alert" className="text-sm text-clay">{refusal ? "Couldn't read this Decision again just now, so what's below may be out of date. Trying again every 15 seconds." : "Couldn't read this Decision's answer buttons, so nothing can be pressed yet. Trying again every 15 seconds."}</p> : null}
+        {refusal && !noOptions ? <p className="text-sm text-muted">No pinned answer button here ({refusal.reason}): <span className="break-words">{refusal.message}</span></p> : null}
         {notOpen ? <p className="text-sm text-muted">This Decision isn&apos;t open any more. Nothing here can answer it.</p> : null}
         {noOptions && !notOpen ? <p className="text-sm text-muted">This Decision offers no options to answer between, so there&apos;s nothing to press here. Its full record may say more.</p> : null}
         {blocked ? <p className="text-sm text-muted">{blocked}</p> : null}
@@ -218,13 +219,10 @@ function OptionRow({ option, clampLines, expanded, chosen, selectable, answered,
   );
 }
 
-/** A Decision with no pinned card: its reason, then its row's existing control, one tap away and otherwise unchanged. */
-function RowControl({ row, refusal, rowPendingId, onRowAct, rowMessage, rowError, rowNote }: DecisionAnswerViewProps & { row: Approval }) {
+/** A Decision refused a pinned card: its row's existing control, one tap away and otherwise unchanged. */
+function RowControl({ row, rowPendingId, onRowAct, rowMessage, rowError, rowNote }: DecisionAnswerViewProps & { row: Approval }) {
   return (
     <div className="mt-2" data-testid="decision-row-control">
-      <p className="text-sm text-muted">
-        {refusal ? <>No pinned answer button here ({refusal.reason}): <span className="break-words">{refusal.message}</span></> : null}
-      </p>
       {rowNote ? <p role="status" className="mt-1 text-sm text-muted">{rowNote}</p> : null}
       {rowError ? <p role="alert" className="mt-1 break-words text-sm text-clay">{rowError}</p> : null}
       {rowMessage ? <p role="status" className="mt-1 text-sm text-moss">{rowMessage}</p> : null}

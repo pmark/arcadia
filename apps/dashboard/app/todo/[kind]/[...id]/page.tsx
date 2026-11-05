@@ -89,7 +89,7 @@ function DecisionItem({ target }: { target: Target }) {
           />
         ) : (
           // Nothing known yet: the same truthful states as every other to-do. Done is claimed only from a complete list,
-          // and never while the card's own read could still say it's open.
+          // and never while the card's own read could still say it's open, or has failed and so can't say either way.
           <TodoItemView
             target={target}
             approvals={state.approvals}
@@ -97,9 +97,9 @@ function DecisionItem({ target }: { target: Target }) {
             pendingId={state.pendingId}
             onAct={state.act}
             message={state.message}
-            error={state.error}
+            error={state.error ?? (cards.readFailed ? "this Decision could not be read." : null)}
             note={state.note}
-            hasLoaded={state.hasLoaded && cards.loaded}
+            hasLoaded={state.hasLoaded && cards.loaded && !cards.readFailed}
             onRetry={() => void state.refresh()}
             readingLabel={slow ? "Still reading this Decision. Your tap was received; this read is slow right now." : "Reading this Decision..."}
           />

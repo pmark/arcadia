@@ -143,6 +143,19 @@ describe("DecisionAnswerView", () => {
     expect(html).not.toContain("aria-pressed");
   });
 
+  it("says when a kept refusal's Decision couldn't be read again, without hiding the refusal", () => {
+    const html = render({ view: null, cardFailed: true, refusal: { id: "decision-k.alpha.0042", reason: "duplicate_option_labels", message: "Two options match." } });
+    expect(html).toContain("may be out of date");
+    expect(html).toContain("No pinned answer button here (duplicate_option_labels): ");
+    expect(html).toContain("Answer from the to-do card");
+  });
+
+  it("explains a refusal even when there's no row to answer from", () => {
+    const html = render({ row: null, view: null, refusal: { id: "decision-k.alpha.0042", reason: "text_too_long", message: "Too long." } });
+    expect(html).toContain("No pinned answer button here (text_too_long): ");
+    expect(html).not.toContain("Answer from the to-do card");
+  });
+
   it("keeps a pinned card pressable through a failed poll", () => {
     const html = render({ cardFailed: true });
     expect(html.match(/aria-pressed/g)).toHaveLength(2);
