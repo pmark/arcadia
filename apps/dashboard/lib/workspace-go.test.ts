@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ProjectContinuationResponse } from "./arcadia-cli";
-import { createGoReadGate, goMove, goRelation, isContinuation } from "./workspace-go";
+import { goResolutionIdentity } from "./go-continue";
+import { createGoReadGate, goMove, goRelation, isContinuation, withoutOperatorAlerts } from "./workspace-go";
 
 function continuation(overrides: Partial<ProjectContinuationResponse> = {}, responsibility = "agent"): ProjectContinuationResponse {
   return {
@@ -88,5 +89,17 @@ describe("Go read gate", () => {
     gate.end("p", 600);
     expect(gate.begin("p", 1599)).toBe(false);
     expect(gate.begin("p", 1600)).toBe(true);
+  });
+});
+
+describe("withoutOperatorAlerts", () => {
+  it("drops the alerts, keeps the resolution and leaves Go's identity unchanged", () => {
+    const resolution = { repoRoot: "/repo", context: null, dispatchable: false, blockers: [], operatorQuestion: "Which?", projectId: "p" };
+    const withAlerts = { ...resolution, operatorAlerts: [{ kind: "decision", id: "0001" }] } as unknown as ProjectContinuationResponse;
+    const trimmed = withoutOperatorAlerts(withAlerts);
+    expect(trimmed.operatorAlerts).toEqual([]);
+    expect(trimmed).toMatchObject(resolution);
+    expect(isContinuation(trimmed)).toBe(true);
+    expect(goResolutionIdentity("p", trimmed)).toBe(goResolutionIdentity("p", withAlerts));
   });
 });

@@ -39,6 +39,14 @@ function continuation(overrides: Partial<ProjectContinuationResponse> = {}, resp
 const direction = (page: Page) => page.getByRole("region", { name: "Direction" });
 /** Go's rendered result, apart from the visually hidden announcement that repeats it for screen readers. */
 const result = (page: Page) => direction(page).locator(".workspace-go-result");
+/** Go's next move is one line until it's asked for. Asking is what reads Go. */
+const openNextMove = async (page: Page) => {
+  const next = direction(page).locator(".route-next");
+  await next.waitFor();
+  if (!await next.evaluate(element => (element as HTMLDetailsElement).open)) await next.locator("summary").click();
+};
+const subject = (page: Page) => page.locator(".route-subject");
+const crumb = (page: Page, name: string) => page.getByRole("navigation", { name: "Selected context" }).getByRole("link", { name });
 
 for (const width of [390, 1280]) test(`workspace Continue gives visible feedback and Session progress at ${width}px`, async ({ page }, testInfo) => {
   test.setTimeout(120_000);
@@ -69,7 +77,8 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
     if (endpoint === "/api/sessions/fixture-session") return route.fulfill({ json: { known: true, observedAt: new Date().toISOString(), projectSlug: "moon-garden", session: durable } });
     if (endpoint === "/api/sessions/missing-session") return route.fulfill({ json: { known: true, observedAt: new Date().toISOString(), session: null } });
     if (endpoint === "/api/plans") return route.fulfill({ json: portfolio });
-    if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: details["first-website"] });
+    // The record says this is the current Action, so Next move asks Go and opens by itself when Go says it's ready.
+    if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: { ...details["first-website"], progress: { ...details["first-website"].progress, current: { key: "moon-garden/review-phone", title: "Review the page on a phone", status: "open", waitingOn: [], basis: "project_current_action" } } } });
     if (endpoint === "/api/projects/garden/go-context") { const resolution = continuation(); if (pointerMoved && resolution.context) resolution.context.action.id = "write-copy"; return route.fulfill({ json: { resolution, resolutionId: "fixture-resolution", observedAt: new Date().toISOString(), error: null } }); }
     if (endpoint === "/api/sessions/fixture-session/log") return route.fulfill({ json: { available: true, text: "Implementing the phone review…", size: 31, reset: true, truncated: false } });
     if (endpoint === "/api/projects/garden/go-continue") {
@@ -173,8 +182,10 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
     restored = true;
     // A Session can appear while this workspace is open in another browser.
     // Returning through same-Project navigation must re-read, even if Go is cached.
-    await page.getByRole("complementary", { name: "Context" }).getByRole("link", { name: /Write the welcome copy/ }).click();
+    await crumb(page, "A small garden on the web").click();
+    await subject(page).getByRole("link", { name: /Write the welcome copy/ }).click();
     await expect(page).toHaveURL(`${url}/workspace/projects/moon-garden/plans/first-website/actions/write-copy`);
+    await page.goBack();
     await page.goBack();
     const card = page.getByRole("region", { name: "This Action's Session", exact: true });
     await expect(card.getByRole("link", { name: "View Session", exact: true })).toHaveAttribute("href", "/sessions/fixture-session");
@@ -201,6 +212,8 @@ for (const width of [390, 1280]) test(`workspace Continue gives visible feedback
     await expect(card.getByRole("link", { name: "View Session" })).toBeVisible();
     pointerMoved = true;
     await page.reload();
+    // Go's work has moved on, so this Action's Next move waits to be asked for, and its Session is one tap away.
+    await openNextMove(page);
     await expect(card.getByRole("link", { name: "View Session" })).toBeVisible();
     await expect(card).toContainText("review-phone");
     await page.screenshot({ path: testInfo.outputPath("restored-session.png"), fullPage: true });
@@ -272,49 +285,61 @@ test("workspace renders Go's next move for the selected Project without choosing
     await page.clock.install({ time: new Date("2030-01-01T09:30:00.000Z") });
     await page.setViewportSize({ width: 1440, height: 1000 });
 
-    // Portfolio: Go is never asked without a verified Project.
+    // Portfolio: Go is never asked without a verified Project, so there's no next move to show.
     await page.goto(`${url}/workspace`);
-    await expect(direction(page).getByText("Choose a Project to see Go's next move.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
+    await expect(direction(page).locator(".route-next")).toHaveCount(0);
     expect(goReads).toBe(0);
 
-    // Project: Go's own resolution, its milestone and Plan, and the existing control that starts work.
-    await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
+    // Project: the record's active Plan leads, and Go isn't read until it's asked for.
+    await page.getByRole("link", { name: /Moon garden: Project/ }).click();
+    await expect(subject(page).getByRole("heading", { name: "Recorded active Plan" })).toBeVisible();
+    await expect(direction(page).locator(".route-next summary")).toContainText("Ask Go");
+    expect(goReads).toBe(0);
+
+    // Asking: Go's own resolution, its milestone and Plan, and the existing control that starts work.
+    await openNextMove(page);
     await expect(result(page).getByText("Ready to continue")).toBeVisible();
     await expect(result(page).getByText("Review the page on a phone")).toBeVisible();
     await expect(result(page).getByText("Open the page at phone width and note what breaks")).toBeVisible();
     await expect(result(page).getByText(/^From Go · read at/)).toBeVisible();
+    await expect(direction(page).locator(".route-next summary")).toContainText("Ready to continue");
     await expect(direction(page).getByRole("link", { name: "this Project's page" })).toHaveAttribute("href", "/projects/garden");
-    await expect(page.locator(".workspace-work")).toContainText("Go is working toward");
-    await expect(page.locator(".workspace-work").getByText(/^From Go · read at/)).toBeVisible();
-    await expect(page.locator(".workspace-work").getByRole("link", { name: "first-website" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Go's next move and your Ask ↓" })).toBeHidden();
-    // Context leads with Go's Plan; other active Plans follow; drafts and finished Plans wait behind disclosures.
-    const context = page.getByRole("complementary", { name: "Context" });
-    await expect(context.getByRole("heading", { name: "Go's current Plan" })).toBeVisible();
-    const firstPlan = context.getByRole("link", { name: /^Plan ·/ }).first();
-    await expect(firstPlan).toContainText("first-website");
-    await expect(firstPlan).toContainText("2 open");
-    await expect(context.getByRole("heading", { name: "Also marked active (1)" })).toBeVisible();
-    await expect(context.getByRole("link", { name: /old-greenhouse/ })).toBeVisible();
-    await expect(context.getByRole("link", { name: /later-ideas/ })).toBeHidden();
-    await expect(context.getByRole("link", { name: /fence/ })).toBeHidden();
-    await context.getByText("Not yet active (2)").click();
-    await expect(context.getByRole("link", { name: /later-ideas/ })).toBeVisible();
-    await expect(context.getByRole("link", { name: /night-lights/ })).toBeVisible();
-    await context.getByText("Finished (1)").click();
-    await expect(context.getByRole("link", { name: /fence/ })).toContainText("3 done");
+    await page.getByText("Read the full record").click();
+    const record = page.locator(".route-record-body");
+    await expect(record).toContainText("Go is working toward");
+    await expect(record.getByText(/^From Go · read at/)).toBeVisible();
+    await expect(record).toContainText("first-website");
+    // Go's Plan leads; other active Plans, drafts and finished Plans wait behind disclosures.
+    await expect(subject(page).getByRole("heading", { name: "Go's current Plan" })).toBeVisible();
+    const firstPlan = subject(page).locator(".route-rows .route-row").first();
+    await expect(firstPlan).toContainText("A small garden on the web");
+    await expect(firstPlan).toContainText("0 of 2 done");
+    await expect(subject(page).getByRole("link", { name: /A greenhouse we stopped building/ })).toBeHidden();
+    await subject(page).getByText("Also marked active (1)").click();
+    await expect(subject(page).getByRole("link", { name: /A greenhouse we stopped building/ })).toBeVisible();
+    await expect(subject(page).getByRole("link", { name: /Ideas for later/ })).toBeHidden();
+    await expect(subject(page).getByRole("link", { name: /A fence around the beds/ })).toBeHidden();
+    await subject(page).getByText("Not yet active (2)").click();
+    await expect(subject(page).getByRole("link", { name: /Ideas for later/ })).toBeVisible();
+    await expect(subject(page).getByRole("link", { name: /Lights for evening visits/ })).toBeVisible();
+    await subject(page).getByText("Finished (1)").click();
+    await expect(subject(page).getByRole("link", { name: /A fence around the beds/ })).toContainText("3 of 3 done");
     await page.screenshot({ path: testInfo.outputPath("go-project-desktop.png") });
 
-    // Go's Plan: Context marks Go's current Action; navigation alone never re-asks Go.
-    await page.locator(".workspace-work").getByRole("link", { name: "first-website" }).click();
-    await expect(page.getByRole("link", { name: /Action · open · Go's current Action Review the page on a phone/ })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Action · open Write the welcome copy/ })).toBeVisible();
+    // Go's Plan: the route marks Go's current Action; navigation alone never re-asks Go.
+    await firstPlan.click();
+    await expect(subject(page).locator(".route-stops").getByRole("link", { name: /Go's current Action: Review the page on a phone/ })).toBeVisible();
+    await expect(subject(page).locator(".route-stops").getByRole("link", { name: /Write the welcome copy/ })).toBeVisible();
+    await openNextMove(page);
     await expect(direction(page).getByRole("link", { name: "Show Go's current Action" })).toBeVisible();
 
     // Another Action in Go's Plan: the selection is named as not Go's current work.
-    await page.getByRole("link", { name: /Write the welcome copy/ }).click();
+    await subject(page).getByRole("link", { name: /Write the welcome copy/ }).click();
     await expect(page.getByRole("heading", { name: "Write the welcome copy", exact: true })).toBeVisible();
+    await openNextMove(page);
     await expect(result(page).getByText("Go's current Action in this Plan is")).toBeVisible();
+    await page.getByText("Read the full record").click();
     await expect(page.getByRole("heading", { name: "What Go has for this Action" })).toHaveCount(0);
 
     // Draft keeps its target through navigation, as before.
@@ -327,29 +352,35 @@ test("workspace renders Go's next move for the selected Project without choosing
     await expect(page.getByText("Your unsent draft keeps its original target.")).toBeVisible();
     await page.getByRole("button", { name: "Put down", exact: true }).click();
 
-    // Go's current Action: Work shows what Go has for it, with acceptance behind disclosure.
+    // Go's current Action: the record shows what Go has for it, with acceptance behind disclosure.
+    await openNextMove(page);
     await expect(result(page).getByText("This is Go's current Action.")).toBeVisible();
+    await page.getByText("Read the full record").click();
     await expect(page.getByRole("heading", { name: "What Go has for this Action" })).toBeVisible();
-    await expect(page.locator(".workspace-work")).toContainText("Phone review notes");
-    await expect(page.locator(".workspace-work")).toContainText("Which palette? · answered");
+    await expect(page.locator(".route-record-body")).toContainText("Phone review notes");
+    await expect(page.locator(".route-record-body")).toContainText("Which palette? · answered");
     await expect(page.getByText("The page has no sideways scroll at 390 px")).toBeHidden();
     await page.getByText("Acceptance criteria (2)").click();
     await expect(page.getByText("The page has no sideways scroll at 390 px")).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("go-action-desktop.png"), fullPage: true });
     expect(goReads).toBe(1);
 
-    // No timer reads Go; after five minutes the next navigation reads it once.
+    // No timer reads Go, and neither does moving around. After five minutes, the next time it's asked for reads it once.
     await page.clock.fastForward("06:00");
     expect(goReads).toBe(1);
-    await page.getByRole("link", { name: /Write the welcome copy/ }).click();
-    await expect(page.getByRole("heading", { name: "Write the welcome copy", exact: true })).toBeVisible();
+    await crumb(page, "A small garden on the web").click();
+    await expect(subject(page).locator(".route-stops")).toBeVisible();
+    expect(goReads).toBe(1);
+    await openNextMove(page);
     await expect.poll(() => goReads).toBe(2);
-    await page.getByRole("link", { name: /Go's current Action Review the page on a phone/ }).click();
+    await subject(page).locator(".route-stops").getByRole("link", { name: /Go's current Action: Review the page on a phone/ }).click();
     await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
+    await openNextMove(page);
     expect(goReads).toBe(2);
 
     // A different Plan: Go's work is elsewhere, and selecting it changes nothing.
     await page.goto(`${url}/workspace/projects/moon-garden/plans/later-ideas`);
+    await openNextMove(page);
     await expect(result(page).getByText(/Go's current work is in Plan/)).toBeVisible();
     await expect(direction(page).getByRole("link", { name: "first-website" })).toHaveAttribute("href", "/workspace/projects/moon-garden/plans/first-website/actions/review-phone");
     expect(goReads).toBe(3);
@@ -372,12 +403,19 @@ test("workspace renders Go's next move for the selected Project without choosing
     // A failed read keeps the last good one, labelled everywhere it shows; malformed and non-JSON replies likewise.
     await direction(page).getByRole("link", { name: "first-website" }).click();
     await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: /Go's current Action/ })).toHaveCount(1);
+    await crumb(page, "A small garden on the web").click();
+    const goMarker = subject(page).locator(".route-stops").getByRole("link", { name: /Go's current Action/ });
+    await expect(goMarker).toHaveCount(1);
+    await openNextMove(page);
     goMode = "failed";
     await readAgain(6);
-    // The Context marker is withheld once Go is known to have failed since; Work labels its details.
-    await expect(page.getByRole("link", { name: /Go's current Action/ })).toHaveCount(0);
-    await expect(page.locator(".workspace-work").getByText(/last good read; Go could not be read since/)).toBeVisible();
+    // The route's marker is withheld once Go is known to have failed since; the record labels its details.
+    await expect(goMarker).toHaveCount(0);
+    await subject(page).locator(".route-stops").getByRole("link", { name: /Review the page on a phone/ }).click();
+    await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
+    await openNextMove(page);
+    await page.getByText("Read the full record").click();
+    await expect(page.locator(".route-record-body").getByText(/last good read; Go could not be read since/)).toBeVisible();
     await expect(direction(page).getByRole("alert")).toContainText("Go could not be read: Fixture Go read refused");
     await expect(direction(page).getByRole("alert")).toContainText("What follows is Go's last good read.");
     await expect(result(page).getByText("Not an agent's to take")).toBeVisible();
@@ -391,15 +429,17 @@ test("workspace renders Go's next move for the selected Project without choosing
     await expect(direction(page).getByRole("alert")).toContainText("Go could not be read: the Go context route answered 502.");
     // The Plan list still leads with Go's last good Plan, labelled as such.
     await page.getByRole("navigation", { name: "Selected context" }).getByRole("link", { name: "Moon garden" }).click();
-    await expect(page.getByRole("complementary", { name: "Context" }).getByRole("heading", { name: "Go's current Plan · last good read" })).toBeVisible();
+    await expect(subject(page).getByRole("heading", { name: "Go's current Plan · last good read" })).toBeVisible();
 
     // No good read at all (a reload keeps nothing): nothing is shown in its place.
     goMode = "failed";
     await page.goto(`${url}/workspace/projects/moon-garden`);
+    await openNextMove(page);
     await expect(direction(page).getByRole("alert")).toContainText("Nothing is shown in its place.");
     await expect(result(page).getByText(/^From Go/)).toHaveCount(0);
-    await expect(page.locator(".workspace-work")).not.toContainText("Go is working toward");
-    await expect(page.getByRole("complementary", { name: "Context" }).getByRole("heading", { name: "Recorded active Plan" })).toBeVisible();
+    await page.getByText("Read the full record").click();
+    await expect(page.locator(".route-record-body")).not.toContainText("Go is working toward");
+    await expect(subject(page).getByRole("heading", { name: "Recorded active Plan" })).toBeVisible();
     await expect(page.getByText("Their status says active, but Go is not working on them.")).toHaveCount(0);
 
     // No current Action: said plainly.
@@ -410,12 +450,12 @@ test("workspace renders Go's next move for the selected Project without choosing
     await expect(result(page).getByText("Go found no current Action for this Project.")).toBeVisible();
 
     // Go names a Plan other than the recorded one: Context follows Go, not the record.
-    const context2 = page.getByRole("complementary", { name: "Context" });
+    const context2 = subject(page);
     goMode = "elsewhere";
     await readAgain(goReads + 1);
     await expect(context2.getByRole("heading", { name: "Go's current Plan", exact: true })).toBeVisible();
-    await expect(context2.getByRole("link", { name: /^Plan ·/ }).first()).toContainText("old-greenhouse");
-    await expect(context2.getByRole("heading", { name: "Also marked active (1)" })).toBeVisible();
+    await expect(context2.locator(".route-rows .route-row").first()).toContainText("A greenhouse we stopped building");
+    await context2.getByText("Also marked active (1)").click();
     await expect(context2.getByText("Their status says active, but Go is not working on them.")).toBeVisible();
     // Go names a Plan the list lacks: the recorded Plan leads under its own label, with a note.
     goMode = "missing";
@@ -424,25 +464,21 @@ test("workspace renders Go's next move for the selected Project without choosing
     await expect(context2.getByRole("heading", { name: "Go's current Plan", exact: true })).toHaveCount(0);
     await expect(context2.getByText("Go names Plan new-plan, which this list does not include yet. Refresh to read the list again.")).toBeVisible();
 
-    // Phone: Work, then Direction, then Context, both on screen and in reading order, with no sideways scroll.
+    // Phone: the subject, then Direction, on screen and in reading order, with no sideways scroll.
     goMode = "ready";
     await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website/actions/review-phone`);
+    await openNextMove(page);
     await expect(result(page).getByText("This is Go's current Action.")).toBeVisible();
     const top = async (selector: string) => (await page.locator(selector).boundingBox())!.y;
-    expect(await top(".workspace-work")).toBeLessThan(await top(".workspace-direction"));
-    expect(await top(".workspace-direction")).toBeLessThan(await top(".workspace-context-panel"));
-    expect(await page.evaluate(() => [".workspace-work", ".workspace-direction", ".workspace-context-panel"].map(s => document.querySelector(s)!)
-      .every((el, i, all) => i === 0 || Boolean(all[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)))).toBe(true);
+    expect(await top(".route-subject")).toBeLessThan(await top(".workspace-direction"));
+    expect(await page.evaluate(() => Boolean(document.querySelector(".route-subject")!.compareDocumentPosition(document.querySelector(".workspace-direction")!) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("go-action-phone.png"), fullPage: true });
-    // One tap from the top of Work reaches Go's move and the Ask.
-    await page.getByRole("link", { name: "Go's next move and your Ask ↓" }).click();
-    await expect(page.getByRole("heading", { name: "Next move" })).toBeFocused();
-    await expect(page.getByRole("heading", { name: "Next move" })).toBeInViewport();
 
-    // Keyboard: Read again is next, visibly focused, and keeps focus while Go is read.
+    // Keyboard: Read again is next after Next move, visibly focused, and keeps focus while Go is read.
+    await direction(page).locator(".route-next summary").focus();
     await page.keyboard.press("Tab");
     const again = direction(page).getByRole("button", { name: "Read again" });
     await expect(again).toBeFocused();
@@ -450,9 +486,9 @@ test("workspace renders Go's next move for the selected Project without choosing
     await page.keyboard.press("Enter");
     await expect(again).toBeFocused();
 
-    // Desktop places Context first again without changing reading order.
+    // Desktop places the subject beside Direction without changing reading order.
     await page.setViewportSize({ width: 1440, height: 1000 });
-    expect(await page.locator(".workspace-context-panel").boundingBox().then(b => b!.x)).toBeLessThan(await page.locator(".workspace-work").boundingBox().then(b => b!.x));
+    expect(await page.locator(".route-subject").boundingBox().then(b => b!.x)).toBeLessThan(await page.locator(".workspace-direction").boundingBox().then(b => b!.x));
 
     // The workspace only read: no request it made could change anything.
     expect(mutations).toEqual([]);

@@ -10,7 +10,7 @@ const detail = { project: { id: "garden", slug: "moon-garden", name: "Moon garde
 const NONE = { blocking: 0, yours: 0, failing: 0, others: 0, prs: 0 };
 const ACTION_URL = "/workspace/projects/moon-garden/plans/first-website/actions/review-phone";
 
-type World = { plans: "ready" | "failing" | "slow"; ask: "ok" | "lost" | "refused"; receipt: "missing" | "ready"; posts: Array<Record<string, unknown>>; blocking: number; statusReads: number };
+type World = { plans: "ready" | "failing" | "slow" | "portfolio-failing"; ask: "ok" | "lost" | "refused"; receipt: "missing" | "ready"; posts: Array<Record<string, unknown>>; blocking: number; statusReads: number };
 const relay = (page: Page) => page.locator(".relay");
 const field = (page: Page) => page.getByRole("textbox", { name: "What would you like to do?" });
 const put = (page: Page) => page.getByRole("button", { name: "Put down", exact: true });
@@ -43,11 +43,16 @@ async function serve(page: Page, world: World): Promise<{ url: string; server: T
       return route.fulfill({ json: { capture: { id: "capture-1", requestId: id, originalText: original?.request ?? "Recovered", ingressSource: "dashboard.ask", capturedAt: "2030-01-01", status: "processed", relatedReviewId: null, outcomes: [] }, asks: [], ...(original?.directionTarget ? { direction: { requestId: id, content: original.request, target: original.directionTarget, fingerprint: "a".repeat(64), disposition: "accepted", state: "submitted", lastSupportedState: "submitted", reason: null, evidence: [] } } : {}) } });
     }
     if (endpoint === "/api/plans") {
-      if (world.plans === "failing") return route.fulfill({ status: 503, json: { error: "Fixture read refused" } });
+      if (world.plans === "failing" || world.plans === "portfolio-failing") return route.fulfill({ status: 503, json: { error: "Fixture read refused" } });
       if (world.plans === "slow") await new Promise(resolve => setTimeout(resolve, 2_500));
       return route.fulfill({ json: portfolio });
     }
-    if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: detail });
+    // A Plan's own read names its Project, so a view is only unverified or slow when that read is too.
+    if (endpoint === "/api/plans/moon-garden/first-website") {
+      if (world.plans === "failing") return route.fulfill({ status: 503, json: { error: "Fixture read refused" } });
+      if (world.plans === "slow") await new Promise(resolve => setTimeout(resolve, 2_500));
+      return route.fulfill({ json: detail });
+    }
     if (endpoint === "/api/workspace/status") {
       world.statusReads++;
       const asOf = Date.now();
@@ -118,7 +123,7 @@ for (const size of [{ name: "phone", width: 390, height: 844 }, { name: "keyboar
       await expect(field(page)).toBeInViewport();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await testInfo.attach(`rest-${size.name}`, { body: await page.screenshot(), contentType: "image/png" });
-      await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
+      await page.getByRole("link", { name: /Moon garden: Project/ }).click();
       await expect(page.getByRole("heading", { name: "Moon garden" })).toBeVisible();
 
       // It's on the Feed too, where there's no subject, so it says it's using the whole portfolio.
@@ -296,6 +301,29 @@ test("a receipt link opens Relay with focus inside it, Shift+Tab stays in, and a
     await page.mouse.move(195, 200);
     await page.mouse.wheel(0, 400);
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  } finally { await stop(ctx); }
+});
+
+test("a Plan or Action view verifies itself from its own read, while a Project view still needs the portfolio", async ({ page }) => {
+  test.setTimeout(120_000);
+  const world = newWorld({ plans: "portfolio-failing" });
+  const ctx = await serve(page, world);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const send = () => page.getByRole("button", { name: "Send new Ask", exact: true });
+  try {
+    // Only the portfolio read fails. The Action's own read named its Project, so this view is verified.
+    await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
+    await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
+    await field(page).fill("Keep this thought");
+    await expect(send()).toBeEnabled();
+    await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden");
+
+    // A Project view has only the portfolio read to go on, so it stays refused.
+    await page.goto(`${ctx.url}/workspace/projects/moon-garden#dusk`);
+    await field(page).fill("Keep this thought too");
+    await expect(send()).toBeDisabled();
+    await expect(page.getByText(/couldn't confirm this view/)).toBeVisible();
+    expect(world.posts).toEqual([]);
   } finally { await stop(ctx); }
 });
 
