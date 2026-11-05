@@ -19,7 +19,7 @@ first real proof comes with the next merge that changes the dashboard or `src`, 
 
 **Next, once the operator says go:** item 3 weather rhythm, then 4 modal overlay, 5 routes as the context layer, and 6 one question at a time,
 which needs a Decision before real Decision answers move into Relay. C-077 to C-082 stay `leaning` until the operator approves the revision.
-PR 2027 still carries their decisions, so it waits for them to merge. Earlier, they answered 1A 2A 3A 4A 5B on the proposal and set the
+The operator had PR 2027 merged on 2026-11-05, which doesn't approve the revision. Earlier, they answered 1A 2A 3A 4A 5B on the proposal and set the
 Workspace direction and freeze (S022, S023).
 
 # Objective
@@ -32,13 +32,16 @@ Unattended production stays the first priority, and production stays Off.
 # Verified state
 
 **Merged to main:** PR 2007 (Arcadia Design skill and `arcadia design check`), 2009 (Relay mode), 2010, 2014, 2016
-(`arcadia way lookup`, STOP guidance), 2019, 2020, 2022 (design record and probes).
+(`arcadia way lookup`, STOP guidance), 2019, 2020, 2022 (design record and probes), and
+[2027](https://github.com/pmark/arcadia/pull/2027) (the proposal, investigation, S021 to S031, the layer design and this handoff).
+Reviews of PR 2027 found no blocking finding at `977fc351e`. R2 and R3 raised five blocking findings on the layer design, all fixed, and R4 at
+`29b69ebe7` found none. The review at `b37680630` found none either. That last round was the only
+independent read of everything after `29b69ebe7`, including the phone-test revision. Its findings are on the PR.
 
-**Open, not merged.** Re-read each PR's checks and merge state before relying on them. PR 2027's latest head was pushed at close.
+**Open, not merged.** Re-read each PR's checks and merge state before relying on them.
 
 | PR | Contents | Independent review |
 |---|---|---|
-| [2027](https://github.com/pmark/arcadia/pull/2027) | The proposal, investigation, S021 to S028, the layer design and this handoff | Rounds at `977fc351e` found no blocking finding. R2, R3 and R4 reviewed the layer design and later commits, and R4 at `29b69ebe7` found no blocking finding. Two one-sentence fixes after R4 aren't re-reviewed |
 | [2028](https://github.com/pmark/arcadia/pull/2028) | Three Field Notes drafts | **None, and no fact-check** |
 
 **Not built:** the structured outcome, visible answers, name matching, lookup routes, the menu, the scorecard, and
@@ -57,20 +60,19 @@ any companion.
 
 # Resume location
 
-- **Repository:** `pmark/arcadia`. Main was `e86a869ab` when last fetched.
-- **Proposal branch:** `claude/relay-proposal-20261103`, worktree `~/.claude/worktrees/relay-proposal`.
+- **Repository:** `pmark/arcadia`. These files are on main.
 - **Drafts branch:** `claude/field-notes-drafts-20261103`. Clara's worktree is
   `.claude/worktrees/agent-aea5b03a6340935af`, on a differently named local branch.
 - **Superseded worktrees, safe to retire once their branches are confirmed merged:** `relay-design-record`,
   `relay-design-extract`, `relay-design-speed`, `relay-way-slice`, `relay-critical-path`, `relay-model-bakeoff`,
-  `relay-routing`, `arcadia-design-fill-gaps`.
+  `relay-routing`, `arcadia-design-fill-gaps`, and `relay-proposal` once its follow-up merges (its old branch, `claude/relay-proposal-20261103`,
+  merged through PR 2027).
 - **Running operations:** none known.
 
 # Authority and custody
 
 The operator holds every decision here. Nothing is claimed, and this hands off no custody. Merge rules are the
-usual ones. PR 2027 changes no authority, but it asks for operator decisions, so it waits for the operator. Field
-Notes publishing stays under Decision 0120, and PR 2028 merging isn't approval to publish.
+usual ones. Field Notes publishing stays under Decision 0120, and PR 2028 merging isn't approval to publish.
 
 # Unresolved
 
@@ -104,14 +106,13 @@ otherwise unknown. Safe stopping point: everything is committed and pushed, with
 Follow the layer design's build order, one PR per step, with production work first whenever they compete.
 
 ```text
-Continue the Relay build. Read docs/reports/handoffs/20261103T0000Z-relay-proposal.md on PR 2027's branch and
+Continue the Relay build. Read docs/reports/handoffs/20261103T0000Z-relay-proposal.md and
 docs/design/relay/workspace-layers.md, then check which build step's PR is open and continue from there. Unattended production stays
 first, and production stays Off.
 ```
 
 # Stop condition
 
-The operator has answered the proposal's decisions, PR 2027 has had an independent review with no blocking finding,
-and the first slice has an approved route for "visible answers". That's an operator-directed PR, or an Agent Ask, which
+The first slice has an approved route for "visible answers". That's an operator-directed PR, or an Agent Ask, which
 Arcadia Design allows only once `arcadia design check docs/design/relay/record.yaml --ready` passes. An independent PR
 review doesn't satisfy that gate, because it counts only reviews recorded in the design record.

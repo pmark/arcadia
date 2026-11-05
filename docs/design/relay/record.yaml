@@ -323,7 +323,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: 6ab5bc2910616036f95264120c46d833ca14f2f1729aa34c4efd3f20172b33e9
+    sha256: 44f610b8680982bb03fe0b36fb730a1ac6662f9715f9a4a946fe99dd8f479ef4
   - id: S029
     title: Operator's approval of the layer design
     kind: operator
