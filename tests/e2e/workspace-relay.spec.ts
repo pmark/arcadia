@@ -10,7 +10,7 @@ const detail = { project: { id: "garden", slug: "moon-garden", name: "Moon garde
 const NONE = { blocking: 0, yours: 0, failing: 0, others: 0, prs: 0 };
 const ACTION_URL = "/workspace/projects/moon-garden/plans/first-website/actions/review-phone";
 
-type World = { plans: "ready" | "failing" | "slow" | "portfolio-failing"; ask: "ok" | "lost" | "refused"; receipt: "missing" | "ready"; posts: Array<Record<string, unknown>>; blocking: number; statusReads: number };
+type World = { plans: "ready" | "failing" | "slow" | "portfolio-failing" | "hung"; hung?: Promise<void>; ask: "ok" | "lost" | "refused"; receipt: "missing" | "ready"; posts: Array<Record<string, unknown>>; blocking: number; statusReads: number };
 const relay = (page: Page) => page.locator(".relay");
 const field = (page: Page) => page.getByRole("textbox", { name: "What would you like to do?" });
 const put = (page: Page) => page.getByRole("button", { name: "Put down", exact: true });
@@ -45,12 +45,14 @@ async function serve(page: Page, world: World): Promise<{ url: string; server: T
     if (endpoint === "/api/plans") {
       if (world.plans === "failing" || world.plans === "portfolio-failing") return route.fulfill({ status: 503, json: { error: "Fixture read refused" } });
       if (world.plans === "slow") await new Promise(resolve => setTimeout(resolve, 2_500));
+      if (world.plans === "hung") await world.hung;
       return route.fulfill({ json: portfolio });
     }
     // A Plan's own read names its Project, so a view is only unverified or slow when that read is too.
     if (endpoint === "/api/plans/moon-garden/first-website") {
       if (world.plans === "failing") return route.fulfill({ status: 503, json: { error: "Fixture read refused" } });
       if (world.plans === "slow") await new Promise(resolve => setTimeout(resolve, 2_500));
+      if (world.plans === "hung") await world.hung;
       return route.fulfill({ json: detail });
     }
     if (endpoint === "/api/workspace/status") {
@@ -338,6 +340,7 @@ test("a draft typed before the View has said what it is doesn't land on the whol
       const field = document.querySelector("textarea");
       if (!field || !Object.keys(field).some(key => key.startsWith("__reactProps"))) return;
       clearInterval(typing);
+      (window as unknown as { beatTheView: boolean }).beatTheView = document.querySelector<HTMLElement>(".relay-chip")?.dataset.view === "unknown";
       Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Direct this exact Action");
       field.dispatchEvent(new Event("input", { bubbles: true }));
     }, 0);
@@ -347,6 +350,8 @@ test("a draft typed before the View has said what it is doesn't land on the whol
   try {
     await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
     await expect(field(page)).toHaveValue("Direct this exact Action");
+    // This test only proves anything if the keystroke beat the View.
+    expect(await page.evaluate(() => (window as unknown as { beatTheView: boolean }).beatTheView)).toBe(true);
     await field(page).focus();
     // Once the View verifies, the draft is that View's, so a direction can name it.
     await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden", { timeout: 30_000 });
@@ -356,6 +361,79 @@ test("a draft typed before the View has said what it is doesn't land on the whol
     await expect(relay(page)).toContainText("Records a direction for Moon garden / first-website / Review the page on a phone");
     await expect.poll(() => page.evaluate(() => (JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { target: { projectId?: string } | null }).target?.projectId)).toBe("garden");
     expect(world.posts).toEqual([]);
+  } finally { await stop(ctx); }
+});
+
+test("a read that never lands offers a way out, and only an explicit tap takes it", async ({ page }) => {
+  test.setTimeout(120_000);
+  let release = () => {};
+  const world = newWorld({ plans: "hung", hung: new Promise<void>(resolve => { release = resolve; }) });
+  const ctx = await serve(page, world);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const send = () => page.getByRole("button", { name: "Send new Ask", exact: true });
+  const fallback = page.getByRole("button", { name: "Ask the whole portfolio instead", exact: true });
+  try {
+    await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
+    await field(page).fill("Keep this thought");
+    await expect(relay(page).locator(".relay-chip")).toContainText("Reading this view");
+    await expect(page.getByRole("status").filter({ hasText: "Reading this view" })).toBeVisible();
+    await expect(fallback).toHaveCount(0);
+    await expect(send()).toBeDisabled();
+    // Later, it says so and offers the portfolio. Nothing has gone by itself, and a direction stays refused.
+    await expect(fallback).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("status").filter({ hasText: "taking a while" })).toBeVisible();
+    await expect(send()).toBeDisabled();
+    expect(world.posts).toEqual([]);
+    await fallback.click();
+    await expect(relay(page).locator(".relay-chip")).toContainText("whole portfolio");
+    await expect(page.getByRole("checkbox", { name: "Send as a direction to this context" })).toBeDisabled();
+    await send().click();
+    await expect(page.getByText("Recorded your request.", { exact: true })).toBeVisible();
+    expect(world.posts[0].projectId).toBeUndefined();
+    expect(world.posts[0].directionTarget).toBeUndefined();
+  } finally { release(); await stop(ctx); }
+});
+
+test("only the Feed itself uses the whole portfolio by default, and a new route doesn't borrow the last one's word", async ({ page }) => {
+  test.setTimeout(120_000);
+  const world = newWorld();
+  const ctx = await serve(page, world);
+  await page.setViewportSize({ width: 390, height: 844 });
+  const send = () => page.getByRole("button", { name: "Send new Ask", exact: true });
+  try {
+    // The Feed has no subject, so it sends to the portfolio straight away.
+    await page.goto(`${ctx.url}/workspace/feed#dusk`);
+    await field(page).fill("From the Feed");
+    await expect(relay(page).locator(".relay-chip")).toContainText("whole portfolio");
+    await send().click();
+    await expect(page.getByText("Recorded your request.", { exact: true })).toBeVisible();
+    expect(world.posts[0].projectId).toBeUndefined();
+    world.posts.length = 0;
+
+    // An address below the Feed isn't the Feed, so nothing goes from it.
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`${ctx.url}/workspace/feed/anything#dusk`);
+    await field(page).fill("From an address nobody can verify");
+    await expect(relay(page).locator(".relay-chip")).toHaveText("This view isn't confirmed");
+    await expect(send()).toBeDisabled();
+    expect(world.posts).toEqual([]);
+
+    // From a verified Project to a Plan still reading, the Project's word doesn't carry over.
+    await page.evaluate(() => localStorage.clear());
+    await page.goto(`${ctx.url}/workspace/projects/moon-garden#dusk`);
+    await expect(page.getByRole("heading", { name: "Moon garden" })).toBeVisible();
+    await field(page).focus();
+    await expect(send()).toBeVisible();
+    await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden");
+    await put(page).click();
+    world.plans = "slow";
+    await page.locator("a[href$=\"/plans/first-website\"]").first().click();
+    await expect(page).toHaveURL(/\/plans\/first-website$/);
+    await field(page).fill("About this Plan");
+    await expect(relay(page).locator(".relay-chip")).toContainText("Reading this view");
+    await expect(send()).toBeDisabled();
+    await expect(send()).toBeEnabled({ timeout: 15_000 });
+    await expect.poll(() => page.evaluate(() => (JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { target: { plan?: string } | null }).target?.plan)).toBe("first-website");
   } finally { await stop(ctx); }
 });
 
@@ -375,6 +453,8 @@ test("gates stay: an unverified view, a vanished target and an earlier uncertain
     await expect(send()).toBeDisabled();
     await expect(direction()).toBeDisabled();
     await expect(page.getByText(/couldn't confirm this view/)).toBeVisible();
+    // The chip doesn't name a destination Ask would refuse.
+    await expect(relay(page).locator(".relay-chip")).toHaveText("This view isn't confirmed");
     await testInfo.attach("view-failing", { body: await page.screenshot(), contentType: "image/png" });
     expect(world.posts).toEqual([]);
 
