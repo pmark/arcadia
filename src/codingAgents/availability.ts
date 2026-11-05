@@ -116,6 +116,12 @@ export function claudeUsageWindowAbsent(window: unknown): boolean {
   return record !== null && record.utilization == null && record.resets_at == null;
 }
 
+/** A reported window whose utilization is a finite percentage from 0 to 100. */
+function claudeUsageWindowReadable(window: unknown): window is ClaudeUsageWindow {
+  const utilization = objectValue(window)?.utilization;
+  return typeof utilization === "number" && Number.isFinite(utilization) && utilization >= 0 && utilization <= 100;
+}
+
 /** One provider's last-read account telemetry, as cached and as injected by a caller that read it live. */
 export interface ProviderTelemetry {
   availability: CodingAgentAvailability;
@@ -271,12 +277,19 @@ export async function refreshClaudeCodeUsageTelemetry(
     return;
   }
 
+  // Ruling A: the weekly window is required and every reported window must be readable. Otherwise this is a failed
+  // refresh: keep the cached figures and record a non-ok state, never a stale figure behind a fresh stamp.
+  const fiveHourAbsent = claudeUsageWindowAbsent(response.body.five_hour);
+  if (!claudeUsageWindowReadable(response.body.seven_day) || (!fiveHourAbsent && !claudeUsageWindowReadable(response.body.five_hour))) {
+    recordClaudeRefreshState(snapshotPath, "not_reported", now, response.status);
+    return;
+  }
+
   const current = readJsonRecord(snapshotPath) ?? existing ?? {};
   const currentRateLimits = objectValue(current.rate_limits);
   // A fresh reading with no 5-hour window means the plan has none (ruling A): drop any cached one instead of keeping
   // a stale 5-hour figure that admission would otherwise keep reading.
   const { five_hour: _staleFiveHour, ...keptRateLimits } = currentRateLimits ?? {};
-  const fiveHourAbsent = claudeUsageWindowAbsent(response.body.five_hour);
   writeClaudeSnapshot(snapshotPath, {
     ...current,
     arcadia_captured_at: now.toISOString(),

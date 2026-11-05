@@ -231,6 +231,18 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     if (refusal) expect(reason).toMatch(refusal);
     else expect(reason).toBeNull();
   });
+  it.each<[string, Record<string, unknown>, unknown[]]>([
+    ["five_hour absent", { seven_day: week }, [{ label: "7d", usedPercentage: 40, resetsAt: "2026-10-30T23:00:00.000Z" }]],
+    ["five_hour idle at 0% with resets_at null", { five_hour: { utilization: 0, resets_at: null }, seven_day: week },
+      [{ label: "5h", usedPercentage: 0, resetsAt: null }, { label: "7d", usedPercentage: 40, resetsAt: "2026-10-30T23:00:00.000Z" }]],
+    ["five_hour at 0% with a past reset", { five_hour: { utilization: 0, resets_at: past }, seven_day: week },
+      [{ label: "5h", usedPercentage: 0, resetsAt: null }, { label: "7d", usedPercentage: 40, resetsAt: "2026-10-30T23:00:00.000Z" }]]
+  ])("ruling A receipt windows: %s", async (_label, body, windows) => {
+    const f = fixture();
+    f.deps.requestClaude = vi.fn(async () => ({ status: 200, body }));
+    expect(await f.run()).toMatchObject({ success: true, windows });
+    expect(((await f.run()) as { windows: unknown[] }).windows).toHaveLength(windows.length);
+  });
   it("fences late credentials after timeout and retains consumed evidence", async () => {
     vi.useFakeTimers();
     const f = fixture();
