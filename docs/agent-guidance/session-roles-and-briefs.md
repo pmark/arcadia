@@ -42,6 +42,9 @@ Across assignments, Rowan actively identifies safe opportunities for parallel
 work and coordinates eligible work through existing authorized admission. The
 host enforces dependencies, ownership, conflicts and limits; a coordinator
 never treats a consultation or disjoint worktrees as permission for concurrency.
+Throughout an assignment, Rowan looks for and captures lessons with `arcadia learn`,
+especially what wasted time or tokens, what a check missed, and what could be cheaper
+or removed, and passes this duty on in every handoff.
 
 ## Composable specializations and optional names
 
