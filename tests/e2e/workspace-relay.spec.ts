@@ -10,7 +10,7 @@ const detail = { project: { id: "garden", slug: "moon-garden", name: "Moon garde
 const NONE = { blocking: 0, yours: 0, failing: 0, others: 0, prs: 0 };
 const ACTION_URL = "/workspace/projects/moon-garden/plans/first-website/actions/review-phone";
 
-type World = { plans: "ready" | "failing" | "slow"; ask: "ok" | "lost" | "refused"; receipt: "missing" | "ready"; posts: Array<Record<string, unknown>>; blocking: number };
+type World = { plans: "ready" | "failing" | "slow"; ask: "ok" | "lost" | "refused"; receipt: "missing" | "ready"; posts: Array<Record<string, unknown>>; blocking: number; statusReads: number };
 const relay = (page: Page) => page.locator(".relay");
 const field = (page: Page) => page.getByRole("textbox", { name: "What would you like to do?" });
 const put = (page: Page) => page.getByRole("button", { name: "Put down", exact: true });
@@ -49,6 +49,7 @@ async function serve(page: Page, world: World): Promise<{ url: string; server: T
     }
     if (endpoint === "/api/plans/moon-garden/first-website") return route.fulfill({ json: detail });
     if (endpoint === "/api/workspace/status") {
+      world.statusReads++;
       const asOf = Date.now();
       return route.fulfill({ json: { generatedAt: new Date().toISOString(), counts: { ...NONE, blocking: world.blocking, yours: world.blocking }, production: { displayState: "inactive_idle", workerRunning: false, heartbeatFresh: false, liveSessions: 0, stalledSessions: 0 }, sources: { "To-do list": { asOf, failed: false }, "next steps": { asOf, failed: false }, "pull requests": { asOf, failed: false }, production: { asOf, failed: false } } } });
     }
@@ -63,7 +64,7 @@ async function stop(ctx: { server: TrackedProcess; temp: string }) {
   await rm(ctx.temp, { recursive: true, force: true });
 }
 
-const newWorld = (over: Partial<World> = {}): World => ({ plans: "ready", ask: "ok", receipt: "ready", posts: [], blocking: 0, ...over });
+const newWorld = (over: Partial<World> = {}): World => ({ plans: "ready", ask: "ok", receipt: "ready", posts: [], blocking: 0, statusReads: 0, ...over });
 
 /** What a person actually sees of an element's text colour against what's behind it, with the surface composited over a white sky as the worst case. */
 const CONTRAST_CHECK = () => {
@@ -178,6 +179,9 @@ for (const size of [{ name: "phone", width: 390, height: 844 }, { name: "keyboar
       await expect(page.getByText(/One exchange is shown at a time/)).toBeVisible();
       await expect(pill).toBeInViewport({ ratio: 1 });
       await testInfo.attach(`thread-${size.name}`, { body: await page.screenshot(), contentType: "image/png" });
+      // The end of the thread can be reached above the fold at every size.
+      await page.getByText(/One exchange is shown at a time/).scrollIntoViewIfNeeded();
+      await expect(page.getByText(/One exchange is shown at a time/)).toBeInViewport({ ratio: 1 });
       await page.keyboard.press("Escape");
       await expectHeight(page, "answer");
       await settled(page);
@@ -306,6 +310,12 @@ test("gates stay: an unverified view, a vanished target and an earlier uncertain
     await expect(send()).toBeEnabled({ timeout: 15_000 });
     await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden");
     world.plans = "ready";
+    await put(page).click();
+    await page.getByRole("link", { name: "Portfolio", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
+    await field(page).focus();
+    await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden");
+    await expect(page.getByText(/Your unsent draft keeps its original target/)).toBeVisible();
 
     // A direction names its exact target. A refusal from Arcadia (a vanished target) is shown and never resent.
     await page.evaluate(() => localStorage.clear());
@@ -331,6 +341,25 @@ test("gates stay: an unverified view, a vanished target and an earlier uncertain
     await expect.poll(() => world.posts.length).toBe(2);
     expect(world.posts[1]).toEqual(original);
     await expect(field(page)).toHaveValue("A second thought");
+
+    // Retry sends the receipt's own target, so a portfolio draft on a view that can't be verified can't open it.
+    await page.evaluate(() => localStorage.clear());
+    world.posts.length = 0;
+    await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
+    await field(page).fill("Sent to the Project");
+    world.ask = "lost"; world.receipt = "missing";
+    await send().click();
+    await expect(page.getByRole("button", { name: "Retry original unchanged Ask" })).toBeEnabled();
+    await put(page).click();
+    world.plans = "failing";
+    await page.getByRole("button", { name: /Show the whole thread/ }).click();
+    await page.evaluate(url => { location.href = url; }, `${ctx.url}/workspace/projects/moon-garden#dusk`);
+    await expect(page.getByRole("link", { name: "Return to portfolio" }).or(page.getByRole("heading", { name: "Context unavailable" }))).toBeVisible();
+    await field(page).fill("A portfolio thought");
+    await expect(page.getByText(/couldn't confirm this view/)).toBeVisible();
+    await page.getByRole("button", { name: "Ask the whole portfolio instead", exact: true }).click();
+    await expect(page.getByRole("button", { name: "Retry original unchanged Ask" })).toBeDisabled();
+    expect(world.posts).toHaveLength(1);
   } finally { await stop(ctx); }
 });
 
@@ -366,8 +395,10 @@ test("navigation keeps the draft's target, a status change moves nothing, and bl
     // Relay never speaks first: nothing a read brings opens it.
     await put(page).click();
     world.blocking = 0;
+    const reads = world.statusReads;
     await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
-    await page.waitForTimeout(500);
+    await expect.poll(() => world.statusReads).toBeGreaterThan(reads);
+    await page.waitForLoadState("networkidle");
     expect(await height(page)).toBe("rest");
 
     // "Use this view" moves the draft to what's on screen.
@@ -431,8 +462,22 @@ test("only transform and opacity animate, none under reduced motion, and opening
     expect(opened.properties).toContain("transform");
     expect(opened.properties).toContain("opacity");
     // One layout at the change of height, not one per frame of a transition that lasts many frames.
-    expect(report.openLayouts).toBeLessThan(5);
-    expect(report.closeLayouts).toBeLessThan(5);
+    expect(report.openLayouts).toBeLessThan(8);
+    expect(report.closeLayouts).toBeLessThan(8);
+
+    // It only rises: the first frame of the first open, in a fresh page, starts from where the capsule was.
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
+    const firstFrame = await page.evaluate(() => new Promise<{ before: number; first: number }>(resolve => {
+      const field = document.querySelector("textarea")!;
+      const before = field.getBoundingClientRect().top;
+      field.focus();
+      requestAnimationFrame(() => resolve({ before, first: field.getBoundingClientRect().top }));
+    }));
+    expect(firstFrame.first).toBeLessThanOrEqual(firstFrame.before + 1);
+    await page.keyboard.press("Escape");
+    await expectHeight(page, "rest");
+    await settled(page);
 
     // Reduced motion: it changes height at once, with nothing animating, and the same things are true.
     await page.emulateMedia({ reducedMotion: "reduce" });

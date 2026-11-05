@@ -159,6 +159,11 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
     // Initialization only reads the server; a reload never calls send.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // A draft typed while the View was reading belongs to that View once it's verified, so navigation can't retarget it.
+  useEffect(() => {
+    const draft = current.current;
+    if (view?.available && draft.draft && draft.target === null) update({ ...draft, target: view.target });
+  }, [view, saved.draft, saved.target]);
   return <AskContext.Provider value={{ saved, update, busy, warning, trail, readError, missing, inspect, send, view: view ?? noView, publishView }}>{children}</AskContext.Provider>;
 }
 
@@ -195,6 +200,7 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
   const draftTarget = saved.target ?? target;
   // A direction is an explicit choice of one target, so the choice ends if the target changes.
   const draftKey = JSON.stringify(draftTarget);
+  if (directionFor !== null && directionFor !== draftKey) setDirectionFor(null);
   const directionMode = directionFor === draftKey;
   const changedScope = draftTarget.context !== target.context || draftTarget.projectId !== target.projectId;
   // Nothing is sent about a View that can't be verified. A draft explicitly on the whole portfolio doesn't depend on that View.
@@ -245,7 +251,7 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
         {trail?.direction ? <DirectionCard view={trail.direction} /> : e.mode === "direction" && e.phase === "uncertain" ? <section aria-label="Direction receipt"><h3>Direction · unknown</h3><p>The submission outcome is unknown. Refresh reads the original receipt; nothing is resent automatically.</p><p>Evidence: {e.id} · workspace.submission · browser transport observation</p></section> : null}
         <details><summary>Receipt details</summary><p>Request: <code>{e.id}</code></p><a href={receiptHref!}>Receipt link (read only)</a></details><button type="button" disabled={busy} onClick={() => void inspect(e.id)}>Refresh receipt</button>
         {readError && <p role="alert">Receipt read failed: {readError} Any evidence below is from the last successful read. {e.phase === "acknowledged" ? "Your submission receipt is retained." : "No automatic resubmission was made."}</p>}
-        {retryable && <button type="button" disabled={busy || !sendable} onClick={() => void send(e)}>Retry original unchanged Ask</button>}
+        {retryable && <button type="button" disabled={busy || !available} onClick={() => void send(e)}>Retry original unchanged Ask</button>}
         {e.phase === "uncertain" && !busy && <button type="button" onClick={() => {
           update({ ...saved, exchange: null, history: [e, ...saved.history].slice(0, 5) });
           const url = new URL(window.location.href); url.searchParams.delete("receipt"); window.history.replaceState(null, "", url);

@@ -31,8 +31,9 @@
 }
 
 /*
- * Anchored to the bottom so a phone's collapsing toolbar carries the capsule natively. At rest its size uses the small
- * viewport height, which doesn't change as that toolbar moves, so scrolling never starts a transition.
+ * Anchored to the bottom so a phone's collapsing toolbar carries the capsule natively. The box is always the small
+ * viewport's height, and only moves: no change of height re-lays it out, the strip's measured size never shifts it, and
+ * scrolling never starts a transition. The tail is how far an open sheet's box runs past what's visible.
  */
 .relay {
   --head: 50px;
@@ -40,16 +41,17 @@
   --gap: max(10px, env(safe-area-inset-bottom, 0px));
   --open-h: calc(var(--relay-vvh, 100dvh) - var(--relay-strip-now));
   --lift: max(0px, min(calc(var(--open-h) * .2), calc(var(--open-h) - 300px)));
+  --tail-thread: calc(100svh - var(--relay-vvh, 100dvh) + var(--relay-strip-now));
   position: fixed; z-index: 15; left: 0; right: 0; bottom: 0;
-  height: calc(100svh - var(--relay-strip-now));
+  height: 100svh;
   pointer-events: none; outline: none; color: #f5f2ed;
-  transform: translate3d(0, calc(100svh - var(--relay-strip-now) - var(--head) - var(--capsule) - var(--gap) + var(--relay-pull, 0px)), 0);
+  transform: translate3d(0, calc(100svh - var(--head) - var(--capsule) - var(--gap) + var(--relay-pull, 0px)), 0);
   transition: transform var(--relay-time) var(--relay-ease);
   will-change: transform;
 }
-.relay[data-height="answer"], .relay[data-height="thread"] { height: var(--open-h); pointer-events: auto; }
-.relay[data-height="answer"] { transform: translate3d(0, calc(var(--lift) - var(--relay-kb, 0px) + var(--relay-pull, 0px)), 0); }
-.relay[data-height="thread"] { transform: translate3d(0, calc(0px - var(--relay-kb, 0px) + var(--relay-pull, 0px)), 0); }
+.relay[data-height="answer"], .relay[data-height="thread"] { pointer-events: auto; }
+.relay[data-height="answer"] { transform: translate3d(0, calc(var(--tail-thread) + var(--lift) - var(--relay-kb, 0px) + var(--relay-pull, 0px)), 0); }
+.relay[data-height="thread"] { transform: translate3d(0, calc(var(--tail-thread) - var(--relay-kb, 0px) + var(--relay-pull, 0px)), 0); }
 .relay[data-pulling] { transition: none; user-select: none; }
 
 /* The surface reaches past the bottom, so a move or a pull never shows a gap under the sheet. */
@@ -60,7 +62,9 @@
 }
 .relay:not([data-height="rest"]) .relay-surface { opacity: 1; }
 
-.relay-body { position: relative; height: 100%; display: flex; flex-direction: column; min-height: 0; }
+/* The contents stop where the sheet stops being visible, so scrolling and focus never land below the fold. */
+.relay-body { position: relative; height: calc(100% - var(--tail-thread) - var(--lift)); display: flex; flex-direction: column; min-height: 0; }
+.relay[data-height="thread"] .relay-body { height: calc(100% - var(--tail-thread)); }
 .relay-head { height: var(--head); flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px 2px 16px; position: relative; touch-action: none; opacity: 0; transition: opacity var(--relay-time) ease; }
 .relay:not([data-height="rest"]) .relay-head { opacity: 1; }
 .relay-grip { position: absolute; left: 50%; top: 5px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: rgb(236 226 211 / .45); }
@@ -89,10 +93,8 @@
 .workspace-shell .relay-why { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
 .workspace-ask.relay-body .relay-why button { display: block; margin-top: 6px; }
 
-/* At Answer height the sheet runs past the bottom by its lift, so the end of the scroll gets that much room. */
 .relay-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 16px calc(16px + env(safe-area-inset-bottom, 0px)); opacity: 0; transition: opacity var(--relay-time) ease; }
 .relay:not([data-height="rest"]) .relay-scroll { opacity: 1; }
-.relay[data-height="answer"] .relay-scroll { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px) + var(--lift)); }
 .workspace-ask.relay-body .workspace-ask-receipt { margin-top: 8px; padding-top: 10px; }
 .workspace-ask.relay-body .workspace-ask-receipt > button { margin: 4px 8px 4px 0; }
 .workspace-ask.relay-body .workspace-history { margin-top: 12px; padding: 12px 0; }
