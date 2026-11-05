@@ -122,6 +122,8 @@
 
 /* Direction: Go's next move, one line until it's asked for or belongs to this subject. */
 .route-direction.workspace-panel { padding: 4px 18px; border-radius: 20px; }
+/* Once the composer lives in the Relay overlay, the portfolio has nothing in this panel. */
+.route-direction.workspace-panel:empty { display: none; }
 .route-next > summary { color: var(--route-ink); }
 .route-next-state { color: var(--route-soft); }
 .route-next-state.ready { color: var(--route-tone-arrived); }

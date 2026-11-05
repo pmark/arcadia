@@ -163,6 +163,7 @@ test("routes: a tap moves at once, the shape comes first, and the agents' text w
     const stops = page.locator(".route-stops");
     await expect(stops.locator(".mark-here")).toContainText("Current Action");
     await expect(stops.locator(".mark-blocked")).toContainText("An Action the record says is blocked");
+    await expect(page.getByText("Names here are plain summaries or shortened text. The record governs.")).toBeVisible();
     await expect(stops.getByRole("link", { name: /The first Action that already landed/ })).toBeHidden();
     await stops.getByText("3 done").click();
     await expect(stops.getByRole("link", { name: /The first Action that already landed/ })).toBeVisible();
@@ -198,7 +199,7 @@ test("routes: a tap moves at once, the shape comes first, and the agents' text w
     const next = page.locator(".route-next");
     await expect(next.locator("summary")).toContainText("Ask Go");
     await next.locator("summary").click();
-    await expect(next.locator("summary")).toContainText("Ready to continue");
+    await expect(next.locator("summary")).toContainText(/Ready to continue · read at/);
     await expect(next.getByRole("button", { name: "Read again" })).toBeVisible();
     await expect(next.getByRole("button", { name: /^(Preview )?Continue/ })).toBeVisible();
     expect(readsOf("go-context")).toHaveLength(1);

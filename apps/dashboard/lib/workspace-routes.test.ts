@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PlanProgressData, PlanRow, PlanSummariesResponse } from "./plans-types";
-import { AHEAD_NAMED, actionWords, crumbName, humanizeSlug, narrowPlanSummaries, plainText, planRoute, planWords, portfolioRoutes, readingLine, routeTap, shapeFromCounts, shortText, statusWord, stopShape, workspaceParts } from "./workspace-routes";
+import { AHEAD_NAMED, actionWords, crumbName, humanizeSlug, namesNote, narrowPlanSummaries, plainText, planRoute, planWords, portfolioRoutes, readingLine, routeTap, shapeFromCounts, shortText, statusWord, stopShape, workspaceParts } from "./workspace-routes";
 
 /** Real titles from Arcadia's own active Plan. */
 const LONG = "A QA verdict whose only failure is the host-written operator QA plan uses no repair rounds, stops blocking, and files an Issue; and the plan renderer inspects what it writes.";
@@ -55,6 +55,10 @@ describe("shortText", () => {
 describe("plainText", () => {
   it("removes Markdown marks and keeps the words", () => {
     expect(plainText("Fix **the** `fetch`  in [the route](https://x/y)\n\n## Next line")).toBe("Fix the fetch in the route Next line");
+    expect(plainText("An *emphasized* word, and *another*.")).toBe("An emphasized word, and another.");
+  });
+  it("keeps an asterisk that's part of the text", () => {
+    expect(plainText("Multiply 5*3 and 2*4, or glob src/*.ts")).toBe("Multiply 5*3 and 2*4, or glob src/*.ts");
   });
 });
 
@@ -114,7 +118,7 @@ describe("shapeFromCounts", () => {
   });
   it("counts deferred without calling it ahead", () => {
     const shape = shapeFromCounts({ open: 0, in_progress: 0, done: 1, blocked: 0, deferred: 2 } as PlanRow["actionCounts"]);
-    expect(shape).toMatchObject({ total: 3, tone: "arrived", label: "1 of 3 done · 2 deferred" });
+    expect(shape).toMatchObject({ total: 3, tone: "open", position: 1, label: "1 of 3 done · 2 deferred" });
   });
   it("has no route without counts or stops", () => {
     expect(shapeFromCounts(null)).toBeNull();
@@ -197,6 +201,17 @@ describe("planRoute", () => {
   it("arrives when everything is done, and is empty with no Actions", () => {
     expect(planRoute(progress([action("a", "done")]), "garden", null).shape).toMatchObject({ tone: "arrived", position: 0 });
     expect(planRoute(progress([]), "garden", null).shape).toMatchObject({ tone: "empty", position: null, label: "No Actions recorded" });
+  });
+
+  it("doesn't call a route with deferred stops arrived", () => {
+    expect(planRoute(progress([action("a", "done"), action("b", "deferred")]), "garden", null).shape).toMatchObject({ tone: "open", position: 1 });
+  });
+
+  it("says once when any name in a list is a reading aid", () => {
+    expect(namesNote(["record", "record"])).toBeNull();
+    expect(namesNote(["record", "shortened"])).toContain("The record governs.");
+    expect(namesNote(["summary"])).toContain("The record governs.");
+    expect(planRoute(progress([action("plant", "open", LONG)]), "garden", summaries(true, "fresh")).stops[0].source).toBe("summary");
   });
 
   it("uses a fresh Action summary for the stop's name and keeps the record's title", () => {

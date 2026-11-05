@@ -2,7 +2,7 @@
 
 import type { AllPlansResponse, PlanRow, PlanSummariesResponse } from "../../../lib/plans-types";
 import { groupPlans } from "../../../lib/workspace-plans";
-import { planWords, portfolioRoutes, shapeFromCounts, statusWord, stopShape, type PlanRoute, type ProjectRoute, type RouteStop, type RouteWords } from "../../../lib/workspace-routes";
+import { namesNote, planWords, portfolioRoutes, shapeFromCounts, statusWord, stopShape, type PlanRoute, type ProjectRoute, type RouteStop, type RouteWords } from "../../../lib/workspace-routes";
 import { workspaceHref } from "../../../lib/workspace-scope";
 import { RouteLine, RouteLink } from "./route-parts";
 
@@ -40,6 +40,7 @@ function PlanRow({ project, plan, summaries }: { project: string; plan: PlanRow;
 export function ProjectRoutes({ project, plans, goPlan, goNamedNone, stale, summaries }: { project: string; plans: PlanRow[]; goPlan: string | null; goNamedNone: boolean; stale: boolean; summaries: PlanSummariesResponse | null }) {
   const groups = groupPlans(plans, goPlan);
   const list = (rows: PlanRow[]) => <ul className="route-rows">{rows.map(p => <PlanRow key={p.slug} project={project} plan={p} summaries={summaries} />)}</ul>;
+  const note = namesNote(plans.map(p => planWords(p, p.slug, summaries).source));
   return <>
     {groups.missingGoPlan && <p className="route-note">Go{stale ? "'s last good read" : ""} names Plan {groups.missingGoPlan}, which this list does not include yet. Refresh to read the list again.</p>}
     {groups.current ? <><h2 className="route-group">{groups.source === "go" ? `Go's current Plan${stale ? " · last good read" : ""}` : "Recorded active Plan"}</h2>{list([groups.current])}</>
@@ -47,6 +48,7 @@ export function ProjectRoutes({ project, plans, goPlan, goNamedNone, stale, summ
     {groups.otherActive.length > 0 && <details className="route-more"><summary>{groups.current ? "Also marked active" : "Marked active"} ({groups.otherActive.length})</summary>{groups.source === "go" && <p className="route-note">Their status says active, but Go is not working on them.</p>}{list(groups.otherActive)}</details>}
     {groups.upcoming.length > 0 && <details className="route-more"><summary>Not yet active ({groups.upcoming.length})</summary>{list(groups.upcoming)}</details>}
     {groups.finished.length > 0 && <details className="route-more"><summary>Finished ({groups.finished.length})</summary>{list(groups.finished)}</details>}
+    {note && <p className="route-note">{note}</p>}
   </>;
 }
 
@@ -92,6 +94,7 @@ export function PlanRouteView({ project, plan, route, words }: { project: string
       <CollapsedStops scope={scope} stops={route.later} word="more ahead" mark="ahead" />
       <CollapsedStops scope={scope} stops={route.aside} word="deferred" mark="deferred" />
     </ol>}
+    {namesNote(route.stops.map(s => s.source)) && <p className="route-source">{namesNote(route.stops.map(s => s.source))}</p>}
   </>;
 }
 

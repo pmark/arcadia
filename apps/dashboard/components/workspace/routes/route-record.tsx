@@ -47,7 +47,11 @@ function JourneyRead({ url, children }: { url: string; children: (journey: unkno
   const read = useRead<unknown>(url, 0);
   if (read.kind === "loading") return <p className="route-reading" role="status"><span className="workspace-activity-spinner" aria-hidden="true" />Reading the Journey...</p>;
   if (read.kind === "error") return <p className="route-note" role="status">Couldn&apos;t read the Journey: {read.message}</p>;
-  return <>{children(read.data)}</>;
+  return <>
+    {read.freshness === "reading" && <p className="route-reading" role="status"><span className="workspace-activity-spinner" aria-hidden="true" />Reading the Journey again...</p>}
+    {read.freshness === "last-good" && <p className="route-note" role="status">Couldn&apos;t read the Journey again, so this is the last good read.</p>}
+    {children(read.data)}
+  </>;
 }
 
 function JourneyLeg({ phase, headline, yourMove }: { phase: keyof typeof PHASE_LABEL; headline: string; yourMove?: string | null }) {

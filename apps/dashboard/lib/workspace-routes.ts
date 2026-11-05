@@ -17,7 +17,10 @@ export function plainText(text: string | null | undefined): string {
   if (!text) return "";
   return text
     .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/[`*]+/g, "")
+    .replace(/`+/g, "")
+    // Only paired emphasis marks: an asterisk that's part of the text, as in 5*3, stays.
+    .replace(/\*\*(?=\S)(.+?)(?<=\S)\*\*/g, "$1")
+    .replace(/(^|[\s(])\*(?=\S)(.+?)(?<=\S)\*(?=$|[\s).,;:!?])/gm, "$1$2")
     .replace(/^#+\s+/gm, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -92,7 +95,7 @@ export function shapeFromCounts(counts: PlanRow["actionCounts"]): RouteShape | n
   if (!counts) return null;
   const deferred = (counts as { deferred?: number }).deferred ?? 0;
   const total = counts.done + counts.open + counts.in_progress + counts.blocked + deferred;
-  const tone: RouteTone = total === 0 ? "empty" : counts.blocked ? "blocked" : counts.in_progress ? "moving" : counts.open ? "open" : "arrived";
+  const tone: RouteTone = total === 0 ? "empty" : counts.blocked ? "blocked" : counts.in_progress ? "moving" : counts.open || deferred ? "open" : "arrived";
   const marks: StopMark[] = [
     ...Array<StopMark>(counts.done).fill("done"),
     ...Array<StopMark>(counts.in_progress).fill("here"),
@@ -104,13 +107,15 @@ export function shapeFromCounts(counts: PlanRow["actionCounts"]): RouteShape | n
   return { done: counts.done, total, tone, label, marks, position: rover(marks) };
 }
 
-/** The rover sits at the marked stop, else the first unfinished one, else the end of the route. */
+/** The rover sits at the marked stop, else the first unfinished one, else the first deferred, else the end of the route. */
 function rover(marks: StopMark[]): number | null {
   if (!marks.length) return null;
   const here = marks.indexOf("here");
   if (here >= 0) return here;
   const next = marks.findIndex(m => m === "blocked" || m === "ahead");
-  return next >= 0 ? next : marks.length - 1;
+  if (next >= 0) return next;
+  const deferred = marks.indexOf("deferred");
+  return deferred >= 0 ? deferred : marks.length - 1;
 }
 
 export interface ProjectRoute {
@@ -183,6 +188,11 @@ export function actionWords(title: string, id: string, plan: string | null | und
   return { name, sentence: null, source: name === recorded ? "record" : "shortened" };
 }
 
+/** A reading aid is never mistaken for the record: said once for a whole list, when any of its names is one. */
+export function namesNote(sources: Array<RouteWords["source"]>): string | null {
+  return sources.some(source => source !== "record") ? "Names here are plain summaries or shortened text. The record governs." : null;
+}
+
 export interface RouteStop {
   id: string;
   key: string;
@@ -190,6 +200,7 @@ export interface RouteStop {
   name: string;
   /** Exactly as recorded, for depth. */
   title: string;
+  source: RouteWords["source"];
   status: string;
   mark: StopMark;
   /** Why this stop leads, in the record's own terms: PROJECT.md's current Action, or the first ready one. */
@@ -223,9 +234,10 @@ export function planRoute(progress: PlanProgressData, plan: string | null | unde
   const stops: RouteStop[] = progress.actions.map(action => {
     const id = workspaceActionId(action.key);
     const isHere = progress.current?.key === action.key;
+    const words = actionWords(action.title, id, plan, summaries, STOP_MAX);
     return {
       id, key: action.key, title: action.title, status: action.status,
-      name: actionWords(action.title, id, plan, summaries, STOP_MAX).name,
+      name: words.name, source: words.source,
       mark: isHere ? "here" : markOf(action.status),
       role: !isHere ? null : progress.current?.basis === "project_current_action" ? "current" : "next-ready",
       go: id === goActionId
@@ -240,7 +252,7 @@ export function planRoute(progress: PlanProgressData, plan: string | null | unde
   const inProgress = stops.filter(s => s.status === "in_progress").length;
   const deferred = stops.filter(s => s.mark === "deferred").length;
   const total = stops.length;
-  const tone: RouteTone = total === 0 ? "empty" : blocked ? "blocked" : inProgress ? "moving" : open.length || here ? "open" : "arrived";
+  const tone: RouteTone = total === 0 ? "empty" : blocked ? "blocked" : inProgress ? "moving" : open.length || here || deferred ? "open" : "arrived";
   const shape: RouteShape = { done, total, tone, label: countLabel(done, total, [[inProgress, "in progress"], [blocked, "blocked"], [deferred, "deferred"]]), marks, position: rover(marks) };
   return {
     stops, shape, here,

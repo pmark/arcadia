@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useRead } from "./use-read";
 import { WorkspaceAsk } from "./workspace-ask";
-import { GO_STATE, WorkspaceNextMove, useGoRead, type GoRead } from "./workspace-next-move";
+import { GO_STATE, WorkspaceNextMove, goReadTime, useGoRead, type GoRead } from "./workspace-next-move";
 import { RouteBones, RouteLink, RouteReading } from "./routes/route-parts";
 import { ActionRecord, PlanRecord, ProjectRecord, RouteRecord } from "./routes/route-record";
 import { ActionRouteView, PlanRouteView, PortfolioRoutes, ProjectRoutes } from "./routes/route-views";
@@ -16,13 +16,13 @@ import { goRelation } from "../../lib/workspace-go";
 import { actionWords, crumbName, humanizeSlug, planRoute, planWords, shortText, statusWord, workspaceParts, type RouteLevel, type RouteWords } from "../../lib/workspace-routes";
 import { parseWorkspaceScope, workspaceActionId, workspaceHref } from "../../lib/workspace-scope";
 
-/** Go's next move in one line, so the view can leave its read until it's asked for. */
-function nextMoveLine(go: GoRead): { state: string; word: string; title: string | null } {
+/** Go's next move in one line, so the view can leave its read until it's asked for. An earlier read says when it was. */
+function nextMoveLine(go: GoRead): { state: string; word: string } {
   const move = go.last?.move;
-  if (go.status === "error") return { state: "failed", word: go.last ? "Couldn't read Go again" : "Couldn't read Go", title: null };
-  if (go.status === "loading") return { state: "reading", word: go.last ? "Asking Go again..." : "Asking Go...", title: null };
-  if (!move) return { state: "unread", word: "Ask Go", title: null };
-  return { state: move.kind, word: GO_STATE[move.kind], title: move.kind === "none" ? null : shortText(move.action.title, 48) };
+  if (go.status === "error") return { state: "failed", word: go.last ? "Couldn't read Go again" : "Couldn't read Go" };
+  if (go.status === "loading") return { state: "reading", word: go.last ? "Asking Go again..." : "Asking Go..." };
+  if (!move || !go.last) return { state: "unread", word: "Ask Go" };
+  return { state: move.kind, word: `${GO_STATE[move.kind]} · read at ${goReadTime(go.last.at)}` };
 }
 
 const SOURCE_NOTE: Partial<Record<RouteWords["source"], string>> = { summary: "Plain-language summary. The record governs.", shortened: "Shortened from the record." };
