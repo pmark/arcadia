@@ -113,9 +113,9 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await page.goto(`${url}/workspace#dusk`);
     await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
     await page.locator(".workspace-sky").evaluate(canvas => canvas.setAttribute("data-persistent-proof", "original"));
-    await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
-    await page.getByRole("link", { name: /Plan · active · active first-website/ }).click();
-    await page.getByRole("link", { name: /Action · open Review the page on a phone/ }).click();
+    await page.getByRole("link", { name: /Moon garden: Project/ }).click();
+    await page.getByRole("link", { name: /A small garden on the web: Plan/ }).click();
+    await page.getByRole("link", { name: /Review the page on a phone/ }).click();
     await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
     await expect(page).toHaveURL(/\/workspace\/projects\/moon-garden\/plans\/first-website\/actions\/review-phone$/);
     await expect(page.locator(".workspace-sky")).toHaveAttribute("data-persistent-proof", "original");
@@ -124,7 +124,7 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await expect(page.getByText(/One exchange is shown at a time/)).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.goBack();
-    await expect(page.getByRole("heading", { name: "first-website", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "A small garden on the web", exact: true })).toBeVisible();
     await page.goForward();
     await expect(page.getByRole("heading", { name: "Review the page on a phone", exact: true })).toBeVisible();
     await page.reload();
@@ -153,7 +153,7 @@ test("workspace navigation preserves its sky, scope, and Ask receipt recovery", 
     await page.getByRole("button", { name: "Send new Ask", exact: true }).click();
     await expect.poll(() => posts.length).toBe(1);
     await expect(page.getByText(/Sending — durable capture/)).toBeVisible();
-    await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
+    await page.getByRole("link", { name: /Moon garden: Project/ }).click();
     await expect(page.getByRole("button", { name: "Sending…", exact: true })).toBeDisabled();
     releasePost?.();
     await expect(page.getByText("Recorded your garden request.", { exact: true })).toBeVisible();

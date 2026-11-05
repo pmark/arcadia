@@ -50,8 +50,9 @@ test("workspace shows plain-language summaries, labels stale ones and falls back
     }
     return route.abort();
   });
-  const context = () => page.getByRole("complementary", { name: "Context" });
-  const work = () => page.locator(".workspace-work");
+  const subject = () => page.locator(".route-subject");
+  const record = () => page.locator(".route-record-body");
+  const readRecord = () => page.getByText("Read the full record").click();
   try {
     await waitForHttp(`${url}/workspace`, server);
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -59,63 +60,71 @@ test("workspace shows plain-language summaries, labels stale ones and falls back
     await expect(page.getByRole("heading", { name: "Your work, in view" })).toBeVisible();
     expect(summaryReads).toBe(0);
 
-    // Project: a summarized Plan reads as its plain title and purpose; an unsummarized one keeps its record.
+    // Project: a summarized Plan reads as its plain title; an unsummarized one keeps its record.
     await page.goto(`${url}/workspace/projects/moon-garden`);
-    const current = context().getByRole("link", { name: /A garden anyone can visit online/ });
-    await expect(current).toContainText("Give the garden a small website so neighbours can find it.");
-    await expect(current).toContainText("first-website");
-    await expect(current).not.toContainText("summary may be out of date");
-    await context().getByText(/^Not yet active/).click();
-    await expect(context().getByRole("link", { name: /later-ideas/ })).toContainText("Ideas for later");
+    const current = subject().getByRole("link", { name: /A garden anyone can visit online/ });
+    await expect(current).toBeVisible();
+    await subject().getByText(/^Not yet active/).click();
+    await expect(subject().getByRole("link", { name: /Ideas for later/ })).toBeVisible();
 
-    // Plan: why it exists, what it serves, done when, the recorded milestone, and the summary's own label.
+    // Plan: its plain name and purpose, labelled as a reading aid. Named stops read as their fresh titles.
     await current.click();
     await expect(page.getByRole("heading", { name: "A garden anyone can visit online", level: 1 })).toBeVisible();
-    await expect(work()).toContainText("Why this Plan exists");
-    await expect(work()).toContainText("The site is live and readable on a phone.");
-    await expect(work()).toContainText("Recorded milestone");
-    await expect(work()).toContainText("Inference: the copy may wait for photos.");
-    await expect(work().getByText("Plain-language summary. The record governs.")).toBeVisible();
-    // Context Actions: the summarized one reads as its title and why; the other keeps its recorded title.
-    await expect(context().getByRole("link", { name: /Check the site on a phone/ })).toContainText("Most visitors will arrive on a phone");
-    await expect(context().getByRole("link", { name: /Write the welcome copy/ })).toBeVisible();
+    await expect(subject()).toContainText("Give the garden a small website so neighbours can find it.");
+    await expect(subject().getByText("Plain-language summary. The record governs.")).toBeVisible();
+    await expect(subject().getByRole("link", { name: /Check the site on a phone/ })).toBeVisible();
+    await expect(subject().getByRole("link", { name: /Write the welcome copy/ })).toBeVisible();
+    // The record: why it exists, what it serves, done when, the recorded milestone, and the summary's own label.
+    await expect(subject()).not.toContainText("The site is live and readable on a phone.");
+    await readRecord();
+    await expect(record()).toContainText("Why this Plan exists");
+    await expect(record()).toContainText("The site is live and readable on a phone.");
+    await expect(record()).toContainText("Recorded milestone");
+    await expect(record()).toContainText("Inference: the copy may wait for photos.");
+    await expect(record().getByText("Plain-language summary. The record governs.")).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath("summaries-plan-desktop.png"), fullPage: true });
 
-    // Action: why it exists and done when, with the recorded title kept behind disclosure.
-    await context().getByRole("link", { name: /Check the site on a phone/ }).click();
+    // Action: one sentence from its summary, with why, done when and the recorded title behind the record.
+    await subject().locator(".route-stops").getByRole("link", { name: /Check the site on a phone/ }).click();
     await expect(page.getByRole("heading", { name: "Check the site on a phone", level: 1 })).toBeVisible();
-    await expect(work()).toContainText("Why it exists");
-    await expect(work()).toContainText("Every page reads without sideways scrolling at 390 px.");
-    await work().getByText("Recorded title").click();
-    await expect(work()).toContainText("Review the page on a phone. Recommended role: implementer, standard tier.");
+    await expect(subject()).toContainText("Most visitors will arrive on a phone");
+    await readRecord();
+    await expect(record()).toContainText("Why it exists");
+    await expect(record()).toContainText("Every page reads without sideways scrolling at 390 px.");
+    await expect(record()).toContainText("Review the page on a phone. Recommended role: implementer, standard tier.");
 
-    // An Action without a summary shows its record and no summary block.
-    await context().getByRole("link", { name: /Write the welcome copy/ }).click();
+    // An Action without a summary shows its record and no summary label.
+    await page.goBack();
+    await subject().locator(".route-stops").getByRole("link", { name: /Write the welcome copy/ }).click();
     await expect(page.getByRole("heading", { name: "Write the welcome copy", level: 1 })).toBeVisible();
-    await expect(work().getByText(/Plain-language summary/)).toHaveCount(0);
+    await expect(subject().getByText(/Plain-language summary/)).toHaveCount(0);
 
-    // Stale: the summary is still shown, labelled as written before the record changed.
+    // Stale: a stale summary names nothing by default, and waits in the record, labelled as written before the record changed.
     mode = "stale";
     await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website/actions/review-phone`);
-    await expect(work().getByText("Plain-language summary, written before this record last changed. The record governs.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: /^Review the page on a phone/, level: 1 })).toBeVisible();
+    await readRecord();
+    await expect(record().getByText("Plain-language summary, written before this record last changed. The record governs.")).toBeVisible();
     await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website`);
-    await expect(work().getByText("Plain-language summary, written before this record last changed. The record governs.")).toBeVisible();
+    await expect(subject().getByRole("heading", { name: "A small garden on the web", level: 1 })).toBeVisible();
+    await readRecord();
+    await expect(record().getByText("Plain-language summary, written before this record last changed. The record governs.")).toBeVisible();
     await page.goto(`${url}/workspace/projects/moon-garden`);
-    await expect(context().getByRole("link", { name: /A garden anyone can visit online/ })).toContainText("summary may be out of date");
+    await expect(subject().getByRole("link", { name: /A small garden on the web/ })).toBeVisible();
+    await expect(subject().getByRole("link", { name: /A garden anyone can visit online/ })).toHaveCount(0);
 
     // Failed read: every view falls back to the record, without an error page.
     mode = "failed";
     await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website`);
-    await expect(page.getByRole("heading", { name: "first-website", level: 1 })).toBeVisible();
-    await expect(work()).toContainText("A small garden on the web");
-    await expect(work().getByText(/Plain-language summary/)).toHaveCount(0);
-    await expect(context().getByRole("link", { name: /Review the page on a phone/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "A small garden on the web", level: 1 })).toBeVisible();
+    await expect(subject().getByText(/Plain-language summary/)).toHaveCount(0);
+    await expect(subject().getByRole("link", { name: /Review the page on a phone/ })).toBeVisible();
 
     // Phone: no sideways scroll with summaries present.
     mode = "fresh";
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${url}/workspace/projects/moon-garden/plans/first-website`);
-    await expect(work()).toContainText("Why this Plan exists");
+    await expect(subject().getByText("Plain-language summary. The record governs.")).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("summaries-plan-phone.png"), fullPage: true });
 
