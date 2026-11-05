@@ -58,17 +58,20 @@ const PRIMARY_NAV = [
  * the default view itself uses. Deliberately a rough canvas for now, not a
  * finished IA — easy to add/reorder sections here later.
  */
-export function Sidebar() {
+export function Sidebar({ deferOverview = false }: { deferOverview?: boolean } = {}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [overview, setOverview] = useState<MissionControlOverview | null>(null);
   const [mounted, setMounted] = useState(false);
+  // That overview is hundreds of KB. A page that must stay light reads it only when the menu is opened.
+  const wantsOverview = !deferOverview || open;
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
+    if (!wantsOverview) return;
     fetch("/api/mission-control", { cache: "no-store" })
       .then((res) => res.json())
       .then((body) => {
@@ -80,7 +83,7 @@ export function Sidebar() {
         // Sidebar's contextual sections are a bonus, not critical — a
         // failed fetch just means Urgent/Recent stay empty, no error UI.
       });
-  }, []);
+  }, [wantsOverview]);
 
   useEffect(() => {
     setOpen(false);

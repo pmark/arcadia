@@ -440,7 +440,7 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
       const result = spawnSync("claude", launch, { cwd: root, env: bare, encoding: "utf8", input });
       expect(result.status, result.stderr).toBe(0);
       const events = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(events[0]).toEqual({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [] });
+      expect(events[0]).toEqual({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [], apiKeySource: "none" });
       return events[1] as { type: string; is_error: boolean; structured_output: { verdict: string; summary: string } };
     };
     const first = review(`## Exact-Head Code Review\n## Candidate\n${JSON.stringify({ repository: "fixture/repo", headSha: "a".repeat(40) })}\n## Pull-request body`);
@@ -730,6 +730,8 @@ describe("production replay past launch (--executor, --reviewers)", () => {
     const patch = run(["api", "--method", "GET", `repos/acme/widgets/compare/${base}...${head}`, "-H", "Accept: application/vnd.github.patch"]);
     expect(patch.status).toBe(0);
     expect(patch.stdout).toContain(`From ${head}`);
+    const commitObject = run(["api", "--method", "GET", `repos/acme/widgets/commits/${head}`, "--jq", "{files: [.files[] | {filename, previous_filename, sha}]}"]);
+    expect(JSON.parse(commitObject.stdout).files).toEqual([{ filename: "b.txt", previous_filename: null, sha: expect.stringMatching(/^[0-9a-f]{40}$/) }]);
     expect(run(["pr", "edit", url, "--body", "B2"]).status).toBe(0);
     expect(run(["pr", "ready", url]).status).toBe(0);
     expect(JSON.parse(run(["pr", "view", url, "--json", "isDraft,body"]).stdout)).toEqual({ isDraft: false, body: "B2" });

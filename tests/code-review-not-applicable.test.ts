@@ -205,6 +205,8 @@ function review(input: {
   role?: PrReviewRole;
   /** The PR commit ids `gh pr view --json commits` reports; defaults to the patch's boundaries. */
   commits?: string[] | "unreadable";
+  /** How GitHub answers a read of a commit object; defaults to what the patch's entries for it show. */
+  commitObjects?: "unreadable" | "too-long";
   /** The PR evidence `gh pr view` reports; defaults to the first live rehearsal's. */
   evidence?: Record<string, unknown>;
 }) {
@@ -227,7 +229,7 @@ function review(input: {
   const pullRequest = input.files
     ? { ...evidence, files: input.files.map((file) => ({ path: file, additions: 1, deletions: 0, changeType: "MODIFIED" })) }
     : evidence;
-  const calls = { prompt: "", schema: "", commitReads: 0 };
+  const calls = { prompt: "", schema: "", commitReads: 0, objectReads: 0 };
   const dependencies: QaPrReviewDependencies = {
     now: () => new Date("2026-10-04T18:00:00.000Z"),
     selectReviewer: () => reviewer(),
@@ -239,6 +241,12 @@ function review(input: {
         return ok(`${JSON.stringify({ commits: (input.commits ?? boundaries(patch)).map((oid) => ({ oid })) })}\n`);
       }
       if (command === "gh" && args[1] === "view") return ok(`${JSON.stringify(pullRequest)}\n`);
+      const commitObject = command === "gh" && args[0] === "api" ? args.map((arg) => /\/commits\/([0-9a-f]{40})$/.exec(arg)?.[1]).find(Boolean) : undefined;
+      if (commitObject) {
+        calls.objectReads += 1;
+        if (input.commitObjects === "unreadable") return { status: 1, stdout: "", stderr: "HTTP 502", error: null };
+        return ok(`${JSON.stringify({ files: input.commitObjects === "too-long" ? Array.from({ length: 300 }, (_, index) => ({ filename: `f${index}`, previous_filename: null, sha: "0".repeat(40) })) : objectFilesOf(patch, commitObject) })}\n`);
+      }
       if (command === "gh" && args[0] === "api") return ok(patch);
       if (command === "/bin/zsh") return ok("host-home-readable\nhost-repository-readable\nhost-network-reachable\n");
       if (command === "codex" && args[0] === "sandbox") return ok("sandbox-evidence-readable\nsandbox-home-denied\nsandbox-repository-denied\nsandbox-network-denied\n");
@@ -255,6 +263,17 @@ function review(input: {
   return { result: run(), calls, run };
 }
 
+/** What GitHub's commit read reports for one commit of a patch free of forged entries. */
+function objectFilesOf(patch: string, oid: string) {
+  const section = patch.split(/^(?=From [0-9a-f]{40} Mon Sep 17 00:00:00 2001$)/m).find((part) => part.startsWith(`From ${oid} `)) ?? "";
+  return section.split(/^(?=diff --git )/m).slice(1).map((entry) => {
+    const [, previous, filename] = /^diff --git a\/(\S+) b\/(\S+)$/m.exec(entry) ?? [];
+    const [, oldBlob, newBlob] = /^index ([0-9a-f]+)\.\.([0-9a-f]+)/m.exec(entry) ?? [];
+    const deleted = /^deleted file mode/m.test(entry);
+    return { filename, previous_filename: previous === filename ? null : previous, sha: deleted ? oldBlob : newBlob };
+  });
+}
+
 function refusal(result: ReturnType<typeof review>["result"]): string {
   return result.data.findings.find((finding) => finding.title.startsWith("Refused not-applicable claim"))?.evidence ?? "";
 }
@@ -269,8 +288,8 @@ describe("the live rehearsal's captured code review", () => {
     expect(real.result.data.reviewerUnavailable).toBeNull();
     expect(real.result.data.checks.some((check) => check.name === "Not-applicable claims")).toBe(false);
     expect(real.result.data.decision.status).toBe("deferred");
-    // No claim, no extra GitHub read.
-    expect(real.calls.commitReads).toBe(0);
+    // One read per review, claim or not: the governed-record check needs it too.
+    expect(real.calls.commitReads).toBe(1);
 
     const answered = review({ verdict: notApplicableFromReal() });
     expect(answered.calls.commitReads).toBe(1);
@@ -288,7 +307,27 @@ describe("the live rehearsal's captured code review", () => {
     ]) expect(gate?.evidence).toContain(`${governed} (governed-record)`);
   });
 
-  it("tells the code reviewer what not-applicable and not-checked mean and how to judge governed records, and leaves QA's prompt and schema unchanged", () => {
+  it("reads each commit's Git object for the governed-record check, once per commit, and verifies nothing when it cannot", () => {
+    const commitCount = boundaries(REAL_PATCH).length;
+    for (const role of ["qa", "code-review"] as const) {
+      const read = review({ verdict: REAL_VERDICT, role });
+      expect(read.calls.objectReads, role).toBe(commitCount);
+      expect(read.calls.prompt, role).toContain("It matched every commit's diff entries to the files that commit's Git object changes");
+      expect(read.calls.prompt, role).not.toContain("Nothing below is verified");
+    }
+    for (const commitObjects of ["unreadable", "too-long"] as const) {
+      const closed = review({ verdict: REAL_VERDICT, commitObjects }).calls.prompt;
+      expect(closed, commitObjects).toContain("Nothing below is verified");
+      expect(closed, commitObjects).toContain("the commits' Git objects could not be read");
+      expect(closed, commitObjects).not.toMatch(/^- Verified/m);
+    }
+    // An unreadable commit list needs no object read, and neither does a patch with no governed record.
+    expect(review({ verdict: REAL_VERDICT, commits: "unreadable" }).calls.objectReads).toBe(0);
+    const prose = formatPatch([{ message: "Change", diff: MARKER_DIFF }]);
+    expect(review({ verdict: REAL_VERDICT, patch: prose, files: ["MARKER.md"] }).calls.objectReads).toBe(0);
+  });
+
+  it("tells the code reviewer what not-applicable and not-checked mean and how to judge governed records, and keeps QA's status vocabulary and schema", () => {
     const codeReview = review({ verdict: notApplicableFromReal() });
     const prompt = codeReview.calls.prompt;
     expect(prompt).toContain("`not-applicable` means the change cannot affect that criterion at all");
@@ -318,7 +357,8 @@ describe("the live rehearsal's captured code review", () => {
     expect(qa.result.data.verdict).toBe("pass");
     expect(qa.calls.prompt).toContain("Report each as pass, fail, or not-checked with concrete evidence. Absence of evidence is never Pass.");
     expect(qa.calls.prompt).not.toContain("not-applicable");
-    expect(qa.calls.prompt).not.toContain("Governed records");
+    // QA gets the governed-record facts, never the status vocabulary (the line above).
+    expect(qa.calls.prompt).toContain("Governed records");
     expect(JSON.parse(qa.calls.schema).properties.checks.items.properties.status.enum).toEqual(["pass", "fail", "not-checked"]);
 
     // QA may not mark an acceptance criterion not-applicable: that is no valid structured verdict.

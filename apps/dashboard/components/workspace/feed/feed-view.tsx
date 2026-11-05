@@ -6,14 +6,10 @@ import { useApprovals } from "../../../hooks/use-approvals";
 import { useNextSteps } from "../../../hooks/use-next-steps";
 import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
 import { JOURNEY_FIXTURE } from "../../../lib/journey-fixture";
-import { fleet, fleetPhrase, loadScreen, saveScreen, urgentRovers, type JourneyScreen, type Rover } from "../../../lib/journey-fleet";
-import type { JourneyPhase } from "../../../lib/journey-types";
+import { fleet, fleetPhrase, loadScreen, PHASE_LABEL, saveScreen, urgentRovers, type JourneyScreen, type Rover } from "../../../lib/journey-fleet";
 import { buildFeed, feedSections, type FeedItem } from "../../../lib/workspace-feed";
 import "./feed.css";
 
-const PHASE_LABEL: Record<JourneyPhase, string> = {
-  parked: "Parked", waiting: "Waiting", launching: "Launching", driving: "Driving", repairing: "Repairing", "in-review": "In review", blocked: "Blocked", arrived: "Arrived"
-};
 const RING = 2 * Math.PI * 20;
 const FLEET: JourneyScreen = { kind: "fleet" };
 

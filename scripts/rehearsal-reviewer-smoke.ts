@@ -53,7 +53,7 @@ import { getWorkspacePaths } from "../src/workspace/paths.js";
  * app-server probe the availability check runs; the real host sandbox
  * preflight (a `curl` of api.github.com and `codex sandbox`).
  *
- * STUBS: `gh` (only `pr view --json <fields>`, `pr view --json commits` and the
+ * STUBS: `gh` (only `pr view --json <fields>`, `pr view --json commits`, a commit object read and the
  * compare patch are served, every other call is refused and fails the run) and
  * `git remote get-url` (answered with the fixture's GitHub name). The only
  * host commands that run for real are the zsh baseline probe, `<codex> sandbox`
@@ -121,6 +121,8 @@ export interface SmokeCandidate {
   pullRequest: Record<string, unknown> & { url: string; headRefOid: string; baseRefOid: string };
   patch: string;
   commitOids: string[];
+  /** What each commit's Git object changes, as GitHub's commit read reports it. */
+  commitObjects: Record<string, Array<{ filename: string; previous_filename: string | null; sha: string }>>;
   validationCommands: string[];
   assertions: SmokeAssertion[];
   before: LiveSnapshot;
@@ -517,10 +519,15 @@ export function buildSmokeCandidate(options: SmokeOptions): SmokeCandidate {
   const patch = git(repo, ["format-patch", "--no-signature", "--stdout", `${baseRevision}..${headCommit}`]);
   writeFileSync(path.join(out, "candidate.patch"), patch, "utf8");
   const commitOids = git(repo, ["rev-list", "--reverse", `${baseRevision}..${headCommit}`]).trim().split("\n").filter(Boolean);
+  const commitObjects = Object.fromEntries(commitOids.map((oid) => [oid, git(repo, ["diff-tree", "-r", "-M", "--no-commit-id", "--raw", "--no-abbrev", oid]).split("\n").filter(Boolean).map((line) => {
+    const [meta, ...paths] = line.split("\t");
+    const [, , oldBlob, newBlob, status] = meta.split(" ");
+    return { filename: paths[paths.length - 1], previous_filename: paths.length > 1 ? paths[0] : null, sha: status === "D" ? oldBlob : newBlob };
+  })]));
 
   return {
     mode, out, fixture, repo, repository, actionId: action.id, requestId, baseRevision, workCommit, headCommit, headTree, evidenceSource,
-    pullRequest, patch, commitOids, validationCommands: commands, assertions, before
+    pullRequest, patch, commitOids, commitObjects, validationCommands: commands, assertions, before
   };
 }
 
@@ -528,7 +535,8 @@ type RunCommand = NonNullable<QaPrReviewDependencies["runCommand"]>;
 
 /**
  * The only `gh` calls the reviewer path may make: `pr view --json <fields>`,
- * `pr view --json commits` and the compare patch. Anything else is refused and
+ * `pr view --json commits`, the compare patch and a read of one of the
+ * candidate's commit objects. Anything else is refused and
  * logged. `git remote get-url` is answered with the fixture's GitHub name.
  * The only host commands that run are the zsh baseline probe, `<codex> sandbox`
  * and `<codex> exec`; in dry mode `<codex> exec` is intercepted instead. Every
@@ -562,6 +570,9 @@ export function makeStubbedRunner(
       else if (input.args[0] === "pr" && input.args[1] === "view") { kind = "pr-view"; result = { status: 0, stdout: JSON.stringify(pullRequest), stderr: "", error: null }; }
       else if (input.args[0] === "api" && input.args.includes("GET") && String(input.args[3]).includes(`/compare/${pullRequest.baseRefOid}...${pullRequest.headRefOid}`)) {
         kind = "compare"; result = { status: 0, stdout: patch, stderr: "", error: null };
+      } else if (input.args[0] === "api" && input.args.includes("GET") && candidate.commitObjects[/\/commits\/([0-9a-f]{40})$/.exec(String(input.args[3]))?.[1] ?? ""]) {
+        const files = candidate.commitObjects[String(input.args[3]).slice(-40)];
+        kind = "commit-object"; result = { status: 0, stdout: `${JSON.stringify({ files })}\n`, stderr: "", error: null };
       } else {
         kind = "refused"; result = refuse(`gh call ${input.args.join(" ")}`);
       }

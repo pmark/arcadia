@@ -323,7 +323,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: 1ec52c88632ed4ba4eae2a5cc50982c2c9ee1caf955d76c28a334f4899a288b6
+    sha256: c0edc212c6c4a1796dbfe671ba0b31ddb68a0c614bfc7b17ebf8a38a6410207c
   - id: S029
     title: Operator's approval of the layer design
     kind: operator
@@ -358,7 +358,7 @@ sources:
     added: 2026-11-05
     retention: repo
     path: sources/S033-overnight-progress.md
-    sha256: 983c44909fdbaee6559b080309b50ea3a3f2de92496d77451077b9d4219bd9ce
+    sha256: 850244ab7fd4f6e164e16703b6f0efb10f1ed68b28ab6d4ed877f8109cbde714
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent
@@ -3153,7 +3153,7 @@ concepts:
     serves:
       - REQ-015
       - REQ-016
-    reason: Built in PR 2107 because the operator asked for overnight progress (S033), and not yet merged or judged on a phone. Awaits the operator approving the revision.
+    reason: Built in PR 2107 because the operator asked for overnight progress (S033), and not yet judged on a phone. Awaits the operator approving the revision.
   - id: C-079
     title: "Weather with rhythm"
     kind: interface
@@ -3203,7 +3203,7 @@ concepts:
     position: leaning
     serves:
       - REQ-017
-    reason: Built in PR 2101 because the operator asked for overnight progress (S033), and not yet merged or judged on a phone. Awaits the operator approving the revision.
+    reason: Built in PR 2101 because the operator asked for overnight progress (S033), and not yet judged on a phone. Awaits the operator approving the revision.
   - id: C-082
     title: "A light status read"
     kind: interface

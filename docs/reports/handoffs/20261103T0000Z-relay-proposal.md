@@ -17,19 +17,16 @@ while script loads.
 first real proof comes with the next merge that changes the dashboard or `src`, then a restart: `apps/dashboard/.live/build.log` should say
 "Switching to the new build." The operator tested item 2 on an iPhone and reports it's "a lot better" (S032).
 
-**Built overnight and waiting for the operator (S032, S033), none tried on a real phone:**
+**Built overnight (S032, S033). The operator said to merge when green, and none has been tried on a real phone:**
 
-PR 2095 goes before this handoff's own PR, whose branch contains it. PR 2107 should go before PR 2101, whose branch contains it. PR 2109 is independent of them all.
-
-| Suggested order | What it is |
+| PR | What it is |
 |---|---|
 | [PR 2095](https://github.com/pmark/arcadia/pull/2095) | Item 3, weather rhythm. [Probe weather-1](../../design/relay/probes/weather-1.md) has the measurements |
 | [PR 2107](https://github.com/pmark/arcadia/pull/2107) | Item 5, routes as the context layer |
-| [PR 2101](https://github.com/pmark/arcadia/pull/2101) | Item 4, the modal overlay. Its branch contains PR 2107, so it goes second |
+| [PR 2101](https://github.com/pmark/arcadia/pull/2101) | Item 4, the modal overlay. Armed to merge when its CI is green, so check that it landed |
 | [PR 2109](https://github.com/pmark/arcadia/pull/2109) | A lighter Decision page, with answers still on `/todo` |
-| This handoff's own PR | Merges last |
 
-After those, a restart serves them through a background build. The main checkout holds local pointer commits, so sync it first (see "Friction" below). Other agents may be
+These are live only after a restart, which serves them through a background build. The main checkout holds local pointer commits, so sync it first (see "Friction" below). Other agents may be
 working on production, so check first. The design's "Built overnight" section lists the choices that are the operator's to overrule.
 
 **Next:** item 6, one question at a time, needs a Decision before real Decision answers move into Relay. C-077 to C-082 stay `leaning` until the operator approves the revision.

@@ -1,6 +1,6 @@
 # Relay: the three Workspace layers
 
-Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). The "Revised after the phone test" section below is proposed, not approved. Items 1 and 2 of its build order have merged. Items 3, 4 and 5 are built and reviewed in open PRs, waiting for the operator ([S032](sources/S032-start-weather-rhythm.md), [S033](sources/S033-overnight-progress.md)). Each build step is its
+Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). The "Revised after the phone test" section below is proposed, not approved. Items 1 and 2 of its build order have merged. Items 3, 4 and 5 are built and reviewed, and the operator said to merge them ([S032](sources/S032-start-weather-rhythm.md), [S033](sources/S033-overnight-progress.md)). Each build step is its
 own PR under the usual gates. Unattended production stays first, and production stays Off. Built through [Arcadia Design](../../../.agents/skills/arcadia-design/SKILL.md)
 as part of [the Relay brief](brief.md). Recorded as source S025.
 
@@ -94,7 +94,7 @@ Two of these are mine rather than the operator's: staying calm on reopening, and
 
 ### Built overnight, not yet judged by the operator
 
-These are in open PRs, and none has been tried on a real phone. Each choice below was made without the operator, so each is theirs to overrule.
+None of these has been tried on a real phone. Each choice below was made without the operator, so each is theirs to overrule.
 
 **Item 4, the overlay ([PR 2101](https://github.com/pmark/arcadia/pull/2101)).**
 - **Send gates stay, against build step 2.** That step says ordinary Ask loses its availability gates. The brief said to keep every gate, so this part isn't built. Typing never waits, though: the field stays enabled on a loading or unverifiable view, and Send stays refused.

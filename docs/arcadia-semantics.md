@@ -255,6 +255,13 @@ clears when the failure resolves. Each new alert posts once to the configured
 notification channel, and `arcadia production status` lists open Red Alerts
 before every other section.
 
+Each alert episode also gets an evidence bundle, a directory beside the
+evidence file that a replay fixture can be cut from: the verdict, its report and
+saved prompt for a review stop, the worker log tail, and for a stalled Session a
+process tree plus `lsof` and `sample` of any child older than 5 seconds. Capture
+only reads, is scrubbed of secret shapes, is bounded in time and size, runs
+outside any database transaction, and writes down what it could not capture.
+
 Detection makes no model call. An optional, workspace-flagged diagnosis
 (`redAlertDiagnosis.enabled`, off by default) runs at most once per alert
 episode, within a declared token budget, through the Intelligence service only:

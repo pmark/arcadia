@@ -57,6 +57,11 @@ export function goMove(c: ProjectContinuationResponse): GoMove {
   return { kind: "not-agent", plan, milestone, action, responsibility: a.responsibility, authorization: c.context.authorization };
 }
 
+/** The Workspace renders no alerts from Go, and they were 340 KB of a 345 KB answer. Go's resolution identity doesn't include them. */
+export function withoutOperatorAlerts<T extends object>(resolution: T): T & { operatorAlerts: [] } {
+  return { ...resolution, operatorAlerts: [] };
+}
+
 /** Where the selected record sits relative to Go's current work, so a selection is never mistaken for it. */
 export type GoRelation = "project" | "plan" | "here" | "same-plan" | "other-plan";
 export function goRelation(move: GoMove, scope: WorkspaceScope): GoRelation {

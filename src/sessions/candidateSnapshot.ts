@@ -1,10 +1,10 @@
 import { isolatedGitEnvironment } from "../git/isolatedGitEnvironment.js";
-import { boundedExec as bounded, preservationProcessLimits, preservationTimeout, PRESERVATION_GIT_TIMEOUT_MS } from "./preservationStages.js";
+import { boundedExec as bounded, preservationProcessLimits, preservationTimeout } from "./preservationStages.js";
 import { spawnSync } from "node:child_process";
 import { closeSync, constants, mkdirSync, mkdtempSync, openSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { ArcadiaError, validationError } from "../cli/errors.js";
+import { ArcadiaError, preservationGitTimeout, validationError } from "../cli/errors.js";
 import { GO_REQUEST_FILE } from "./goRequestProtocol.js";
 
 // This transport file is never candidate content. Capture also honors Git ignore
@@ -84,20 +84,31 @@ function indexAgreesWithBaseline(root: string, baselineSymlinks: ReadonlyMap<str
   return agree;
 }
 
-/** Run the anchored privileged reader and translate any failure (a timeout
- * aside) into the same refusal every capture failure already reports; never
- * include stdout, which carries file bytes on a successful capture. */
-function privilegedRead<T>(script: string, root: string, input: unknown, label: string): T {
-  try {
-    return JSON.parse(bounded("/usr/bin/python3", ["-I", "-c", script, root], {
-      input: JSON.stringify(input), encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: ["pipe", "pipe", "pipe"]
-    }, { displayArgs: ["-I", "-c", label, root] }).toString()) as T;
-  } catch (error) {
-    if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
-    const stderr = (error as { stderr?: Buffer | string }).stderr;
-    throw validationError("Candidate capture refused: regular candidate files only, no symlink/path escapes, at most 64 MiB total; verify /usr/bin/python3 is available.",
-      { captureDiagnostic: stderr ? String(stderr).slice(-4000) : "Capture returned invalid output." });
-  }
+/** Run the anchored privileged reader on regular-file stdin, which has no writer
+ * to wait for and so no withheld EOF (#1414, #2084). A reader that was stopped,
+ * by its bound or by a signal, stays typed as retryable: that says nothing about
+ * the candidate's files. Only a reader that finished, or produced more than the
+ * capture limit, refuses. Never include stdout, which carries file bytes on a
+ * successful capture. */
+function privilegedRead<T>(script: string, root: string, input: unknown, label: string, scratch: string): T {
+  return withRegularFileStdin(JSON.stringify(input), scratch, stdin => {
+    try {
+      return JSON.parse(bounded("/usr/bin/python3", ["-I", "-c", script, root], {
+        encoding: "utf8", maxBuffer: 96 * 1024 * 1024, stdio: [stdin, "pipe", "pipe"]
+      }, { displayArgs: ["-I", "-c", label, root] }).toString()) as T;
+    } catch (error) {
+      if (error instanceof ArcadiaError && error.code === "PRESERVATION_GIT_TIMEOUT") throw error;
+      const { stderr, signal, code } = error as { stderr?: Buffer | string; signal?: string | null; code?: string };
+      // Node also kills a reader whose output overflowed; that one is the candidate's size.
+      if (signal && code !== "ENOBUFS") {
+        throw preservationGitTimeout(`The candidate reader was killed by ${signal} before it finished, so this says nothing about the candidate's files.`,
+          { reason: "killed", command: "/usr/bin/python3", signal, cwd: root, remedy: "Retry the capture; it reads the candidate again from the start." });
+      }
+      if (code === "ENOENT") throw validationError("Candidate capture could not start: /usr/bin/python3 is not available on this host.");
+      throw validationError("Candidate capture refused: regular candidate files only, no symlink/path escapes, at most 64 MiB total.",
+        { captureDiagnostic: stderr ? String(stderr).slice(-4000) : "Capture returned invalid output." });
+    }
+  });
 }
 
 /** The commit trailer naming the request that produced a host preservation commit. */
@@ -147,7 +158,7 @@ export function snapshotCandidate(candidate: string, baseRevision?: string): str
     // anchored O_NOFOLLOW descriptors, so racing a parent symlink cannot make
     // the privileged reader follow it outside the selected candidate.
     const onDiskLinks = symlinkCandidates.length
-      ? privilegedRead<Record<string, string>>(VERIFY_SYMLINKS, root, symlinkCandidates, "<candidate symlink verify>")
+      ? privilegedRead<Record<string, string>>(VERIFY_SYMLINKS, root, symlinkCandidates, "<candidate symlink verify>", scratch)
       : {};
     const trustedSymlinks: Array<{ path: string; hash: string }> = [];
     for (const filePath of indexAgrees) {
@@ -158,7 +169,7 @@ export function snapshotCandidate(candidate: string, baseRevision?: string): str
     }
     const trustedPaths = new Set(trustedSymlinks.map(entry => entry.path));
     const toCapture = trustedPaths.size ? selected.filter(file => !trustedPaths.has(file)) : selected;
-    const captured = privilegedRead<Array<{ path: string; mode: number; bytes: string }>>(CAPTURE_FILES, root, toCapture, "<candidate capture>");
+    const captured = privilegedRead<Array<{ path: string; mode: number; bytes: string }>>(CAPTURE_FILES, root, toCapture, "<candidate capture>", scratch);
     const entries: string[] = [];
     if (captured.length) {
       // Git reads only private copies of the anchored capture, never mutable
@@ -204,7 +215,7 @@ export function commitTreeAt(repository: string, tree: string, parent: string, o
     "commit-tree", tree, "-p", parent, "-m", message
   ];
   const result = spawnSync("git", args, {
-    timeout: PRESERVATION_GIT_TIMEOUT_MS, ...preservationProcessLimits("git", args), cwd: repository,
+    ...preservationProcessLimits("git", args), cwd: repository,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
     env: {
@@ -314,19 +325,25 @@ export function materializeCandidateTree(repository: string, tree: string, desti
 const MAX_BLOB_BYTES = 64 * 1024 * 1024;
 
 /** Finite, private regular-file stdin avoids the synchronous pipe/EOF deadlock
- * from #1414. Shared by hash/index input and size-bounded blob batch requests. */
-function gitWithInput(repository: string, args: string[], input: Buffer | string, scratch: string, env = process.env): Buffer {
+ * from #1414. Shared by hash/index input, size-bounded blob batch requests, the
+ * privileged reader and the patch-equivalence proof. */
+export function withRegularFileStdin<T>(input: Buffer | string, scratch: string, run: (stdin: number) => T): T {
   const inputPath = path.join(scratch, "stdin");
   writeFileSync(inputPath, input, { flag: "wx", mode: 0o600 });
   let fd: number | undefined;
   try {
     fd = openSync(inputPath, constants.O_RDONLY | constants.O_NOFOLLOW);
     unlinkSync(inputPath);
-    return bounded("git", args, { cwd: repository, env, maxBuffer: MAX_BLOB_BYTES + 64 * 1024, stdio: [fd, "pipe", "pipe"] }) as Buffer;
+    return run(fd);
   } finally {
     if (fd !== undefined) closeSync(fd);
     rmSync(inputPath, { force: true });
   }
+}
+
+function gitWithInput(repository: string, args: string[], input: Buffer | string, scratch: string, env = process.env): Buffer {
+  return withRegularFileStdin(input, scratch, stdin =>
+    bounded("git", args, { cwd: repository, env, maxBuffer: MAX_BLOB_BYTES + 64 * 1024, stdio: [stdin, "pipe", "pipe"] }) as Buffer);
 }
 
 // Isolated system interpreter; neither PYTHONPATH nor candidate modules load.

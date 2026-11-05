@@ -48,11 +48,15 @@ export function WorkspaceGoProvider({ children }: { children: ReactNode }) {
   return <GoContext.Provider value={{ entries, start }}>{children}</GoContext.Provider>;
 }
 
-export function useGoRead(projectId: string | undefined): GoRead {
+/**
+ * `ask` false keeps any last read in view without starting one, so a view can leave Go's read until it's asked for.
+ * A new `place` asks again, and the gate repeats the read only if the last one is old.
+ */
+export function useGoRead(projectId: string | undefined, ask = true, place?: string): GoRead {
   const context = useContext(GoContext);
   const start = context?.start;
   // The gate, not this effect, decides; a doubled or repeated mount cannot start a second read.
-  useEffect(() => { if (projectId && start) start(projectId, false); }, [projectId, start]);
+  useEffect(() => { if (ask && projectId && start) start(projectId, false); }, [ask, projectId, start, place]);
   const entry = (projectId && context?.entries[projectId]) || idle;
   return { ...entry, again: () => { if (projectId) start?.(projectId, true); } };
 }
@@ -81,13 +85,13 @@ function where(move: GoMove, relation: GoRelation | null, project: string) {
   return <p className="workspace-go-where"><Link href={href}>Show Go&apos;s current Action</Link></p>;
 }
 
-const STATE: Record<GoMove["kind"], string> = { ready: "Ready to continue", gated: "Waiting", "not-agent": "Not an agent's to take", none: "No current Action" };
+export const GO_STATE: Record<GoMove["kind"], string> = { ready: "Ready to continue", gated: "Waiting", "not-agent": "Not an agent's to take", none: "No current Action" };
 function announce(go: GoRead, project: boolean) {
   if (!project) return "";
   if (go.status === "error") return `Go could not be read${go.last ? "; showing the last good read" : ""}.`;
   if (!go.last) return "Asking Go.";
   const move = go.last.move;
-  return `Go: ${STATE[move.kind]}${move.kind === "none" ? "" : `, ${move.action.title}`}.`;
+  return `Go: ${GO_STATE[move.kind]}${move.kind === "none" ? "" : `, ${move.action.title}`}.`;
 }
 
 export function WorkspaceNextMove({ go, project, relation, selectedAction }: { go: GoRead; project: { id: string; slug: string } | null; relation: GoRelation | null; selectedAction?: { plan: string; action: string } }) {
@@ -103,7 +107,7 @@ export function WorkspaceNextMove({ go, project, relation, selectedAction }: { g
       {go.status === "error" && <p role="alert">Go could not be read: {go.error} {last ? "What follows is Go's last good read." : "Nothing is shown in its place."}</p>}
       {last && <div className="workspace-go-result">
         <GoSource go={go} />
-        <p className={`workspace-go-state ${last.move.kind}`}>{STATE[last.move.kind]}</p>
+        <p className={`workspace-go-state ${last.move.kind}`}>{GO_STATE[last.move.kind]}</p>
         {last.move.kind !== "none" && <p><strong>{last.move.action.title}</strong></p>}
         {last.move.kind === "ready" && last.move.action.next && <p>{last.move.action.next}</p>}
         {(last.move.kind === "gated" || last.move.kind === "none") && <Blockers question={last.move.question} blockers={last.move.blockers} />}

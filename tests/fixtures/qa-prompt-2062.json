@@ -1,0 +1,368 @@
+{
+  "source": "pmark/arcadia#2062, QA attempt 2026-11-05T02-01-35-880Z-826061c956cd: the real inputs of the prompt that attempt judged. The plan inputs below re-render its Operator QA plan. commitFiles is what GitHub reads from those commits (gh api repos/pmark/arcadia/commits/<sha>).",
+  "candidate": {
+    "projectId": "proj_ccdbfb22a7e4415ca7",
+    "projectName": "Arcadia",
+    "repository": "pmark/arcadia",
+    "number": 2062,
+    "title": "Candidate: pin-work-monitor-malformed-record",
+    "url": "https://github.com/pmark/arcadia/pull/2062",
+    "headSha": "192fab64f8818fb631e65a1e302e6a264a605479",
+    "headBranch": "claude/pin-work-monitor-malformed-record-20261104T093452943Z",
+    "baseSha": "74956a2cb102ca1a15dee751732050b5814a84da",
+    "baseBranch": "main",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN"
+  },
+  "pullRequest": {
+    "baseRefName": "main",
+    "baseRefOid": "74956a2cb102ca1a15dee751732050b5814a84da",
+    "body": "## Operator QA plan\n\nRendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Step 1 fetches the candidate branch and adds a detached local worktree at the exact commit: it changes only local Git bookkeeping and creates a throwaway directory you can remove afterwards with `git worktree remove ../qa-c54b01148403`. Every later step except the declared validation only reads Git data, and only the declared validation runs candidate code.\n\n- **Action:** `arcadia/pin-work-monitor-malformed-record` — Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015.\n- **Candidate:** branch `claude/pin-work-monitor-malformed-record-20261104T093452943Z` at commit `c54b01148403a74893275aa8b084b7b9f796d639`\n- **Base:** `main` at `4468082627ea89698a9285c3dfda362e041090f9`\n- **Surface:** this repository's code at the candidate commit, exercised by the Project's declared validation commands from a local checkout.\n- **Reachability:** local checkout only. Preservation starts no service, opens no URL and deploys nothing; no demo is implied.\n- **Expected change:** each of the 3 acceptance criteria holds at the candidate commit, and only the files listed in step 2 differ from the base.\n- **End users:** the operator procedure below is also the end-user procedure.\n\n### Step 1 — Check out the exact candidate\n\n- **Do:** run `git fetch origin claude/pin-work-monitor-malformed-record-20261104T093452943Z && git worktree add --detach ../qa-c54b01148403 c54b01148403a74893275aa8b084b7b9f796d639 && cd ../qa-c54b01148403` from a clone of this repository. Run every later step from that directory.\n- **Expected:** `git rev-parse HEAD` prints `c54b01148403a74893275aa8b084b7b9f796d639`.\n\n### Step 2 — Confirm what changed\n\n- **Do:** run `git -c core.quotePath=false diff --name-status --no-renames 4468082627ea89698a9285c3dfda362e041090f9 c54b01148403a74893275aa8b084b7b9f796d639`.\n- **Expected:** exactly 2 changed files:\n  - `A` `.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml`\n  - `M` `tests/work-monitor-failures.test.ts`\n\n### Step 3 — Acceptance criterion 1 of 3\n\n- **Do:** inspect `tests/work-monitor-failures.test.ts` with `git show c54b01148403a74893275aa8b084b7b9f796d639:tests/work-monitor-failures.test.ts`.\n- **Expected:** the file content is shown; and that output shows this criterion holds, exactly as worded: “tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.”\n\n### Step 4 — Acceptance criterion 2 of 3\n\n- **Do:** read the change with `git diff 4468082627ea89698a9285c3dfda362e041090f9 c54b01148403a74893275aa8b084b7b9f796d639`.\n- **Expected:** the diff shows what changed; and that output shows this criterion holds, exactly as worded: “The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.”\n\n### Step 5 — Acceptance criterion 3 of 3\n\n- **Do:** inspect `tests/work-monitor-failures.test.ts` with `git show c54b01148403a74893275aa8b084b7b9f796d639:tests/work-monitor-failures.test.ts`.\n- **Expected:** the file content is shown; and that output shows this criterion holds, exactly as worded: “The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.”\n\n### Step 6 — Run the Project's declared validation\n\n- **Do:** run `node scripts/preservation-self-check.mjs`.\n- **Expected:** `echo $?` immediately after it prints `0`, as host validation recorded before preservation.\n\nMerge, deployment and publication remain separate operator gates.\n\n### Validation evidence\n\nRendered by Arcadia host preservation from the host validation record this candidate's preservation receipt cites; no model wrote it. Command output is untrusted text from the candidate's checks: it is shown with control characters replaced, secret-shaped tokens redacted and only its last lines kept (at most 2048 bytes per stream).\n\n- **Record:** `artifacts/preservation/session_091594b6fb124ba995/check-7PETP5/validation.json` (producer `arcadia-host-seatbelt-v1`), bound to candidate tree `31be1190b300181bad33c118026545f312d8a02a`, which is the tree of candidate commit `c54b01148403a74893275aa8b084b7b9f796d639`\n- **Status:** passed — the declared validation command ran to completion and exited 0.\n\n#### Command 1 of 1 — passed\n\n- **Command:** `node scripts/preservation-self-check.mjs`\n- **Working directory:** `arcadia-preservation-N3x90N/source` in the host's temporary directory — the root of candidate tree `31be1190b300`, a disposable host copy checked under the macOS Seatbelt sandbox with no network\n- **Exit code:** `0`\n- **Duration:** 662 ms\n- **stdout** (54 bytes recorded):\n\n```text\npreservation self-check passed (3513 files inspected)\n```\n\n- **stderr:** empty.\n\n**Completion settlement:** a candidate's own governed completion-settlement commit (the commit that marks this Action done and advances the Plan pointer, with its archived Agent Ask) is the record Arcadia expects before independent review and is not an approval-boundary crossing; the independent review verdicts and the operator or worker integration remain separate gates.",
+    "files": [
+      {
+        "path": ".arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml",
+        "additions": 1,
+        "deletions": 0,
+        "changeType": "ADDED"
+      },
+      {
+        "path": "MISSION_LOG.md",
+        "additions": 7,
+        "deletions": 0,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "PROJECT.md",
+        "additions": 1,
+        "deletions": 1,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md",
+        "additions": 3,
+        "deletions": 3,
+        "changeType": "MODIFIED"
+      },
+      {
+        "path": "tests/work-monitor-failures.test.ts",
+        "additions": 29,
+        "deletions": 2,
+        "changeType": "MODIFIED"
+      }
+    ],
+    "headRefName": "claude/pin-work-monitor-malformed-record-20261104T093452943Z",
+    "headRefOid": "192fab64f8818fb631e65a1e302e6a264a605479",
+    "isDraft": false,
+    "mergeStateStatus": "CLEAN",
+    "number": 2062,
+    "state": "OPEN",
+    "statusCheckRollup": [
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:23:09Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576184",
+        "name": "lint",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:24:38Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576309",
+        "name": "unit-shard-1",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:25:13Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576553",
+        "name": "unit-shard-2",
+        "startedAt": "2026-11-05T01:21:04Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:26:07Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576319",
+        "name": "unit-shard-3",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:26:10Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576439",
+        "name": "unit-shard-4",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:28:39Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576430",
+        "name": "unit-shard-5",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:25:57Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576185",
+        "name": "unit-shard-6",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:26:48Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576423",
+        "name": "unit-shard-7",
+        "startedAt": "2026-11-05T01:21:04Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:24:05Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576443",
+        "name": "unit-shard-8",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:22:26Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984576253",
+        "name": "dashboard",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:27:26Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126984575974",
+        "name": "e2e",
+        "startedAt": "2026-11-05T01:21:03Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:28:45Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126987443330",
+        "name": "unit-1",
+        "startedAt": "2026-11-05T01:28:42Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:28:46Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126987443372",
+        "name": "unit-2",
+        "startedAt": "2026-11-05T01:28:42Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:28:45Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126987443291",
+        "name": "unit-3",
+        "startedAt": "2026-11-05T01:28:42Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-05T01:28:45Z",
+        "conclusion": "SUCCESS",
+        "detailsUrl": "https://github.com/pmark/arcadia/actions/runs/41947907645/job/126987443344",
+        "name": "unit-4",
+        "startedAt": "2026-11-05T01:28:42Z",
+        "status": "COMPLETED",
+        "workflowName": "CI"
+      },
+      {
+        "__typename": "CheckRun",
+        "completedAt": "2026-11-04T09:41:03Z",
+        "conclusion": "NEUTRAL",
+        "detailsUrl": "https://coderabbit.ai?utm_source=cr_app&utm_medium=github",
+        "name": "CodeRabbit",
+        "startedAt": "2026-11-04T09:41:03Z",
+        "status": "COMPLETED",
+        "workflowName": ""
+      }
+    ],
+    "title": "Candidate: pin-work-monitor-malformed-record",
+    "url": "https://github.com/pmark/arcadia/pull/2062",
+    "completionExecutionEvidence": "### Completion execution evidence\n\n```json\n{\n  \"status\": \"verified\",\n  \"reference\": \"artifacts/preservation/session_091594b6fb124ba995/completion-ie1PfM/validation.json\",\n  \"sha256\": \"5db29ed32813fab0e86519ad63cd4abb543e98ed618ed2aa9d0227b903491b26\",\n  \"record\": {\n    \"version\": 1,\n    \"producer\": \"arcadia-completion-validation-v1\",\n    \"binding\": {\n      \"sessionId\": \"session_091594b6fb124ba995\",\n      \"packetSha256\": \"ad4640523e0b67645d72c41b5daf2ae57255cf09f7c5fe24c5a60813553fdaa5\",\n      \"actionId\": \"pin-work-monitor-malformed-record\",\n      \"base\": \"4468082627ea89698a9285c3dfda362e041090f9\",\n      \"repository\": \"[repository]\",\n      \"worktree\": \"[candidate]\"\n    },\n    \"tree\": \"31be1190b300181bad33c118026545f312d8a02a\",\n    \"commands\": [\n      \"node scripts/preservation-self-check.mjs\"\n    ],\n    \"namedTests\": [\n      \"tests/work-monitor-failures.test.ts\"\n    ],\n    \"executions\": [\n      {\n        \"command\": \"node scripts/preservation-self-check.mjs\",\n        \"argv\": [\n          \"/bin/sh\",\n          \"-c\",\n          \"node scripts/preservation-self-check.mjs\"\n        ],\n        \"exitStatus\": 0,\n        \"signal\": null,\n        \"timedOut\": false,\n        \"terminalProven\": true,\n        \"durationMs\": 704,\n        \"error\": null,\n        \"stdout\": \"preservation self-check passed (3513 files inspected)\\n\",\n        \"stderr\": \"\"\n      },\n      {\n        \"command\": \"vitest run tests/work-monitor-failures.test.ts\",\n        \"argv\": [\n          \"[home]/.local/share/mise/installs/node/22.23.1/bin/node\",\n          \"[candidate]/node_modules/vitest/vitest.mjs\",\n          \"run\",\n          \"tests/work-monitor-failures.test.ts\",\n          \"--maxWorkers=2\",\n          \"--reporter=json\",\n          \"--outputFile.json=[scratch]/completion-vitest-report.json\"\n        ],\n        \"exitStatus\": 0,\n        \"signal\": null,\n        \"timedOut\": false,\n        \"terminalProven\": true,\n        \"durationMs\": 17376,\n        \"error\": null,\n        \"stdout\": \"JSON report written to [scratch]/completion-vitest-report.json\\n\",\n        \"stderr\": \"\"\n      }\n    ],\n    \"reports\": [\n      {\n        \"file\": \"tests/work-monitor-failures.test.ts\",\n        \"tests\": [\n          {\n            \"name\": \"work monitor failure handling never reads a worktree whose status cannot be read as clean\",\n            \"status\": \"passed\"\n          },\n          {\n            \"name\": \"work monitor failure handling retries a failed status once, sequentially, and keeps the true answer\",\n            \"status\": \"passed\"\n          },\n          {\n            \"name\": \"work monitor failure handling falls back to sequential reads when the parallel helper fails and gives the same snapshot\",\n            \"status\": \"passed\"\n          },\n          {\n            \"name\": \"work monitor failure handling asks each branch for its remote when the remote-ref listing fails\",\n            \"status\": \"passed\"\n          },\n          {\n            \"name\": \"work monitor failure handling uses the per-ref reads when the batched branch listing fails\",\n            \"status\": \"passed\"\n          },\n          {\n            \"name\": \"work monitor failure handling falls back to the per-ref reads when one batched record keeps only its name and object id\",\n            \"status\": \"passed\"\n          },\n          {\n            \"name\": \"work monitor failure handling keeps a subject that contains the old record delimiters intact\",\n            \"status\": \"passed\"\n          }\n        ],\n        \"totalTests\": 7,\n        \"truncated\": false\n      }\n    ],\n    \"outcome\": \"passed\",\n    \"reason\": null,\n    \"durationMs\": 19371\n  }\n}\n```",
+    "completionExecutionEvidenceVerified": true
+  },
+  "patch": "From 7f508496bab3970a74e354eb93d45a94da4c2a6d Mon Sep 17 00:00:00 2001\nFrom: Arcadia Controller <controller@arcadia.local>\nDate: Wed, 4 Nov 2026 08:54:06 +0000\nSubject: [PATCH 1/8] chore(candidate): preserve\n pin-work-monitor-malformed-record candidate for handoff\n\nArcadia-Preservation-Request: worker-tick-preserve-session_3a61ad93c2804cf8bf\nArcadia-Candidate-Fingerprint: 22ecbbd4b35a7e5478979084e5575a259242c4ef\n---\n ...monitor-malformed-record-4468082627ea.yaml |  1 +\n tests/work-monitor-failures.test.ts           | 31 +++++++++++++++++--\n 2 files changed, 30 insertions(+), 2 deletions(-)\n create mode 100644 .arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml\n\ndiff --git a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml\nnew file mode 100644\nindex 000000000..7cb4739e5\n--- /dev/null\n+++ b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml\n@@ -0,0 +1 @@\n+{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-4468082627ea\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"4468082627ea89698a9285c3dfda362e041090f9\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Added the test falls back to the per-ref reads when one batched record keeps only its name and object id. The mock in the file now alters stdout only for the git for-each-ref call whose arguments contain %00, keeping name and sha of the first record. The test asserts control.alterations is at least 1 and that scan(repository) equals the baseline. Ran: pnpm exec vitest run tests/work-monitor-failures.test.ts. Observed: Test Files 1 passed (1), Tests 7 passed (7).\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"The alteration is gated on command git, args[0] equal to for-each-ref, and an argument containing %00, so the remote-ref listing and status reads are untouched. afterEach resets control.alterListing to null and control.alterations to 0. Other tests were not edited. Same run as above: 7 of 7 passed, including the existing batched-listing failure test.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"git status --short shows only tests/work-monitor-failures.test.ts modified; git diff --stat reports 1 file changed, 29 insertions, 2 deletions. Ran node scripts/bridge-worktree-deps.mjs, which bridged 4 dependency trees. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build).\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\ndiff --git a/tests/work-monitor-failures.test.ts b/tests/work-monitor-failures.test.ts\nindex eaaeba59a..859ac619e 100644\n--- a/tests/work-monitor-failures.test.ts\n+++ b/tests/work-monitor-failures.test.ts\n@@ -5,7 +5,12 @@ import path from \"node:path\";\n import { afterEach, describe, expect, it, vi } from \"vitest\";\n \n type Interceptor = (command: string, args: readonly string[], cwd: string) => boolean;\n-const control = vi.hoisted(() => ({ fail: null as null | Interceptor, calls: [] as string[][] }));\n+const control = vi.hoisted(() => ({\n+  fail: null as null | Interceptor,\n+  calls: [] as string[][],\n+  alterListing: null as null | ((stdout: string) => string),\n+  alterations: 0\n+}));\n \n vi.mock(\"node:child_process\", async (importOriginal) => {\n   const actual = await importOriginal<typeof import(\"node:child_process\")>();\n@@ -16,7 +21,14 @@ vi.mock(\"node:child_process\", async (importOriginal) => {\n       if (control.fail?.(command, args, options?.cwd ?? \"\")) {\n         return { status: 1, signal: null, stdout: \"\", stderr: \"forced failure\", pid: 0, output: [], error: undefined };\n       }\n-      return (actual.spawnSync as (...a: unknown[]) => unknown)(command, args, options);\n+      const result = (actual.spawnSync as (...a: unknown[]) => { stdout?: string })(command, args, options);\n+      // Only the batched branch listing (NUL-separated fields) is altered.\n+      const isBatchedListing = command === \"git\" && args[0] === \"for-each-ref\" && args.some((arg) => arg.includes(\"%00\"));\n+      if (control.alterListing && isBatchedListing && typeof result.stdout === \"string\") {\n+        result.stdout = control.alterListing(result.stdout);\n+        control.alterations++;\n+      }\n+      return result;\n     }) as typeof actual.spawnSync\n   };\n });\n@@ -27,6 +39,8 @@ const roots: string[] = [];\n afterEach(() => {\n   control.fail = null;\n   control.calls = [];\n+  control.alterListing = null;\n+  control.alterations = 0;\n   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });\n });\n \n@@ -137,6 +151,19 @@ describe(\"work monitor failure handling\", () => {\n     expect(scan(repository)).toEqual(baseline);\n   });\n \n+  it(\"falls back to the per-ref reads when one batched record keeps only its name and object id\", () => {\n+    const { repository } = createRepository();\n+    const baseline = scan(repository);\n+    // The first record loses every field after its object id, so it no longer has the expected shape.\n+    control.alterListing = (stdout) => {\n+      const [first, ...rest] = stdout.split(\"\\n\");\n+      const [name, sha] = first.split(\"\\0\");\n+      return [`${name}\\0${sha}`, ...rest].join(\"\\n\");\n+    };\n+    expect(scan(repository)).toEqual(baseline);\n+    expect(control.alterations).toBeGreaterThanOrEqual(1);\n+  });\n+\n   it(\"keeps a subject that contains the old record delimiters intact\", () => {\n     const { repository } = createRepository();\n     const batched = scan(repository);\n\nFrom 7c8d8bf7c71487e51fdc533168bf2dcfdd389a94 Mon Sep 17 00:00:00 2001\nFrom: Arcadia Controller <controller@arcadia.local>\nDate: Wed, 4 Nov 2026 01:08:18 -0800\nSubject: [PATCH 2/8] chore(arcadia): retire the failed candidate's completion\n draft for pin-work-monitor-malformed-record\n\nA review repair settles only a completion it drafts itself.\n\nArcadia-Retired-Completion-Draft: complete-pin-work-monitor-malformed-record-4468082627ea\n---\n ...-complete-pin-work-monitor-malformed-record-4468082627ea.yaml | 1 -\n 1 file changed, 1 deletion(-)\n delete mode 100644 .arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml\n\ndiff --git a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml\ndeleted file mode 100644\nindex 7cb4739e5..000000000\n--- a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml\n+++ /dev/null\n@@ -1 +0,0 @@\n-{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-4468082627ea\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"4468082627ea89698a9285c3dfda362e041090f9\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Added the test falls back to the per-ref reads when one batched record keeps only its name and object id. The mock in the file now alters stdout only for the git for-each-ref call whose arguments contain %00, keeping name and sha of the first record. The test asserts control.alterations is at least 1 and that scan(repository) equals the baseline. Ran: pnpm exec vitest run tests/work-monitor-failures.test.ts. Observed: Test Files 1 passed (1), Tests 7 passed (7).\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"The alteration is gated on command git, args[0] equal to for-each-ref, and an argument containing %00, so the remote-ref listing and status reads are untouched. afterEach resets control.alterListing to null and control.alterations to 0. Other tests were not edited. Same run as above: 7 of 7 passed, including the existing batched-listing failure test.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"git status --short shows only tests/work-monitor-failures.test.ts modified; git diff --stat reports 1 file changed, 29 insertions, 2 deletions. Ran node scripts/bridge-worktree-deps.mjs, which bridged 4 dependency trees. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build).\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\n\nFrom b17c283e1a8a5089a22f937a944cd0294a9a880d Mon Sep 17 00:00:00 2001\nFrom: Arcadia Controller <controller@arcadia.local>\nDate: Wed, 4 Nov 2026 09:09:08 +0000\nSubject: [PATCH 3/8] chore(candidate): preserve\n pin-work-monitor-malformed-record candidate for handoff\n\nArcadia-Preservation-Request: worker-tick-preserve-session_306e0dce46d848daae\nArcadia-Candidate-Fingerprint: 3b1b3beea176262804a3aa67ad34bafe7addc368\n---\n ...-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml | 1 +\n 1 file changed, 1 insertion(+)\n create mode 100644 .arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml\n\ndiff --git a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml\nnew file mode 100644\nindex 000000000..39e41a953\n--- /dev/null\n+++ b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml\n@@ -0,0 +1 @@\n+{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-7c8d8bf7c714\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"7c8d8bf7c71487e51fdc533168bf2dcfdd389a94\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Command: pnpm exec vitest run tests/work-monitor-failures.test.ts. Observed: Test Files 1 passed, Tests 7 passed. The test falls back to per-ref reads when one batched record keeps only its name and object id (line 154); it keeps the first record's name and sha, asserts scan equals the baseline scan, and asserts control.alterations is at least 1 (line 164).\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"Alteration is gated on the batched listing (for-each-ref with a NUL-separated format argument) in the vi.mock spawnSync wrapper (lines 26-30). afterEach resets control.alterListing and control.alterations (lines 39-45). Same command as above: all 7 tests passed. Git diff of this branch against 446808262 lists only tests/work-monitor-failures.test.ts.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"Inspected: git diff --name-status 446808262 HEAD lists only M tests/work-monitor-failures.test.ts. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build). The named test file was run above and passed.\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\n\nFrom b6eac9b1e4772b59c0d63fe00d7f77d8a572fbac Mon Sep 17 00:00:00 2001\nFrom: Arcadia Controller <controller@arcadia.local>\nDate: Wed, 4 Nov 2026 01:21:42 -0800\nSubject: [PATCH 4/8] chore(arcadia): retire the failed candidate's completion\n draft for pin-work-monitor-malformed-record\n\nA review repair settles only a completion it drafts itself.\n\nArcadia-Retired-Completion-Draft: complete-pin-work-monitor-malformed-record-7c8d8bf7c714\n---\n ...-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml | 1 -\n 1 file changed, 1 deletion(-)\n delete mode 100644 .arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml\n\ndiff --git a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml\ndeleted file mode 100644\nindex 39e41a953..000000000\n--- a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml\n+++ /dev/null\n@@ -1 +0,0 @@\n-{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-7c8d8bf7c714\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"7c8d8bf7c71487e51fdc533168bf2dcfdd389a94\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Command: pnpm exec vitest run tests/work-monitor-failures.test.ts. Observed: Test Files 1 passed, Tests 7 passed. The test falls back to per-ref reads when one batched record keeps only its name and object id (line 154); it keeps the first record's name and sha, asserts scan equals the baseline scan, and asserts control.alterations is at least 1 (line 164).\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"Alteration is gated on the batched listing (for-each-ref with a NUL-separated format argument) in the vi.mock spawnSync wrapper (lines 26-30). afterEach resets control.alterListing and control.alterations (lines 39-45). Same command as above: all 7 tests passed. Git diff of this branch against 446808262 lists only tests/work-monitor-failures.test.ts.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"Inspected: git diff --name-status 446808262 HEAD lists only M tests/work-monitor-failures.test.ts. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build). The named test file was run above and passed.\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\n\nFrom a4e5cf535440aa4f8462492c5135250ec6776f82 Mon Sep 17 00:00:00 2001\nFrom: Arcadia Controller <controller@arcadia.local>\nDate: Wed, 4 Nov 2026 09:22:28 +0000\nSubject: [PATCH 5/8] chore(candidate): preserve\n pin-work-monitor-malformed-record candidate for handoff\n\nArcadia-Preservation-Request: worker-tick-preserve-session_81ff8da3c29449de98\nArcadia-Candidate-Fingerprint: 0e4bac49a03536dbfbf5ed2ccefa9f9b1d5a7d87\n---\n ...-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml | 1 +\n 1 file changed, 1 insertion(+)\n create mode 100644 .arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml\n\ndiff --git a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml\nnew file mode 100644\nindex 000000000..e9e6491f8\n--- /dev/null\n+++ b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml\n@@ -0,0 +1 @@\n+{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-b6eac9b1e477\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"b6eac9b1e4772b59c0d63fe00d7f77d8a572fbac\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Ran pnpm exec vitest run tests/work-monitor-failures.test.ts in the candidate worktree at b6eac9b1e. Observed Test Files 1 passed and Tests 7 passed. The test falls back to per-ref reads when one batched record keeps only its name and object id (lines 154-165): it alters the first newline-separated record to keep the NUL-separated name and object id, asserts scan equals baseline, and asserts control.alterations is at least 1.\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"Inspected the interceptor (lines 26-30): the alteration applies only when the command is git for-each-ref with a %00 argument. afterEach (lines 39-45) resets control.alterListing and control.alterations. The same vitest run showed all 7 tests in the file passing, including the 6 pre-existing tests, which were not edited in this repair round.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"Inspected the candidate worktree: no edits were made in this repair round, and the only test file touched in this lineage is tests/work-monitor-failures.test.ts. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build). The review findings about the Plan next_action and the archived Ask candidate_revision concern governed settlement records outside this scope and were not edited by this Session.\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\n\nFrom 9a54ef9501c0aedcc583e67135a724d8b7259da7 Mon Sep 17 00:00:00 2001\nFrom: Arcadia Controller <controller@arcadia.local>\nDate: Wed, 4 Nov 2026 01:36:47 -0800\nSubject: [PATCH 6/8] chore(arcadia): retire the failed candidate's completion\n draft for pin-work-monitor-malformed-record\n\nA review repair settles only a completion it drafts itself.\n\nArcadia-Retired-Completion-Draft: complete-pin-work-monitor-malformed-record-b6eac9b1e477\n---\n ...-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml | 1 -\n 1 file changed, 1 deletion(-)\n delete mode 100644 .arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml\n\ndiff --git a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml\ndeleted file mode 100644\nindex e9e6491f8..000000000\n--- a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml\n+++ /dev/null\n@@ -1 +0,0 @@\n-{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-b6eac9b1e477\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"b6eac9b1e4772b59c0d63fe00d7f77d8a572fbac\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Ran pnpm exec vitest run tests/work-monitor-failures.test.ts in the candidate worktree at b6eac9b1e. Observed Test Files 1 passed and Tests 7 passed. The test falls back to per-ref reads when one batched record keeps only its name and object id (lines 154-165): it alters the first newline-separated record to keep the NUL-separated name and object id, asserts scan equals baseline, and asserts control.alterations is at least 1.\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"Inspected the interceptor (lines 26-30): the alteration applies only when the command is git for-each-ref with a %00 argument. afterEach (lines 39-45) resets control.alterListing and control.alterations. The same vitest run showed all 7 tests in the file passing, including the 6 pre-existing tests, which were not edited in this repair round.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"Inspected the candidate worktree: no edits were made in this repair round, and the only test file touched in this lineage is tests/work-monitor-failures.test.ts. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build). The review findings about the Plan next_action and the archived Ask candidate_revision concern governed settlement records outside this scope and were not edited by this Session.\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\n\nFrom c54b01148403a74893275aa8b084b7b9f796d639 Mon Sep 17 00:00:00 2001\nFrom: Arcadia Controller <controller@arcadia.local>\nDate: Wed, 4 Nov 2026 09:37:34 +0000\nSubject: [PATCH 7/8] chore(candidate): preserve\n pin-work-monitor-malformed-record candidate for handoff\n\nArcadia-Preservation-Request: worker-tick-preserve-session_091594b6fb124ba995\nArcadia-Candidate-Fingerprint: 31be1190b300181bad33c118026545f312d8a02a\n---\n ...-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml | 1 +\n 1 file changed, 1 insertion(+)\n create mode 100644 .arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml\n\ndiff --git a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml\nnew file mode 100644\nindex 000000000..f1d268597\n--- /dev/null\n+++ b/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml\n@@ -0,0 +1 @@\n+{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-9a54ef9501c0\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"9a54ef9501c0aedcc583e67135a724d8b7259da7\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Ran pnpm exec vitest run tests/work-monitor-failures.test.ts in the candidate worktree: 1 file passed, 7 of 7 tests passed. The test at line 154 (falls back to the per-ref reads when one batched record keeps only its name and object id) alters only the first record to name plus sha, asserts scan equals the baseline, and asserts control.alterations is at least 1. Review repair: no change was needed to this test; the reviewer's correctness pass already confirmed it. The settlement-citation finding does not apply to this head: grep finds no auto-settle-arcadia-pin-work-monitor citation and no 11d562c8 id in the plan or MISSION_LOG.md.\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"Read tests/work-monitor-failures.test.ts: the spawnSync mock alters stdout only when command is git, args[0] is for-each-ref, and an argument contains %00; afterEach resets control.alterListing and control.alterations. Same command as above: 7 of 7 tests passed, including the other six unchanged tests. Diff from a4e5cf535 to HEAD touches only the retired completion draft file, no product code.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"Ran node scripts/bridge-worktree-deps.mjs (bridged 4 dependency trees) and the named vitest command above. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build). No product file was edited in this repair.\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\n\nFrom 192fab64f8818fb631e65a1e302e6a264a605479 Mon Sep 17 00:00:00 2001\nFrom: Arcadia Controller <controller@arcadia.local>\nDate: Wed, 4 Nov 2026 01:39:17 -0800\nSubject: [PATCH 8/8] chore(arcadia): settle\n auto-settle-arcadia-pin-work-monitor-malformed-record-bfaf11b9b9c6\n\n- Marked Action arcadia/pin-work-monitor-malformed-record done with accepted evidence for all 3 criteria.\n- Advanced to the next eligible Action in the explicit queue order. Pointer: arcadia/pin-recovery-unparseable-time-order.\n- Archived the settled Ask file to .arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml.\n\nWritten by `arcadia agent-ask settle --apply` (asksettle_a55f1773595441e2bc).\nArcadia writes and lands its own managed documents; it did not author the\ndecision they record.\n---\n ...ete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml | 2 +-\n MISSION_LOG.md                                             | 7 +++++++\n PROJECT.md                                                 | 2 +-\n ...ttended-on-its-own-repository-on-the-claude-provider.md | 6 +++---\n 4 files changed, 12 insertions(+), 5 deletions(-)\n rename .arcadia/asks/{ => archive}/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml (97%)\n\ndiff --git a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml b/.arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml\nsimilarity index 97%\nrename from .arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml\nrename to .arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml\nindex f1d268597..8e1440a7b 100644\n--- a/.arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml\n+++ b/.arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml\n@@ -1 +1 @@\n-{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-9a54ef9501c0\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"9a54ef9501c0aedcc583e67135a724d8b7259da7\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Ran pnpm exec vitest run tests/work-monitor-failures.test.ts in the candidate worktree: 1 file passed, 7 of 7 tests passed. The test at line 154 (falls back to the per-ref reads when one batched record keeps only its name and object id) alters only the first record to name plus sha, asserts scan equals the baseline, and asserts control.alterations is at least 1. Review repair: no change was needed to this test; the reviewer's correctness pass already confirmed it. The settlement-citation finding does not apply to this head: grep finds no auto-settle-arcadia-pin-work-monitor citation and no 11d562c8 id in the plan or MISSION_LOG.md.\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"Read tests/work-monitor-failures.test.ts: the spawnSync mock alters stdout only when command is git, args[0] is for-each-ref, and an argument contains %00; afterEach resets control.alterListing and control.alterations. Same command as above: 7 of 7 tests passed, including the other six unchanged tests. Diff from a4e5cf535 to HEAD touches only the retired completion draft file, no product code.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"Ran node scripts/bridge-worktree-deps.mjs (bridged 4 dependency trees) and the named vitest command above. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build). No product file was edited in this repair.\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\n+{\"agent_ask\":\"v1\",\"request_id\":\"complete-pin-work-monitor-malformed-record-9a54ef9501c0\",\"project\":\"arcadia\",\"intent\":\"complete\",\"target_ref\":\"action/pin-work-monitor-malformed-record\",\"candidate_revision\":\"c54b01148403a74893275aa8b084b7b9f796d639\",\"evidence\":[{\"criterion\":\"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\",\"status\":\"met\",\"note\":\"Ran pnpm exec vitest run tests/work-monitor-failures.test.ts in the candidate worktree: 1 file passed, 7 of 7 tests passed. The test at line 154 (falls back to the per-ref reads when one batched record keeps only its name and object id) alters only the first record to name plus sha, asserts scan equals the baseline, and asserts control.alterations is at least 1. Review repair: no change was needed to this test; the reviewer's correctness pass already confirmed it. The settlement-citation finding does not apply to this head: grep finds no auto-settle-arcadia-pin-work-monitor citation and no 11d562c8 id in the plan or MISSION_LOG.md.\"},{\"criterion\":\"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\",\"status\":\"met\",\"note\":\"Read tests/work-monitor-failures.test.ts: the spawnSync mock alters stdout only when command is git, args[0] is for-each-ref, and an argument contains %00; afterEach resets control.alterListing and control.alterations. Same command as above: 7 of 7 tests passed, including the other six unchanged tests. Diff from a4e5cf535 to HEAD touches only the retired completion draft file, no product code.\"},{\"criterion\":\"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\",\"status\":\"met\",\"note\":\"Ran node scripts/bridge-worktree-deps.mjs (bridged 4 dependency trees) and the named vitest command above. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build). No product file was edited in this repair.\"}],\"desired_result\":\"Mark pin-work-monitor-malformed-record complete.\"}\ndiff --git a/MISSION_LOG.md b/MISSION_LOG.md\nindex f39fd7997..a25c841e5 100644\n--- a/MISSION_LOG.md\n+++ b/MISSION_LOG.md\n@@ -2914,3 +2914,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins\n - **Result:** Every declared acceptance criterion was accepted as met: \"apps/dashboard/app/api/operator-script/retired-entries.test.ts gains a test in which the retirement pins the sha256 of the original descriptor and the original script, only the written descriptor bytes differ (for example a trailing newline) while the script bytes equal the pinned bytes, the changed descriptor stays invalid, and GET returns no scripts with console.error called exactly once.\"; \"Every other test in that file passes unchanged.\"; \"The change touches only apps/dashboard/app/api/operator-script/retired-entries.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\".\n - **Next:** Advanced to the next eligible Action in the explicit queue order.\n - **Blockers:** None recorded by this settlement (Agent Ask complete-cover-retired-reland-20261103).\n+\n+## 2026-11-04 — Completed arcadia/pin-work-monitor-malformed-record\n+\n+- **Did:** Completed Action arcadia/pin-work-monitor-malformed-record from accepted evidence (Candidate c54b01148403a74893275aa8b084b7b9f796d639).\n+- **Result:** Every declared acceptance criterion was accepted as met: \"tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.\"; \"The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.\"; \"The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.\".\n+- **Next:** Advanced to the next eligible Action in the explicit queue order.\n+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-work-monitor-malformed-record-bfaf11b9b9c6).\ndiff --git a/PROJECT.md b/PROJECT.md\nindex 89ab5680b..652a0c555 100644\n--- a/PROJECT.md\n+++ b/PROJECT.md\n@@ -8,7 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o\n outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.\n milestone: \"Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.\"\n active_plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider\n-current_action: pin-work-monitor-malformed-record\n+current_action: pin-recovery-unparseable-time-order\n updated: 2026-11-04\n ---\n \ndiff --git a/docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md b/docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md\nindex 86c2a34b5..fd4013b40 100644\n--- a/docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md\n+++ b/docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md\n@@ -577,11 +577,11 @@ actions:\n     references: [\"docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md\"]\n   - id: pin-work-monitor-malformed-record\n     title: \"Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015.\"\n-    status: open\n+    status: done\n     responsibility: agent\n     execution: build\n     effort: session\n-    next_action: \"Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015.\"\n+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-work-monitor-malformed-record-bfaf11b9b9c6; no further action.\n     expected_artifact: Evidence satisfying Agent Ask pin-work-monitor-malformed-record\n     clarification: clarified\n     confidence: high\n@@ -638,7 +638,7 @@ questions: []\n decisions: []\n recommended_model: standard\n recommended_reasoning_effort: medium\n-current_action: pin-work-monitor-malformed-record\n+current_action: pin-recovery-unparseable-time-order\n ---\n \n # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.\n",
+  "sandboxProof": {
+    "passed": true,
+    "status": 0,
+    "output": "reviewer-boundary: no tools, no settings, no MCP servers, prompt only\nclaude-flag-present: --tools\nclaude-flag-present: --json-schema\nclaude-flag-present: --setting-sources\nclaude-flag-present: --strict-mcp-config\nclaude-flag-present: --no-session-persistence",
+    "error": null
+  },
+  "identity": [
+    "Identity:",
+    "You are Critic Claudia Atlas <critic.claudia.atlas@agents.arcadia.local> (claude, heavy, critic); you are independent of the Candidate's developer and judge its work only from the evidence below."
+  ],
+  "settlementRecords": [
+    ".arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml",
+    "MISSION_LOG.md",
+    "PROJECT.md",
+    "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md"
+  ],
+  "settled": {
+    "preservedCommit": "c54b01148403a74893275aa8b084b7b9f796d639",
+    "head": "192fab64f8818fb631e65a1e302e6a264a605479"
+  },
+  "declaredCommits": [
+    "7f508496bab3970a74e354eb93d45a94da4c2a6d",
+    "7c8d8bf7c71487e51fdc533168bf2dcfdd389a94",
+    "b17c283e1a8a5089a22f937a944cd0294a9a880d",
+    "b6eac9b1e4772b59c0d63fe00d7f77d8a572fbac",
+    "a4e5cf535440aa4f8462492c5135250ec6776f82",
+    "9a54ef9501c0aedcc583e67135a724d8b7259da7",
+    "c54b01148403a74893275aa8b084b7b9f796d639",
+    "192fab64f8818fb631e65a1e302e6a264a605479"
+  ],
+  "commitFiles": {
+    "7f508496bab3970a74e354eb93d45a94da4c2a6d": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml",
+        "previousPath": null,
+        "blob": "7cb4739e56c09727de6cfb8124ec752a07b55727"
+      },
+      {
+        "path": "tests/work-monitor-failures.test.ts",
+        "previousPath": null,
+        "blob": "859ac619e3648e591e9585cd123cf43ee56a7f6d"
+      }
+    ],
+    "7c8d8bf7c71487e51fdc533168bf2dcfdd389a94": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-4468082627ea.yaml",
+        "previousPath": null,
+        "blob": "7cb4739e56c09727de6cfb8124ec752a07b55727"
+      }
+    ],
+    "b17c283e1a8a5089a22f937a944cd0294a9a880d": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml",
+        "previousPath": null,
+        "blob": "39e41a95326ca6a6d2ee23f5a911051849008104"
+      }
+    ],
+    "b6eac9b1e4772b59c0d63fe00d7f77d8a572fbac": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-7c8d8bf7c714.yaml",
+        "previousPath": null,
+        "blob": "39e41a95326ca6a6d2ee23f5a911051849008104"
+      }
+    ],
+    "a4e5cf535440aa4f8462492c5135250ec6776f82": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml",
+        "previousPath": null,
+        "blob": "e9e6491f899c4c6fcd5e9c1df1d0f5a7fcf1a8c9"
+      }
+    ],
+    "9a54ef9501c0aedcc583e67135a724d8b7259da7": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-b6eac9b1e477.yaml",
+        "previousPath": null,
+        "blob": "e9e6491f899c4c6fcd5e9c1df1d0f5a7fcf1a8c9"
+      }
+    ],
+    "c54b01148403a74893275aa8b084b7b9f796d639": [
+      {
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml",
+        "previousPath": null,
+        "blob": "f1d2685977dd7aa3adb68c81711057d2c7607a5d"
+      }
+    ],
+    "192fab64f8818fb631e65a1e302e6a264a605479": [
+      {
+        "path": ".arcadia/asks/archive/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml",
+        "previousPath": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml",
+        "blob": "8e1440a7b64b842f8e2c23803e0ab308f97b9eef"
+      },
+      {
+        "path": "MISSION_LOG.md",
+        "previousPath": null,
+        "blob": "a25c841e5cf85852c5ac651256c1c2a7ab8f2a74"
+      },
+      {
+        "path": "PROJECT.md",
+        "previousPath": null,
+        "blob": "652a0c5551aab83c06b78109426c2f1293c5890b"
+      },
+      {
+        "path": "docs/plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md",
+        "previousPath": null,
+        "blob": "fd4013b40fe94426a772b65888ba87fee662428c"
+      }
+    ]
+  },
+  "planSource": {
+    "kind": "action-acceptance",
+    "actionKey": "arcadia/pin-work-monitor-malformed-record",
+    "actionTitle": "Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015.",
+    "acceptanceCriteria": [
+      "tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.",
+      "The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.",
+      "The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation."
+    ],
+    "validationCommands": [
+      "node scripts/preservation-self-check.mjs"
+    ]
+  },
+  "planFacts": {
+    "branch": "claude/pin-work-monitor-malformed-record-20261104T093452943Z",
+    "baseBranch": "main",
+    "baseRevision": "4468082627ea89698a9285c3dfda362e041090f9",
+    "commitSha": "c54b01148403a74893275aa8b084b7b9f796d639",
+    "changedFiles": [
+      {
+        "status": "A",
+        "path": ".arcadia/asks/agent-ask-complete-pin-work-monitor-malformed-record-9a54ef9501c0.yaml"
+      },
+      {
+        "status": "M",
+        "path": "tests/work-monitor-failures.test.ts"
+      }
+    ],
+    "testRun": {
+      "setup": "bridge",
+      "runner": "pnpm exec vitest run"
+    }
+  }
+}

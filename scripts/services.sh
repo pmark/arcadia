@@ -210,4 +210,8 @@ elif ! (cd "$REPO" && env -u ARCADIA_FREEZE_OVERRIDE pnpm arcadia go-broker ensu
   else
     echo "warning: go-broker ensure failed after restart; run 'pnpm arcadia go-broker install' manually in $REPO (see $ENSURE_LOG)" >&2
   fi
+# The ensure may just have installed the first release with liveness-check, so
+# point the timer at it now rather than leaving it on the checkout until the next restart.
+elif ! "$IMPL" liveness "$REPO"; then
+  echo "warning: liveness-check could not be pointed at the installed release; see scripts/services.sh status." >&2
 fi
