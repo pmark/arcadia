@@ -259,7 +259,7 @@ function runBounded(directory: string, searchPath: string, spec: CommandSpec): {
       stdio: ["ignore", fd, fd],
       timeout: spec.timeoutMs,
       killSignal: "SIGKILL",
-      env: { PATH: searchPath, LC_ALL: "C" }
+      env: Object.assign({} as NodeJS.ProcessEnv, { PATH: searchPath, LC_ALL: "C" })
     });
     closeSync(fd);
     fd = null;
