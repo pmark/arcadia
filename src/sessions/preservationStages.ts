@@ -24,6 +24,11 @@ const LIVENESS_PROBE_TIMEOUT_MS = 10_000;
  * interval plus one call. This 30s margin keeps that below the stage limit, so
  * a hung call always reports its own typed timeout before the watchdog fires. */
 export const PRESERVATION_GIT_TIMEOUT_MAX_MS = PRESERVATION_STAGE_TIMEOUT_MS - 30_000;
+/** Bound, outside a preservation attempt, on a Git call that can legitimately
+ * outlast the default: it talks to a remote, runs the repository's hooks, or
+ * writes or removes a whole checkout. Long, but still a bound (Issue #2084). */
+export const LONG_GIT_CALL_TIMEOUT_MS = 600_000;
+const LONG_GIT_SUBCOMMANDS = new Set(["fetch", "push", "pull", "clone", "commit", "merge", "switch", "checkout"]);
 
 /** `ARCADIA_PRESERVATION_GIT_TIMEOUT_MS` overrides the per-call bound with a
  * positive integer number of milliseconds, capped at
@@ -38,6 +43,16 @@ export function withPreservationProgress<T>(report: PreservationProgress, run: (
   return progress.run({
     report, stage: "host.start", lastReportAt: Date.now(), gitTimeoutMs: options.gitTimeoutMs ?? preservationGitTimeoutMs()
   }, run);
+}
+
+/** The bound on a call outside any preservation attempt. */
+function storelessTimeoutMs(command: string, args: readonly string[]): number {
+  if (command !== "git") return preservationGitTimeoutMs();
+  const subcommand = gitSubcommand(args);
+  const long = subcommand === "worktree"
+    ? args[args.indexOf("worktree") + 1] !== "list"
+    : subcommand !== null && LONG_GIT_SUBCOMMANDS.has(subcommand);
+  return long ? LONG_GIT_CALL_TIMEOUT_MS : preservationGitTimeoutMs();
 }
 
 function callTimeoutMs(current: PreservationProgressState, command: string, args: readonly string[]): number {
@@ -73,10 +88,13 @@ export function preservationStageFailure(error: unknown) {
 
 /** Native process bounds also apply while the host's JS thread is blocked.
  * Every bounded call spreads these as it starts, which also restarts the stage
- * idle clock, so a run of slow-but-successful calls never trips the watchdog. */
-export function preservationProcessLimits(command: string, args: readonly string[]): { timeout?: number; killSignal?: "SIGKILL" } {
+ * idle clock, so a run of slow-but-successful calls never trips the watchdog.
+ * No progress store means no attempt to report to, not no bound: the worker's
+ * tick calls these on its only thread, where an unbounded child silently stops
+ * the worker and every alert it would raise (Issue #2084). */
+export function preservationProcessLimits(command: string, args: readonly string[]): { timeout: number; killSignal: "SIGKILL" } {
   const current = progress.getStore();
-  if (!current) return {};
+  if (!current) return { timeout: storelessTimeoutMs(command, args), killSignal: "SIGKILL" };
   preservationHeartbeat();
   return { timeout: callTimeoutMs(current, command, args), killSignal: "SIGKILL" };
 }
@@ -128,10 +146,20 @@ export function preservationTimeout(error: unknown, command: string, args: reado
   const current = progress.getStore();
   const subcommand = command === "git" ? gitSubcommand(args) : null;
   const stage = current?.stage ?? null;
-  const timeoutMs = current ? callTimeoutMs(current, command, args) : null;
+  const name = subcommand ? `git ${subcommand}` : command;
+  const timeoutMs = current ? callTimeoutMs(current, command, args) : storelessTimeoutMs(command, args);
+  const details = { reason: "timeout", command, gitSubcommand: subcommand, args: [...args], cwd: cwd ?? null, timeoutMs, stage };
+  // Outside an attempt there is no launcher to retry and no proof the call changed nothing.
+  if (!current) {
+    return preservationGitTimeout(`${name} exceeded its ${timeoutMs} ms bound and was killed, so it gave no answer.`, {
+      ...details,
+      remedy: remedy ?? "Check what the call would have changed, then rerun the operation. " +
+        `Set ARCADIA_PRESERVATION_GIT_TIMEOUT_MS (at most ${PRESERVATION_GIT_TIMEOUT_MAX_MS}) on the host only if a short call is persistently slower than the bound.`
+    });
+  }
   return preservationGitTimeout(
-    `${subcommand ? `git ${subcommand}` : command} exceeded its ${timeoutMs ?? "configured"} ms preservation budget at stage ${stage ?? "unknown"}; retry the same protected launcher.`,
-    { reason: "timeout", command, gitSubcommand: subcommand, args: [...args], cwd: cwd ?? null, timeoutMs, stage, remedy: remedy ?? retryRemedy(stage) }
+    `${name} exceeded its ${timeoutMs} ms preservation budget at stage ${stage ?? "unknown"}; retry the same protected launcher.`,
+    { ...details, remedy: remedy ?? retryRemedy(stage) }
   );
 }
 

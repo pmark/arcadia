@@ -16,7 +16,9 @@ const JUDGEMENT_FILES = ["src/qa/patchApplicability.ts", "src/qa/reviewCriteria.
 const PINNED: Record<number, string> = {
   // Re-pinned without a bump: isSettlementArchiveOf only exports an existing rule for the worker merge.
   2: "d0929404bc12b824d3ddef6ea1fa71ab5a033cbdef3186c02de1dc826be9b1a5",
-  3: "9472880392716139c6025b5f0dd4f9a69dd21a9ab16b5a5780760ffecd1863d8"
+  3: "9472880392716139c6025b5f0dd4f9a69dd21a9ab16b5a5780760ffecd1863d8",
+  // Revision 4 has shipped no verdict yet: it first merges with this PR, so its repairs re-pin rather than bump.
+  4: "6ce71b9d2472ed26a13c4d3d07e8eb2bb1e8cf86fe0dd7c4b9297b2a507c7f99"
 };
 
 function judgementContentHash(): string {

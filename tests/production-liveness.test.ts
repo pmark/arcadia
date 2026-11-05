@@ -417,7 +417,8 @@ describe("what could hold the write lock against the alert", () => {
     try {
       const started = Date.now();
       expect(systemTmux.capturePane?.("stalled")).toBeNull();
-      expect(Date.now() - started).toBeLessThan(15_000);
+      // #2090's TMUX_QUERY_LIMITS bound of 15 seconds.
+      expect(Date.now() - started).toBeLessThan(25_000);
     } finally {
       vi.unstubAllEnvs();
     }

@@ -45,8 +45,12 @@ export const CODE_REVIEW_PR_CRITERIA = [
  *    retire-completion-draft attestation).
  * 3: #1625, the reviewer prompt names a settled head's governed settlement
  *    records so a "touches only" scope criterion does not count them.
+ * 4: both roles get the governed-record rule, and Arcadia's check now runs on
+ *    every review and hands them its per-fact result: the rule's assurances
+ *    (an auto-settle id, a split archive, a retirement) apply only where that
+ *    result says verified.
  */
-export const JUDGEMENT_REVISION = 3;
+export const JUDGEMENT_REVISION = 4;
 
 export const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
 /** The deterministic check row that accepts or refuses the reviewer's not-applicable claims. */
