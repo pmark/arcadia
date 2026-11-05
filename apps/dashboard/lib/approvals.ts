@@ -144,6 +144,11 @@ export function todoKeyOf(kind: string, project: string, id: string): string {
   return `${kind}:${project || "unknown"}/${id}`;
 }
 
+/** The small read behind one item's own page: its row, without the rest of the list. */
+export function todoItemUrl(target: { kind: string; project: string; id: string }): string {
+  return `/api/todo-item?kind=${encodeURIComponent(target.kind)}&project=${encodeURIComponent(target.project)}&id=${encodeURIComponent(target.id)}`;
+}
+
 /** The deep link for one item. Segments are percent-encoded; the page decodes them, so an id containing `/` still round-trips. */
 export function todoHrefOf(kind: string, project: string, id: string): string {
   return `/todo/${[kind, project || "unknown", id].map(encodeURIComponent).join("/")}`;
