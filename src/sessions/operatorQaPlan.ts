@@ -17,18 +17,22 @@
  * and detached-worktree checkout (local Git bookkeeping and a throwaway
  * directory), Git's read-only inspection commands, the Project's declared
  * validation commands, and two the host chooses when a criterion calls for them:
- * this repository's test runner on a test file the Action names (the only thing
- * criterion text contributes is that path, which must exist at the commit), and
- * a read of the pull request's required checks.
+ * this repository's test runner on the candidate's changed test files and any
+ * test file the Action names (the only thing criterion text contributes is that
+ * path, which must exist at the commit), and a read of the pull request's
+ * required checks.
  *
  * Each step's expected result is only what its command can show (2026-11-05: QA
  * failed every candidate on a `git diff` that "showed" tests pass and a
  * `git show` of one file that "showed" the changed-file set and CI results). A
- * criterion gets read-only inspection steps, with its text quoted as the thing to
- * judge. The parts inspection cannot show are bounded and pointed at the step
- * that can: a command or test passing at a run's exit-zero result, a changed-file
- * limit at Step 2's list, and a required-CI claim at the required-checks step. A
- * criterion made only of those last two inspects no file at all.
+ * criterion gets read-only inspection steps, with its text quoted to compare
+ * against; no step says its output shows a criterion holds, since wording cannot
+ * tell which criteria an output can show. The parts the plan can recognize are
+ * pointed at the step that shows them: a changed-file limit at Step 2's list, a
+ * required-CI claim at the required-checks step (a criterion made only of those
+ * two inspects no file), and a test passing at a run. A run is called proof only
+ * when it covers what the criterion names; otherwise the step says a person judges
+ * that from the run.
  *
  * Refusal, not a placeholder: when the Action declares no acceptance criteria
  * (or the source is missing, or the plan cannot fit a pull-request body), the
@@ -191,7 +195,7 @@ function renderPlan(
     const named = criterionPaths(criterion, facts.changedFiles);
     const passing = passingCommands(criterion, named, validation);
     const claims = criterionClaims(criterion);
-    return { criterion, named, passing, claims, testsPass: passing === null && claims.testsPass };
+    return { criterion, named, passing, claims, testsPass: passing === null && claims.testsPass !== null };
   });
   const validationStep = criteria.length + 3;
   const runTargets = testRunTargets(judged, facts.changedFiles, pathExists, facts.testRun);
@@ -200,7 +204,7 @@ function renderPlan(
   const lines: string[] = [
     HEADING,
     "",
-    `Rendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Step 1 fetches the candidate branch and adds a detached local worktree at the exact commit: it changes only local Git bookkeeping and creates a throwaway directory you can remove afterwards with ${code(`git worktree remove ${checkout}`)}. Every later step except ${runStep === null ? "the declared validation" : "the named test run and the declared validation"} only reads Git data${checksStep === null ? "" : ` or, in Step ${checksStep}, the pull request's checks on GitHub`}, and only ${runStep === null ? "the declared validation runs" : "those run"} candidate code.`,
+    `Rendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Step 1 fetches the candidate branch and adds a detached local worktree at the exact commit: it changes only local Git bookkeeping and creates a throwaway directory you can remove afterwards with ${code(`git worktree remove ${checkout}`)}. Every later step except ${runStep === null ? "the declared validation" : "the test-file run and the declared validation"} only reads Git data${checksStep === null ? "" : ` or, in Step ${checksStep}, the pull request's checks on GitHub`}, and only ${runStep === null ? "the declared validation runs" : "those run"} candidate code.`,
     "",
     `- **Action:** ${code(source.actionKey)}${source.actionTitle ? ` — ${inlineText(source.actionTitle)}` : ""}`,
     `- **Candidate:** branch ${code(facts.branch)} at commit ${code(facts.commitSha)}`,
@@ -279,12 +283,20 @@ function renderPlan(
       ];
       // A command the criterion assigns to required CI has that proof, not "no direct proof".
       const check = passing && claims.requiredChecks ? { ...passing, undeclared: false } : passing;
-      const runsNamed = runTargets.some((target) => named.includes(target));
+      // A run is proof only of what it covers: every test file this criterion names, or the one file it means.
+      const namedTests = named.filter((candidate) => TEST_PATH.test(candidate));
+      const runsNamed = namedTests.length > 0 && namedTests.every((candidate) => runTargets.includes(candidate));
+      const changedPaths = facts.changedFiles.filter((file) => !file.status.startsWith("D")).map((file) => file.path);
+      const runTied = runTargets.length === 1 && claims.testsPass !== null && claims.testsPass !== "unscoped"
+        && (claims.testsPass !== "changed-file" || changedPaths.includes(runTargets[0]));
+      const ran = runTargets.map((target) => code(target)).join(", ");
       const proofs = [
         ...(check ? passProof(check, validation, validationStep, runsNamed ? runStep : null) : []),
         ...(testsPass ? [runStep === null
           ? "No step in this plan runs those tests, so it offers no direct proof that they pass."
-          : `Whether those tests pass is shown only by Step ${runStep}, which runs ${runTargets.map((target) => code(target)).join(", ")}: its exit-zero result is that proof.`] : []),
+          : runTied
+            ? `Whether those tests pass is shown only by Step ${runStep}, which runs ${ran}: its exit-zero result is that proof.`
+            : `Step ${runStep} runs ${ran}. This plan cannot tell whether that covers what this criterion means, so it claims no proof: judge that from the run.`] : []),
         ...(claims.scope ? [`The changed-file limit is judged on Step 2's list: apart from ${GOVERNED_RECORDS}, it names only the files this criterion allows.`] : []),
         ...(claims.requiredChecks ? [`Whether required CI passes is shown only by Step ${checksStep}'s read of the pull request's required checks.`] : [])
       ];
@@ -296,7 +308,7 @@ function renderPlan(
       lines.push(`- **Expected:** ${outputs.join("; ")}. That is all this inspection shows: what the changed test ${present.length === 1 ? "file asserts" : "files assert"}, not the content of ${substituted.map((candidate) => code(candidate)).join(", ")}. The criterion, exactly as worded: ${quoted}`);
       return;
     }
-    lines.push(`- **Expected:** ${outputs.join("; ")}; and that output shows this criterion holds, exactly as worded: ${quoted}`);
+    lines.push(`- **Expected:** ${outputs.join("; ")}. Compare that output with this criterion; any part it cannot show, such as a run's result, stays unproven by this step. The criterion, exactly as worded: ${quoted}`);
   });
 
   lines.push("", `### Step ${validationStep} — Run the Project's declared validation`, "");
@@ -309,7 +321,7 @@ function renderPlan(
   }
   if (runStep !== null && facts.testRun) {
     const run = `${facts.testRun.runner} ${runTargets.map(shellWord).join(" ")}`;
-    lines.push("", `### Step ${runStep} — Run the named test ${runTargets.length === 1 ? "file" : "files"}`, "",
+    lines.push("", `### Step ${runStep} — Run the candidate's test ${runTargets.length === 1 ? "file" : "files"}`, "",
       `- **Do:** ${facts.testRun.setup === "bridge"
         ? `run ${code(`node ${BRIDGE_SCRIPT}`)} to link the clone's installed dependencies into this throwaway worktree (a clone with none needs ${code("pnpm install")} first)`
         : `run ${code("pnpm install --frozen-lockfile")} to install dependencies in this throwaway worktree`}; then run ${code(run)}.`,
@@ -414,23 +426,29 @@ function commandOccurrences(criterion: string, command: string): number[] {
  * Read per sentence, with code spans left out, so a backticked command stays
  * {@link passingCommands}'s and a negated or failing clause claims nothing.
  */
-function criterionClaims(criterion: string): { scope: boolean; requiredChecks: boolean; testsPass: boolean; provenElsewhereOnly: boolean } {
+function criterionClaims(criterion: string): { scope: boolean; requiredChecks: boolean; testsPass: TestsPassScope | null; provenElsewhereOnly: boolean } {
   const sentences = criterion.split(/(?<=[.;!?])\s+/);
   const requiredChecks = sentences.some((sentence) => REQUIRED_CI.test(sentence) && CI_PROOF_WORD.test(sentence)
     && !CLAUSE_VETO.test(sentence) && !NEGATED_CI_PROOF.test(sentence));
   return {
     scope: sentences.some((sentence) => SCOPE_CLAIM.test(sentence)),
     requiredChecks,
-    testsPass: sentences.some(claimsTestsPass),
+    testsPass: sentences.map(claimsTestsPass).find((scope) => scope !== null) ?? null,
     provenElsewhereOnly: sentences.every((sentence) => SCOPE_ONLY.test(sentence) || (requiredChecks && CI_PROOF_ONLY.test(sentence)))
   };
 }
 
-function claimsTestsPass(sentence: string): boolean {
-  return sentence.replace(/`[^`\n]*`/g, " ").split(/,\s+and\s+/i).some((clause) => {
+/** What a test-passing claim covers: one file it points at, the candidate's changed file, or something the plan cannot tell. */
+type TestsPassScope = "one-file" | "changed-file" | "unscoped";
+
+function claimsTestsPass(sentence: string): TestsPassScope | null {
+  for (const clause of sentence.replace(/`[^`\n]*`/g, " ").split(/,\s+and\s+/i)) {
     const found = TESTS_PASS.exec(clause);
-    return found !== null && !CLAUSE_VETO.test(clause) && !GOVERNING_NEGATION.test(`${clause.slice(0, found.index)}${found[1]}`);
-  });
+    if (found === null || CLAUSE_VETO.test(clause) || GOVERNING_NEGATION.test(`${clause.slice(0, found.index)}${found[1]}`)) continue;
+    const file = ONE_TEST_FILE.exec(clause);
+    return !file ? "unscoped" : file[1] ? "changed-file" : "one-file";
+  }
+  return null;
 }
 
 /** "The change touches only x", beside other wording in its sentence. */
@@ -444,9 +462,16 @@ const NEGATED_CI_PROOF = /(?:\b(?:not|never)|n't)\b[^.;]*\b(?:pass(?:es|ed)?|gre
 /** A whole sentence that only assigns its proof to CI: "Proof that x passes comes from the required CI jobs ...". */
 const CI_PROOF_ONLY = /^(?:proof|evidence)\b[^.;]*\bcomes?\s+from\s+(?:the\s+)?(?:required\s+)?(?:CI|checks?|jobs?)\b/i;
 /** A test passing as a result, not passing something along: "The test passes a stub" claims nothing. */
-const TESTS_PASS = /(\btests?\b[^.;]{0,60}?)\bpass(?:es|ed)?\b(?=\s*(?:$|[.,;:)])|\s+(?:unchanged|under|on|in|with|and|after|against|locally)\b)/i;
+const TESTS_PASS = /(\b(?:tests?|suite)\b[^.;]{0,60}?)\bpass(?:es|ed)?\b(?=\s*(?:$|[.,;:)])|\s+(?:unchanged|under|on|in|with|and|after|against|locally)\b)/i;
 
-/** The files the named-test step runs: those the Action names, else the changed ones a test-passing claim means. */
+/** "in that file", "in the changed file": a claim about one file, with `changed` captured when it says which. */
+const ONE_TEST_FILE = /\b(?:in|of|from)\s+(?:that|the|this)\s+(?:same\s+|named\s+|new\s+|(changed)\s+)?(?:test\s+)?file\b/i;
+
+/**
+ * The files the test-file step runs: every test file the Action names and every
+ * one the candidate changed, whenever a criterion names one or claims tests pass,
+ * never a silently chosen subset.
+ */
 function testRunTargets(
   judged: ReadonlyArray<{ named: readonly string[]; testsPass: boolean }>,
   changedFiles: readonly ChangedFile[],
@@ -455,10 +480,10 @@ function testRunTargets(
 ): string[] {
   if (!testRun) return [];
   const runnable = (candidate: string) => RUNNABLE_TEST.test(candidate) && !candidate.startsWith("-") && pathExists(candidate);
-  const named = [...new Set(judged.flatMap((entry) => entry.named))].filter(runnable);
-  if (named.length > 0) return named.slice(0, MAX_PATHS_PER_CRITERION);
-  if (!judged.some((entry) => entry.testsPass)) return [];
-  return changedFiles.filter((file) => !file.status.startsWith("D")).map((file) => file.path).filter(runnable).slice(0, MAX_PATHS_PER_CRITERION);
+  const named = judged.flatMap((entry) => entry.named).filter(runnable);
+  if (named.length === 0 && !judged.some((entry) => entry.testsPass)) return [];
+  const changed = changedFiles.filter((file) => !file.status.startsWith("D")).map((file) => file.path).filter(runnable);
+  return [...new Set([...named, ...changed])];
 }
 
 /** What an inspection step can show, and no more. */

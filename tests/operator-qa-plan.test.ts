@@ -58,7 +58,7 @@ describe("Operator QA plan rendering", () => {
     expect(body).toContain("exactly 1 changed file:\n  - `A` `MARKER.md`");
     expect(body).toContain("### Step 3 — Acceptance criterion 1 of 1");
     expect(body).toContain(`- **Do:** inspect \`MARKER.md\` with \`git show ${COMMIT}:MARKER.md | od -c\`; then run \`git show ${COMMIT}:MARKER.md | grep -Fxn -- 'three-action rehearsal start'\`.`);
-    expect(body).toContain("- **Expected:** `od -c` shows every byte (a newline as `\\n`); `grep -Fxn` prints each quoted text that is a whole line with its line number, and nothing when no line matches; and that output shows this criterion holds, exactly as worded: “MARKER.md exists and contains exactly the line \"three-action rehearsal start\" followed by a trailing newline.”");
+    expect(body).toContain("- **Expected:** `od -c` shows every byte (a newline as `\\n`); `grep -Fxn` prints each quoted text that is a whole line with its line number, and nothing when no line matches. Compare that output with this criterion; any part it cannot show, such as a run's result, stays unproven by this step. The criterion, exactly as worded: “MARKER.md exists and contains exactly the line \"three-action rehearsal start\" followed by a trailing newline.”");
     expect(body).toContain("### Step 4 — Run the Project's declared validation\n\n- **Do:** run `node scripts/check-rehearsal.mjs`.\n- **Expected:** `echo $?` immediately after it prints `0`");
     expect(body).toContain("the operator procedure below is also the end-user procedure");
   });
@@ -82,7 +82,7 @@ describe("Operator QA plan rendering", () => {
     expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT}\`.\n- **Expected:** the diff shows what changed. That is all this inspection shows: a diff never shows that a command passes. This plan runs no command taken from criterion text, and none of the Project's declared validation commands in Step 6 is the command this criterion names: Step 6's exit-zero result proves only that those declared commands pass, so this plan offers no direct proof that this criterion's command passes. Any other part of this criterion must show in this step's output. The criterion, exactly as worded: “\\\`pnpm test\\\` passes.”`);
     expect(body).toContain("Whether the named command passes is proven only by Step 6, the Project's declared validation: `echo $?` immediately after `node scripts/check-rehearsal.mjs` prints `0`. A named test file passing is shown only by a run, never by its source; the run this plan offers is Step 6, the Project's declared validation, exiting `0`. Any part of this criterion that is not a command or test file passing must show in this step's output. The criterion, exactly as worded: “tests/marker.test.mjs exists and passes");
     expect(body).not.toContain("not among the Project's declared validation commands");
-    expect(body).not.toContain("that output shows this criterion holds, exactly as worded: “tests/marker.test.mjs");
+    expect(body).not.toContain("stays unproven by this step. The criterion, exactly as worded: “tests/marker.test.mjs");
     expect(body).not.toContain("run `pnpm test`");
     expect(body).not.toContain("run `node --test`");
     expect(body).toContain("### Step 6 — Run the Project's declared validation\n\n- **Do:** run `node scripts/check-rehearsal.mjs`.");
@@ -107,7 +107,7 @@ describe("Operator QA plan rendering", () => {
       ""
     ].join("\n"));
     // Criterion 1 is not a check: its wording is unchanged.
-    expect(body).toContain("and that output shows this criterion holds, exactly as worded: “MARKER.md exists and contains exactly the line");
+    expect(body).toContain("stays unproven by this step. The criterion, exactly as worded: “MARKER.md exists and contains exactly the line");
     // The declared-validation step is unchanged.
     expect(body).toContain("### Step 5 — Run the Project's declared validation\n\n- **Do:** run `node scripts/check-rehearsal.mjs`.\n- **Expected:** `echo $?` immediately after it prints `0`, as host validation recorded before preservation.");
 
@@ -229,7 +229,7 @@ describe("Operator QA plan rendering", () => {
       "`pnpm test` passes on main but fails on the candidate."
     ]) {
       const body = rendered(source({ acceptanceCriteria: [criterion], validationCommands: ["node scripts/check-rehearsal.mjs", "pnpm test"] }));
-      expect(body, criterion).toContain(`and that output shows this criterion holds, exactly as worded: “${criterion.replace(/`/g, "\\`")}”`);
+      expect(body, criterion).toContain(`stays unproven by this step. The criterion, exactly as worded: “${criterion.replace(/`/g, "\\`")}”`);
       expect(body, criterion).not.toContain("never shows that a command passes");
     }
     expect(rendered(source({ acceptanceCriteria: ["`pnpm lint` succeeds."], validationCommands: ["pnpm lint", "pnpm test"] })))
@@ -358,7 +358,7 @@ describe("Operator QA plan rendering", () => {
       }));
       expect(stepOf(namedSource)).toContain(`inspect \`src/guard.ts\` with \`git show ${COMMIT}:src/guard.ts\``);
       expect(stepOf(namedSource)).not.toContain("tests/b.test.ts");
-      expect(stepOf(namedSource)).toContain("shows this criterion holds");
+      expect(stepOf(namedSource)).toContain("Compare that output with this criterion");
     });
 
     it("redirects the run i sample criterion as written, naming other absent paths without saying it names only one", () => {
@@ -418,7 +418,7 @@ describe("Operator QA plan rendering", () => {
     }));
     const expectedLine = body.split("\n").find((line) => line.startsWith("- **Expected:** the diff shows"))!;
     expect(expectedLine).toBe(
-      "- **Expected:** the diff shows what changed; and that output shows this criterion holds, exactly as worded: “Line one ## Injected heading - \\[x\\] fake \\<script\\>alert(1)\\</script\\> \\`cmd\\` ping @\u200boperator \\&amp; \\| table \\|”"
+      "- **Expected:** the diff shows what changed. Compare that output with this criterion; any part it cannot show, such as a run's result, stays unproven by this step. The criterion, exactly as worded: “Line one ## Injected heading - \\[x\\] fake \\<script\\>alert(1)\\</script\\> \\`cmd\\` ping @\u200boperator \\&amp; \\| table \\|”"
     );
     expect(body).toContain("— Title with \\*\\*bold\\*\\* and \\<img src=x\\>");
     expect(body).not.toMatch(/^## Injected/m);
@@ -476,7 +476,6 @@ describe("Operator QA plan rendering", () => {
     const VITEST = { setup: "bridge", runner: "pnpm exec vitest run" } as const;
     const SCOPE_AND_CI = (file: string) => `The change touches only ${file}. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.`;
     const stepOf = (body: string, n: number) => body.slice(body.indexOf(`### Step ${n} `), body.indexOf(`### Step ${n + 1} `));
-    const stepsThatClaim = (body: string) => body.split("\n").filter((line) => line.startsWith("- **Expected:**") && line.includes("shows this criterion holds"));
 
     const TEST_FILE = "tests/recovery-replay.test.ts";
     const SELF_CHECK = "node scripts/preservation-self-check.mjs";
@@ -518,7 +517,7 @@ describe("Operator QA plan rendering", () => {
       ].join("\n"));
       expect(stepOf(body, 7)).toContain(`### Step 7 — Run the Project's declared validation\n\n- **Do:** run \`${SELF_CHECK}\`.`);
       expect(stepOf(body, 8)).toBe([
-        "### Step 8 — Run the named test file",
+        "### Step 8 — Run the candidate's test file",
         "",
         `- **Do:** run \`node scripts/bridge-worktree-deps.mjs\` to link the clone's installed dependencies into this throwaway worktree (a clone with none needs \`pnpm install\` first); then run \`pnpm exec vitest run ${TEST_FILE}\`.`,
         "- **Expected:** the run's summary reports every test passed and none failed, and `echo $?` immediately after it prints `0`. This runs that file at this commit and nothing else in the suite.",
@@ -533,10 +532,9 @@ describe("Operator QA plan rendering", () => {
         "",
         "Merge, deployment and publication remain separate operator gates."
       ].join("\n"));
-      expect(body).toContain("Every later step except the named test run and the declared validation only reads Git data or, in Step 9, the pull request's checks on GitHub, and only those run candidate code.");
-      // Only the two criteria inspection can show keep the plain claim.
-      expect(stepsThatClaim(body)).toHaveLength(2);
-      expect(stepsThatClaim(body).join("\n")).not.toMatch(/passes unchanged|required CI/);
+      expect(body).toContain("Every later step except the test-file run and the declared validation only reads Git data or, in Step 9, the pull request's checks on GitHub, and only those run candidate code.");
+      // No step claims its output shows a criterion holds.
+      expect(body).not.toContain("shows this criterion holds");
       expect(rendered(recoverySource, recoveryFacts)).toBe(body);
     });
 
@@ -572,7 +570,7 @@ describe("Operator QA plan rendering", () => {
     it("says it has no run when the repository shows no runner, rather than inventing a command", () => {
       const body = rendered(recoverySource, { ...recoveryFacts, testRun: null });
       expect(body).not.toContain("vitest");
-      expect(body).not.toContain("Run the named test");
+      expect(body).not.toContain("Run the candidate's test");
       expect(stepOf(body, 5)).toContain("No step in this plan runs those tests, so it offers no direct proof that they pass.");
       expect(stepOf(body, 6)).toContain("Step 8's output shows each required check passing");
       expect(body).toContain("Every later step except the declared validation only reads Git data or, in Step 8, the pull request's checks on GitHub, and only the declared validation runs candidate code.");
@@ -605,6 +603,53 @@ describe("Operator QA plan rendering", () => {
       expect(fallback).not.toContain("vitest run tests/a.test.ts tests/b.test.ts");
     });
 
+    it("calls a run proof only when it covers what the criterion names", () => {
+      const tests = (...paths: string[]) => paths.map((file) => ({ status: "M", path: file }));
+      const run = (acceptanceCriteria: string[], changedFiles: Array<{ status: string; path: string }>, pathExists?: (candidate: string) => boolean) =>
+        rendered(source({ acceptanceCriteria, validationCommands: [] }), facts({ changedFiles, testRun: VITEST, ...(pathExists ? { pathExists } : {}) }));
+      const NO_CLAIM = "This plan cannot tell whether that covers what this criterion means, so it claims no proof: judge that from the run.";
+
+      // The review's case: another criterion names a file the candidate must not edit. The run covers both; neither is called proof.
+      const wrongFile = run(["Do not edit tests/old.test.ts.", "Every other test in the changed file passes unchanged."], tests("tests/new.test.ts"), (candidate) => ["tests/old.test.ts", "tests/new.test.ts"].includes(candidate));
+      expect(stepOf(wrongFile, 4)).toContain(`Step 6 runs \`tests/old.test.ts\`, \`tests/new.test.ts\`. ${NO_CLAIM}`);
+      expect(stepOf(wrongFile, 4)).not.toContain("that proof");
+      expect(wrongFile).toContain("`pnpm exec vitest run tests/old.test.ts tests/new.test.ts`");
+      // "the changed file" is never tied to a file the candidate did not change.
+      const unchangedOnly = run(["Do not edit tests/old.test.ts.", "Every other test in the changed file passes unchanged."], tests("src/a.ts"), (candidate) => ["tests/old.test.ts", "src/a.ts"].includes(candidate));
+      expect(stepOf(unchangedOnly, 4)).toContain(NO_CLAIM);
+
+      // The review's other case: six changed test files all run, and no exit zero is called the proof of "all tests".
+      const six = ["a", "b", "c", "d", "e", "f"].map((name) => `tests/${name}.test.ts`);
+      const all = run(["All tests pass."], tests(...six));
+      expect(all).toContain(`\`pnpm exec vitest run ${six.join(" ")}\``);
+      expect(stepOf(all, 3)).toContain(NO_CLAIM);
+      // Even a single changed file: "all tests" is more than the file.
+      expect(stepOf(run(["All tests pass."], tests("tests/a.test.ts")), 3)).toContain(NO_CLAIM);
+      expect(stepOf(run(["The full suite passes."], tests("tests/a.test.ts")), 3)).toContain(NO_CLAIM);
+
+      // Tied: the one file the plan can mean, or a file the criterion names itself.
+      for (const criteria of [["tests/a.test.ts gains a test.", "Every other test in that file passes unchanged."], ["Every other test in the changed file passes unchanged."]]) {
+        expect(run(criteria, tests("tests/a.test.ts")), criteria[0]).toContain("which runs `tests/a.test.ts`: its exit-zero result is that proof.");
+      }
+      const twoFiles = run(["Every other test in that file passes unchanged."], tests("tests/a.test.ts", "tests/b.test.ts"));
+      expect(stepOf(twoFiles, 3)).toContain(NO_CLAIM);
+      const namesBoth = run(["tests/a.test.ts and tests/b.test.ts exist and pass."], tests("tests/a.test.ts", "tests/b.test.ts"));
+      expect(stepOf(namesBoth, 3)).toContain("Step 5 runs it, and its exit-zero result is that proof.");
+      // A named test file the run cannot cover is not called proved by it.
+      const notCovered = run(["tests/a.test.ts and tests/b.mjs exist and pass."], tests("tests/a.test.ts", "tests/b.mjs"));
+      expect(stepOf(notCovered, 3)).not.toContain("Step 5 runs it");
+    });
+
+    it("never says an output shows a criterion holds, for a criterion it cannot recognize either", () => {
+      for (const criterion of ["The test fails without the fix and passes with it.", "The full suite passes.", "MARKER.md exists.", "The scan result equals the baseline."]) {
+        const body = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts());
+        expect(body, criterion).not.toMatch(/shows? (?:that )?(?:this|the) criterion holds/);
+        expect(body, criterion).not.toContain("that proof");
+      }
+      expect(rendered(source({ acceptanceCriteria: ["The test fails without the fix and passes with it."], validationCommands: [] }), facts()))
+        .toContain("any part it cannot show, such as a run's result, stays unproven by this step.");
+    });
+
     it("names the branch for the checks step, since the first render has no pull request yet, and quotes it", () => {
       const body = rendered(source({ acceptanceCriteria: ["Required CI passes."], validationCommands: [] }), facts({ branch: "claude/x`$(touch y)" }));
       expect(body).toContain("``gh pr checks 'claude/x`$(touch y)' --required``");
@@ -624,9 +669,9 @@ describe("Operator QA plan rendering", () => {
         const body = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({
           changedFiles: [{ status: "M", path: "tests/a.test.ts" }], testRun: VITEST
         }));
-        expect(body, criterion).toContain("shows this criterion holds, exactly as worded");
+        expect(body, criterion).toContain("Compare that output with this criterion");
         expect(body, criterion).not.toContain("gh pr checks");
-        expect(body, criterion).not.toContain("Run the named test");
+        expect(body, criterion).not.toContain("Run the candidate's test");
       }
     });
 

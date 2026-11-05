@@ -269,8 +269,8 @@ describe("the live rehearsal's captured code review", () => {
     expect(real.result.data.reviewerUnavailable).toBeNull();
     expect(real.result.data.checks.some((check) => check.name === "Not-applicable claims")).toBe(false);
     expect(real.result.data.decision.status).toBe("deferred");
-    // No claim, no extra GitHub read.
-    expect(real.calls.commitReads).toBe(0);
+    // One read per review, claim or not: the governed-record check needs it too.
+    expect(real.calls.commitReads).toBe(1);
 
     const answered = review({ verdict: notApplicableFromReal() });
     expect(answered.calls.commitReads).toBe(1);
@@ -288,7 +288,7 @@ describe("the live rehearsal's captured code review", () => {
     ]) expect(gate?.evidence).toContain(`${governed} (governed-record)`);
   });
 
-  it("tells the code reviewer what not-applicable and not-checked mean and how to judge governed records, and leaves QA's prompt and schema unchanged", () => {
+  it("tells the code reviewer what not-applicable and not-checked mean and how to judge governed records, and keeps QA's status vocabulary and schema", () => {
     const codeReview = review({ verdict: notApplicableFromReal() });
     const prompt = codeReview.calls.prompt;
     expect(prompt).toContain("`not-applicable` means the change cannot affect that criterion at all");

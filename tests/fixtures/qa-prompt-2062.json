@@ -244,6 +244,16 @@
     "preservedCommit": "c54b01148403a74893275aa8b084b7b9f796d639",
     "head": "192fab64f8818fb631e65a1e302e6a264a605479"
   },
+  "declaredCommits": [
+    "7f508496bab3970a74e354eb93d45a94da4c2a6d",
+    "7c8d8bf7c71487e51fdc533168bf2dcfdd389a94",
+    "b17c283e1a8a5089a22f937a944cd0294a9a880d",
+    "b6eac9b1e4772b59c0d63fe00d7f77d8a572fbac",
+    "a4e5cf535440aa4f8462492c5135250ec6776f82",
+    "9a54ef9501c0aedcc583e67135a724d8b7259da7",
+    "c54b01148403a74893275aa8b084b7b9f796d639",
+    "192fab64f8818fb631e65a1e302e6a264a605479"
+  ],
   "planSource": {
     "kind": "action-acceptance",
     "actionKey": "arcadia/pin-work-monitor-malformed-record",

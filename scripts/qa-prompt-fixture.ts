@@ -45,7 +45,8 @@ export function fixturePrompt(role: "qa" | "code-review" = "qa"): string {
     sandboxProof: fixture.sandboxProof,
     identity: fixture.identity,
     settlementRecords: fixture.settlementRecords,
-    settled: fixture.settled
+    settled: fixture.settled,
+    declaredCommits: fixture.declaredCommits
   });
 }
 
