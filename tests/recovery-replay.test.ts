@@ -150,6 +150,24 @@ describe("recovery signal replay of 2026-11-02 ledger rows", () => {
       });
       expect(out.map((s) => s.failureClass)).toEqual(["sole_failure"]);
     });
+    it("a lone operator-qa-plan that is not failing raises no signal, whatever the status", () => {
+      for (const status of ["not-checked", "inherited", "not-applicable"]) {
+        const out = classifyRecoverySignals({
+          reviewRepairs: [repairRow({ failedChecks: [{ criterion: "operator-qa-plan", status }] })]
+        });
+        expect(out).toEqual([]);
+      }
+    });
+    it("a non-failing operator-qa-plan beside a failing sibling raises no signal, whatever the status", () => {
+      for (const status of ["not-checked", "inherited", "not-applicable"]) {
+        const out = classifyRecoverySignals({
+          reviewRepairs: [repairRow({ failedChecks: [
+            { criterion: "operator-qa-plan", status }, { criterion: "tests-and-evidence", status: "fail" }
+          ] })]
+        });
+        expect(out).toEqual([]);
+      }
+    });
   });
 
   describe("operator-held marks", () => {

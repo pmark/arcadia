@@ -636,11 +636,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2018"]
   - id: pin-qa-plan-status-must-be-fail
     title: "Pin that a QA repair row whose operator-qa-plan check did not fail raises no recovery signal, with a test covering the status check named in Issue #2004."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin that a QA repair row whose operator-qa-plan check did not fail raises no recovery signal, with a test covering the status check named in Issue #2004."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-qa-plan-status-must-be-fail-75fe27966b22; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-qa-plan-status-must-be-fail
     clarification: clarified
     confidence: high
@@ -658,7 +658,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-qa-plan-status-must-be-fail
+current_action: first-unattended-run
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.
