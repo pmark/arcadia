@@ -400,7 +400,9 @@ describe("live dashboard start", () => {
     mkdirSync(f.live, { recursive: true });
     writeFileSync(path.join(f.live, "current"), `a ${f.head()}\n`);
     expect(f.serve().status).toBe(0);
-    expect(f.calls()).toEqual(["dev -"]);
+    // A build starts in the background here too, and it may log its own call before this reads the list.
+    expect(f.calls()).toContain("dev -");
+    expect(f.calls()).not.toContain("start .live/a");
   });
 
   it("serves the current build", () => {
