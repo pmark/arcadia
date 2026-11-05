@@ -5,7 +5,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 type Interceptor = (command: string, args: readonly string[], cwd: string) => boolean;
-const control = vi.hoisted(() => ({ fail: null as null | Interceptor, calls: [] as string[][] }));
+type Rewrite = (command: string, args: readonly string[], stdout: string) => string;
+const control = vi.hoisted(() => ({
+  fail: null as null | Interceptor,
+  rewrite: null as null | Rewrite,
+  calls: [] as string[][]
+}));
 
 vi.mock("node:child_process", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:child_process")>();
@@ -16,7 +21,9 @@ vi.mock("node:child_process", async (importOriginal) => {
       if (control.fail?.(command, args, options?.cwd ?? "")) {
         return { status: 1, signal: null, stdout: "", stderr: "forced failure", pid: 0, output: [], error: undefined };
       }
-      return (actual.spawnSync as (...a: unknown[]) => unknown)(command, args, options);
+      const result = (actual.spawnSync as (...a: unknown[]) => { stdout?: unknown })(command, args, options);
+      if (control.rewrite && typeof result.stdout === "string") result.stdout = control.rewrite(command, args, result.stdout);
+      return result;
     }) as typeof actual.spawnSync
   };
 });
@@ -26,6 +33,7 @@ import { formatWorkingCopySafetyLines, scanProjectWorkingCopies, type WorkMonito
 const roots: string[] = [];
 afterEach(() => {
   control.fail = null;
+  control.rewrite = null;
   control.calls = [];
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
@@ -135,6 +143,24 @@ describe("work monitor failure handling", () => {
     expect(baseline.repositories[0].workingCopies.some((entry) => entry.branch === "unpublished")).toBe(true);
     control.fail = (command, args) => command === "git" && args[0] === "for-each-ref" && args.some((arg) => arg.includes("%00"));
     expect(scan(repository)).toEqual(baseline);
+  });
+
+  it("reads per-ref when one batched branch record loses every field but its name and object id", () => {
+    const { repository } = createRepository();
+    const baseline = scan(repository);
+    let altered = 0;
+    // Only the batched listing (its format carries the %00 field separator) is altered: the first record keeps name and sha alone.
+    control.rewrite = (command, args, stdout) => {
+      if (command !== "git" || args[0] !== "for-each-ref" || !args.some((arg) => arg.includes("%00"))) return stdout;
+      const lines = stdout.split("\n");
+      const [name, sha] = lines[0].split("\0");
+      if (!name || !sha) return stdout;
+      lines[0] = `${name}\0${sha}`;
+      altered += 1;
+      return lines.join("\n");
+    };
+    expect(scan(repository)).toEqual(baseline);
+    expect(altered).toBeGreaterThanOrEqual(1);
   });
 
   it("keeps a subject that contains the old record delimiters intact", () => {
