@@ -284,6 +284,12 @@ export interface TmuxAdapter {
    * `capturePane`: test doubles predate it.
    */
   killSession?(name: string): void;
+  /**
+   * The pid of the session's pane process, or null. Used only to walk a stalled
+   * Session's process tree for its evidence (`src/production/evidenceBundle.ts`).
+   * Optional for the same reason as `capturePane`.
+   */
+  panePid?(name: string): number | null;
 }
 
 /**
@@ -389,6 +395,22 @@ export const systemTmux: TmuxAdapter = {
         maxBuffer: 8 * 1024 * 1024,
         env: tmuxQueryEnv()
       });
+    } catch {
+      return null;
+    }
+  },
+  panePid(name) {
+    // Same exact-match pane target as `capturePane`. Read once when a stall alert opens, so it is bounded.
+    try {
+      const output = execFileSync("tmux", ["list-panes", "-t", `=${name}:`, "-F", "#{pane_pid}"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 2_000,
+        killSignal: "SIGKILL",
+        env: tmuxQueryEnv()
+      });
+      const pid = Number(output.split("\n")[0]);
+      return Number.isInteger(pid) && pid > 1 ? pid : null;
     } catch {
       return null;
     }

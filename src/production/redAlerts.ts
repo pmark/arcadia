@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { discoverDocs } from "../docs/discover.js";
 import { previewAgentAskRequest } from "../ask/preview.js";
 import { insertSettlementRow, type AgentAskSettlementReceipt } from "../ask/settlement.js";
+import { renderEvidenceBundleSection, writeEvidenceBundle, type HangCaptureRequest } from "./evidenceBundle.js";
 import type { ManagedProductionLaunchAttempt } from "./tick.js";
 import { PRODUCTION_CONTROL_DEADLINES, readProductionPolicySafely, SCOPE_DRIFT_REMEDY } from "./policy.js";
 import { classifySession } from "./sessionSignals.js";
@@ -159,9 +160,11 @@ export interface RaiseRedAlertInput {
   /** Evaluated only when the alert is new or its evidence text changes need it; keep it cheap. */
   detail: () => string;
   now: Date;
+  /** A stuck process is this failure: also capture its process tree, `lsof` and `sample` (bounded, outside any transaction). */
+  hang?: HangCaptureRequest;
 }
 
-function writeEvidence(workspace: string, row: AlertRow): void {
+function writeEvidence(row: AlertRow): void {
   mkdirSync(path.dirname(row.evidence_path), { recursive: true });
   writeFileSync(
     row.evidence_path,
@@ -181,6 +184,39 @@ function writeEvidence(workspace: string, row: AlertRow): void {
       ""
     ].join("\n")
   );
+}
+
+/**
+ * The bundle a fixture is cut from, once per alert episode. It runs last, after
+ * the alert and its notification are committed, so it can only cost the capture.
+ * `writeEvidenceBundle` never throws; the append is guarded so nothing here can
+ * reach the tick.
+ */
+function captureEvidenceBundle(db: Database.Database, input: RaiseRedAlertInput, row: AlertRow): void {
+  const stopOutcome = Object.values(REVIEW_REPAIR_STOP_ALERTS).find((stop) => stop.trigger === row.trigger)?.outcome ?? null;
+  const bundle = writeEvidenceBundle({
+    db,
+    workspace: input.workspace,
+    alert: {
+      id: row.id,
+      episode: row.episode,
+      trigger: row.trigger,
+      projectSlug: row.project_slug,
+      actionKey: row.action_key,
+      sessionId: row.session_id,
+      firstSeenAt: row.first_seen_at,
+      detail: row.detail,
+      requestId: requestIdFor(row)
+    },
+    stopOutcome,
+    hang: input.hang,
+    now: input.now
+  });
+  try {
+    appendFileSync(row.evidence_path, renderEvidenceBundleSection(bundle));
+  } catch {
+    // The alert stands; bundle.json, if written, says what was captured.
+  }
 }
 
 /**
@@ -281,7 +317,7 @@ export function raiseRedAlert(db: Database.Database, input: RaiseRedAlertInput):
          episode = @episode, occurrences = 1, first_seen_at = @first_seen_at, last_seen_at = @last_seen_at,
          cleared_at = NULL, notified_at = NULL`
     ).run(row);
-    writeEvidence(input.workspace, row);
+    writeEvidence(row);
   }
   // An unsent notification (a first attempt that failed) is retried on the
   // next tick the failure is still seen; a sent one is never repeated.
@@ -289,6 +325,7 @@ export function raiseRedAlert(db: Database.Database, input: RaiseRedAlertInput):
     enqueueNotification(db, row);
     db.prepare("UPDATE production_red_alerts SET notified_at = ? WHERE id = ?").run(at, row.id);
   }
+  if (created) captureEvidenceBundle(db, input, row);
   return { created, alert: toAlert(row) };
 }
 
@@ -369,7 +406,7 @@ export function observeAdmission(ctx: AlertContext, launch: ManagedProductionLau
 /** A stalled live Session raises; anything else clears the Project's stall alerts. */
 export function observeStall(
   ctx: AlertContext,
-  input: { session: { id: string; action_id: string; tmux_session_name: string } | null; stalled: boolean; tmux: Pick<TmuxAdapter, "capturePane"> }
+  input: { session: { id: string; action_id: string; tmux_session_name: string } | null; stalled: boolean; tmux: Pick<TmuxAdapter, "capturePane" | "panePid"> }
 ): void {
   const { db, projectSlug, now } = ctx;
   if (!input.session || !input.stalled) {
@@ -401,7 +438,8 @@ export function observeStall(
         `(classified ${classification.state}: ${classification.reason}).`
       );
     },
-    now
+    now,
+    hang: { rootPid: () => input.tmux.panePid?.(session.tmux_session_name) ?? null }
   });
 }
 

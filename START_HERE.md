@@ -1574,6 +1574,11 @@ trigger, first-seen time, and an evidence file under
 failure resolves, and each new alert posts once to Discord. Alerts only
 report: they never change admission, approvals, or credentials.
 
+Beside each evidence file, `<alert id>-e<episode>/bundle.json` lists what was
+saved for that episode: the verdict report and prompt for a review stop, the
+worker log tail, and a process tree with `lsof` and `sample` for a stalled
+Session. Anything it could not capture is stated there, not left out.
+
 **Red alert diagnosis is off by default and costs nothing until you turn it
 on.** It calls a model, so it is behind an explicit flag in the workspace
 `config/arcadia.json`:
