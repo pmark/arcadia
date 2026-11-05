@@ -1014,7 +1014,9 @@ describe("start-run executor: failures after the first mutation", () => {
     ["the renewal fails", { mode: "renewal_failed" }, /sign-in sequence did not succeed, so there is no START: the Haiku sign-in renewal failed.*\[code RENEWAL_FAILED; sequenceClaimed true\]/],
     ["the worker usage check fails", { mode: "check_failed" }, /sign-in sequence did not succeed, so there is no START: the worker usage check does not allow START.*\[code CHECK_FAILED; sequenceClaimed true\]/],
     ["the check succeeds but the credential expires within 5 minutes", { expiresInMs: 120_000 }, /credential expiry: the sign-in has expired or expires within 5 minutes/],
-    ["a usage window is at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/]
+    ["a usage window is at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/],
+    ["the weekly window is missing (ruling A keeps it required)", { omitWeekly: true }, /usage window unknown or at 100%/],
+    ["the weekly window is at 100% with no 5-hour window", { omitFiveHour: true, weeklyPercent: 100 }, /usage window unknown or at 100%/]
   ])("consumes the card and its sequence with no START or retry when %s", (_label, signin, reason) => {
     const b = box({ state: (s) => { s.signin = signin; } });
     const result = b.run();
@@ -1115,6 +1117,13 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(result.receipt!.runtimeUpgraded).toBe(true);
     expect(result.receipt!.record).toMatchObject({ preRestartBinding: null, postRestartHandlerHash: `handler-${process.pid}` });
     expect(result.receipt!.record.signInReceipt.windows).toHaveLength(2);
+  }, 120_000);
+
+  it("starts on a weekly-only usage receipt: an absent 5-hour window is no limit (operator ruling A)", () => {
+    const b = box({ state: (s) => { s.signin = { omitFiveHour: true }; } });
+    const result = b.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt!.record.signInReceipt.windows).toEqual([expect.objectContaining({ label: "7d", usedPercentage: 30 })]);
   }, 120_000);
 
   it("refuses the START when the retained usage receipt changes after the sequence", () => {

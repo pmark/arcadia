@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createWorkerTick, pollWorkerClaudeUsageDiagnostics } from "../src/commands/worker.js";
 import { readProviderUsage, type ProviderUsageDependencies } from "../src/codingAgents/providerUsage.js";
+import { signInReceiptRefusal } from "../src/production/startRunSignIn.js";
 import { captureDiagnosticWorkerBinding, CLAUDE_DIAGNOSTIC_ENDPOINT, CLAUDE_DIAGNOSTIC_REQUEST, diagnosticGrantAnswer, diagnosticGrantPath, diagnosticResponsePath, publishDiagnosticAttempt, processWorkerClaudeUsageRequest, type ClaudeDiagnosticGrant, type DiagnosticPolicy } from "../src/production/workerClaudeUsageDiagnostic.js";
 const roots: string[] = [];
 const now = new Date("2026-10-24T21:00:00Z");
@@ -198,6 +199,49 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     const f = fixture();
     f.deps.requestClaude = vi.fn(async () => ({ status: 200, body: { five_hour: { utilization: 1, resets_at: "2026-10-23T00:00:00Z" }, seven_day: { utilization: 2, resets_at: "invalid" } } }));
     expect(await f.run()).toMatchObject({ success: false, windows: [] });
+  });
+  // Operator ruling A (2026-11-05), reading Decision 0161: the weekly window is required; an absent 5-hour window is no
+  // limit; a reported 5-hour window must be readable (a future reset, or 0% with none) and below 100%. Each shape runs
+  // through the parser, the worker's receipt and the START gate on that receipt.
+  const week = { utilization: 40, resets_at: "2026-10-30T23:00:00Z" };
+  const soon = "2026-10-24T23:00:00Z", past = "2026-10-24T20:00:00Z";
+  it.each<[string, Record<string, unknown>, boolean, RegExp | null]>([
+    ["five_hour absent", { seven_day: week }, true, null],
+    ["five_hour null", { five_hour: null, seven_day: week }, true, null],
+    ["five_hour idle at 0% with resets_at null", { five_hour: { utilization: 0, resets_at: null }, seven_day: week }, true, null],
+    ["five_hour with neither utilization nor reset", { five_hour: { utilization: null, resets_at: null }, seven_day: week }, true, null],
+    ["five_hour at 0% with a past reset", { five_hour: { utilization: 0, resets_at: past }, seven_day: week }, true, null],
+    ["receipt 738d8c4f's shape (both windows, times moved)", { five_hour: { utilization: 14, resets_at: "2026-10-24T21:11:00.334Z" }, seven_day: { utilization: 6, resets_at: "2026-10-25T16:00:00.334Z" } }, true, null],
+    ["receipt 73ea9094's shape (both windows, times moved)", { five_hour: { utilization: 8, resets_at: "2026-10-25T00:14:00.081Z" }, seven_day: { utilization: 60, resets_at: "2026-10-27T19:00:00.081Z" } }, true, null],
+    ["five_hour above 0% with resets_at null", { five_hour: { utilization: 5, resets_at: null }, seven_day: week }, false, /did not succeed/],
+    ["five_hour above 0% with a past reset", { five_hour: { utilization: 5, resets_at: past }, seven_day: week }, false, /did not succeed/],
+    ["five_hour malformed (above 100)", { five_hour: { utilization: 150, resets_at: soon }, seven_day: week }, false, /did not succeed/],
+    ["five_hour reported with a reset but no utilization", { five_hour: { utilization: null, resets_at: soon }, seven_day: week }, false, /did not succeed/],
+    ["five_hour at 100%", { five_hour: { utilization: 100, resets_at: soon }, seven_day: week }, true, /5h at 100%/],
+    ["seven_day missing", { five_hour: { utilization: 5, resets_at: soon } }, false, /did not succeed/],
+    ["seven_day null with no five_hour", { seven_day: null }, false, /did not succeed/],
+    ["seven_day idle with no reset", { seven_day: { utilization: 0, resets_at: null } }, false, /did not succeed/],
+    ["seven_day at 100%", { seven_day: { utilization: 100, resets_at: "2026-10-30T23:00:00Z" } }, true, /7d at 100%/]
+  ])("ruling A: %s", async (_label, body, success, refusal) => {
+    const f = fixture();
+    f.deps.requestClaude = vi.fn(async () => ({ status: 200, body }));
+    const result = await f.run() as Parameters<typeof signInReceiptRefusal>[0];
+    expect(result).toMatchObject({ httpStatus: 200, success });
+    const reason = signInReceiptRefusal(result, f.binding, now);
+    if (refusal) expect(reason).toMatch(refusal);
+    else expect(reason).toBeNull();
+  });
+  it.each<[string, Record<string, unknown>, unknown[]]>([
+    ["five_hour absent", { seven_day: week }, [{ label: "7d", usedPercentage: 40, resetsAt: "2026-10-30T23:00:00.000Z" }]],
+    ["five_hour idle at 0% with resets_at null", { five_hour: { utilization: 0, resets_at: null }, seven_day: week },
+      [{ label: "5h", usedPercentage: 0, resetsAt: null }, { label: "7d", usedPercentage: 40, resetsAt: "2026-10-30T23:00:00.000Z" }]],
+    ["five_hour at 0% with a past reset", { five_hour: { utilization: 0, resets_at: past }, seven_day: week },
+      [{ label: "5h", usedPercentage: 0, resetsAt: null }, { label: "7d", usedPercentage: 40, resetsAt: "2026-10-30T23:00:00.000Z" }]]
+  ])("ruling A receipt windows: %s", async (_label, body, windows) => {
+    const f = fixture();
+    f.deps.requestClaude = vi.fn(async () => ({ status: 200, body }));
+    expect(await f.run()).toMatchObject({ success: true, windows });
+    expect(((await f.run()) as { windows: unknown[] }).windows).toHaveLength(windows.length);
   });
   it("fences late credentials after timeout and retains consumed evidence", async () => {
     vi.useFakeTimers();

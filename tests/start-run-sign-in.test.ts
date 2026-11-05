@@ -473,9 +473,23 @@ describe("start-run sign-in: the START gate on a receipt", () => {
     ["a failed request", { success: false, outcome: "http_error", httpStatus: 401 }, /did not succeed/],
     ["a credential expiring in exactly 5 minutes", { credentialExpiresAt: "2026-11-01T17:05:00Z" }, /credential expiry/],
     ["a missing 7d window", { windows: [{ label: "5h", usedPercentage: 1 }] }, /7d unknown/],
-    ["a 7d window at 100%", { windows: [{ label: "5h", usedPercentage: 1 }, { label: "7d", usedPercentage: 100 }] }, /7d at 100%/]
+    ["a 7d window at 100%", { windows: [{ label: "5h", usedPercentage: 1 }, { label: "7d", usedPercentage: 100 }] }, /7d at 100%/],
+    ["a weekly-only receipt whose 7d window is at 100%", { windows: [{ label: "7d", usedPercentage: 100 }] }, /7d at 100%/],
+    ["a reported 5h window at 100%", { windows: [{ label: "5h", usedPercentage: 100 }, { label: "7d", usedPercentage: 1 }] }, /5h at 100%/],
+    ["no windows at all", { windows: [] }, /7d unknown/],
+    ["two 5h windows", { windows: [{ label: "5h", usedPercentage: 1 }, { label: "5h", usedPercentage: 2 }, { label: "7d", usedPercentage: 1 }] }, /5h unknown/]
   ])("refuses %s", (_label, overrides, reason) => {
     expect(signInReceiptRefusal(receipt(overrides), binding, now)).toMatch(reason);
+  });
+  // Operator ruling A (2026-11-05): an absent 5-hour window is no limit; the weekly window stays required.
+  it.each<[string, Array<Record<string, unknown>>]>([
+    ["a weekly-only receipt", [{ label: "7d", usedPercentage: 40, resetsAt: "2026-11-08T04:00:00.000Z" }]],
+    ["an idle 5h window at 0% with no reset", [{ label: "5h", usedPercentage: 0, resetsAt: null }, { label: "7d", usedPercentage: 40, resetsAt: "2026-11-08T04:00:00.000Z" }]],
+    // The shapes of two earlier real receipts (738d8c4f, 73ea9094), times moved after `now`.
+    ["receipt 738d8c4f's shape", [{ label: "5h", usedPercentage: 14, resetsAt: "2026-11-01T17:11:00.334Z" }, { label: "7d", usedPercentage: 6, resetsAt: "2026-11-02T12:00:00.334Z" }]],
+    ["receipt 73ea9094's shape", [{ label: "5h", usedPercentage: 8, resetsAt: "2026-11-01T20:13:00.081Z" }, { label: "7d", usedPercentage: 60, resetsAt: "2026-11-04T18:00:00.081Z" }]]
+  ])("allows %s", (_label, windows) => {
+    expect(signInReceiptRefusal(receipt({ windows }), binding, now)).toBeNull();
   });
 });
 
