@@ -1,6 +1,6 @@
 # Relay: the three Workspace layers
 
-Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). The "Revised after the phone test" section below is proposed, not approved. Items 1 and 2 of its build order have merged. Each build step is its
+Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). The "Revised after the phone test" section below is proposed, not approved. Items 1 and 2 of its build order have merged, and the operator started item 3 ([S032](sources/S032-start-weather-rhythm.md)). Each build step is its
 own PR under the usual gates. Unattended production stays first, and production stays Off. Built through [Arcadia Design](../../../.agents/skills/arcadia-design/SKILL.md)
 as part of [the Relay brief](brief.md). Recorded as source S025.
 
@@ -78,6 +78,19 @@ Measured on 2026-11-04 with WebKit at iPhone 15 Pro size, against the live dashb
 6. **One question at a time,** once a Decision allows answers in Relay.
 
 The earlier steps 3 to 5 follow, unchanged.
+
+### Weather rhythm, as built
+
+[Probe weather-1](probes/weather-1.md) measured it. `lib/weather-rhythm.ts` holds the timing, and `SKIES` in `lib/system-sky.ts` holds the amounts.
+
+- **A landing** peaks in 0.4 s and fades by 5 s. It belongs to the sky that landed, so a sky flipping back during it doesn't inherit it. A sky that's leaving fades what it had.
+- **A settled sky** breathes over 17 s. A swell of about 8 s comes every 28 s to 2 minutes, irregularly, and rises only part of the way to a landing.
+- **Reopening on the sky you last saw stays calm.** This browser remembers it. A different sky lands, even if it changed while you were away.
+- **The same sky landing again within 5 minutes only crossfades,** so a flapping status can't keep flashing. A different sky still lands.
+- **Reduced motion** shows the settled sky, with no landing, breath, swell or motion.
+- **A new blocker in a sky that's already Blocked doesn't land,** because only a change of state does. With real data almost always Blocked, this may matter, and it needs its own decision.
+
+Two of these are mine rather than the operator's: staying calm on reopening, and the 5-minute limit.
 
 ## The operator's direction
 
