@@ -153,15 +153,24 @@ describe("work monitor failure handling", () => {
 
   it("falls back to the per-ref reads when one batched record keeps only its name and object id", () => {
     const { repository } = createRepository();
+    control.calls = [];
     const baseline = scan(repository);
+    const plainCalls = control.calls.length;
     // The first record loses every field after its object id, so it no longer has the expected shape.
+    const changed: boolean[] = [];
     control.alterListing = (stdout) => {
       const [first, ...rest] = stdout.split("\n");
       const [name, sha] = first.split("\0");
-      return [`${name}\0${sha}`, ...rest].join("\n");
+      const altered = [`${name}\0${sha}`, ...rest].join("\n");
+      changed.push(altered !== stdout);
+      return altered;
     };
+    control.calls = [];
     expect(scan(repository)).toEqual(baseline);
     expect(control.alterations).toBeGreaterThanOrEqual(1);
+    expect(changed.some(Boolean)).toBe(true);
+    // The per-ref reads add git calls on top of the batched listing.
+    expect(control.calls.length).toBeGreaterThan(plainCalls);
   });
 
   it("keeps a subject that contains the old record delimiters intact", () => {
