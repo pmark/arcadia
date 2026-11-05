@@ -327,6 +327,38 @@ test("a Plan or Action view verifies itself from its own read, while a Project v
   } finally { await stop(ctx); }
 });
 
+test("a draft typed before the View has said what it is doesn't land on the whole portfolio", async ({ page }) => {
+  test.setTimeout(120_000);
+  const world = newWorld();
+  const ctx = await serve(page, world);
+  await page.setViewportSize({ width: 390, height: 844 });
+  // Types at the first moment the field answers, on a slow CPU, as a busy machine does. The layout's Relay hydrates before the View does.
+  await page.addInitScript(() => {
+    const typing = setInterval(() => {
+      const field = document.querySelector("textarea");
+      if (!field || !Object.keys(field).some(key => key.startsWith("__reactProps"))) return;
+      clearInterval(typing);
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Direct this exact Action");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    }, 0);
+  });
+  const client = await page.context().newCDPSession(page);
+  await client.send("Emulation.setCPUThrottlingRate", { rate: 6 });
+  try {
+    await page.goto(`${ctx.url}${ACTION_URL}#dusk`);
+    await expect(field(page)).toHaveValue("Direct this exact Action");
+    await field(page).focus();
+    // Once the View verifies, the draft is that View's, so a direction can name it.
+    await expect(relay(page).locator(".relay-chip")).toContainText("Moon garden", { timeout: 30_000 });
+    const direction = page.getByRole("checkbox", { name: "Send as a direction to this context" });
+    await expect(direction).toBeEnabled();
+    await direction.check();
+    await expect(relay(page)).toContainText("Records a direction for Moon garden / first-website / Review the page on a phone");
+    await expect.poll(() => page.evaluate(() => (JSON.parse(localStorage.getItem("arcadia.workspace.ask.v1")!) as { target: { projectId?: string } | null }).target?.projectId)).toBe("garden");
+    expect(world.posts).toEqual([]);
+  } finally { await stop(ctx); }
+});
+
 test("gates stay: an unverified view, a vanished target and an earlier uncertain send are all refused", async ({ page }, testInfo) => {
   test.setTimeout(180_000);
   const world = newWorld({ plans: "failing" });

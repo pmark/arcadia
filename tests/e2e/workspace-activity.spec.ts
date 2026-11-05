@@ -26,7 +26,7 @@ test("every tap answers at once and says what it's opening, however slow the pag
     return route.abort();
   });
   // Every page load is slow on purpose: what matters is what the screen does in the meantime.
-  let delayMs = 1_500;
+  let delayMs = 3_000;
   await page.route(/\/(workspace\/feed|workspace\/projects\/|todo)/, async route => {
     if (route.request().resourceType() === "fetch" || route.request().resourceType() === "document") await new Promise(resolve => setTimeout(resolve, delayMs));
     await route.continue();
@@ -52,7 +52,8 @@ test("every tap answers at once and says what it's opening, however slow the pag
     await expect(activity).toContainText("Opening what's waiting...", { timeout: 1_000 });
     await expect(page.getByRole("link", { name: "Feed" })).toHaveAttribute("data-opening", "");
     await testInfo.attach("activity-phone", { body: await page.screenshot(), contentType: "image/png" });
-    await expect(page).toHaveURL(/\/workspace\/feed$/);
+    // A prefetch and the navigation can each be held, one after the other.
+    await expect(page).toHaveURL(/\/workspace\/feed$/, { timeout: 30_000 });
     await expect(activity).toHaveText("");
     await page.goBack();
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);

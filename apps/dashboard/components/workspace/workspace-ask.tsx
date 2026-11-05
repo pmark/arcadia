@@ -15,10 +15,13 @@ type Exchange = { id: string; text: string; target: Target; mode?: "direction"; 
 type Saved = { draft: string; target: Target | null; typedOn?: string; exchange: Exchange | null; history: Exchange[] };
 const empty: Saved = { draft: "", target: null, exchange: null, history: [] };
 const storageKey = "arcadia.workspace.ask.v1";
-/** What the View on screen says Ask may use. A route that publishes nothing, like the Feed, has no subject to verify, so Ask uses portfolio routing there. */
+/** What the View on screen says Ask may use. The Feed has no subject to verify, so Ask uses portfolio routing there. */
 type ViewTarget = { target: Target; available: boolean; reading: boolean; path?: string };
 const PORTFOLIO: Target = { label: "Portfolio", context: "Portfolio" };
 const noView: ViewTarget = { target: PORTFOLIO, available: true, reading: false };
+/** Every other route has a View, so until it says what it is, nothing can be sent. Relay hydrates first, so a fast typist reaches this. */
+const viewNotYetKnown: ViewTarget = { target: PORTFOLIO, available: false, reading: true };
+const ROUTE_WITHOUT_A_VIEW = /^\/workspace\/feed(\/|$)/;
 type AskState = {
   saved: Saved; update: (next: Saved) => void; busy: boolean; warning: string | null;
   trail: AskTrailResponse | null; readError: string | null; missing: boolean;
@@ -70,7 +73,10 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
   const [trail, setTrail] = useState<AskTrailResponse | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [missing, setMissing] = useState(false);
-  const [view, publishView] = useState<ViewTarget | null>(null);
+  const [published, publishView] = useState<ViewTarget | null>(null);
+  const path = usePathname();
+  // A View's word only counts on its own route, so a change of route can't borrow the last one's.
+  const view = published && published.path === path ? published : null;
 
   function update(next: Saved) {
     preserveRaw.current = false;
@@ -166,7 +172,7 @@ export function WorkspaceAskProvider({ children }: { children: ReactNode }) {
     const draft = current.current;
     if (view?.available && draft.draft && draft.target === null && (draft.typedOn === undefined || draft.typedOn === view.path)) update({ ...draft, target: view.target, typedOn: undefined });
   }, [view, saved.draft, saved.target]);
-  return <AskContext.Provider value={{ saved, update, busy, warning, trail, readError, missing, inspect, send, view: view ?? noView, publishView }}>{children}</AskContext.Provider>;
+  return <AskContext.Provider value={{ saved, update, busy, warning, trail, readError, missing, inspect, send, view: view ?? (ROUTE_WITHOUT_A_VIEW.test(path) ? noView : viewNotYetKnown), publishView }}>{children}</AskContext.Provider>;
 }
 
 /** The View on screen says what Ask may use, and draws nothing: the composer lives in Relay, which the layout mounts once. */
