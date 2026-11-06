@@ -108,7 +108,7 @@ No hermetic replay scenario is added by this refresh. Failure 9 was not predicta
 
 ### Plan scoreboard and next gate
 
-Every other Action of the [acceptance Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md) is done. Settling `first-unattended-run` in this candidate completes the Plan's milestone as worded, within the envelope above. Decision 0170 hands the next step to the operator.
+Every Action of the [acceptance Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md) is done: `first-unattended-run` was settled in this candidate (`asksettle_9d1df209fedb455c90` preview, applied at `5c7e14d09`), which completed the Plan's milestone as worded, within the envelope above. That settlement activated the next queued Plan, `idea-to-managed-build`, at `launch-tmux-backed-session`; its open Actions look superseded, and a new overnight Plan of test-only Actions is to be activated next. The current Action is therefore a pointer to replace, not a production-run gate. Decision 0170 hands the next step to the operator.
 
 The operator's 2026-11-05 answer "1A" orders the work: the once-per-head CI re-trigger, in parallel with this evidence, and then the concurrency proofs. The operator's "2A" deferred three items, each revived on the next repair loop that stops a run:
 
@@ -116,7 +116,7 @@ The operator's 2026-11-05 answer "1A" orders the work: the once-per-head CI re-t
 - incident diagnosis;
 - the model residual.
 
-**The next gate is the operator's choice of what the next run must prove.** Candidates are concurrency above one, substantive non-test Actions, or a run without a merge freeze. None is authorized by this document. Production stays Off pending a separate START.
+**The next production-run gate:** the operator's 2026-11-05 answers on Issue1929 ("1A 2A 3A" to the 24/7 menu, plus a standing order to settle and merge obvious-judgement work) allow continued serial runs at concurrency one, Rowan pressing each card under a daily approval (Decision 0173) after a fresh pre-mortem, on a queue of test-only Actions. Each batch still needs its own START card. Concurrency above one, substantive non-test Actions and a run without a merge freeze remain unproved and unauthorized here. Production stays Off until the next START.
 
 Evidence custody: the receipts named above, the live database, Issue1929, Issue2127 and the PR records. Rowan retains sole coordination.
 
