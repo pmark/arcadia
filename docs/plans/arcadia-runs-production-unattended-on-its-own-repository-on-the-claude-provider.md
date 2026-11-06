@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 project: arcadia
-status: active
+status: complete
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-05
+updated: 2026-11-06
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -139,10 +139,10 @@ actions:
     references: []
   - id: first-unattended-run
     title: Evidence a multi-Action unattended production run on Arcadia's own repository whose only operator touches are activation and merges of authority-adjacent PRs.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Evidence a multi-Action unattended production run on Arcadia's own repository whose only operator touches are activation and merges of authority-adjacent PRs.
+    next_action: Completed via Agent Ask complete-first-unattended-run-20261105; no further action.
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
@@ -658,7 +658,6 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: first-unattended-run
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.

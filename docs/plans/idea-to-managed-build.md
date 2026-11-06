@@ -9,7 +9,7 @@ token_impact: large
 token_budget: "Project creation, document rendering, Session lifecycle checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one explicitly launched coding-agent Session per accepted Action, and independent QA only when deterministic readiness passes."
 recommended_model: gpt-5.6-sol
 recommended_reasoning_effort: high
-updated: 2026-08-30
+updated: 2026-11-06
 actions:
   - id: prepare-project-idea
     title: Turn one stated project idea into a dispatchable planning Action
@@ -244,6 +244,7 @@ actions:
       - docs/arcadia-development-orchestration-vision.md
       - docs/operator-demo-and-release-contract.md
     depends_on: [build-plan-approval-surface, reconcile-session-exit]
+current_action: launch-tmux-backed-session
 ---
 
 # Idea to managed build

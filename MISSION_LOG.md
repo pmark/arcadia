@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-05
+updated: 2026-11-06
 ---
 
 # Mission Log: Arcadia
@@ -2942,3 +2942,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/recovery-replay.test.ts gains a test in which classifyRecoverySignals receives a qa review repair row whose only failed check is operator-qa-plan with status not-checked, and one with status inherited, and one with status not-applicable, and returns no signal for each."; "The same test gives each of those three statuses on operator-qa-plan beside a second check, tests-and-evidence with status fail, and asserts no signal is returned for each."; "Every other test in that file passes unchanged."; "Apart from the settlement records Arcadia writes, the change touches only tests/recovery-replay.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-qa-plan-status-must-be-fail-75fe27966b22).
+
+## 2026-11-06 — Completed arcadia/first-unattended-run
+
+- **Did:** Completed Action arcadia/first-unattended-run from accepted evidence (Candidate 5434d469134a649b70049a49c0b6acb251a2a0d9).
+- **Result:** Every declared acceptance criterion was accepted as met: "A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate."; "The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges."; "docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.".
+- **Next:** Plan complete; activated Plan idea-to-managed-build from the explicit queue at arcadia/launch-tmux-backed-session.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-first-unattended-run-20261105).

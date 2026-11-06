@@ -7,9 +7,9 @@ status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
-active_plan: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
-current_action: first-unattended-run
-updated: 2026-11-05
+active_plan: idea-to-managed-build
+current_action: launch-tmux-backed-session
+updated: 2026-11-06
 ---
 
 # Arcadia
