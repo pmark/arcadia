@@ -251,12 +251,13 @@ actions:
     next_action: Queue one Intelligence summarization job per narrative document and store its summary as an Artifact, leaving the source document unchanged.
     status: open
     responsibility: agent
+    execution: build
     effort: short
     acceptance_criteria:
       - A narrative doc produces an Artifact holding its summary.
       - The summary is never written back into the source document.
     clarification: clarified
-    source: Agent Ask clarify-narrative-summarization-20261106b
+    source: Agent Ask route-build-narrative-summarization-20261106
     decisions: ["0004"]
     depends_on: [wire-docs-sync-command]
 questions:
