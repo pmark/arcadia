@@ -4,7 +4,7 @@ type: decision
 id: "0182"
 slug: decide-which-gated-pull-requests-rowan-may-merge-without-the-operator-s-word-on
 project: arcadia
-status: open
+status: approved
 question: Decide which gated pull requests Rowan may merge without the operator's word on each, under Decision 0176 option A's naming in advance.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: keep-unattended-serial-production-running-overnight-on-three-test-only-actions
 updated: 2026-11-06
+answer: "C. Standing order: Rowan settles and merges every pull request whose judgement is obvious"
+decided: 2026-11-06
 ---
 
 # Decision 0182: Decide which gated pull requests Rowan may merge without the operator's word on each, under Decision 0176 option A's naming in advance.
