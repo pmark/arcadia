@@ -41,8 +41,15 @@ function runWithChange(args: string[], env: NodeJS.ProcessEnv, ...changes: Array
   });
 }
 
-const production = (state: string, revision: number) =>
-  JSON.stringify({ ok: true, data: { display: { state }, read: { policy: { revision } } } });
+const production = (state: string, revision: number, escalations: Array<[string, string]> = [], scope?: string[]) =>
+  JSON.stringify({
+    ok: true,
+    data: {
+      display: { state },
+      read: { policy: { revision, scope: scope ? { actions: scope } : null } },
+      operatorEscalations: escalations.map(([actionKey, kind]) => ({ actionKey, kind, message: "m" })),
+    },
+  });
 
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
@@ -112,6 +119,34 @@ describe("wait-for-event.sh", () => {
       writeFileSync(file, production("active_idle", 98)));
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toBe("PRODUCTION active_idle rev 98 (was inactive_idle rev 97)");
+  });
+
+  it("production: wakes on a new in-scope escalation that changes neither state nor revision", async () => {
+    // 2026-11-06: #2145's red required check sat as "Active · No admitted work" for an hour with no wake.
+    const file = join(temp(), "status.json");
+    const scope = ["arcadia/a", "arcadia/b"];
+    const old: [string, string] = ["arcadia/a", "awaiting_independent_verdicts"];
+    writeFileSync(file, production("active_idle", 98, [old, ["other/x", "build_packet_approval_pending"]], scope));
+    const r = await runWithChange(["production"],
+      envFor(fakeBin(), { FAKE_PRODUCTION: file, WAIT_INTERVAL: "0.05", WAIT_TIMEOUT: "4" }),
+      () => writeFileSync(file, production("active_idle", 98, [old, ["other/y", "required_checks_failed"]], scope)),
+      () => writeFileSync(file, production("active_idle", 98, [old, ["arcadia/b", "required_checks_failed"]], scope)));
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe("PRODUCTION active_idle rev 98 ESCALATION arcadia/b required_checks_failed");
+  });
+
+  it("production: an escalation that clears and returns wakes; with no scope every Action counts", async () => {
+    const file = join(temp(), "status.json");
+    const red: [string, string] = ["arcadia/a", "required_checks_failed"];
+    writeFileSync(file, production("inactive_idle", 99, [red]));
+    const cleared = () => writeFileSync(file, production("inactive_idle", 99));
+    const r = await runWithChange(["production"],
+      envFor(fakeBin(), { FAKE_PRODUCTION: file, WAIT_INTERVAL: "0.05", WAIT_TIMEOUT: "4" }),
+      // hold the cleared state about 1.2 s, many 50 ms polls, so a loaded host still sees it
+      cleared, cleared, cleared, cleared, cleared, cleared, cleared, cleared,
+      () => writeFileSync(file, production("inactive_idle", 99, [red])));
+    expect(r.status).toBe(0);
+    expect(r.stdout.trim()).toBe("PRODUCTION inactive_idle rev 99 ESCALATION arcadia/a required_checks_failed");
   });
 
   it("prints usage and exits 2 for an unknown kind", () => {

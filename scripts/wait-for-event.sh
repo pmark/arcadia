@@ -12,7 +12,10 @@
 #       exits when a run of the card that was not there at the start (not a preflight)
 #       reaches a final outcome: "PRESS <card> <run> <outcome> <phase>"
 #   scripts/wait-for-event.sh production
-#       exits when production's state or policy revision changes: "PRODUCTION <state> rev <n> (was ...)"
+#       exits when production's state or policy revision changes: "PRODUCTION <state> rev <n> (was ...)",
+#       or when a new operator escalation appears for an in-scope Action (any Action while no
+#       scope is active), such as a red required check, which changes neither:
+#       "PRODUCTION <state> rev <n> ESCALATION <project/action> <kind>"
 #
 # Read-only: it runs `gh pr view`, `arcadia production status --json` and reads
 # run receipts. Polls every WAIT_INTERVAL seconds (default 60) and skips a failed
@@ -22,7 +25,7 @@
 # there too. A bounded watch the operator asked for (2026-11-06); it decides and
 # changes nothing.
 set -u
-usage() { sed -n '2,23p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 kind=${1:-}; [ -n "$kind" ] && shift
 interval=${WAIT_INTERVAL:-60}
 deadline=$(( $(date +%s) + ${WAIT_TIMEOUT:-21600} ))
@@ -30,16 +33,31 @@ timeout_check() { if [ "$(date +%s)" -ge "$deadline" ]; then echo "TIMEOUT waiti
 failed_once=""
 read_failed() { [ -n "$failed_once" ] || { failed_once=1; echo "wait-for-event: a $kind read failed; retrying until TIMEOUT" >&2; }; }
 
-production_snapshot() {
+production_snapshot() { # "<state> rev <n>", then ";<project/action> <kind>" per escalation, sorted
   arcadia production status --json 2>/dev/null | node -e '
     let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
       try {
         const d = JSON.parse(s.slice(s.indexOf("{"))).data;
         const state = d.display.state, rev = d.read.policy.revision;
         if (typeof state !== "string" || typeof rev !== "number") process.exit(1);
-        process.stdout.write(`${state} rev ${rev}`);
+        const scope = Array.isArray(d.read.policy.scope?.actions) ? d.read.policy.scope.actions : null;
+        const escalations = (Array.isArray(d.operatorEscalations) ? d.operatorEscalations : [])
+          .filter((e) => typeof e?.actionKey === "string" && typeof e?.kind === "string")
+          .filter((e) => !scope || scope.includes(e.actionKey))
+          .map((e) => `${e.actionKey} ${e.kind}`.replace(/;/g, ","));
+        process.stdout.write([`${state} rev ${rev}`, ...[...new Set(escalations)].sort()].join(";"));
       } catch { process.exit(1); }
     });'
+}
+
+new_escalation() { # first ";"-separated entry of $2 that $1 lacks
+  local entry
+  local IFS=";"
+  set -f # split on ";" only; never glob an entry against the working directory
+  for entry in $2; do
+    case ";$1;" in *";$entry;"*) ;; *) set +f; echo "$entry"; return ;; esac
+  done
+  set +f
 }
 
 press_runs() { # pressed (mode "run") receipts for a card, one "<run> <outcome> <phase>" per line
@@ -86,11 +104,14 @@ case $kind in
   production)
     before=""
     until before=$(production_snapshot); do read_failed; timeout_check; sleep "$interval"; done
-    echo "WATCHING production $before" >&2
+    echo "WATCHING production ${before%%;*}" >&2
     while :; do
       sleep "$interval"
       now=$(production_snapshot) || { read_failed; timeout_check; continue; }
-      [ "$now" != "$before" ] && { echo "PRODUCTION $now (was $before)"; exit 0; }
+      [ "${now%%;*}" != "${before%%;*}" ] && { echo "PRODUCTION ${now%%;*} (was ${before%%;*})"; exit 0; }
+      added=$(new_escalation "$before" "$now")
+      [ -n "$added" ] && { echo "PRODUCTION ${now%%;*} ESCALATION $added"; exit 0; }
+      before=$now # a cleared escalation leaves the baseline, so its return wakes the session
       timeout_check
     done ;;
   *) usage ;;
