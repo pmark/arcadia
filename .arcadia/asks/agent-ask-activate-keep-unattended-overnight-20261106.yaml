@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-keep-unattended-overnight-20261106
+project: arcadia
+intent: plan
+target_ref: plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions
+requested_authority: propose
+desired_result: Activate the draft Plan keep-unattended-serial-production-running-overnight-on-three-test-only-actions so one per-run START card runs its three pinned test-only Actions, starting at pin-guidance-project-budget-exceeded.
+rationale: Decision 0157. The operator answered A1 (quoted on pmark/arcadia#1929 as "D1 A1 B1"), approving a START card for this draft Plan, to be pressed by the operator. The card embeds this accepted activation as its planActivation block. Activation sets the Plan active with current_action pin-guidance-project-budget-exceeded, and the previous active Plan returns to draft with its unfinished work preserved. No Action content changes.
