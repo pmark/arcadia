@@ -1161,6 +1161,47 @@ describe("Agent Ask settlement", () => {
       expect(plan).toContain("next_action: Keep existing work moving.");
     });
 
+    it("clears question and gap_type from a question_open Action it clarifies (review on #2155)", () => {
+      const QUESTION_ACTION = "  - id: bare\n    title: Bare action\n    status: open\n    responsibility: agent\n    effort: session\n    expected_artifact: Bare proof\n    clarification: question_open\n    question: What is the next step?\n    gap_type: missing-decision\n    confidence: high\n    acceptance_criteria:\n      - Bare proof exists.\n";
+      const { workspace, repo } = fixture();
+      const planPath = path.join(repo, "docs/plans/demo-plan.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace("questions: []", `${QUESTION_ACTION}questions: []`), "utf8");
+      execFileSync("git", ["add", "."], { cwd: repo });
+      execFileSync("git", ["commit", "-qm", "Add question_open Action without next_action"], { cwd: repo });
+      const proposal = runAgentAskPreviewCommand({
+        workspace, request: askForIntent("amend-question", "action", "Supply the next step", "action/bare", ["Improved proof exists."])
+      });
+      const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-question", disposition: "accepted" as const, revision: 1 };
+      const preview = runAgentAskSettleCommand(options);
+      runAgentAskSettleCommand({ ...options, preview: preview.data.receipt.previewFingerprint, apply: true });
+      const plan = readFileSync(planPath, "utf8");
+      const block = plan.slice(plan.indexOf("  - id: bare"), plan.indexOf("questions:"));
+      expect(block).toContain("    next_action: Supply the next step");
+      expect(block).toContain("    clarification: clarified");
+      expect(block).not.toMatch(/^ {4}question:/m);
+      expect(block).not.toMatch(/^ {4}gap_type:/m);
+      expect(discoverDocs(repo).errors.filter((error) => error.relativePath === "docs/plans/demo-plan.md")).toEqual([]);
+    });
+
+    it("refuses a block-scalar title with any spacing after the colon (review on #2155)", () => {
+      const BLOCK_TITLE = "  - id: bare\n    title:  >\n      Bare action\n    status: open\n    responsibility: agent\n    effort: session\n    expected_artifact: Bare proof\n    clarification: unclarified\n    confidence: high\n    acceptance_criteria:\n      - Bare proof exists.\n";
+      const { workspace, repo } = fixture();
+      const planPath = path.join(repo, "docs/plans/demo-plan.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace("questions: []", `${BLOCK_TITLE}questions: []`), "utf8");
+      execFileSync("git", ["add", "."], { cwd: repo });
+      execFileSync("git", ["commit", "-qm", "Add block-scalar title Action"], { cwd: repo });
+      const before = readFileSync(planPath, "utf8");
+      expect(() => {
+        const proposal = runAgentAskPreviewCommand({
+          workspace, request: askForIntent("amend-block-title", "action", "Supply the next step", "action/bare", ["Improved proof exists."])
+        });
+        const options = { workspace, proposal: proposal.data.proposal.id, requestId: "settle-amend-block-title", disposition: "accepted" as const, revision: 1 };
+        const preview = runAgentAskSettleCommand(options);
+        runAgentAskSettleCommand({ ...options, preview: preview.data.receipt.previewFingerprint, apply: true });
+      }).toThrow(/block scalar/);
+      expect(readFileSync(planPath, "utf8")).toBe(before);
+    });
+
     it("refuses an amendment without acceptance, leaving clarification and next_action untouched", () => {
       // Settlement requires acceptance on an accepted Action amendment, so the
       // no-acceptance case is refused before any field (clarification
