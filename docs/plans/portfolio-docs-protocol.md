@@ -9,7 +9,7 @@ token_impact: xlarge
 token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: high
-updated: 2026-10-12
+updated: 2026-11-06
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
@@ -267,6 +267,7 @@ questions:
     gap_type: missing-decision
     decision: "0004"
 decisions: ["0003", "0004", "0005"]
+current_action: narrative-summarization
 ---
 
 # Portfolio Docs Protocol
