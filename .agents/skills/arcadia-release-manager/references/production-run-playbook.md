@@ -43,7 +43,18 @@ batch, and only then ask for the press.
    new prompt, old vs new.
 4. **Process Critic pre-mortem** (`arcadia-process-critic`) on the exact card,
    reading the code paths past the furthest stage any run has reached. Act on
-   every finding ranked above "low" before pressing.
+   every finding ranked above "low" before pressing. It simulates two states
+   no preflight can see (2026-11-06, both cost the run):
+   - **After activation:** every pinned Action is `ready` at once. START's
+     P6 refuses any other state, so no pinned Action may `depends_on` another
+     (a dependency cost a refused press and about two hours).
+   - **After the last pinned Action settles:** apply its completion on main
+     and run `tests/managed-documents-contract.test.ts`. If that Action ends
+     its Plan while the Plan is in the Active scope, the settlement holds the
+     successor and drops `current_action`, so its PR can never pass CI and
+     the run cannot finish (#2147: one red PR, an Off and about six hours).
+     Until #2147 is fixed, that card fails the pre-mortem; give the operator the
+     route as a menu.
 5. **Action shape.** Pinned Actions touch only `WORKER_MERGE_SAFE_PATHS`
    (`src/production/workerMerge.ts`), never `src/production` or
    `src/sessions` (those are never repaired unattended). Each Action routes
@@ -53,7 +64,9 @@ batch, and only then ask for the press.
    "implementation plan" forces a planning run; a declared `execution:
    build` route outranks both. Criteria pass the deterministic checker
    (`src/docs/acceptanceCriteria.ts`); criteria a headless Session cannot
-   evidence (lint, tsc) are verified by required CI.
+   evidence (lint, tsc) are verified by required CI. Compare each Action's
+   fields in the Ask with the Plan file actually written: draft-Plan creation
+   dropped `execution: build` (#2134), and only the pre-mortem caught it.
 6. **Governed records on remote main.** Settlement and pointer commits merged
    as merge commits (never squash); `current_action` names an eligible in-scope
    Action and the scheduler preview identifies the first pinned Action; the
@@ -68,6 +81,13 @@ batch, and only then ask for the press.
    is no code/configuration delta in the guarded runtime paths. A material
    runtime delta requires its separate guarded adoption authority; a method
    checklist never grants installation, recovery or restart permission.
+   A card's preflight and `start-run pins` refuse P0 with "ARCADIA_WORKSPACE
+   is set" in a coding session whose harness injects that variable. Check that
+   the default workspace resolves to the live one without it, then run the
+   card as `env -u ARCADIA_WORKSPACE <card>.sh preflight`. The operator ruled
+   on 2026-11-06 that an injected value is a session override, not operator
+   execution context ([#1929 comment 6681196261](https://github.com/pmark/arcadia/issues/1929#issuecomment-6681196261)),
+   so removing it does not bypass the refusal.
 8. **Capacity.** Gate stays on. Every actual launch requires the Active worker's
    fresh, known, admissible reading under Decision0130 and its numeric amendment
    0134; stale, unknown, exhausted or failed refresh never admits work. Preserve
@@ -101,7 +121,14 @@ batch, and only then ask for the press.
 
 ## Supervision during a run
 
-- Poll every 10 minutes: `arcadia production status` (escalations, red
+- Have a wake source before you idle. Nothing wakes a session on a merge, a
+  press or a production change. Run `scripts/wait-for-event.sh production`
+  (or `pr`, `press`) in the harness's background mode and re-arm it after
+  each wake. It wakes on a state or revision change and on a new escalation
+  for an in-scope Action, such as a red required check. A host that reserves
+  timed polling for the user's own request needs the operator's word once, in
+  that session's own chat.
+- At each wake, or every 10 minutes without one, check: `arcadia production status` (escalations, red
   alerts), recent `operator_pings`, open PRs for the pinned Actions, and the
   worker log tail. A quiet log is not progress: the tick logs each escalation
   once, so treat 20 minutes without a new line while a lease or review is
@@ -118,6 +145,20 @@ batch, and only then ask for the press.
 
 - Ask decisions as numbered options, each with its consequence and a
   recommendation; Agent Ask "decision" proposals are invisible on a phone.
+- Before a menu, list the operator answers already in force and drop any
+  option they cover: carrying out a decision already made is not a second
+  decision (Constitution). On 2026-11-06, three of the operator's touches
+  re-asked for steps an earlier answer covered.
+- Make each option name exactly what it covers: PR numbers, card ids and steps
+  ("prepare, repair and rebuild the card's inputs"). The answer then carries its
+  scope, and a permission check can match it. A standing order that names no
+  PR did not pass the host's merge check; a relayed answer that named the PR did.
+- An approval counts only in the acting session's own chat. Relayed words or
+  a memory default from another session are not approval.
+- Before offering "record the answer as given", dry-run the exact answer:
+  `arcadia decision approve --dry-run`. For a Decision that offers options it
+  records only one of their labels, so a broader answer needs a Decision that
+  offers it as an option.
 - Every press or merge request carries the exact button or PR title and the
   full tailnet deep link to it
   (`http://arcadia-1.alpine-rattlesnake.ts.net:3020/actions/<card-id>`,
