@@ -13,7 +13,7 @@ import {
   isRecognizedProtectedReconciliation,
   verifyReconciliationCommit
 } from "./baseReconcile.js";
-import { git, isAncestor, tryGit } from "./worktrees.js";
+import { git, isAncestor, tryGit, tryGitWithStderr } from "./worktrees.js";
 
 /**
  * Bring the local base branch onto its remote when that is safe. Pointer
@@ -73,8 +73,9 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
     if (!headBefore) refuse(`the local branch ${baseBranch} does not exist`);
     const checkedOut = tryGit(repoRoot, ["symbolic-ref", "-q", "HEAD"])?.trim() ?? null;
     if (checkedOut !== baseRef) refuse(`the checkout is on ${checkedOut?.replace(/^refs\/heads\//, "") ?? "a detached HEAD"}, not ${baseBranch}`);
-    if (input.fetch !== false && tryGit(repoRoot, ["fetch", "--quiet", remote, baseBranch]) === null) {
-      refuse(`could not fetch ${upstream}`);
+    if (input.fetch !== false) {
+      const fetched = tryGitWithStderr(repoRoot, ["fetch", "--quiet", remote, baseBranch]);
+      if (fetched.stdout === null) refuse(`could not fetch ${upstream}${fetched.stderr ? `: ${fetched.stderr}` : ""}`);
     }
     const remoteHead = tryGit(repoRoot, ["rev-parse", "--verify", `refs/remotes/${upstream}`])?.trim() ?? null;
     if (!remoteHead) refuse(`${upstream} is not known locally`);

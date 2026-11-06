@@ -9,7 +9,7 @@ import { inspectGovernedBaseDivergence, isRecognizedGovernanceCommit } from "../
 import { baseReconciliationCommitMessage, createBaseReconciliationCommit, writeCleanBaseMergeTree } from "../src/git/baseReconcile.js";
 import { planReconcile, syncBaseWithOwnPointerCommits } from "../src/git/pointerReconcile.js";
 import { detectBaseBranchAdvance, ensureProductionTickTables, listOperatorEscalations } from "../src/production/tick.js";
-import { mergeCandidatePullRequest } from "../src/production/workerMerge.js";
+import { listWorkerMerges, mergeCandidatePullRequest } from "../src/production/workerMerge.js";
 import type { VerdictGate } from "../src/sessions/roleLineage.js";
 import { FakeGitHub } from "./helpers/rehearsalHarness.js";
 
@@ -687,6 +687,52 @@ describe("a local base ahead only by its own pointer commits", () => {
 
       expect(merge(db, github, sha)).toMatchObject({ kind: "refused", code: "base_not_synced", operatorMergeCommand: null });
       expect(head()).toBe(before);
+      db.close();
+    });
+
+    it("keeps git's stderr in a fetch refusal, and marks the merge landed once a later tick's sync moves main", () => {
+      const github = new FakeGitHub(origin);
+      const db = new Database(":memory:");
+      applyInitialSchema(db);
+      ensureProductionTickTables(db);
+      const sha = openPullRequest(github);
+      // The first fetch fails: the remote is unreachable (a known, local-only stderr).
+      const missing = path.join(root, "gone.git");
+      git(repo, ["remote", "set-url", "origin", missing]);
+      const failed = syncBaseWithOwnPointerCommits({ repoRoot: repo, baseBranch: "main" });
+      expect(failed.outcome).toBe("refused");
+      expect(failed.reason).toMatch(/^could not fetch origin\/main: .*gone\.git/);
+      expect(failed.reason).not.toContain("\n");
+      expect(failed.reason!.length).toBeLessThan(700);
+
+      const outcome = merge(db, github, sha);
+      expect(outcome).toMatchObject({ kind: "refused", code: "base_not_synced" });
+      expect(outcome.kind === "refused" && outcome.reason).toContain("gone.git");
+      expect(listWorkerMerges(db)[0]).toMatchObject({ outcome: "refused", code: "base_not_synced", head: sha });
+
+      // The next tick can reach the remote again and fast-forwards main.
+      git(repo, ["remote", "set-url", "origin", origin]);
+      tick(db);
+      expect(() => git(repo, ["merge-base", "--is-ancestor", sha, "refs/heads/main"])).not.toThrow();
+      const rows = listWorkerMerges(db);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ outcome: "merged", code: null, head: sha });
+      expect(rows[0].reason).toContain("caught up");
+      logged.length = 0; // the shared log is asserted on by later tests
+      db.close();
+    });
+
+    it("leaves a refused base_not_synced row alone while main still lacks the head", () => {
+      const github = new FakeGitHub(origin);
+      const db = new Database(":memory:");
+      applyInitialSchema(db);
+      ensureProductionTickTables(db);
+      const sha = openPullRequest(github);
+      writeDoc(repo, "local.txt", "local\n");
+      commitAll(repo, "local work");
+      expect(merge(db, github, sha)).toMatchObject({ kind: "refused", code: "base_not_synced" });
+      tick(db);
+      expect(listWorkerMerges(db)[0]).toMatchObject({ outcome: "refused", code: "base_not_synced" });
       db.close();
     });
 
