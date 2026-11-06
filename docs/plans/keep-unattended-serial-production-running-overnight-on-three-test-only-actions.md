@@ -11,11 +11,11 @@ updated: 2026-11-06
 actions:
   - id: pin-guidance-project-budget-exceeded
     title: "Pin that the guidance audit reports Project instructions exceeding their 24 KiB budget, with a test covering the case named in Issue #1886."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin that the guidance audit reports Project instructions exceeding their 24 KiB budget, with a test covering the case named in Issue #1886."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-guidance-project-budget-exceeded-abe8889e6cf2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-guidance-project-budget-exceeded
     clarification: clarified
     confidence: high
@@ -71,7 +71,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2011"]
 questions: []
 decisions: []
-current_action: pin-guidance-project-budget-exceeded
+current_action: pin-guidance-blank-override-falls-through
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
