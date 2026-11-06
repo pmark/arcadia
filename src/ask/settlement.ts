@@ -2837,18 +2837,21 @@ function amendAction(
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
   if (!criteriaOnly) {
+    let addedNextAction = false;
     if (/^ {4}next_action:/m.test(block)) {
       block = replaceYamlField(block, 4, "next_action", amendmentScalar(nextAction));
     } else if (nextAction.trim() && /^ {4}title:/m.test(block)) {
       // Plan Actions may omit next_action; the amendment's desired result
       // supplies it (Issue #2154). Placed right after the title.
       block = block.replace(/^ {4}title:.*$/m, (line) => `${line}\n    next_action: ${amendmentScalar(nextAction)}`);
+      addedNextAction = true;
     } else {
       throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
     }
-    // A child with both a desired result and acceptance is complete: mark the
-    // Action clarified. A child without acceptance leaves clarification alone.
-    if (nextAction.trim() && acceptance.length > 0) {
+    // Only an Action that lacked next_action is made clarified, and only by a
+    // child with both a desired result and acceptance. Other amendments, and
+    // the split narrowing path, leave clarification alone.
+    if (addedNextAction && acceptance.length > 0) {
       block = /^ {4}clarification:/m.test(block)
         ? replaceYamlField(block, 4, "clarification", "clarified")
         : block.replace(/^ {4}title:.*$/m, (line) => `${line}\n    clarification: clarified`);
