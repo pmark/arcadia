@@ -13,12 +13,13 @@ actions:
     title: "Pin that the guidance audit reports Project instructions exceeding their 24 KiB budget, with a test covering the case named in Issue #1886."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Pin that the guidance audit reports Project instructions exceeding their 24 KiB budget, with a test covering the case named in Issue #1886."
     expected_artifact: Evidence satisfying Agent Ask pin-guidance-project-budget-exceeded
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-overnight-test-only-serial-20261106
+    source: Agent Ask amend-overnight-plan-execution-build-20261106b
     why: "No test asserts the Project instructions budget message, so deleting that check in inspectGuidanceDelivery passes every test today."
     acceptance_criteria:
       - tests/agent-guidance.test.ts gains a test that adopts a repository, adds a nested AGENTS.md of about 20 KiB, audits with that nested directory as cwd and empty global guidance, and asserts problems contain Project instructions exceed.
@@ -32,12 +33,13 @@ actions:
     title: "Pin that a whitespace-only AGENTS.override.md is skipped and the guidance audit reads AGENTS.md instead, with a test covering the edge case named in Issue #1886."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Pin that a whitespace-only AGENTS.override.md is skipped and the guidance audit reads AGENTS.md instead, with a test covering the edge case named in Issue #1886."
     expected_artifact: Evidence satisfying Agent Ask pin-guidance-blank-override-falls-through
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-overnight-test-only-serial-20261106
+    source: Agent Ask amend-overnight-plan-execution-build-20261106b
     why: "The audit's fall-through for a blank override is untested, so changing first() to select by existence would mislabel the bootstrap and pass every test."
     acceptance_criteria:
       - tests/agent-guidance.test.ts gains a test that adopts a repository, writes an AGENTS.override.md containing only whitespace, and asserts the audit's last source path is AGENTS.md, not AGENTS.override.md.
@@ -51,12 +53,13 @@ actions:
     title: "Pin how the work monitor's attention lines order, filter and cut working copies with a test on a hand-built snapshot, recording today's behaviour named in Issue #2011."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Pin how the work monitor's attention lines order, filter and cut working copies with a test on a hand-built snapshot, recording today's behaviour named in Issue #2011."
     expected_artifact: Evidence satisfying Agent Ask pin-safety-lines-order-and-limit
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-overnight-test-only-serial-20261106
+    source: Agent Ask amend-overnight-plan-execution-build-20261106b
     why: "Only the first line of a real scan is asserted today, so the risk order, the landed and in-PR filter and the limit cut can change unnoticed."
     acceptance_criteria:
       - tests/work-monitor.test.ts gains a test in which formatWorkingCopySafetyLines receives a snapshot of hand-built working copies in the unsaved, local_only, pushed, in_pr and landed states across two Projects, and returns unsaved lines before local_only before pushed, with ties ordered by Project name.
