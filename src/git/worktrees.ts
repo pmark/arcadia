@@ -263,6 +263,20 @@ function gitFailureCause(error: unknown): string {
   return (String(detail.stderr ?? "").trim() || String(detail.message ?? error)).trim();
 }
 
+/**
+ * Like `tryGit`, but keeps a bounded, single-line copy of git's stderr on a
+ * non-zero exit so a caller can say why. `clean` (e.g. a secret redactor) runs
+ * before the collapse and truncation so a cut cannot leave half a secret. A timeout still throws its typed error.
+ */
+export function tryGitWithStderr(cwd: string, args: string[], env: NodeJS.ProcessEnv = process.env, maxChars = 500, clean: (text: string) => string = (text) => text): { stdout: string | null; stderr: string } {
+  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const timeout = preservationTimeout(result.error, "git", args, cwd);
+  if (timeout) throw timeout;
+  if (result.status === 0) return { stdout: result.stdout.trim(), stderr: "" };
+  const line = clean(String(result.stderr ?? "")).replace(/\s+/g, " ").trim();
+  return { stdout: null, stderr: line.length > maxChars ? `${line.slice(0, maxChars)}...` : line };
+}
+
 /** Null only for a genuine non-zero exit; a timeout throws its typed error. */
 export function tryGit(cwd: string, args: string[], env: NodeJS.ProcessEnv = process.env): string | null {
   const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
