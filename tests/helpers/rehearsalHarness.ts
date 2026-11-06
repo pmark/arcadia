@@ -909,6 +909,10 @@ export class FakeGitHub {
   runView: (runId: string) => { headSha: string; status: string } | null = () => null;
   /** One-shot stderr failures for the checks re-trigger's mutating calls, keyed `pr close`, `pr reopen`, `run cancel`, `run rerun`. */
   ghFailures: Partial<Record<"pr close" | "pr reopen" | "run cancel" | "run rerun", string>> = {};
+  /** One `gh pr close` that closes the PR and then reports this failure. */
+  closeFailsAfterClosing: string | null = null;
+  /** Like {@link ghFailures}, but fails every call until the entry is deleted. */
+  stickyGhFailures: Partial<Record<"pr close" | "pr reopen" | "run cancel" | "run rerun", string>> = {};
   /** Every `gh issue create` that succeeded (the QA-plan sole-failure Issue, Decision 0169). */
   issues: Array<{ title: string; body: string; url: string; repo: string }> = [];
   /** Each entry fails one `gh issue create` with that stderr, in order. */
@@ -1112,6 +1116,9 @@ export class FakeGitHub {
       return ok(`${url}\n`);
     }
     const injected = command === "gh" ? `${args[0]} ${args[1]}` as keyof FakeGitHub["ghFailures"] : null;
+    if (injected && this.stickyGhFailures[injected] !== undefined) {
+      return { status: 1, stdout: "", stderr: this.stickyGhFailures[injected], error: null };
+    }
     if (injected && this.ghFailures[injected] !== undefined) {
       const stderr = this.ghFailures[injected];
       delete this.ghFailures[injected];
@@ -1136,6 +1143,13 @@ export class FakeGitHub {
       const pr = this.find(args[2]);
       if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
       pr.state = "CLOSED";
+      if (this.closeFailsAfterClosing !== null) {
+        // GitHub closed the PR but the CLI call failed or timed out.
+        const stderr = this.closeFailsAfterClosing;
+        this.closeFailsAfterClosing = null;
+        this.closeCalls.push(pr.url);
+        return { status: 1, stdout: "", stderr, error: null };
+      }
       if (args.includes("--comment")) this.comments.push({ url: pr.url, body: args[args.indexOf("--comment") + 1] ?? "" });
       this.closeCalls.push(pr.url);
       return ok("");

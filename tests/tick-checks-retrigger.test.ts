@@ -205,13 +205,101 @@ describe("the worker's once-per-head required-checks re-trigger", () => {
   it("names the closed PR when GitHub refuses the reopen", () => {
     const { rehearsal } = finishedA();
     rehearsal.github.checks = () => rollup("codeRabbitOnly");
-    rehearsal.github.ghFailures["pr reopen"] = "HTTP 502: Bad Gateway";
+    rehearsal.github.stickyGhFailures["pr reopen"] = "HTTP 502: Bad Gateway";
     const url = readied(rehearsal);
     ticks(rehearsal, 3);
     expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_timeout", remedy: expect.stringContaining(`gh pr reopen ${url}`) });
-    ticks(rehearsal, 2);
-    expect(ghCount(rehearsal, "gh pr reopen")).toBe(1);
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(3); // bounded attempts in the tick
     expect(ghCount(rehearsal, "gh pr close")).toBe(1);
+    // The worker keeps retrying the reopen on later polls (never a second close).
+    ticks(rehearsal, 1);
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(6);
+    expect(escalation(rehearsal)?.remedy).toContain(`gh pr reopen ${url}`);
+    expect(ghCount(rehearsal, "gh pr close")).toBe(1);
+  });
+
+  it("reopens on the next tick when the reopen failed, then waits as normal", () => {
+    const { rehearsal } = finishedA();
+    rehearsal.github.checks = () => rollup("codeRabbitOnly");
+    rehearsal.github.stickyGhFailures["pr reopen"] = "HTTP 502: Bad Gateway";
+    const url = readied(rehearsal);
+    ticks(rehearsal, 3);
+    expect(rehearsal.github.prs[0].state).toBe("CLOSED");
+    delete rehearsal.github.stickyGhFailures["pr reopen"];
+    rehearsal.tick();
+    expect(rehearsal.github.reopenCalls).toEqual([url]);
+    expect(rehearsal.github.prs[0].state).toBe("OPEN");
+    expect(escalation(rehearsal)?.kind).toBe("awaiting_independent_verdicts");
+    expect(ghCount(rehearsal, "gh pr close")).toBe(1);
+  });
+
+  it("reopens a PR left CLOSED by a worker that crashed between the close and the reopen", () => {
+    const { rehearsal, a } = finishedA();
+    rehearsal.github.checks = () => rollup("codeRabbitOnly");
+    const url = readied(rehearsal);
+    const head = headOf(rehearsal, a);
+    ticks(rehearsal, 2);
+    withDatabase(rehearsal.workspace, (db) => {
+      db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ? WHERE target_head = ?")
+        .run(rehearsal.now.toISOString(), JSON.stringify({ route: "reopen", runIds: [], phase: "requested", detail: null }), head);
+    });
+    rehearsal.github.prs[0].state = "CLOSED";
+    rehearsal.tick();
+    expect(rehearsal.github.reopenCalls).toEqual([url]);
+    expect(rehearsal.github.prs[0].state).toBe("OPEN");
+    expect(escalation(rehearsal)?.kind).toBe("awaiting_independent_verdicts");
+    expect(ghCount(rehearsal, "gh pr close")).toBe(0);
+    rehearsal.tick();
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(1); // done: never reopened again
+  });
+
+  it("attempts the reopen and names the closed PR when gh pr close errors after GitHub closed it", () => {
+    const { rehearsal } = finishedA();
+    rehearsal.github.checks = () => rollup("codeRabbitOnly");
+    rehearsal.github.closeFailsAfterClosing = "context deadline exceeded";
+    const url = readied(rehearsal);
+    ticks(rehearsal, 3);
+    expect(rehearsal.github.reopenCalls).toEqual([url]);
+    expect(rehearsal.github.prs[0].state).toBe("OPEN");
+    expect(escalation(rehearsal)?.kind).toBe("awaiting_independent_verdicts");
+
+    // And when the reopen cannot succeed either, the remedy says the PR is closed.
+    const second = finishedA();
+    second.rehearsal.github.checks = () => rollup("codeRabbitOnly");
+    second.rehearsal.github.closeFailsAfterClosing = "context deadline exceeded";
+    second.rehearsal.github.stickyGhFailures["pr reopen"] = "HTTP 502: Bad Gateway";
+    const secondUrl = readied(second.rehearsal);
+    ticks(second.rehearsal, 3);
+    expect(escalation(second.rehearsal)).toMatchObject({ kind: "required_checks_timeout", remedy: expect.stringContaining(`The PR is closed: reopen it with \`gh pr reopen ${secondUrl}\``) });
+  });
+
+  it("never reopens a MERGED PR, or a PR for a head the stale record does not belong to", () => {
+    const { rehearsal, a } = finishedA();
+    rehearsal.github.checks = () => rollup("codeRabbitOnly");
+    const url = readied(rehearsal);
+    const head = headOf(rehearsal, a);
+    ticks(rehearsal, 2);
+    withDatabase(rehearsal.workspace, (db) => {
+      db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ? WHERE target_head = ?")
+        .run(rehearsal.now.toISOString(), JSON.stringify({ route: "reopen", runIds: [], phase: "requested", detail: null }), head);
+    });
+    rehearsal.github.prs[0].state = "MERGED";
+    ticks(rehearsal, 3);
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(0);
+
+    // A record on a head other than the one the candidate is on is not this head's to act on.
+    withDatabase(rehearsal.workspace, (db) => {
+      db.prepare("UPDATE production_review_steps SET checks_retrigger_at = NULL, checks_retrigger_json = NULL WHERE target_head = ?").run(head);
+      const [step] = listReviewSteps(db, rehearsal.actionA);
+      const earlier = "0".repeat(40);
+      db.prepare(`INSERT INTO production_review_steps (request_id, session_id, action_key, target_head, pull_request_url, policy_epoch,
+          checks_retrigger_at, checks_retrigger_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        .run(`worker-tick-review-${a.id}-${earlier}`, a.id, rehearsal.actionA, earlier, url, step.policy_epoch, step.created_at,
+          JSON.stringify({ route: "reopen", runIds: [], phase: "requested", detail: null }), step.created_at, step.created_at);
+    });
+    rehearsal.github.prs[0].state = "CLOSED";
+    ticks(rehearsal, 3);
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(0);
   });
 
   it("backs off a rate limit on the first re-trigger call and re-triggers once afterwards", () => {

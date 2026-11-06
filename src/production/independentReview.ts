@@ -1015,6 +1015,59 @@ export function advanceIndependentReview(db: Database.Database, input: {
       step = read();
     }
 
+    // The worker's one re-trigger of this exact head's required checks (see
+    // ChecksRetrigger), read from any review row for the head, never another.
+    const retriggerOnHead = (): { requestId: string; at: string; record: ChecksRetrigger | null } | null => {
+      const row = db.prepare(`SELECT request_id, checks_retrigger_at, checks_retrigger_json FROM production_review_steps
+        WHERE target_head = ? AND checks_retrigger_at IS NOT NULL ORDER BY checks_retrigger_at, rowid LIMIT 1`).get(head) as
+        { request_id: string; checks_retrigger_at: string; checks_retrigger_json: string | null } | undefined;
+      return row ? { requestId: row.request_id, at: row.checks_retrigger_at, record: parseChecksRetrigger(row.checks_retrigger_json) } : null;
+    };
+    const setRetrigger = (requestId: string, record: ChecksRetrigger | null, startedAt: string | null = at): void => {
+      db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ?, updated_at = ? WHERE request_id = ?")
+        .run(record ? startedAt : null, record ? JSON.stringify(record) : null, at, requestId);
+    };
+    const describeRetrigger = (record: ChecksRetrigger | null): string => record?.route === "rerun"
+      ? `cancel and re-run of GitHub Actions run(s) ${record.runIds.join(", ")}`
+      : "close and reopen of the PR to re-send its pull_request event";
+    const repository = pullRequestRepository(url);
+    const ghFailure = (result: ReturnType<typeof runCommand>): string => result.error ?? (result.stderr.trim() || `exit ${String(result.status)}`);
+    /**
+     * Reopen the PR the worker closed: up to three attempts, stopping early on a
+     * rate limit (the caller backs off). Returns the last failure, or null.
+     */
+    const reopenPullRequest = (): string | null => {
+      let detail: string | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const reopened = runCommand({ command: "gh", args: ["pr", "reopen", url], cwd: repoRoot, timeoutMs: 30_000 });
+        if (reopened.status === 0) return null;
+        detail = `gh pr reopen failed: ${ghFailure(reopened)}`;
+        if (RATE_LIMITED.test(detail)) break;
+      }
+      return detail;
+    };
+
+    // Invariant: a PR the worker closed is reopened. A reopen-route re-trigger
+    // record on this head that is not done, with the PR CLOSED (never MERGED)
+    // on that same head, means a crash between close and reopen or a failed
+    // reopen: reopen it here, before any closed-PR handling, and retry every poll.
+    const closedByWorker = retriggerOnHead();
+    if (closedByWorker?.record?.route === "reopen" && closedByWorker.record.phase !== "done"
+      && pr.state.toUpperCase() === "CLOSED" && pr.headRefOid === head) {
+      const detail = reopenPullRequest();
+      if (detail === null) {
+        setRetrigger(closedByWorker.requestId, { ...closedByWorker.record, phase: "done" }, closedByWorker.at);
+        input.log?.(`Reopened ${url} for ${actionKey}: the worker had closed it for its one checks re-trigger.`);
+        return { kind: "waiting", reason: `Reopened ${url}, which the worker closed for its one checks re-trigger on ${head.slice(0, 12)}; waiting for its checks.` };
+      }
+      return rateLimited("checks-retrigger", detail) ?? {
+        kind: "blocked",
+        code: "review_pull_request_unavailable",
+        reason: `PR ${url} is CLOSED: the worker closed it for its one checks re-trigger and could not reopen it (${detail}); no verdict is requested.`,
+        remedy: `Reopen it with \`gh pr reopen ${url}\`; the tick also retries the reopen every poll.`
+      };
+    }
+
     // The worker returns a PR to draft itself when it records a real failed
     // verdict on it (src/production/reviewRepair.ts), so a draft whose exact
     // head carries one reports that verdict, never a person pausing the review;
@@ -1207,23 +1260,6 @@ export function advanceIndependentReview(db: Database.Database, input: {
     }
     const checks = classifyPullRequestChecks(pr.statusCheckRollup);
 
-    // The worker's one re-trigger of this exact head's required checks (see
-    // ChecksRetrigger), read from any review row for the head, never another.
-    const retriggerOnHead = (): { requestId: string; at: string; record: ChecksRetrigger | null } | null => {
-      const row = db.prepare(`SELECT request_id, checks_retrigger_at, checks_retrigger_json FROM production_review_steps
-        WHERE target_head = ? AND checks_retrigger_at IS NOT NULL ORDER BY checks_retrigger_at, rowid LIMIT 1`).get(head) as
-        { request_id: string; checks_retrigger_at: string; checks_retrigger_json: string | null } | undefined;
-      return row ? { requestId: row.request_id, at: row.checks_retrigger_at, record: parseChecksRetrigger(row.checks_retrigger_json) } : null;
-    };
-    const setRetrigger = (requestId: string, record: ChecksRetrigger | null, startedAt: string | null = at): void => {
-      db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ?, updated_at = ? WHERE request_id = ?")
-        .run(record ? startedAt : null, record ? JSON.stringify(record) : null, at, requestId);
-    };
-    const describeRetrigger = (record: ChecksRetrigger | null): string => record?.route === "rerun"
-      ? `cancel and re-run of GitHub Actions run(s) ${record.runIds.join(", ")}`
-      : "close and reopen of the PR to re-send its pull_request event";
-    const repository = pullRequestRepository(url);
-    const ghFailure = (result: ReturnType<typeof runCommand>): string => result.error ?? (result.stderr.trim() || `exit ${String(result.status)}`);
     /** Today's escalation, with what the automatic re-trigger did (or why it did not run) appended. */
     const checksTimeout = (note: string, remedyNote = ""): ReviewStepOutcome => {
       const waited = now.getTime() - Date.parse(step.checks_started_at!);
@@ -1325,26 +1361,60 @@ export function advanceIndependentReview(db: Database.Database, input: {
       }
       const fenced = authorityChanged();
       if (fenced) return { kind: "waiting", reason: `Withheld re-triggering the required checks: ${fenced}.` };
+      if (plan.route === "reopen") {
+        // Narrow the race with a push, merge or draft since the poll's read.
+        const again = runCommand({ command: "gh", args: ["pr", "view", url, "--json", "state,isDraft,headRefOid"], cwd: repoRoot, timeoutMs: 30_000 });
+        let fresh: { state?: unknown; isDraft?: unknown; headRefOid?: unknown } = {};
+        if (again.status === 0) { try { fresh = JSON.parse(again.stdout) as typeof fresh; } catch { fresh = {}; } }
+        if (again.status !== 0 || String(fresh.state).toUpperCase() !== "OPEN" || fresh.isDraft === true || fresh.headRefOid !== head) {
+          const why = again.status !== 0 ? ghFailure(again) : "the PR changed since the poll";
+          return (again.status !== 0 ? rateLimited("checks-retrigger", why) : null)
+            ?? { kind: "waiting", reason: `Withheld closing ${url} to re-trigger its checks: ${why}; the next poll decides.` };
+        }
+      }
       const record: ChecksRetrigger = { route: plan.route, runIds: plan.route === "rerun" ? plan.runIds : [], phase: "requested", detail: null };
       // Recorded before the first GitHub call: a crash after it never re-triggers this head again.
       setRetrigger(requestId, record);
-      const calls: string[][] = plan.route === "reopen"
-        ? [["pr", "close", url], ["pr", "reopen", url]]
-        : plan.runIds.map((id) => ["run", "cancel", id, "--repo", repository!]);
-      for (const [index, args] of calls.entries()) {
-        const result = runCommand({ command: "gh", args, cwd: repoRoot, timeoutMs: 30_000 });
-        if (result.status === 0) continue;
-        const detail = `gh ${args.slice(0, 3).join(" ")} failed: ${ghFailure(result)}`;
-        // A rate limit on the very first call changed nothing on GitHub: forget
-        // the record and back off, so the one re-trigger is still to come.
-        if (index === 0 && RATE_LIMITED.test(detail)) {
-          setRetrigger(requestId, null);
-          return rateLimited("checks-retrigger", detail)!;
+      if (plan.route === "reopen") {
+        const closeResult = runCommand({ command: "gh", args: ["pr", "close", url], cwd: repoRoot, timeoutMs: 30_000 });
+        if (closeResult.status !== 0) {
+          const closeDetail = `gh pr close failed: ${ghFailure(closeResult)}`;
+          // A rate limit changed nothing on GitHub: forget the record and back off.
+          if (RATE_LIMITED.test(closeDetail)) {
+            setRetrigger(requestId, null);
+            return rateLimited("checks-retrigger", closeDetail)!;
+          }
+          // The close may have reached GitHub before it failed or timed out: look.
+          const after = runCommand({ command: "gh", args: ["pr", "view", url, "--json", "state"], cwd: repoRoot, timeoutMs: 30_000 });
+          let state = "";
+          if (after.status === 0) { try { state = String((JSON.parse(after.stdout) as { state?: unknown }).state).toUpperCase(); } catch { state = ""; } }
+          if (state === "OPEN") {
+            setRetrigger(requestId, { ...record, phase: "failed", detail: closeDetail });
+            return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) failed: ${closeDetail}.`);
+          }
+          // CLOSED, or unknown (the read failed): attempt the reopen either way.
         }
-        setRetrigger(requestId, { ...record, phase: "failed", detail });
-        const closed = plan.route === "reopen" && index === 1;
-        return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) failed: ${detail}.`,
-          closed ? `The PR is closed: reopen it with \`gh pr reopen ${url}\`. ` : "");
+        const reopenDetail = reopenPullRequest();
+        if (reopenDetail !== null) {
+          // The reconcile at the top of every poll keeps retrying the reopen.
+          setRetrigger(requestId, { ...record, phase: "failed", detail: reopenDetail });
+          return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) failed: ${reopenDetail}.`,
+            `The PR is closed: reopen it with \`gh pr reopen ${url}\` (the tick also retries). `);
+        }
+      } else {
+        for (const [index, id] of plan.runIds.entries()) {
+          const result = runCommand({ command: "gh", args: ["run", "cancel", id, "--repo", repository!], cwd: repoRoot, timeoutMs: 30_000 });
+          if (result.status === 0) continue;
+          const detail = `gh run cancel ${id} failed: ${ghFailure(result)}`;
+          // A rate limit on the very first call changed nothing on GitHub: forget
+          // the record and back off, so the one re-trigger is still to come.
+          if (index === 0 && RATE_LIMITED.test(detail)) {
+            setRetrigger(requestId, null);
+            return rateLimited("checks-retrigger", detail)!;
+          }
+          setRetrigger(requestId, { ...record, phase: "failed", detail });
+          return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) failed: ${detail}.`);
+        }
       }
       setRetrigger(requestId, { ...record, phase: plan.route === "rerun" ? "cancelled" : "done" });
       input.log?.(`Re-triggered the required checks of ${actionKey} at ${head.slice(0, 12)} once (${describeRetrigger(record)}) after ${Math.round(waited / 60_000)} minute(s): ${checks.blockers.join(" ")}`);
