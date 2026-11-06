@@ -387,24 +387,8 @@ export function resolveDispatch(
   blockers.push(...readiness.blockers);
   const { requiredDecisions, operatorQuestion } = readiness;
 
-  const constitution = readConstitution(repoRoot);
-  if (constitution.blocker) {
-    blockers.push(constitution.blocker);
-  }
-
-  // A registry that calls a writing command read-only makes the noun/verb
-  // authority signal lie, and an agent is told to trust that signal before
-  // running anything. Checked here so it refuses at the same place every other
-  // control-document defect does.
-  blockers.push(...checkCapabilityRegistry(repoRoot));
-
-  if (hasWayGuidance(repoRoot)) {
-    const delivery = inspectGuidanceDelivery(repoRoot, { globalInstructions: "" });
-    blockers.push(...delivery.problems.map((message) => ({
-      relativePath: guidanceDeliverySource(repoRoot, message), field: "guidance_delivery", message,
-      remedy: "Repair the instruction budget or refresh the indexed guidance through authorized setup-context; do not bypass the gate."
-    })));
-  }
+  const repository = repositoryControlChecks(repoRoot);
+  blockers.push(...repository.blockers);
 
   const context: DispatchContext = {
     repoRoot,
@@ -423,10 +407,111 @@ export function resolveDispatch(
     actionPath: plan.relativePath,
     requiredDecisions,
     authorization: AUTHORIZATION[action.responsibility] ?? "Unknown responsibility; treat as requires_review.",
-    constitution: constitution.reference
+    constitution: repository.constitution
   };
 
   return { context, blockers, operatorQuestion };
+}
+
+/**
+ * The repository-level control checks every dispatch applies once an Action
+ * resolves: a readable Constitution, an honest capability registry, and
+ * delivered agent guidance. Separate so a caller that legitimately resolves no
+ * Action (`resolveFinishedActivePlan`) still applies them.
+ */
+function repositoryControlChecks(repoRoot: string): { blockers: DispatchBlocker[]; constitution: ConstitutionReference | null } {
+  const blockers: DispatchBlocker[] = [];
+  const constitution = readConstitution(repoRoot);
+  if (constitution.blocker) {
+    blockers.push(constitution.blocker);
+  }
+
+  // A registry that calls a writing command read-only makes the noun/verb
+  // authority signal lie, and an agent is told to trust that signal before
+  // running anything. Checked here so it refuses at the same place every other
+  // control-document defect does.
+  blockers.push(...checkCapabilityRegistry(repoRoot));
+
+  if (hasWayGuidance(repoRoot)) {
+    const delivery = inspectGuidanceDelivery(repoRoot, { globalInstructions: "" });
+    blockers.push(...delivery.problems.map((message) => ({
+      relativePath: guidanceDeliverySource(repoRoot, message), field: "guidance_delivery", message,
+      remedy: "Repair the instruction budget or refresh the indexed guidance through authorized setup-context; do not bypass the gate."
+    })));
+  }
+  return { blockers, constitution: constitution.reference };
+}
+
+/** A finished active Plan, recognized by `resolveFinishedActivePlan`. */
+export interface FinishedActivePlan {
+  planSlug: string;
+  planPath: string;
+  /** Every blocker the finished-Plan state does not explain. Empty when the documents are valid. */
+  blockers: DispatchBlocker[];
+}
+
+/**
+ * Recognize the settled state a completion writes when it finishes the active
+ * Plan and activates no successor in the same settlement (Issue #2147): the
+ * explicit queue names none, or an Active production scope covering the Plan
+ * holds the successor (A10/A6, `SCOPE_DRIFT_REMEDY`). PROJECT.md keeps
+ * `active_plan` on the finished Plan; that Plan is `complete`, every Action in
+ * it is done or deferred, and neither PROJECT.md nor the Plan names a
+ * `current_action`.
+ *
+ * Nothing dispatches from this state: `resolveDispatch` returns no context and
+ * reports the Plan as not active. It is still a valid checked-in state, so the
+ * managed-documents contract accepts it where it otherwise requires one
+ * current Action. The successor is activated by `arcadia go --apply`, or by the
+ * production tick once no Active scope covers the finished Plan (Decision 0048).
+ *
+ * Returns null when the documents are not in exactly this state. Otherwise the
+ * returned `blockers` are what remains after removing the blockers the state
+ * itself produces (the finished Plan's "not active" status, and a
+ * `current_action` still held by a Plan that is not `active`: a stale pointer
+ * `resolveActivePlan` reports as competing only once PROJECT.md names no
+ * Action, and that dispatch never reads), plus the repository-level checks a
+ * resolved Action would have had to pass.
+ */
+export function resolveFinishedActivePlan(repoRoot: string, projectSlug?: string): FinishedActivePlan | null {
+  const active = resolveActivePlan(repoRoot, projectSlug);
+  const { discovered, project, plan } = active;
+  if (!project || !plan) return null;
+  if (plan.status !== "complete" || project.currentAction || plan.currentAction) return null;
+  const decisionDocs = discovered.docs.filter(
+    (doc): doc is DecisionDoc => doc.type === "decision" && doc.project.toLowerCase() === project.slug.toLowerCase()
+  );
+  // A deferral finishes this Plan's Action only when it is this Plan's Decision: one scoped to
+  // another Plan never counts, and an unscoped one counts only when no other Plan of the Project
+  // has an Action with the same id.
+  const otherPlanActionIds = new Set(discovered.docs
+    .filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === project.slug.toLowerCase()
+      && doc.slug.toLowerCase() !== plan.slug.toLowerCase())
+    .flatMap((doc) => doc.actions.map((action) => action.id)));
+  const deferralsFor = (actionId: string): DecisionDoc[] => decisionDocs.filter((decision) => decision.plan
+    ? decision.plan.toLowerCase() === plan.slug.toLowerCase()
+    : !otherPlanActionIds.has(actionId));
+  const finished = (action: PlanActionDoc): boolean =>
+    action.status === "done" || action.status === "deferred" || deferringDecisionFor(action.id, deferralsFor(action.id)) !== null;
+  if (plan.actions.length === 0 || !plan.actions.every(finished)) return null;
+
+  const stalePointerPaths = new Set(discovered.docs
+    .filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === project.slug.toLowerCase()
+      && doc.slug.toLowerCase() !== plan.slug.toLowerCase() && doc.status !== "active" && !!doc.currentAction)
+    .map((doc) => doc.relativePath));
+  let statusExplained = false;
+  const unexplained = active.blockers.filter((blocker) => {
+    if (!statusExplained && blocker.relativePath === plan.relativePath && blocker.field === "status") {
+      statusExplained = true;
+      return false;
+    }
+    return !(blocker.field === "current_action" && stalePointerPaths.has(blocker.relativePath));
+  });
+  return {
+    planSlug: plan.slug,
+    planPath: plan.relativePath,
+    blockers: [...unexplained, ...repositoryControlChecks(repoRoot).blockers]
+  };
 }
 
 /**
