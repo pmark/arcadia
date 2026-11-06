@@ -39,14 +39,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-guidance-blank-override-falls-through
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-overnight-plan-execution-build-20261106b
+    source: Agent Ask clear-blank-override-dependency-g1-20261106
     why: "The audit's fall-through for a blank override is untested, so changing first() to select by existence would mislabel the bootstrap and pass every test."
     acceptance_criteria:
       - tests/agent-guidance.test.ts gains a test that adopts a repository, writes an AGENTS.override.md containing only whitespace, and asserts the audit's last source path is AGENTS.md, not AGENTS.override.md.
       - The same test asserts the audit reports no problems.
       - Every other test in that file passes unchanged.
       - Apart from the settlement records Arcadia writes, the change touches only tests/agent-guidance.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
-    depends_on: [pin-guidance-project-budget-exceeded]
+    depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/1886"]
   - id: pin-safety-lines-order-and-limit
