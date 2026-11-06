@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: keep-unattended-serial-production-running-overnight-on-three-test-only-actions
 project: arcadia
-status: active
+status: complete
 milestone: Keep unattended serial production running overnight on three test-only Actions that pin untested behaviour.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -51,11 +51,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1886"]
   - id: pin-safety-lines-order-and-limit
     title: "Pin how the work monitor's attention lines order, filter and cut working copies with a test on a hand-built snapshot, recording today's behaviour named in Issue #2011."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin how the work monitor's attention lines order, filter and cut working copies with a test on a hand-built snapshot, recording today's behaviour named in Issue #2011."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-safety-lines-order-and-limit-f0a74310f35f; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-safety-lines-order-and-limit
     clarification: clarified
     confidence: high
@@ -71,7 +71,6 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2011"]
 questions: []
 decisions: []
-current_action: pin-safety-lines-order-and-limit
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
