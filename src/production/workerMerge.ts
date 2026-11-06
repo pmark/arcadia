@@ -370,11 +370,11 @@ function recordWorkerMerge(db: Database.Database, row: Omit<WorkerMergeRecord, "
 export function markCaughtUpWorkerMerges(db: Database.Database, input: { repoRoot: string; baseBranch: string; now: Date }): WorkerMergeRecord[] {
   const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_worker_merges'").get();
   if (!exists) return [];
-  const pending = db.prepare("SELECT * FROM production_worker_merges WHERE outcome = 'refused' AND code = 'base_not_synced'").all() as WorkerMergeRecord[];
+  const pending = db.prepare("SELECT * FROM production_worker_merges WHERE outcome = 'refused' AND code = 'base_not_synced' ORDER BY updated_at DESC LIMIT 50").all() as WorkerMergeRecord[];
   const updated: WorkerMergeRecord[] = [];
   for (const row of pending) {
     if (tryGit(input.repoRoot, ["merge-base", "--is-ancestor", row.head, `refs/heads/${input.baseBranch}`]) === null) continue;
-    const reason = `Merged ${row.pull_request_url ?? "the pull request"} at ${short(row.head)} through GitHub; the local ${input.baseBranch} caught up on a later base sync (first recorded as refused base_not_synced).`;
+    const reason = `Merged ${row.pull_request_url ?? "the pull request"} at ${short(row.head)} through GitHub; the local ${input.baseBranch} caught up on a later sync; first refused: ${row.reason.length > 300 ? `${row.reason.slice(0, 300)}...` : row.reason}`;
     const at = input.now.toISOString();
     db.prepare("UPDATE production_worker_merges SET outcome = 'merged', code = NULL, reason = ?, updated_at = ? WHERE request_id = ?").run(reason, at, row.request_id);
     updated.push({ ...row, outcome: "merged", code: null, reason, updated_at: at });

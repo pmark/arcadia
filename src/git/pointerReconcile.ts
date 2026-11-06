@@ -13,6 +13,8 @@ import {
   isRecognizedProtectedReconciliation,
   verifyReconciliationCommit
 } from "./baseReconcile.js";
+import { redactSecrets, sanitizeOutput } from "../sessions/validationEvidence.js";
+import { redactUrlUserinfo } from "../timeline/collectors/git.js";
 import { git, isAncestor, tryGit, tryGitWithStderr } from "./worktrees.js";
 
 /**
@@ -74,7 +76,7 @@ export function syncBaseWithOwnPointerCommits(input: BaseSyncInput): BaseSyncRes
     const checkedOut = tryGit(repoRoot, ["symbolic-ref", "-q", "HEAD"])?.trim() ?? null;
     if (checkedOut !== baseRef) refuse(`the checkout is on ${checkedOut?.replace(/^refs\/heads\//, "") ?? "a detached HEAD"}, not ${baseBranch}`);
     if (input.fetch !== false) {
-      const fetched = tryGitWithStderr(repoRoot, ["fetch", "--quiet", remote, baseBranch]);
+      const fetched = tryGitWithStderr(repoRoot, ["fetch", "--quiet", remote, baseBranch], process.env, 500, (text) => redactUrlUserinfo(redactSecrets(sanitizeOutput(text))));
       if (fetched.stdout === null) refuse(`could not fetch ${upstream}${fetched.stderr ? `: ${fetched.stderr}` : ""}`);
     }
     const remoteHead = tryGit(repoRoot, ["rev-parse", "--verify", `refs/remotes/${upstream}`])?.trim() ?? null;

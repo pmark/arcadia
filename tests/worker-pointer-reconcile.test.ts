@@ -717,9 +717,19 @@ describe("a local base ahead only by its own pointer commits", () => {
       const rows = listWorkerMerges(db);
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ outcome: "merged", code: null, head: sha });
-      expect(rows[0].reason).toContain("caught up");
+      expect(rows[0].reason).toContain("caught up on a later sync; first refused: GitHub merged");
       logged.length = 0; // the shared log is asserted on by later tests
       db.close();
+    });
+
+    it("redacts a token-bearing URL in git's fetch stderr", () => {
+      git(repo, ["remote", "set-url", "origin", "https://user:ghp_abcdefghijklmnopqrstuvwxyz0123456789@127.0.0.1:1/none.git"]);
+      const failed = syncBaseWithOwnPointerCommits({ repoRoot: repo, baseBranch: "main" });
+      expect(failed.outcome).toBe("refused");
+      expect(failed.reason).toMatch(/^could not fetch origin\/main: /);
+      expect(failed.reason).not.toContain("ghp_");
+      expect(failed.reason).not.toContain("user:");
+      git(repo, ["remote", "set-url", "origin", origin]);
     });
 
     it("leaves a refused base_not_synced row alone while main still lacks the head", () => {

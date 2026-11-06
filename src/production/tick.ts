@@ -3458,8 +3458,12 @@ export function detectBaseBranchAdvance(
       input.log(`Fast-forwarded ${input.projectSlug}'s checkout ${input.repoRoot} onto origin/${baseBranch}: ${headBefore} -> ${headAfter} (managed production keeps an in-scope checkout on its remote; pause the Project or narrow the policy scope to hold a local reset).`);
     }
   }
-  for (const row of markCaughtUpWorkerMerges(db, { repoRoot: input.repoRoot, baseBranch, now: input.now })) {
-    input.log(`Worker merge of ${row.pull_request_url ?? row.head} now landed: ${baseBranch} contains ${row.head.slice(0, 12)} (was refused base_not_synced).`);
+  try {
+    for (const row of markCaughtUpWorkerMerges(db, { repoRoot: input.repoRoot, baseBranch, now: input.now })) {
+      input.log(`Worker merge of ${row.pull_request_url ?? row.head} now landed: ${baseBranch} contains ${row.head.slice(0, 12)} (was refused base_not_synced).`);
+    }
+  } catch (error) {
+    input.log(`Could not catch up refused worker merge rows: ${error instanceof Error ? error.message : String(error)}`);
   }
   const newSha = git(input.repoRoot, ["rev-parse", baseBranch]).trim();
   const at = input.now.toISOString();
