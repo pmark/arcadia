@@ -113,6 +113,18 @@ describe("compact Way instruction delivery", () => {
     expect(computeWayPropagationPlan(root).changes).toEqual([]);
   });
 
+  it("reports an oversized nested Project instruction set without a root or combined problem", () => {
+    const root = adopted(); put(root, "apps/mobile/AGENTS.md", "Nested project rule.\n".repeat(975));
+    const nested = audit(root, path.join(root, "apps/mobile"), "");
+    expect(nested.problems).toContainEqual(expect.stringContaining("Project instructions exceed"));
+    expect(nested.problems).not.toContainEqual(expect.stringContaining("Combined guidance exceeds"));
+    expect(nested.problems).not.toContainEqual(expect.stringContaining("Root instructions exceed"));
+    const rootAudit = audit(root, root, "");
+    expect(rootAudit.problems).not.toContainEqual(expect.stringContaining("Project instructions exceed"));
+    expect(rootAudit.problems).not.toContainEqual(expect.stringContaining("Combined guidance exceeds"));
+    expect(rootAudit.problems).not.toContainEqual(expect.stringContaining("Root instructions exceed"));
+  });
+
   it("fails a regression that buries the late identity rule beyond the provider limit", () => {
     const root = adopted(); const bootstrap = file(root, "AGENTS.md");
     put(root, "AGENTS.md", bootstrap.replace("- **Identity:**", "- Identity:") + "x".repeat(32768) + "\n- **Identity:** use semantic identity");
