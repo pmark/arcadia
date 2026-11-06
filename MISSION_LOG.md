@@ -2956,3 +2956,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Operator-settled Plan transition. Previous Plan idea-to-managed-build remains draft with completion state preserved. Decision 0157. The operator answered A1 (quoted on pmark/arcadia#1929 as "D1 A1 B1"), approving a START card for this draft Plan, to be pressed by the operator. The card embeds this accepted activation as its planActivation block. Activation sets the Plan active with current_action pin-guidance-project-budget-exceeded, and the previous active Plan returns to draft with its unfinished work preserved. No Action content changes.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-11-06 — Completed arcadia/pin-guidance-project-budget-exceeded
+
+- **Did:** Completed Action arcadia/pin-guidance-project-budget-exceeded from accepted evidence (Candidate af4123294a4304390fc0f68f94bc844f0d4ab381).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/agent-guidance.test.ts gains a test that adopts a repository, adds a nested AGENTS.md of about 20 KiB, audits with that nested directory as cwd and empty global guidance, and asserts problems contain Project instructions exceed."; "The same test asserts the problems do not contain Combined guidance exceeds or Root instructions exceed, and that auditing from the repository root reports none of the three."; "Every other test in that file passes unchanged."; "Apart from the settlement records Arcadia writes, the change touches only tests/agent-guidance.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-guidance-project-budget-exceeded-abe8889e6cf2).
