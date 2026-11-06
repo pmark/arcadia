@@ -10,6 +10,7 @@ import {
 import { agentAskSettlementMessage } from "../apps/discord-bot/src/notifications/poller.js";
 import { withDatabase } from "../src/db/connection.js";
 import { discoverDocs } from "../src/docs/discover.js";
+import { resolveDispatch } from "../src/docs/dispatch.js";
 import type { PlanDoc } from "../src/docs/types.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
@@ -21,6 +22,7 @@ import {
 } from "../src/sessions/index.js";
 import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
+import { expectManagedDocumentsContract } from "./helpers/managedDocumentsContract.js";
 
 const cleanupHooks = vi.hoisted(() => ({ fail: false, paths: [] as string[] }));
 vi.mock("node:fs", async importOriginal => {
@@ -352,6 +354,38 @@ describe("Agent Ask complete", () => {
     expect(applied.data.receipt.effects.join(" ")).not.toContain("activated Plan side-plan");
     const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
     expect(project).toMatchObject({ activePlan: "demo-plan" });
+  });
+
+  it("leaves documents that pass the managed-documents contract when the held Plan's last Action settles (Issue #2147)", () => {
+    // The live shape on 2026-11-06 (PR #2145): the run's last Action completes its Plan inside the
+    // Active scope, so the successor is held and both pointers are cleared, while a draft Plan still
+    // carries a stale `current_action` that only surfaces once PROJECT.md names none.
+    const { workspace, repo, head } = fixture({ secondDone: true, withActiveSidePlan: true, withStaleDraftPointer: true });
+    withDatabase(workspace, (db) => {
+      const scope = normalizeProductionScope({ intent: "Run demo-plan.", projects: ["demo"], plans: ["demo/demo-plan"], actions: [],
+        providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: [] });
+      activateProduction(db, { requestId: "scope-held-contract", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" });
+    });
+    expectManagedDocumentsContract(repo, "demo");
+    const proposal = runAgentAskPreviewCommand({ workspace, request: completeAsk("complete-held-contract", "first", head) });
+    const preview = runAgentAskSettleCommand({ workspace, proposal: proposal.data.proposal.id, requestId: "settle-held-contract", disposition: "accepted" });
+    const applied = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-held-contract", disposition: "accepted",
+      preview: preview.data.receipt.previewFingerprint, apply: true, operator: true
+    });
+    expect(applied.data.receipt.effects.join(" ")).toContain("Successor activation was held");
+    const project = discoverDocs(repo).docs.find((doc) => doc.type === "project");
+    expect(project).toMatchObject({ activePlan: "demo-plan", currentAction: null });
+
+    // Nothing dispatches from the finished Plan, yet the checked-in documents are valid.
+    const dispatch = resolveDispatch(repo, "demo");
+    expect(dispatch.context).toBeNull();
+    // The three blockers Rowan saw on #2145's candidate: the Plan is complete, it names no Action,
+    // and the draft Plan's stale pointer now reads as competing.
+    expect(dispatch.blockers.map((blocker) => `${blocker.relativePath}:${blocker.field}`).sort()).toEqual([
+      "docs/plans/demo-plan.md:current_action", "docs/plans/demo-plan.md:status", "docs/plans/stale-draft.md:current_action"
+    ]);
+    expectManagedDocumentsContract(repo, "demo");
   });
 
   it("activates the Plan whose earliest eligible Action is highest in the explicit queue when the active Plan completes", () => {
@@ -1252,6 +1286,8 @@ function fixture(options: {
   withActiveSidePlan?: boolean;
   /** Give the inactive Plan's first Action the same id as demo-plan's `first`. */
   withDuplicateActionId?: boolean;
+  /** Add a draft Plan, in no queue, that still carries its own `current_action`. */
+  withStaleDraftPointer?: boolean;
   /** Repo-relative path replacing `first`'s prose `expected_artifact`. */
   expectedArtifactPath?: string;
   /** Write `expectedArtifactPath` to disk before the fixture's initial commit. */
@@ -1285,6 +1321,15 @@ function fixture(options: {
           "token_budget: Deterministic completion with one accepted evidence pass.",
           "token_budget: Deterministic completion with one accepted evidence pass.\nrecommended_model: gpt-5.6-sol"
         ),
+      "utf8");
+  }
+  if (options.withStaleDraftPointer) {
+    writeFileSync(path.join(repo, "docs/plans/stale-draft.md"),
+      inactivePlanDoc(false)
+        .replace("slug: side-plan", "slug: stale-draft")
+        .replace("updated: 2026-09-01", "current_action: stale-one\nupdated: 2026-09-01")
+        .replaceAll("side-one", "stale-one")
+        .replaceAll("side-two", "stale-two"),
       "utf8");
   }
   if (options.withOpenDecision) {

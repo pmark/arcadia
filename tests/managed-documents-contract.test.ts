@@ -1,34 +1,17 @@
-import { describe, expect, it } from "vitest";
-import { discoverDocs } from "../src/docs/discover.js";
-import { resolveDispatch } from "../src/docs/dispatch.js";
+import { describe, it } from "vitest";
+import { expectManagedDocumentsContract } from "./helpers/managedDocumentsContract.js";
 
 /**
  * The repository's managed documents are Arcadia's control plane. A fixture
  * test proves parser behavior, but it cannot catch malformed frontmatter or a
  * dangling pointer introduced by editing the real plan files. Keep this small,
  * deterministic contract in the normal suite so main never becomes unable to
- * explain what Action comes next.
+ * explain what Action comes next. A finished active Plan whose successor is
+ * not yet activated (Issue #2147) explains that by itself: nothing comes next
+ * until `arcadia go` or the production tick activates the queued successor.
  */
 describe("checked-in Arcadia control documents", () => {
   it("parse without errors and resolve one current Action", () => {
-    const repoRoot = process.cwd();
-    const discovered = discoverDocs(repoRoot);
-    expect(discovered.errors).toEqual([]);
-    expect(discovered.rejected).toEqual([]);
-
-    const resolution = resolveDispatch(repoRoot, "arcadia");
-    expect(resolution.context).not.toBeNull();
-    if (resolution.operatorQuestion) {
-      expect(resolution.context?.action.responsibility).toBe("requires_review");
-      expect(resolution.context?.action.clarification).toBe("question_open");
-      expect(resolution.blockers.every((blocker) => blocker.field === "status")).toBe(true);
-    } else if (resolution.context?.action.id === "prove-two-action-unattended-production") {
-      // Decision 0057 was reopened after the codex-cli v5 rehearsal, so this
-      // Action is again dispatchable while its remaining stages are proved.
-      // A blocker here would make the settled pointer unusable.
-      expect(resolution.blockers).toEqual([]);
-    } else {
-      expect(resolution.blockers).toEqual([]);
-    }
+    expectManagedDocumentsContract(process.cwd(), "arcadia");
   });
 });
