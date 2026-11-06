@@ -900,6 +900,15 @@ export class FakeGitHub {
   commentFailures: string[] = [];
   /** Every `gh pr close`. */
   closeCalls: string[] = [];
+  /** Every `gh pr reopen`. */
+  reopenCalls: string[] = [];
+  /** Every `gh run cancel <id>` and `gh run rerun <id>`, as the run id. */
+  runCancels: string[] = [];
+  runReruns: string[] = [];
+  /** `gh run view <id> --json headSha,status`: the run as GitHub reports it, or null to fail the read. */
+  runView: (runId: string) => { headSha: string; status: string } | null = () => null;
+  /** One-shot stderr failures for the checks re-trigger's mutating calls, keyed `pr close`, `pr reopen`, `run cancel`, `run rerun`. */
+  ghFailures: Partial<Record<"pr close" | "pr reopen" | "run cancel" | "run rerun", string>> = {};
   /** Every `gh issue create` that succeeded (the QA-plan sole-failure Issue, Decision 0169). */
   issues: Array<{ title: string; body: string; url: string; repo: string }> = [];
   /** Each entry fails one `gh issue create` with that stderr, in order. */
@@ -1101,6 +1110,27 @@ export class FakeGitHub {
       const url = `https://github.com/pmark/rehearsal/issues/${100 + this.issues.length}`;
       this.issues.push({ title: args[args.indexOf("--title") + 1] ?? "", body: args[args.indexOf("--body") + 1] ?? "", url, repo: args[args.indexOf("--repo") + 1] ?? "" });
       return ok(`${url}\n`);
+    }
+    const injected = command === "gh" ? `${args[0]} ${args[1]}` as keyof FakeGitHub["ghFailures"] : null;
+    if (injected && this.ghFailures[injected] !== undefined) {
+      const stderr = this.ghFailures[injected];
+      delete this.ghFailures[injected];
+      return { status: 1, stdout: "", stderr, error: null };
+    }
+    if (command === "gh" && args[0] === "pr" && args[1] === "reopen") {
+      const pr = this.find(args[2]);
+      if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
+      pr.state = "OPEN";
+      this.reopenCalls.push(pr.url);
+      return ok("");
+    }
+    if (command === "gh" && args[0] === "run" && (args[1] === "cancel" || args[1] === "rerun")) {
+      (args[1] === "cancel" ? this.runCancels : this.runReruns).push(args[2]);
+      return ok("");
+    }
+    if (command === "gh" && args[0] === "run" && args[1] === "view" && args.includes("--json")) {
+      const run = this.runView(args[2]);
+      return run ? ok(`${JSON.stringify(run)}\n`) : { status: 1, stdout: "", stderr: `could not find any workflow run with ID ${args[2]}`, error: null };
     }
     if (command === "gh" && args[0] === "pr" && args[1] === "close") {
       const pr = this.find(args[2]);
