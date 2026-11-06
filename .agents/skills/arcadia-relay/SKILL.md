@@ -82,17 +82,46 @@ Never read a group channel or message anyone to imitate these.
 
 ## What the simulation teaches
 
-Each improvised behavior is evidence of what Relay needs. Before stopping, capture what
-you improvised, one line each, with the existing command:
+Each improvised behavior is evidence of what Relay needs, and how often it recurs is the
+priority. **Capture each one in the turn it happens**, not at the end: one capture for
+every item on the turn's **I improvised** and **Relay can't do this yet** lines.
 
 ```sh
-arcadia learn "Relay mode improvised: <behavior>" --provenance inference --confidence low --evidence "<why it was needed>"
+arcadia learn "<the exact line from the table below>" --provenance inference --confidence low --evidence "<UTC time, session, what happened, in one line>"
 ```
 
-This stays in the current Project's scope. Don't copy client or third-party text into it.
-Add what the operator thought only if they said so, in their words. If you can't run the
-command, list the behaviors for the operator instead and say they weren't captured.
-Capture is evidence, not authority.
+Copy the line exactly. The same text in the same scope is one lesson, and every repeat
+adds its evidence as one more occurrence, so nothing is logged twice and the count
+builds itself. If no line fits, write a new one in the same form (`Relay improvised:
+<new-kind> — <one-line meaning>`), use it the same way, and name it in your last turn so
+it can join the table. A capture takes about a second and no model.
+
+| Line to capture |
+| --- |
+| `Relay improvised: relay-operator-words — carry the operator's exact words to another session, which are not approval there` |
+| `Relay improvised: check-answers-in-force — check whether an earlier operator answer or precedent already covers a question before asking` |
+| `Relay improvised: create-wake-source — arm a watch so a session wakes on a merge, press, production change or red check` |
+| `Relay improvised: verify-claimed-result — check another session's claimed merge, Off or diagnosis directly` |
+| `Relay improvised: diagnose-failure — read logs and commits to tell a structural failure from a flake` |
+| `Relay improvised: build-menu — turn scattered state into one lettered menu with consequences` |
+| `Relay improvised: dry-run-before-offering — dry-run a command or answer before offering it as a choice` |
+| `Relay improvised: summarize-state — stitch status from several sources into one plain report` |
+| `Relay improvised: find-precedent — recover a working step from old transcripts because no guidance has it` |
+| `Relay improvised: supervise-session — start, brief or watch another coding session` |
+| `Relay improvised: independent-review — launch a separate reviewer for a pull request head` |
+| `Relay improvised: hand-off-context — write notes so a successor session can continue` |
+| `Relay can't yet: continue-across-sessions — the conversation and its memory end with this session` |
+| `Relay can't yet: reach-out-first — tell the operator something without being asked` |
+
+This stays in the current Project's scope. Don't copy client or third-party text into the
+evidence. Add what the operator thought only if they said so, in their words. If the
+command fails, say so in the turn's label and carry on; list the uncaptured items in your
+last turn. Capture is evidence, not authority.
+
+**Triage**, after a Relay session or weekly: `arcadia learn search "Relay improvised:"`
+(and `"Relay can't yet:"`) lists the kinds, and `arcadia learn show <id>` lists each
+occurrence. The most frequent kinds become Relay requirements in
+`docs/design/relay/brief.md` through the `arcadia-design` method, or get built.
 
 ## Across hosts
 
