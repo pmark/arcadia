@@ -53,9 +53,11 @@ production_snapshot() { # "<state> rev <n>", then ";<project/action> <kind>" per
 new_escalation() { # first ";"-separated entry of $2 that $1 lacks
   local entry
   local IFS=";"
+  set -f # split on ";" only; never glob an entry against the working directory
   for entry in $2; do
-    case ";$1;" in *";$entry;"*) ;; *) echo "$entry"; return ;; esac
+    case ";$1;" in *";$entry;"*) ;; *) set +f; echo "$entry"; return ;; esac
   done
+  set +f
 }
 
 press_runs() { # pressed (mode "run") receipts for a card, one "<run> <outcome> <phase>" per line

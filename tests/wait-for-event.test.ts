@@ -127,7 +127,8 @@ describe("wait-for-event.sh", () => {
     const scope = ["arcadia/a", "arcadia/b"];
     const old: [string, string] = ["arcadia/a", "awaiting_independent_verdicts"];
     writeFileSync(file, production("active_idle", 98, [old, ["other/x", "build_packet_approval_pending"]], scope));
-    const r = await runWithChange(["production"], envFor(fakeBin(), { FAKE_PRODUCTION: file, WAIT_INTERVAL: "0.05" }),
+    const r = await runWithChange(["production"],
+      envFor(fakeBin(), { FAKE_PRODUCTION: file, WAIT_INTERVAL: "0.05", WAIT_TIMEOUT: "4" }),
       () => writeFileSync(file, production("active_idle", 98, [old, ["other/y", "required_checks_failed"]], scope)),
       () => writeFileSync(file, production("active_idle", 98, [old, ["arcadia/b", "required_checks_failed"]], scope)));
     expect(r.status).toBe(0);
@@ -140,8 +141,9 @@ describe("wait-for-event.sh", () => {
     writeFileSync(file, production("inactive_idle", 99, [red]));
     const cleared = () => writeFileSync(file, production("inactive_idle", 99));
     const r = await runWithChange(["production"],
-      envFor(fakeBin(), { FAKE_PRODUCTION: file, WAIT_INTERVAL: "0.05", WAIT_TIMEOUT: "20" }),
-      cleared, cleared, cleared, cleared, // hold the cleared state long enough for a poll to see it
+      envFor(fakeBin(), { FAKE_PRODUCTION: file, WAIT_INTERVAL: "0.05", WAIT_TIMEOUT: "4" }),
+      // hold the cleared state about 1.2 s, many 50 ms polls, so a loaded host still sees it
+      cleared, cleared, cleared, cleared, cleared, cleared, cleared, cleared,
       () => writeFileSync(file, production("inactive_idle", 99, [red])));
     expect(r.status).toBe(0);
     expect(r.stdout.trim()).toBe("PRODUCTION inactive_idle rev 99 ESCALATION arcadia/a required_checks_failed");
