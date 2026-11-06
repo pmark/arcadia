@@ -481,8 +481,18 @@ export function resolveFinishedActivePlan(repoRoot: string, projectSlug?: string
   const decisionDocs = discovered.docs.filter(
     (doc): doc is DecisionDoc => doc.type === "decision" && doc.project.toLowerCase() === project.slug.toLowerCase()
   );
+  // A deferral finishes this Plan's Action only when it is this Plan's Decision: one scoped to
+  // another Plan never counts, and an unscoped one counts only when no other Plan of the Project
+  // has an Action with the same id.
+  const otherPlanActionIds = new Set(discovered.docs
+    .filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === project.slug.toLowerCase()
+      && doc.slug.toLowerCase() !== plan.slug.toLowerCase())
+    .flatMap((doc) => doc.actions.map((action) => action.id)));
+  const deferralsFor = (actionId: string): DecisionDoc[] => decisionDocs.filter((decision) => decision.plan
+    ? decision.plan.toLowerCase() === plan.slug.toLowerCase()
+    : !otherPlanActionIds.has(actionId));
   const finished = (action: PlanActionDoc): boolean =>
-    action.status === "done" || action.status === "deferred" || deferringDecisionFor(action.id, decisionDocs) !== null;
+    action.status === "done" || action.status === "deferred" || deferringDecisionFor(action.id, deferralsFor(action.id)) !== null;
   if (plan.actions.length === 0 || !plan.actions.every(finished)) return null;
 
   const stalePointerPaths = new Set(discovered.docs

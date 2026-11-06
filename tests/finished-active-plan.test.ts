@@ -51,6 +51,24 @@ describe("resolveFinishedActivePlan", () => {
     expect(() => expectManagedDocumentsContract(repo, "demo")).toThrow();
   });
 
+  it("counts a deferral Decision scoped to this Plan as finishing its open Action", () => {
+    const repo = fixture({ planStatus: "complete", statuses: ["done", "open"], deferSecond: { plan: "demo-plan" } });
+    expect(resolveFinishedActivePlan(repo, "demo")?.blockers).toEqual([]);
+  });
+
+  it("ignores a deferral Decision scoped to another Plan with the same Action id", () => {
+    const repo = fixture({ planStatus: "complete", statuses: ["done", "open"], deferSecond: { plan: "other-plan" },
+      otherPlan: { status: "draft", pointer: false, actionId: "second" } });
+    expect(resolveFinishedActivePlan(repo, "demo")).toBeNull();
+    expect(() => expectManagedDocumentsContract(repo, "demo")).toThrow();
+  });
+
+  it("ignores an unscoped deferral Decision when another Plan has the same Action id", () => {
+    const repo = fixture({ planStatus: "complete", statuses: ["done", "open"], deferSecond: { plan: null },
+      otherPlan: { status: "draft", pointer: false, actionId: "second" } });
+    expect(resolveFinishedActivePlan(repo, "demo")).toBeNull();
+  });
+
   it("does not apply while PROJECT.md still names an Action", () => {
     const repo = fixture({ planStatus: "complete", statuses: ["done", "done"], projectPointer: "first" });
     expect(resolveFinishedActivePlan(repo, "demo")).toBeNull();
@@ -62,7 +80,9 @@ function fixture(options: {
   planStatus: "active" | "complete";
   statuses: [string, string];
   projectPointer?: string;
-  otherPlan?: { status: "draft" | "active"; pointer: boolean };
+  otherPlan?: { status: "draft" | "active"; pointer: boolean; actionId?: string };
+  /** An approved Decision deferring `second`, scoped to `plan` (null: no `plan:` field). */
+  deferSecond?: { plan: string | null };
 }): string {
   const repo = mkdtempSync(path.join(tmpdir(), "arcadia-finished-plan-"));
   roots.push(repo);
@@ -74,7 +94,21 @@ function fixture(options: {
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc("demo-plan", options.planStatus, null, [["first", options.statuses[0]], ["second", options.statuses[1]]]), "utf8");
   if (options.otherPlan) {
     writeFileSync(path.join(repo, "docs/plans/other-plan.md"),
-      planDoc("other-plan", options.otherPlan.status, options.otherPlan.pointer ? "other-one" : null, [["other-one", "open"]]), "utf8");
+      planDoc("other-plan", options.otherPlan.status, options.otherPlan.pointer ? "other-one" : null,
+        [[options.otherPlan.actionId ?? "other-one", "open"]]), "utf8");
+  }
+  if (options.deferSecond) {
+    mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
+    writeFileSync(path.join(repo, "docs/decisions/0057-defer-second.md"), [
+      "---", "arcadia: v1", "type: decision", 'id: "0057"', "slug: defer-second", "project: demo",
+      "status: approved", "question: Defer the second Action?", "confidence: high",
+      ...(options.deferSecond.plan ? [`plan: ${options.deferSecond.plan}`] : []),
+      "action: second", "answer: Defer until later", "decided: 2026-09-01",
+      "options:", "  - label: Defer until later", "    consequence: The second Action stops dispatching.",
+      "    recommended: true", "    effect: defer",
+      "  - label: Keep it dispatchable", "    consequence: It keeps dispatching.", "    recommended: false",
+      "updated: 2026-09-01", "---", "", "# Decision 0057: Defer the second Action?", ""
+    ].join("\n"), "utf8");
   }
   // Every case must fail (or pass) on its pointer state, never on a malformed fixture.
   const discovered = discoverDocs(repo);
