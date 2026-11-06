@@ -143,6 +143,13 @@ describe("compact Way instruction delivery", () => {
     expect(audit(root).problems).toEqual([]);
   });
 
+  it("skips a whitespace-only AGENTS.override.md and audits AGENTS.md instead", () => {
+    const root = adopted(); put(root, "AGENTS.override.md", " \n\t\n");
+    const delivery = audit(root);
+    expect(delivery.sources.at(-1)?.path).toBe(path.join(root, "AGENTS.md"));
+    expect(delivery.problems).toEqual([]);
+  });
+
   it("preserves adopter-owned instruction/procedure regions across repeated setup and propagation", () => {
     const root = scratch(); put(root, "AGENTS.md", "# Local obligations\n\nKeep project language.\n");
     put(root, "docs/agents-context.md", "# Project-owned reference\n");
