@@ -2841,6 +2841,11 @@ function amendAction(
     if (/^ {4}next_action:/m.test(block)) {
       block = replaceYamlField(block, 4, "next_action", amendmentScalar(nextAction));
     } else if (nextAction.trim() && /^ {4}title:/m.test(block)) {
+      // A block-scalar title (`title: |` or `title: >`) continues on indented
+      // lines, so a key inserted after it would break the YAML. Refuse instead.
+      if (/^ {4}title: [|>]/m.test(block)) {
+        throw validationError("Managed Plan Action title is a block scalar; the amendment cannot insert next_action after it.", { actionId });
+      }
       // Plan Actions may omit next_action; the amendment's desired result
       // supplies it (Issue #2154). Placed right after the title.
       block = block.replace(/^ {4}title:.*$/m, (line) => `${line}\n    next_action: ${amendmentScalar(nextAction)}`);
