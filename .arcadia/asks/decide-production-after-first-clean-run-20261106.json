@@ -1,0 +1,27 @@
+{
+ "agent_ask": "v1",
+ "request_id": "decide-production-after-first-clean-run-20261106",
+ "project": "arcadia",
+ "intent": "decision",
+ "requested_authority": "propose",
+ "gate_question": "reasonable_disagreement",
+ "desired_result": "Decide what unattended production does after attempt 3's clean run, re-deciding Decision 0170 as it requires.",
+ "rationale": "Decision 0170 kept unattended production at concurrency one for up to three attempts and handed the next decision to the operator after a clean run. Attempt 3 (2026-11-05) was clean: the worker merged #2124, #2125 and #2126 with independent review and QA passing first time. Rowan put this question to the operator in chat on 2026-11-05 as menu question 1, and the operator answered \"1A\" (recorded at https://github.com/pmark/arcadia/issues/1929#issuecomment-6673669313). This Ask records the question and its options as given, so the answer can be recorded on main. Production activation, spend and START remain gated by Decisions 0171 and 0173.",
+ "options": [
+  {
+   "label": "A. Continued serial runs",
+   "consequence": "Unattended batches at concurrency one on queued Actions. Rowan presses each START card under a daily approval (Decision 0173), with a fresh pre-mortem before each. Production runs all night, and a batch that fails stops for the operator.",
+   "recommended": true
+  },
+  {
+   "label": "B. Serial runs, the operator presses each card",
+   "consequence": "Safer, but progress stops whenever the operator is away.",
+   "recommended": false
+  },
+  {
+   "label": "C. No production until concurrency is built",
+   "consequence": "Development only overnight.",
+   "recommended": false
+  }
+ ]
+}
