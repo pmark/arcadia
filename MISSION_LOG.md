@@ -2949,3 +2949,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate."; "The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges."; "docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.".
 - **Next:** Plan complete; activated Plan idea-to-managed-build from the explicit queue at arcadia/launch-tmux-backed-session.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-first-unattended-run-20261105).
+
+## 2026-11-06 — Agent Ask activate-keep-unattended-overnight-20261106
+
+- **Did:** Activated keep-unattended-serial-production-running-overnight-on-three-test-only-actions at pin-guidance-project-budget-exceeded.
+- **Result:** Operator-settled Plan transition. Previous Plan idea-to-managed-build remains draft with completion state preserved. Decision 0157. The operator answered A1 (quoted on pmark/arcadia#1929 as "D1 A1 B1"), approving a START card for this draft Plan, to be pressed by the operator. The card embeds this accepted activation as its planActivation block. Activation sets the Plan active with current_action pin-guidance-project-budget-exceeded, and the previous active Plan returns to draft with its unfinished work preserved. No Action content changes.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

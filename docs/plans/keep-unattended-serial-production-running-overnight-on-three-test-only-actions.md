@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: keep-unattended-serial-production-running-overnight-on-three-test-only-actions
 project: arcadia
-status: draft
+status: active
 milestone: Keep unattended serial production running overnight on three test-only Actions that pin untested behaviour.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -71,6 +71,9 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2011"]
 questions: []
 decisions: []
+current_action: pin-guidance-project-budget-exceeded
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Keep unattended serial production running overnight on three test-only Actions that pin untested behaviour.

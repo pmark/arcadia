@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: idea-to-managed-build
 project: arcadia
-status: active
+status: draft
 milestone: A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff
 token_impact: large
 token_budget: "Project creation, document rendering, Session lifecycle checks, builds, and state transitions are deterministic. Use one bounded planning Run for the idea, one explicitly launched coding-agent Session per accepted Action, and independent QA only when deterministic readiness passes."
@@ -244,7 +244,6 @@ actions:
       - docs/arcadia-development-orchestration-vision.md
       - docs/operator-demo-and-release-contract.md
     depends_on: [build-plan-approval-surface, reconcile-session-exit]
-current_action: launch-tmux-backed-session
 ---
 
 # Idea to managed build
