@@ -4,7 +4,7 @@ type: decision
 id: "0181"
 slug: decide-what-unattended-production-does-after-attempt-3-s-clean-run-re-deciding
 project: arcadia
-status: open
+status: approved
 question: Decide what unattended production does after attempt 3's clean run, re-deciding Decision 0170 as it requires.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: keep-unattended-serial-production-running-overnight-on-three-test-only-actions
 updated: 2026-11-06
+answer: A. Continued serial runs
+decided: 2026-11-06
 ---
 
 # Decision 0181: Decide what unattended production does after attempt 3's clean run, re-deciding Decision 0170 as it requires.
