@@ -31,11 +31,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1886"]
   - id: pin-guidance-blank-override-falls-through
     title: "Pin that a whitespace-only AGENTS.override.md is skipped and the guidance audit reads AGENTS.md instead, with a test covering the edge case named in Issue #1886."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin that a whitespace-only AGENTS.override.md is skipped and the guidance audit reads AGENTS.md instead, with a test covering the edge case named in Issue #1886."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-guidance-blank-override-falls-through-0c907db48e4d; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-guidance-blank-override-falls-through
     clarification: clarified
     confidence: high
@@ -71,7 +71,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2011"]
 questions: []
 decisions: []
-current_action: pin-guidance-blank-override-falls-through
+current_action: pin-safety-lines-order-and-limit
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
