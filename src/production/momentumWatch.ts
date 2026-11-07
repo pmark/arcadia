@@ -19,7 +19,7 @@ import { blockerRemedyFor } from "./blockerRemedies.js";
  * (Decision 0114), so the keeper alarm says how and never does it.
  */
 
-export const MOMENTUM_STATE_SCHEMA = "arcadia-momentum-watch-v1" as const;
+export const MOMENTUM_STATE_SCHEMA = "arcadia-momentum-watch-v2" as const;
 /**
  * 20 minutes: the keeper's front 0 routes a block its owner left unrouted
  * after 10 minutes (Decision 0188), and a route needs about as long again to
@@ -168,12 +168,13 @@ export function idleEpisodeKey(row: IdleFrontRow): string {
 
 /**
  * With no believable heartbeat there is no lapse time, so the key carries the
- * time the alarm was raised: a constant would match an earlier episode's row
- * once the state file is lost, and lose this page. The cost is that a retry
- * after a lost state file pages once more, never that a page is lost.
+ * minute the alarm was raised: a constant would match an earlier episode's row
+ * once the state file is lost, and lose this page. Two overlapping runs in one
+ * minute (the timer and a manual run) share it. The cost is that a retry after
+ * a lost state file pages once more, never that a page is lost.
  */
 export function keeperEpisodeKey(observation: Extract<KeeperObservation, { kind: "stale" }>, now: Date): string {
-  return observation.staleSince ? `keeper lapsed ${observation.staleSince}` : `no keeper heartbeat as of ${now.toISOString()}`;
+  return observation.staleSince ? `keeper lapsed ${observation.staleSince}` : `no keeper heartbeat as of ${now.toISOString().slice(0, 16)}Z`;
 }
 
 export function closingKey(pingId: string): string {

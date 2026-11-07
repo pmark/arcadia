@@ -1819,7 +1819,9 @@ alarms, each paging once through `arcadia ping` (agent `Momentum watch`, kind
 - **Blind check.** When the momentum step cannot read the critical path for 3
   unbroken minutes, it pages `🚨🚨🚨 MOMENTUM CHECK FAILING for <n> min — the
   idle and keeper alarms are blind …` and closes with `✅ MOMENTUM check
-  reading again`. The other alarms hold meanwhile.
+  reading again`. The other alarms hold meanwhile. When the cause is the ping
+  database itself, the page cannot be queued and shows only in `pnpm logs
+  liveness` and the exit code, as with the worker alarm.
 
 State lives in `<workspace>/.arcadia/momentum-watch.json`; an unreadable file
 restarts both episodes, and the ping outbox's episode key stops a retry from
