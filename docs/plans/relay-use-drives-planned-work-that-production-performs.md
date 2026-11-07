@@ -13,12 +13,13 @@ actions:
     title: List every Relay and production gap signal for one Project in one read-only triage view, unrouted signals first.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: List every Relay and production gap signal for one Project in one read-only triage view, unrouted signals first.
     expected_artifact: Evidence satisfying Agent Ask list-relay-gap-signals-for-triage
     clarification: clarified
     confidence: high
-    source: Agent Ask relay-driven-loop-plan-20261107-v2
+    source: Agent Ask relay-loop-plan-execution-build-20261107
     why: "Every triage pass is hand-stitched from several commands today, which costs tokens and lets signals slip through, so the Relay-driven loop cannot run cheaply."
     acceptance_criteria:
       - "`arcadia relay signals --project <slug>` prints one line per signal and `--json` prints the same records, each with source kind (`lesson` or `red_alert`), source id, text, first seen, last seen and occurrence count."
@@ -33,12 +34,13 @@ actions:
     title: Show which routed Relay signals have landed and which recurred after their fix, so Relay can tell the operator what to try again.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Show which routed Relay signals have landed and which recurred after their fix, so Relay can tell the operator what to try again.
     expected_artifact: Evidence satisfying Agent Ask show-landed-and-recurred-relay-signals
     clarification: clarified
     confidence: high
-    source: Agent Ask relay-driven-loop-plan-20261107-v2
+    source: Agent Ask relay-loop-plan-execution-build-20261107
     why: "Without it the loop cannot close: nobody sees that a fix landed, and a gap that returns after its fix looks already handled."
     acceptance_criteria:
       - "In `arcadia relay signals`, a routed signal whose citing Action is done is listed as `landed`, with that Action's ref and its completion time: the `created_at` of the accepted `agent_ask_settlements` row whose intent is `complete` and whose target is that Action."
