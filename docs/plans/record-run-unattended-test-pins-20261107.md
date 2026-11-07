@@ -336,11 +336,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-way-trigger-parsing
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-record-run-test-pins-execution-build-20261107
+    source: Agent Ask amend-record-run-way-trigger-wording-20261107
     why: "parseTriggers is not called directly in tests, so throwing on a malformed index or keeping an empty trigger phrase would pass every test today."
     acceptance_criteria:
       - tests/pin-way-trigger-parsing.test.ts is a new test file that imports parseTriggers from ../src/way/lookup.js and asserts parseTriggers returns [] for null, for "not json" and for "{}".
-      - "The same test file asserts that for JSON entries [{ path: \"a.md\", trigger: \"alpha beta, , gamma\" }, { path: 3, trigger: \"x\" }, { path: \"b.md\" }], the result's paths are exactly [\"a.md\"] and its first entry has exactly 2 trigger phrases."
+      - "The same test file asserts that for the input JSON.stringify({ entries: [{ path: \"a.md\", trigger: \"alpha beta, , gamma\" }, { path: 3, trigger: \"x\" }, { path: \"b.md\" }] }), the result's paths are exactly [\"a.md\"] and its first entry has exactly 2 trigger phrases."
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-way-trigger-parsing.test.ts, a new test file that imports only vitest and src/way/lookup.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
