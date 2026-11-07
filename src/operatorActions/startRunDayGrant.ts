@@ -29,9 +29,20 @@ export const DAY_GRANT_WINDOW_MS = 24 * 3_600_000;
  * Decision 0181 (option A) re-decided Decision 0170's three-attempt limit: unattended batches run at concurrency one under the
  * day's approval, "and a batch that fails stops for the operator". So no count of attempts caps a day any more; instead one
  * failed batch under the current day's approval refuses every later delegated card, and the operator's next day-grant press
- * is their decision after that failure. See `isFailedBatch` for what failed means.
+ * is their decision after that failure. See `isFailedBatch` for what failed means. Since Decision 0185 a failed batch is
+ * this one stop unless a merged fix clears it (below): one uncleared failed batch refuses.
  */
 export const DAY_GRANT_MAX_FAILED_BATCHES = 1;
+/**
+ * Decision 0185 (option A) re-decided that stop: after a failed delegated batch, Rowan may press the next card under the same
+ * day's approval only when a fix for that batch's named cause merged to main after the failure. The card that follows the
+ * failed press names it as a `failed-attempt` with a `merged-fix` clearance whose `cause` is the cause it names; the executor
+ * then checks at the pin that the fix's commit is on the reviewed revision, is dated after the batch ended, and that Decision
+ * 0185 is answered with option A there. So until that answer is on main, a failed batch still stops for the operator. The
+ * fix's independent review and green checks are Rowan's recorded judgement, not machine-proved, like the cause itself.
+ */
+export const CONTINUE_DECISION = "0185";
+export const CONTINUE_ANSWER = "A. Continue after a reviewed fix merges";
 /** Decision 0173: refused re-presses per day, in total, however the card is re-prepared. */
 export const DAY_GRANT_MAX_REPRESSES = 2;
 /** Decision 0170 was answered on main at ffd23b342 (2026-11-03T19:26:51Z); presses and attempts are numbered from there. */
@@ -63,7 +74,8 @@ export interface DayGrantPins {
 export const DAY_GRANT_KEYS = ["concurrency", "decision", "executorSha256", "plan", "project", "provider", "schema", "spendDecision"];
 
 export type DayGrantClearance =
-  | { kind: "merged-fix"; pullRequest: string; commit: string; reproduction: string }
+  /** `cause`: the cause the fix addresses. Required, and equal to the named cause, when it clears a failed batch (Decision 0185). */
+  | { kind: "merged-fix"; pullRequest: string; commit: string; reproduction: string; cause?: string }
   | { kind: "observed-cleared"; observation: string };
 
 /**
@@ -191,7 +203,8 @@ export function validateDayGrantPrevious(value: unknown): DayGrantPrevious {
   if (!pointer(p.evidence)) refuse("INVALID_DELEGATION", "previous.evidence must be an https URL or a repository-relative path.");
   const c = p.clearance;
   if (c?.kind === "merged-fix") {
-    if (!exactKeys(c, ["commit", "kind", "pullRequest", "reproduction"])) refuse("INVALID_DELEGATION", "A merged-fix clearance needs exactly pullRequest, commit and reproduction.");
+    if (!exactKeys(c, ["commit", "kind", "pullRequest", "reproduction"]) && !exactKeys(c, ["cause", "commit", "kind", "pullRequest", "reproduction"])) refuse("INVALID_DELEGATION", "A merged-fix clearance needs exactly pullRequest, commit and reproduction, and may name the cause it fixes.");
+    if (c.cause !== undefined && (typeof c.cause !== "string" || !slug.test(c.cause) || notAWord(c.cause))) refuse("INVALID_DELEGATION", "clearance.cause must be the stable slug of the cause the fix addresses.");
     if (typeof c.pullRequest !== "string" || !/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(c.pullRequest)) refuse("INVALID_DELEGATION", "clearance.pullRequest must be a pull request URL.");
     if (typeof c.commit !== "string" || !/^[0-9a-f]{40}$/.test(c.commit)) refuse("INVALID_DELEGATION", "clearance.commit must be a full commit id.");
     if (!repoRelative(c.reproduction)) refuse("INVALID_DELEGATION", "clearance.reproduction must be the repository-relative fixture or replay that reproduces the cause.");
@@ -349,7 +362,7 @@ function assertPressRecordsReadable(library: string): void {
   }
 }
 
-interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean; failed: boolean }
+interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string; kind?: unknown; clearance?: unknown } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean; failed: boolean }
 
 /**
  * Every /actions press of a START card since Decision 0170, oldest first, with whether that press admitted a Session. A card
@@ -426,13 +439,37 @@ export interface DayGrantChain {
   window: DayGrantWindow;
   /** Attempts so far, numbered since Decision 0170: activations since it that admitted a Session. A number, not a cap. */
   attemptsSoFar: number;
-  /** Decision 0181: failed batches that count against this day. Any refuses the card, so a returned chain always has none. */
+  /** Decision 0181: failed batches that count against this day. Each one the chain returns past is in `clearedFailures`. */
   failedBatchesToday: number;
+  /**
+   * Decision 0185: the failed batches this chain continues past, each with the merged fix the card after its press named. The
+   * executor checks every commit at the pin (an ancestor of the reviewed revision, dated after the batch ended) and that
+   * Decision 0185 is answered with option A there; `start-run pins` checks the same at origin main.
+   */
+  clearedFailures: DayGrantClearedFailure[];
   /** Rowan's refused re-presses inside this window. */
   rePressesToday: number;
   /** The latest START press, which a card must name; null when none happened since Decision 0170. */
   latest: { press: string; kind: DayGrantPressKind } | null;
   revision: number;
+}
+
+/** One failed batch a merged fix cleared (Decision 0185): the batch's request id, its press, when it ended, the fix and its cause. */
+export interface DayGrantClearedFailure { batch: string; press: string; endedAt: string; commit: string; cause: string }
+
+/**
+ * Decision 0185: the merged fix that clears one failed batch, or null. `owner` is the press whose activation failed and
+ * `named` the cause the next card recorded for it: that card must call it a failed attempt and name a merged fix whose
+ * `cause` is the cause it names. A batch still running has no end, so nothing can have merged after it.
+ */
+function mergedFixFor(batch: DayEvidenceActivation, owner: StartPress, named: unknown): DayGrantClearedFailure | null {
+  if (!named || typeof named !== "object") return null;
+  const previous = named as { press?: unknown; kind?: unknown; cause?: unknown; clearance?: unknown };
+  const clearance = (previous.clearance ?? {}) as { kind?: unknown; commit?: unknown; cause?: unknown };
+  if (previous.press !== owner.key || previous.kind !== "failed-attempt" || typeof previous.cause !== "string" || !slug.test(previous.cause)) return null;
+  if (clearance.kind !== "merged-fix" || clearance.cause !== previous.cause || typeof clearance.commit !== "string" || !/^[0-9a-f]{40}$/.test(clearance.commit)) return null;
+  if (typeof batch.endedAt !== "string" || !Number.isFinite(Date.parse(batch.endedAt))) return null;
+  return { batch: batch.requestId, press: owner.key, endedAt: batch.endedAt, commit: clearance.commit, cause: previous.cause };
 }
 
 export interface InspectDayGrantInput {
@@ -469,12 +506,25 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
   const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
   const attemptsSoFar = input.evidence.activations.filter((a) => Date.parse(a.at) >= earliest && a.admitted >= 1).length;
   // Decision 0181: a batch that fails stops for the operator. Any failed batch not over before the day's press counts, whoever
-  // started or stopped it, so after a failure only the operator's next day-grant press opens a way on.
+  // started or stopped it.
   const failed = failedBatchesInWindow(input.evidence, window.opensAtMs);
-  if (failed.length >= DAY_GRANT_MAX_FAILED_BATCHES) refuse("FAILED_BATCH", `the batch ${failed[0].requestId} (activated ${failed[0].at}) failed under the day approved at ${window.opensAt}: it admitted a Session and did not reach scope complete without an escalation; Decision 0181 stops for the operator, and only their next day-grant press opens another day`);
-
   const presses = startPresses(input.library, input.evidence, input.excludePress);
   const latest = presses.at(-1) ?? null;
+  // Decision 0185: the card after a failed press may go on when it names a fix merged for that batch's cause. For the latest
+  // press that card is this one; for an earlier failure it is the press that followed it, whose card this chain re-reads, and
+  // whose fix the executor checks again at this card's pin. Anything else (no owning press, a press by the operator, a
+  // clearance by observation, another cause) stops for the operator, as Decision 0181 had it.
+  const clearedFailures: DayGrantClearedFailure[] = [];
+  for (const batch of failed) {
+    const owner = presses.find((press) => press.card === batch.requestId && press.admitted);
+    // Before Rowan has named a cause the latest press's failure cannot be judged yet; the named call checks it.
+    if (owner && owner === latest && input.previous === undefined) continue;
+    const next = owner ? presses[presses.indexOf(owner) + 1] : undefined;
+    const named = !owner ? null : owner === latest ? input.previous : next?.delegation?.decision === DAY_GRANT_DECISION ? next.delegation.previous : null;
+    const fix = owner ? mergedFixFor(batch, owner, named) : null;
+    if (!fix) refuse("FAILED_BATCH", `the batch ${batch.requestId} (activated ${batch.at}) failed under the day approved at ${window.opensAt}: it admitted a Session and did not reach scope complete without an escalation; Decision 0181 stops for the operator unless the card after it names a merged fix for that cause (Decision 0185: previous.kind failed-attempt, a merged-fix clearance whose cause is the named cause, merged after the batch ended)`);
+    clearedFailures.push(fix!);
+  }
   if (latest && (latest.status === "running" || latest.receipt?.outcome === "in_progress")) refuse("PREVIOUS_UNSETTLED", `the latest START press ${latest.key} has not finished; read its receipt before any other press`);
   const noSession = (press: StartPress) => !press.admitted;
   let rePressesToday = 0;
@@ -511,5 +561,5 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
     }
   }
   if (input.attempt !== undefined && input.attempt !== attemptsSoFar + 1) refuse("ATTEMPT_MISMATCH", `this card is pinned as attempt ${input.attempt}, but ${attemptsSoFar} attempts already admitted a Session`);
-  return { window, attemptsSoFar, failedBatchesToday: failed.length, rePressesToday, latest: latestSummary, revision };
+  return { window, attemptsSoFar, failedBatchesToday: failed.length, clearedFailures, rePressesToday, latest: latestSummary, revision };
 }

@@ -1176,8 +1176,9 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--fix-pull-request <url>", "Decision 0173: the merged pull request that fixed the cause")
     .option("--fix-commit <sha>", "Decision 0173: that fix's commit, which must be on origin main")
     .option("--reproduction <path>", "Decision 0173: the repository fixture or replay that reproduces the cause")
+    .option("--fix-cause <slug>", "Decision 0185: the cause that fix addresses; after a failed batch it must equal --previous-cause")
     .option("--observed-cleared <pointer>", "Decision 0173: for an outside cause with no code fix, where it was observed cleared")
-  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; observedCleared?: string; json?: boolean }) =>
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; fixCause?: string; observedCleared?: string; json?: boolean }) =>
     runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
   addJsonOption(startRun.command("day-pins")
     .description("Decision 0173: print the pins of one day-grant card for the operator to press; writes nothing and grants nothing")

@@ -11,7 +11,7 @@ import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
 import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
-import { ATTEMPT_COUNT_EARLIEST, DAY_GRANT_EXECUTOR_PATH, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
+import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, CONTINUE_DECISION, DAY_GRANT_EXECUTOR_PATH, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { readDayGrantEvidence } from "../production/policy.js";
@@ -51,6 +51,8 @@ export interface StartRunPinsOptions {
   fixPullRequest?: string;
   fixCommit?: string;
   reproduction?: string;
+  /** Decision 0185: the cause the merged fix addresses; required, and equal to --previous-cause, after a failed batch. */
+  fixCause?: string;
   observedCleared?: string;
   repository?: string;
   workspace?: string;
@@ -108,6 +110,11 @@ const isDayGrantAnswered = (content: string): boolean => {
 const isSerialRunsAnswered = (content: string): boolean => {
   const fields = frontmatter(content, "Decision 0181");
   return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith("A. Continued serial runs");
+};
+/** Decision 0185's option A, from its frontmatter: a failed batch is continued past only once this answer is on main. */
+const isContinueAnswered = (content: string): boolean => {
+  const fields = frontmatter(content, `Decision ${CONTINUE_DECISION}`);
+  return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith(CONTINUE_ANSWER);
 };
 const text = (buffer: Buffer): string => buffer.toString("utf8");
 const sha256 = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
@@ -235,11 +242,24 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
       if (named && !latest) throw validationError("A cause was named, but no START press has happened since Decision 0170.");
       const previous: DayGrantPrevious | null = named && latest ? validateDayGrantPrevious({ ...latest, ...named }) : null;
       const chain = inspectDayGrantChain({ ...input, previous });
+      // Decision 0185: going on past a failed batch needs that answer on main, and each fix merged after its batch ended.
+      if (chain.clearedFailures.length > 0) {
+        const file = decisionFiles.find((entry) => new RegExp(`^docs/decisions/${CONTINUE_DECISION}-.*\\.md$`).test(entry));
+        if (!file || !isContinueAnswered(text(show(file)))) throw validationError(`FAILED_BATCH: Decision ${CONTINUE_DECISION} is not answered with option A at origin main, so a failed batch still stops for the operator (Decision 0181).`);
+        for (const cleared of chain.clearedFailures) {
+          try { deps.git(toplevel, ["merge-base", "--is-ancestor", cleared.commit, originMain]); }
+          catch { throw validationError(`FAILED_BATCH: the fix commit ${cleared.commit} named for the failed batch ${cleared.batch} is not on origin main ${originMain}.`); }
+          const committedAt = Number(text(deps.git(toplevel, ["show", "-s", "--format=%ct", cleared.commit])).trim()) * 1000;
+          if (!Number.isFinite(committedAt) || committedAt <= Date.parse(cleared.endedAt)) throw validationError(`FAILED_BATCH: the fix commit ${cleared.commit} is dated before the failed batch ${cleared.batch} ended at ${cleared.endedAt}; Decision 0185 continues only after a fix merged after the failure.`);
+        }
+        if (!requiredDecisions.includes(CONTINUE_DECISION)) requiredDecisions.push(CONTINUE_DECISION);
+        notes.push(`Decision 0185: this card goes on past ${chain.clearedFailures.length} failed batch${chain.clearedFailures.length === 1 ? "" : "es"} in this day, each cleared by a fix merged after it: ${chain.clearedFailures.map((c) => `${c.batch} (${c.cause}, ${c.commit.slice(0, 12)})`).join(", ")}. The fix's review and checks are Rowan's recorded judgement, not machine-proved.`);
+      }
       delegation = {
         decision: "0173", approvalCard: dayGrantFrom.card, approvalRun: dayGrantFrom.run, approvalReceiptSha256: chain.window.receiptSha256, approvalPressSha256: chain.window.pressSha256,
         attempt: chain.attemptsSoFar + 1, previous
       };
-      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} (numbered since Decision 0170, no longer capped) if it admits a Session; ${chain.failedBatchesToday} failed batches in this day, and Decision 0181 stops for the operator at the first; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
+      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} (numbered since Decision 0170, no longer capped) if it admits a Session; ${chain.failedBatchesToday} failed batches in this day, each one cleared by a merged fix for its cause (Decision 0185) or the card is refused; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
     } catch (error) {
       throw validationError(`No Decision 0173 card may be pinned: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -293,14 +313,15 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
 /** Rowan's named cause, from the flags; null when none was named (the chain refuses when one is needed). */
 function namedDayGrantCause(options: StartRunPinsOptions): Pick<DayGrantPrevious, "cause" | "evidence" | "clearance"> | null {
   const fix = [options.fixPullRequest, options.fixCommit, options.reproduction];
-  if (![options.previousCause, options.previousEvidence, options.observedCleared, ...fix].some((value) => value !== undefined)) return null;
+  if (![options.previousCause, options.previousEvidence, options.observedCleared, options.fixCause, ...fix].some((value) => value !== undefined)) return null;
+  if (options.fixCause !== undefined && fix.some((value) => value === undefined)) throw validationError("--fix-cause names the cause of a merged fix: it needs --fix-pull-request, --fix-commit and --reproduction.");
   if (fix.some((value) => value !== undefined) && options.observedCleared !== undefined) throw validationError("Name a merged fix or an observed clearance, not both.");
   if (options.previousCause === undefined || options.previousEvidence === undefined) throw validationError("A named cause needs both --previous-cause and --previous-evidence.");
   if (fix.some((value) => value !== undefined) && fix.some((value) => value === undefined)) throw validationError("A merged fix needs --fix-pull-request, --fix-commit and --reproduction together.");
   if (options.observedCleared === undefined && fix.every((value) => value === undefined)) throw validationError("A named cause needs how it was cleared: --observed-cleared, or --fix-pull-request, --fix-commit and --reproduction.");
   const clearance: DayGrantClearance = options.observedCleared !== undefined
     ? { kind: "observed-cleared", observation: options.observedCleared }
-    : { kind: "merged-fix", pullRequest: String(options.fixPullRequest), commit: String(options.fixCommit), reproduction: String(options.reproduction) };
+    : { kind: "merged-fix", pullRequest: String(options.fixPullRequest), commit: String(options.fixCommit), reproduction: String(options.reproduction), ...(options.fixCause !== undefined ? { cause: options.fixCause } : {}) };
   return { cause: options.previousCause, evidence: options.previousEvidence, clearance };
 }
 

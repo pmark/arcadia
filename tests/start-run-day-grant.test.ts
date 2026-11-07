@@ -12,7 +12,7 @@ import { dayGrantLauncher, inspectDayGrantChain, isFailedBatch, isOperatorBrowse
 import { delegatedPressMarker, StartRunDelegationError } from "../src/operatorActions/startRunDelegation.js";
 import { validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { ensureProductionPolicyTables, readDayGrantEvidence } from "../src/production/policy.js";
-import { DAY_CARD, DAY_PLAN, DAY_RUN, dayGrantPins, dayScenarios, evidenceOf, named, pressKey, STOP_ID, TAILNET_PRESS_HEADERS, writeDayApproval, writeDayScenario, writeStartPress } from "./helpers/dayGrantFixture.js";
+import { DAY_CARD, DAY_PLAN, DAY_RUN, dayGrantPins, dayScenarios, evidenceOf, fixed, mergedFix, named, pressKey, STOP_ID, TAILNET_PRESS_HEADERS, writeDayApproval, writeDayScenario, writeStartPress } from "./helpers/dayGrantFixture.js";
 
 /**
  * Decision 0173: the computation behind `start-run pins --day-grant-from`, the day-grant card and its executor, the press
@@ -326,13 +326,14 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
   const PIN = "a".repeat(40);
   const decisionDoc = (answer: string) => `---\nstatus: approved\nanswer: ${answer}\n---\n`;
   const allDecisions = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170"];
-  function fixture(options: { answer?: string; decisionBody?: string; serialAnswer?: string; planStatus?: string; pointer?: string; workers?: string; evidence?: ReturnType<typeof evidenceOf>["evidence"] } = {}) {
+  function fixture(options: { answer?: string; decisionBody?: string; serialAnswer?: string; continueAnswer?: string | null; commitTime?: number; planStatus?: string; pointer?: string; workers?: string; evidence?: ReturnType<typeof evidenceOf>["evidence"] } = {}) {
     const repository = tempDir("arcadia-day-pins-");
     const library = path.join(repository, "artifacts", "generated", "operator-scripts");
     mkdirSync(library, { recursive: true });
     const decisions: Record<string, string> = Object.fromEntries(allDecisions.map((id) => [id, decisionDoc("Yes")]));
     decisions["0173"] = decisionDoc(options.answer ?? '"A. Daily grant: START and routine run operations"') + (options.decisionBody ?? "");
     decisions["0181"] = decisionDoc(options.serialAnswer ?? "A. Continued serial runs");
+    if (options.continueAnswer !== null) decisions["0185"] = decisionDoc(options.continueAnswer ?? "A. Continue after a reviewed fix merges");
     const files: Record<string, string> = {
       "scripts/start-run.sh": "#!/bin/sh\n", "scripts/day-grant.sh": "#!/bin/sh\n# day\n", "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x", "tests/replay.test.ts": "x",
       [`docs/plans/${DAY_PLAN}.md`]: `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${options.planStatus ?? "active"}\nactions:\n  - id: first-action\n    status: open\n---\n`,
@@ -344,6 +345,7 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
         if (args[0] === "rev-parse") return Buffer.from(path.join(repository, ".git") + "\n");
         if (args[0] === "ls-tree") return Buffer.from(Object.keys(decisions).map((id) => `docs/decisions/${id}-fixture.md`).join("\n") + "\n");
         if (args[0] === "merge-base") { if (args[2] === "c".repeat(40)) return Buffer.from(""); throw new Error("not an ancestor"); }
+        if (args[0] === "show" && args[1] === "-s") return Buffer.from(`${Math.floor((options.commitTime ?? NOW) / 1000)}\n`);
         if (args[0] === "show") {
           const spec = args[1].slice(args[1].indexOf(":") + 1);
           const id = /^docs\/decisions\/(\d{4})-/.exec(spec)?.[1];
@@ -417,6 +419,45 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     expect(() => buildStartRunPins({ ...f.args, ...fix, reproduction: "tests/absent.test.ts" }, f.deps)).toThrow(/absent\.test\.ts/);
     expect(() => buildStartRunPins({ ...f.args, ...fix, fixCommit: undefined }, f.deps)).toThrow(/together/);
     expect(() => buildStartRunPins({ ...f.args, ...fix, observedCleared: "docs/x.md" }, f.deps)).toThrow(/not both/);
+  });
+  it("Decision 0185: pins a card past a failed batch only with a fix for its cause merged after it, and option A on main", () => {
+    const failedAt = NOW - 40 * 60_000;
+    const make = (options: Parameters<typeof fixture>[0] = {}) => {
+      const { evidence, revision } = evidenceOf(83, NOW, [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }]);
+      const f = fixture({ evidence, ...options });
+      writeDayApproval(f.library, { pressedAt: NOW - 3_600_000 });
+      writeStartPress(f.library, { card: "start-a", at: failedAt, status: "succeeded", receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } }, 0);
+      const deps = { ...f.deps, production: () => ({ workspacePath: "/w/martianrover", desiredState: "inactive", revision, epoch: 46, liveAdmissions: 0 }) };
+      return (extra: Partial<StartRunPinsOptions> = {}) => buildStartRunPins({ ...f.args, previousCause: "stuck-run", previousEvidence: "docs/notes.md", fixPullRequest: "https://github.com/pmark/arcadia/pull/2", fixCommit: "c".repeat(40), reproduction: "tests/replay.test.ts", fixCause: "stuck-run", ...extra }, deps);
+    };
+    const { startRun, observations } = make()();
+    expect(validateStartRunPins(startRun)).toBe(startRun);
+    expect(startRun.delegation).toMatchObject({ attempt: 2, previous: { press: pressKey("start-a"), kind: "failed-attempt", cause: "stuck-run", clearance: { kind: "merged-fix", commit: "c".repeat(40), cause: "stuck-run" } } });
+    expect(startRun.requiredDecisions).toContain("0185");
+    expect(observations.notes.join("\n")).toMatch(/Decision 0185: this card goes on past 1 failed batch/);
+    // No clearance, an observed one, a fix for another cause or none named: the failed batch still stops for the operator.
+    expect(() => make()({ fixPullRequest: undefined, fixCommit: undefined, reproduction: undefined, fixCause: undefined, observedCleared: "docs/y.md" })).toThrow(/failed under the day approved/);
+    expect(() => make()({ fixCause: "provider-timeout" })).toThrow(/failed under the day approved/);
+    expect(() => make()({ fixCause: undefined })).toThrow(/failed under the day approved/);
+    // The fix is not on main, or merged before the batch ended.
+    expect(() => make()({ fixCommit: "d".repeat(40) })).toThrow(/not on origin main/);
+    expect(make({ commitTime: failedAt - 60_000 })).toThrow(/dated before the failed batch start-a ended/);
+    // Until Decision 0185 is answered with option A on main, nothing changes.
+    expect(make({ continueAnswer: null })).toThrow(/FAILED_BATCH: Decision 0185 is not answered with option A/);
+    expect(make({ continueAnswer: "B. The first failed batch stops for the operator" })).toThrow(/FAILED_BATCH: Decision 0185 is not answered with option A/);
+    expect(() => make()({ fixPullRequest: undefined, fixCommit: undefined, reproduction: undefined, observedCleared: "docs/y.md" })).toThrow(/--fix-cause names the cause of a merged fix/);
+    expect(() => make()({ fixCause: "undefined" })).toThrow(/stable slug of the cause the fix addresses/);
+    expect(() => validateDayGrantPrevious({ ...fixed(pressKey("start-a"), "stuck-run"), clearance: { ...mergedFix("stuck-run"), extra: 1 } })).toThrow(/may name the cause it fixes/);
+    expect(() => validateDayGrantPrevious({ ...fixed(pressKey("start-a"), "stuck-run"), clearance: { ...mergedFix("stuck-run"), cause: "Not A Slug" } })).toThrow(/stable slug/);
+  });
+  it("Decision 0185: a clean batch's card needs no Decision 0185 and records none", () => {
+    const { evidence, revision } = evidenceOf(83, NOW, [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }]);
+    const f = fixture({ evidence, continueAnswer: null });
+    writeDayApproval(f.library, { pressedAt: NOW - 3_600_000 });
+    writeStartPress(f.library, { card: "start-a", at: NOW - 40 * 60_000, status: "succeeded", receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } }, 0);
+    const deps = { ...f.deps, production: () => ({ workspacePath: "/w/martianrover", desiredState: "inactive", revision, epoch: 46, liveAdmissions: 0 }) };
+    const { startRun } = buildStartRunPins({ ...f.args, previousCause: "scope-complete", previousEvidence: "docs/notes.md", observedCleared: "docs/y.md" }, deps);
+    expect(startRun.requiredDecisions).not.toContain("0185");
   });
   it("refuses a clearance with no named cause, instead of recording a cause called undefined", () => {
     const f = fixture();
