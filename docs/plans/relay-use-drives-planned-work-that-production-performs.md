@@ -40,10 +40,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask show-landed-and-recurred-relay-signals
     clarification: clarified
     confidence: high
-    source: Agent Ask relay-loop-plan-execution-build-20261107
+    source: Agent Ask relay-loop-landed-criterion-json-20261107
     why: "Without it the loop cannot close: nobody sees that a fix landed, and a gap that returns after its fix looks already handled."
     acceptance_criteria:
-      - "In `arcadia relay signals`, a routed signal whose citing Action is done is listed as `landed`, with that Action's ref and its completion time: the `created_at` of the accepted `agent_ask_settlements` row whose intent is `complete` and whose target is that Action."
+      - "In `arcadia relay signals`, a routed signal whose citing Action is done is listed as `landed`, with that Action's ref and its completion time: the `created_at` of the accepted `agent_ask_settlements` row whose `receipt_json` records intent `complete` and whose `operation_json` targets that Action (the table has no intent or target column, so both are read from that JSON)."
       - A lesson signal with an occurrence recorded after that completion time is listed as `recurred`, ahead of every unrouted signal, with both the Action ref and that occurrence's time. Red-alert signals use only `unrouted` and `routed`, and an alert that is no longer open leaves the list.
       - "`--json` carries a state of `unrouted`, `routed`, `landed` or `recurred` on every record, and tests cover each state on a fixture workspace database with fixed timestamps and need no network, timer, child process or live service."
     depends_on: [list-relay-gap-signals-for-triage]
