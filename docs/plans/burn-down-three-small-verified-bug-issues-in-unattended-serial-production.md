@@ -13,12 +13,13 @@ actions:
     title: "Make the Session ledger accept every role registered in config/defaults/agent-roles.json while keeping its legacy roles valid, fixing Issue #1366."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Make the Session ledger accept every role registered in config/defaults/agent-roles.json while keeping its legacy roles valid, fixing Issue #1366."
     expected_artifact: Evidence satisfying Agent Ask accept-canonical-roles-in-session-ledger
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-bug-burn-serial-20261106b
+    source: Agent Ask amend-bug-burn-plan-execution-build-20261106
     why: "validateSessionLedgerRow refuses implementer, code-reviewer, qa and the other registered roles, so honest canonical-role ledger rows cannot be recorded."
     acceptance_criteria:
       - validateSessionLedgerRow in src/reports/sessionLedger.ts accepts a row whose role is any role id listed in config/defaults/agent-roles.json.
@@ -33,12 +34,13 @@ actions:
     title: "Make the tidy journal's torn-tail repair truncate at the UTF-8 byte offset of the last newline, not the JavaScript string index, fixing Issue #749."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Make the tidy journal's torn-tail repair truncate at the UTF-8 byte offset of the last newline, not the JavaScript string index, fixing Issue #749."
     expected_artifact: Evidence satisfying Agent Ask truncate-torn-journal-tail-by-byte-offset
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-bug-burn-serial-20261106b
+    source: Agent Ask amend-bug-burn-plan-execution-build-20261106
     why: "A complete journal record with a non-ASCII branch or worktree path shifts the string index off the byte offset, so the repair cuts into a valid record and every later tidy throws."
     acceptance_criteria:
       - After repairTornTail in src/git/quarantine.ts runs on a journal with a torn tail, the file's byte length equals the UTF-8 byte length of its content through the last newline.
@@ -52,12 +54,13 @@ actions:
     title: "Make the work monitor's attention lines say how many lines its limit cut and from which Projects, so no unsaved or local-only working copy disappears silently, fixing Issue #2011."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Make the work monitor's attention lines say how many lines its limit cut and from which Projects, so no unsaved or local-only working copy disappears silently, fixing Issue #2011."
     expected_artifact: Evidence satisfying Agent Ask report-cut-work-monitor-attention-lines
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-bug-burn-serial-20261106b
+    source: Agent Ask amend-bug-burn-plan-execution-build-20261106
     why: "formatWorkingCopySafetyLines ends with a bare slice, so a Project outside the first six lines looks clean to the operator and to orientation."
     acceptance_criteria:
       - "When formatWorkingCopySafetyLines in src/workMonitoring/scanner.ts has more lines than its limit, it returns the first limit lines unchanged followed by exactly one extra line of the form \"3 more not shown: Alpha 1, Beta 2.\", where the number is the count of cut lines and each Project's cut count appears in Project-name order."
