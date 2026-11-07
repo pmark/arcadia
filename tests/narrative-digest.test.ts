@@ -335,13 +335,25 @@ describe("Intelligence digest narrator without a LiteLLM proxy key", () => {
       const pending = narrator({
         subject: { scope: "project", scopeKey: "project-alpha", projectId: "project-alpha", name: "Alpha", slug: "alpha" },
         window: WINDOW,
-        facts: [{ id: "mission-log:1", kind: "mission_log", occurredAt: WINDOW.start, summary: "A test passed.", detail: {} }]
+        facts: {
+          subject: "Alpha",
+          scope: "project",
+          period: "day",
+          windowLabel: "2026-07-01",
+          totals: { events: 1, completed: 0, merged: 0, decisions: 0, goalsReached: 0 },
+          goals: [],
+          quietActiveGoals: 0,
+          needsYou: { count: 0, stopped: 0, top: [], unavailable: false },
+          operatorInteractions: { count: 0, required: 0, avoidable: 0, perMergedAction: null, waitedMinutes: 0 },
+          activity: [{ area: "Other", percent: 100 }],
+          risks: []
+        }
       });
 
       await new Promise((resolve) => setTimeout(resolve, 700));
       expect(db.prepare("SELECT status FROM intelligence_jobs").all()).toEqual([{ status: "queued" }]);
 
-      const generateStructured = vi.fn(async () => ({ output: { summary: "Alpha passed a test." } }));
+      const generateStructured = vi.fn(async () => ({ output: { summary: "Alpha had one event." } }));
       const service = new IntelligenceWorker(
         createSqliteIntelligenceJobRepository(db),
         { generateStructured, generateImage: vi.fn() },
@@ -349,7 +361,7 @@ describe("Intelligence digest narrator without a LiteLLM proxy key", () => {
       );
       await service.runOnce();
 
-      await expect(pending).resolves.toMatchObject({ summary: "Alpha passed a test." });
+      await expect(pending).resolves.toMatchObject({ summary: "Alpha had one event." });
       expect(generateStructured).toHaveBeenCalledTimes(1);
     } finally {
       db.close();
