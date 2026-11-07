@@ -4,7 +4,7 @@ type: decision
 id: "0188"
 slug: decide-whether-and-how-to-register-the-momentum-keeper-as-a-governed-supervisor
 project: arcadia
-status: open
+status: approved
 question: Decide whether and how to register the Momentum Keeper as a governed supervisor-class role.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107
 updated: 2026-11-07
+answer: B. Detection plus a governed helper under Rowan that keeps the queue stocked
+decided: 2026-11-07
 ---
 
 # Decision 0188: Decide whether and how to register the Momentum Keeper as a governed supervisor-class role.
