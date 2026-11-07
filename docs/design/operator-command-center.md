@@ -431,7 +431,8 @@ What this means for the build:
 - Phases 1 and 2 ship links only, as designed. The command center writes no governance in this iteration.
 - The destination is a single page the operator never leaves. Each To-Do item gets a plain-language overview with its
   direct-action options on the same page. Full detail sits behind progressive disclosure, so the default view stays
-  uncluttered. Phases 3 and 4 move toward that destination rather than being optional extras.
+  uncluttered. Phases 3 and 4 are the likely route toward that destination. Each still waits on its own operator choice, as
+  its heading says. This answer states the direction and grants neither phase.
 - Phase 3 (answering in place) still needs its own explicit yes before it is built. Revival trigger: phase 2 is merged
   and in use. At that point, ask the operator again, citing this answer.
 
