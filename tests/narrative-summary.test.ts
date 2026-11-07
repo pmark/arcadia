@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { withDatabase } from "../src/db/connection.js";
+import { openDatabase, withDatabase } from "../src/db/connection.js";
 import { upsertProject } from "../src/db/repositories.js";
 import {
   buildNarrativeSummaryRequest,
@@ -57,6 +57,20 @@ function repoWithArchitecture(body: string): { repo: string; doc: NarrativeDoc }
   return { repo, doc };
 }
 
+/**
+ * `withDatabase` closes the connection as soon as its synchronous callback
+ * returns, which is too early for an async summarization that still writes.
+ * This keeps the connection open until the returned promise settles.
+ */
+async function withDatabaseAsync<T>(workspace: string, callback: (db: ReturnType<typeof openDatabase>) => Promise<T>): Promise<T> {
+  const db = openDatabase(workspace);
+  try {
+    return await callback(db);
+  } finally {
+    db.close();
+  }
+}
+
 function fakeSummarizer(summary: string): NarrativeSummarizer & ReturnType<typeof vi.fn> {
   return vi.fn(async () => ({ summary, jobId: "job-test-1" })) as NarrativeSummarizer & ReturnType<typeof vi.fn>;
 }
@@ -88,7 +102,7 @@ describe("summarizeNarrativeDocs", () => {
     const sourceBefore = readFileSync(doc.absolutePath, "utf8");
     const summarizer = fakeSummarizer("Local-first, deterministic system.");
 
-    const outcomes = await withDatabase(workspace, (db) => summarizeNarrativeDocs({
+    const outcomes = await withDatabaseAsync(workspace, (db) => summarizeNarrativeDocs({
       db,
       workspacePath: workspace,
       project: { id: projectId, slug: "alpha", name: "Alpha" },
@@ -124,8 +138,8 @@ describe("summarizeNarrativeDocs", () => {
     const first = fakeSummarizer("Stable summary.");
     const second = fakeSummarizer("Should not run.");
 
-    await withDatabase(workspace, (db) => summarizeNarrativeDocs({ db, ...input, summarizer: first }));
-    const again = await withDatabase(workspace, (db) => summarizeNarrativeDocs({ db, ...input, summarizer: second }));
+    await withDatabaseAsync(workspace, (db) => summarizeNarrativeDocs({ db, ...input, summarizer: first }));
+    const again = await withDatabaseAsync(workspace, (db) => summarizeNarrativeDocs({ db, ...input, summarizer: second }));
 
     expect(again[0]).toMatchObject({ status: "unchanged" });
     expect(first).toHaveBeenCalledTimes(1);
@@ -136,7 +150,7 @@ describe("summarizeNarrativeDocs", () => {
     const { workspace, projectId } = workspaceWithProject();
     const { doc } = repoWithArchitecture("Some body.");
 
-    await expect(withDatabase(workspace, (db) => summarizeNarrativeDocs({
+    await expect(withDatabaseAsync(workspace, (db) => summarizeNarrativeDocs({
       db,
       workspacePath: workspace,
       project: { id: projectId, slug: "alpha", name: "Alpha" },
