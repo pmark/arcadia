@@ -355,7 +355,13 @@ function optionalLivingSystemWarning(message: string | null): string[] {
   return message ? [`Action completed, but living-system refresh needs attention: ${message}`] : [];
 }
 
-export function runWorkPlanCommand(options: { workspace: string; workId: string; agentProfile?: string }): CommandSuccess<WorkPlanCommandData> {
+export function runWorkPlanCommand(options: {
+  workspace: string;
+  workId: string;
+  agentProfile?: string;
+  /** With `agentProfile`: prepare a fresh build packet instead of refusing when the current one is bound to another profile. */
+  replaceProfileMismatchedPacket?: boolean;
+}): CommandSuccess<WorkPlanCommandData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const prepared = withDatabase(workspacePath, (db) => {
     // Checked before the transaction opens, because this one writes a journal
@@ -428,7 +434,15 @@ export function runWorkPlanCommand(options: { workspace: string; workId: string;
         const reusablePacket = reusable
           ? getCodexInvocationForPlan(db, { workItemId: workItem.id, planId: reusable.id, purpose: "build" })
           : null;
-        const plan = (reusable && (!reusablePacket || packetIsForCurrentInput(workspacePath, reusablePacket.prompt_path, workItem)) ? reusable : null)
+        // A caller that asks to replace a packet bound to another profile
+        // (the managed-production tick, Issue #2217: the packet's provider is
+        // not permitted by the active policy) gets a fresh plan and packet for
+        // the requested profile; the old one stays as history. Without the
+        // flag a profile mismatch still refuses below, as before.
+        const replacesMismatchedPacket = Boolean(options.replaceProfileMismatchedPacket && options.agentProfile && reusablePacket
+          && reusablePacket.agent_profile !== options.agentProfile);
+        const plan = (reusable && !replacesMismatchedPacket
+          && (!reusablePacket || packetIsForCurrentInput(workspacePath, reusablePacket.prompt_path, workItem)) ? reusable : null)
           ?? createExecutionPlan(db, {
             workItemId: workItem.id,
             summary: `Execution plan for "${workItem.title}".`,
