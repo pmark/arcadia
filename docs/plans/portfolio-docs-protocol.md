@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: portfolio-docs-protocol
 project: arcadia
-status: active
+status: draft
 milestone: docs sync ingests a real project's markdown
 token_impact: xlarge
 token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
@@ -271,7 +271,6 @@ questions:
     gap_type: missing-decision
     decision: "0004"
 decisions: ["0003", "0004", "0005"]
-current_action: narrative-summarization
 ---
 
 # Portfolio Docs Protocol

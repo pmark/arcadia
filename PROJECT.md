@@ -6,10 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Keep unattended serial production running overnight on three test-only Actions that pin untested behaviour.
-active_plan: portfolio-docs-protocol
-current_action: narrative-summarization
-updated: 2026-11-06
+milestone: Record run unattended test pins 20261107
+active_plan: record-run-unattended-test-pins-20261107
+current_action: pin-red-alert-token-estimate
+updated: 2026-11-07
 ---
 
 # Arcadia

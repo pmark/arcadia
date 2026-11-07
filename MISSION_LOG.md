@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Mission Log: Arcadia
@@ -2977,3 +2977,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/work-monitor.test.ts gains a test in which formatWorkingCopySafetyLines receives a snapshot of hand-built working copies in the unsaved, local_only, pushed, in_pr and landed states across two Projects, and returns unsaved lines before local_only before pushed, with ties ordered by Project name."; "The same test asserts that landed copies and in_pr copies whose delivery is not blocked produce no line, that a repository error line comes first, and that a limit of 2 returns exactly two lines."; "Every other test in that file passes unchanged."; "Apart from the settlement records Arcadia writes, the change touches only tests/work-monitor.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Plan complete; activated Plan portfolio-docs-protocol from the explicit queue at arcadia/narrative-summarization.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-pin-safety-lines-main-20261106).
+
+## 2026-11-07 — Agent Ask activate-record-run-test-pins-20261107
+
+- **Did:** Activated record-run-unattended-test-pins-20261107 at pin-red-alert-token-estimate.
+- **Result:** Operator-settled Plan transition. Previous Plan portfolio-docs-protocol remains draft with completion state preserved. Operator direction 2026-11-07: set a record for unattended sessions on test-only Actions the worker may merge (tests/** only), with one Decision 0173 day-grant press. The day grant names one active Plan. No Action content changes; the previously active Plan returns to draft with Action state preserved.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

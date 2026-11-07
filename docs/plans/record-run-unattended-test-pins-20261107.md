@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: record-run-unattended-test-pins-20261107
 project: arcadia
-status: draft
+status: active
 milestone: Record run unattended test pins 20261107
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -407,6 +407,9 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: pin-red-alert-token-estimate
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Record run unattended test pins 20261107
