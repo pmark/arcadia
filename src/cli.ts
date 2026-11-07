@@ -1603,7 +1603,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   addJsonOption(
     production
       .command("keeper-heartbeat")
-      .description("The Momentum Keeper's heartbeat: write its armed-until file, saying it is live and will wake again within --minutes. Writes that one file; pings nobody, starts nothing")
+      .description("The Momentum Keeper's heartbeat: write its armed-until file, saying it is live and will wake again within --minutes. Writes that one file (and the usual activity row); pings nobody, starts nothing")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--minutes <minutes>", `Until the keeper's next wake, at most ${KEEPER_MAX_HEARTBEAT_MINUTES} (default ${KEEPER_DEFAULT_HEARTBEAT_MINUTES})`)
       .option("--session <name>", "The keeper session's name, for the alarm's recovery line")

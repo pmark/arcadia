@@ -107,7 +107,13 @@ describe("observeKeeper: the keeper's armed-until heartbeat", () => {
     const now = new Date(at("17:00:00"));
     expect(observeKeeper([wake({ role: "lead", armedUntil: at("18:00:00") })], window, now, 10)).toMatchObject({ kind: "stale", heartbeat: null, staleSince: null });
     expect(observeKeeper([wake({ source: "process", armedUntil: null })], window, now, 10).kind).toBe("stale");
-    expect(observeKeeper([wake({ armedUntil: "2026-11-08T00:00:01.000Z" })], window, now, 10).kind).toBe("stale");
+    const beyond = observeKeeper([wake({ armedUntil: "2026-11-08T00:00:01.000Z" })], window, now, 10);
+    expect(beyond).toMatchObject({ kind: "stale", staleSince: null, heartbeat: { armedUntil: "2026-11-08T00:00:01.000Z" } });
+    // Review round 1 (R1-7): its age is reported, never "never".
+    if (beyond.kind !== "stale") throw new Error("unreachable");
+    const message = keeperAlertMessage(beyond, window, now);
+    expect(message).toContain("— last heartbeat 1 h 0 min ago —");
+    expect(message).toContain("is beyond the 6-hour horizon and is not believed");
   });
 
   it("is not required while the window is closed, and unknown while production is unreadable", () => {
@@ -271,6 +277,57 @@ describe("the keeper alarm, end to end through the ping outbox", () => {
   });
 });
 
+describe("review round 1: the alarm's own blindness and lost state", () => {
+  it("pages once when the critical path cannot be read for 3 unbroken minutes, holds the other alarms, and closes on the next good read", async () => {
+    const root = workspace();
+    heartbeat(root, at("16:55:00"), at("19:00:00"));
+    await run(root, "17:00:00", row());
+    expect(pending(root)).toHaveLength(1);
+    let broken = true;
+    const attempt = (clock: string) => runProductionMomentumCheckCommand({ workspace: root }, {
+      now: () => ms(clock),
+      readRow: async () => { if (broken) throw new Error("SQLITE_BUSY: database is locked"); return { ...moving(), ts: at(clock) }; }
+    });
+    await expect(attempt("17:01:00")).rejects.toThrow(/could not read the critical path.*SQLITE_BUSY/);
+    await expect(attempt("17:03:00")).rejects.toThrow(/could not read/);
+    expect(pending(root)).toHaveLength(1);
+    await expect(attempt("17:04:00")).rejects.toThrow(/queued ping ping_\w+: 🚨🚨🚨 MOMENTUM CHECK FAILING for 3 min/);
+    expect(pending(root)[1]?.message).toContain("momentum check failing since 2026-11-07T17:01:00.000Z");
+    await expect(attempt("17:05:00")).rejects.toThrow(/could not read/);
+    expect(pending(root)).toHaveLength(2);
+    expect(stateOf(root).idle.open).not.toBeNull();
+    broken = false;
+    const back = await attempt("17:06:00");
+    expect(back.data.check.ping).toBe("close");
+    expect(back.data.idle.ping).toBe("close");
+    // The last two share one timestamp, so the outbox's order between them is arbitrary.
+    expect(pending(root).map((ping) => ping.message.split(" ").slice(0, 3).join(" ")).sort()).toEqual([
+      "🚨🚨🚨 MOMENTUM: critical",
+      "🚨🚨🚨 MOMENTUM CHECK",
+      "✅ MOMENTUM check",
+      "✅ MOMENTUM: critical"
+    ].sort());
+    expect(stateOf(root).checkFailingSince).toBeNull();
+  });
+
+  it("a single failed read pages nothing", async () => {
+    const root = workspace();
+    await expect(runProductionMomentumCheckCommand({ workspace: root }, { now: () => ms("17:00:00"), readRow: async () => { throw new Error("busy"); } })).rejects.toThrow(/busy/);
+    expect(pending(root)).toHaveLength(0);
+  });
+
+  it("pages a new no-heartbeat episode even when the state file was lost after an earlier one closed (R1-2)", async () => {
+    const root = workspace();
+    await run(root, "17:00:00", moving());
+    heartbeat(root, at("17:05:00"), at("19:00:00"));
+    await run(root, "17:06:00", moving());
+    rmSync(path.join(root, ".arcadia", "armed-wakes", KEEPER_HEARTBEAT_FILE));
+    rmSync(path.join(root, ".arcadia", "momentum-watch.json"));
+    expect((await run(root, "18:00:00", moving())).keeper.ping).toBe("alert");
+    expect(pending(root).filter((ping) => ping.message.includes("MOMENTUM KEEPER NOT ACTIVE"))).toHaveLength(2);
+  });
+});
+
 describe("arcadia production keeper-heartbeat", () => {
   it("writes an armed-until file the idle-front reader accepts, as the keeper role", () => {
     const root = workspace();
@@ -314,7 +371,7 @@ describe("liveness-check runs the momentum alarm on the same timer", () => {
         momentum: { readRow: async () => { throw new Error("status read failed"); } }
       }
     );
-    await expect(run).rejects.toThrow(/Momentum alarm: status read failed.*queued ping ping_/);
+    await expect(run).rejects.toThrow(/Momentum alarm: .*status read failed.*queued ping ping_/);
     // The worker check's read-failure page still went out.
     expect(pending(root).map((ping) => ping.agent)).toEqual(["Liveness check"]);
   });

@@ -12,7 +12,11 @@ import {
   KEEPER_ROLE,
   MOMENTUM_DEFAULT_IDLE_MINUTES,
   MOMENTUM_MIN_IDLE_MINUTES,
+  MOMENTUM_CHECK_FAILING_MINUTES,
   MOMENTUM_STATE_SCHEMA,
+  checkAlertMessage,
+  checkCloseMessage,
+  checkFailingKey,
   closingKey,
   decideSlot,
   emptyMomentumState,
@@ -91,6 +95,7 @@ export interface ProductionMomentumData {
   keeperObservation: KeeperObservation;
   idle: MomentumAlarmResult;
   keeper: MomentumAlarmResult;
+  check: MomentumAlarmResult;
   thresholds: { idleMinutes: number; keeperGraceMinutes: number };
 }
 
@@ -138,8 +143,10 @@ function readState(workspacePath: string): { state: MomentumWatchState; problem:
   try {
     const value = JSON.parse(raw) as Partial<MomentumWatchState>;
     if (value.schema !== MOMENTUM_STATE_SCHEMA) throw new Error("unknown schema");
-    if (!validSlot(value.idle) || !validSlot(value.keeper)) throw new Error("malformed alert slot");
-    return { state: { schema: MOMENTUM_STATE_SCHEMA, idle: value.idle, keeper: value.keeper }, problem: null };
+    if (!validSlot(value.idle) || !validSlot(value.keeper) || !validSlot(value.check)) throw new Error("malformed alert slot");
+    const since = value.checkFailingSince ?? null;
+    if (since !== null && !(typeof since === "string" && Number.isFinite(Date.parse(since)))) throw new Error("malformed checkFailingSince");
+    return { state: { schema: MOMENTUM_STATE_SCHEMA, idle: value.idle, keeper: value.keeper, check: value.check, checkFailingSince: since }, problem: null };
   } catch (error) {
     return { state: emptyMomentumState(), problem: errorText(error) };
   }
@@ -179,17 +186,19 @@ export async function runProductionMomentumCheckCommand(
   const wakesDir = path.resolve(options.wakesDir ?? path.join(workspacePath, ".arcadia", "armed-wakes"));
   const { state, problem: stateProblem } = readState(workspacePath);
 
-  const row = await (dependencies.readRow
-    ? dependencies.readRow(workspacePath, now, wakesDir)
-    : readRowThroughIdleFront(workspacePath, now, wakesDir, dependencies.listProcesses));
-  const window = runWindowOf(row);
-  const idleObservation = observeIdle(row, window, idleMinutes);
-  // Expired files too: the alarm reports the newest heartbeat's age.
-  const keeperObservation = observeKeeper(readWakeFiles(wakesDir).wakes, window, now, keeperGraceMinutes);
+  let row: IdleFrontRow | null = null;
+  let readProblem: string | null = null;
+  try {
+    row = await (dependencies.readRow
+      ? dependencies.readRow(workspacePath, now, wakesDir)
+      : readRowThroughIdleFront(workspacePath, now, wakesDir, dependencies.listProcesses));
+  } catch (error) {
+    readProblem = errorText(error);
+  }
 
   const queue = dependencies.queuePing ?? queueThroughPing;
   const failures: string[] = [];
-  const next: MomentumWatchState = { schema: MOMENTUM_STATE_SCHEMA, idle: state.idle, keeper: state.keeper };
+  const next: MomentumWatchState = { ...state };
 
   const step = (
     slot: AlertSlot,
@@ -224,10 +233,34 @@ export async function runProductionMomentumCheckCommand(
     return { slot: changed, result: { ping: transition, pingId, message: outgoing.message, open: changed.open !== null } };
   };
 
+  // The alarm's own blindness pages after an unbroken stretch of failed reads, and closes on the first good one.
+  const failingSince = readProblem === null ? null : state.checkFailingSince ?? now.toISOString();
+  next.checkFailingSince = failingSince;
+  const blindFor = failingSince === null ? 0 : now.getTime() - Date.parse(failingSince);
+  const checkStep = step(
+    state.check,
+    decideSlot(state.check, readProblem === null ? "clear" : blindFor >= MOMENTUM_CHECK_FAILING_MINUTES * 60_000 ? "alarm" : "hold"),
+    () => ({ message: checkAlertMessage(failingSince as string, readProblem as string, now), key: checkFailingKey(failingSince as string), route: "/production" }),
+    (open) => checkCloseMessage(open, now),
+    "momentum check"
+  );
+  next.check = checkStep.slot;
+  if (row === null) {
+    writeState(workspacePath, next);
+    failures.push(`The momentum check could not read the critical path, so the idle and keeper alarms held: ${readProblem}`);
+    if (stateProblem !== null) failures.push(`The momentum state file was unreadable and has been replaced: ${stateProblem}`);
+    throw validationError([...failures, ...(checkStep.result.message ? [`queued ping ${checkStep.result.pingId}: ${checkStep.result.message}`] : [])].join(" "));
+  }
+  const readRow = row;
+  const window = runWindowOf(readRow);
+  const idleObservation = observeIdle(readRow, window, idleMinutes);
+  // Expired files too: the alarm reports the newest heartbeat's age.
+  const keeperObservation = observeKeeper(readWakeFiles(wakesDir).wakes, window, now, keeperGraceMinutes);
+
   const idleStep = step(
     state.idle,
     decideSlot(state.idle, idleSignal(idleObservation)),
-    () => ({ message: idleAlertMessage(row, window), key: idleEpisodeKey(row), route: idleRemedy(row).route }),
+    () => ({ message: idleAlertMessage(readRow, window), key: idleEpisodeKey(readRow), route: idleRemedy(readRow).route }),
     (open) => idleCloseMessage(open, idleObservation, window, now),
     "momentum idle"
   );
@@ -237,7 +270,7 @@ export async function runProductionMomentumCheckCommand(
     decideSlot(state.keeper, keeperSignal(keeperObservation)),
     () => {
       const stale = keeperObservation as Extract<KeeperObservation, { kind: "stale" }>;
-      return { message: keeperAlertMessage(stale, window, now), key: keeperEpisodeKey(stale), route: "/production" };
+      return { message: keeperAlertMessage(stale, window, now), key: keeperEpisodeKey(stale, now), route: "/production" };
     },
     (open) => keeperCloseMessage(open, keeperObservation, now),
     "keeper"
@@ -253,19 +286,20 @@ export async function runProductionMomentumCheckCommand(
     workspace: workspacePath,
     data: {
       window,
-      idleMinutes: row.idle_minutes,
-      blockerClass: row.blocker_class,
+      idleMinutes: readRow.idle_minutes,
+      blockerClass: readRow.blocker_class,
       idleObservation,
       keeperObservation,
       idle: idleStep.result,
       keeper: keeperStep.result,
+      check: checkStep.result,
       thresholds: { idleMinutes, keeperGraceMinutes }
     }
   });
 }
 
 export function renderProductionMomentumLines(data: ProductionMomentumData, stamp = new Date().toISOString()): string[] {
-  return [data.idle, data.keeper]
+  return [data.check, data.idle, data.keeper]
     .filter((result) => result.message !== null)
     .map((result) => `${stamp} queued ping ${result.pingId}: ${result.message}`);
 }
@@ -356,8 +390,8 @@ export interface KeeperHeartbeatData {
 /**
  * `arcadia production keeper-heartbeat`: the Momentum Keeper says "I am live
  * and will wake again by armedUntil". It writes one armed-until file
- * (`arcadia-armed-wake-v1`, deferral D2) atomically and nothing else: no
- * database, no ping, no Project state. A keeper runs it at every wake with
+ * (`arcadia-armed-wake-v1`, deferral D2) atomically: no
+ * ping and no Project state (the CLI records its usual activity row). A keeper runs it at every wake with
  * `--minutes` covering its next fallback wake.
  */
 export function runKeeperHeartbeatCommand(

@@ -54,10 +54,28 @@ export interface MomentumWatchState {
   schema: typeof MOMENTUM_STATE_SCHEMA;
   idle: AlertSlot;
   keeper: AlertSlot;
+  /** The alarm's own blindness: the critical path could not be read. */
+  check: AlertSlot;
+  /** First run of the current unbroken stretch of read failures; null while reads succeed. */
+  checkFailingSince: string | null;
 }
 
+/**
+ * A momentum check that cannot read the critical path leaves both alarms
+ * blind, so it pages too, but only after 3 minutes of unbroken failures: one
+ * locked read is not an outage, and the worker check pages an unreadable
+ * policy at once anyway.
+ */
+export const MOMENTUM_CHECK_FAILING_MINUTES = 3;
+
 export function emptyMomentumState(): MomentumWatchState {
-  return { schema: MOMENTUM_STATE_SCHEMA, idle: { open: null, closedAt: null }, keeper: { open: null, closedAt: null } };
+  return {
+    schema: MOMENTUM_STATE_SCHEMA,
+    idle: { open: null, closedAt: null },
+    keeper: { open: null, closedAt: null },
+    check: { open: null, closedAt: null },
+    checkFailingSince: null
+  };
 }
 
 /**
@@ -118,11 +136,12 @@ export function observeKeeper(wakes: ArmedWake[], window: RunWindow, now: Date, 
   const heartbeats = wakes
     .filter((wake) => wake.source === "heartbeat-file" && wake.role === KEEPER_ROLE && wake.armedUntil !== null)
     .map((wake) => ({ session: wake.session, armedAt: wake.armedAt, armedUntil: wake.armedUntil as string, evidence: wake.evidence }))
-    .filter((heartbeat) => Date.parse(heartbeat.armedUntil) <= at + MAX_ARMED_HORIZON_MS)
     .sort((a, b) => Date.parse(b.armedUntil) - Date.parse(a.armedUntil));
-  const newest = heartbeats[0] ?? null;
+  const newest = heartbeats.find((heartbeat) => Date.parse(heartbeat.armedUntil) <= at + MAX_ARMED_HORIZON_MS) ?? null;
   if (newest && Date.parse(newest.armedUntil) + graceMinutes * 60_000 > at) return { kind: "fresh", heartbeat: newest };
-  return { kind: "stale", heartbeat: newest, staleSince: newest ? new Date(Date.parse(newest.armedUntil) + graceMinutes * 60_000).toISOString() : null };
+  // A heartbeat armed beyond the horizon is not believed, but its age is still reported, never "never".
+  const reported = newest ?? heartbeats[0] ?? null;
+  return { kind: "stale", heartbeat: reported, staleSince: newest ? new Date(Date.parse(newest.armedUntil) + graceMinutes * 60_000).toISOString() : null };
 }
 
 export type SlotTransition = "alert" | "close" | null;
@@ -147,8 +166,14 @@ export function idleEpisodeKey(row: IdleFrontRow): string {
   return `idle since ${row.blocked_since ?? row.ts}`;
 }
 
-export function keeperEpisodeKey(observation: Extract<KeeperObservation, { kind: "stale" }>): string {
-  return observation.staleSince ? `keeper lapsed ${observation.staleSince}` : "keeper heartbeat never written";
+/**
+ * With no believable heartbeat there is no lapse time, so the key carries the
+ * time the alarm was raised: a constant would match an earlier episode's row
+ * once the state file is lost, and lose this page. The cost is that a retry
+ * after a lost state file pages once more, never that a page is lost.
+ */
+export function keeperEpisodeKey(observation: Extract<KeeperObservation, { kind: "stale" }>, now: Date): string {
+  return observation.staleSince ? `keeper lapsed ${observation.staleSince}` : `no keeper heartbeat as of ${now.toISOString()}`;
 }
 
 export function closingKey(pingId: string): string {
@@ -231,11 +256,13 @@ function heartbeatAge(heartbeat: KeeperHeartbeat | null, now: Date): string {
 }
 
 export function keeperAlertMessage(observation: Extract<KeeperObservation, { kind: "stale" }>, window: RunWindow, now: Date): string {
-  const lapsed = observation.heartbeat ? ` Armed until ${observation.heartbeat.armedUntil}${observation.heartbeat.session ? ` by ${observation.heartbeat.session}` : ""}, grace included.` : "";
+  const lapsed = observation.heartbeat && !observation.staleSince
+    ? ` Its armed-until ${observation.heartbeat.armedUntil} is beyond the 6-hour horizon and is not believed.`
+    : observation.heartbeat ? ` Armed until ${observation.heartbeat.armedUntil}${observation.heartbeat.session ? ` by ${observation.heartbeat.session}` : ""}, grace included.` : "";
   return fitPing(
     `🚨🚨🚨 MOMENTUM KEEPER NOT ACTIVE — last heartbeat ${heartbeatAge(observation.heartbeat, now)} — start a keeper: Rowan (or you) starts a Momentum Keeper helper under Decisions 0188 and 0114; it runs \`arcadia production keeper-heartbeat\` at every wake.`,
     ` ${window.reason}.${lapsed}`,
-    ` Nothing was started (${keeperEpisodeKey(observation)}).`
+    ` Nothing was started (${keeperEpisodeKey(observation, now)}).`
   );
 }
 
@@ -247,4 +274,20 @@ export function keeperCloseMessage(open: NonNullable<AlertSlot["open"]>, observa
   }
   const reason = observation.kind === "not_required" ? observation.reason : "the run window closed";
   return `✅ MOMENTUM KEEPER alarm closed: ${reason}, so no keeper is required; ${after} after the alert ${closingKey(open.pingId)}.`;
+}
+
+export function checkFailingKey(since: string): string {
+  return `momentum check failing since ${since}`;
+}
+
+export function checkAlertMessage(since: string, reason: string, now: Date): string {
+  return fitPing(
+    `🚨🚨🚨 MOMENTUM CHECK FAILING for ${formatAge(now.getTime() - Date.parse(since))} — the idle and keeper alarms are blind until it reads again — Rowan checks \`pnpm logs liveness\`.`,
+    ` ${reason.replace(/\s+/g, " ")}`,
+    ` Nothing was restarted (${checkFailingKey(since)}).`
+  );
+}
+
+export function checkCloseMessage(open: NonNullable<AlertSlot["open"]>, now: Date): string {
+  return `✅ MOMENTUM check reading again, ${formatAge(now.getTime() - Date.parse(open.alertedAt))} after the alert ${closingKey(open.pingId)}.`;
 }

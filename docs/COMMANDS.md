@@ -1816,6 +1816,11 @@ alarms, each paging once through `arcadia ping` (agent `Momentum watch`, kind
   closed` when the window closes. It never starts a helper: Rowan or the
   operator does, under Decisions 0188 and 0114.
 
+- **Blind check.** When the momentum step cannot read the critical path for 3
+  unbroken minutes, it pages `🚨🚨🚨 MOMENTUM CHECK FAILING for <n> min — the
+  idle and keeper alarms are blind …` and closes with `✅ MOMENTUM check
+  reading again`. The other alarms hold meanwhile.
+
 State lives in `<workspace>/.arcadia/momentum-watch.json`; an unreadable file
 restarts both episodes, and the ping outbox's episode key stops a retry from
 paging twice. A failure in either check never stops the other; the run exits
@@ -1824,7 +1829,7 @@ non-zero after both, carrying any page the other queued.
 `production keeper-heartbeat` is the keeper's side: it writes
 `<workspace>/.arcadia/armed-wakes/momentum-keeper.json`
 (`arcadia-armed-wake-v1`, role `momentum-keeper`, `armedUntil` = now plus
-`--minutes`, default 60, at most 360) and nothing else. A keeper runs it at
+`--minutes`, default 60, at most 360); besides the CLI's usual activity row it writes nothing else. A keeper runs it at
 every wake with `--minutes` covering its next fallback wake.
 
 ## Check A Design Record Or Field Guide
