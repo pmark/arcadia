@@ -178,8 +178,12 @@ rather than pretending otherwise.
 - **Fallback when usage is missing or unreadable:** the state is
   `unmeasured`. It pings once per episode and counts main-chain turns as a
   coarse proxy. Its threshold is uncalibrated: set it from the first measured
-  renewals, and until then treat `unmeasured` for more than an hour as *due*.
-  It never reports a percentage it does not have.
+  renewals. Until then `unmeasured` is *due* at once, because an unread
+  session may already be past *forced*. The one exception is a generation the
+  relay launched less than an hour ago: at the worst growth observed it cannot
+  reach the 90s in that hour, and the exception keeps a systemic cause, such
+  as a missing registry window, from renewing in a loop. It never reports a
+  percentage it does not have.
 - **Thresholds:**
   - *prepare* at 50%: tell the coordinator to bring its journal up to date.
   - *due* at 60%: start the handoff at the next safe point.
@@ -271,11 +275,19 @@ approval it relies on.
 1. **Claim, atomically.** The relay takes a single-writer lock: an exclusive
    create of `<role>/relay.lock` that holds the pid and the process start time.
    A stale lock is broken only when no live process has that pid with that
-   start time, so a reused pid cannot hold the lock. Under the lock it appends generation N+1
-   with status `launching` and writes the immutable snapshot. A tick, a manual
-   `renew` and a `hold` all go through the same lock, so they cannot collide.
-   While N+1 is `launching` and younger than 15 minutes, any further launch is
-   refused.
+   start time, so a reused pid cannot hold the lock. Under the lock it writes
+   the immutable snapshot (to a temporary file, then renamed into place) and
+   only then appends generation N+1 with status `launching` and the snapshot's
+   sha. A tick, a manual `renew` and a `hold` all go through the same lock, so
+   they cannot collide.
+   - *Half-recorded claim.* A crash can still leave a `launching` row whose
+     snapshot file is missing or does not hash to the recorded sha. The next
+     holder of the lock checks that first, marks such a row `failed` with
+     reason `claim_incomplete`, and continues as step 7 does after a failed
+     launch. A row whose snapshot is present and matches is complete, and this
+     check never touches it.
+   - While a complete N+1 is `launching` and younger than 15 minutes, any
+     further launch is refused.
 2. **Pre-launch gates.** The relay launches only if all of these hold, and
    refuses with a named reason otherwise:
    - sign-in is valid (`claude auth status --json`, as the worker already
@@ -300,8 +312,11 @@ approval it relies on.
    - OpenCode: `opencode run -i --model <id> "<resume prompt>"` (probe P4).
 
    The resume prompt is fixed text: "You are <role> generation N+1. Run
+   `arcadia coordinator subscribe --from-snapshot <sha>`, then
    `arcadia coordinator verify --generation N+1`, then `accept`." It also
-   carries the snapshot path and sha. The host classifier will read this as a
+   carries the snapshot path and sha. `subscribe --from-snapshot` re-arms each
+   watcher the snapshot lists, with its last cursor (section e), so `verify`
+   item 3 can pass. The host classifier will read this as a
    user turn, because it is the session's first message. That is acceptable
    only because the text is a fixed template that the reviewed relay code
    renders. It holds no approval, quote or free-form state, so no authority can
@@ -321,9 +336,23 @@ approval it relies on.
    - *One guard.* A shared `assertCoordinatorCustody()` refuses when the role is
      set but the generation or token is not the current custodian's. The
      refusal names the successor.
+   - *The one exception: the incoming generation.* Before acceptance the
+     custodian is still N, so the guard would refuse N+1's own handoff. It
+     therefore admits exactly two commands from a caller that is not the
+     custodian: `subscribe --from-snapshot` and `accept`. It admits them only
+     under the transfer lock, only for the newest `launching` generation, only
+     when the caller's token matches that row and the sha matches its
+     snapshot, and, for `accept`, only when `verify` passed against that sha
+     within the last 10 minutes. Every other command and caller gets the
+     ordinary check.
    - *Exact commands guarded:* `arcadia coordinator note`, `subscribe`,
      `hold`, `renew` and `accept`, and `arcadia ping send` whenever
      `ARCADIA_COORDINATOR_ROLE` is set.
+   - *Not guarded yet:* every other mutating Arcadia command, such as
+     `arcadia ask`, `arcadia learn`, `arcadia agent-ask`, and the production
+     and operator-script commands. A relay-launched predecessor can still run
+     them after `handed_off`. Extending the guard to them is deferred (see the
+     Deferred table).
    - *Not fenced:* a caller with no coordinator identity. That covers the
      operator, ordinary sessions and desktop coordinators the relay did not
      launch. Operator-script cards such as batch-merge are not fenced either:
@@ -331,8 +360,9 @@ approval it relies on.
 
    The fence guards against mistakes; it is not a security boundary. A session
    that reads the workspace could copy a token. Read commands stay open. Two
-   relay-launched coordinators can still both *read*, but only one can act
-   through Arcadia.
+   relay-launched coordinators can still both *read*, but only one can run the
+   guarded coordinator and ping commands. The predecessor can still act through
+   the unguarded commands above, and through direct `gh` or `git`.
 6. **Stand-down of N.**
    - **tmux-hosted predecessor.** The relay stops its pane only when the
      predecessor is idle: its transcript shows the turn ended, no hold is open,
@@ -410,8 +440,8 @@ The design rules:
   `quiet-watch.sh`'s logic as a mode of `scripts/wait-for-event.sh`, or of
   `arcadia timeline --wait` once Decision 0184 A ships. A watcher is registered
   as `arcadia coordinator subscribe "<command line>" --cursor <c>`.
-- **The resume prompt re-arms each subscription** from the capsule, with its
-  last cursor, so events that landed during the handoff still fire (the
+- **The successor re-arms each subscription** first, through the resume
+  prompt's `subscribe --from-snapshot`, with its last cursor, so events that landed during the handoff still fire (the
   re-baselining defect in `docs/design/session-notifications.md`).
 - **The relay checks liveness:** each tick it confirms a live process for each
   subscription, matched on a marker in its argv, and pings once if a
@@ -448,7 +478,7 @@ Ranked by how far each one moves toward fully automatic transitions.
 | Rank | Change | What it moves | Authority |
 | --- | --- | --- | --- |
 | 1 | **`arcadia coordinator register` and `budget`, plus a relay tick on the launchd timer that pings at prepare, due and forced.** Read-only measurement, one ping per episode | Detection becomes code. On 11-07 it would have pinged at 05:09Z, 12.5 h before compaction | The `budget` command alone is routine: read-only, and its pings already have standing. **Scheduling it on the launchd timer is new timer work** (see "Rules this design changes"), so it waits for the Decision. Any of A, B or C covers it |
-| 2 | **The capsule (live view and immutable snapshots), `note`, `verify` and `accept`, the `coordinator_generations` table (a migration), and the generation fence on mutating coordinator commands.** | Handoffs no longer depend on assembly under pressure or a narrative note. Custody becomes a record, and only the custodian can act through Arcadia | Code PR. The fence changes what agents may do, so the operator merges it |
+| 2 | **The capsule (live view and immutable snapshots), `note`, `verify` and `accept`, the `coordinator_generations` table (a migration), and the generation fence on mutating coordinator commands.** | Handoffs no longer depend on assembly under pressure or a narrative note. Custody becomes a record, and only the custodian can run the guarded coordinator and ping commands | Code PR. The fence changes what agents may do, so the operator merges it |
 | 3 | **Relay launch (`arcadia coordinator renew`) through the tmux launcher, with the delivery check, one retry and the alert path.** | Removes the agent and the operator from the launch. The step that failed at 17:06Z | **Needs the standing Decision** (launch authority). Probes P1 and P2 first |
 | 4 | **Approvals to durable surfaces:** guidance makes a chat merge approval become a batch-merge card at once, and `approvals.chat_only` is tracked | Removes re-approval after each handoff | Guidance PR. It changes how agents seek approval, so the operator merges it |
 | 5 | **Watcher continuity:** check in quiet-watch as a mode, add subscriptions and cursors to the capsule, and liveness-check them | Wakes survive handoffs and restarts | Routine. Merge in a production gap |
@@ -462,6 +492,7 @@ Deferred, each with its revival trigger:
 | OpenCode coordinator support | An OpenCode coordinator is assigned, or probe P4 passes |
 | Provider fallback on launch failure | Two relay launches fail on one provider within a week, and a Decision names the fallback |
 | Fencing a stale coordinator's direct `gh` and `git` writes, beyond Arcadia's own commands | A predecessor is observed writing to GitHub after `handed_off` |
+| Extending the custody guard to the other mutating Arcadia commands (`ask`, `learn`, `agent-ask`, production and operator-script commands) | A predecessor is observed running one after `handed_off`, or change 3 ships under answer A |
 | Recalibrating thresholds | Ten recorded renewals, or one forced renewal |
 | Relay injection of mid-session wakes (`tmux send-keys`) | Never by default: typed text reads as operator input to the host classifier. Revisit only with a host-supported, labelled channel |
 
@@ -472,9 +503,13 @@ Deferred, each with its revival trigger:
   name checked with `has-session`, and refusing to launch while N+1 is
   `launching` and younger than 15 minutes.
 - **Two coordinators act after a handoff.** The generation fence refuses a
-  relay-launched predecessor's mutating Arcadia commands. Direct `gh` and `git`
-  writes are not fenced, and neither is a desktop predecessor. Both gaps are
-  named in (c) step 6 and in the Deferred table.
+  relay-launched predecessor's guarded coordinator and ping commands. Its other
+  mutating Arcadia commands, its direct `gh` and `git` writes, and a desktop
+  predecessor are not fenced. These gaps are named in (c) steps 5 and 6 and in
+  the Deferred table.
+- **A crash leaves a half-recorded claim.** The snapshot is written before the
+  `launching` row, and the next lock holder marks a row without a matching
+  snapshot `failed` (`claim_incomplete`), so it cannot block later ticks.
 - **The stand-down kills in-flight work.** The pane is stopped only when the
   predecessor is idle, with no open hold and no running subagent or
   background task. Otherwise the relay pings instead.
@@ -501,9 +536,12 @@ approval before it runs, with a spend bound of one short prompt per probe, and
 a stop with `claude stop` or by killing the tmux pane. They use a throwaway
 fixture worktree and never touch production. P3 and P4 are read-only.
 
-- **P1:** start `claude --remote-control "probe" --name probe "say hi"` in tmux.
-  Check it appears in the operator's Remote Control list, on desktop and phone,
-  and whether a desktop session can send it a cross-session message.
+- **P1:** start the full change-3 launch command in tmux, with a short prompt:
+  `claude --remote-control "probe" --session-id <uuid> --name probe --model <id> --effort <e> "say hi"`.
+  Check that the transcript is written under that session id with "say hi" as
+  its first user message, that the model and effort took effect, that it
+  appears in the operator's Remote Control list on desktop and phone, and
+  whether a desktop session can send it a cross-session message.
 - **P2:** the same with `--bg`. Check `claude agents --json`, `logs` and `stop`,
   and whether `--remote-control` still applies.
 - **P3:** confirm `compact_boundary` and usage fields in a Sonnet transcript,
