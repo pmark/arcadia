@@ -189,11 +189,11 @@ actions:
     references: []
   - id: pin-answer-menu-letters
     title: Pin how Decision answer menus map letters to options and read a Decision slug from a doc ref, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how Decision answer menus map letters to options and read a Decision slug from a doc ref, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-answer-menu-letters-3592e2c54062; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-answer-menu-letters
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-answer-menu-letters
+current_action: pin-lesson-scope-normalization
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
