@@ -421,6 +421,20 @@ One question, registered as the Agent Ask proposal `proposal-command-center-answ
   "one question at a time, answered in place" (rule 3), which needs the same yes.
 - 🅲 **Hold: revise the design first.** ➜ Consequence: nothing is built. Say what to change.
 
+**Operator answer, 2026-11-07 (in the Signal 2 session), verbatim:** "I choose A. Links only, but only for this iteration.
+Ultimately I want a unified UI that I apparently never navigate away from. I should be able to see a To-Do item's overview in
+plain language and be presented with options for direct action all from the same single UI, and progressive disclosure allows
+me to access the full depth of detail conveniently without cluttering my default view so that I can stay in a flow state at
+all times."
+
+What this means for the build:
+- Phases 1 and 2 ship links only, as designed. The command center writes no governance in this iteration.
+- The destination is a single page the operator never leaves. Each To-Do item gets a plain-language overview with its
+  direct-action options on the same page. Full detail sits behind progressive disclosure, so the default view stays
+  uncluttered. Phases 3 and 4 move toward that destination rather than being optional extras.
+- Phase 3 (answering in place) still needs its own explicit yes before it is built. Revival trigger: phase 2 is merged
+  and in use. At that point, ask the operator again, citing this answer.
+
 **Later choices, recorded but not asked now:**
 - The page's name. "Command center" is my taste. Ask when phase 1 is in review.
 - Making it the landing page (phase 4). Revival trigger above.
