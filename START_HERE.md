@@ -4009,6 +4009,15 @@ Passing means every piece traces to a source and the mission, and that critics
 couldn't break it or you accepted the risk. It doesn't prove the design is right.
 The method is in the [arcadia-design skill](.agents/skills/arcadia-design/SKILL.md).
 
+### Start Signal
+
+Signal is your supervising session over Rowan. It watches production and pull requests,
+wakes Rowan when to act, checks that merges and presses really happened, and starts every
+message with a loud banner for anything urgent you must do (🚨🚨🚨 plus 🔀 merge, 🗳️ decide,
+👆 press). Say "Signal" or "be Signal" to a coding agent in this checkout, or start one from
+a Signal handoff in the shared notes folder. See the
+[arcadia-signal skill](.agents/skills/arcadia-signal/SKILL.md). It grants no authority.
+
 ### Try Relay mode
 
 Relay will be Arcadia's one conversational interface, and it isn't built yet. Until then,
