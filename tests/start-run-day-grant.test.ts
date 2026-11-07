@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildStartRunDayPins, buildStartRunPins, runStartRunDayEvidenceCommand, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { validateOperatorScriptContract, assertProjectLibraryEntry, startRunLauncher, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
-import { dayGrantLauncher, inspectDayGrantChain, isOperatorBrowserPress, refusalKey, validateDayGrantDelegation, validateDayGrantPins, validateDayGrantPrevious } from "../src/operatorActions/startRunDayGrant.js";
+import { dayGrantLauncher, inspectDayGrantChain, isFailedBatch, isOperatorBrowserPress, refusalKey, validateDayGrantDelegation, validateDayGrantPins, validateDayGrantPrevious } from "../src/operatorActions/startRunDayGrant.js";
 import { delegatedPressMarker, StartRunDelegationError } from "../src/operatorActions/startRunDelegation.js";
 import { validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { ensureProductionPolicyTables, readDayGrantEvidence } from "../src/production/policy.js";
@@ -45,19 +45,51 @@ describe("Decision 0173 chain", () => {
     const { approval, ...rest } = writeDayScenario(library, { label: "", code: "", approval: { pressedAt: NOW - 3_600_000, baseline: 91 } }, NOW);
     writeStartPress(library, { card: "start-yesterday", at: NOW - 30 * 3_600_000, status: "succeeded", receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } }, 0);
     // Before the approval: production's record of it is older than the baseline, and it is still an attempt under Decision 0170.
-    const evidence = { transitions: rest.evidence.transitions, activations: [{ requestId: "start-yesterday", revisionAfter: 90, at: new Date(NOW - 30 * 3_600_000).toISOString(), admitted: 1 }] };
+    const evidence = { transitions: rest.evidence.transitions, activations: [{ requestId: "start-yesterday", revisionAfter: 90, at: new Date(NOW - 30 * 3_600_000).toISOString(), admitted: 1, endedAt: new Date(NOW - 29 * 3_600_000).toISOString(), scopeComplete: null }] };
     const chain = inspectDayGrantChain({
       library, approvalCard: approval.card, approvalRun: approval.run, approvalReceiptSha256: approval.receiptSha256, approvalPressSha256: approval.pressSha256,
       now: new Date(NOW), evidence, policyRevision: 91, excludePress: null, scope: SCOPE, previous: named(pressKey("start-yesterday"), "stuck-run", "failed-attempt"), attempt: 2
     });
-    expect(chain).toMatchObject({ attemptsSoFar: 1, rePressesToday: 0, latest: { press: pressKey("start-yesterday"), kind: "failed-attempt" } });
+    expect(chain).toMatchObject({ attemptsSoFar: 1, failedBatchesToday: 0, rePressesToday: 0, latest: { press: pressKey("start-yesterday"), kind: "failed-attempt" } });
+  });
+
+  it("Decision 0181: stops at one failed batch in this day, never counts a clean one, and leaves yesterday's to the operator's press", () => {
+    const library = tempDir("arcadia-day-");
+    const { approval } = writeDayScenario(library, { label: "", code: "", approval: { pressedAt: NOW - 3_600_000, baseline: 91 } }, NOW);
+    writeStartPress(library, { card: "start-yesterday", at: NOW - 30 * 3_600_000, status: "succeeded", receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } }, 0);
+    const base = { library, approvalCard: approval.card, approvalRun: approval.run, approvalReceiptSha256: approval.receiptSha256, approvalPressSha256: approval.pressSha256, now: new Date(NOW), policyRevision: 91, excludePress: null, scope: SCOPE, attempt: 2 };
+    const at = (hoursAgo: number) => new Date(NOW - hoursAgo * 3_600_000).toISOString();
+    const yesterday = (endedHoursAgo: number | null, scopeComplete: { merged: number; escalated: number } | null) => ({
+      transitions: [], activations: [{ requestId: "start-yesterday", revisionAfter: 90, at: at(30), admitted: 1, endedAt: endedHoursAgo === null ? null : at(endedHoursAgo), scopeComplete }]
+    });
+    const failedCause = named(pressKey("start-yesterday"), "stuck-run", "failed-attempt");
+    const cleanCause = named(pressKey("start-yesterday"), "scope-complete", "clean-batch");
+    // Failed and over before the press: the operator's press is their decision after it.
+    expect(code(() => inspectDayGrantChain({ ...base, evidence: yesterday(29, null), previous: failedCause }))).toBe("none");
+    // Failed, and not over when the day was pressed (still open, or ended after the press): it counts.
+    expect(code(() => inspectDayGrantChain({ ...base, evidence: yesterday(null, null), previous: failedCause }))).toBe("FAILED_BATCH");
+    expect(code(() => inspectDayGrantChain({ ...base, evidence: yesterday(0.5, null), previous: failedCause }))).toBe("FAILED_BATCH");
+    // Clean: scope complete with no escalation, whenever it ended. An escalation, or a malformed record, fails it.
+    expect(inspectDayGrantChain({ ...base, evidence: yesterday(null, { merged: 3, escalated: 0 }), previous: cleanCause })).toMatchObject({ failedBatchesToday: 0, latest: { kind: "clean-batch" } });
+    expect(code(() => inspectDayGrantChain({ ...base, evidence: yesterday(0.5, { merged: 3, escalated: 1 }), previous: failedCause }))).toBe("FAILED_BATCH");
+    expect(code(() => inspectDayGrantChain({ ...base, evidence: yesterday(0.5, { merged: Number.NaN, escalated: 0 }), previous: failedCause }))).toBe("FAILED_BATCH");
+    expect(code(() => inspectDayGrantChain({ ...base, evidence: yesterday(0.5, { merged: 0, escalated: 0 }), previous: failedCause }))).toBe("FAILED_BATCH");
+  });
+
+  it("Decision 0181: classifies a batch from production's record alone, failing closed", () => {
+    expect(isFailedBatch({ admitted: 0, scopeComplete: null })).toBe(false);
+    expect(isFailedBatch({ admitted: 2, scopeComplete: { merged: 3, escalated: 0 } })).toBe(false);
+    expect(isFailedBatch({ admitted: 2, scopeComplete: null })).toBe(true);
+    expect(isFailedBatch({ admitted: 2, scopeComplete: { merged: 3, escalated: 2 } })).toBe(true);
+    expect(isFailedBatch({ admitted: 2, scopeComplete: { merged: 3 } as never })).toBe(true);
+    expect(isFailedBatch({ admitted: 2 } as never)).toBe(true);
   });
 
   it("counts a dashboard reactivation that admitted a Session as an attempt, since an undercount is the worse error", () => {
     const library = tempDir("arcadia-day-");
     const { approval } = writeDayScenario(library, { label: "", code: "", approval: { pressedAt: NOW - 3_600_000, baseline: 91 } }, NOW);
     const base = { library, approvalCard: approval.card, approvalRun: approval.run, approvalReceiptSha256: approval.receiptSha256, approvalPressSha256: approval.pressSha256, now: new Date(NOW), policyRevision: 91, excludePress: null, scope: SCOPE, previous: null };
-    const evidence = { transitions: [], activations: [{ requestId: "dashboard-toggle-1-abcd", revisionAfter: 90, at: new Date(NOW - 30 * 3_600_000).toISOString(), admitted: 1 }] };
+    const evidence = { transitions: [], activations: [{ requestId: "dashboard-toggle-1-abcd", revisionAfter: 90, at: new Date(NOW - 30 * 3_600_000).toISOString(), admitted: 1, endedAt: new Date(NOW - 29 * 3_600_000).toISOString(), scopeComplete: null }] };
     expect(inspectDayGrantChain({ ...base, evidence, attempt: 2 }).attemptsSoFar).toBe(1);
     expect(code(() => inspectDayGrantChain({ ...base, evidence, attempt: 1 }))).toBe("ATTEMPT_MISMATCH");
   });
@@ -193,7 +225,12 @@ describe("Decision 0173 card and block contracts", () => {
   const block = (overrides: Record<string, unknown> = {}) => ({ decision: "0173", approvalCard: DAY_CARD, approvalRun: DAY_RUN, approvalReceiptSha256: "a".repeat(64), approvalPressSha256: "b".repeat(64), attempt: 2, previous: named(pressKey("start-a"), "stuck-run", "failed-attempt"), ...overrides });
   it("needs a named cause, an evidence pointer and a clearance on a successor", () => {
     expect(validateDayGrantDelegation(block()).attempt).toBe(2);
-    expect(() => validateDayGrantDelegation(block({ attempt: 4 }))).toThrow(/1 to 3/);
+    // Decision 0181 lifted Decision 0170's cap: the attempt is a number on the record, not a limit.
+    expect(validateDayGrantDelegation(block({ attempt: 6 })).attempt).toBe(6);
+    expect(() => validateDayGrantDelegation(block({ attempt: 0 }))).toThrow(/positive whole number/);
+    expect(() => validateDayGrantDelegation(block({ attempt: 1.5 }))).toThrow(/positive whole number/);
+    expect(validateDayGrantPrevious(named(pressKey("start-a"), "scope-complete", "clean-batch")).kind).toBe("clean-batch");
+    expect(() => validateDayGrantPrevious({ ...named(pressKey("start-a"), "x", "clean-batch"), kind: "succeeded" })).toThrow(/kind/);
     const previous = named(pressKey("start-a"), "stuck-run", "failed-attempt");
     expect(() => validateDayGrantPrevious({ ...previous, cause: "Not A Slug" })).toThrow(/slug/);
     expect(() => validateDayGrantPrevious({ ...previous, evidence: "/absolute/path" })).toThrow(/evidence/);
@@ -230,10 +267,49 @@ describe("Decision 0173 production record", () => {
     admission.run("a3", "a3", 94, "released", null);
     const evidence = readDayGrantEvidence(db, "2026-11-03T19:26:51Z");
     expect(evidence.activations).toEqual([
-      { requestId: "start-a", revisionAfter: 92, at: "2026-11-04T08:45:00.000Z", admitted: 1 },
-      { requestId: "start-b", revisionAfter: 94, at: "2026-11-04T11:00:00.000Z", admitted: 0 }
+      { requestId: "start-a", revisionAfter: 92, at: "2026-11-04T08:45:00.000Z", admitted: 1, endedAt: "2026-11-04T10:00:00.000Z", scopeComplete: null },
+      { requestId: "start-b", revisionAfter: 94, at: "2026-11-04T11:00:00.000Z", admitted: 0, endedAt: null, scopeComplete: null }
     ]);
     expect(evidence.transitions.map((t) => t.requestId)).toEqual(["start-a", "rowan-off-a", "start-b"]);
+    db.close();
+  });
+
+  it("Decision 0181: carries the tick's scope-complete record inside each run, and nothing from another run", () => {
+    const db = new Database(":memory:");
+    ensureProductionPolicyTables(db);
+    db.exec("CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL)");
+    const scoped = (...actions: string[]) => JSON.stringify({ scope: { actions } });
+    const receipt = db.prepare(`INSERT INTO production_policy_receipts (id, request_id, transition, revision_before, revision_after, epoch_after, receipt_json, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`);
+    receipt.run("r1", "start-a", "activate", 95, 96, scoped("arcadia/a", "arcadia/b"), "2026-11-05T21:53:45.950Z");
+    receipt.run("r2", "rowan-off-attempt-3-scope-complete", "deactivate", 96, 97, "{}", "2026-11-05T22:46:47.752Z");
+    receipt.run("r3", "start-b", "activate", 97, 98, scoped("arcadia/c"), "2026-11-06T12:53:16.230Z");
+    receipt.run("r4", "rowan-off-b", "deactivate", 98, 99, "{}", "2026-11-06T17:05:08.366Z");
+    receipt.run("r5", "start-c", "activate", 99, 100, scoped("arcadia/d"), "2026-11-06T23:38:58.998Z");
+    receipt.run("r6", "rowan-off-c", "deactivate", 100, 101, "{}", "2026-11-07T00:47:57.728Z");
+    // Two Projects in scope, only one announced: unproved. Then a scope that cannot be read, and negative counts.
+    receipt.run("r7", "start-d", "activate", 101, 102, scoped("arcadia/e", "other/f"), "2026-11-07T07:00:00.000Z");
+    receipt.run("r8", "rowan-off-d", "deactivate", 102, 103, "{}", "2026-11-07T08:00:00.000Z");
+    receipt.run("r9", "start-e", "activate", 103, 104, "not json", "2026-11-07T09:00:00.000Z");
+    receipt.run("r10", "rowan-off-e", "deactivate", 104, 105, "{}", "2026-11-07T10:00:00.000Z");
+    receipt.run("r11", "start-f", "activate", 105, 106, scoped("arcadia/g", "other/h"), "2026-11-07T11:00:00.000Z");
+    const event = db.prepare("INSERT INTO events (id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)");
+    event.run("e1", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 96, merged: 3, escalated: 0 }), "2026-11-05T22:44:21.530Z");
+    event.run("e2", "managed_production.tick", JSON.stringify({ policyRevision: 98 }), "2026-11-06T13:00:00.000Z");
+    event.run("e3", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 100, merged: 2, escalated: 1 }), "2026-11-07T00:00:00.000Z");
+    event.run("e4", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 102, merged: 1, escalated: 0 }), "2026-11-07T07:30:00.000Z");
+    event.run("e5", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 104, merged: 1, escalated: 0 }), "2026-11-07T09:30:00.000Z");
+    event.run("e6", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 106, merged: 1, escalated: 1 }), "2026-11-07T11:30:00.000Z");
+    event.run("e7", "managed_production.scope_complete", JSON.stringify({ projectSlug: "other", policyRevision: 106, merged: 1, escalated: -1 }), "2026-11-07T11:40:00.000Z");
+    const { activations } = readDayGrantEvidence(db, "2026-11-03T19:26:51Z");
+    expect(activations.map((a) => [a.requestId, a.endedAt, a.scopeComplete])).toEqual([
+      ["start-a", "2026-11-05T22:46:47.752Z", { merged: 3, escalated: 0 }],
+      ["start-b", "2026-11-06T17:05:08.366Z", null],
+      ["start-c", "2026-11-07T00:47:57.728Z", { merged: 2, escalated: 1 }],
+      ["start-d", "2026-11-07T08:00:00.000Z", null],
+      ["start-e", "2026-11-07T10:00:00.000Z", null],
+      ["start-f", null, { merged: 2, escalated: Number.NaN }]
+    ]);
+    expect(activations.map((a) => isFailedBatch({ admitted: 1, scopeComplete: a.scopeComplete }))).toEqual([false, true, true, true, true, true]);
     db.close();
   });
 });
@@ -250,12 +326,13 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
   const PIN = "a".repeat(40);
   const decisionDoc = (answer: string) => `---\nstatus: approved\nanswer: ${answer}\n---\n`;
   const allDecisions = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170"];
-  function fixture(options: { answer?: string; decisionBody?: string; planStatus?: string; pointer?: string; workers?: string; evidence?: ReturnType<typeof evidenceOf>["evidence"] } = {}) {
+  function fixture(options: { answer?: string; decisionBody?: string; serialAnswer?: string; planStatus?: string; pointer?: string; workers?: string; evidence?: ReturnType<typeof evidenceOf>["evidence"] } = {}) {
     const repository = tempDir("arcadia-day-pins-");
     const library = path.join(repository, "artifacts", "generated", "operator-scripts");
     mkdirSync(library, { recursive: true });
     const decisions: Record<string, string> = Object.fromEntries(allDecisions.map((id) => [id, decisionDoc("Yes")]));
     decisions["0173"] = decisionDoc(options.answer ?? '"A. Daily grant: START and routine run operations"') + (options.decisionBody ?? "");
+    decisions["0181"] = decisionDoc(options.serialAnswer ?? "A. Continued serial runs");
     const files: Record<string, string> = {
       "scripts/start-run.sh": "#!/bin/sh\n", "scripts/day-grant.sh": "#!/bin/sh\n# day\n", "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x", "tests/replay.test.ts": "x",
       [`docs/plans/${DAY_PLAN}.md`]: `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${options.planStatus ?? "active"}\nactions:\n  - id: first-action\n    status: open\n---\n`,
@@ -293,8 +370,34 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     const { startRun } = buildStartRunPins(f.args, f.deps);
     expect(validateStartRunPins(startRun)).toBe(startRun);
     expect(startRun.delegation).toEqual({ decision: "0173", approvalCard: DAY_CARD, approvalRun: DAY_RUN, approvalReceiptSha256: approval.receiptSha256, approvalPressSha256: approval.pressSha256, attempt: 1, previous: null });
-    expect(startRun.requiredDecisions).toEqual(expect.arrayContaining(["0163", "0170", "0173"]));
+    expect(startRun.requiredDecisions).toEqual(expect.arrayContaining(["0163", "0170", "0173", "0181"]));
     expect(startRun.grantedBy).toMatch(/^Rowan, pressing this START card from \/actions under Decision 0173/);
+  });
+  it("Decision 0181: pins a card past Decision 0170's three attempts after clean batches, and refuses after a failed one in this day", () => {
+    const now = NOW;
+    const pressedAt = now - 3_600_000;
+    const presses = [
+      { card: "start-a", at: now - 50 * 60_000, status: "succeeded", receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } },
+      { card: "start-b", at: now - 40 * 60_000, status: "succeeded", previous: { press: pressKey("start-a"), cause: "scope-complete", kind: "clean-batch" as const }, receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } },
+      { card: "start-c", at: now - 30 * 60_000, status: "succeeded", previous: { press: pressKey("start-b"), cause: "scope-complete", kind: "clean-batch" as const }, receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } }
+    ];
+    const run = (lastClean: boolean) => {
+      const { evidence, revision } = evidenceOf(83, now, [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }, { activate: "start-b", clean: true }, { off: "rowan-off-b" }, { activate: "start-c", clean: lastClean }, { off: "rowan-off-c" }]);
+      const f = fixture({ evidence });
+      writeDayApproval(f.library, { pressedAt });
+      presses.forEach((press, index) => writeStartPress(f.library, press, index));
+      const deps = { ...f.deps, production: () => ({ workspacePath: "/w/martianrover", desiredState: "inactive", revision, epoch: 46, liveAdmissions: 0 }) };
+      return () => buildStartRunPins({ ...f.args, previousCause: lastClean ? "scope-complete" : "stuck-run", previousEvidence: "docs/notes.md", observedCleared: "https://github.com/pmark/arcadia/actions/runs/1" }, deps);
+    };
+    const { startRun } = run(true)();
+    expect(startRun.delegation).toMatchObject({ attempt: 4, previous: { press: pressKey("start-c"), kind: "clean-batch", cause: "scope-complete" } });
+    expect(validateStartRunPins(startRun)).toBe(startRun);
+    expect(run(false)).toThrow(/FAILED_BATCH|failed under the day approved/);
+  });
+  it("Decision 0181: refuses a card while Decision 0181 is not answered with option A on main", () => {
+    const f = fixture({ serialAnswer: "C. No production until concurrency is built" });
+    writeDayApproval(f.library, { pressedAt: NOW - 3_600_000 });
+    expect(() => buildStartRunPins(f.args, f.deps)).toThrow(/Decision 0181 is not answered with option A/);
   });
   it("takes the press and its kind from the record and only the cause from Rowan", () => {
     const f = fixture();

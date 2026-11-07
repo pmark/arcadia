@@ -447,9 +447,12 @@ process.stdout.write(JSON.stringify({originatingRun:d.originatingCard+"/"+d.orig
 #   - this card's Plan, provider, concurrency and spend Decision are the approved ones (P1 and P2 check the Plan is active and its
 #     governed queue holds the pinned Actions);
 #   - every policy move since the approval is this chain's or Rowan's own Off (fail-closed: any other Off ends the day);
-#   - Decision 0170: fewer than 3 activations since it admitted a Session, counted across days;
+#   - Decision 0181 (which re-decided Decision 0170's three attempts): no failed batch in this day. A batch is an activation that
+#     admitted a Session; it is clean only when the tick recorded scope complete inside that run with no escalation, and any
+#     other end fails it (fail closed). A failed batch counts unless it was over before the operator's press opened the day;
+#     after one, only the operator's next day-grant press opens a way on;
 #   - fewer than 2 re-presses after a refusal in this day, however the card is re-prepared, and the same refusal does not recur;
-#   - the card names the latest press with its cause, evidence and clearance, and no two attempts share a named cause.
+#   - the card names the latest press with its cause, evidence and clearance, and no two failed attempts share a named cause.
 # The cause is Rowan's judgement: it is recorded and compared here, not proved.
 # Shared by the P0 check and the later checks: fail-closed listing and reading, and the operator's latest approval.
 DAY_PRESS_SCAN_JS='
@@ -483,12 +486,14 @@ check_day_grant() {
 const c=require("crypto");
 const [lib,id,dj,descriptorPath,evidenceJson,currentPress,mode,maxPreflightAge]=process.argv.slice(1);
 const d=JSON.parse(dj),me=JSON.parse(fs.readFileSync(descriptorPath,"utf8")).startRun,ev=JSON.parse(evidenceJson).data;
-const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_ATTEMPTS=3,MAX_REPRESSES=2,ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_FAILED_BATCHES=1,MAX_REPRESSES=2,ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// Decision 0181: a batch (an activation that admitted a Session) is clean only with a scope-complete record and no escalation.
+const failedBatch=(x)=>{if(!(x.admitted>=1))return false;const s=x.scopeComplete;return !(s&&Number.isInteger(s.merged)&&s.merged>=1&&s.escalated===0)};
 const sha=(b)=>c.createHash("sha256").update(b).digest("hex");
 const keys=(o)=>o&&typeof o==="object"&&!Array.isArray(o)?Object.keys(o).sort().join():"";
 const SHA=/^[0-9a-f]{64}$/,word=(v)=>v==="undefined"||v==="null";
 const pointer=(v)=>typeof v==="string"&&v.length>0&&v.length<=500&&!v.includes("\n")&&!word(v)&&(/^https:\/\/\S+$/.test(v)||(!p.isAbsolute(v)&&!v.split("/").includes("..")));
-if(keys(d)!=="approvalCard,approvalPressSha256,approvalReceiptSha256,approvalRun,attempt,decision,previous"||d.decision!=="0173"||typeof d.approvalCard!=="string"||!SLUG.test(d.approvalCard)||typeof d.approvalRun!=="string"||!RUN.test(d.approvalRun)||!SHA.test(d.approvalReceiptSha256)||!SHA.test(d.approvalPressSha256)||!Number.isInteger(d.attempt)||d.attempt<1||d.attempt>3)fail("INVALID_DELEGATION: the card names a malformed day approval");
+if(keys(d)!=="approvalCard,approvalPressSha256,approvalReceiptSha256,approvalRun,attempt,decision,previous"||d.decision!=="0173"||typeof d.approvalCard!=="string"||!SLUG.test(d.approvalCard)||typeof d.approvalRun!=="string"||!RUN.test(d.approvalRun)||!SHA.test(d.approvalReceiptSha256)||!SHA.test(d.approvalPressSha256)||!Number.isInteger(d.attempt)||d.attempt<1)fail("INVALID_DELEGATION: the card names a malformed day approval");
 // The approval.
 const rp=p.join(lib,"runs",d.approvalCard,d.approvalRun,"receipt.json");
 if(!fs.existsSync(rp))fail("APPROVAL_MISSING: the approval receipt "+rp+" does not exist");
@@ -536,23 +541,26 @@ for(const t of [...ev.transitions].filter((x)=>x.revisionBefore>=baseline).sort(
   else if(!ROWAN_OFF.test(t.requestId)&&!executorOff(t.requestId))fail("DAY_ENDED_BY_OPERATOR: production was turned Off by "+t.requestId+", not by this chain or Rowan: an operator STOP or operator-issued Off ends the day");
   revision=t.revisionAfter;}
 if(((me.production)||{}).revision!==revision)fail("PRODUCTION_CHANGED: this card pins policy revision "+((me.production)||{}).revision+", but the chain since the approval reaches "+revision);
-// Decision 0170: a START that admitted at least one Session, across days. Every such activation counts, a dashboard
-// reactivation included: an overcount stops Rowan early and the operator decides, an undercount spends past the limit.
+// Attempts are still numbered as Decision 0170 counted them (every activation that admitted a Session, a dashboard reactivation
+// included); Decision 0181 lifted the cap, and the number only pins the card to its record.
 const attempts=ev.activations.filter((x)=>Date.parse(x.at)>=EARLIEST&&x.admitted>=1).length;
-if(attempts>=MAX_ATTEMPTS)fail("ATTEMPTS_EXHAUSTED: "+attempts+" attempts already admitted a Session under Decision 0170; at 3 Rowan stops and the operator decides");
+// Decision 0181: a batch that fails stops for the operator. Any failed batch not over before the press that opened this day counts.
+const failed=ev.activations.filter((x)=>failedBatch(x)&&!(typeof x.endedAt==="string"&&Date.parse(x.endedAt)<opens));
+if(failed.length>=MAX_FAILED_BATCHES)fail("FAILED_BATCH: the batch "+failed[0].requestId+" (activated "+failed[0].at+") failed under the day approved at "+pr.startedAt+": it admitted a Session and did not reach scope complete without an escalation; Decision 0181 stops for the operator, and only their next day-grant press opens another day");
 // Every /actions press of a START card since Decision 0170, except the one running now.
 const presses=[];
 for(const card of ls(ops)){if(!SLUG.test(card))continue;
   const receipts=ls(p.join(lib,"runs",card)).map((run)=>rj(p.join(lib,"runs",card,run,"receipt.json")));
   // A card is one-shot: its activation belongs to the one press that consumed its allowance, not a later refused press.
-  const consumedPath=p.join(lib,card+".consumed.json"),consumedRun=(rj(consumedPath)||{}).runId,activation=ev.activations.some((x)=>x.requestId===card&&x.admitted>=1),before=presses.length;
+  const consumedPath=p.join(lib,card+".consumed.json"),consumedRun=(rj(consumedPath)||{}).runId,activation=ev.activations.some((x)=>x.requestId===card&&x.admitted>=1),batchFailed=ev.activations.some((x)=>x.requestId===card&&failedBatch(x)),before=presses.length;
   for(const pr2 of ls(p.join(ops,card))){if(pr2===currentPress)continue;
     const dir=p.join(ops,card,pr2),run=rj(p.join(dir,"run.json")),sr=(rj(p.join(dir,"descriptor.json"))||{}).startRun;
     if(!run||!sr||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==pr2)continue;
     const t=Date.parse(run.startedAt);if(!Number.isFinite(t)||t<EARLIEST)continue;
     const r=receipts.find((x)=>x&&x.mode==="run"&&(x.record||{}).operatorRunId===pr2)||null;
     if(r&&r.outcome==="succeeded"&&!ev.activations.some((x)=>x.requestId===card))fail("EVIDENCE_MISMATCH: "+card+" recorded a successful START but production has no activation under its request id");
-    presses.push({card,pr:pr2,key:card+"/"+pr2,t,status:String(run.status),del:sr.delegation||null,mark:run.press||null,r,admitted:activation&&((r&&r.allowanceConsumed===true)||(!!r&&!!consumedRun&&r.runId===consumedRun)||(!r&&fs.existsSync(p.join(dir,"start-run.claimed"))&&fs.existsSync(consumedPath)))});}
+    const admitted=activation&&((r&&r.allowanceConsumed===true)||(!!r&&!!consumedRun&&r.runId===consumedRun)||(!r&&fs.existsSync(p.join(dir,"start-run.claimed"))&&fs.existsSync(consumedPath)));
+    presses.push({card,pr:pr2,key:card+"/"+pr2,t,status:String(run.status),del:sr.delegation||null,mark:run.press||null,r,admitted,failed:admitted&&batchFailed});}
   if(activation&&presses.length>before&&!presses.slice(before).some((x)=>x.admitted))fail("EVIDENCE_MISMATCH: production records a Session admitted under "+card+", but no press of that card consumed its allowance");}
 presses.sort((x,y)=>x.t-y.t);
 const latest=presses.at(-1)||null;
@@ -570,12 +578,13 @@ else{
   if(prev===null||prev===undefined)fail("PREVIOUS_CAUSE_REQUIRED: the latest START press "+latest.key+" needs its cause named on this card, with an evidence pointer and how it was cleared");
   const cl=prev.clearance||{};
   const clearOk=cl.kind==="merged-fix"?keys(cl)==="commit,kind,pullRequest,reproduction"&&/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(cl.pullRequest)&&/^[0-9a-f]{40}$/.test(cl.commit)&&typeof cl.reproduction==="string"&&cl.reproduction.length>0&&cl.reproduction.length<=300&&!cl.reproduction.includes("\n")&&!p.isAbsolute(cl.reproduction)&&!cl.reproduction.split("/").some((x)=>x===".."||x==="."||x===""):cl.kind==="observed-cleared"&&keys(cl)==="kind,observation"&&pointer(cl.observation);
-  if(keys(prev)!=="cause,clearance,evidence,kind,press"||typeof prev.press!=="string"||!prev.press.includes("/")||(prev.kind!=="failed-attempt"&&prev.kind!=="no-session")||typeof prev.cause!=="string"||!SLUG.test(prev.cause)||word(prev.cause)||!pointer(prev.evidence)||!clearOk)fail("INVALID_DELEGATION: the cause on this card needs a stable slug, an evidence pointer and how it was cleared");
+  if(keys(prev)!=="cause,clearance,evidence,kind,press"||typeof prev.press!=="string"||!prev.press.includes("/")||(prev.kind!=="failed-attempt"&&prev.kind!=="clean-batch"&&prev.kind!=="no-session")||typeof prev.cause!=="string"||!SLUG.test(prev.cause)||word(prev.cause)||!pointer(prev.evidence)||!clearOk)fail("INVALID_DELEGATION: the cause on this card needs a stable slug, an evidence pointer and how it was cleared");
   if(prev.press!==latest.key)fail("PREVIOUS_MISMATCH: this card names "+prev.press+", but the latest START press is "+latest.key);
-  const kind=latest.admitted?"failed-attempt":"no-session";
+  const kind=!latest.admitted?"no-session":latest.failed?"failed-attempt":"clean-batch";
   if(prev.kind!==kind)fail("PREVIOUS_MISMATCH: this card calls "+latest.key+" a "+prev.kind+", but production record makes it a "+kind);
   const namedFor=(x)=>presses.filter((y)=>y.del&&y.del.decision==="0173"&&y.del.previous&&y.del.previous.press===x.key).map((y)=>y.del.previous.cause);
-  if(latest.admitted&&presses.some((x)=>x!==latest&&x.admitted&&namedFor(x).includes(prev.cause)))fail("SAME_CAUSE: two attempts failed on the cause "+prev.cause+"; Decision 0173 stops here for the operator");
+  // Decision 0173 stops if two attempts fail on the same cause; a clean batch failed on nothing.
+  if(latest.failed&&presses.some((x)=>x!==latest&&x.admitted&&namedFor(x).includes(prev.cause)))fail("SAME_CAUSE: two attempts failed on the cause "+prev.cause+"; Decision 0173 stops here for the operator");
   if(!latest.admitted&&presses.some((x)=>x!==latest&&!x.admitted&&x.t>=opens&&namedFor(x).includes(prev.cause)))fail("SAME_REFUSAL: the refusal named "+prev.cause+" recurred in this day; Decision 0173 stops here for the operator");
 }
 if(d.attempt!==attempts+1)fail("ATTEMPT_MISMATCH: this card is pinned as attempt "+d.attempt+", but "+attempts+" attempts already admitted a Session");
@@ -584,7 +593,7 @@ const m=rj(p.join(lib,"reviewed",id+".json"))||{};
 if(typeof m.premortem!=="string"||!m.premortem.trim())fail("PREMORTEM_REQUIRED: the reviewed manifest of this card names no fresh pre-mortem");
 if(mode==="run"){const fresh=ls(p.join(lib,"runs",id)).map((run)=>rj(p.join(lib,"runs",id,run,"receipt.json"))).some((x)=>x&&x.mode==="preflight"&&x.outcome==="preflight_ok"&&(x.record||{}).reviewedRevision===me.reviewedRevision&&now-Date.parse(x.updatedAt)<=Number(maxPreflightAge));
   if(!fresh)fail("PREFLIGHT_REQUIRED: this card has no passing preflight at its revision from the last 2 hours");}
-process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"+d.approvalRun,approvalPressAt:pr.startedAt,windowClosesAt:new Date(closes).toISOString(),attempt:d.attempt,attemptsBefore:attempts,rePressesToday:rePresses,previous:prev||null,chainKey:latest?latest.card+"--"+latest.pr:"first",premortem:m.premortem,baselineRevision:baseline}));
+process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"+d.approvalRun,approvalPressAt:pr.startedAt,windowClosesAt:new Date(closes).toISOString(),attempt:d.attempt,attemptsBefore:attempts,failedBatchesToday:failed.length,rePressesToday:rePresses,previous:prev||null,chainKey:latest?latest.card+"--"+latest.pr:"first",premortem:m.premortem,baselineRevision:baseline}));
 ' "$LIBRARY_DIR" "$ID" "$DELEGATION" "$DESCRIPTOR" "$evidence" "${OPERATOR_RUN_ID:-}" "$MODE" "$DAY_GRANT_PREFLIGHT_MAX_AGE_MS")" || refuse "Decision 0173: $out"
   rec delegation "$out"
   DAY_WINDOW_CLOSES="$(jq -r '.windowClosesAt' <<<"$out")"
@@ -628,7 +637,7 @@ phase_p0() {
   rec_str cardExpiresAt "$CARD_EXPIRES_AT"
   check_delegation
   if [[ "$MODE" == run && "$DELEGATION_DECISION" == 0173 ]]; then
-    rec_str authority "Rowan's delegated press of this START card from /actions under Decision 0173, within the operator's day approval $(jq -r '.approvalCard + "/" + .approvalRun' <<<"$DELEGATION") (the run's activation touch), open until $DAY_WINDOW_CLOSES; attempt $(jq -r '.attempt' <<<"$DELEGATION") of at most 3 under Decision 0170 if it admits a Session; never recorded as the operator's press"
+    rec_str authority "Rowan's delegated press of this START card from /actions under Decision 0173, within the operator's day approval $(jq -r '.approvalCard + "/" + .approvalRun' <<<"$DELEGATION") (the run's activation touch), open until $DAY_WINDOW_CLOSES; attempt $(jq -r '.attempt' <<<"$DELEGATION") (numbered since Decision 0170) if it admits a Session, under Decision 0181, which stops for the operator after a failed batch; never recorded as the operator's press"
   elif [[ "$MODE" == run && "$DELEGATION" != null ]]; then
     rec_str authority "Rowan's delegated press of this successor START card from /actions under Decision 0163, delegated from the operator's originating press $(jq -r '.originatingCard + "/" + .originatingRun' <<<"$DELEGATION") (the one activation touch); attempt $(jq -r '.attempt' <<<"$DELEGATION") of at most 5; Decisions 0156, 0157, 0161, 0162 and 0163 are verified at the reviewed revision in P1"
   elif [[ "$MODE" == run ]]; then
@@ -651,6 +660,12 @@ check_day_grant_at_pin() {
   # The frontmatter only: the Decision's body quotes every option.
   content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision 0173's frontmatter could not be read at $PIN"
   jq -e '.status == "approved" and ((.answer // "") | tostring | startswith("A. Daily grant"))' <<<"$content" >/dev/null || refuse "Decision 0173 is not answered with option A at $PIN"
+  # Decision 0181 option A replaced Decision 0170's three attempts with the failed-batch stop P0 checked; every day-grant card
+  # needs it on the reviewed revision, whatever the card's requiredDecisions list.
+  file="$(grep -E -m1 '^docs/decisions/0181-.*\.md$' <<<"$1" || true)"
+  [[ -n "$file" ]] || refuse "Decision 0181 is not in docs/decisions at $PIN; a Decision 0173 card's failed-batch gate implements it"
+  content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision 0181's frontmatter could not be read at $PIN"
+  jq -e '.status == "approved" and ((.answer // "") | tostring | startswith("A. Continued serial runs"))' <<<"$content" >/dev/null || refuse "Decision 0181 is not answered with option A at $PIN"
   [[ "$(jq -r '.startRun.planActivation // .planActivation // null | type' "$DESCRIPTOR")" == null ]] || refuse "a Decision 0173 card runs on the active Plan and carries no planActivation"
   kind="$(jq -r '.previous.clearance.kind // ""' <<<"$DELEGATION")"
   if [[ "$kind" == merged-fix ]]; then
