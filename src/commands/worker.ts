@@ -1361,13 +1361,36 @@ function workerCustodyPresent(workspace: string): boolean {
   }
 }
 
+/** The command that unloads one launchd job. Printed for the operator, never run by the install path (Issue #2183). */
+export function launchdBootoutCommand(label: string): string {
+  return `launchctl bootout gui/${process.getuid?.() ?? 0}/${label}`;
+}
+
+/**
+ * What the operator runs to retire a stray worker agent for good: unload the job, then move its plist aside so it
+ * cannot return at login (bootout alone leaves the plist on disk). Text only; nothing here executes.
+ */
+function retireWorkerAgentRemedy(agents: Pick<LaunchAgentAudit, "label" | "plistPath">[]): string {
+  return agents.map((agent) => `${launchdBootoutCommand(agent.label)}; mv ${agent.plistPath} ${agent.plistPath}.retired`).join("\n  ");
+}
+
+/** The warning for idle stray worker agents a protected replacement leaves in place (empty when there are none). */
+export function describeIdleWorkerAgents(agents: Pick<LaunchAgentAudit, "label" | "plistPath">[]): string {
+  if (agents.length === 0) return "";
+  return `Warning: idle worker agent(s) left in place: ${agents.map((agent) => agent.label).join(", ")}. They can start again at login or on a kickstart and take the worker lock from the managed worker. Operator remedy, not run here:\n  ${retireWorkerAgentRemedy(agents)}\n`;
+}
+
 /** Refuse custody uncertainty before writing a plist or contacting launchd. */
 export function assertWorkerInstallCustody(workspace: string, agents: LaunchAgentAudit[], custodyPresent: boolean): void {
   const target = canonicalWorkspaceIdentity(workspace);
-  if (custodyPresent || agents.some(agent => agent.verdict === "unreadable" || agent.label === WORKER_PLIST_LABEL
+  const competing = agents.filter((agent) => agent.label === WORKER_PLIST_LABEL
     || ((agent.role === "worker" || agent.label.endsWith(".worker"))
-      && (!agent.workspace || canonicalWorkspaceIdentity(agent.workspace) === target)))) {
-    throw validationError("Existing or ambiguous worker custody requires a separate approved lifecycle operation before installation.");
+      && (!agent.workspace || canonicalWorkspaceIdentity(agent.workspace) === target)));
+  if (custodyPresent || competing.length > 0 || agents.some(agent => agent.verdict === "unreadable")) {
+    const named = competing.length > 0
+      ? ` Worker agent(s) present: ${competing.map((agent) => agent.label).join(", ")}. To retire them, the operator runs (nothing was changed here):\n  ${retireWorkerAgentRemedy(competing)}\nthen installs again.`
+      : "";
+    throw validationError(`Existing or ambiguous worker custody requires a separate approved lifecycle operation before installation.${named}`);
   }
 }
 
@@ -1528,7 +1551,7 @@ export function assertWorkerReplacementCustody(workspace: string, label: string,
     if (agent.label === label) continue;
     if (agent.verdict === "unreadable") throw validationError(`The launch agent ${agent.label} is unreadable; worker custody is ambiguous and nothing was replaced.`);
     if ((agent.role === "worker" || agent.label.endsWith(".worker")) && serves(agent)) {
-      if (running(agent.label)) throw validationError(`Another worker agent ${agent.label} is running for this workspace; worker custody is ambiguous and nothing was replaced.`);
+      if (running(agent.label)) throw validationError(`Another worker agent ${agent.label} is running for this workspace; worker custody is ambiguous and nothing was replaced. It holds the worker lock, so the managed worker cannot start. Operator remedy, not run here:\n  ${retireWorkerAgentRemedy([agent])}`);
       idle.push(agent.label);
     }
   }
@@ -1558,7 +1581,8 @@ function runProtectedWorkerReplacement(options: WorkerOptions, label: string, de
   };
   let ambient: string | null;
   try { ambient = (dependencies.ambientWorkspace ?? (() => resolveReadyWorkspace(undefined).workspacePath))(); } catch { ambient = null; }
-  const idle = assertWorkerReplacementCustody(workspacePath, label, (dependencies.auditLaunchAgents ?? auditArcadiaLaunchAgents)(home).agents, running, ambient);
+  const audited = (dependencies.auditLaunchAgents ?? auditArcadiaLaunchAgents)(home).agents;
+  const idle = assertWorkerReplacementCustody(workspacePath, label, audited, running, ambient);
   const plistPath = path.join(home, "Library", "LaunchAgents", `${label}.plist`);
   const plist = buildWorkerPlist({ workspacePath, repositoryRoot: protectedRelease.sourceRepository, protectedRelease, miseBin: resolveMiseExecutable(), logPath: logPath(workspacePath), home, label });
   writeFileSync(`${plistPath}.tmp`, plist, "utf8");
@@ -1589,7 +1613,7 @@ function runProtectedWorkerReplacement(options: WorkerOptions, label: string, de
   if (!(dependencies.waitForRoutes ?? waitForWorkerRoutes)(workspacePath, WORKER_READINESS_TIMEOUT_MS, notBefore)) {
     throw validationError(`The protected worker ${label} was loaded but did not publish fresh heartbeats. ${transportHeartbeatDiagnostic(workspacePath, "go")}`);
   }
-  process.stdout.write(`Protected worker installed under ${label} from release ${protectedRelease.directory} and restarted; preservation and go heartbeats are fresh.\nPlist: ${plistPath}\n${idle.length ? `Idle worker agents left untouched: ${idle.join(", ")}\n` : ""}`);
+  process.stdout.write(`Protected worker installed under ${label} from release ${protectedRelease.directory} and restarted; preservation and go heartbeats are fresh.\nPlist: ${plistPath}\n${describeIdleWorkerAgents(audited.filter((agent) => idle.includes(agent.label)))}`);
 }
 
 export function runWorkerUninstallCommand(_options: WorkerOptions): void {

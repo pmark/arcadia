@@ -125,6 +125,24 @@ fi
 
 # That script takes <action> <repo>; Rebuster's takes them the other way round.
 # Normalizing the argument order is the whole point of this adapter existing.
+if [[ "$ACTION" == "status" ]]; then
+  # Issue #2183: when the worker is stopped because another agent holds the worker lock, say who. The diagnosis is
+  # read-only and is added here, not in the pinned implementation. The implementation's own output and exit status
+  # pass through unchanged.
+  # shellcheck source=lib/worker-lock-holder.sh
+  source "$REPO/scripts/lib/worker-lock-holder.sh"
+  STATUS_CODE=0
+  STATUS_OUTPUT="$("$IMPL" status "$REPO")" || STATUS_CODE=$?
+  # The workspace the implementation's worker serves: ARCADIA_WORKSPACE, else the default it declares (one source).
+  STATUS_WORKSPACE="${ARCADIA_WORKSPACE:-$(sed -n 's/^ARCADIA_WORKSPACE_DEFAULT="\(.*\)"$/\1/p' "$IMPL" 2>/dev/null | head -n 1)}"
+  if [[ -n "$STATUS_OUTPUT" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      printf '%s\n' "$line"
+      if [[ "$line" == "worker: stopped" ]]; then worker_lock_holder_note "$REPO" "$STATUS_WORKSPACE" || true; fi
+    done <<<"$STATUS_OUTPUT"
+  fi
+  exit "$STATUS_CODE"
+fi
 if [[ "$ACTION" != "restart" ]]; then
   exec "$IMPL" "$ACTION" "$REPO"
 fi
