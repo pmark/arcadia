@@ -1,0 +1,35 @@
+---
+arcadia: v1
+type: decision
+id: "0187"
+slug: decide-what-unattended-production-does-after-a-delegated-batch-fails-under-the
+project: arcadia
+status: open
+question: Decide what unattended production does after a delegated batch fails under the day grant, re-deciding the stop rule of Decision 0181 A.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: A. Continue after a reviewed fix merges
+options:
+  - label: A. Continue after a reviewed fix merges
+    consequence: After a failed delegated batch, Rowan may pin and press the next card under the same day grant only when a fix for that batch's named cause has merged to main after the failure, with an independent review of its head and green checks. The card's `previous` names the cause and the fix's merge commit. SAME_CAUSE still stops on a repeat cause, and the 24 h grant window and STOP checks still apply. Within the day's grant, production keeps moving through a failure once its fix lands, day and night.
+    recommended: true
+  - label: B. The first failed batch stops for the operator
+    consequence: "Today's Decision 0181 A rule: the first failed batch parks production until the operator's next day-grant press, so a failure overnight stops progress until the operator is back, however soon its fix merges."
+    recommended: false
+confidence: high
+plan: record-run-unattended-test-pins-20261107
+updated: 2026-11-07
+---
+
+# Decision 0187: Decide what unattended production does after a delegated batch fails under the day grant, re-deciding the stop rule of Decision 0181 A.
+
+## Options
+
+- **A. Continue after a reviewed fix merges** (recommended): After a failed delegated batch, Rowan may pin and press the next card under the same day grant only when a fix for that batch's named cause has merged to main after the failure, with an independent review of its head and green checks. The card's `previous` names the cause and the fix's merge commit. SAME_CAUSE still stops on a repeat cause, and the 24 h grant window and STOP checks still apply. Within the day's grant, production keeps moving through a failure once its fix lands, day and night.
+- **B. The first failed batch stops for the operator**: Today's Decision 0181 A rule: the first failed batch parks production until the operator's next day-grant press, so a failure overnight stops progress until the operator is back, however soon its fix merges.
+
+## Rationale
+
+Decision 0181 A says "a batch that fails stops for the operator". PR #2184 (merged at 323c520d1) built that into the day-grant gate: the first failed batch refuses every later delegated START card until the operator's next day-grant press, so a failure overnight parks production until the operator is back. Signal 2 asked the operator on 2026-11-07 whether to soften this to "continue once a reviewed fix merges". The operator answered in Signal 2's chat: "Yes definitely carry on once a reviewed fix merges. I want production to be moving forward 24 hours a day and 7 days a week. We need to do everything possible to avoid outages like that." This Ask records the question and its options so that answer can be recorded on main. Option A keeps Decision 0163's condition that each blocking defect is fixed through a reviewed pull request before a successor, Decision 0173's same-cause stop, its 24-hour window and STOP, and the per-day re-press bound. The gate can check that the fix's merge commit is on the pinned main and is dated after the failed batch ended; the cause the fix addresses, the fix's independent review and its green checks are Rowan's attribution recorded on the card, not machine-proved, as with Decision 0173's merged fix today. A batch the operator pressed, or a failure cleared only by observation with no merged fix, still stops for the operator, and every other Decision 0173 bound and exclusion stands. The gate change ships in its own reviewed pull request and verifies this Decision's answer at the pin, so it takes effect only once the answer is on main. This changes what Rowan may do without the operator, so the pull requests wait for the operator's word.
+
+Proposed by Agent Ask decide-continue-after-reviewed-fix-20261107-v3.
