@@ -153,6 +153,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "advance --repo",
       "assess-blast-radius --repo",
       "brief --repo",
+      "capsule --repo",
       "close --repo",
       "close-out --repo",
       "code-review --repo",
@@ -183,7 +184,8 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "setup-context --repo",
       "show --repo",
       "tidy --repo",
-      "triggers --repo"
+      "triggers --repo",
+      "verify --repo"
     ]);
   });
 });

@@ -1301,7 +1301,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .description("Refresh and print the live capsule (<workspace>/coordinators/<project>/<role>/live.json) from canonical sources")
     .option("--check", "Exit 1 when the journal is stale, no next move is recorded, or a chat-only approval would be lost")
     .option("--markdown", "Print the handoff template rendering instead of a summary")
-    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)")
+    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
   ).action((options: { workspace: string; project: string; role: string; check?: boolean; markdown?: boolean; repo?: string; json?: boolean }) =>
     runCliAction("coordinator.capsule", options, () => runCoordinatorCapsuleCommand(options), renderCoordinatorCapsuleSuccess)
   );
@@ -1326,7 +1326,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .description("Prove a launching generation has the whole state: snapshot sha, drift since the snapshot, watchers re-armed (exit 1 unless these pass), then journal, lost approvals and next move as warnings")
     .requiredOption("--generation <n>", "The launching generation", (value: string) => Number(value))
     .option("--snapshot-sha <sha>", "The sha the launch prompt pinned")
-    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)")
+    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
   ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha?: string; repo?: string; json?: boolean }) =>
     runCliAction("coordinator.verify", options, () => runCoordinatorVerifyCommand(options), renderCoordinatorVerifySuccess)
   );
