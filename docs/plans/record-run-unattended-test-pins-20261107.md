@@ -49,11 +49,11 @@ actions:
     references: []
   - id: pin-scheduling-sequence-equality
     title: Pin that scheduling sequence equality respects order and length and that only follow_up is an unqueued class, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that scheduling sequence equality respects order and length and that only follow_up is an unqueued class, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-scheduling-sequence-equality-0f7d957d9e81; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-scheduling-sequence-equality
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-scheduling-sequence-equality
+current_action: pin-action-doc-ref-parse
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
