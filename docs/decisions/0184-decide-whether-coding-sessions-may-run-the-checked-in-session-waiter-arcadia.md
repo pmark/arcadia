@@ -4,7 +4,7 @@ type: decision
 id: "0184"
 slug: decide-whether-coding-sessions-may-run-the-checked-in-session-waiter-arcadia
 project: arcadia
-status: open
+status: approved
 question: Decide whether coding sessions may run the checked-in session waiter, `arcadia timeline --wait`, as standing direction without the operator's word in each session.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: portfolio-docs-protocol
-updated: 2026-11-07
+updated: 2026-11-06
+answer: A. Sanction the checked-in waiter as standing direction in the bootstrap
+decided: 2026-11-06
 ---
 
 # Decision 0184: Decide whether coding sessions may run the checked-in session waiter, `arcadia timeline --wait`, as standing direction without the operator's word in each session.
