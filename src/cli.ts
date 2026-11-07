@@ -84,6 +84,7 @@ import {
   renderProductionLivenessCheckSuccess,
   runProductionLivenessCheckCommand
 } from "./commands/productionLiveness.js";
+import { renderProductionIdleFrontSuccess, runProductionIdleFrontCommand } from "./commands/productionIdleFront.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -1552,6 +1553,18 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--dashboard-url <url>", "Dashboard base for the /production link (default ARCADIA_DASHBOARD_URL)")
   ).action((options: { workspace: string; staleSeconds?: string; dashboardUrl?: string; json?: boolean }) =>
     runCliAction("production.liveness-check", options, () => runProductionLivenessCheckCommand(options), renderProductionLivenessCheckSuccess)
+  );
+  addJsonOption(
+    production
+      .command("idle-front")
+      .description("Read-only: critical-path idle minutes by cause and whether any wake is armed; prints one JSON row then timeline events as NDJSON. Pings nobody, writes nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--wakes-dir <path>", "Armed-until heartbeat files (default <workspace>/.arcadia/armed-wakes)")
+      .option("--expect-wake <session-or-role>", "A session or role that should hold an armed wake (repeatable)", (value: string, previous: string[] = []) => [...previous, value])
+      .option("--tap-ready-at <time>", "When a one-tap operator item (e.g. a START card) became ready, if no reader here sees it")
+      .option("--route-at <time>", "When a route for the current block was recorded")
+  ).action((options: { workspace: string; wakesDir?: string; expectWake?: string[]; tapReadyAt?: string; routeAt?: string; json?: boolean }) =>
+    runCliAction("production.idle-front", options, () => runProductionIdleFrontCommand(options), renderProductionIdleFrontSuccess)
   );
   addJsonOption(
     production

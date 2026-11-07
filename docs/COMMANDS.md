@@ -1710,6 +1710,47 @@ replay of an already-settled `--request-id` still replays. Without the flag,
 activation is unchanged. `--repository` defaults to the git toplevel of the
 current directory.
 
+## Measure Critical-Path Idle Time (Momentum Keeper Layer 1)
+
+```bash
+pnpm arcadia production idle-front [--workspace <path>] [--wakes-dir <path>] [--expect-wake <session-or-role>]... [--tap-ready-at <time>] [--route-at <time>] [--json]
+```
+
+Read-only, while production is Active or Inactive. Line 1 is one JSON row
+(`arcadia-idle-front-row-v1`): `ts`, `critical_path` (`moving`, `blocked`,
+`inactive` or `unreadable`), `blocker_class`, `blocked_since`, `detected_at`,
+`route_at`, `tap_ready`, `idle_minutes` and `idle_minutes_by_cause`
+(`detection_lag`, `no_route`, `waiting_on_operator`, `no_ready_work`, always
+summing to the idle time), plus `armed_wakes`, `no_armed_wake` and
+`missing_wakes`. Each further line is a timeline event
+(`momentum.idle_front.check`, and `momentum.no_armed_wake` when no wake is
+armed or the armed state is unknown) in the `arcadia-timeline-event-v1` shape.
+
+- Only the production scope is the critical path. Side work never offsets idle
+  time. One operator-bound blocker on any scope Action marks the whole path
+  blocked, even while another scope Action is admitted, because production
+  runs its scope serially.
+- Detection lag ends at the first record strictly after `blocked_since` that
+  shows someone learned of the block: an operator-granted policy receipt, or a
+  ping naming a scope Action or production. An activation's own receipt, an
+  automated Terminal Off and unrelated pings do not count.
+- Never a false zero. An unreadable state, an unreadable blocker time or no
+  movement record gives `null` minutes. An unknown scope gives
+  `blocker_class: unknown` and a `null` split. An unreadable `ps` gives
+  `no_armed_wake: null`. Parts are whole tenths and sum exactly to
+  `idle_minutes`.
+- `--tap-ready-at` and `--route-at` must not be later than now.
+
+It reads production status, the last 200 worker merges, the timeline's
+production and ping records, waiter processes (`ps`, anchored on an interpreter
+running `wait-for-event.sh`, `quiet-watch.sh` or `comms-watch-issue.mjs`, or the
+CLI running `timeline --wait` on this workspace) and armed-until files
+(`{"schema":"arcadia-armed-wake-v1","session","role","armedAt","armedUntil"}`
+under `<workspace>/.arcadia/armed-wakes/`, deferral D2 of
+`docs/design/session-notifications.md`; no waiter writes them yet; an
+`armedUntil` more than 6 hours ahead is ignored). It pings nobody and writes
+nothing; the events are printed, not stored.
+
 ## Check A Design Record Or Field Guide
 
 ```bash
