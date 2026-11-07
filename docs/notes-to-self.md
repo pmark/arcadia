@@ -376,3 +376,12 @@ keys: production, START, press, pre-press, playbook, release manager, replay pas
 Check each Action's route: `planStepsForWorkItem` sends text without "implement", "code" or "prototype" to a planning run (extra Decision, validation, acceptance; the validator flags "no approval" next to "implementation", #1277). Check the Plan file and pointer are on the remote main and that the checkout is level with it; a settlement can sit only in the local main, and a squash merge of it makes local main diverge, so merge it as a merge commit. Full report and plan: `docs/reports/first-supervised-production-run-learnings-2026-10-11.md`; sandbox write denial is covered by the SQLITE_WORKSPACE_WRITE_DENIED entries above.
 
 The full pre-press gate, supervision cadence and operator-communication rules are the Release Manager's [production run playbook](../.agents/skills/arcadia-release-manager/references/production-run-playbook.md); read it before any press and update it after every run.
+
+## Momentum Keeper heartbeat and the momentum alarm
+
+keys: momentum keeper, keeper, heartbeat, keeper-heartbeat, MOMENTUM KEEPER NOT ACTIVE, MOMENTUM, idle-front, critical path idle, run window, armed-wakes, momentum-watch.json, liveness-check, Decision 0188, 2231
+
+The liveness timer (`production liveness-check`, once a minute) pages `🚨🚨🚨 MOMENTUM ...` when the critical path idles 20 min and `🚨🚨🚨 MOMENTUM KEEPER NOT ACTIVE ...` when no keeper heartbeat is live, each only while a run window is open (Active, or Off with a scope Action unmerged), once per episode plus one recovery line (`docs/COMMANDS.md`, "Momentum Alarm And Keeper Heartbeat"). It never starts a keeper.
+- **Keeper start-brief line (paste it):** "At start and at every wake, run `arcadia production keeper-heartbeat --minutes <minutes until your next fallback wake, at most 360> --session <your session title>`; if you stop refreshing, the operator is paged 10 minutes after that time."
+- A keeper handing off: the successor's first heartbeat closes the alarm; nothing to delete. Ending the keeper on purpose while a window is open pages the operator, which is intended.
+- The timer runs a go-broker release, not the checkout, so a change here is live only after a services restart installs a release with it (a production gap; Rowan or the operator). Until then a manual `production liveness-check` from the checkout pages for real; it shares the timer's state files, so the timer never repeats a page it sent.

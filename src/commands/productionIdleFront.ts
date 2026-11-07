@@ -66,7 +66,7 @@ function hint(value: string | undefined, flag: string, now: Date): string | unde
   return time;
 }
 
-function readWakeFiles(directory: string): { wakes: ArmedWake[]; problems: string[] } {
+export function readWakeFiles(directory: string): { wakes: ArmedWake[]; problems: string[] } {
   let names: string[];
   try {
     names = readdirSync(directory).filter((name) => name.endsWith(".json")).sort();
