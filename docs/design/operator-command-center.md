@@ -34,7 +34,7 @@ brief" to open one under `docs/design/command-center/`.
   (Constitution).
 - **Serves the north star** by cutting the time the critical path waits on the operator. In the 24 hours before this request,
   about 8.5 hours of critical-path time waited on one tap, and about half of roughly 12 operator touches were avoidable (operator
-  direction, 2026-11-07).
+  direction, 2026-11-07; see [Evidence](#evidence)).
 
 **Requirements.**
 
@@ -52,7 +52,7 @@ brief" to open one under `docs/design/command-center/`.
 **Non-goals.** No new governance record, no new write path into Decisions, Asks or queues in phase 1, no new notification channel,
 no change to ping rules, and no runtime code in this PR.
 
-## Four designs compared
+## Five designs compared
 
 | Design | What it is | Why not, or why |
 |---|---|---|
@@ -60,6 +60,7 @@ no change to ping rules, and no runtime code in this PR.
 | **B. Briefing (chosen)** | Waiting on you, then topic gestalts, then a scoped feed that shows only what changed since you last read each topic | Meets R1 to R8. The feed is subordinate and bounded, so it can't become the page. |
 | **C. Routes first** | The Workspace routes view: one route per Plan, with stops | Good for one Plan, but blind to work with no Plan. In the probe, 47 threads of 3 or more events had no Plan: operator-directed PRs, Decision PRs, design work. Routes stay as the View. |
 | **D. Digest page** | PR 2220's digest rendered as a page | Fixed time windows, no read state, no actions. Its progress model is reused instead, and the Discord digest links here. |
+| **E. Grow `/todo`** | Add read state and topic grouping to the to-do list, with no new route | `/todo` lists only what waits on the operator. It has no progress, no blockers on others' work and no history, so it can't answer "what happened?" Making it do so would mix the complete answer list with the overview. It stays the answer surface instead. |
 
 **B wins because the topic is the unit of attention.** The operator catches up by asking "what happened with X, and do I need to do
 anything?" A topic answers that once. A feed answers it once per event. B keeps A as a subordinate layer, takes C's routes as the
@@ -85,7 +86,7 @@ name is the operator's call).
 │ 🔘 Decision 0188: continue after a fix?      │
 │    Waiting 2 h · next Action can't launch    │
 │    [Answer →]                                │
-│ 🔀 Merge #2220 on GitHub (reviewed, green)   │
+│ 🔀 Merge #2220 on GitHub (green, clean)      │
 │    [Merge on GitHub ↗]                       │
 ├──────────────────────────────────────────────┤
 │ TOPICS · 5 changed · 3 quiet                 │
@@ -136,21 +137,31 @@ deterministic. AI only names a topic that has no record title and writes its sum
    bookkeeping, Ask proposals and pings that name nothing but their Project today. Events with no Project (47 in the probe)
    fold into one "Workspace" line at the portfolio scope.
 5. **Topic ids are stable:** `plan:<project>/<plan>` or `other:<project>`. Read state hangs on these ids, so it survives a re-read.
+   An id can still vanish: a Plan is renamed, or a thread moves from "other work" into a Plan once a record names it. Then the old
+   entry is dropped and the topic shows as unread once. That costs one extra look, never a lost item.
 
-**The probe** ([how it was run](#evidence)): 48 hours of real timeline, 892 events, clustered as above.
+**The probe** ([`probes/command-center-topics-1.mjs`](probes/command-center-topics-1.mjs), [how it was run](#evidence)): 48 hours
+of real timeline, 892 events, clustered as above.
 
 | Result | Count |
 |---|---|
-| Plan topics | 4, of 127, 72, 72 and 67 events, each with exactly one Plan, 1 to 6 Actions, 4 to 7 PRs and 3 to 5 Sessions |
-| Off-Plan threads (3 or more events) | 47, across 4 Projects |
-| Topics on the page | about 8: 4 Plan topics and 4 "other work" topics |
+| Plan topics | 6, of 127, 72, 72, 67, 7 and 5 events. The four large ones each hold 1 to 6 Actions, 4 to 7 PRs and 3 to 5 Sessions |
+| Off-Plan threads | 94 across 4 Projects. 47 have 3 or more events, and 34 are a review item's open and decide pair |
+| Topics on the page | about 10: 6 Plan topics and 4 "other work" topics |
 | Loose events | 162, mostly `git.worktree.integrated` (43), `ask.proposed` (31) and `ping.created` (26) |
-| Loose events asking for attention | 18: pings, and review items that name no Action |
+| Loose events asking for attention | 18: pings, and review items |
+| Material events | 15% |
 
-So the deterministic join gives a screenful of topics, not hundreds. The weak spot is pings: a ping carries only its Project, so
-an attention ping lands loose. Phase 2 links a ping to its PR or Action by the `#N` and Action id its text already names (it's still
-deterministic). A thread can also sit in "other work" when it plainly serves a Plan but no record says so; that's honest, and the
-fix is the record, not a guess.
+So the deterministic join gives a screenful of topics, not hundreds. There are two weak spots:
+- **Review items** (`decision.review_item.*`) name only their review id, plus a PR in 21 of 73. So a build-packet approval
+  can miss its Action's Plan topic. Phase 2 joins it through what its record names, such as the to-do read's `origin`, where one
+  exists. That's unverified, so until then these pairs sit in "other work".
+- **Pings** carry only their Project, so an attention ping lands loose. Phase 2 links a ping to its PR or Action by the `#N` and
+  Action id its text already names. It's still deterministic, but ping text is untrusted, so a link is made only when the id
+  resolves to a known record in the same Project, and it's marked as inferred.
+
+A thread can also sit in "other work" when it plainly serves a Plan but no record says so. That's honest, and the fix is the
+record, not a guess.
 
 ## 2. Gestalt content and freshness
 
@@ -167,16 +178,20 @@ Each topic card has a fixed shape, so it reads the same on every screen and in p
 | Updates | Count of feed items since read, opening the topic's trail | No |
 
 **The AI summary follows PR 2220's rules:**
-- Its input is facts only: the numbers, states and record titles the card already shows. It never gets Log, Decision or PR body
-  text, so a hostile body can't steer it.
+- Its input is facts only: counts, states, durations, ids, and the titles of checked-in governed records (Plan, Action and
+  Milestone), which are reviewed text in the repository. It never gets Log, Decision, PR or ping text, nor PR titles, which any
+  agent can write. An "other work" thread is named to the model by its id and state ("PR #2220, open, green"), and the card shows the
+  PR title beside the summary as plain text.
+- The model has no tools, and its output only becomes display text. So the worst a hostile record title can do is skew one summary,
+  which the "AI-written" label and the computed facts beside it expose.
 - If it states a number the facts don't have, or the model is unavailable, a computed summary replaces it, labelled "Computed".
   An AI summary is labelled "AI-written".
 - It runs through the Intelligence service, local-preferred, with paid use off: the enrichment layer's pattern
   (`lib/enrichment/registry.ts`), where the job store is the cache, keyed by a hash of the facts.
 - Its output is shown as text, never markup.
 
-**What makes a topic "changed".** Each topic has a **material fingerprint**: a hash of its material events only. Material means
-something the operator would act on or want to know:
+**What makes a topic "changed".** A topic changes when it gets a new **material event**, meaning something the operator would act
+on or want to know:
 - a PR merged, closed, or turned red;
 - an Action done;
 - a Decision raised or answered;
@@ -187,12 +202,14 @@ something the operator would act on or want to know:
 Commits, pushes, worktree bookkeeping, Session heartbeats and review-step noise aren't material. In the probe, about 15% of events
 were material.
 
-- **A topic is unread** when its material fingerprint differs from the one the operator last read. Mark read stores the current
-  fingerprint. So a topic comes back only when something material changes, never for a commit.
-- **The summary is rewritten** only when the material fingerprint changes. Identical facts reuse the cached job, so a quiet topic
-  costs nothing.
+- **A topic is unread** when it has a material event newer than the operator's last read of it. Mark read stores the time of the
+  newest material event it saw. So a topic comes back only when something material happens, never for a commit. An old event
+  leaving the read window can't make it unread, because only newer events count.
+- **The summary is rewritten** only when the topic's facts change, and the facts change only with a material event. The job is
+  keyed by a hash of the facts, so identical facts reuse the cached job and a quiet topic costs nothing.
 - **A topic goes quiet** when nothing material has happened in 72 hours and nothing waits on the operator. Quiet topics collapse
-  into one line. A topic with no events in 14 days leaves the page; its records remain where they always were.
+  into one line. A topic with no events in 14 days leaves the page; its records remain where they always were. The briefing reads
+  the same 14 days, so the read window and the trail always agree.
 
 ## 3. The feed model
 
@@ -213,7 +230,7 @@ Every Project, Plan and Action View gets a "What's new here" link into the comma
 filter, never authority, as the layers design already says.
 
 **Read, unread and pin.**
-- **Per topic:** the last-read material fingerprint, and pinned or not.
+- **Per topic:** the time of the newest material event at the last read, and pinned or not.
 - **Per item:** read or unread, and pinned or not. Item read state matters only inside a topic's trail.
 - **"Mark read" on a topic** marks its items read too.
 - **A pinned topic or item** stays on the page through quiet and decay until it's unpinned, and sorts first in its section. In code
@@ -226,6 +243,11 @@ one dashboard route, `/api/workspace/attention`, with GET and a small POST that 
 - **Never a governance record.** No gate, dispatch, digest or ping reads it. Losing it marks everything unread, and that's all.
 - **Not browser storage**, because then the phone and the desktop would disagree about what has been read.
 - **Bounded.** Entries for topics and items that have left the page are dropped on write, so the file can't grow without limit.
+- **The POST is narrow,** because it's a new write path on a page the Tailnet can reach. It accepts only same-origin requests, the
+  dashboard's existing origin guard (`lib/originGuard.ts`). It takes only `{ id, read | kept }` for ids the current briefing
+  contains, and writes only this one file. It follows the PR inventory's file rules: owner-only mode, no following links, atomic
+  rename, and a size cap. Writes are serialized in the dashboard process, and each one re-reads the file, so marks from the phone
+  and the desktop never drop each other.
 
 **Dedup and collapse.**
 - The timeline's de-duplication is reused unchanged.
@@ -249,10 +271,14 @@ one dashboard route, `/api/workspace/attention`, with GET and a small POST that 
 2. **It blocks progress.** It's `blocking` per `arcadia todo`, or it stops the production critical path.
 3. **It's ready now.** One of these:
    - a Decision with a pressable card;
-   - an Agent Ask whose settle preview says it would apply;
+   - an Agent Ask the to-do read already marks `acceptable: true` (`Approval.acceptable` in `lib/approvals.ts`). The command
+     center never runs a preview or a settle itself;
    - a pressable START card on `/actions`;
    - a blocker with a registered one-click clear;
-   - a PR that is independently reviewed, green and clean, and is one the operator must merge.
+   - a merge step that next steps offers from its own live read of the PR's head, checks and state. The item says "reviewed"
+     only when an independent-review verdict for that exact head has been read, which is phase 2. Until then it names only what
+     was read, such as "green, clean". If the live read fails, there's no merge item at all, because a cached inventory never
+     claims a PR is ready.
 
 Everything else that waits on the operator stays on `/todo` and on its topic card, and isn't at the top.
 
@@ -316,8 +342,9 @@ the rest, at their own pace.
 | A source can't be read | The section says which read failed and shows the last good read with its age. Waiting on you never shows "Nothing waiting" on a failed read |
 | The Intelligence service is down | Computed summaries, labelled "Computed" |
 | The attention file is missing or unreadable | Everything shows as unread, with one line saying read state was reset. Nothing else changes |
-| A hostile PR title or ping text | It's shown as text, and the summary never sees bodies |
-| The phone and the desktop open at once | Both read one file. A mark is a small idempotent write, and the last write for an id wins |
+| A hostile PR title or ping text | It's shown as text, and the summary model never sees it |
+| The phone and the desktop open at once | Both read one file. Writes are serialized and each re-reads the file, so neither drops the other's marks |
+| The timeline read is capped or slow | The topic says it's incomplete, never "quiet". The last good briefing is served with its age |
 | A tap goes stale (answered elsewhere) | The next read drops it. The control page itself refuses a stale press, as it does today |
 | Stale data looks calm | Any read older than five minutes shows Signal loss, as the sky already does |
 
@@ -336,7 +363,7 @@ the rest, at their own pace.
 | Async AI enrichment with caching | **Exists**, two kinds | `lib/enrichment/registry.ts`, `app/api/enrich/route.ts` |
 | One-screen Decision page with the pinned press | **Exists** | `app/todo/[kind]`, `components/decision-answer.tsx` |
 | Read, unread and pin state | **Missing** | No store in the dashboard |
-| Topic clustering and material fingerprints | **Missing** | Probed only, in a throwaway script |
+| Topic clustering and material events | **Missing** | Probed only: `docs/design/probes/command-center-topics-1.mjs` |
 | Pings linked to their subjects | **Missing:** a ping carries only its Project | `src/timeline/collectors/pings.ts:65` |
 | Issues as a timeline subject | **Missing:** `TimelineSubjects` has no Issue | `src/timeline/schema.ts` |
 | Operator-directed work linked by its PR metadata | **Partial:** the PR list response has the body; the `action:` line isn't parsed | `src/timeline/collectors/pullRequests.ts` |
@@ -347,10 +374,12 @@ Each phase is its own PR under the usual gates. Unattended production stays firs
 
 **Phase 1, the vital few: a usable command center, deterministic only.** About size L: about 90 minutes of agent work, likely
 two PRs.
-1. `lib/command-center.ts`, pure and tested on fixtures: topic clustering, material fingerprints, feed collapse, and the
+1. `lib/command-center.ts`, pure and tested on fixtures: topic clustering, material events and unread state, feed collapse, and the
    Waiting-on-you filter and order.
-2. `/api/workspace/briefing?project=&plan=&action=`: composes the timeline (in-process, 7-day window, cached about 60 s behind the
-   request, like the status read) with the three existing reads. It answers from cache at once.
+2. `/api/workspace/briefing?project=&plan=&action=`: composes the timeline (in-process, 14-day window, cached about 60 s behind the
+   request, like the status read) with the three existing reads. It answers from cache at once. Acceptance conditions: a single
+   refresh in flight at a time (`lib/singleFlight.ts` exists), the last good answer served on error with its age, a bounded
+   timeout, and a capped read shown as incomplete.
 3. `/api/workspace/attention` and its `.cache/` file: read, unread and pin.
 4. The Feed view rebuilt as Waiting, Topics and Feed, with computed summaries, the scope chip, and "What's new here" links from
    scoped Views.
@@ -361,7 +390,9 @@ replace it.
 
 **Phase 2: AI gestalts and tighter topics.** About size M.
 - An enrichment kind `topic.gestalt`, with facts in and sentences out, and PR 2220's number check and fallback.
-- Pings linked to their subjects by the ids their text names.
+- Pings linked to their subjects by the ids their text names, only when the id resolves, and marked inferred.
+- Review items joined to their Action where their record names one.
+- "Reviewed" on a merge item, from an independent-review verdict for the PR's current head.
 - The PR metadata `action:` line parsed, so operator-directed work groups by its Issue.
 - Reuse PR 2220's progress model once it merges, and PR 2218's waiting minutes once it merges.
 - The digest's link to `?since=`.
@@ -405,12 +436,14 @@ One question, registered as the Agent Ask proposal `proposal-command-center-answ
 
 ## Evidence
 
-- **Probe, 2026-11-07:** `arcadia timeline --since 48h --pull-requests --json`, read-only against the live workspace (892 events,
-  nothing written), then a throwaway union-find over the subject keys in the session scratchpad. Variants: joining on Plan,
-  Action, PR and branch alone left 218 loose events and 9 attention groups. Adding Session, Ask and Decision joined Asks and
-  reviews into their work: 162 loose events and 34 attention groups. Dropping Plan as a key split each Plan into its Actions
-  (largest 71 events). Results are reported as counts only; other Projects' titles are left out because this repository is
-  public.
+- **Probe, 2026-11-07:** `arcadia timeline --since 48h --limit 5000 --pull-requests --json`, read-only against the live
+  workspace (892 events, nothing written), then `node docs/design/probes/command-center-topics-1.mjs <that file>`. Rerun both to
+  check the numbers; a later window gives different counts. The script prints counts only, because this repository is public.
+  Variants tried in throwaway copies: joining on Action, PR and branch alone left 218 loose events; adding Session, Ask and
+  Decision brought it to 162. Joining on Action alone, without the Plan label, split each Plan into its Actions (largest 71
+  events), which is why the Plan regroups them.
+- **The 8.5 hours and about 12 touches** come from the operator's 2026-11-07 direction on the digest, recorded in the operator's
+  notes rather than this repository. PR 2220's operator-interaction count is the source that will measure it from records.
 - **Code read:** the files cited in "What exists today".
 - **Operator directions used:** one to-do list and Ask as the main input (2026-10-08); ambient channels over dashboards
   (2026-09-27); trajectory as past, present and future (2026-10-19); morning and evening digest, real-time pings only for a ready

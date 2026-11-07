@@ -122,7 +122,7 @@ section > h2 { font-size: 12px; letter-spacing: .08em; text-transform: uppercase
 const WAITING = [
   { icon: "🚨", project: "arcadia", topic: "plan:record-run", title: "Approve the build packet for pin-surface-date-validation", cost: "Waiting 6 h. Production on this Action stays stopped.", control: "Open the approval →", blocker: true },
   { icon: "🔘", project: "arcadia", topic: "plan:record-run", title: "Decision 0188: continue after a reviewed fix?", cost: "Waiting 2 h. The next Action can't launch until you answer.", control: "Answer →" },
-  { icon: "🔀", project: "arcadia", topic: "other:arcadia", title: "Merge #2220: progress-first digest (reviewed, green)", cost: "Waiting 40 min. The evening digest keeps the old layout.", control: "Merge on GitHub ↗" }
+  { icon: "🔀", project: "arcadia", topic: "other:arcadia", title: "Merge #2220: progress-first digest (green, clean)", cost: "Waiting 40 min. The evening digest keeps the old layout.", control: "Merge on GitHub ↗" }
 ];
 const TOPICS = [
   { id: "plan:record-run", project: "arcadia", title: "Record-run test pins", goal: "Goal: record a run with unattended test pins", done: 4, total: 6, since: 2,
@@ -182,7 +182,10 @@ function render() {
     if (t.blocked) c.append(el("p", "blocked", t.blocked));
     if (t.move) c.append(el("p", "move", t.move));
     const row = el("div", "row");
-    const upd = el("button", null, `${t.updates} updates ▸`); upd.addEventListener("click", () => { state.scope = t.id.startsWith("plan:record") ? t.id : state.scope; sync(); });
+    // Opening a topic's updates narrows the scope to it. The sketch's scope menu offers one Plan, so only that one can narrow.
+    const scopable = [...document.getElementById("scope").options].some(o => o.value === t.id);
+    const upd = el("button", null, `${t.updates} updates ▸`); upd.disabled = !scopable || t.updates === 0;
+    upd.addEventListener("click", () => { state.scope = t.id; sync(); });
     const mark = el("button", null, isRead ? "Mark unread" : "Mark read");
     mark.addEventListener("click", () => { isRead ? state.read.delete(t.id) : state.read.add(t.id); render(); });
     const pin = el("button", null, state.kept.has(t.id) ? "Pinned" : "Pin"); pin.setAttribute("aria-pressed", String(state.kept.has(t.id)));
