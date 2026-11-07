@@ -97,3 +97,91 @@ touches and about 6.5 hours.
 - New Relay brief requirements (rows 4, 9, 10). Revival trigger: the Signal
   proposal is adopted.
 - Notes To Self is at its 25-entry cap, so these went to the playbook instead.
+
+## Part 2: the evening and the night after (to 2026-11-07 05:30Z)
+
+This part covers what happened after #2153 merged at 19:58Z. **Sources:** Signal's
+log rows 30–32, #1929 from 19:00Z, PRs #2148–#2176, the lessons captured
+since, host state at 05:30Z, and one transcript search to confirm S034's
+wording. On #1929, 2026-11-06 took **23 operator touches** across the UTC day
+(Part 1 counted about 17 up to 19:00Z). About 8 more followed before 05:30Z.
+
+| # | UTC | Actor | Event | Operator touch | Min lost | Class | Evidence |
+|---|---|---|---|---|---|---|---|
+| 30 | 19:19–19:30 | Rowan | Asked to apply Action 3's completion from main, then to merge settlement #2150 | yes ×2 | ~100 | a | #1929 c6693360819, c6693570948 |
+| 31 | 19:58–20:37 | Rowan | Clarifying `narrative-summarization` took four menus: amendments could not set `clarified` (#2154, fixed by #2155) | yes ×4 | ~40 | d | #1929 c6694157845 to c6694951628 |
+| 32 | 21:32 | Rowan | Asked to merge clarification settlement #2157 | yes | ~55 | a | #1929 c6696197050 |
+| 33 | 21:37 | Rowan | Offered a one-Action card for a `src/` build Action, outside playbook item 5; the operator chose it | yes | — | e | #1929 c6696306590 |
+| 34 | 23:00 | Pre-mortem | Caught the missing `execution` route again (#2134's class, through clarification) | no | — | f | #1929 c6697926224 |
+| 35 | 23:08 | Rowan | Asked for `execution: build`, the same answer the operator gave at 09:07Z | yes | ~10 | a | #1929 c6698053645, #2161 |
+| 36 | 23:29 | Pre-mortem | Caught Rowan's own stale clarification draft holding the Action | no | ~20 | f | #1929 c6698520619 |
+| 37 | 23:38–00:03 | Worker | Two light-tier attempts refused the async design; a third opened #2171 | no | ~25 | e | log 32, lesson_7402dccc04d598b9fa6f |
+| 38 | 23:48–00:10 | Waiter, worker | The escalation wake caught the red check in 4 minutes; the worker repaired to #2173, and its review failed it as unwired | no | 0 | f | #2171, #2173 |
+| 39 | ~00:20 | Operator | "Where is the OFF button? I wish I had better UI for this" | yes | ~23 | g | [S034](../design/relay/sources/S034-where-is-the-off-button.md) |
+| 40 | 00:43–02:12 | Operator | Off on `/production`, then three re-plan answers | yes ×4 | ~90 | e | #1929 c6699774532, c6700677201 to c6700850227 |
+| 41 | 02:15 | Pre-mortem | FAILED the re-minted card: it reused a consumed one-shot id, and the start tier was light | no | ~10 | f | #1929 c6700881859 |
+| 42 | ~02:20 | Operator | Decision 0184 A: the checked-in waiter is standing direction. Neither `arcadia timeline --wait` nor the bootstrap line exists yet | yes | — | b | #2175, #2176 |
+| 43 | ~03:53 | Host | After a reboot, legacy `com.arcadia.worker` (release `fad7493e`) took the pidfile; the governed worker exited 0 and stayed down | no | ongoing (≥95) | d | #2179 |
+| 44 | 04:29 | Card | Preflight P2 refused, "no running PID", while `work monitor` still says "ready to press" | yes (the press) | ongoing | d | #1929 c6702255085, #2179 |
+
+### The vital few (Part 2)
+
+Ranked by what changes dispatch and operator touches per run.
+
+1. **One worker owns the pidfile, and a lost race fails loudly** (rows 43–44).
+   Cost: every START card is unpressable from 03:53Z until someone restarts
+   the worker on the host, and the operator is off-site. That's one refused press
+   and at least 95 minutes so far, and it recurs at every reboot. **Form:**
+   Issue #2179, relayed to the current custodian on #1929. Restarting the worker
+   is runtime recovery, so it's the operator's call.
+2. **Pinned Actions are buildable unattended as written** (rows 33–37, 40, 41).
+   Cost: the narrative-summarization run took about 6 touches (23:08, 00:20,
+   00:43 and three re-plan answers), three worker attempts and about three
+   hours. **Form:** a write-back to the playbook's Action-shape item, in this
+   PR. The deterministic half, a card check that refuses a pinned Action with
+   no route, is added to #2134
+   ([comment](https://github.com/pmark/arcadia/issues/2134#issuecomment-6702901972)).
+3. **How far the standing order reaches** (rows 30, 32, 35). Cost: about 4
+   touches and 3.5 hours of waiting for steps the operator answered "A" each
+   time. **Form:** decision Ask `decide-standing-order-routine-governed-steps-20261107`
+   (`agentask_78c813508229ba5275`), file in this PR, with options A to C. It
+   is previewed, not settled: a press during the open run window can take
+   the next Decision number (row 24, #1275), so settle it after the window
+   closes.
+4. **Off is one obvious step** (row 39; Part 1 row 27, where Rowan asked how).
+   Cost: 2 questions. **Form:** a proposed REQ-019 and source S034 in the
+   Relay brief, in this PR, unconfirmed until the operator confirms it.
+5. **Signal Behavior.** **Form:** proposal Ask
+   `propose-signal-supervising-session-role-spec-20261107`
+   (`agentask_0a623403acd3df5829`). It refines `agentask_8987d5095d8366361a`
+   with method lines 5–7: check the worker's own repair state, diff main
+   against the candidate before proposing a Decision, and dry-run before
+   offering. It also adds a per-night tally of touches avoided against touches
+   caused, with a stop rule.
+
+**Counterfactual for item 1.** Suppose the governed install had retired the
+legacy agent, or a lost race had failed loudly. After the 03:53Z reboot,
+either the governed worker would hold the pidfile, or liveness would have
+flagged the gap at about 03:55Z. Either way the 04:29Z press would not have
+refused at P2, so one touch is saved. The card would also not have spent
+more than 95 minutes unpressable, and the custodian who took over at 05:29Z
+would not have been about to hit the same refusal. Each future reboot saves
+one off-site host action.
+
+**Deduplicated, resolved or in flight.**
+- The wake source (row 42) is in flight: Decision 0184 A, the design in
+  [session-notifications.md](../design/session-notifications.md) and build step
+  `agentask_8a6c9afce7244f904b`. It also covers the waiter's re-baseline and
+  the timeline's blind spots (lessons `lesson_0d1bbef8955979bf0be7` and
+  `lesson_f731c3ea1c7116e59154`).
+- The start tier is resolved: the live workspace now sets `sessionStartTier:
+  standard`, per the operator's 02:12Z answer. Revival trigger: a light-tier
+  Session refuses a build design again.
+- The two-PR amendment from Part 1 is resolved in practice: #2157, #2161 and
+  #2174 each landed as a single PR.
+- Still open, with no new form: #2129 (blocked in round 2, idle since 05:02Z on
+  2026-11-06), and #2173 (draft, superseded by the re-plan).
+- The Ask `propose-relay-workspace-switches-and-perpetual-rowan-20261106` is
+  missing from checked-in records and from the pending list. Signal 1's
+  transcript says it was saved, but no receipt was found. Revival trigger: the
+  operator restates it, or its receipt turns up.
