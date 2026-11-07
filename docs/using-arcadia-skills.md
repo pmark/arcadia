@@ -20,8 +20,8 @@ changing global configuration.
   separates what Arcadia did from what the agent improvised and grants no authority.
 - [`arcadia-signal`](../.agents/skills/arcadia-signal/SKILL.md): run the operator's
   Signal session, which supervises the Rowan coordinator, owns monitoring and wake-ups,
-  verifies merges and production state, and leads every operator message with loud
-  urgent banners. Say "Signal" or "be Signal". It grants no authority.
+  verifies merges and production state, and opens each operator message with a loud
+  banner for every open urgent item. Say "Signal" or "be Signal". It grants no authority.
 - [`arcadia-github-issues`](../.agents/skills/arcadia-github-issues/SKILL.md):
   classify the complete issue backlog, reconcile Issues with governed Actions in
   both directions, and propose evidence-backed closures or coherent repair

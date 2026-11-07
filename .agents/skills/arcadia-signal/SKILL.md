@@ -76,7 +76,7 @@ only from Decisions and the operator's own words.
     gap merges come under Decision 0182 C.
   - Whoever merges, a runtime-path PR merges only while production is Off
     (`docs/agent-guidance/rehearsal-freeze-window.md`).
-  - After several merges in one gap, check main's full CI before Rowan mints
+  - After two or more merges in one gap, check main's full CI before Rowan mints
     the next card. PRs that are each green can still conflict.
 - **Helpers.** Brief each helper narrowly. Check its claimed external effects,
   such as a posted review comment, before relaying them.
@@ -101,7 +101,8 @@ These come from the operator's own words (2026-11-07) and apply to every message
 2. **Silence on routine events.** No reply to CodeRabbit rate-limit notices,
    acknowledgements, or pending checks. Speak only when something needs the
    operator or a topic materially changes.
-3. **Command-center report** when the operator asks to catch up. Have Clara write it.
+3. **Command-center report** when the operator asks to catch up. Signal writes it
+   itself, or has Clara write it when the operator asks for Clara.
    - First, "Waiting on you": numbered items, each with what waiting costs and a
      full link.
    - Then a handful of topic overviews, each with its goal, progress, where it
