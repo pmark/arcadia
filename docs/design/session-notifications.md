@@ -331,7 +331,7 @@ asks, answer A below is what removes the touch.
 | Deferred | Revival trigger |
 | --- | --- |
 | D1. One host-side GitHub observer (the Intelligence service's worker) that polls checks and merges only for PRs named by armed waits and records them locally, so sessions never poll GitHub | Answer B, or a missed own-PR wake after step 1 ships. Built only while production is Off |
-| D2. Waiter liveness: an "armed until" heartbeat file per session, or a host stop hook, so a supervisor sees "Rowan has no wake armed" | The first time a coordinator idles without an armed wait after step 1 |
+| D2. Waiter liveness: an "armed until" heartbeat file per session, or a host stop hook, so a supervisor sees "Rowan has no wake armed" | The first time a coordinator idles without an armed wait after step 1. Partly built (Issue #2231): `production keeper-heartbeat` writes the Momentum Keeper's file, and the liveness timer pages when it lapses in a run window; other sessions still write none |
 | D3. Cross-session messages as a timeline source | A non-Claude coordinator needs a supervisor message, or Relay v1 starts |
 | D4. Replace `scripts/comms-watch-issue.mjs` and the planned `arcadia agents watch --until-event` with `--wait` | The `implement-agent-peer-watch-reader` Action becomes current |
 | D5. CI red or green for non-production PRs on Codex and OpenCode | Comes with D1 |

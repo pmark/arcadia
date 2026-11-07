@@ -203,7 +203,9 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   ),
   "production status": ALLOWED,
   "production freeze-check": ALLOWED,
-  "production liveness-check": exempt("A launchd timer reads the named workspace read-only each minute; a row a minute would be noise, and only a page writes, through the ping outbox."),
+  "production liveness-check": exempt("A launchd timer reads the named workspace read-only each minute; a row a minute would be noise, and only a page writes, through the ping outbox, besides its own .arcadia state files."),
+  // Writes one armed-until file in the resolved workspace's .arcadia/armed-wakes; no database, ping or Project state.
+  "production keeper-heartbeat": ALLOWED,
   "production idle-front": exempt("A repeated read-only check: reads the named workspace read-only, the process list and armed-until files, prints a row and records nothing."),
   "production runtime-check": exempt("Compares the installed broker release with a named repository's HEAD; reads no workspace and records nothing."),
   "production preview": ALLOWED,

@@ -3776,6 +3776,8 @@ The optional iCloud file-ingress job also starts automatically and checks its dr
 
 A **liveness check** also runs once a minute, outside all of the above. While production is Active, it sends one Discord ping if the worker stops making progress for 5 minutes, naming how long, the worker's pid and any long-lived child, with a link to `/production`. It sends one more line when the worker recovers. If the worker is in a code review, it waits until the reviewer's own 15-minute timeout plus those 5 minutes. It only alerts: it restarts nothing, and recovery stays with you. `ARCADIA_LIVENESS_STALE_SECONDS` at restart changes the 5 minutes. `pnpm logs liveness` shows its runs, and `scripts/services.sh status` shows whether it is installed.
 
+The same timer run then checks **momentum** (Decision 0188; it calls no model and starts nothing). While a run window is open (production Active, or Off with a scope Action not yet merged), it sends one loud ping when the critical path has been idle 20 minutes, starting `🚨🚨🚨 MOMENTUM: critical path idle 25 min — cause: …` with the remedy, and one `✅ MOMENTUM` line when it moves again or the window closes. In the same window it sends one `🚨🚨🚨 MOMENTUM KEEPER NOT ACTIVE — last heartbeat …` ping when no Momentum Keeper heartbeat is live (a keeper runs `arcadia production keeper-heartbeat` at every wake; its heartbeat lapses 10 minutes after the time it gave), and one `✅ MOMENTUM KEEPER` line when a keeper is back or the window closes. If the momentum check itself cannot read for 3 minutes it sends one `🚨🚨🚨 MOMENTUM CHECK FAILING` ping. The alarm never starts a keeper: ask Rowan to start one, or start one yourself. `--idle-minutes` and `--keeper-grace-minutes` on `production liveness-check` change the thresholds for a manual run; the timer uses the defaults.
+
 When `scripts/services.sh status` shows `worker: stopped` and the worker's pidfile belongs to a live process that is not the managed worker, such as a stale `com.arcadia.worker` launchd job, status names the holder and prints the command that retires it (`launchctl bootout gui/<uid>/<label>`). It only reports: you run the command. Likewise `arcadia worker install` refuses, and the protected replacement warns, naming that command instead of silently leaving the stray agent.
 
 Do not start separate legacy processes manually. Anything outside this list is not part of the normal local service set.
@@ -4006,6 +4008,15 @@ Design does the following:
 Passing means every piece traces to a source and the mission, and that critics
 couldn't break it or you accepted the risk. It doesn't prove the design is right.
 The method is in the [arcadia-design skill](.agents/skills/arcadia-design/SKILL.md).
+
+### Start Signal
+
+Signal is your supervising session over Rowan. It watches production and pull requests,
+wakes Rowan when to act, checks that merges and presses really happened, and starts every
+message with a loud banner for anything urgent you must do (🚨🚨🚨 plus 🔀 merge, 🗳️ decide,
+👆 press). Say "Signal" or "be Signal" to a coding agent in this checkout, or start one from
+a Signal handoff in the shared notes folder. See the
+[arcadia-signal skill](.agents/skills/arcadia-signal/SKILL.md). It grants no authority.
 
 ### Try Relay mode
 

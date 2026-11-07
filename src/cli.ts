@@ -85,11 +85,19 @@ import {
   runOperatorInteractionListCommand,
   runOperatorInteractionRecordCommand
 } from "./commands/operatorInteraction.js";
+import { LIVENESS_DEFAULT_STALE_SECONDS } from "./commands/productionLiveness.js";
 import {
-  LIVENESS_DEFAULT_STALE_SECONDS,
-  renderProductionLivenessCheckSuccess,
-  runProductionLivenessCheckCommand
-} from "./commands/productionLiveness.js";
+  renderKeeperHeartbeatSuccess,
+  renderProductionLivenessTimerSuccess,
+  runKeeperHeartbeatCommand,
+  runProductionLivenessTimerCommand
+} from "./commands/productionMomentum.js";
+import {
+  KEEPER_DEFAULT_GRACE_MINUTES,
+  KEEPER_DEFAULT_HEARTBEAT_MINUTES,
+  KEEPER_MAX_HEARTBEAT_MINUTES,
+  MOMENTUM_DEFAULT_IDLE_MINUTES
+} from "./production/momentumWatch.js";
 import { renderProductionIdleFrontSuccess, runProductionIdleFrontCommand } from "./commands/productionIdleFront.js";
 import {
   renderBackBurnerArchiveSuccess,
@@ -1583,12 +1591,24 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   addJsonOption(
     production
       .command("liveness-check")
-      .description("One timer run: page once when the worker stops making progress while production is Active, and once when it recovers. Reads the database read-only; restarts nothing")
+      .description("One timer run: page once when the worker stops making progress while production is Active, and once when it recovers; then the momentum alarm: page once when the critical path idles past the threshold or no Momentum Keeper heartbeat is live while a run window is open, and once when each clears. Reads the database read-only; restarts and starts nothing")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--stale-seconds <seconds>", `Silence that counts as stuck, outside a code review (default ${LIVENESS_DEFAULT_STALE_SECONDS})`)
+      .option("--idle-minutes <minutes>", `Critical-path idle that pages while a run window is open (default ${MOMENTUM_DEFAULT_IDLE_MINUTES})`)
+      .option("--keeper-grace-minutes <minutes>", `How long past its armed-until a keeper heartbeat may lapse before it pages (default ${KEEPER_DEFAULT_GRACE_MINUTES})`)
       .option("--dashboard-url <url>", "Dashboard base for the /production link (default ARCADIA_DASHBOARD_URL)")
-  ).action((options: { workspace: string; staleSeconds?: string; dashboardUrl?: string; json?: boolean }) =>
-    runCliAction("production.liveness-check", options, () => runProductionLivenessCheckCommand(options), renderProductionLivenessCheckSuccess)
+  ).action((options: { workspace: string; staleSeconds?: string; idleMinutes?: string; keeperGraceMinutes?: string; dashboardUrl?: string; json?: boolean }) =>
+    runCliAction("production.liveness-check", options, () => runProductionLivenessTimerCommand(options), renderProductionLivenessTimerSuccess)
+  );
+  addJsonOption(
+    production
+      .command("keeper-heartbeat")
+      .description("The Momentum Keeper's heartbeat: write its armed-until file, saying it is live and will wake again within --minutes. Writes that one file (and the usual activity row); pings nobody, starts nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--minutes <minutes>", `Until the keeper's next wake, at most ${KEEPER_MAX_HEARTBEAT_MINUTES} (default ${KEEPER_DEFAULT_HEARTBEAT_MINUTES})`)
+      .option("--session <name>", "The keeper session's name, for the alarm's recovery line")
+  ).action((options: { workspace: string; minutes?: string; session?: string; json?: boolean }) =>
+    runCliAction("production.keeper-heartbeat", options, () => runKeeperHeartbeatCommand(options), renderKeeperHeartbeatSuccess)
   );
   addJsonOption(
     production
@@ -6130,7 +6150,7 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
-  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check", "liveness-check"].includes(second ?? "")) {
+  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check", "liveness-check", "keeper-heartbeat"].includes(second ?? "")) {
     return `production.${second}`;
   }
 
