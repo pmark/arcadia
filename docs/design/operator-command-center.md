@@ -202,9 +202,11 @@ on or want to know:
 Commits, pushes, worktree bookkeeping, Session heartbeats and review-step noise aren't material. In the probe, about 15% of events
 were material.
 
-- **A topic is unread** when it has a material event newer than the operator's last read of it. Mark read stores the time of the
-  newest material event it saw. So a topic comes back only when something material happens, never for a commit. An old event
-  leaving the read window can't make it unread, because only newer events count.
+- **A topic is unread** when it has a material event the operator hasn't seen. Mark read stores the time of the newest material
+  event it saw, plus the ids of the material events from the 24 hours before that. An event is unseen when its id isn't stored and
+  it's no older than that 24-hour overlap. So a topic comes back only when something material happens, never for a commit. An old
+  event leaving the read window can't make it unread. A late-collected event is still caught, because the timeline mixes clocks
+  (commit dates, file times, collector time).
 - **The summary is rewritten** only when the topic's facts change, and the facts change only with a material event. The job is
   keyed by a hash of the facts, so identical facts reuse the cached job and a quiet topic costs nothing.
 - **A topic goes quiet** when nothing material has happened in 72 hours and nothing waits on the operator. Quiet topics collapse
@@ -230,7 +232,7 @@ Every Project, Plan and Action View gets a "What's new here" link into the comma
 filter, never authority, as the layers design already says.
 
 **Read, unread and pin.**
-- **Per topic:** the time of the newest material event at the last read, and pinned or not.
+- **Per topic:** the newest material event's time at the last read and the overlap's ids, and pinned or not.
 - **Per item:** read or unread, and pinned or not. Item read state matters only inside a topic's trail.
 - **"Mark read" on a topic** marks its items read too.
 - **A pinned topic or item** stays on the page through quiet and decay until it's unpinned, and sorts first in its section. In code
@@ -243,8 +245,10 @@ one dashboard route, `/api/workspace/attention`, with GET and a small POST that 
 - **Never a governance record.** No gate, dispatch, digest or ping reads it. Losing it marks everything unread, and that's all.
 - **Not browser storage**, because then the phone and the desktop would disagree about what has been read.
 - **Bounded.** Entries for topics and items that have left the page are dropped on write, so the file can't grow without limit.
-- **The POST is narrow,** because it's a new write path on a page the Tailnet can reach. It accepts only same-origin requests, the
-  dashboard's existing origin guard (`lib/originGuard.ts`). It takes only `{ id, read | kept }` for ids the current briefing
+- **The POST is narrow,** because it's a new write path on a page the Tailnet can reach. It uses the dashboard's existing origin guard
+  (`lib/originGuard.ts`). That guard refuses cross-site browser requests, but by the deployment's documented "reachable, not
+  attributable" model it lets through a caller that sends no browser headers, such as a script on the host or the Tailnet. That's
+  acceptable here only because the file is a projection: the worst such a caller can do is change what shows as read. It takes only `{ id, read | kept }` for ids the current briefing
   contains, and writes only this one file. It follows the PR inventory's file rules: owner-only mode, no following links, atomic
   rename, and a size cap. Writes are serialized in the dashboard process, and each one re-reads the file, so marks from the phone
   and the desktop never drop each other.

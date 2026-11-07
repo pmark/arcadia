@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 
 const events = JSON.parse(readFileSync(process.argv[2], "utf8")).data.events;
 const JOIN_KEYS = ["action", "pullRequest", "branch", "session", "ask", "decision"];
+// The design's material list, as timeline kind names seen in the probe window; the 15% share depends on this list.
 const MATERIAL = /^(pr\.merged|pr\.closed|record\.action\.done|record\.decision\.(raised|answered)|production\.(policy\.|escalation)|event\.managed_production\.scope_complete)/;
 
 const parent = new Map();
@@ -32,7 +33,8 @@ const planTopics = new Map();
 const offPlan = [];
 const loose = [];
 for (const group of groups.values()) {
-  const plan = group.map(e => e.subjects.plan).find(Boolean);
+  const carrier = group.find(e => e.subjects.plan);
+  const plan = carrier ? `${carrier.subjects.project ?? "?"}/${carrier.subjects.plan}` : null;
   if (plan) planTopics.set(plan, (planTopics.get(plan) ?? 0) + group.length);
   else if (group.length >= 2) offPlan.push(group);
   else loose.push(...group);
