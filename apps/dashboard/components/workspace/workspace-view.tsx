@@ -127,7 +127,7 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
           <summary><span>Next move</span><span className={`route-next-state ${line.state}`}>{line.word}</span></summary>
           {nextMountedAt === scopeKey && <WorkspaceNextMove key={scopeKey} go={go} project={goProject} relation={relation} selectedAction={scope?.plan && scope.action && action ? { plan: scope.plan, action: scope.action } : undefined} />}
         </details>}
-        <WorkspaceAskTarget available={Boolean(scope && !loading && !failure && !missing)} reading={loading} target={{ projectId: project?.id, ...(scope?.plan ? { plan: scope.plan } : {}), ...(scope?.action ? { action: scope.action } : {}), label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
+        <WorkspaceAskTarget available={Boolean(scope && !loading && !failure && !missing)} reading={Boolean(loading && !failure && !missing)} target={{ projectId: project?.id, ...(scope?.plan ? { plan: scope.plan } : {}), ...(scope?.action ? { action: scope.action } : {}), label: project?.name ?? "Portfolio", context: [project?.name, scope?.plan, action?.title].filter(Boolean).join(" / ") || "Portfolio" }} />
       </section>
     </div>
   </main>;

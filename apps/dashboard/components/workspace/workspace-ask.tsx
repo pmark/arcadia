@@ -21,7 +21,9 @@ const PORTFOLIO: Target = { label: "Portfolio", context: "Portfolio" };
 const noView: ViewTarget = { target: PORTFOLIO, available: true, reading: false };
 /** Every other route has a View, so until it says what it is, nothing can be sent. Relay hydrates first, so a fast typist reaches this. */
 const viewNotYetKnown: ViewTarget = { target: PORTFOLIO, available: false, reading: true };
-const ROUTE_WITHOUT_A_VIEW = /^\/workspace\/feed(\/|$)/;
+const ROUTE_WITHOUT_A_VIEW = /^\/workspace\/feed\/?$/;
+/** Slow data is allowed, and silent waiting isn't: after this long, a read that hasn't landed offers the way out a failed one does. */
+const LONG_READ_MS = 10_000;
 type AskState = {
   saved: Saved; update: (next: Saved) => void; busy: boolean; warning: string | null;
   trail: AskTrailResponse | null; readError: string | null; missing: boolean;
@@ -203,8 +205,16 @@ type ComposerProps = {
 /** Everything below the field waits behind `open`, inert, so the same field is the capsule at rest and the composer when open. */
 export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldFocus }: ComposerProps) {
   const [directionFor, setDirectionFor] = useState<string | null>(null);
+  const [longReadOn, setLongReadOn] = useState<string | null>(null);
   const state = useContext(AskContext);
   const path = usePathname();
+  const stillReading = state?.view.reading ?? false;
+  useEffect(() => {
+    if (!stillReading) return;
+    const timer = setTimeout(() => setLongReadOn(path), LONG_READ_MS);
+    return () => clearTimeout(timer);
+  }, [stillReading, path]);
+  if (longReadOn !== null && (!stillReading || longReadOn !== path)) setLongReadOn(null);
   if (!state) return null;
   const { saved, update, busy, warning, trail, readError, missing, inspect, send, view: { target, available, reading } } = state;
   const draftTarget = saved.target ?? target;
@@ -230,7 +240,7 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
   return <div className="workspace-ask relay-body">
     <div className="relay-head" inert={!open}>
       <span className="relay-grip" aria-hidden="true" />
-      <p className="relay-chip">{orphaned ? "Choose where this draft goes" : reading && saved.target === null ? "Reading this view…" : draftTarget.projectId ? <>To Project <b>{draftTarget.label}</b></> : <>To your <b>whole portfolio</b></>}</p>
+      <p className="relay-chip" data-view={state.view === viewNotYetKnown ? "unknown" : "known"}>{orphaned ? "Choose where this draft goes" : reading && saved.target === null ? "Reading this view…" : !available && saved.target === null ? "This view isn't confirmed" : draftTarget.projectId ? <>To Project <b>{draftTarget.label}</b></> : <>To your <b>whole portfolio</b></>}</p>
       {head}
     </div>
     <form onSubmit={event => { event.preventDefault(); submit(); }}>
@@ -245,8 +255,8 @@ export function WorkspaceAsk({ open, thread, head, fieldControl, field, onFieldF
         {fieldControl}
       </div>
       <div className="relay-send" inert={!open}>
-        {orphaned && <p className="relay-why" role="status">You started this draft on a view that wasn&apos;t confirmed, so it has no target yet. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target, typedOn: undefined })}>Use this view</button></p>}
-        {reading && !sendable && !orphaned && <p className="relay-why" role="status">Reading this view. Keep typing; sending waits for it.</p>}
+        {orphaned && <p className="relay-why" role="status">You started this draft on a view that wasn&apos;t confirmed, so it has no target yet. <button type="button" disabled={!available || busy} onClick={() => update({ ...saved, target, typedOn: undefined })}>Use this view</button>{longReadOn === path && <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO, typedOn: undefined })}>Ask the whole portfolio instead</button>}</p>}
+        {reading && !sendable && !orphaned && <p className="relay-why" role="status">{longReadOn === path ? <>This view is taking a while. Keep typing, and sending waits for it. <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO, typedOn: undefined })}>Ask the whole portfolio instead</button></> : "Reading this view. Keep typing; sending waits for it."}</p>}
         {!reading && !sendable && !available && <p className="relay-why" role="status">Arcadia couldn&apos;t confirm this view, so Ask can&apos;t use it. Your draft stays. <button type="button" disabled={busy} onClick={() => update({ ...saved, target: PORTFOLIO, typedOn: undefined })}>Ask the whole portfolio instead</button></p>}
         <div className="relay-send-row">
           <label><input type="checkbox" checked={directionMode} disabled={!draftTarget.projectId || !sendable || busy} onChange={event => setDirectionFor(event.target.checked ? draftKey : null)} />Send as a direction to this context</label>
