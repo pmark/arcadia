@@ -43,7 +43,7 @@ describe("namedTestFiles", () => {
   // 2026-11-07 incident: Action pin-governed-record-path named tests/x.test.ts only as a
   // string the new test asserts about, and pre-acceptance refused 26 relaunches with
   // "tests/x.test.ts (missing)". Paths quoted as data are never files the change must contain.
-  it("does not require a test path the criteria quote as data: a value list, a source location or a string literal", () => {
+  it("does not require a test path the criteria quote as data: a value-list item or a source location", () => {
     expect(namedTestFiles([
       "tests/pin-governed-record-path.test.ts is a new test file that imports isGovernedRecordPath from ../src/sessions/scopeCriteria.js and asserts isGovernedRecordPath is true for each of PROJECT.md, MISSION_LOG.md, docs/plans/x.md, docs/decisions/0001-x.md and .arcadia/asks/x.yaml.",
       "The same test file asserts it is false for each of project.md, docs/plansx.md, src/x.ts, tests/x.test.ts and ./PROJECT.md.",
@@ -54,12 +54,18 @@ describe("namedTestFiles", () => {
     ])).toEqual(["tests/pin-governed-record-path.test.ts", "tests/pin-repository-frame-extraction.test.ts", "tests/tail.test.ts"]);
   });
 
-  it("still requires a file named before a value list or outside a string literal", () => {
+  // Review round 1 of #2241 (R1-1, R1-2): a quoted command and prose after a value list name real files.
+  it("still requires a file named before or after a value list, in a quoted command or after an unbalanced quote", () => {
     expect(namedTestFiles([
       "tests/lister.test.ts asserts the lister returns false for each of src/a.ts and src/b.ts.",
       "The message \"done\" appears and tests/after-quote.test.ts passes.",
-      "tests/colon.test.ts: a case is added."
-    ])).toEqual(["tests/lister.test.ts", "tests/after-quote.test.ts", "tests/colon.test.ts"]);
+      "tests/colon.test.ts: a case is added.",
+      "Running \"pnpm exec vitest run tests/quoted-command.test.ts\" passes.",
+      "The hook returns true for staged files, so tests/hook.test.ts passes.",
+      "isSafe is true for src/a.ts, and tests/guard.test.ts passes.",
+      "A 6\" display is assumed and tests/unbalanced.test.ts passes."
+    ])).toEqual(["tests/lister.test.ts", "tests/after-quote.test.ts", "tests/colon.test.ts", "tests/quoted-command.test.ts",
+      "tests/hook.test.ts", "tests/guard.test.ts", "tests/unbalanced.test.ts"]);
   });
 
   it("still requires a named file when a removal verb governs something else", () => {

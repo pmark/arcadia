@@ -115,28 +115,30 @@ function removes(criterion: string, file: string): boolean {
 }
 
 // "returns true for <a>, <b> and <c>", "is false for each of <a> and <b>": the
-// rest of that sentence lists values an assertion is made about.
+// items that follow list values an assertion is made about.
 const VALUE_LIST = /\b(?:true|false)\s+for\s+(?:each\s+of\s+|all\s+of\s+|every\s+one\s+of\s+)?/gi;
-const SENTENCE_END = /[.;](?=\s|$)/g;
+// Only single-token items and their separators may stand between the list's start and the mention...
+const LIST_ITEMS_BEFORE = /^(?:[^\s,;]+(?:,\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+))*$/;
+// ...and the mention must end its item: a separator, or the end of the sentence.
+const LIST_ITEM_END = /^(?:,|\s+(?:and|or)\s|[.;](?:\s|$)|$)/;
 
 /**
  * Whether the mention at `index` is data a criterion asserts about rather than
  * a file the change must contain (2026-11-07: "asserts it is false for each of
  * ..., tests/x.test.ts and ./PROJECT.md" refused 26 relaunches as missing): a
- * source location (`tests/a.test.ts:3`), text inside a double-quoted string
- * literal, or an item of a true/false value list in the same sentence.
+ * source location (`tests/a.test.ts:3`, `"at tests/a.test.ts:3:1"`), or an
+ * item of a true/false value list. A mention in prose after the list ("true
+ * for staged files, so tests/hook.test.ts passes") and a quoted command stay
+ * required.
  */
 function namedAsData(criterion: string, index: number, file: string): boolean {
-  const end = index + file.length;
-  if (/^:\d/.test(criterion.slice(end))) return true;
-  const quotesBefore = criterion.slice(0, index).split("\"").length - 1;
-  if (quotesBefore % 2 === 1 && criterion.indexOf("\"", end) !== -1) return true;
+  const after = criterion.slice(index + file.length);
+  if (/^:\d/.test(after)) return true;
+  if (!LIST_ITEM_END.test(after)) return false;
   for (const list of criterion.matchAll(VALUE_LIST)) {
     const start = list.index + list[0].length;
     if (start > index) break;
-    SENTENCE_END.lastIndex = start;
-    const stop = SENTENCE_END.exec(criterion)?.index ?? criterion.length;
-    if (index < stop) return true;
+    if (LIST_ITEMS_BEFORE.test(criterion.slice(start, index))) return true;
   }
   return false;
 }
