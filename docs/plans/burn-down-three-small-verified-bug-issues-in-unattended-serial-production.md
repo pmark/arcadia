@@ -60,10 +60,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask report-cut-work-monitor-attention-lines
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-bug-burn-plan-execution-build-20261106
+    source: Agent Ask amend-bug-burn-plan-cut-error-lines-20261106
     why: "formatWorkingCopySafetyLines ends with a bare slice, so a Project outside the first six lines looks clean to the operator and to orientation."
     acceptance_criteria:
-      - "When formatWorkingCopySafetyLines in src/workMonitoring/scanner.ts has more lines than its limit, it returns the first limit lines unchanged followed by exactly one extra line of the form \"3 more not shown: Alpha 1, Beta 2.\", where the number is the count of cut lines and each Project's cut count appears in Project-name order."
+      - "When formatWorkingCopySafetyLines in src/workMonitoring/scanner.ts has more lines than its limit, it returns the first limit lines unchanged followed by exactly one extra line of the form \"3 more not shown: Alpha 1, Beta 2.\", where the number is the count of cut lines, each cut line (a repository error line or a working-copy line) counts under its Project name, and the Projects appear in Project-name order."
       - When no line is cut, the output is unchanged and has no extra line.
       - A regression test in tests/work-monitor.test.ts on a hand-built snapshot proves both cases; it fails before the fix and passes after.
       - The existing limit-2 expectation in tests/work-monitor.test.ts changes only by gaining the new final line, and every other test in tests/work-monitor.test.ts and tests/work-monitor-failures.test.ts passes unchanged.
