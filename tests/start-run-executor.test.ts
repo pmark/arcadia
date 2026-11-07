@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import type { StartRunPins } from "../src/operatorActions/startRunPins.js";
+import { CONTINUE_ANSWER, CONTINUE_DECISION, CONTINUE_SLUG } from "../src/operatorActions/startRunDayGrant.js";
 import { DAY_CARD, DAY_RUN, dayScenarios, fixed, mergedFix, OLD_FIX_COMMIT, pressKey, STOP_ID, writeDayScenario, type DayScenario } from "./helpers/dayGrantFixture.js";
 
 /**
@@ -64,8 +65,8 @@ const planDocument = (status: "active" | "draft", done: string[] = [], actions: 
 ].join("\n");
 const projectDocument = (activePlan: string) => `---\nslug: arcadia\nactive_plan: ${activePlan}\n---\n`;
 const decisionDocument = (id: string, status = "approved", answer = "Yes") => `---\nid: "${id}"\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
-const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170", "0173", "0181", "0185"];
-const DECISION_ANSWERS: Record<string, string> = { "0173": '"A. Daily grant: START and routine run operations"', "0181": "A. Continued serial runs", "0185": "A. Continue after a reviewed fix merges" };
+const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170", "0173", "0181"];
+const DECISION_ANSWERS: Record<string, string> = { "0173": '"A. Daily grant: START and routine run operations"', "0181": "A. Continued serial runs" };
 
 type Scenario = "same" | "behind" | "pin-unfetched" | "origin-moved" | "diverged" | "ahead";
 interface BoxOptions {
@@ -76,6 +77,10 @@ interface BoxOptions {
   projectPointer?: string;
   done?: string[];
   decisions?: Record<string, string | null>;
+  /** Decision 0186's record at its real slug path (found by slug, not number): null leaves it out; default approved with A. */
+  continueDecision?: string | null;
+  /** More Decision records by path, such as another record sharing 0186's number or its slug. */
+  extraDecisions?: Record<string, string>;
   withoutFile?: string;
   expiresAt?: string;
   executorPin?: string;
@@ -121,7 +126,7 @@ function box(options: BoxOptions = {}) {
   git(repo, "init", "-b", "main");
   git(repo, "remote", "add", "origin", origin);
   writeFileSync(path.join(repo, ".gitignore"), "artifacts/generated/\nnode_modules\n");
-  // The base commit is dated before every scenario's failure, so Decision 0185 cases can name a fix merged too early (OLD_FIX_COMMIT).
+  // The base commit is dated before every scenario's failure, so Decision 0186 cases can name a fix merged too early (OLD_FIX_COMMIT).
   writeFileSync(path.join(repo, "README.md"), "base\n");
   git(repo, "add", "-A");
   const based = spawnSync("git", ["commit", "-m", "base"], { cwd: repo, encoding: "utf8", env: { ...process.env, ...GIT_ENV, GIT_AUTHOR_DATE: "2026-11-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-11-01T00:00:00Z" } });
@@ -142,6 +147,8 @@ function box(options: BoxOptions = {}) {
     if (body === null) continue;
     files[`docs/decisions/${id}-fixture.md`] = body ?? decisionDocument(id, "approved", DECISION_ANSWERS[id] ?? "Yes");
   }
+  if (options.continueDecision !== null) files[`docs/decisions/${CONTINUE_DECISION}-${CONTINUE_SLUG}.md`] = options.continueDecision ?? decisionDocument(CONTINUE_DECISION, "approved", CONTINUE_ANSWER);
+  Object.assign(files, options.extraDecisions ?? {});
   if (options.withoutFile) delete files[options.withoutFile];
   for (const [file, content] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
@@ -241,7 +248,7 @@ function box(options: BoxOptions = {}) {
     const scenario = options.dayGrant;
     const now = Date.now();
     // A merged fix's commit is only known here: PIN_COMMIT (FIX_COMMIT) stands for the reviewed revision, dated after every
-    // scenario's failure, and OLD_FIX_COMMIT for the base commit, dated before them (Decision 0185).
+    // scenario's failure, and OLD_FIX_COMMIT for the base commit, dated before them (Decision 0186).
     const commits: Record<string, string> = { [PIN_COMMIT]: pin, [OLD_FIX_COMMIT]: installed };
     const written = writeDayScenario(library, scenario, now, commits);
     dayPolicyRevision = written.policyRevision;
@@ -772,26 +779,38 @@ describe("start-run executor: Decision 0173 presses within the operator's day ap
     const present = box({ dayGrant: fix("src/production/workerMerge.ts") }).run("preflight");
     expect(present.status, present.stderr + present.stdout).toBe(0);
   });
-  it("Decision 0185: goes on past a failed batch only with option A at the pin and each fix on it, merged after the failure", () => {
+  it("Decision 0186: goes on past a failed batch only with option A at the pin and each fix on it, merged after the failure", () => {
     const expectP1 = (b: Box, reason: RegExp) => expectRefusedClean(b, b.run("preflight"), "P1", reason, b.head());
-    const after = (previous: DayScenario["previous"]): DayScenario => ({ ...fresh("Decision 0185: a failed batch whose next card names a merged fix for its cause"), previous });
+    const after = (previous: DayScenario["previous"]): DayScenario => ({ ...fresh("Decision 0186: a failed batch whose next card names a merged fix for its cause"), previous });
     const passed = box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run")) }).run("preflight");
     expect(passed.status, passed.stderr + passed.stdout).toBe(0);
     expect(passed.receipt!.record.delegation.clearedFailures).toMatchObject([{ batch: "start-a", press: pressKey("start-a"), cause: "stuck-run" }]);
-    // The code takes effect only once Decision 0185 is answered with option A on main.
-    expectP1(box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run")), decisions: { "0185": null } }), /FAILED_BATCH: Decision 0185 is not in docs\/decisions/);
-    expectP1(box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run")), decisions: { "0185": decisionDocument("0185", "open", "") } }), /FAILED_BATCH: Decision 0185 is not answered with option A/);
-    expectP1(box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run")), decisions: { "0185": decisionDocument("0185", "approved", "B. The first failed batch stops for the operator") } }), /FAILED_BATCH: Decision 0185 is not answered with option A/);
+    // The code takes effect only once Decision 0186 is answered with option A on main.
+    const cleared = () => after(fixed(pressKey("start-a"), "stuck-run"));
+    expectP1(box({ dayGrant: cleared(), continueDecision: null }), /FAILED_BATCH: no Decision record at .* has the slug/);
+    expectP1(box({ dayGrant: cleared(), continueDecision: decisionDocument("0186", "open", "") }), /FAILED_BATCH: Decision 0186 is not answered with option A/);
+    expectP1(box({ dayGrant: cleared(), continueDecision: decisionDocument("0186", "approved", "B. The first failed batch stops for the operator") }), /FAILED_BATCH: Decision 0186 is not answered with option A/);
+    expectP1(box({ dayGrant: cleared(), continueDecision: decisionDocument("0185", "approved", CONTINUE_ANSWER) }), /FAILED_BATCH: Decision 0186 is not answered with option A/);
+    // Found by its slug, never the first record with its number: two records share 0186 here, and the other sorts first.
+    const shared = box({ dayGrant: cleared(), continueDecision: decisionDocument("0186", "approved", "B. The first failed batch stops for the operator"), extraDecisions: { "docs/decisions/0186-aaa-authorize-one-start-card.md": decisionDocument("0186", "approved", CONTINUE_ANSWER) } });
+    expectP1(shared, /FAILED_BATCH: Decision 0186 is not answered with option A/);
+    const alongside = box({ dayGrant: cleared(), extraDecisions: { "docs/decisions/0186-aaa-authorize-one-start-card.md": decisionDocument("0186", "approved", "Yes") } }).run("preflight");
+    expect(alongside.status, alongside.stderr + alongside.stdout).toBe(0);
+    // A second record with its slug, or the slug under another number, cannot be told apart from it.
+    expectP1(box({ dayGrant: cleared(), extraDecisions: { [`docs/decisions/0185-${CONTINUE_SLUG}.md`]: decisionDocument("0185", "approved", CONTINUE_ANSWER) } }), /FAILED_BATCH: more than one Decision record at .* has the slug/);
+    expectP1(box({ dayGrant: cleared(), continueDecision: null, extraDecisions: { [`docs/decisions/0187-${CONTINUE_SLUG}.md`]: decisionDocument("0187", "approved", CONTINUE_ANSWER) } }), /FAILED_BATCH: the record with the slug .* is docs\/decisions\/0187-.*, not Decision 0186/);
     // A fix that is not on the reviewed revision, or that merged before the batch ended.
     expectP1(box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run", "stuck-run", "d".repeat(40))) }), /fix commit d+ named for the previous attempt is not on the reviewed revision/);
     expectP1(box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run", "stuck-run", OLD_FIX_COMMIT)) }), /FAILED_BATCH: the fix commit [0-9a-f]{40} is dated before the failed batch start-a ended/);
     // An earlier failure's fix, which the card after it named, is checked again at this card's pin.
-    const earlier = (commit: string): DayScenario => {
-      const scenario = fresh("Decision 0185: a failed batch cleared by a merged fix, then a clean batch");
-      return { ...scenario, presses: [scenario.presses![0], { ...scenario.presses![1], previous: { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt", clearance: mergedFix("stuck-run", commit) } }] };
+    const earlier = (commit: string, reproduction?: string): DayScenario => {
+      const scenario = fresh("Decision 0186: a failed batch cleared by a merged fix, then a clean batch");
+      const clearance = { ...mergedFix("stuck-run", commit), ...(reproduction ? { reproduction } : {}) };
+      return { ...scenario, presses: [scenario.presses![0], { ...scenario.presses![1], previous: { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt", clearance } }] };
     };
     expectP1(box({ dayGrant: earlier("d".repeat(40)) }), /FAILED_BATCH: the fix commit d+ named for the failed batch start-a is not on the reviewed revision/);
     expectP1(box({ dayGrant: earlier(OLD_FIX_COMMIT) }), /FAILED_BATCH: the fix commit [0-9a-f]{40} is dated before the failed batch start-a ended/);
+    expectP1(box({ dayGrant: earlier("0".repeat(40), "tests/absent-replay.test.ts") }), /FAILED_BATCH: the reproduction tests\/absent-replay\.test\.ts named for the failed batch start-a is missing/);
   }, 120_000);
   it("claims only one card to follow a press", () => {
     const b = box({ dayGrant: FIRST });
