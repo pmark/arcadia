@@ -1710,6 +1710,31 @@ replay of an already-settled `--request-id` still replays. Without the flag,
 activation is unchanged. `--repository` defaults to the git toplevel of the
 current directory.
 
+## Measure Critical-Path Idle Time (Momentum Keeper Layer 1)
+
+```bash
+pnpm arcadia production idle-front [--workspace <path>] [--wakes-dir <path>] [--expect-wake <session-or-role>]... [--tap-ready-at <time>] [--route-at <time>] [--json]
+```
+
+Read-only, while production is Active or Inactive. Line 1 is one JSON row
+(`arcadia-idle-front-row-v1`): `ts`, `critical_path` (`moving`, `blocked`,
+`inactive` or `unreadable`), `blocker_class`, `blocked_since`, `detected_at`,
+`route_at`, `tap_ready`, `idle_minutes` and `idle_minutes_by_cause`
+(`detection_lag`, `no_route`, `waiting_on_operator`, `no_ready_work`, always
+summing to the idle time), plus `armed_wakes`, `no_armed_wake` and
+`missing_wakes`. Each further line is a timeline event
+(`momentum.idle_front.check`, and `momentum.no_armed_wake` when no wake is
+armed) in the `arcadia-timeline-event-v1` shape. Only the production scope is
+the critical path: side work never offsets idle time, and an unreadable state
+reports `null` minutes, never zero.
+
+It reads production status, worker merges, the timeline's production and ping
+records, waiter processes (`ps`) and armed-until files
+(`{"schema":"arcadia-armed-wake-v1","session","role","armedAt","armedUntil"}`
+under `<workspace>/.arcadia/armed-wakes/`, deferral D2 of
+`docs/design/session-notifications.md`; no waiter writes them yet). It pings
+nobody and writes nothing; the events are printed, not stored.
+
 ## Check A Design Record Or Field Guide
 
 ```bash
