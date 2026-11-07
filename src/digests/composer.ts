@@ -445,19 +445,31 @@ async function persistDigest(input: {
   return { digest: digest!, artifact: artifact!, facts, narrative, report, summary, created: !existing };
 }
 
-/** Real local-preferred narrator, using the durable queue and in-process worker. */
+/**
+ * Real local-preferred narrator, using the durable queue and in-process worker.
+ *
+ * The CLI reads `.env` from its current directory, so a run from a linked
+ * worktree (which has no `.env`) has no LiteLLM proxy key. Executing the job
+ * here would send it unauthenticated and LiteLLM would block it with 401
+ * ("No api key passed in"). Without a key this process therefore leaves the
+ * queued job to the Arcadia Intelligence service, which is launched from the
+ * main checkout and does hold the key. With a key it runs only its own job.
+ */
 export function createIntelligenceDigestNarrator(
   db: Database.Database,
-  workspacePath: string
+  workspacePath: string,
+  env: NodeJS.ProcessEnv = process.env
 ): DigestNarrator {
   const repository = createSqliteIntelligenceJobRepository(db);
   const artifactStore = createSqliteIntelligenceArtifactStore(db, workspacePath);
-  const config = loadIntelligenceConfig(process.env);
-  const worker = new IntelligenceWorker(repository, createLiteLlmHttpClient({
-    baseUrl: config.liteLlmBaseUrl,
-    apiKey: config.liteLlmApiKey,
-    timeoutMs: DIGEST_TIMEOUT_MS
-  }), config, artifactStore);
+  const config = loadIntelligenceConfig(env);
+  const worker = config.liteLlmApiKey
+    ? new IntelligenceWorker(repository, createLiteLlmHttpClient({
+      baseUrl: config.liteLlmBaseUrl,
+      apiKey: config.liteLlmApiKey,
+      timeoutMs: DIGEST_TIMEOUT_MS
+    }), config, artifactStore)
+    : undefined;
 
   return async (input) => {
     const request = buildNarrativeDigestRequest({ subject: input.subject, window: input.window, facts: input.facts });
@@ -480,10 +492,17 @@ export function createIntelligenceDigestNarrator(
           `Digest narration failed (${current.error?.code ?? "UNKNOWN"}): ${current.error?.message ?? "no detail"}`
         );
       }
-      await worker.runOnce();
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      if (worker) await worker.runJob(submitted.id);
+      await new Promise((resolve) => setTimeout(resolve, worker ? 100 : 500));
     }
-    throw new NarrativeDigestUnavailableError(`Timed out waiting for digest job ${submitted.id}.`);
+    throw new NarrativeDigestUnavailableError(
+      worker
+        ? `Timed out waiting for digest job ${submitted.id}.`
+        : `Timed out waiting for digest job ${submitted.id}. ARCADIA_LITELLM_API_KEY is not set in this process ` +
+          `(Arcadia reads .env from the current directory, ${process.cwd()}), so the job was left for the ` +
+          "Arcadia Intelligence service, which did not complete it. Check `scripts/services.sh status`, " +
+          "or run the command through the `arcadia` launcher."
+    );
   };
 }
 

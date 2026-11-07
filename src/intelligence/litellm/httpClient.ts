@@ -18,6 +18,15 @@ export class LiteLlmUnavailableError extends Error {
   }
 }
 
+/**
+ * Explains a 401 sent without a proxy key. The CLI loads `.env` from its
+ * current directory, so a linked worktree (no `.env`) runs keyless.
+ */
+export const MISSING_PROXY_KEY_HINT =
+  "ARCADIA_LITELLM_API_KEY is not set in this process; Arcadia reads it from .env in the current " +
+  "directory, so a linked worktree has none. Run through the `arcadia` launcher or the Arcadia " +
+  "Intelligence service.";
+
 export interface LiteLlmHttpClientOptions {
   baseUrl: string;
   apiKey?: string;
@@ -73,8 +82,9 @@ export function createLiteLlmHttpClient(options: LiteLlmHttpClientOptions): Lite
 
     if (!response.ok) {
       const text = await response.text().catch(() => "");
+      const hint = response.status === 401 && !options.apiKey ? ` ${MISSING_PROXY_KEY_HINT}` : "";
       throw new LiteLlmUnavailableError(
-        `LiteLLM route "${route}" responded with ${response.status} ${response.statusText}. ${text}`.trim(),
+        `LiteLLM route "${route}" responded with ${response.status} ${response.statusText}. ${text}`.trim() + hint,
       );
     }
 
