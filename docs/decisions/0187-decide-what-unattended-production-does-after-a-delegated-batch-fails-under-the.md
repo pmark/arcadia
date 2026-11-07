@@ -4,7 +4,7 @@ type: decision
 id: "0187"
 slug: decide-what-unattended-production-does-after-a-delegated-batch-fails-under-the
 project: arcadia
-status: open
+status: approved
 question: Decide what unattended production does after a delegated batch fails under the day grant, re-deciding the stop rule of Decision 0181 A.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107
 updated: 2026-11-07
+answer: A. Continue after a reviewed fix merges
+decided: 2026-11-07
 ---
 
 # Decision 0187: Decide what unattended production does after a delegated batch fails under the day grant, re-deciding the stop rule of Decision 0181 A.
