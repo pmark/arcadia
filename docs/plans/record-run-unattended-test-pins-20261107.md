@@ -129,11 +129,11 @@ actions:
     references: []
   - id: pin-governed-record-path
     title: Pin exactly which repository paths count as governed records for Session scope checks, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin exactly which repository paths count as governed records for Session scope checks, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-governed-record-path-8cd950f5e743; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-governed-record-path
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-governed-record-path
+current_action: pin-ask-intent-work-kind
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
