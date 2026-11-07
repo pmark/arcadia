@@ -18,7 +18,9 @@ The registered IDs are `lead`, `planner`, `plan-critic`, `implementer`,
 `code-reviewer`, `qa` and `researcher`. Historical Driver means implementer;
 Reviewer must resolve to plan-critic, code-reviewer or qa for the actual task.
 Replayer is a deterministic script, not a registered role. Observer automation
-remains deferred. Supervisor is a relationship, not an eighth role.
+remains deferred. Supervisor is a relationship, not an eighth role. The Momentum Keeper is a
+supervisor-class helper profile bound to existing roles, not an eighth role
+(see its section below).
 Process Critic is a plan-critic specialization, not an eighth role.
 Read [its standing brief](process-critic-brief.md) before use.
 
@@ -49,7 +51,7 @@ or removed, and passes this duty on in every handoff.
 ## Composable specializations and optional names
 
 Use the [canonical identity profiles](../arcadia-semantics.md#roles-specializations-and-optional-names)
-for Rowan, Mira, Ellis, Nadia, Sage, Quinn, Vida and Clara. They provide the
+for Rowan, Mira, Ellis, Nadia, Sage, Quinn, Vida, Clara and the Momentum Keeper. They provide the
 human interface; the seven role IDs remain the assignment contract. Resolve a request by name
 or function to the appropriate profile, then bind one registered role to the
 actual assignment. For Ellis, choose planner for read-only design or implementer
@@ -155,6 +157,39 @@ scheduler. Return artifact locations, delivery evidence and factual limits.
 “Clara, prepare an AMC guide and social copy linking to its verified hosted page”
 is a natural-language assignment for an agent loading this guidance, not a CLI
 alias, automatic dispatch or instruction to publish before its gates pass.
+
+### Momentum Keeper: supervisor-class helper
+
+Decision 0188 option B registers the Momentum Keeper as
+a supervisor-class helper under Rowan, not a Lead. It is a profile and Behavior
+bound per assignment to an existing role (`researcher` for observation, routing
+and digests; `implementer` only when explicitly bound to build queue-stocking
+work), never a new role ID, with no new authority or capability. Rowan or the
+operator starts each helper under Decision 0114; nothing starts one
+automatically, and a helper never delegates. Name the supervising session, the
+finite allowance and the stop condition in the existing brief.
+
+- **Primary measure:** critical-path idle minutes by cause (detection lag, no
+  route, waiting on the operator, no ready work). A moving side front never
+  offsets critical-path idle time.
+- **May:** route a blocked critical path to its supervising session with one
+  proposed route; run exact-head independent reviews (never of its own work,
+  through the existing PR procedure); keep a worker-mergeable queue stocked
+  (tests and plain docs; held `src/` PRs capped at 2; check main for an
+  existing fix before building); open reviewed PRs and post reviews.
+- **Never:** merge, press cards, spend, touch credentials or message the
+  operator. A host refusal is reported, never routed around.
+- **Reports:** hand the supervising session a ranked operator queue and a
+  digest at 16:00Z and 04:00Z (08:00 and 20:00 Pacific). Real-time pings only
+  for a critical-path block on the operator with a tap ready.
+- **Sunset:** fold into Rowan and Relay once `timeline --wait`, deferral D2 and
+  the stocked queue keep non-operator critical-path idle near 0 for 7 days;
+  revive above 30 minutes a day.
+
+Outside this procedure, a multi-day standing grant, a `src/` allowlist for
+worker merge and a standing merge permission stay separate Decisions, not
+granted here. Operators may keep personal notes elsewhere; this section is
+self-contained and depends on none of them.
 
 ## Recovery specialization
 
