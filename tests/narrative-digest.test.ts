@@ -11,7 +11,10 @@ import {
   upsertProject
 } from "../src/db/repositories.js";
 import { buildNarrativeDigestRequest } from "../src/digests/contract.js";
-import { composeProjectDigest, gatherProjectDigestFacts } from "../src/digests/composer.js";
+import { composeProjectDigest, createIntelligenceDigestNarrator, gatherProjectDigestFacts } from "../src/digests/composer.js";
+import { loadIntelligenceConfig } from "../src/intelligence/config/defaults.js";
+import { createSqliteIntelligenceJobRepository } from "../src/intelligence/db/sqliteRepository.js";
+import { IntelligenceWorker } from "../src/intelligence/jobs/worker.js";
 import type { DigestNarrator, DigestWindow } from "../src/digests/types.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { runDigestExportCommand } from "../src/commands/digest.js";
@@ -320,5 +323,36 @@ describe("completed Actions as digest facts", () => {
       expect(completed[0]?.id).toBe(`completed-action:${inside.id}`);
       expect(completed[0]?.summary).toBe("Completed: Finished inside the window");
     });
+  });
+});
+
+describe("Intelligence digest narrator without a LiteLLM proxy key", () => {
+  it("leaves the job for the Intelligence service instead of sending it unauthenticated", async () => {
+    const { workspace } = workspaceWithProject();
+    const db = openDatabase(workspace);
+    try {
+      const narrator = createIntelligenceDigestNarrator(db, workspace, {});
+      const pending = narrator({
+        subject: { scope: "project", scopeKey: "project-alpha", projectId: "project-alpha", name: "Alpha", slug: "alpha" },
+        window: WINDOW,
+        facts: [{ id: "mission-log:1", kind: "mission_log", occurredAt: WINDOW.start, summary: "A test passed.", detail: {} }]
+      });
+
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      expect(db.prepare("SELECT status FROM intelligence_jobs").all()).toEqual([{ status: "queued" }]);
+
+      const generateStructured = vi.fn(async () => ({ output: { narrative: "Alpha passed a test." } }));
+      const service = new IntelligenceWorker(
+        createSqliteIntelligenceJobRepository(db),
+        { generateStructured, generateImage: vi.fn() },
+        loadIntelligenceConfig({ ARCADIA_LITELLM_API_KEY: "test-key" })
+      );
+      await service.runOnce();
+
+      await expect(pending).resolves.toMatchObject({ narrative: "Alpha passed a test." });
+      expect(generateStructured).toHaveBeenCalledTimes(1);
+    } finally {
+      db.close();
+    }
   });
 });

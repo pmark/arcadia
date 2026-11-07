@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createLiteLlmHttpClient } from "../../src/intelligence/litellm/httpClient.js";
+import { createLiteLlmHttpClient, MISSING_PROXY_KEY_HINT } from "../../src/intelligence/litellm/httpClient.js";
 import { buildIntelligenceRequest } from "./testSupport.js";
 
 function clientFor(content: unknown) {
@@ -9,6 +9,27 @@ function clientFor(content: unknown) {
   }), { status: 200, headers: { "content-type": "application/json" } });
   return createLiteLlmHttpClient({ baseUrl: "http://localhost", fetchImpl });
 }
+
+describe("LiteLLM 401 diagnosis", () => {
+  const request = buildIntelligenceRequest();
+  const unauthorized = async () => new Response(
+    JSON.stringify({ error: { message: "Authentication Error, No api key passed in." } }),
+    { status: 401, statusText: "Unauthorized" },
+  );
+
+  it("names the missing proxy key when the process sent none", async () => {
+    const client = createLiteLlmHttpClient({ baseUrl: "http://localhost", fetchImpl: unauthorized });
+    await expect(client.generateStructured(request, "arcadia-default"))
+      .rejects.toThrow(MISSING_PROXY_KEY_HINT);
+  });
+
+  it("does not blame the environment when a key was sent and rejected", async () => {
+    const client = createLiteLlmHttpClient({ baseUrl: "http://localhost", apiKey: "test-key", fetchImpl: unauthorized });
+    const error = await client.generateStructured(request, "arcadia-default").catch((caught: Error) => caught);
+    expect(String(error)).toContain("401 Unauthorized");
+    expect(String(error)).not.toContain(MISSING_PROXY_KEY_HINT);
+  });
+});
 
 describe("LiteLLM structured response", () => {
   const request = buildIntelligenceRequest();
