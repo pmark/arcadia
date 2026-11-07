@@ -632,8 +632,12 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
         remedy: `This is a host fault, not a candidate defect. Fix the host condition the message names (a runner or dependencies missing in the checkout, an unsupported host, or a validation that needs a longer bound), then clear this hold with \`arcadia production reset-repair-budget\` for ${actionKey} so the Action relaunches; the candidate is preserved at ${worktree} on ${session.branch}.`
       } };
     }
-    // The same refusal repeating across relaunches of one Action is a stuck loop, not progress.
-    const { attempts } = recordPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey), fingerprintPreservationRefusal(refusal, { candidate: evidence.candidateRevision ?? null }), refusal, new Date());
+    // The same refusal repeating across relaunches of one Action is a stuck loop, not progress. Its draft's
+    // file name and the candidate revision are not new evidence: a relaunch that redrafts under a new request
+    // id gets a new preserve commit every time, and once fingerprinting both let 26 relaunches of one
+    // unchanged refusal through (2026-11-07). Only the refusal itself, at most this many times running, counts.
+    const fingerprint = fingerprintPreservationRefusal(draftedCompletionRefusal(worktree, result.reason, undefined, result.detail), null);
+    const { attempts } = recordPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey), fingerprint, refusal, new Date());
     if (attempts >= MAX_IDENTICAL_PRESERVATION_REFUSALS) {
       const message = `${refusal} It was refused the same way ${attempts} times in a row, so it is not offered for automatic resumption.`;
       return { kind: "refused", reason: message, hold: {
