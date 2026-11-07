@@ -14,10 +14,24 @@ import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
 import { buildNarrativeDigestRequest } from "./contract.js";
 import {
+  buildDigestReport,
+  checkAiSummary,
+  deterministicSummary,
+  DIGEST_DETAIL_MARKER,
+  needsYouUnavailable,
+  renderDigestDetail,
+  renderDigestSections,
+  reportIsEmpty,
+  summaryFacts
+} from "./report.js";
+import {
   PORTFOLIO_SCOPE_KEY,
   type ComposedProjectDigest,
   type DigestFact,
   type DigestNarrator,
+  type DigestNeedsYou,
+  type DigestReport,
+  type DigestSummary,
   type DigestSubject,
   type DigestWindow,
   type NarrativeDigestRecord
@@ -67,12 +81,12 @@ export function gatherProjectDigestFacts(
   ).all({ projectId: project.id, start: normalized.start, end: normalized.end }) as Array<Record<string, string | null>>;
 
   const dispatches = db.prepare(
-    `SELECT id, occurred_at, command, dispatchable, blocker_count, blocker_fields, operator_question
+    `SELECT id, occurred_at, command, plan_slug, dispatchable, blocker_count, blocker_fields, operator_question
      FROM dispatch_events
      WHERE (project_id = @projectId OR (project_id IS NULL AND lower(project_slug) = lower(@projectSlug)))
        AND occurred_at >= @start AND occurred_at < @end`
   ).all({ projectId: project.id, projectSlug: project.slug, start: normalized.start, end: normalized.end }) as Array<{
-    id: string; occurred_at: string; command: string; dispatchable: number; blocker_count: number;
+    id: string; occurred_at: string; command: string; plan_slug: string | null; dispatchable: number; blocker_count: number;
     blocker_fields: string; operator_question: number;
   }>;
 
@@ -92,7 +106,7 @@ export function gatherProjectDigestFacts(
    */
   const completedActions = db.prepare(
     `SELECT wi.id, wi.updated_at AS occurred_at, wi.title, wi.next_action, wi.expected_artifact,
-       wi.work_classification, m.title AS milestone_title
+       wi.work_classification, wi.milestone_id, m.title AS milestone_title
      FROM work_items wi
      LEFT JOIN milestones m ON m.id = wi.milestone_id
      WHERE wi.project_id = @projectId
@@ -110,6 +124,8 @@ export function gatherProjectDigestFacts(
        AND COALESCE(ri.decided_at, ri.created_at) < @end`
   ).all({ projectId: project.id, start: normalized.start, end: normalized.end }) as Array<Record<string, string | null>>;
 
+  const merges = gatherMergedActions(db, project, normalized);
+
   return [
     ...completedActions.map((row): DigestFact => ({
       id: `completed-action:${row.id}`,
@@ -118,6 +134,7 @@ export function gatherProjectDigestFacts(
       summary: `Completed: ${row.title}`,
       detail: {
         milestone: row.milestone_title,
+        milestoneId: row.milestone_id,
         responsibility: row.work_classification,
         expectedArtifact: row.expected_artifact,
         nextAction: row.next_action
@@ -141,11 +158,13 @@ export function gatherProjectDigestFacts(
       summary: `${row.command} ${row.dispatchable === 1 ? "resolved as dispatchable" : `was refused with ${row.blocker_count} blocker(s)`}.`,
       detail: {
         command: row.command,
+        plan: row.plan_slug,
         dispatchable: row.dispatchable === 1,
         blockerFields: parseStringList(row.blocker_fields).join(", "),
         operatorQuestion: row.operator_question === 1
       }
     })),
+    ...merges,
     ...decisions.map((row): DigestFact => ({
       id: `decision:${row.id}`,
       kind: "decision",
@@ -158,6 +177,54 @@ export function gatherProjectDigestFacts(
       }
     }))
   ].sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id));
+}
+
+/**
+ * Pull requests the production worker merged in the window, matched to the
+ * Action (and so the goal) they delivered. `action_key` is `<project>/<action
+ * id>` and an Action's `doc_ref` is `plan/<plan>#<action id>`; an action id
+ * shared by two Plans is ambiguous, so it keeps no goal rather than a guessed one.
+ */
+function gatherMergedActions(
+  db: Database.Database,
+  project: Pick<Project, "id" | "slug">,
+  window: DigestWindow
+): DigestFact[] {
+  if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_worker_merges'").get()) return [];
+  const prefix = `${project.slug}/`;
+  const rows = db.prepare(
+    `SELECT request_id, action_key, pull_request_url, head, updated_at
+     FROM production_worker_merges
+     WHERE outcome = 'merged' AND substr(action_key, 1, length(@prefix)) = @prefix
+       AND updated_at >= @start AND updated_at < @end`
+  ).all({ prefix, start: window.start, end: window.end }) as Array<{
+    request_id: string; action_key: string; pull_request_url: string | null; head: string; updated_at: string;
+  }>;
+  const actionsFor = db.prepare(
+    `SELECT wi.id, wi.title, wi.milestone_id, m.title AS milestone_title
+     FROM work_items wi
+     LEFT JOIN milestones m ON m.id = wi.milestone_id
+     WHERE wi.project_id = ? AND wi.archived_at IS NULL
+       AND instr(wi.doc_ref, '#') > 0 AND substr(wi.doc_ref, instr(wi.doc_ref, '#') + 1) = ?`
+  );
+  return rows.map((row): DigestFact => {
+    const actionId = row.action_key.slice(prefix.length);
+    const matches = actionsFor.all(project.id, actionId) as Array<{ id: string; title: string; milestone_id: string | null; milestone_title: string | null }>;
+    const action = matches.length === 1 ? matches[0] : null;
+    return {
+      id: `merged:${row.request_id}`,
+      kind: "merged",
+      occurredAt: row.updated_at,
+      summary: `Merged: ${action?.title ?? actionId}`,
+      detail: {
+        actionId,
+        milestone: action?.milestone_title ?? null,
+        milestoneId: action?.milestone_id ?? null,
+        head: row.head,
+        url: row.pull_request_url
+      }
+    };
+  });
 }
 
 /** The subject describing one Project. */
@@ -200,18 +267,26 @@ export function gatherPortfolioDigestFacts(
     .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt) || a.id.localeCompare(b.id));
 }
 
+export interface DigestReportInputs {
+  /** Ranked operator items; when omitted the page says the to-do list was not read. */
+  needsYou?: DigestNeedsYou;
+  /** The instant open alerts and waiting times are measured against. */
+  now?: Date;
+}
+
 export async function composeProjectDigest(input: {
   db: Database.Database;
   workspacePath: string;
   project: Project;
   window: DigestWindow;
   narrator: DigestNarrator;
-}): Promise<ComposedProjectDigest> {
+} & DigestReportInputs): Promise<ComposedProjectDigest> {
   const window = normalizeWindow(input.window);
   return persistDigest({
     ...input,
     window,
     subject: projectDigestSubject(input.project),
+    projects: [input.project],
     facts: gatherProjectDigestFacts(input.db, input.project, window)
   });
 }
@@ -223,7 +298,7 @@ export async function composePortfolioDigest(input: {
   projects: Project[];
   window: DigestWindow;
   narrator: DigestNarrator;
-}): Promise<ComposedProjectDigest> {
+} & DigestReportInputs): Promise<ComposedProjectDigest> {
   const window = normalizeWindow(input.window);
   return persistDigest({
     ...input,
@@ -233,22 +308,90 @@ export async function composePortfolioDigest(input: {
   });
 }
 
+/**
+ * Compute and render a digest without storing anything: no Artifact, no row,
+ * and no Intelligence job unless a narrator is supplied.
+ */
+export async function previewDigest(input: {
+  db: Database.Database;
+  subject: DigestSubject;
+  projects: Array<Pick<Project, "id" | "slug" | "name">>;
+  window: DigestWindow;
+  narrator?: DigestNarrator;
+} & DigestReportInputs): Promise<{ report: DigestReport; summary: DigestSummary; facts: DigestFact[]; narrative: string }> {
+  const window = normalizeWindow(input.window);
+  const facts = input.subject.scope === "portfolio"
+    ? gatherPortfolioDigestFacts(input.db, input.projects, window)
+    : gatherProjectDigestFacts(input.db, input.projects[0], window);
+  const report = buildDigestReport({
+    db: input.db,
+    subject: input.subject,
+    projects: input.projects,
+    window,
+    facts,
+    needsYou: input.needsYou ?? NEEDS_YOU_NOT_READ,
+    now: input.now ?? new Date()
+  });
+  const summary = await summarizeReport(report, window, input.narrator ?? null);
+  return { report, summary, facts, narrative: renderDigestSections(report, summary) };
+}
+
+const NEEDS_YOU_NOT_READ = needsYouUnavailable("the to-do list was not read for this digest");
+
+/**
+ * The AI headline, or the computed one.
+ *
+ * A digest is never lost to the model: an unreachable service, a failed job,
+ * a malformed result, or a headline stating a number the facts lack all fall
+ * back to the deterministic summary, labelled as such, with the reason kept.
+ */
+export async function summarizeReport(
+  report: DigestReport,
+  window: DigestWindow,
+  narrator: DigestNarrator | null
+): Promise<DigestSummary> {
+  const fallback = (fallbackReason: string | null): DigestSummary => ({
+    text: deterministicSummary(report),
+    source: "deterministic",
+    fallbackReason,
+    jobId: null
+  });
+  if (reportIsEmpty(report) || !narrator) return fallback(null);
+  const facts = summaryFacts(report);
+  try {
+    const narrated = await narrator({ subject: report.subject, window, facts });
+    const checked = checkAiSummary(typeof narrated.summary === "string" ? narrated.summary : "", facts);
+    if (!checked.ok) return { ...fallback(checked.reason), jobId: narrated.jobId };
+    return { text: checked.text, source: "ai", fallbackReason: null, jobId: narrated.jobId };
+  } catch (error) {
+    return fallback(error instanceof Error ? error.message : String(error));
+  }
+}
+
 async function persistDigest(input: {
   db: Database.Database;
   workspacePath: string;
   subject: DigestSubject;
+  projects: Array<Pick<Project, "id" | "slug" | "name">>;
   window: DigestWindow;
   facts: DigestFact[];
   narrator: DigestNarrator;
-}): Promise<ComposedProjectDigest> {
+} & DigestReportInputs): Promise<ComposedProjectDigest> {
   const { db, subject, window, facts } = input;
-  const narrated = await input.narrator({ subject, window, facts });
-  const narrative = facts.length === 0
-    ? `Nothing happened in ${subject.name}'s recorded activity during this ${window.period} window.`
-    : requireNarrative(narrated.narrative);
+  const report = buildDigestReport({
+    db,
+    subject,
+    projects: input.projects,
+    window,
+    facts,
+    needsYou: input.needsYou ?? NEEDS_YOU_NOT_READ,
+    now: input.now ?? new Date()
+  });
+  const summary = await summarizeReport(report, window, input.narrator);
+  const narrative = renderDigestSections(report, summary);
 
   const relativePath = digestRelativePath(subject.slug, window);
-  writeDigestAtomically(input.workspacePath, relativePath, subject, window, facts, narrative);
+  writeDigestAtomically(input.workspacePath, relativePath, subject, window, facts, narrative, summary, report);
 
   const timestamp = nowIso();
   const existing = db.prepare(
@@ -272,7 +415,7 @@ async function persistDigest(input: {
         `UPDATE narrative_digests
          SET intelligence_job_id = ?, facts_json = ?, updated_at = ?
          WHERE id = ?`
-      ).run(narrated.jobId, JSON.stringify(facts), timestamp, existing.id);
+      ).run(summary.jobId, JSON.stringify(facts), timestamp, existing.id);
       digest = db.prepare("SELECT * FROM narrative_digests WHERE id = ?").get(existing.id) as NarrativeDigestRecord;
       return;
     }
@@ -293,13 +436,13 @@ async function persistDigest(input: {
     ).run(
       id, subject.scope, subject.scopeKey, subject.projectId, artifact.id,
       window.period, window.start, window.end,
-      narrated.jobId, JSON.stringify(facts), timestamp, timestamp
+      summary.jobId, JSON.stringify(facts), timestamp, timestamp
     );
     digest = db.prepare("SELECT * FROM narrative_digests WHERE id = ?").get(id) as NarrativeDigestRecord;
   });
   transaction();
 
-  return { digest: digest!, artifact: artifact!, facts, narrative, created: !existing };
+  return { digest: digest!, artifact: artifact!, facts, narrative, report, summary, created: !existing };
 }
 
 /** Real local-preferred narrator, using the durable queue and in-process worker. */
@@ -325,7 +468,7 @@ export function createIntelligenceDigestNarrator(
       const current = await repository.findById(submitted.id);
       if (!current) throw new NarrativeDigestUnavailableError(`Digest job disappeared: ${submitted.id}`);
       if (current.status === "completed") {
-        return { narrative: normalizeNarrative(current.result), jobId: current.id };
+        return { summary: normalizeSummary(current.result), jobId: current.id };
       }
       if (current.status === "blocked") {
         throw new NarrativeDigestUnavailableError(
@@ -344,18 +487,14 @@ export function createIntelligenceDigestNarrator(
   };
 }
 
-function normalizeNarrative(raw: unknown): string {
-  const narrative = raw && typeof raw === "object" && "narrative" in raw
-    ? (raw as { narrative?: unknown }).narrative
+function normalizeSummary(raw: unknown): string {
+  const summary = raw && typeof raw === "object" && "summary" in raw
+    ? (raw as { summary?: unknown }).summary
     : undefined;
-  return requireNarrative(narrative);
-}
-
-function requireNarrative(value: unknown): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new NarrativeDigestInvalidResultError("Digest result must contain a non-empty narrative.");
+  if (typeof summary !== "string" || !summary.trim()) {
+    throw new NarrativeDigestInvalidResultError("Digest result must contain a non-empty summary.");
   }
-  return value.trim();
+  return summary.trim();
 }
 
 function normalizeWindow(window: DigestWindow): DigestWindow {
@@ -386,7 +525,9 @@ function writeDigestAtomically(
   subject: DigestSubject,
   window: DigestWindow,
   facts: DigestFact[],
-  narrative: string
+  narrative: string,
+  summary: DigestSummary,
+  report: DigestReport
 ): void {
   const projectName = subject.name;
   const target = path.join(workspacePath, relativePath);
@@ -395,7 +536,9 @@ function writeDigestAtomically(
   const body = [
     "---",
     "artifact_type: narrative_digest",
-    "narration: local-ai",
+    // Only the headline can be model-written; say which it is.
+    `narration: ${summary.source === "ai" ? "local-ai" : "deterministic"}`,
+    ...(summary.fallbackReason ? [`summary_fallback_reason: ${JSON.stringify(summary.fallbackReason)}`] : []),
     `scope: ${subject.scope}`,
     // The roll-up is not any one Project's; naming a `project` for it would be
     // the first false claim in a document whose whole point is not making any.
@@ -410,6 +553,10 @@ function writeDigestAtomically(
     `# ${projectName} ${window.period} digest`,
     "",
     narrative,
+    "",
+    DIGEST_DETAIL_MARKER,
+    "",
+    renderDigestDetail(facts, report.operatorInteractions),
     ""
   ].join("\n");
   writeFileSync(temporary, body, "utf8");
