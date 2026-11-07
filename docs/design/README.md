@@ -6,6 +6,7 @@
 
 - [Arcadia conversational workspace UX design specification](arcadia-conversational-workspace.md) — living product design specification, visual references, interaction rules, operator feedback, and open questions.
 - [Relay: the three Workspace layers](relay/workspace-layers.md) — the scene shows status, the view defines context, and the Relay overlay is always available; approved by the operator with 1A and 2A.
+- [Session notifications](session-notifications.md) — how a coding session is woken by the events it waits on (merges, red checks, card presses, production changes, escalations): one read-only `arcadia timeline --wait` over existing records, a resumable cursor, and the first build step (proposal only).
 - [Session evidence](arcadia-conversational-workspace-evidence.md) — source and validation limits for the design draft.
 
 The companion [article](../articles/2026-10-14-arcadia-spatial-background.md) explains the experience conversationally.
