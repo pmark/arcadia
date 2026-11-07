@@ -510,14 +510,16 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
   it.each(["restart", "stop"] as const)("runs %s when Inactive", (action) => {
     const result = services(action);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.implCalls).toBe(action);
+    // A successful post-restart ensure is followed by `impl liveness` (#2094); stop never ensures.
+    expect(result.implCalls).toBe(action === "restart" ? "restart\nliveness" : "stop");
   });
 
   it("runs G8's Off-first restart: activation, terminal Off receipt, then restart and its go-broker ensure", () => {
     activateThenOff();
     const result = services("restart");
     expect(result.status, result.stderr).toBe(0);
-    expect(result.implCalls).toBe("restart");
+    // The ensure succeeds (Off), so the restart is followed by `impl liveness` (#2094).
+    expect(result.implCalls).toBe("restart\nliveness");
     expect(result.pnpmCalls).toBe("arcadia go-broker ensure override=unset");
     expect(result.stderr).not.toContain("go-broker ensure failed");
   });
@@ -553,7 +555,7 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
     const liveRowsBefore = liveActivity(live);
     const inactive = services("restart", inline);
     expect(inactive.status, inactive.stderr).toBe(0);
-    expect(inactive.implCalls).toBe("restart");
+    expect(inactive.implCalls).toBe("restart\nliveness");
     activate(live);
     for (const action of ["restart", "stop"] as const) {
       const refused = services(action, inline);
