@@ -360,11 +360,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-repository-frame-extraction
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
+    source: Agent Ask amend-pin-repository-frame-extraction-acceptance-wording-20261107
     why: "firstRepositoryFrame labels soak failures by where they happened, and no test calls it directly, so matching node_modules frames or dropping the column handling would pass every test today."
     acceptance_criteria:
-      - "tests/pin-repository-frame-extraction.test.ts is a new test file that imports firstRepositoryFrame from ../src/soak/rehearsalSoak.js and asserts firstRepositoryFrame returns \"src/foo/bar.ts:12\" for a stack whose frames are, in order, node_modules/x/index.js:5:1, src/foo/bar.ts:12:3 and tests/baz.test.ts:7:1."
-      - "The same test file asserts firstRepositoryFrame(\"at scripts/run.mjs:9:2\") returns \"scripts/run.mjs:9\" and firstRepositoryFrame(\"at tests/a.test.ts:3:1\") returns \"tests/a.test.ts:3\"."
+      - "tests/pin-repository-frame-extraction.test.ts is a new test file that imports firstRepositoryFrame from ../src/soak/rehearsalSoak.js and asserts firstRepositoryFrame returns \"src/foo/bar.ts:12\" for a stack whose frames are, in order, node_modules/x/index.js:5:1, src/foo/bar.ts:12:3 and a frame in a file under tests/ whose name ends in .test.ts, at line 7, column 1."
+      - "The same test file asserts firstRepositoryFrame(\"at scripts/run.mjs:9:2\") returns \"scripts/run.mjs:9\" and for a stack whose only frame is at line 3, column 1 of a file under tests/ whose name ends in .test.ts, it returns that same path followed by :3."
       - "The same test file asserts firstRepositoryFrame returns null for \"Error: no frames here\", for \"at node_modules/x/index.js:5:1\" and for \"\"."
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-repository-frame-extraction.test.ts, a new test file that imports only vitest and src/soak/rehearsalSoak.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.

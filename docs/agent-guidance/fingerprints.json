@@ -19,7 +19,7 @@
     "standard-harness": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f",
     "ask-todo-scout": "1bf00104667677704da2c3cb7cbacdc09328cbcf0894b2e1c57a62d5868e52e8",
     "consultation": "3f65a6300758cfe16d0b723fc10f30cb586e095c5e95b2aaf20eea0483ff608d",
-    "session-roles-and-briefs": "6dbab040f1a72e26f98f2371f84f59fcf797b2f40a393e5e349f07d9c1c6863a",
+    "session-roles-and-briefs": "c1b77d8c27e585701e4bd06147eb3f05adc395329b724ee1295eb9ed52477aae",
     "native-app-sessions": "502882ca6bb33b2cc602052d7c94722d57566d3d59ed42fc1fb3edea57c88748",
     "hacker-recovery": "2e27d7d4b41bdb2301785e856badd15ea855fce9b3522a53f3f77c9adf3ff14e",
     "code-simplification": "d9fc57994df2a56476525c2f4acae9e1561aa6bd42c7279c765be07e498364b4",
@@ -30,6 +30,7 @@
     "process-critic": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8",
     "relay-mode": "3448d7cf69abd62380f35a39c93c85fa3f91fe062da3e7c87874e27415695885",
     "relay-driven-operations": "1c68f139bca7b3edb0d98caacd9cb22b89ca5d077c1810886df217ed0bf93c48",
+    "coordinator-handoff": "5a9fc1e94a52de16fa510e7e7b3e8e334a4d09efa7cf02407490d1592d2111b3",
     "signal": "1f1b13c75b07467029c44d74ddabc49eec2c905c7fe76b1c905486710027813a"
   }
 }

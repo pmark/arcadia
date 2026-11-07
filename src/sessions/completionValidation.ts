@@ -114,13 +114,43 @@ function removes(criterion: string, file: string): boolean {
     || new RegExp(String.raw`${name}['"\x60]?\s+(?:is|are|was|were|gets|will\s+be)\s+${REMOVAL_VERB}\b`, "i").test(criterion);
 }
 
-/** The test files an Action's acceptance criteria name explicitly (and do not remove), in first-mention order. */
+// "returns true for <a>, <b> and <c>", "is false for each of <a> and <b>": the
+// items that follow list values an assertion is made about.
+const VALUE_LIST = /\b(?:true|false)\s+for\s+(?:each\s+of\s+|all\s+of\s+|every\s+one\s+of\s+)?/gi;
+// Only single-token items and their separators may stand between the list's start and the mention...
+const LIST_ITEMS_BEFORE = /^(?:[^\s,;]+(?:,\s*(?:(?:and|or)\s+)?|\s+(?:and|or)\s+))*$/;
+// ...and the mention must end its item: a separator, or the end of the sentence.
+const LIST_ITEM_END = /^(?:,|\s+(?:and|or)\s|[.;](?:\s|$)|$)/;
+
+/**
+ * Whether the mention at `index` is data a criterion asserts about rather than
+ * a file the change must contain (2026-11-07: "asserts it is false for each of
+ * ..., tests/x.test.ts and ./PROJECT.md" refused 26 relaunches as missing): a
+ * source location (`tests/a.test.ts:3`, `"at tests/a.test.ts:3:1"`), or an
+ * item of a true/false value list. A mention in prose after the list ("true
+ * for staged files, so tests/hook.test.ts passes") and a quoted command stay
+ * required.
+ */
+function namedAsData(criterion: string, index: number, file: string): boolean {
+  const after = criterion.slice(index + file.length);
+  if (/^:\d/.test(after)) return true;
+  if (!LIST_ITEM_END.test(after)) return false;
+  for (const list of criterion.matchAll(VALUE_LIST)) {
+    const start = list.index + list[0].length;
+    if (start > index) break;
+    if (LIST_ITEMS_BEFORE.test(criterion.slice(start, index))) return true;
+  }
+  return false;
+}
+
+/** The test files an Action's acceptance criteria name explicitly as files (not as data, and not removed), in first-mention order. */
 export function namedTestFiles(criteria: readonly string[]): string[] {
   const found: string[] = [];
   for (const criterion of criteria) {
     for (const match of criterion.matchAll(NAMED_TEST_FILE)) {
       const file = match[1];
       if (file.split("/").some((segment) => segment === "." || segment === "..")) continue;
+      if (namedAsData(criterion, match.index, file)) continue;
       if (removes(criterion, file)) continue;
       if (!found.includes(file)) found.push(file);
     }
