@@ -313,7 +313,7 @@ export interface ProductionLivenessOptions {
   dashboardUrl?: string;
 }
 
-interface LivenessPingInput {
+export interface LivenessPingInput {
   workspace: string;
   message: string;
   kind: string;
@@ -461,13 +461,18 @@ function captureHangEvidence(
 
 /** A link that would make the ping refuse must not cost the alert; a bad setting falls back to the local dashboard. */
 function productionLink(configured: string | undefined): string {
+  return dashboardLink(configured, "/production");
+}
+
+/** The same fallback for any dashboard route; the momentum alarm links `/todo` when a tap waits there. */
+export function dashboardLink(configured: string | undefined, route: string): string {
   const base = (configured || process.env["ARCADIA_DASHBOARD_URL"] || DEFAULT_DASHBOARD_URL).trim().replace(/\/+$/, "");
-  const link = `${base}/production`;
+  const link = `${base}${route}`;
   try {
     const { protocol } = new URL(link);
     if (protocol === "http:" || protocol === "https:") return link;
   } catch { /* falls through */ }
-  return `${DEFAULT_DASHBOARD_URL}/production`;
+  return `${DEFAULT_DASHBOARD_URL}${route}`;
 }
 
 function pingMessage(

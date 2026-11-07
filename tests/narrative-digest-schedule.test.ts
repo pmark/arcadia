@@ -6,7 +6,7 @@ import { runDigestMarkPostedCommand, runDigestRunCommand } from "../src/commands
 import { withDatabase } from "../src/db/connection.js";
 import { createMissionLog, setMissionLogDocRef, upsertProject } from "../src/db/repositories.js";
 import { completedWindow, describeWindow, dueDigestWindows } from "../src/digests/schedule.js";
-import type { DigestNarrator } from "../src/digests/types.js";
+import type { DigestNarrator, DigestNeedsYou } from "../src/digests/types.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
@@ -57,11 +57,14 @@ function narrator(behavior?: (subject: string) => void): DigestNarrator {
   return async (input) => {
     behavior?.(input.subject.name);
     return {
-      narrative: `${input.subject.name} narration of ${input.facts.length} fact(s).`,
+      summary: `${input.subject.name} summary from the computed facts.`,
       jobId: null
     };
   };
 }
+
+/** The operator to-do, injected: these tests are about cadence, not the to-do reader. */
+const NO_NEEDS: DigestNeedsYou = { items: [], unavailable: null, listLink: null };
 
 function enableMemory(workspace: string): string {
   const vaultPath = mkdtempSync(path.join(tmpdir(), "arcadia-digest-schedule-vault-"));
@@ -214,31 +217,65 @@ describe("scheduled digest run", () => {
     const second = await runDigestRunCommand({ workspace, now: NOW, narrator: narrator() });
     const retried = second.data.pending.find((entry) => entry.digestId === dailyId)!;
     expect(retried.status).toBe("pending-delivery");
-    expect(retried.body).toContain("Alpha — day digest (2026-08-04)");
+    expect(retried.body).toContain("**Alpha · daily digest · 2026-08-04**");
+    expect(retried.body).toContain(`arcadia digest show ${dailyId} --detail`);
+    // Detail stays behind the link; it is never delivered inline.
+    expect(retried.body).not.toContain("## Detail");
     expect(second.data.pending.some((entry) => entry.digestId === portfolioDaily.digestId)).toBe(false);
+  });
+
+  it("falls back to the computed summary when the model fails, and still delivers", async () => {
+    const { workspace, projectIds } = workspaceWithProjects(["Alpha", "Beta"]);
+    logOn(workspace, projectIds[0], "2026-07-29", "alpha", "Shipped the parser.");
+    logOn(workspace, projectIds[1], "2026-07-29", "beta", "Shipped the exporter.");
+
+    const response = await runDigestRunCommand({
+      workspace,
+      now: NOW,
+      needsYou: NO_NEEDS,
+      narrator: narrator((subject) => {
+        if (subject === "Alpha") throw new Error("Local model unreachable.");
+      })
+    });
+
+    expect(response.data.entries.every((entry) => entry.status === "composed")).toBe(true);
+    const alphaDaily = response.data.entries.find((entry) => entry.subject === "Alpha" && entry.period === "week")!;
+    expect(alphaDaily.body).toContain("_Computed; AI summary unavailable_");
+    expect(alphaDaily.body).not.toContain("Alpha summary from the computed facts.");
+    const betaDaily = response.data.entries.find((entry) => entry.subject === "Beta" && entry.period === "week")!;
+    expect(betaDaily.body).toContain("_AI-written from the computed facts below_");
+    withDatabase(workspace, (db) => {
+      const artifact = db.prepare(
+        "SELECT a.path FROM narrative_digests d JOIN artifacts a ON a.id = d.artifact_id WHERE d.id = ?"
+      ).get(alphaDaily.digestId) as { path: string };
+      const source = readFileSync(path.join(workspace, artifact.path), "utf8");
+      expect(source).toContain("narration: deterministic");
+      expect(source).toContain('summary_fallback_reason: "Local model unreachable."');
+    });
   });
 
   it("logs one subject's failure without blocking any other subject or cadence", async () => {
     const { workspace, projectIds } = workspaceWithProjects(["Alpha", "Beta"]);
     logOn(workspace, projectIds[0], "2026-08-04", "alpha", "Shipped the parser.");
     logOn(workspace, projectIds[1], "2026-08-04", "beta", "Shipped the exporter.");
-
-    const response = await runDigestRunCommand({
-      workspace,
-      now: NOW,
-      narrator: narrator((subject) => {
-        if (subject === "Alpha") throw new Error("Local model unreachable.");
-      })
+    await runDigestRunCommand({ workspace, now: NOW, narrator: narrator(), needsYou: NO_NEEDS });
+    // Break every stored Alpha digest so its retried delivery cannot be rebuilt.
+    withDatabase(workspace, (db) => {
+      db.prepare(
+        "UPDATE artifacts SET path = NULL WHERE id IN (SELECT artifact_id FROM narrative_digests WHERE project_id = ?)"
+      ).run(projectIds[0]);
     });
+
+    const response = await runDigestRunCommand({ workspace, now: NOW, narrator: narrator(), needsYou: NO_NEEDS });
 
     const failed = response.data.entries.filter((entry) => entry.status === "failed");
     expect(failed).toHaveLength(3);
     expect(failed.every((entry) => entry.subject === "Alpha")).toBe(true);
-    expect(failed[0].error).toContain("Local model unreachable.");
+    expect(failed[0].error).toContain("no stored path");
     expect(response.warnings.some((warning) => warning.includes("Alpha"))).toBe(true);
 
-    // Beta and the portfolio still got all three cadences.
-    const survived = response.data.entries.filter((entry) => entry.status === "composed");
+    // Beta and the portfolio still came back for delivery in all three cadences.
+    const survived = response.data.entries.filter((entry) => entry.status === "pending-delivery");
     expect(survived).toHaveLength(6);
     expect(new Set(survived.map((entry) => entry.period))).toEqual(new Set(["day", "week", "month"]));
   });
@@ -284,7 +321,7 @@ describe("scheduled digest run", () => {
 
     const daily = response.data.entries.find((entry) => entry.period === "day" && entry.scope === "project")!;
     expect(daily.factCount).toBe(0);
-    expect(daily.body).toContain("Nothing happened in Alpha's recorded activity");
+    expect(daily.body).toContain("Nothing was recorded in this window.");
   });
 });
 
