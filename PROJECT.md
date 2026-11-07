@@ -8,8 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Keep unattended serial production running overnight on three test-only Actions that pin untested behaviour.
 active_plan: portfolio-docs-protocol
-current_action: narrative-summarization
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Arcadia
