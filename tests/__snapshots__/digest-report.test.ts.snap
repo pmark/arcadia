@@ -1,0 +1,94 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`digest page rendering > blocked-on-operator day: ranked items with one action, the link and the cost of waiting 1`] = `
+"**Alpha · daily digest · 2026-07-01**
+
+**Summary** · _AI-written from the computed facts below_
+x
+
+**Progress by goal**
+
+No goal moved in this window.
+
+_1 other active goal did not move._
+
+**Needs you** · 2
+
+1. STOPPED: a3: The previewed Action is not ready to launch.
+   → https://dash.example.ts.net/todo/escalation%3Abuild_packet_approval_pending/alpha/a3
+   If it waits, the Action cannot launch until you approve.
+
+2. Decide whether unattended runs continue after a failed batch
+   → https://dash.example.ts.net/todo/decision/alpha/0042
+   If it waits, the work this Decision gates stays held.
+
+**Operator interactions** · 0
+None were needed in this window.
+
+**Where activity happened** · 0 recorded events
+No recorded activity.
+
+**Risks and stalls**
+• 1 red alert open. Oldest: repair_budget_repeat on alpha/a3, 6h old.
+• Production is stopped on 1 item until you act. The oldest has waited 5h.
+• Stalled: Pin every untested surface. 1 left; the last Action finished 2026-06-30.
+
+Detail: \`arcadia digest show digest_fixture --detail\`"
+`;
+
+exports[`digest page rendering > busy day: progress by goal first, relative activity, risks only when present 1`] = `
+"**Portfolio · daily digest · 2026-07-01**
+
+**Summary** · _AI-written from the computed facts below_
+Pinning moved fastest: 3 more Actions done and 2 merged, now 6 of 8. Docs sync reached its goal. Nothing waits on you.
+
+**Progress by goal**
+
+**Pin every untested surface in unattended production**
+Alpha · ████████░░ 6/8 done · +3 done, 2 merged
+2 left · about 3 days at the 7-day pace
+
+**Docs sync ingests a real project** · reached
+Beta · ██████████ 2/2 done · +1 done
+
+**Needs you**
+Nothing.
+
+**Operator interactions** · 0
+None were needed in this window.
+
+**Where activity happened** · 8 recorded events
+\`\`\`
+alpha  ████████░░  75%
+beta   ███░░░░░░░  25%
+\`\`\`
+
+**Risks and stalls**
+• 1 dispatch attempt refused; most often on agent_ask.
+
+Detail: \`arcadia digest show digest_fixture --detail\`"
+`;
+
+exports[`digest page rendering > quiet day: says plainly that nothing moved, and makes no model call 1`] = `
+"**Alpha · daily digest · 2026-07-01**
+
+**Summary** · _Computed_
+Nothing was recorded in this window.
+
+**Progress by goal**
+
+No goal moved in this window.
+
+_1 other active goal did not move._
+
+**Needs you**
+Nothing.
+
+**Operator interactions** · 0
+None were needed in this window.
+
+**Where activity happened** · 0 recorded events
+No recorded activity.
+
+Detail: \`arcadia digest show digest_fixture --detail\`"
+`;

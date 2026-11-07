@@ -148,6 +148,8 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "agent-ask notification-sent": DELIVERY_RECEIPT,
   "operator-action settle-ask": ALLOWED,
   // Queueing is an outbox write, like `agent-ask settle`; only the live bot ever delivers.
+  "operator-interaction record": ALLOWED,
+  "operator-interaction list": ALLOWED,
   "ping send": ALLOWED,
   "ping pending": ALLOWED,
   "ping sent": DELIVERY_RECEIPT,
@@ -310,6 +312,8 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "digest compose": ALLOWED,
   "digest export": ALLOWED,
   "digest run": ALLOWED,
+  "digest preview": ALLOWED,
+  "digest show": ALLOWED,
   "digest mark-posted": DELIVERY_RECEIPT,
   "artifact create": ALLOWED,
   "artifact list": ALLOWED,

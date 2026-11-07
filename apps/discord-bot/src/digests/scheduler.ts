@@ -130,7 +130,16 @@ async function postDigest(
     return;
   }
 
-  const sent = await channel.send({ content: truncateForDiscord(entry.body, entry.digestId) });
+  // A long page goes out as consecutive messages split between sections. It is
+  // marked posted (with the first message's id) only after every part is sent,
+  // so a failure part-way re-posts the page next tick rather than losing part of it.
+  let firstId: string | null = null;
+  for (const content of splitForDiscord(entry.body, entry.digestId)) {
+    const part = await channel.send({ content });
+    firstId ??= part.id;
+  }
+  if (!firstId) return;
+  const sent = { id: firstId };
   const marked = await cli.digestMarkPosted(entry.digestId, sent.id);
   if (!marked.ok) {
     // Worth surfacing loudly: an unrecorded delivery means the next tick will
@@ -158,13 +167,30 @@ function isPastTargetLocalTime(targetLocalTime: string): boolean {
 }
 
 /**
- * Discord rejects any message over 2000 characters outright. A narrated digest
- * is normally far shorter, but a busy month must not be able to crash the send.
+ * Discord rejects any message over 2000 characters outright. The digest page is
+ * one message when it fits; otherwise consecutive messages split between
+ * sections (blank lines), so a heading, its lines and its code block stay
+ * together. Only a single block longer than a message is ever cut.
  */
-function truncateForDiscord(content: string, digestId: string): string {
-  if (content.length <= DISCORD_MAX_MESSAGE_LENGTH) {
-    return content;
+export function splitForDiscord(content: string, digestId: string): string[] {
+  if (content.length <= DISCORD_MAX_MESSAGE_LENGTH) return [content];
+  const messages: string[] = [];
+  let current = "";
+  for (const block of content.split("\n\n")) {
+    const piece = block.length > DISCORD_MAX_MESSAGE_LENGTH ? truncateBlock(block, digestId) : block;
+    const joined = current ? `${current}\n\n${piece}` : piece;
+    if (joined.length <= DISCORD_MAX_MESSAGE_LENGTH) {
+      current = joined;
+      continue;
+    }
+    if (current) messages.push(current);
+    current = piece;
   }
-  const suffix = `\n\n… (truncated — see \`arcadia digest export ${digestId}\`)`;
+  if (current) messages.push(current);
+  return messages;
+}
+
+function truncateBlock(content: string, digestId: string): string {
+  const suffix = `\n… (truncated — see \`arcadia digest show ${digestId} --detail\`)`;
   return `${content.slice(0, DISCORD_MAX_MESSAGE_LENGTH - suffix.length)}${suffix}`;
 }

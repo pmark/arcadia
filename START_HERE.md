@@ -2917,8 +2917,29 @@ Every cadence narrates the period that has **finished**, not the one in
 progress — that is the only rule under which each recorded fact lands in
 exactly one digest of each cadence. A digest fires at most once per subject
 per period, and a bot that was down at the target time composes the same
-window on its first tick after restart. One Project's narration failing costs
-that Project's digest and nothing else.
+window on its first tick after restart.
+
+Each digest is a short overview, in this order:
+
+1. **Summary**: one to three sentences on progress toward goals. The local
+   model writes it from the computed facts below it, and it is labelled
+   "AI-written". When the model is unavailable, or states a number the facts
+   do not contain, a computed summary replaces it, labelled as such.
+2. **Progress by goal**: each Milestone that moved, with Actions done of
+   total, what finished and merged in the window, and a rough pace when at
+   least two recent completions support one.
+3. **Needs you**: blocking to-do items, stopped production first, each with
+   its dashboard link (from `ARCADIA_DASHBOARD_URL`) and what waiting costs.
+4. **Operator interactions**: how many times you had to act, which were
+   required and which avoidable, per merged Action, and how long work waited
+   on you. A low number is the goal.
+5. **Where activity happened**: relative shares by Project (or by goal).
+6. **Risks and stalls**, only when there are any.
+
+Every fact behind the page stays out of the message:
+`pnpm arcadia digest show <digest-id> --detail` prints it, and
+`pnpm arcadia digest preview [--project <slug>] [--ai] [--detail]` prints a
+digest for any window without storing anything.
 
 Run the same thing by hand at any time:
 

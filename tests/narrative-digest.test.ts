@@ -68,13 +68,19 @@ describe("narrative digest request", () => {
         slug: "alpha"
       },
       window: WINDOW,
-      facts: [{
-        id: "mission-log:1",
-        kind: "mission_log",
-        occurredAt: WINDOW.start,
-        summary: "A test passed.",
-        detail: {}
-      }]
+      facts: {
+        subject: "Alpha",
+        scope: "project",
+        period: "day",
+        windowLabel: "2026-07-01",
+        totals: { events: 1, completed: 0, merged: 0, decisions: 0, goalsReached: 0 },
+        goals: [],
+        quietActiveGoals: 0,
+        needsYou: { count: 0, stopped: 0, top: [], unavailable: false },
+        operatorInteractions: { count: 0, required: 0, avoidable: 0, perMergedAction: null, waitedMinutes: 0 },
+        activity: [{ area: "Other", percent: 100 }],
+        risks: []
+      }
     });
 
     expect(request).toMatchObject({
@@ -82,11 +88,12 @@ describe("narrative digest request", () => {
       execution: "local-preferred",
       profile: "fast",
       executionPolicy: { allowPaidUsage: false, maxRetries: 1 },
-      outputContract: { schemaId: "arcadia.narrative-digest.v1", schemaVersion: 1 }
+      outputContract: { schemaId: "arcadia.digest-summary.v2", schemaVersion: 2 }
     });
     const instructions = (request.input as { instructions: string }).instructions;
-    expect(instructions).toContain("Every factual claim must be supported");
-    expect(instructions).toContain("do not judge, grade, recommend, or invent");
+    expect(instructions).toContain("Use only the supplied facts");
+    expect(instructions).toContain("State no fact, number, name, cause, or outcome that is not in them");
+    expect(instructions).toContain("Lead with progress toward goals");
   });
 });
 
@@ -157,7 +164,7 @@ describe("project digest composition", () => {
         markdownPath: "MISSION_LOG.md"
       });
       setMissionLogDocRef(db, log.id, "log/alpha#2026-07-01--composer");
-      const narrator = vi.fn<DigestNarrator>(async () => ({ narrative: "Alpha built and verified the composer.", jobId: null }));
+      const narrator = vi.fn<DigestNarrator>(async () => ({ summary: "Alpha built and verified the composer.", jobId: null }));
 
       const first = await composeProjectDigest({ db, workspacePath: workspace, project, window: WINDOW, narrator });
       const second = await composeProjectDigest({ db, workspacePath: workspace, project, window: WINDOW, narrator });
@@ -182,9 +189,16 @@ describe("project digest composition", () => {
     const db = openDatabase(workspace);
     try {
       const project = db.prepare("SELECT *, goal AS outcome FROM projects WHERE id = ?").get(projectId) as any;
-      const narrator: DigestNarrator = async () => ({ narrative: "A spectacular launch happened.", jobId: null });
-      const result = await composeProjectDigest({ db, workspacePath: workspace, project, window: WINDOW, narrator });
-      expect(result.narrative).toBe("Nothing happened in Alpha's recorded activity during this day window.");
+      const narrator = vi.fn<DigestNarrator>(async () => ({ summary: "A spectacular launch happened.", jobId: null }));
+      const result = await composeProjectDigest({
+        db, workspacePath: workspace, project, window: WINDOW, narrator,
+        needsYou: { items: [], unavailable: null, listLink: null }
+      });
+      expect(result.narrative).toContain("Nothing was recorded in this window.");
+      expect(result.narrative).not.toContain("spectacular");
+      expect(result.summary.source).toBe("deterministic");
+      // Nothing to summarize means no model call at all.
+      expect(narrator).not.toHaveBeenCalled();
       expect(result.facts).toEqual([]);
     } finally {
       db.close();
@@ -212,7 +226,7 @@ describe("project digest composition", () => {
         workspacePath: workspace,
         project,
         window: WINDOW,
-        narrator: async () => ({ narrative: "Alpha made the parser dependable.", jobId: null })
+        narrator: async () => ({ summary: "Alpha made the parser dependable.", jobId: null })
       });
     } finally {
       db.close();
@@ -230,7 +244,7 @@ describe("project digest composition", () => {
     expect(record).toContain("narration: local_preferred_ai");
     expect(record).toContain(`arcadia_digest_id: ${JSON.stringify(result.digest.id)}`);
     expect(record).toContain("Alpha made the parser dependable.");
-    expect(record).toContain("AI-narrated from the digest's bounded Arcadia fact snapshot");
+    expect(record).toContain("The headline is AI-written by the local-preferred Intelligence route from the digest's computed facts");
   });
 
   it("does not touch a vault when memory is disabled", async () => {
@@ -244,7 +258,7 @@ describe("project digest composition", () => {
         workspacePath: workspace,
         project,
         window: WINDOW,
-        narrator: async () => ({ narrative: "Alpha wrote a story.", jobId: null })
+        narrator: async () => ({ summary: "Alpha wrote a story.", jobId: null })
       });
     } finally {
       db.close();

@@ -80,6 +80,12 @@ import {
   runPingSentCommand
 } from "./commands/ping.js";
 import {
+  renderOperatorInteractionListSuccess,
+  renderOperatorInteractionRecordSuccess,
+  runOperatorInteractionListCommand,
+  runOperatorInteractionRecordCommand
+} from "./commands/operatorInteraction.js";
+import {
   LIVENESS_DEFAULT_STALE_SECONDS,
   renderProductionLivenessCheckSuccess,
   runProductionLivenessCheckCommand
@@ -469,11 +475,15 @@ import {
   renderDigestComposeSuccess,
   renderDigestExportSuccess,
   renderDigestMarkPostedSuccess,
+  renderDigestPreviewSuccess,
   renderDigestRunSuccess,
+  renderDigestShowSuccess,
   runDigestComposeCommand,
   runDigestExportCommand,
   runDigestMarkPostedCommand,
-  runDigestRunCommand
+  runDigestPreviewCommand,
+  runDigestRunCommand,
+  runDigestShowCommand
 } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
@@ -1205,6 +1215,32 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--check-only", "Only the read-only checks that precede the daily claim; claims and changes nothing")
   ).action((options: { repository: string; workspace: string; project: string; card: string; runId: string; runDirectory: string; release: string; policyRevision: string; policyEpoch: string; checkOnly?: boolean; json?: boolean }) =>
     runCliAction("start-run.sign-in", options, () => runStartRunSignInCommand(options), renderStartRunSignInSuccess));
+
+  const operatorInteraction = program.command("operator-interaction")
+    .description("Record when an agent acted on the operator's words, so the digest can count operator touches; local and append-only");
+  addJsonOption(operatorInteraction.command("record")
+    .description("Append one interaction: the operator's exact words, what they unlocked, and whether only the operator could have done it. Records; authorizes nothing")
+    .requiredOption("--words <text>", "The operator's exact words, e.g. \"Yes merge them\"")
+    .requiredOption("--unlocked <text>", "What the interaction unlocked, e.g. \"merge of PR #2184\"")
+    .option("--required", "Only the operator's authority could do this")
+    .option("--avoidable", "The system could have proceeded without asking")
+    .option("--ref <ref>", "The PR, card or Decision it acted on")
+    .option("--project <slug>", "Project slug")
+    .option("--at <instant>", "When the operator said it (default now)")
+    .option("--waiting-since <instant>", "When the work started waiting for this answer")
+    .option("--agent <name>", "Who is recording it")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; words: string; unlocked: string; required?: boolean; avoidable?: boolean; ref?: string; project?: string; at?: string; waitingSince?: string; agent?: string; json?: boolean }) =>
+    runCliAction("operator-interaction.record", options, () => runOperatorInteractionRecordCommand(options), renderOperatorInteractionRecordSuccess)
+  );
+  addJsonOption(operatorInteraction.command("list")
+    .description("List recorded operator interactions (default: the last 7 days)")
+    .option("--since <instant>", "Inclusive start")
+    .option("--until <instant>", "Exclusive end")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
+    runCliAction("operator-interaction.list", options, () => runOperatorInteractionListCommand(options), renderOperatorInteractionListSuccess)
+  );
 
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })
@@ -3383,6 +3419,37 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("digest.run", options, () => runDigestRunCommand(options), renderDigestRunSuccess)
+  );
+  addJsonOption(
+    digest
+      .command("preview")
+      .description("Print a digest for a window without storing it: progress by goal, what needs you, where activity happened")
+      .option("--project <project>", "Project id or slug (default: the portfolio roll-up)")
+      .option("--period <period>", "day, week, or month (default day: the last completed local day)", "day")
+      .option("--from <instant>", "Inclusive ISO-8601 window start (with --to)")
+      .option("--to <instant>", "Exclusive ISO-8601 window end (with --from)")
+      .option("--ai", "Ask the local model for the headline (submits one Intelligence job; stores no digest)")
+      .option("--detail", "Also print every recorded fact behind the page")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    project?: string;
+    period?: string;
+    from?: string;
+    to?: string;
+    ai?: boolean;
+    detail?: boolean;
+    json?: boolean;
+  }) => runCliAction("digest.preview", options, () => runDigestPreviewCommand(options), renderDigestPreviewSuccess));
+  addJsonOption(
+    digest
+      .command("show")
+      .description("Print one stored digest as delivered")
+      .argument("<digest-id>", "Narrative digest id")
+      .option("--detail", "Also print every recorded fact behind the page")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((digestId: string, options: { workspace: string; detail?: boolean; json?: boolean }) =>
+    runCliAction("digest.show", options, () => runDigestShowCommand({ ...options, digestId }), renderDigestShowSuccess)
   );
   addJsonOption(
     digest

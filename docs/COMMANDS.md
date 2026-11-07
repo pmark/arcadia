@@ -447,9 +447,44 @@ schedule ledger to disagree with it. Each returned entry carries a `status`:
 | `failed` | This subject failed; every other subject and cadence still ran. |
 
 A failure is reported as an entry and a warning, never thrown, so one
-Project's unreachable local model cannot cost any other Project or cadence its
-digest. A failed vault export is likewise a warning on an otherwise good entry
-— the digest still composed and can still be posted.
+Project's failure cannot cost any other Project or cadence its digest. An
+unreachable local model is not a failure at all: the headline falls back to a
+computed summary, labelled as such, and the reason is kept in the Artifact's
+`summary_fallback_reason`. A failed vault export is likewise a warning on an
+otherwise good entry — the digest still composed and can still be posted.
+
+The model sees only `DigestSummaryFacts`, the numbers and names the page
+already shows, never raw Log or Decision text.
+
+## Preview Or Show A Digest
+
+```sh
+pnpm arcadia digest preview --workspace "$WORKSPACE" [--project arcadia] [--period day] [--from <iso> --to <iso>] [--ai] [--detail]
+pnpm arcadia digest show digest_example --workspace "$WORKSPACE" [--detail]
+```
+
+`preview` computes and prints a digest without storing it: no Artifact, no
+row, no vault write. Without `--ai` the headline is computed; with it, one
+local Intelligence job writes the headline. `show` prints a stored digest as
+delivered; `--detail` adds every recorded fact behind it.
+
+## Record An Operator Interaction
+
+```sh
+pnpm arcadia operator-interaction record --workspace "$WORKSPACE" \
+  --words "Yes merge them" --unlocked "merge of PR #2184" --required \
+  --ref "#2184" --project arcadia --waiting-since 2026-11-07T07:21:48Z
+pnpm arcadia operator-interaction list --workspace "$WORKSPACE" [--since <iso>]
+```
+
+When an agent acts on the operator's words in chat, it records one
+append-only row: when, the exact words, what it unlocked, and whether only
+the operator could have done it (`--required`) or it could have been avoided
+(`--avoidable`). Replaying the same `--at` and words returns the existing row.
+The digest counts these together with what records already prove: operator
+card presses (run receipts without a delegation) and Offs switched from the
+dashboard. GitHub merges are never counted from GitHub, because every merge
+uses the operator's token. Recording authorizes nothing.
 
 ```sh
 pnpm arcadia digest mark-posted digest_example --message-id 123 --workspace "$WORKSPACE" --json
