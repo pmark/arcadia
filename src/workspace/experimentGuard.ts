@@ -158,6 +158,10 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "coordinator subscribe": ALLOWED,
   "coordinator verify": ALLOWED,
   "coordinator accept": ALLOWED,
+  "coordinator renew": guarded(
+    "Launches a real coordinator session in tmux; an experiment workspace never launches a live successor.",
+    "Run it from the live workspace once the relay Decision is on main."
+  ),
   "ping sent": DELIVERY_RECEIPT,
   "action settle": ALLOWED,
   "native-mail send": NATIVE_MAIL_WRITE,

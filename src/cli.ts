@@ -83,6 +83,8 @@ import {
   renderCoordinatorAcceptSuccess,
   renderCoordinatorCapsuleSuccess,
   renderCoordinatorNoteSuccess,
+  renderCoordinatorRenewSuccess,
+  runCoordinatorRenewCommand,
   renderCoordinatorSubscribeSuccess,
   renderCoordinatorVerifySuccess,
   runCoordinatorAcceptCommand,
@@ -1336,6 +1338,13 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--snapshot-sha <sha>", "The sha the launch prompt pinned")
   ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha: string; json?: boolean }) =>
     runCliAction("coordinator.accept", options, () => runCoordinatorAcceptCommand({ ...options, env: process.env }), renderCoordinatorAcceptSuccess)
+  );
+  coordinatorScope(coordinator.command("renew")
+    .description("Launch one successor coordinator through the tmux launcher (same provider and model, Remote Control, verified prompt delivery, one retry, one attention ping on failure). Refuses until the standing relay Decision is on main. Custody-guarded")
+    .option("--effort <effort>", "Reasoning effort key or native value", "e3_deep")
+    .option("--repo <path>", "Repository checkout the successor's worktree is cut from (default: this checkout)")
+  ).action((options: { workspace: string; project: string; role: string; effort?: string; repo?: string; json?: boolean }) =>
+    runCliAction("coordinator.renew", options, () => runCoordinatorRenewCommand({ ...options, env: process.env }), renderCoordinatorRenewSuccess)
   );
 
   const nativeMail = program.command("native-mail").description("Local addressed mail between native coding-agent sessions on this machine (relationship/provenance records only; grants no authority)");
