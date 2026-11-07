@@ -139,13 +139,29 @@ These are routine choices the builder may refine. Their reasons are recorded.
   time older than any overlap window, so a time-window cursor would lose it.
   That was review finding 1. The cursor is opaque and self-contained (base64url
   JSON), and holds one mark per source:
-  - **Append-only workspace tables**, such as `action_journey_log`,
-    `production_policy_receipts`, `production_admissions`, `operator_pings` and
-    `production_red_alerts`, use the SQLite `rowid`. I found no `DELETE` against
-    any of these in `src/`. The builder confirms each table before relying on it.
-  - **Receipt files** use the file's modification time, plus the paths seen at
-    that exact mark.
+  - **Append-only tables:** `action_journey_log` and
+    `production_policy_receipts` (`src/` has no `UPDATE` or `DELETE` on them) use
+    the highest delivered `rowid`. Both have TEXT primary keys, so a `VACUUM`
+    could renumber rows. The builder therefore stores the delivered row's `id`
+    beside the mark and falls back to a key snapshot if the mark's row has moved.
+  - **State-transition tables**, whose awaited events are `UPDATE`s, use a
+    snapshot in the cursor of `(id, status, transition timestamp)` tuples. A
+    changed tuple is an event. This came from review round 2.
+    - `production_admissions`: committed, released and fenced are updates in
+      `src/production/policy.ts` (lines 1679, 1698 and 1765).
+    - `production_review_steps`: updated in `src/production/independentReview.ts`.
+    - `operator_pings`: `sent` is set in `src/ping/operatorPing.ts:134`.
+    - `production_red_alerts`: notified, cleared and occurrences are updated in
+      `src/production/redAlerts.ts`.
+
+    The snapshot is bounded to the rows of the scope being watched, or to open
+    rows plus those that changed within the last 24 hours.
+  - **Receipt files** use a snapshot of `(path, outcome)` pairs, not an mtime
+    mark, so a copied or restored file with an old mtime is still seen.
   - **Current-state sets** use a snapshot of the keys present (below).
+  - **No prior cursor:** a session's first poll is a baseline. It emits no
+    "changed" or "cleared" events for state that was already true; the status
+    read on arming covers that.
   - **Sources with no observation key** (`git`, `governed-records`,
     `pull-requests`) fall back to the follow overlap and are labelled
     `delivery: best-effort` in the output. No guaranteed recipe depends on them.
@@ -281,7 +297,10 @@ and is best built as two Actions:
 **Acceptance (fixture tests, no live run):**
 
 - A kind change on one Action wakes.
-- An escalation that clears wakes as `production.escalation.cleared`.
+- An escalation that clears wakes as `production.escalation.cleared`, and the
+  same key reappearing afterwards wakes again as a new edge.
+- An admission that existed before the cursor was taken and is released after it
+  wakes as `production.admission.released`.
 - An event written between a wake and a re-arm is delivered after `--after <cursor>`.
 - A receipt that becomes visible late, with a `finishedAt` older than any
   overlap, is still delivered.
@@ -338,7 +357,14 @@ One choice needs you, because hosts read timed polling as needing your word:
 ## What this does not prove
 
 The figures come from one night and one machine, and the turn overhead is
-unmeasured. No host has run `--wait` yet. Round 1 of independent review asked
-for changes: two blocking findings (a time-window cursor loses late-visible
-records, and clearances were silent) and six non-blocking ones. All are
-addressed above, and the verdicts are recorded on the pull request.
+unmeasured. No host has run `--wait` yet.
+
+Independent review:
+- **Round 1** asked for changes: two blocking findings (a time-window cursor
+  loses late-visible records, and clearances were silent) and six non-blocking
+  ones.
+- **Round 2** asked for changes: one blocking finding (a `rowid` mark misses
+  in-place updates) and three non-blocking ones.
+
+All of them are addressed above, and the verdicts are recorded on the pull
+request.
