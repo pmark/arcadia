@@ -184,10 +184,11 @@ export function seedCustodianGeneration(
   }, input.lock);
 }
 
-function markFailed(db: Database.Database, paths: CoordinatorPaths, project: string, role: string, generation: number, reason: string, now: Date): void {
+function markFailed(db: Database.Database, paths: CoordinatorPaths, project: string, role: string, generation: number, reason: string, now: Date): boolean {
   const changed = db.prepare(`UPDATE coordinator_generations SET status = 'failed', failure_reason = ?, updated_at = ?
     WHERE project = ? AND role = ? AND generation = ? AND status = 'launching'`).run(reason, now.toISOString(), project, role, generation).changes;
   if (changed > 0) appendLog(paths, "failed", { generation, reason }, now);
+  return changed > 0;
 }
 
 /**
@@ -293,10 +294,10 @@ export function failGeneration(
   db: Database.Database,
   workspace: string,
   input: { project: string; role: string; generation: number; reason: string; now?: Date; lock?: RelayLockDeps }
-): void {
+): boolean {
   const now = input.now ?? new Date();
   const paths = coordinatorPaths(workspace, input.project, input.role);
-  withRelayLock(paths.root, () => writeTransaction(db, () => markFailed(db, paths, input.project, input.role, input.generation, input.reason, now)), input.lock);
+  return withRelayLock(paths.root, () => writeTransaction(db, () => markFailed(db, paths, input.project, input.role, input.generation, input.reason, now)), input.lock);
 }
 
 /** Records a passing `verify` (its only write), which `accept` requires. */

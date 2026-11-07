@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -52,7 +52,8 @@ export const RELAY_LIMITS = {
  * no acceptance, never auto-approved.
  */
 export const RELAY_PERMISSION_MODE = "auto";
-const BYPASS_MODES = new Set(["bypassPermissions", "dangerously-skip-permissions"]);
+/** An allowlist, so no bypass or future permissive mode can be passed by accident. */
+const ALLOWED_PERMISSION_MODES = new Set(["auto", "default"]);
 
 export type RelayRefusal =
   | "decision_pending" | "decision_not_in_force" | "no_custodian" | "provider_unsupported"
@@ -112,13 +113,29 @@ function refuse(reason: RelayRefusal, detail: string): RenewResult {
   return { outcome: "refused", reason, detail };
 }
 
-/** Reads `docs/decisions/<id>-*.md`: status approved, answer A, decided within the expiry. */
-export function readRelayDecision(repoRoot: string, now: Date, id: string | null = RELAY_LAUNCH_DECISION_ID): DecisionGate {
+/** Reads a Decision file from `origin/main` (never the working tree, which a session can edit). */
+export function readDecisionFromMain(repoRoot: string, id: string): string | null {
+  try {
+    const names = execFileSync("git", ["-C", repoRoot, "ls-tree", "--name-only", "origin/main", "docs/decisions/"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 })
+      .split("\n").map((line) => line.trim()).filter((line) => path.basename(line).startsWith(`${id}-`) && line.endsWith(".md"));
+    if (names.length !== 1) return null;
+    return execFileSync("git", ["-C", repoRoot, "show", `origin/main:${names[0]}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 });
+  } catch {
+    return null;
+  }
+}
+
+/** The Decision `<id>` on main: status approved, answer A, decided within the expiry. */
+export function readRelayDecision(
+  repoRoot: string,
+  now: Date,
+  id: string | null = RELAY_LAUNCH_DECISION_ID,
+  read: (repoRoot: string, id: string) => string | null = readDecisionFromMain
+): DecisionGate {
   if (id === null) return { inForce: false, reason: "The standing Decision recording answer A to #2223 is not yet on main (DECISION-PLACEHOLDER)." };
-  const directory = path.join(repoRoot, "docs", "decisions");
-  const file = existsSync(directory) ? readdirSync(directory).find((name) => name.startsWith(`${id}-`) && name.endsWith(".md")) : undefined;
-  if (!file) return { inForce: false, reason: `Decision ${id} is not in ${directory}.` };
-  const text = readFileSync(path.join(directory, file), "utf8").slice(0, 8_000);
+  const raw = read(repoRoot, id);
+  if (raw === null) return { inForce: false, reason: `Decision ${id} is not on origin/main.` };
+  const text = raw.slice(0, 8_000);
   const status = /^status:\s*(\S+)/m.exec(text)?.[1];
   const answer = /^answer:\s*"?(.+?)"?\s*$/m.exec(text)?.[1] ?? "";
   const decided = /^decided:\s*(\S+)/m.exec(text)?.[1];
@@ -135,22 +152,32 @@ export function readFirstUserMessage(transcriptPath: string): string | null {
   if (!existsSync(transcriptPath)) return null;
   for (const line of readFileSync(transcriptPath, "utf8").split("\n")) {
     if (!line.trim()) continue;
-    let entry: { type?: string; isSidechain?: boolean; message?: { content?: unknown } };
+    let entry: { type?: string; isSidechain?: boolean; isMeta?: boolean; message?: { content?: unknown } };
     try { entry = JSON.parse(line); } catch { continue; }
-    if (entry.type !== "user" || entry.isSidechain) continue;
+    if (entry.type !== "user" || entry.isSidechain || entry.isMeta) continue;
     const content = entry.message?.content;
-    if (typeof content === "string") return content;
+    if (typeof content === "string") return content.trim();
     if (Array.isArray(content)) {
-      return content.map((part) => (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "")).join("");
+      return content.map((part) => (part && typeof part === "object" && typeof (part as { text?: unknown }).text === "string" ? (part as { text: string }).text : "")).join("").trim();
     }
     return null;
   }
   return null;
 }
 
-function relayLaunchesToday(db: Database.Database, project: string, role: string, now: Date): number {
+/**
+ * Relay launches in the last 24 hours. Every attempt started a real session, so
+ * failed ones count toward the attempt cap; renewals are the attempts that did
+ * not fail.
+ */
+function relayLaunchesToday(db: Database.Database, project: string, role: string, now: Date): { attempts: number; renewals: number } {
   const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
-  return listGenerations(db, project, role).filter((row) => row.relayLaunched && row.status !== "failed" && row.createdAt >= since).length;
+  const rows = listGenerations(db, project, role).filter((row) => row.relayLaunched && row.createdAt >= since);
+  return { attempts: rows.length, renewals: rows.filter((row) => row.status !== "failed").length };
+}
+
+function generationStatus(db: Database.Database, project: string, role: string, generation: number): string | null {
+  return listGenerations(db, project, role).find((row) => row.generation === generation)?.status ?? null;
 }
 
 /**
@@ -163,8 +190,8 @@ function relayLaunchesToday(db: Database.Database, project: string, role: string
 export function renewCoordinator(db: Database.Database, workspace: string, input: RenewInput, deps: RelayDeps): RenewResult {
   const now = deps.now();
   const permissionMode = input.permissionMode ?? RELAY_PERMISSION_MODE;
-  if (BYPASS_MODES.has(permissionMode)) {
-    throw new ArcadiaError("VALIDATION_ERROR", `The relay never launches in a bypass permission mode (${permissionMode}).`, 2, { reason: "bypass_mode" });
+  if (!ALLOWED_PERMISSION_MODES.has(permissionMode)) {
+    throw new ArcadiaError("VALIDATION_ERROR", `The relay launches only in an ordinary interactive permission mode (auto or default), never ${permissionMode}; bypass modes are excluded.`, 2, { reason: "bypass_mode" });
   }
   const decision = deps.decision(input.repoRoot, now);
   if (!decision.inForce) return refuse(RELAY_LAUNCH_DECISION_ID === null ? "decision_pending" : "decision_not_in_force", decision.reason);
@@ -182,17 +209,25 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
     return refuse("launch_in_progress", `Generation ${stale.generation} is still launching; one successor at a time.`);
   }
 
-  if (relayLaunchesToday(db, input.project, input.role, now) >= RELAY_LIMITS.renewalsPerDay) {
-    return refuse("renewal_limit", `${input.role} already had ${RELAY_LIMITS.renewalsPerDay} relay renewals in the last 24 hours.`);
-  }
-  const signIn = deps.signIn(custodian.provider);
-  if (signIn && !signIn.signedIn) return refuse("sign_in", signIn.remedy);
-  const capacity = deps.capacity(custodian.provider);
-  if (!capacity.admitted) return refuse("capacity", capacity.reason);
-
+  const retry = `arcadia coordinator renew --project ${input.project} --role ${input.role}`;
   const failures: string[] = [];
   for (let attempt = 1; attempt <= RELAY_LIMITS.attemptsPerRenewal; attempt += 1) {
     if (attempt > 1) deps.sleep(RELAY_LIMITS.retryPauseMs);
+    const today = relayLaunchesToday(db, input.project, input.role, deps.now());
+    if (today.renewals >= RELAY_LIMITS.renewalsPerDay || today.attempts >= RELAY_LIMITS.renewalsPerDay * RELAY_LIMITS.attemptsPerRenewal) {
+      return refuse("renewal_limit", `${input.role} already had ${today.renewals} relay renewals and ${today.attempts} launch attempts in the last 24 hours (limits ${RELAY_LIMITS.renewalsPerDay} and ${RELAY_LIMITS.renewalsPerDay * RELAY_LIMITS.attemptsPerRenewal}).`);
+    }
+    // Pre-launch gates, re-run before a retry (design steps 2 and 7). A failed gate pings once and the predecessor keeps custody.
+    const signIn = deps.signIn(custodian.provider);
+    if (signIn && !signIn.signedIn) {
+      deps.ping(`Coordinator relay held ${input.role} (${input.project}): sign-in gate refused; the predecessor keeps custody. Then: ${retry}`);
+      return refuse("sign_in", signIn.remedy);
+    }
+    const capacity = deps.capacity(custodian.provider);
+    if (!capacity.admitted) {
+      deps.ping(`Coordinator relay held ${input.role} (${input.project}): capacity gate refused; the predecessor keeps custody. Then: ${retry}`);
+      return refuse("capacity", capacity.reason);
+    }
     const sessionId = deps.newSessionId();
     const claim = claimNextGeneration(db, workspace, {
       project: input.project, role: input.role, provider: custodian.provider, model: custodian.model, tier: custodian.tier,
@@ -204,41 +239,51 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
     const transcript = path.join(deps.claudeProjectsDirectory, claudeProjectSlug(worktree), `${sessionId}.jsonl`);
     recordTranscriptPath(db, input.project, input.role, claim.generation, transcript, deps.now(), name);
     const prompt = renderResumePrompt({ project: input.project, role: input.role, generation: claim.generation, snapshotSha: claim.snapshotSha, snapshotPath: claim.snapshotPath });
+    const launched = (attempts: number): RenewResult => ({ outcome: "launched", generation: claim.generation, tmuxName: claim.tmuxName, sessionId, snapshotSha: claim.snapshotSha, worktree, attempts });
     try {
-      if (!existsSync(worktree)) deps.createWorktree(input.repoRoot, worktree);
-      // A crash between claim and spawn is recovered by the deterministic name, never by spawning twice.
-      if (!deps.tmux.hasSession(claim.tmuxName)) {
-        deps.tmux.launch({
-          name: claim.tmuxName, cwd: worktree, command: "env",
-          args: [
-            `${COORDINATOR_ENV.role}=${input.role}`, `${COORDINATOR_ENV.generation}=${claim.generation}`, `${COORDINATOR_ENV.token}=${claim.token}`,
-            "claude", "--remote-control", name, "--session-id", sessionId, "--name", name,
-            "--model", custodian.model, "--effort", claudeReasoningEffort(input.effort), "--permission-mode", permissionMode, prompt
-          ]
-        });
+      // The generation is new, so its deterministic name existing means a foreign
+      // or leftover session: refuse to reuse it and never kill what we did not start.
+      if (deps.tmux.hasSession(claim.tmuxName)) {
+        failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "tmux_name_taken", now: deps.now() });
+        failures.push(`attempt ${attempt}: tmux session ${claim.tmuxName} already exists; left untouched`);
+        continue;
       }
+      if (!existsSync(worktree)) deps.createWorktree(input.repoRoot, worktree);
+      deps.tmux.launch({
+        name: claim.tmuxName, cwd: worktree, command: "env",
+        args: [
+          `${COORDINATOR_ENV.role}=${input.role}`, `${COORDINATOR_ENV.generation}=${claim.generation}`, `${COORDINATOR_ENV.token}=${claim.token}`,
+          "claude", "--remote-control", name, "--session-id", sessionId, "--name", name,
+          "--model", custodian.model, "--effort", claudeReasoningEffort(input.effort), "--permission-mode", permissionMode, prompt
+        ]
+      });
     } catch (error) {
-      failures.push(`attempt ${attempt}: launch failed (${error instanceof Error ? error.message.slice(0, 200) : String(error)})`);
-      failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "launch_failed", now: deps.now() });
-      deps.tmux.killSession?.(claim.tmuxName);
+      failures.push(`attempt ${attempt}: launch failed (${error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160)})`);
+      if (failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "launch_failed", now: deps.now() })) {
+        deps.tmux.killSession?.(claim.tmuxName);
+      }
       continue;
     }
     // Delivery check (design step 4): the transcript's first user message is exactly the prompt.
     const deadline = deps.now().getTime() + RELAY_LIMITS.deliveryWindowMs;
-    let delivered = false;
     for (;;) {
-      if (deps.firstUserMessage(transcript) === prompt) { delivered = true; break; }
+      if (deps.firstUserMessage(transcript) === prompt.trim()) return launched(attempt);
       if (deps.now().getTime() >= deadline) break;
       deps.sleep(5_000);
     }
-    if (delivered) {
-      return { outcome: "launched", generation: claim.generation, tmuxName: claim.tmuxName, sessionId, snapshotSha: claim.snapshotSha, worktree, attempts: attempt };
+    // The successor may have accepted even though the transcript read lagged:
+    // only a still-launching row is failed, and only a row we failed is stopped.
+    if (generationStatus(db, input.project, input.role, claim.generation) !== "launching") return launched(attempt);
+    if (failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "prompt_not_delivered", now: deps.now() })) {
+      deps.tmux.killSession?.(claim.tmuxName);
+      failures.push(`attempt ${attempt}: prompt not delivered to ${claim.tmuxName} within 2 minutes`);
+    } else {
+      return launched(attempt);
     }
-    failures.push(`attempt ${attempt}: prompt not delivered to ${claim.tmuxName} within 2 minutes`);
-    failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "prompt_not_delivered", now: deps.now() });
-    deps.tmux.killSession?.(claim.tmuxName);
   }
-  deps.ping(`Coordinator relay could not renew ${input.role} (${input.project}): ${failures.join("; ")}. The predecessor keeps custody and should work in low-context mode. Retry: arcadia coordinator renew --project ${input.project} --role ${input.role}`.slice(0, 500));
+  // The retry command leads so the 500-character cap can never cut it off.
+  const head = `Coordinator relay could not renew ${input.role} (${input.project}); the predecessor keeps custody and should work in low-context mode. Retry: ${retry}. `;
+  deps.ping(`${head}${failures.join("; ")}`.slice(0, 500));
   return { outcome: "failed", attempts: RELAY_LIMITS.attemptsPerRenewal, failures, pinged: true };
 }
 

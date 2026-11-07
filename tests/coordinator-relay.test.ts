@@ -82,11 +82,17 @@ describe("coordinator relay launch (change 3)", () => {
     expect(RELAY_LAUNCH_DECISION_ID).toBeNull();
     const { repo } = setup();
     expect(readRelayDecision(repo, new Date()).inForce).toBe(false);
-    writeFileSync(path.join(repo, "docs", "decisions", "0191-relay.md"), "---\nstatus: approved\nanswer: A. Yes, pinned\ndecided: 2026-11-07\n---\n");
-    expect(readRelayDecision(repo, new Date("2026-11-08T00:00:00Z"), "0191").inForce).toBe(true);
-    expect(readRelayDecision(repo, new Date("2026-12-20T00:00:00Z"), "0191").reason).toMatch(/expired/);
-    writeFileSync(path.join(repo, "docs", "decisions", "0192-relay.md"), "---\nstatus: approved\nanswer: C. No launches\ndecided: 2026-11-07\n---\n");
-    expect(readRelayDecision(repo, new Date("2026-11-08T00:00:00Z"), "0192").inForce).toBe(false);
+    const onMain: Record<string, string> = {
+      "0191": "---\nstatus: approved\nanswer: A. Yes, pinned\ndecided: 2026-11-07\n---\n",
+      "0192": "---\nstatus: approved\nanswer: C. No launches\ndecided: 2026-11-07\n---\n"
+    };
+    const read = (_repo: string, id: string) => onMain[id] ?? null;
+    expect(readRelayDecision(repo, new Date("2026-11-08T00:00:00Z"), "0191", read).inForce).toBe(true);
+    expect(readRelayDecision(repo, new Date("2026-12-20T00:00:00Z"), "0191", read).reason).toMatch(/expired/);
+    expect(readRelayDecision(repo, new Date("2026-11-08T00:00:00Z"), "0192", read).inForce).toBe(false);
+    // A file in the working tree is not main: the default reader uses origin/main only.
+    writeFileSync(path.join(repo, "docs", "decisions", "0193-relay.md"), onMain["0191"]);
+    expect(readRelayDecision(repo, new Date("2026-11-08T00:00:00Z"), "0193").inForce).toBe(false);
   });
 
   it("refuses before any claim or launch when the Decision is not in force", () => {
@@ -132,6 +138,33 @@ describe("coordinator relay launch (change 3)", () => {
     expect(rows.map((row) => [row.generation, row.status, row.failureReason])).toEqual([
       [1, "custodian", null], [2, "failed", "prompt_not_delivered"], [3, "failed", "prompt_not_delivered"]
     ]);
+  });
+
+  it("counts failed attempts toward the daily cap, so retrying callers cannot launch indefinitely", () => {
+    const { ws, repo, projects } = setup();
+    const fake = fakeDeps(projects, { deliver: Array(40).fill(false) });
+    const outcomes: string[] = [];
+    for (let call = 0; call < 10; call += 1) {
+      const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
+      outcomes.push(result.outcome === "refused" ? result.reason : result.outcome);
+    }
+    expect(fake.launches).toHaveLength(12);
+    expect(outcomes.slice(6)).toEqual(["renewal_limit", "renewal_limit", "renewal_limit", "renewal_limit"]);
+  });
+
+  it("never kills or replaces a successor that accepted while the delivery read lagged", () => {
+    const { ws, repo, projects } = setup();
+    const fake = fakeDeps(projects, { deliver: [false] });
+    const launch = fake.deps.tmux.launch;
+    fake.deps.tmux.launch = (input) => {
+      launch(input);
+      // The successor accepts immediately, but its transcript is not readable yet.
+      withDatabase(ws, (db) => db.prepare("UPDATE coordinator_generations SET status = CASE generation WHEN 1 THEN 'handed_off' ELSE 'custodian' END").run());
+    };
+    const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
+    expect(result).toMatchObject({ outcome: "launched", generation: 2 });
+    expect(fake.killed).toEqual([]);
+    expect(fake.launches).toHaveLength(1);
   });
 
   it("refuses at a failed pre-launch gate and never launches in a bypass mode", () => {

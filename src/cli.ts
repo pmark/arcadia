@@ -1303,7 +1303,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .description("Refresh and print the live capsule (<workspace>/coordinators/<project>/<role>/live.json) from canonical sources")
     .option("--check", "Exit 1 when the journal is stale, no next move is recorded, or a chat-only approval would be lost")
     .option("--markdown", "Print the handoff template rendering instead of a summary")
-    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)")
+    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
   ).action((options: { workspace: string; project: string; role: string; check?: boolean; markdown?: boolean; repo?: string; json?: boolean }) =>
     runCliAction("coordinator.capsule", options, () => runCoordinatorCapsuleCommand(options), renderCoordinatorCapsuleSuccess)
   );
@@ -1328,7 +1328,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .description("Prove a launching generation has the whole state: snapshot sha, drift since the snapshot, watchers re-armed (exit 1 unless these pass), then journal, lost approvals and next move as warnings")
     .requiredOption("--generation <n>", "The launching generation", (value: string) => Number(value))
     .option("--snapshot-sha <sha>", "The sha the launch prompt pinned")
-    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)")
+    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
   ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha?: string; repo?: string; json?: boolean }) =>
     runCliAction("coordinator.verify", options, () => runCoordinatorVerifyCommand(options), renderCoordinatorVerifySuccess)
   );
@@ -1342,7 +1342,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   coordinatorScope(coordinator.command("renew")
     .description("Launch one successor coordinator through the tmux launcher (same provider and model, Remote Control, verified prompt delivery, one retry, one attention ping on failure). Refuses until the standing relay Decision is on main. Custody-guarded")
     .option("--effort <effort>", "Reasoning effort key or native value", "e3_deep")
-    .option("--repo <path>", "Repository checkout the successor's worktree is cut from (default: this checkout)")
+    .option("--repo <path>", "Repository checkout the successor's worktree is cut from (default: this checkout)", resolveInvocationPath)
   ).action((options: { workspace: string; project: string; role: string; effort?: string; repo?: string; json?: boolean }) =>
     runCliAction("coordinator.renew", options, () => runCoordinatorRenewCommand({ ...options, env: process.env }), renderCoordinatorRenewSuccess)
   );
