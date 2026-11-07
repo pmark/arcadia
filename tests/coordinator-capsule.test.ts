@@ -21,7 +21,7 @@ import {
   listGenerations,
   seedCustodianGeneration
 } from "../src/coordinator/generations.js";
-import { acquireRelayLock, releaseRelayLock } from "../src/coordinator/lock.js";
+import { ALIVE_START_UNKNOWN, acquireRelayLock, releaseRelayLock } from "../src/coordinator/lock.js";
 import { coordinatorPaths } from "../src/coordinator/paths.js";
 import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -176,7 +176,32 @@ describe("coordinator generations: claim, claim recovery and launching rules", (
   });
 });
 
+describe("crash leftovers", () => {
+  it("sets aside an orphan snapshot that no row references instead of blocking every later claim", () => {
+    const ws = workspace();
+    seed(ws);
+    const orphan = path.join(coordinatorPaths(ws, "arcadia", "rowan").snapshots, "2.json");
+    claim(ws, at(1));
+    // Simulate a crash between the snapshot write and the insert: the file exists, the row does not.
+    withDatabase(ws, (db) => db.prepare("DELETE FROM coordinator_generations WHERE generation = 2").run());
+    const before = readFileSync(orphan, "utf8");
+    const next = claim(ws, at(2));
+    expect(next.generation).toBe(2);
+    const log = readFileSync(coordinatorPaths(ws, "arcadia", "rowan").generationsLog, "utf8");
+    const aside = JSON.parse(log.trim().split("\n").find((line) => line.includes("orphan_snapshot_set_aside"))!).path as string;
+    expect(readFileSync(aside, "utf8")).toBe(before);
+  });
+});
+
 describe("relay lock", () => {
+  it("treats a live holder whose start time cannot be read as live, never stale", () => {
+    const ws = workspace();
+    const dir = coordinatorPaths(ws, "arcadia", "rowan").root;
+    const held = acquireRelayLock(dir, { pid: 4242, processStartTime: () => "Sat Nov  7 12:00:00 2026", waitMs: 0 });
+    expect(() => acquireRelayLock(dir, { pid: 5151, processStartTime: () => ALIVE_START_UNKNOWN, waitMs: 0 })).toThrow(/relay lock/);
+    releaseRelayLock(held);
+  });
+
   it("is exclusive for a live holder and broken only when no live process has that pid and start time", () => {
     const ws = workspace();
     const dir = coordinatorPaths(ws, "arcadia", "rowan").root;

@@ -179,7 +179,9 @@ export function writeImmutableSnapshot(paths: CoordinatorPaths, generation: numb
   const target = snapshotPath(paths, generation);
   const bytes = serialize(capsule);
   const temporary = `${target}.${process.pid}.tmp`;
-  const fd = openSync(temporary, "w", 0o400);
+  // A crash can leave a read-only temporary from an earlier process with the same pid.
+  try { unlinkSync(temporary); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  const fd = openSync(temporary, "wx", 0o400);
   try {
     writeSync(fd, bytes);
     fsyncSync(fd);

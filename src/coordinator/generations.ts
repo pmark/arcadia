@@ -1,5 +1,5 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import { appendFileSync, existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, renameSync } from "node:fs";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import { writeTransaction } from "../db/connection.js";
@@ -259,6 +259,15 @@ export function claimNextGeneration(db: Database.Database, workspace: string, in
       assignment: { briefPath: input.briefPath ?? null, briefSha: input.briefSha ?? null, directives: input.directives ?? [] },
       state: readCoordinatorState(paths), sources: input.sources, now
     });
+    // A snapshot with no row is an orphan of a claim that crashed between the
+    // snapshot write and the insert. Nothing references it, so it is set aside
+    // (kept, never deleted) rather than blocking every later claim.
+    const orphan = snapshotPath(paths, generation);
+    if (existsSync(orphan)) {
+      const aside = orphan.replace(/\.json$/, `.orphan-${now.getTime()}.json`);
+      renameSync(orphan, aside);
+      appendLog(paths, "orphan_snapshot_set_aside", { generation, path: aside }, now);
+    }
     const snapshot = writeImmutableSnapshot(paths, generation, capsule);
     const token = randomBytes(24).toString("hex");
     const at = now.toISOString();
@@ -382,10 +391,14 @@ export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths,
     return previous?.generation ?? null;
   });
   appendLog(paths, "accepted", { generation: incoming.generation, handedOff }, now);
-  if (existsSync(paths.live)) {
-    const live = JSON.parse(readFileSync(paths.live, "utf8")) as Capsule;
-    writeLiveCapsule(paths, { ...live, generation: incoming.generation, custodian: custodianOf({ ...incoming, status: "custodian" }) });
-  }
+  // Custody has transferred; refreshing the projection is best effort, and a
+  // corrupt live.json is rebuilt by the next `capsule` refresh.
+  try {
+    if (existsSync(paths.live)) {
+      const live = JSON.parse(readFileSync(paths.live, "utf8")) as Capsule;
+      writeLiveCapsule(paths, { ...live, generation: incoming.generation, custodian: custodianOf({ ...incoming, status: "custodian" }) });
+    }
+  } catch { /* the projection is not the record */ }
   return { custodian: incoming.generation, handedOff };
 }
 

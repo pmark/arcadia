@@ -28,13 +28,30 @@ export interface RelayLockHandle {
 
 interface LockRecord { pid: number; startTime: string; acquiredAt: string }
 
+/**
+ * Returned when the process exists but its start time cannot be read (`ps`
+ * missing or failing under load). The holder is then treated as live, never
+ * as stale: failing to observe a process must not break its lock.
+ */
+export const ALIVE_START_UNKNOWN = "alive:start-time-unreadable";
+
+function processExists(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
 export function systemProcessStartTime(pid: number): string | null {
   try {
     const out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5_000 }).trim();
-    return out === "" ? null : out;
+    if (out !== "") return out;
   } catch {
-    return null;
+    // Fall through: a failed `ps` is not proof the process is gone.
   }
+  return processExists(pid) ? ALIVE_START_UNKNOWN : null;
 }
 
 function sleepSync(ms: number): void {
@@ -98,8 +115,10 @@ export function acquireRelayLock(directory: string, deps: RelayLockDeps = {}): R
     const holder = readRecord(file);
     // A half-written lock (no parseable record) is treated as held until the
     // wait runs out, then as stale: its writer died between create and write.
-    const live = holder !== null && startTimeOf(holder.pid) === holder.startTime && holder.startTime !== "unknown"
-      || holder !== null && holder.startTime === "unknown" && startTimeOf(holder.pid) !== null;
+    const observed = holder === null ? null : startTimeOf(holder.pid);
+    const live = holder !== null && observed !== null && (
+      observed === ALIVE_START_UNKNOWN || holder.startTime === "unknown" || holder.startTime === ALIVE_START_UNKNOWN || observed === holder.startTime
+    );
     if (!live && (holder !== null || Date.now() >= deadline)) {
       breakStaleLock(file, holder);
       continue;
