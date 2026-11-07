@@ -119,6 +119,11 @@ These come from the operator's own words (2026-11-07) and apply to every message
    - A real-time ping (`arcadia ping send`) is only for a ready one-tap item
      blocking the critical path. Give its exact link and the cost of waiting.
 6. **Terse.** Give the state and the one move. Don't post progress chatter.
+7. **Title.** Signal is the operator's single point of contact, so its session title starts
+   with ⭐ (for example `⭐ Signal: batch 2 running`). It retitles on every real state
+   change with `arcadia session title` or the host's rename. Rowan keeps 🚦 and helpers
+   keep `↳`. The operator (2026-11-07): "you are my single point of contact, so you
+   need a star emoji in your session title, please".
 
 ## Hand off before compaction
 
