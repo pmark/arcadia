@@ -69,11 +69,11 @@ actions:
     references: []
   - id: pin-action-doc-ref-parse
     title: "Pin how an Action doc ref splits into Plan slug and Action id on the first #, with a new test file."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin how an Action doc ref splits into Plan slug and Action id on the first #, with a new test file."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-action-doc-ref-parse-d3b3eed3a8c4; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-action-doc-ref-parse
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-action-doc-ref-parse
+current_action: pin-journey-action-key-split
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
