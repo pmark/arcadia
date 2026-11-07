@@ -341,7 +341,7 @@ describe("Intelligence digest narrator without a LiteLLM proxy key", () => {
       await new Promise((resolve) => setTimeout(resolve, 700));
       expect(db.prepare("SELECT status FROM intelligence_jobs").all()).toEqual([{ status: "queued" }]);
 
-      const generateStructured = vi.fn(async () => ({ output: { narrative: "Alpha passed a test." } }));
+      const generateStructured = vi.fn(async () => ({ output: { summary: "Alpha passed a test." } }));
       const service = new IntelligenceWorker(
         createSqliteIntelligenceJobRepository(db),
         { generateStructured, generateImage: vi.fn() },
@@ -349,7 +349,7 @@ describe("Intelligence digest narrator without a LiteLLM proxy key", () => {
       );
       await service.runOnce();
 
-      await expect(pending).resolves.toMatchObject({ narrative: "Alpha passed a test." });
+      await expect(pending).resolves.toMatchObject({ summary: "Alpha passed a test." });
       expect(generateStructured).toHaveBeenCalledTimes(1);
     } finally {
       db.close();
