@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildStartRunDayPins, buildStartRunPins, runStartRunDayEvidenceCommand, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { validateOperatorScriptContract, assertProjectLibraryEntry, startRunLauncher, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
-import { CONTINUE_ANSWER, CONTINUE_DECISION, CONTINUE_SLUG, dayGrantLauncher, inspectDayGrantChain, isFailedBatch, isOperatorBrowserPress, refusalKey, validateDayGrantDelegation, validateDayGrantPins, validateDayGrantPrevious } from "../src/operatorActions/startRunDayGrant.js";
+import { CONTINUE_ANSWER, CONTINUE_SLUG, dayGrantLauncher, inspectDayGrantChain, isFailedBatch, isOperatorBrowserPress, refusalKey, validateDayGrantDelegation, validateDayGrantPins, validateDayGrantPrevious } from "../src/operatorActions/startRunDayGrant.js";
 import { delegatedPressMarker, StartRunDelegationError } from "../src/operatorActions/startRunDelegation.js";
 import { validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { ensureProductionPolicyTables, readDayGrantEvidence } from "../src/production/policy.js";
@@ -25,6 +25,8 @@ afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, {
 const tempDir = (prefix: string) => { const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), prefix))); directories.push(dir); return dir; };
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 const NOW = Date.parse("2026-11-10T12:00:00Z");
+/** The number the continue-after-fix Decision landed on when written; the gate itself finds it by its slug alone. */
+const CONTINUE_ID = "0187";
 const SCOPE = { project: "arcadia", plan: DAY_PLAN, provider: "claude-code-cli", concurrency: 1, spendDecision: "0130", offId: STOP_ID };
 const code = (run: () => unknown) => { try { run(); } catch (error) { return error instanceof StartRunDelegationError ? error.code : String(error); } return "none"; };
 
@@ -333,8 +335,8 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     const decisions: Record<string, string> = Object.fromEntries(allDecisions.map((id) => [id, decisionDoc("Yes")]));
     decisions["0173"] = decisionDoc(options.answer ?? '"A. Daily grant: START and routine run operations"') + (options.decisionBody ?? "");
     decisions["0181"] = decisionDoc(options.serialAnswer ?? "A. Continued serial runs");
-    // Decision 0186 is found by its slug, so it lives at its real path, beside any record another settlement gave a number.
-    const named: Record<string, string> = { ...(options.continueAnswer === null ? {} : { [`docs/decisions/${CONTINUE_DECISION}-${CONTINUE_SLUG}.md`]: `---\nid: "${CONTINUE_DECISION}"\nstatus: approved\nanswer: ${options.continueAnswer ?? CONTINUE_ANSWER}\n---\n` }), ...options.extraDecisions };
+    // Decision 0187 is found by its slug, so it lives at its real path, beside any record another settlement gave a number.
+    const named: Record<string, string> = { ...(options.continueAnswer === null ? {} : { [`docs/decisions/${CONTINUE_ID}-${CONTINUE_SLUG}.md`]: `---\nid: "${CONTINUE_ID}"\nstatus: approved\nanswer: ${options.continueAnswer ?? CONTINUE_ANSWER}\n---\n` }), ...options.extraDecisions };
     const files: Record<string, string> = {
       "scripts/start-run.sh": "#!/bin/sh\n", "scripts/day-grant.sh": "#!/bin/sh\n# day\n", "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x", "tests/replay.test.ts": "x",
       [`docs/plans/${DAY_PLAN}.md`]: `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${options.planStatus ?? "active"}\nactions:\n  - id: first-action\n    status: open\n---\n`,
@@ -421,7 +423,7 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     expect(() => buildStartRunPins({ ...f.args, ...fix, fixCommit: undefined }, f.deps)).toThrow(/together/);
     expect(() => buildStartRunPins({ ...f.args, ...fix, observedCleared: "docs/x.md" }, f.deps)).toThrow(/not both/);
   });
-  it("Decision 0186: pins a card past a failed batch only with a fix for its cause merged after it, and option A on main", () => {
+  it("Decision 0187: pins a card past a failed batch only with a fix for its cause merged after it, and option A on main", () => {
     const failedAt = NOW - 40 * 60_000;
     const make = (options: Parameters<typeof fixture>[0] & { operatorPressed?: boolean } = {}) => {
       const { evidence, revision } = evidenceOf(83, NOW, [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }]);
@@ -435,8 +437,8 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     const { startRun, observations } = make()();
     expect(validateStartRunPins(startRun)).toBe(startRun);
     expect(startRun.delegation).toMatchObject({ attempt: 2, previous: { press: pressKey("start-a"), kind: "failed-attempt", cause: "stuck-run", clearance: { kind: "merged-fix", commit: "c".repeat(40), cause: "stuck-run" } } });
-    expect(observations.notes.join("\n")).toMatch(/Decision 0186: this card goes on past 1 failed batch/);
-    // Decision 0186 covers a failed delegated batch only: one the operator pressed stays theirs.
+    expect(observations.notes.join("\n")).toMatch(/Continue-after-fix Decision: this card goes on past 1 failed batch/);
+    // Decision 0187 covers a failed delegated batch only: one the operator pressed stays theirs.
     expect(make({ operatorPressed: true })).toThrow(/failed under the day approved/);
     // No clearance, an observed one, a fix for another cause or none named: the failed batch still stops for the operator.
     expect(() => make()({ fixPullRequest: undefined, fixCommit: undefined, reproduction: undefined, fixCause: undefined, observedCleared: "docs/y.md" })).toThrow(/failed under the day approved/);
@@ -445,22 +447,36 @@ describe("arcadia start-run pins --day-grant-from and day-pins", () => {
     // The fix is not on main, or merged before the batch ended.
     expect(() => make()({ fixCommit: "d".repeat(40) })).toThrow(/not on origin main/);
     expect(make({ commitTime: failedAt - 60_000 })).toThrow(/dated before the failed batch start-a ended/);
-    // Until Decision 0186 is answered with option A on main, nothing changes.
-    expect(make({ continueAnswer: null })).toThrow(/FAILED_BATCH: Decision 0186 cannot be read at origin main: no Decision record has the slug/);
-    expect(make({ continueAnswer: "B. The first failed batch stops for the operator" })).toThrow(/FAILED_BATCH: Decision 0186 is not answered with option A/);
-    // Found by its slug: another record that shares its number is not it, and a second record with its slug refuses.
-    const other = `---\nid: "0186"\nstatus: approved\nanswer: Yes\n---\n`;
-    expect(make({ extraDecisions: { "docs/decisions/0186-authorize-one-start-card-worker-claude-usage-diagnostic-2026-11-07-aaaaaaaa.md": other } })).not.toThrow();
-    expect(make({ continueAnswer: "B. The first failed batch stops for the operator", extraDecisions: { "docs/decisions/0186-aaa-sorts-first.md": `---\nid: "0186"\nstatus: approved\nanswer: ${CONTINUE_ANSWER}\n---\n` } })).toThrow(/Decision 0186 is not answered with option A/);
+    // Until the continue-after-fix Decision is answered with option A on main, nothing changes.
+    expect(make({ continueAnswer: null })).toThrow(/FAILED_BATCH: the continue-after-fix Decision cannot be read at origin main: no Decision record has the slug/);
+    expect(make({ continueAnswer: "B. The first failed batch stops for the operator" })).toThrow(/FAILED_BATCH: Decision 0187 \(.*\) is not answered with option A/);
+    // Found by its slug alone: another record that shares its number is not it, and a second record with its slug refuses.
+    const other = `---\nid: "${CONTINUE_ID}"\nstatus: approved\nanswer: Yes\n---\n`;
+    expect(make({ extraDecisions: { [`docs/decisions/${CONTINUE_ID}-authorize-one-start-card-worker-claude-usage-diagnostic-2026-11-07-aaaaaaaa.md`]: other } })).not.toThrow();
+    expect(make({ continueAnswer: "B. The first failed batch stops for the operator", extraDecisions: { [`docs/decisions/${CONTINUE_ID}-aaa-sorts-first.md`]: `---\nid: "${CONTINUE_ID}"\nstatus: approved\nanswer: ${CONTINUE_ANSWER}\n---\n` } })).toThrow(/Decision 0187 \(.*\) is not answered with option A/);
     expect(make({ extraDecisions: { [`docs/decisions/0185-${CONTINUE_SLUG}.md`]: other } })).toThrow(/2 Decision records share the slug/);
-    expect(make({ continueAnswer: null, extraDecisions: { [`docs/decisions/0187-${CONTINUE_SLUG}.md`]: `---\nid: "0187"\nstatus: approved\nanswer: ${CONTINUE_ANSWER}\n---\n` } })).toThrow(/is docs\/decisions\/0187-.*, not Decision 0186/);
-    expect(make({ extraDecisions: { [`docs/decisions/0186-${CONTINUE_SLUG}.md`]: `---\nid: "0185"\nstatus: approved\nanswer: ${CONTINUE_ANSWER}\n---\n` } })).toThrow(/Decision 0186 is not answered with option A/);
+    // Whatever number the record lands on, it is found; its frontmatter id must match its file name.
+    expect(make({ continueAnswer: null, extraDecisions: { [`docs/decisions/0199-${CONTINUE_SLUG}.md`]: `---\nid: "0199"\nstatus: approved\nanswer: ${CONTINUE_ANSWER}\n---\n` } })).not.toThrow();
+    expect(make({ extraDecisions: { [`docs/decisions/${CONTINUE_ID}-${CONTINUE_SLUG}.md`]: `---\nid: "0185"\nstatus: approved\nanswer: ${CONTINUE_ANSWER}\n---\n` } })).toThrow(/Decision 0187 \(.*\) is not answered with option A/);
     expect(() => make()({ fixPullRequest: undefined, fixCommit: undefined, reproduction: undefined, observedCleared: "docs/y.md" })).toThrow(/--fix-cause names the cause of a merged fix/);
     expect(() => make()({ fixCause: "undefined" })).toThrow(/stable slug of the cause the fix addresses/);
     expect(() => validateDayGrantPrevious({ ...fixed(pressKey("start-a"), "stuck-run"), clearance: { ...mergedFix("stuck-run"), extra: 1 } })).toThrow(/may name the cause it fixes/);
     expect(() => validateDayGrantPrevious({ ...fixed(pressKey("start-a"), "stuck-run"), clearance: { ...mergedFix("stuck-run"), cause: "Not A Slug" } })).toThrow(/stable slug/);
   });
-  it("Decision 0186: a clean batch's card needs no Decision 0186", () => {
+  it("Decision 0187: checks an earlier failure's fix again at origin main, its reproduction included", () => {
+    const { evidence, revision } = evidenceOf(83, NOW, [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b", clean: true }, { off: "rowan-off-b" }]);
+    const run = (reproduction: string) => {
+      const f = fixture({ evidence });
+      writeDayApproval(f.library, { pressedAt: NOW - 3_600_000 });
+      writeStartPress(f.library, { card: "start-a", at: NOW - 50 * 60_000, status: "succeeded", delegated: true, receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } }, 0);
+      writeStartPress(f.library, { card: "start-b", at: NOW - 40 * 60_000, status: "succeeded", previous: { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt", clearance: { ...mergedFix("stuck-run", "c".repeat(40)), reproduction } }, receipt: { outcome: "succeeded", reason: "", allowanceConsumed: true } }, 1);
+      const deps = { ...f.deps, production: () => ({ workspacePath: "/w/martianrover", desiredState: "inactive", revision, epoch: 46, liveAdmissions: 0 }) };
+      return () => buildStartRunPins({ ...f.args, previousCause: "scope-complete", previousEvidence: "docs/notes.md", observedCleared: "docs/y.md" }, deps);
+    };
+    expect(run("tests/replay.test.ts")).not.toThrow();
+    expect(run("tests/absent-replay.test.ts")).toThrow(/absent-replay\.test\.ts is not readable at origin main/);
+  });
+  it("Decision 0187: a clean batch's card needs no Decision 0187", () => {
     const { evidence, revision } = evidenceOf(83, NOW, [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }]);
     const f = fixture({ evidence, continueAnswer: null });
     writeDayApproval(f.library, { pressedAt: NOW - 3_600_000 });

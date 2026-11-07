@@ -81,6 +81,8 @@ export interface PressSpec {
   previous?: { press: string; cause: string; kind?: DayGrantPrevious["kind"]; clearance?: DayGrantClearance };
   /** Rowan's delegated press of the day's first card, which names no press before it (`previous` implies delegated). */
   delegated?: boolean;
+  /** A Decision 0173 card pressed with no delegated marker, as the operator would press it: its block is there, the marker is not. */
+  operatorPress?: boolean;
   status?: string;
   /** Executor receipt; null leaves none. */
   receipt?: Record<string, unknown> | null;
@@ -90,7 +92,7 @@ export const pressKey = (card: string) => `${card}/${pressId(card)}`;
 const RUN_PREFIX = "20261104T1";
 
 /**
- * Decision 0186: placeholder fix commits. The TypeScript chain never reads Git, so any full id does there; the executor maps
+ * Decision 0187: placeholder fix commits. The TypeScript chain never reads Git, so any full id does there; the executor maps
  * FIX_COMMIT to its reviewed revision (dated after every failure) and OLD_FIX_COMMIT to an ancestor dated before them.
  */
 export const FIX_COMMIT = "0".repeat(40);
@@ -111,7 +113,7 @@ export function writeStartPress(library: string, spec: PressSpec, index: number,
   const delegated = spec.previous !== undefined || spec.delegated === true;
   writeFileSync(path.join(dir, "run.json"), JSON.stringify({
     schema: "arcadia-operator-script-run-v1", runId: id, scriptId: spec.card, status: spec.status ?? "failed", startedAt: iso(spec.at),
-    ...(delegated ? { press: { kind: "delegated", agent: "rowan", decision: "0173", originatingRun: `${DAY_CARD}/${DAY_RUN}` } } : {})
+    ...(delegated && !spec.operatorPress ? { press: { kind: "delegated", agent: "rowan", decision: "0173", originatingRun: `${DAY_CARD}/${DAY_RUN}` } } : {})
   }));
   const given = spec.previous?.clearance;
   const clearance = given?.kind === "merged-fix" ? { ...given, commit: commits[given.commit] ?? given.commit } : given ?? { kind: "observed-cleared", observation: "docs/y.md" };
@@ -197,7 +199,7 @@ export function dayScenarios(now: number): DayScenario[] {
   const m = (minutes: number) => now - minutes * MINUTE;
   const refused = (card: string, minutes: number, reason?: string, previous?: PressSpec["previous"]): PressSpec => ({ card, at: m(minutes), ...(previous ? { previous } : {}), receipt: reason ? { reason } : {} });
   const started = (card: string, minutes: number, previous?: PressSpec["previous"]): PressSpec => ({ card, at: m(minutes), status: "succeeded", ...(previous ? { previous } : {}), receipt: { outcome: "succeeded", reason: "", productionActivated: true, allowanceConsumed: true } });
-  /** Rowan's delegated press of the day's first START card (Decision 0186 covers a failed delegated batch only). */
+  /** Rowan's delegated press of the day's first START card (Decision 0187 covers a failed delegated batch only). */
   const rowan = (card: string, minutes: number): PressSpec => ({ ...started(card, minutes), delegated: true });
   return [
     { label: "the first press of a day, with nothing before it", code: "none", attempt: 1, previous: null },
@@ -254,25 +256,28 @@ export function dayScenarios(now: number): DayScenario[] {
     { label: "a failed batch after a clean one in this day", code: "FAILED_BATCH", attempt: 3,
       presses: [started("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "scope-complete", kind: "clean-batch" })],
       steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }], previous: named(pressKey("start-b"), "stuck-run", "failed-attempt") },
-    // Decision 0186: a failed batch is passed only by the next card naming a fix merged for that batch's cause.
-    { label: "Decision 0186: a failed batch whose next card names a merged fix for its cause", code: "none", attempt: 2, presses: [rowan("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: fixed(pressKey("start-a"), "stuck-run") },
-    { label: "Decision 0186: a failed batch the operator pressed, which a merged fix does not pass", code: "FAILED_BATCH", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: fixed(pressKey("start-a"), "stuck-run") },
-    { label: "Decision 0186: a merged fix for another cause than the one named", code: "FAILED_BATCH", attempt: 2, presses: [rowan("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: fixed(pressKey("start-a"), "stuck-run", "provider-timeout") },
-    { label: "Decision 0186: a merged fix that names no cause", code: "FAILED_BATCH", attempt: 2, presses: [rowan("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: fixed(pressKey("start-a"), "stuck-run", null) },
-    { label: "Decision 0186: a failed batch still running, whatever fix is named", code: "FAILED_BATCH", attempt: 2, presses: [rowan("start-a", 40)], steps: [{ activate: "start-a" }], previous: fixed(pressKey("start-a"), "stuck-run") },
-    { label: "Decision 0186: a failed batch cleared by a merged fix, then a clean batch", code: "none", attempt: 3,
+    // Decision 0187: a failed batch is passed only by the next card naming a fix merged for that batch's cause.
+    { label: "Decision 0187: a failed batch whose next card names a merged fix for its cause", code: "none", attempt: 2, presses: [rowan("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: fixed(pressKey("start-a"), "stuck-run") },
+    { label: "Decision 0187: a failed batch the operator pressed, which a merged fix does not pass", code: "FAILED_BATCH", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: fixed(pressKey("start-a"), "stuck-run") },
+    { label: "Decision 0187: a merged fix for another cause than the one named", code: "FAILED_BATCH", attempt: 2, presses: [rowan("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: fixed(pressKey("start-a"), "stuck-run", "provider-timeout") },
+    { label: "Decision 0187: a merged fix that names no cause", code: "FAILED_BATCH", attempt: 2, presses: [rowan("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: fixed(pressKey("start-a"), "stuck-run", null) },
+    { label: "Decision 0187: a failed batch still running, whatever fix is named", code: "FAILED_BATCH", attempt: 2, presses: [rowan("start-a", 40)], steps: [{ activate: "start-a" }], previous: fixed(pressKey("start-a"), "stuck-run") },
+    { label: "Decision 0187: a failed batch cleared by a merged fix, then a clean batch", code: "none", attempt: 3,
       presses: [rowan("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt", clearance: mergedFix("stuck-run") })],
       steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b", clean: true }, { off: "rowan-off-b" }], previous: named(pressKey("start-b"), "scope-complete", "clean-batch") },
-    { label: "Decision 0186: an earlier failed batch the next card cleared only by observation", code: "FAILED_BATCH", attempt: 3,
+    { label: "Decision 0187: an earlier failed batch the next card cleared only by observation", code: "FAILED_BATCH", attempt: 3,
       presses: [rowan("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt" })],
       steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b", clean: true }, { off: "rowan-off-b" }], previous: named(pressKey("start-b"), "scope-complete", "clean-batch") },
-    { label: "Decision 0186: an earlier failed batch followed by a press that names nothing", code: "FAILED_BATCH", attempt: 3,
+    { label: "Decision 0187: an earlier failed batch whose follower card the operator pressed, naming a merged fix", code: "FAILED_BATCH", attempt: 3,
+      presses: [rowan("start-a", 50), { ...started("start-b", 40, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt", clearance: mergedFix("stuck-run") }), operatorPress: true }],
+      steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b", clean: true }, { off: "rowan-off-b" }], previous: named(pressKey("start-b"), "scope-complete", "clean-batch") },
+    { label: "Decision 0187: an earlier failed batch followed by a press that names nothing", code: "FAILED_BATCH", attempt: 3,
       presses: [rowan("start-a", 50), started("start-b", 40)],
       steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b", clean: true }, { off: "rowan-off-b" }], previous: named(pressKey("start-b"), "scope-complete", "clean-batch") },
-    { label: "Decision 0186: a second failure on the same cause after a merged fix", code: "SAME_CAUSE", attempt: 3,
+    { label: "Decision 0187: a second failure on the same cause after a merged fix", code: "SAME_CAUSE", attempt: 3,
       presses: [rowan("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt", clearance: mergedFix("stuck-run") })],
       steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }], previous: fixed(pressKey("start-b"), "stuck-run") },
-    { label: "Decision 0186: a second failure on another cause, each with its merged fix", code: "none", attempt: 3,
+    { label: "Decision 0187: a second failure on another cause, each with its merged fix", code: "none", attempt: 3,
       presses: [rowan("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt", clearance: mergedFix("stuck-run") })],
       steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }], previous: fixed(pressKey("start-b"), "provider-timeout") },
     { label: "a batch that reached scope complete with an Action escalated, which failed", code: "FAILED_BATCH", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a", clean: true, escalated: 1 }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "escalated", "failed-attempt") },
@@ -315,7 +320,7 @@ export function dayScenarios(now: number): DayScenario[] {
   ];
 }
 
-/** `commits` maps a placeholder fix commit to a real one, for the executor's repository (Decision 0186). */
+/** `commits` maps a placeholder fix commit to a real one, for the executor's repository (Decision 0187). */
 export function writeDayScenario(library: string, scenario: DayScenario, now: number, commits: Record<string, string> = {}): { approval: ApprovalFiles; evidence: DayEvidence; revision: number; policyRevision: number } {
   const baseline = 83;
   const approval = writeDayApproval(library, { pressedAt: now - 60 * MINUTE, baseline, ...scenario.approval });

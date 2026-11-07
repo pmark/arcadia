@@ -11,7 +11,7 @@ import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
 import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
-import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, CONTINUE_DECISION, DAY_GRANT_EXECUTOR_PATH, findContinueDecision, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
+import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, DAY_GRANT_EXECUTOR_PATH, findContinueDecision, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { readDayGrantEvidence } from "../production/policy.js";
@@ -51,7 +51,7 @@ export interface StartRunPinsOptions {
   fixPullRequest?: string;
   fixCommit?: string;
   reproduction?: string;
-  /** Decision 0186: the cause the merged fix addresses; required, and equal to --previous-cause, after a failed batch. */
+  /** Decision 0187: the cause the merged fix addresses; required, and equal to --previous-cause, after a failed batch. */
   fixCause?: string;
   observedCleared?: string;
   repository?: string;
@@ -111,10 +111,13 @@ const isSerialRunsAnswered = (content: string): boolean => {
   const fields = frontmatter(content, "Decision 0181");
   return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith("A. Continued serial runs");
 };
-/** Decision 0186's option A, from its frontmatter: a failed batch is continued past only once this answer is on main. */
-const isContinueAnswered = (content: string): boolean => {
-  const fields = frontmatter(content, `Decision ${CONTINUE_DECISION}`);
-  return String(fields.id) === CONTINUE_DECISION && fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith(CONTINUE_ANSWER);
+/**
+ * The continue-after-fix Decision's option A (Decision 0187 when written, found by its slug), from its frontmatter: a failed
+ * batch is continued past only once this answer is on main. `id` is the number in the record's file name.
+ */
+const isContinueAnswered = (content: string, id: string): boolean => {
+  const fields = frontmatter(content, `Decision ${id}`);
+  return String(fields.id) === id && fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith(CONTINUE_ANSWER);
 };
 const text = (buffer: Buffer): string => buffer.toString("utf8");
 const sha256 = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
@@ -242,26 +245,26 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
       if (named && !latest) throw validationError("A cause was named, but no START press has happened since Decision 0170.");
       const previous: DayGrantPrevious | null = named && latest ? validateDayGrantPrevious({ ...latest, ...named }) : null;
       const chain = inspectDayGrantChain({ ...input, previous });
-      // Decision 0186: going on past a failed batch needs that answer on main, and each fix merged after its batch ended.
+      // The continue-after-fix Decision: going on past a failed batch needs its answer on main, and each fix merged after its
+      // batch ended. Found by its slug alone: numbers are minted by every START sign-in and raced for twice.
       if (chain.clearedFailures.length > 0) {
-        // By its slug: a number alone can be shared by two records that raced for it.
         const found = findContinueDecision(decisionFiles);
-        if ("problem" in found) throw validationError(`FAILED_BATCH: Decision ${CONTINUE_DECISION} cannot be read at origin main: ${found.problem}; a failed batch still stops for the operator (Decision 0181).`);
-        if (!isContinueAnswered(text(show(found.file)))) throw validationError(`FAILED_BATCH: Decision ${CONTINUE_DECISION} is not answered with option A at origin main, so a failed batch still stops for the operator (Decision 0181).`);
+        if ("problem" in found) throw validationError(`FAILED_BATCH: the continue-after-fix Decision cannot be read at origin main: ${found.problem}; a failed batch still stops for the operator (Decision 0181).`);
+        if (!isContinueAnswered(text(show(found.file)), found.id)) throw validationError(`FAILED_BATCH: Decision ${found.id} (${found.file}) is not answered with option A at origin main, so a failed batch still stops for the operator (Decision 0181).`);
         for (const cleared of chain.clearedFailures) {
           try { deps.git(toplevel, ["merge-base", "--is-ancestor", cleared.commit, originMain]); }
           catch { throw validationError(`FAILED_BATCH: the fix commit ${cleared.commit} named for the failed batch ${cleared.batch} is not on origin main ${originMain}.`); }
           show(cleared.reproduction);
           const committedAt = Number(text(deps.git(toplevel, ["show", "-s", "--format=%ct", cleared.commit])).trim()) * 1000;
-          if (!Number.isFinite(committedAt) || committedAt <= Date.parse(cleared.endedAt)) throw validationError(`FAILED_BATCH: the fix commit ${cleared.commit} is dated before the failed batch ${cleared.batch} ended at ${cleared.endedAt}; Decision 0186 continues only after a fix merged after the failure.`);
+          if (!Number.isFinite(committedAt) || committedAt <= Date.parse(cleared.endedAt)) throw validationError(`FAILED_BATCH: the fix commit ${cleared.commit} is dated before the failed batch ${cleared.batch} ended at ${cleared.endedAt}; the continue-after-fix Decision goes on only after a fix merged after the failure.`);
         }
-        notes.push(`Decision 0186: this card goes on past ${chain.clearedFailures.length} failed batch${chain.clearedFailures.length === 1 ? "" : "es"} in this day, each cleared by a fix merged after it: ${chain.clearedFailures.map((c) => `${c.batch} (${c.cause}, ${c.commit.slice(0, 12)})`).join(", ")}. The fix's review and checks are Rowan's recorded judgement, not machine-proved.`);
+        notes.push(`Continue-after-fix Decision: this card goes on past ${chain.clearedFailures.length} failed batch${chain.clearedFailures.length === 1 ? "" : "es"} in this day, each cleared by a fix merged after it: ${chain.clearedFailures.map((c) => `${c.batch} (${c.cause}, ${c.commit.slice(0, 12)})`).join(", ")}. The fix's review and checks are Rowan's recorded judgement, not machine-proved.`);
       }
       delegation = {
         decision: "0173", approvalCard: dayGrantFrom.card, approvalRun: dayGrantFrom.run, approvalReceiptSha256: chain.window.receiptSha256, approvalPressSha256: chain.window.pressSha256,
         attempt: chain.attemptsSoFar + 1, previous
       };
-      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} (numbered since Decision 0170, no longer capped) if it admits a Session; ${chain.failedBatchesToday} failed batches in this day, each one cleared by a merged fix for its cause (Decision 0186) or the card is refused; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
+      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} (numbered since Decision 0170, no longer capped) if it admits a Session; ${chain.failedBatchesToday} failed batches in this day, each one cleared by a merged fix for its cause (Decision 0187) or the card is refused; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
     } catch (error) {
       throw validationError(`No Decision 0173 card may be pinned: ${error instanceof Error ? error.message : String(error)}`);
     }
