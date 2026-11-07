@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-06
+updated: 2026-11-07
 ---
 
 # Mission Log: Arcadia
@@ -2977,3 +2977,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/work-monitor.test.ts gains a test in which formatWorkingCopySafetyLines receives a snapshot of hand-built working copies in the unsaved, local_only, pushed, in_pr and landed states across two Projects, and returns unsaved lines before local_only before pushed, with ties ordered by Project name."; "The same test asserts that landed copies and in_pr copies whose delivery is not blocked produce no line, that a repository error line comes first, and that a limit of 2 returns exactly two lines."; "Every other test in that file passes unchanged."; "Apart from the settlement records Arcadia writes, the change touches only tests/work-monitor.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Plan complete; activated Plan portfolio-docs-protocol from the explicit queue at arcadia/narrative-summarization.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-pin-safety-lines-main-20261106).
+
+## 2026-11-07 — Completed arcadia/narrative-summarization
+
+- **Did:** Completed Action arcadia/narrative-summarization from accepted evidence (Candidate 6a82a164a90fee1f37f186e1a9c314aa3b1849c5).
+- **Result:** Every declared acceptance criterion was accepted as met: "A narrative doc produces an Artifact holding its summary."; "The summary is never written back into the source document.".
+- **Next:** Plan complete; every Action is done.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-narrative-summarization-aa601d29fa3f).

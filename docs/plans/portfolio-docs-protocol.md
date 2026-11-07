@@ -3,13 +3,13 @@ arcadia: v1
 type: plan
 slug: portfolio-docs-protocol
 project: arcadia
-status: active
+status: complete
 milestone: docs sync ingests a real project's markdown
 token_impact: xlarge
 token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: high
-updated: 2026-11-06
+updated: 2026-11-07
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
@@ -248,8 +248,8 @@ actions:
     depends_on: [build-upsert]
   - id: narrative-summarization
     title: Queue an Intelligence summarization job for narrative docs
-    next_action: Queue one Intelligence summarization job per narrative document and store its summary as an Artifact, leaving the source document unchanged.
-    status: open
+    next_action: Completed via Agent Ask auto-settle-arcadia-narrative-summarization-aa601d29fa3f; no further action.
+    status: done
     responsibility: agent
     execution: build
     effort: short
@@ -270,7 +270,6 @@ questions:
     gap_type: missing-decision
     decision: "0004"
 decisions: ["0003", "0004", "0005"]
-current_action: narrative-summarization
 ---
 
 # Portfolio Docs Protocol
