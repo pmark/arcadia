@@ -229,11 +229,11 @@ actions:
     references: []
   - id: pin-agent-watch-ref-parsing
     title: Pin how the agent watch contract parses agent/tier refs, project/action refs and branch names, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the agent watch contract parses agent/tier refs, project/action refs and branch names, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-agent-watch-ref-parsing-042a5f7d77b3; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-agent-watch-ref-parsing
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-agent-watch-ref-parsing
+current_action: pin-close-out-canonical-json
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
