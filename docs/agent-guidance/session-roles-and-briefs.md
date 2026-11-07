@@ -51,7 +51,7 @@ or removed, and passes this duty on in every handoff.
 ## Composable specializations and optional names
 
 Use the [canonical identity profiles](../arcadia-semantics.md#roles-specializations-and-optional-names)
-for Rowan, Mira, Ellis, Nadia, Sage, Quinn, Vida, Clara and the Momentum Keeper. They provide the
+for Rowan, Mira, Ellis, Nadia, Sage, Quinn, Vida, Clara and Flynn (the Momentum Keeper). They provide the
 human interface; the seven role IDs remain the assignment contract. Resolve a request by name
 or function to the appropriate profile, then bind one registered role to the
 actual assignment. For Ellis, choose planner for read-only design or implementer
@@ -158,10 +158,11 @@ scheduler. Return artifact locations, delivery evidence and factual limits.
 is a natural-language assignment for an agent loading this guidance, not a CLI
 alias, automatic dispatch or instruction to publish before its gates pass.
 
-### Momentum Keeper: supervisor-class helper
+### Flynn: Momentum Keeper supervisor-class helper
 
 Decision 0188 option B registers the Momentum Keeper as
-a supervisor-class helper under Rowan, not a Lead. It is a profile and Behavior
+a supervisor-class helper under Rowan, not a Lead. Flynn is its optional name;
+the name is optional and changes no authority, delegation or ownership. It is a profile and Behavior
 bound per assignment to an existing role (`researcher` for observation, routing
 and digests; `implementer` only when explicitly bound to build queue-stocking
 work), never a new role ID, with no new authority or capability. Rowan or the
