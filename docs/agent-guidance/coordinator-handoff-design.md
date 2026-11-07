@@ -195,7 +195,7 @@ rather than pretending otherwise.
   records the hold. A hold ends at its event or at 20 minutes, whichever comes
   first. Only one hold is allowed per episode: a second `hold` is refused. At
   *forced*, the relay still launches, but it does not stop the predecessor
-  while a hold is open (see (c) step 5).
+  while a hold is open (see (c) step 6).
 
 ### (b) The state capsule
 
@@ -213,9 +213,12 @@ field points to its canonical source. Its precedent is the
 `incomplete_resumable` lease handoff that `arcadia go` resumes from (Decision
 0051).
 
-**Custody maps onto existing rows.** A coordinator holds no Action claim; it
-coordinates Actions. Each generation is an `agent_sessions` row of a new
-`coordinator` kind, keyed by the native session id and its transcript path:
+**Custody gets its own table.** A coordinator holds no Action claim; it
+coordinates Actions. `agent_sessions` cannot hold it: `action_id`,
+`work_item_id` and the packet columns are NOT NULL. So each generation is a row
+in a new `coordinator_generations` table, which needs a migration. The row is
+keyed by role, Project and generation, and it records the native session id
+and its transcript path:
 
 - for Claude, the `--session-id` that the relay passes;
 - for Codex, the rollout file that holds the thread id. It is found by scanning
@@ -224,7 +227,8 @@ coordinates Actions. Each generation is an `agent_sessions` row of a new
   interactive (`src/sessions/index.ts`).
 
 The generation row is the custody record. It does not compete with Action
-claims, and peer-watch's ownership rules stay as they are for Actions.
+claims. Peer-watch never reads this table, so its ownership rules, and its "no
+prepared or running `agent_sessions` row" checks, stay as they are for Actions.
 
 Schema `arcadia-coordinator-capsule-v1`:
 
@@ -264,9 +268,10 @@ approval it relies on.
 
 ### (c) Launching the successor and transferring custody
 
-1. **Claim, atomically.** The relay takes a single-writer lock (an exclusive
-   create of `<role>/relay.lock` holding pid and start time; a stale lock is
-   broken only when its pid is dead). Under the lock it appends generation N+1
+1. **Claim, atomically.** The relay takes a single-writer lock: an exclusive
+   create of `<role>/relay.lock` that holds the pid and the process start time.
+   A stale lock is broken only when no live process has that pid with that
+   start time, so a reused pid cannot hold the lock. Under the lock it appends generation N+1
    with status `launching` and writes the immutable snapshot. A tick, a manual
    `renew` and a `hold` all go through the same lock, so they cannot collide.
    While N+1 is `launching` and younger than 15 minutes, any further launch is
@@ -308,29 +313,47 @@ approval it relies on.
 5. **Acceptance and fencing.** The successor runs `verify` (section f) and then
    `arcadia coordinator accept --generation N+1 --snapshot-sha <sha>`. The relay
    marks N+1 `custodian` and N `handed_off` in one locked write. **From that
-   moment, mutating coordinator commands check the caller's generation**:
-   `arcadia ping send` with a coordinator role, `coordinator note`,
-   `coordinator subscribe`, preparing a batch-merge card and `renew`. A
-   predecessor that runs any of them gets a refusal that names its successor.
-   Read commands stay open. Two coordinators can still both *read*, but only
-   one can act through Arcadia.
+   moment, mutating coordinator commands check the caller's generation.**
+   - *Caller identity.* The relay's launcher sets three variables on the
+     session's process tree: `ARCADIA_COORDINATOR_ROLE`,
+     `ARCADIA_COORDINATOR_GENERATION`, and `ARCADIA_COORDINATOR_TOKEN`, a random
+     value stored on the generation row. Child commands inherit them.
+   - *One guard.* A shared `assertCoordinatorCustody()` refuses when the role is
+     set but the generation or token is not the current custodian's. The
+     refusal names the successor.
+   - *Exact commands guarded:* `arcadia coordinator note`, `subscribe`,
+     `hold`, `renew` and `accept`, and `arcadia ping send` whenever
+     `ARCADIA_COORDINATOR_ROLE` is set.
+   - *Not fenced:* a caller with no coordinator identity. That covers the
+     operator, ordinary sessions and desktop coordinators the relay did not
+     launch. Operator-script cards such as batch-merge are not fenced either:
+     the operator runs them, and they are not coordinator commands.
+
+   The fence guards against mistakes; it is not a security boundary. A session
+   that reads the workspace could copy a token. Read commands stay open. Two
+   relay-launched coordinators can still both *read*, but only one can act
+   through Arcadia.
 6. **Stand-down of N.**
    - **tmux-hosted predecessor.** The relay stops its pane only when the
      predecessor is idle: its transcript shows the turn ended, no hold is open,
      and no subagent or background task is running (every `Agent` or
      background `Bash` call in its transcript has a recorded completion).
-     Otherwise it waits.
+     Otherwise it waits. The test reads a transcript that is written
+     asynchronously, so it can lag. Lag only makes it wait or ping, never kill
+     early.
      At 60 minutes it pings once instead of killing.
-   - **Desktop predecessor** (only during migration). The relay cannot stop it.
-     The generation fence in step 5 is what stops it acting through Arcadia.
-     A project hook, once installed (change 6), adds "custody moved to
+   - **Desktop predecessor** (only during migration). The relay cannot stop it,
+     and the step 5 fence does not cover it: the relay did not launch it, so it
+     carries no coordinator identity. Its stand-down rests on a ping and on the
+     hook. A project hook, once installed (change 6), adds "custody moved to
      generation N+1; stand down" to its next turn. Hooks installed after the
      predecessor started may not load. Until a predecessor has been started
      after the hook was installed, the relay also sends one `fyi` ping that
-     names both sessions, so the operator can see there are two. At *forced*,
-     this is the only case where a live predecessor can keep doing things
-     outside Arcadia's commands (direct `gh` or `git`). The design says so
-     plainly rather than claiming a fence it does not have.
+     names both sessions, so the operator can see there are two. This is the
+     one case where a live predecessor can keep acting, through Arcadia's
+     commands as well as direct `gh` or `git`. It closes once both coordinators
+     are relay-launched. The design says so plainly rather than claiming a fence
+     it does not have.
    - Until acceptance, the predecessor keeps custody, so coordination never has
      a gap.
 7. **If the launch fails** (no prompt delivered, no acceptance within 15
@@ -425,7 +448,7 @@ Ranked by how far each one moves toward fully automatic transitions.
 | Rank | Change | What it moves | Authority |
 | --- | --- | --- | --- |
 | 1 | **`arcadia coordinator register` and `budget`, plus a relay tick on the launchd timer that pings at prepare, due and forced.** Read-only measurement, one ping per episode | Detection becomes code. On 11-07 it would have pinged at 05:09Z, 12.5 h before compaction | The `budget` command alone is routine: read-only, and its pings already have standing. **Scheduling it on the launchd timer is new timer work** (see "Rules this design changes"), so it waits for the Decision. Any of A, B or C covers it |
-| 2 | **The capsule (live view and immutable snapshots), `note`, `verify` and `accept`, custody generations as `agent_sessions` rows, and the generation fence on mutating coordinator commands.** | Handoffs no longer depend on assembly under pressure or a narrative note. Custody becomes a record, and only the custodian can act through Arcadia | Code PR. The fence changes what agents may do, so the operator merges it |
+| 2 | **The capsule (live view and immutable snapshots), `note`, `verify` and `accept`, the `coordinator_generations` table (a migration), and the generation fence on mutating coordinator commands.** | Handoffs no longer depend on assembly under pressure or a narrative note. Custody becomes a record, and only the custodian can act through Arcadia | Code PR. The fence changes what agents may do, so the operator merges it |
 | 3 | **Relay launch (`arcadia coordinator renew`) through the tmux launcher, with the delivery check, one retry and the alert path.** | Removes the agent and the operator from the launch. The step that failed at 17:06Z | **Needs the standing Decision** (launch authority). Probes P1 and P2 first |
 | 4 | **Approvals to durable surfaces:** guidance makes a chat merge approval become a batch-merge card at once, and `approvals.chat_only` is tracked | Removes re-approval after each handoff | Guidance PR. It changes how agents seek approval, so the operator merges it |
 | 5 | **Watcher continuity:** check in quiet-watch as a mode, add subscriptions and cursors to the capsule, and liveness-check them | Wakes survive handoffs and restarts | Routine. Merge in a production gap |
@@ -448,9 +471,10 @@ Deferred, each with its revival trigger:
   single-writer lock, the `launching` generation claim, the deterministic tmux
   name checked with `has-session`, and refusing to launch while N+1 is
   `launching` and younger than 15 minutes.
-- **Two coordinators act after a handoff.** The generation fence refuses the
-  predecessor's mutating Arcadia commands. Direct `gh` and `git` writes are not
-  fenced. That gap is named in (c) step 6 and in the Deferred table.
+- **Two coordinators act after a handoff.** The generation fence refuses a
+  relay-launched predecessor's mutating Arcadia commands. Direct `gh` and `git`
+  writes are not fenced, and neither is a desktop predecessor. Both gaps are
+  named in (c) step 6 and in the Deferred table.
 - **The stand-down kills in-flight work.** The pane is stopped only when the
   predecessor is idle, with no open hold and no running subagent or
   background task. Otherwise the relay pings instead.
