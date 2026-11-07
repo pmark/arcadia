@@ -25,11 +25,16 @@ import { DAY_GRANT_DECISION, StartRunDelegationError } from "./startRunDelegatio
  */
 export { DAY_GRANT_DECISION };
 export const DAY_GRANT_WINDOW_MS = 24 * 3_600_000;
-/** Decision 0170: three attempts, counted across days. */
-export const DAY_GRANT_MAX_ATTEMPTS = 3;
+/**
+ * Decision 0181 (option A) re-decided Decision 0170's three-attempt limit: unattended batches run at concurrency one under the
+ * day's approval, "and a batch that fails stops for the operator". So no count of attempts caps a day any more; instead one
+ * failed batch under the current day's approval refuses every later delegated card, and the operator's next day-grant press
+ * is their decision after that failure. See `isFailedBatch` for what failed means.
+ */
+export const DAY_GRANT_MAX_FAILED_BATCHES = 1;
 /** Decision 0173: refused re-presses per day, in total, however the card is re-prepared. */
 export const DAY_GRANT_MAX_REPRESSES = 2;
-/** Decision 0170 was answered on main at ffd23b342 (2026-11-03T19:26:51Z); attempts count from there, and one is already used. */
+/** Decision 0170 was answered on main at ffd23b342 (2026-11-03T19:26:51Z); presses and attempts are numbered from there. */
 export const ATTEMPT_COUNT_EARLIEST = "2026-11-03T19:26:51Z";
 /**
  * The request id that marks an Off as Rowan's own, which does not end the day. Fail-closed: any other Off ends it. This is
@@ -61,11 +66,18 @@ export type DayGrantClearance =
   | { kind: "merged-fix"; pullRequest: string; commit: string; reproduction: string }
   | { kind: "observed-cleared"; observation: string };
 
+/**
+ * What production's record makes a START press: it admitted no Session (`no-session`), or it admitted one and its batch
+ * either reached scope complete with no escalation (`clean-batch`) or did not (`failed-attempt`). Decision 0181.
+ */
+export type DayGrantPressKind = "failed-attempt" | "clean-batch" | "no-session";
+export const DAY_GRANT_PRESS_KINDS: readonly DayGrantPressKind[] = ["failed-attempt", "clean-batch", "no-session"];
+
 /** Rowan's recorded judgement of the latest press: named, with an evidence pointer; recorded, not machine-proved. */
 export interface DayGrantPrevious {
   /** `<card>/<press run id>` of the latest START press. */
   press: string;
-  kind: "failed-attempt" | "no-session";
+  kind: DayGrantPressKind;
   /** A stable slug: two presses with one cause must carry the same slug. */
   cause: string;
   evidence: string;
@@ -80,7 +92,7 @@ export interface DayGrantDelegation {
   /** sha256 of the approval's final receipt.json and of its press record run.json; a change to either refuses. */
   approvalReceiptSha256: string;
   approvalPressSha256: string;
-  /** Under Decision 0170, the attempt this press would be if it admits a Session. */
+  /** The attempt this press would be, numbered since Decision 0170, if it admits a Session. A number, never a cap (Decision 0181). */
   attempt: number;
   /** Null only when no START press has happened since Decision 0170. */
   previous: DayGrantPrevious | null;
@@ -90,8 +102,38 @@ export const DAY_GRANT_DELEGATION_KEYS = ["approvalCard", "approvalPressSha256",
 /** The read-only production record `arcadia start-run day-evidence` prints. */
 export interface DayEvidence {
   transitions: Array<{ requestId: string; transition: "activate" | "deactivate"; revisionBefore: number; revisionAfter: number; at: string }>;
-  /** Each activation since Decision 0170, with how many Sessions it admitted (committed admissions). */
-  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number }>;
+  /**
+   * Each activation since Decision 0170, with how many Sessions it admitted (committed admissions), when production next went
+   * Off (null while it has not), and the tick's `managed_production.scope_complete` record within that run (null when none).
+   */
+  activations: DayEvidenceActivation[];
+}
+export interface DayEvidenceActivation {
+  requestId: string;
+  revisionAfter: number;
+  at: string;
+  admitted: number;
+  endedAt: string | null;
+  scopeComplete: { merged: number; escalated: number } | null;
+}
+
+/**
+ * Decision 0181: "a batch that fails stops for the operator". A batch is one activation that admitted at least one Session.
+ * It is clean only when production's own record shows the tick announced scope complete inside that run (every in-scope
+ * Action done: the event Decision 0171's Off at scope complete follows) with no in-scope Action escalated to the operator.
+ * Anything else failed: an Off before scope complete (Rowan's, the executor's or the operator's), an escalation, a run still
+ * open, or a record that does not say. An activation that admitted no Session is no batch. Fail closed: a missing or malformed
+ * scope-complete record reads as failed, since a false failure stops for the operator and a false clean runs past the stop.
+ */
+export function isFailedBatch(activation: Pick<DayEvidenceActivation, "admitted" | "scopeComplete">): boolean {
+  if (!(activation.admitted >= 1)) return false;
+  const done = activation.scopeComplete;
+  return !(done && Number.isInteger(done.merged) && done.merged >= 1 && done.escalated === 0);
+}
+
+/** The failed batches that count against a day: every one not over before the operator's press opened it. */
+export function failedBatchesInWindow(evidence: DayEvidence, opensAtMs: number): DayEvidenceActivation[] {
+  return evidence.activations.filter((a) => isFailedBatch(a) && !(typeof a.endedAt === "string" && Date.parse(a.endedAt) < opensAtMs));
 }
 
 const refuse = (code: string, message: string): never => { throw new StartRunDelegationError(code, message); };
@@ -135,7 +177,7 @@ export function validateDayGrantDelegation(value: unknown): DayGrantDelegation {
   if (typeof d.approvalCard !== "string" || !slug.test(d.approvalCard)) refuse("INVALID_DELEGATION", "startRun.delegation.approvalCard must be a card id.");
   if (typeof d.approvalRun !== "string" || !runIdPattern.test(d.approvalRun)) refuse("INVALID_DELEGATION", "startRun.delegation.approvalRun must be an executor run id.");
   for (const hash of [d.approvalReceiptSha256, d.approvalPressSha256]) if (typeof hash !== "string" || !sha256Hex.test(hash)) refuse("INVALID_DELEGATION", "startRun.delegation approval hashes must be 64 lowercase hex.");
-  if (!Number.isInteger(d.attempt) || d.attempt < 1 || d.attempt > DAY_GRANT_MAX_ATTEMPTS) refuse("INVALID_DELEGATION", `startRun.delegation.attempt must be 1 to ${DAY_GRANT_MAX_ATTEMPTS}.`);
+  if (!Number.isInteger(d.attempt) || d.attempt < 1) refuse("INVALID_DELEGATION", "startRun.delegation.attempt must be a positive whole number.");
   if (d.previous !== null) validateDayGrantPrevious(d.previous);
   return d;
 }
@@ -144,7 +186,7 @@ export function validateDayGrantPrevious(value: unknown): DayGrantPrevious {
   const p = value as DayGrantPrevious;
   if (!exactKeys(p, ["cause", "clearance", "evidence", "kind", "press"])) refuse("INVALID_DELEGATION", "startRun.delegation.previous needs exactly press, kind, cause, evidence, clearance.");
   if (typeof p.press !== "string" || !p.press.includes("/")) refuse("INVALID_DELEGATION", "previous.press must be <card>/<press run id>.");
-  if (p.kind !== "failed-attempt" && p.kind !== "no-session") refuse("INVALID_DELEGATION", "previous.kind must be failed-attempt or no-session.");
+  if (!DAY_GRANT_PRESS_KINDS.includes(p.kind)) refuse("INVALID_DELEGATION", "previous.kind must be failed-attempt, clean-batch or no-session.");
   if (typeof p.cause !== "string" || !slug.test(p.cause) || notAWord(p.cause)) refuse("INVALID_DELEGATION", "previous.cause must be a stable slug naming the cause.");
   if (!pointer(p.evidence)) refuse("INVALID_DELEGATION", "previous.evidence must be an https URL or a repository-relative path.");
   const c = p.clearance;
@@ -307,7 +349,7 @@ function assertPressRecordsReadable(library: string): void {
   }
 }
 
-interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean }
+interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean; failed: boolean }
 
 /**
  * Every /actions press of a START card since Decision 0170, oldest first, with whether that press admitted a Session. A card
@@ -324,6 +366,7 @@ function startPresses(library: string, evidence: DayEvidence, excludePress: stri
     const consumedPath = path.join(library, `${card}.consumed.json`);
     const consumedRun = readJson<{ runId?: string }>(consumedPath)?.runId;
     const activation = evidence.activations.some((a) => a.requestId === card && a.admitted >= 1);
+    const batchFailed = evidence.activations.some((a) => a.requestId === card && isFailedBatch(a));
     const before = presses.length;
     for (const pressId of listDirectory(path.join(operatorRuns, card))) {
       if (pressId === excludePress) continue;
@@ -337,7 +380,7 @@ function startPresses(library: string, evidence: DayEvidence, excludePress: stri
       const owner = receipt?.allowanceConsumed === true || (!!receipt && !!consumedRun && receipt.runId === consumedRun) || (!receipt && existsSync(path.join(dir, "start-run.claimed")) && existsSync(consumedPath));
       const admitted = owner && activation;
       if (receipt?.outcome === "succeeded" && !evidence.activations.some((a) => a.requestId === card)) refuse("EVIDENCE_MISMATCH", `${card} recorded a successful START but production has no activation under its request id`);
-      presses.push({ card, pressId, key: `${card}/${pressId}`, startedAt, status: String(run.status), delegation: startRun.delegation ?? null, marker: run.press ?? null, receipt, admitted });
+      presses.push({ card, pressId, key: `${card}/${pressId}`, startedAt, status: String(run.status), delegation: startRun.delegation ?? null, marker: run.press ?? null, receipt, admitted, failed: admitted && batchFailed });
     }
     if (activation && presses.length > before && !presses.slice(before).some((press) => press.admitted)) refuse("EVIDENCE_MISMATCH", `production records a Session admitted under ${card}, but no press of that card consumed its allowance`);
   }
@@ -381,12 +424,14 @@ function checkProductionChain(evidence: DayEvidence, window: DayGrantWindow, lib
 
 export interface DayGrantChain {
   window: DayGrantWindow;
-  /** Decision 0170 attempts so far: activations since it that admitted a Session. */
+  /** Attempts so far, numbered since Decision 0170: activations since it that admitted a Session. A number, not a cap. */
   attemptsSoFar: number;
+  /** Decision 0181: failed batches that count against this day. Any refuses the card, so a returned chain always has none. */
+  failedBatchesToday: number;
   /** Rowan's refused re-presses inside this window. */
   rePressesToday: number;
   /** The latest START press, which a card must name; null when none happened since Decision 0170. */
-  latest: { press: string; kind: "failed-attempt" | "no-session" } | null;
+  latest: { press: string; kind: DayGrantPressKind } | null;
   revision: number;
 }
 
@@ -410,7 +455,7 @@ export interface InspectDayGrantInput {
 
 /**
  * The whole Decision 0173 check of one START press, read-only, in the same order as scripts/start-run.sh. Throws
- * StartRunDelegationError. Decision 0170's limit counts across days; refused re-presses count within this day's window.
+ * StartRunDelegationError. Decision 0181 stops at one failed batch within this day's window; refused re-presses count within it too.
  */
 export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain {
   const window = inspectDayApproval(input.library, input.approvalCard, input.approvalRun, input.approvalReceiptSha256, input.approvalPressSha256, input.now, input.scope.offId);
@@ -419,12 +464,14 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
     refuse("SCOPE_NOT_APPROVED", `this card's scope (${scope.project}/${scope.plan}, ${scope.provider}, concurrency ${scope.concurrency}, spend Decision ${scope.spendDecision}) is not the Plan, provider and spend Decision the operator approved`);
   }
   const revision = checkProductionChain(input.evidence, window, input.library, input.policyRevision);
-  // Every activation that admitted a Session counts, a dashboard reactivation included. Decision 0170 counts a START "that
-  // admits at least one Session, whatever then stops it", and the two errors are not equal: an overcount stops Rowan early
-  // and the operator decides again, while an undercount spends Sessions and sign-ins past the limit the operator set.
+  // Attempts are still numbered as Decision 0170 counted them: every activation that admitted a Session, a dashboard
+  // reactivation included. Decision 0181 lifted the cap; the number only pins the card to the record it was prepared on.
   const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
   const attemptsSoFar = input.evidence.activations.filter((a) => Date.parse(a.at) >= earliest && a.admitted >= 1).length;
-  if (attemptsSoFar >= DAY_GRANT_MAX_ATTEMPTS) refuse("ATTEMPTS_EXHAUSTED", `${attemptsSoFar} attempts already admitted a Session under Decision 0170; at ${DAY_GRANT_MAX_ATTEMPTS} Rowan stops and the operator decides`);
+  // Decision 0181: a batch that fails stops for the operator. Any failed batch not over before the day's press counts, whoever
+  // started or stopped it, so after a failure only the operator's next day-grant press opens a way on.
+  const failed = failedBatchesInWindow(input.evidence, window.opensAtMs);
+  if (failed.length >= DAY_GRANT_MAX_FAILED_BATCHES) refuse("FAILED_BATCH", `the batch ${failed[0].requestId} (activated ${failed[0].at}) failed under the day approved at ${window.opensAt}: it admitted a Session and did not reach scope complete without an escalation; Decision 0181 stops for the operator, and only their next day-grant press opens another day`);
 
   const presses = startPresses(input.library, input.evidence, input.excludePress);
   const latest = presses.at(-1) ?? null;
@@ -434,7 +481,8 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
   presses.forEach((press, index) => {
     if (press.startedAt >= window.opensAtMs && press.marker?.decision === DAY_GRANT_DECISION && index > 0 && noSession(presses[index - 1])) rePressesToday += 1;
   });
-  const latestSummary = latest ? { press: latest.key, kind: latest.admitted ? "failed-attempt" as const : "no-session" as const } : null;
+  const kindOf = (press: StartPress): DayGrantPressKind => !press.admitted ? "no-session" : press.failed ? "failed-attempt" : "clean-batch";
+  const latestSummary = latest ? { press: latest.key, kind: kindOf(latest) } : null;
   if (latest && noSession(latest) && rePressesToday >= DAY_GRANT_MAX_REPRESSES) refuse("REPRESSES_EXHAUSTED", `${rePressesToday} re-presses after a refusal already ran in this day; Decision 0173 allows at most ${DAY_GRANT_MAX_REPRESSES}, however the card is re-prepared`);
   if (latest && noSession(latest) && latest.startedAt >= window.opensAtMs) {
     const key = refusalKey(latest.receipt);
@@ -453,7 +501,8 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
       // Each earlier card named the cause of the press before it: the record is on the cards, across days.
       const named = presses.filter((press) => press.delegation?.decision === DAY_GRANT_DECISION && press.delegation.previous?.press && press.delegation.previous.cause);
       const namedFor = (press: StartPress) => named.filter((card) => card.delegation!.previous!.press === press.key).map((card) => card.delegation!.previous!.cause!);
-      if (latest.admitted && presses.some((press) => press !== latest && press.admitted && namedFor(press).includes(previous!.cause))) {
+      // Decision 0173 stops "if two attempts fail on the same cause". A clean batch failed on nothing, so it never trips this.
+      if (latest.failed && presses.some((press) => press !== latest && press.admitted && namedFor(press).includes(previous!.cause))) {
         refuse("SAME_CAUSE", `two attempts failed on the cause ${previous!.cause}; Decision 0173 stops here for the operator`);
       }
       if (!latest.admitted && presses.some((press) => press !== latest && !press.admitted && press.startedAt >= window.opensAtMs && namedFor(press).includes(previous!.cause))) {
@@ -462,5 +511,5 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
     }
   }
   if (input.attempt !== undefined && input.attempt !== attemptsSoFar + 1) refuse("ATTEMPT_MISMATCH", `this card is pinned as attempt ${input.attempt}, but ${attemptsSoFar} attempts already admitted a Session`);
-  return { window, attemptsSoFar, rePressesToday, latest: latestSummary, revision };
+  return { window, attemptsSoFar, failedBatchesToday: failed.length, rePressesToday, latest: latestSummary, revision };
 }

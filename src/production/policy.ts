@@ -1837,11 +1837,13 @@ export function assertReceiptTransition(
 /**
  * Decision 0173's read-only production record: every policy transition since `since`, and each activation with how many
  * Sessions it admitted. Decision 0170 counts a START that admits at least one Session; an admission that was committed is
- * a launched Session, whereas one fenced or released before commit never launched.
+ * a launched Session, whereas one fenced or released before commit never launched. Decision 0181 stops after a batch that
+ * fails, so each activation also carries when production next went Off and the tick's scope-complete record inside that run
+ * (`managed_production.scope_complete`, which the tick writes once per policy revision); a run with none reads as failed.
  */
 export function readDayGrantEvidence(db: Database.Database, since: string): {
   transitions: Array<{ requestId: string; transition: "activate" | "deactivate"; revisionBefore: number; revisionAfter: number; at: string }>;
-  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number }>;
+  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number; endedAt: string | null; scopeComplete: { merged: number; escalated: number } | null }>;
 } {
   const earliest = Date.parse(since);
   const rows = db.prepare(
@@ -1852,13 +1854,25 @@ export function readDayGrantEvidence(db: Database.Database, since: string): {
     `SELECT policy_revision, COUNT(*) AS admitted FROM production_admissions WHERE committed_at IS NOT NULL GROUP BY policy_revision`
   ).all() as Array<{ policy_revision: number; admitted: number }>;
   const recent = rows.filter((row) => Date.parse(row.created_at) >= earliest);
+  // A workspace without the events table has no scope-complete record, which reads as a failed batch (fail closed).
+  const hasEvents = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'").get();
+  const scopeEvents = hasEvents
+    ? (db.prepare(
+      `SELECT json_extract(payload_json, '$.policyRevision') AS revision, json_extract(payload_json, '$.merged') AS merged, json_extract(payload_json, '$.escalated') AS escalated
+         FROM events WHERE event_type = 'managed_production.scope_complete' AND created_at >= ?`
+    ).all(since) as Array<{ revision: unknown; merged: unknown; escalated: unknown }>)
+    : [];
   return {
     transitions: recent.map((row) => ({ requestId: row.request_id, transition: row.transition, revisionBefore: row.revision_before, revisionAfter: row.revision_after, at: row.created_at })),
     activations: recent.filter((row) => row.transition === "activate").map((row) => {
       const off = rows.find((other) => other.revision_before >= row.revision_after && other.transition === "deactivate");
       const end = off ? off.revision_after : Number.MAX_SAFE_INTEGER;
       const admitted = committed.filter((group) => group.policy_revision >= row.revision_after && group.policy_revision < end).reduce((sum, group) => sum + group.admitted, 0);
-      return { requestId: row.request_id, revisionAfter: row.revision_after, at: row.created_at, admitted };
+      // Within this run: from its activation up to the revision its Off moved from. A malformed count stays as it is, and fails.
+      const done = scopeEvents.filter((event) => typeof event.revision === "number" && event.revision >= row.revision_after && event.revision <= (off ? off.revision_before : Number.MAX_SAFE_INTEGER));
+      const count = (values: unknown[]): number => values.every((value) => Number.isInteger(value)) ? values.reduce<number>((sum, value) => sum + (value as number), 0) : Number.NaN;
+      const scopeComplete = done.length ? { merged: count(done.map((event) => event.merged)), escalated: count(done.map((event) => event.escalated)) } : null;
+      return { requestId: row.request_id, revisionAfter: row.revision_after, at: row.created_at, admitted, endedAt: off ? off.created_at : null, scopeComplete };
     })
   };
 }

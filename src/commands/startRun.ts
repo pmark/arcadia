@@ -104,6 +104,11 @@ const isDayGrantAnswered = (content: string): boolean => {
   const fields = frontmatter(content, "Decision 0173");
   return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith("A. Daily grant");
 };
+/** Decision 0181's option A, from its frontmatter: the re-decision that replaced Decision 0170's three-attempt limit. */
+const isSerialRunsAnswered = (content: string): boolean => {
+  const fields = frontmatter(content, "Decision 0181");
+  return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith("A. Continued serial runs");
+};
 const text = (buffer: Buffer): string => buffer.toString("utf8");
 const sha256 = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
 function frontmatter(content: string, label: string): Record<string, unknown> {
@@ -175,7 +180,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     const pointer = frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan;
     if (pointer !== plan) throw validationError(`Plan ${plan} is not the Project's active Plan (${String(pointer)}); a Decision 0173 card needs the active Plan.`);
   }
-  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(delegatedFrom ? ["0163"] : []), ...(dayGrantFrom ? ["0163", "0170", "0173"] : [])];
+  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(delegatedFrom ? ["0163"] : []), ...(dayGrantFrom ? ["0163", "0170", "0173", "0181"] : [])];
   const decisionFiles = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n");
   for (const decision of requiredDecisions) {
     const file = decisionFiles.find((entry) => new RegExp(`^docs/decisions/${decision}-.*\\.md$`).test(entry));
@@ -183,6 +188,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     const content = text(show(file));
     if (!/^status: approved$/m.test(content) || !/^answer: .+/m.test(content)) throw validationError(`Decision ${decision} is not approved with a recorded answer at origin main.`);
     if (decision === "0173" && !isDayGrantAnswered(content)) throw validationError("Decision 0173 is not answered with option A at origin main.");
+    if (decision === "0181" && !isSerialRunsAnswered(content)) throw validationError("Decision 0181 is not answered with option A at origin main; the day-grant gate implements only that answer.");
   }
   for (const file of START_RUN_DEFAULTS.requiredFiles) show(file);
 
@@ -233,7 +239,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
         decision: "0173", approvalCard: dayGrantFrom.card, approvalRun: dayGrantFrom.run, approvalReceiptSha256: chain.window.receiptSha256, approvalPressSha256: chain.window.pressSha256,
         attempt: chain.attemptsSoFar + 1, previous
       };
-      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} of at most 3 under Decision 0170 if it admits a Session; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
+      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} (numbered since Decision 0170, no longer capped) if it admits a Session; ${chain.failedBatchesToday} failed batches in this day, and Decision 0181 stops for the operator at the first; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
     } catch (error) {
       throw validationError(`No Decision 0173 card may be pinned: ${error instanceof Error ? error.message : String(error)}`);
     }

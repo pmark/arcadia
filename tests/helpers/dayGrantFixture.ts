@@ -119,15 +119,31 @@ export function writeStopPress(library: string, at: number, options: { card?: st
   writeFileSync(path.join(dir, "descriptor.json"), "{}");
 }
 
-/** Production's moves as `start-run day-evidence` reports them: each step moves the revision by one from `baseline`. */
-export function evidenceOf(baseline: number, now: number, steps: Array<{ activate: string; admitted?: number } | { off: string }>): { evidence: DayEvidence; revision: number } {
+/**
+ * One production move. An activation admits one Session unless `admitted` says otherwise; its batch is failed (Decision 0181)
+ * unless `clean` records the tick's scope complete inside its run, with `escalated` Actions escalated (default none).
+ */
+export type DayStep = { activate: string; admitted?: number; clean?: boolean; escalated?: number } | { off: string };
+
+/**
+ * Production's moves as `start-run day-evidence` reports them: each step moves the revision by one. `earlier` steps happened
+ * before the approval press (an hour before `now` in every scenario) and end at `baseline`; `steps` follow it from `baseline`.
+ */
+export function evidenceOf(baseline: number, now: number, steps: DayStep[], earlier: DayStep[] = []): { evidence: DayEvidence; revision: number } {
   const evidence: DayEvidence = { transitions: [], activations: [] };
-  let revision = baseline;
-  steps.forEach((step, index) => {
-    const at = iso(now - (steps.length - index) * MINUTE);
+  let revision = baseline - earlier.length;
+  const timed = [
+    ...earlier.map((step, index) => ({ step, at: iso(now - (90 + earlier.length - index) * MINUTE) })),
+    ...steps.map((step, index) => ({ step, at: iso(now - (steps.length - index) * MINUTE) }))
+  ];
+  timed.forEach(({ step, at }, index) => {
     if ("activate" in step) {
       evidence.transitions.push({ requestId: step.activate, transition: "activate", revisionBefore: revision, revisionAfter: revision + 1, at });
-      evidence.activations.push({ requestId: step.activate, revisionAfter: revision + 1, at, admitted: step.admitted ?? 1 });
+      const off = timed.slice(index + 1).find((later) => "off" in later.step);
+      evidence.activations.push({
+        requestId: step.activate, revisionAfter: revision + 1, at, admitted: step.admitted ?? 1, endedAt: off ? off.at : null,
+        scopeComplete: step.clean ? { merged: 1, escalated: step.escalated ?? 0 } : null
+      });
     } else evidence.transitions.push({ requestId: step.off, transition: "deactivate", revisionBefore: revision, revisionAfter: revision + 1, at });
     revision += 1;
   });
@@ -143,7 +159,9 @@ export interface DayScenario {
   approval?: Partial<ApprovalSpec>;
   /** Press specs, oldest first. */
   presses?: PressSpec[];
-  steps?: Array<{ activate: string; admitted?: number } | { off: string }>;
+  steps?: DayStep[];
+  /** Production's moves before the approval press, ending at its baseline revision. */
+  earlier?: DayStep[];
   previous?: DayGrantPrevious | null;
   attempt?: number;
   /** Move the card's pinned policy revision off the chain's end. */
@@ -186,7 +204,7 @@ export function dayScenarios(now: number): DayScenario[] {
     { label: "a card under another spend Decision", code: "SCOPE_NOT_APPROVED", attempt: 1, previous: null, approval: { pins: { spendDecision: "0999" } } },
     { label: "an operator STOP card ending the day", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "restore-off-production-20261104T100000Z-1" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
     { label: "the dashboard Off switch ending the day", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "dashboard-toggle-1-abcd" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
-    { label: "Rowan's own Off, which does not end the day", code: "none", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
+    { label: "Rowan's own Off, which does not end the day", code: "none", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-scope-complete-20261104" }], previous: named(pressKey("start-a"), "scope-complete", "clean-batch") },
     { label: "an operator STOP pressed while production is Off, with no policy receipt", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt"), after: (library) => writeStopPress(library, m(20)) },
     { label: "a refused or failed press of the STOP card, which still ends the day", code: "DAY_ENDED_BY_OPERATOR", attempt: 1, previous: null, after: (library) => writeStopPress(library, m(20), { run: JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: "20261104000000000-stop", scriptId: STOP_ID, status: "failed", startedAt: iso(m(20)) }) }) },
     { label: "a STOP by the id the card pins, whatever it is called", code: "DAY_ENDED_BY_OPERATOR", attempt: 1, previous: null, offId: "a-custom-stop", after: (library) => writeStopPress(library, m(20), { card: "a-custom-stop" }) },
@@ -198,15 +216,29 @@ export function dayScenarios(now: number): DayScenario[] {
     { label: "an approval receipt that is gone", code: "APPROVAL_MISSING", attempt: 1, previous: null, after: (_l, a) => rmSync(a.receiptPath) },
     { label: "an operator Off shaped like the executor's, naming no run", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "start-a-operator-stop-off" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
     { label: "an Off naming a run that did not return its Grant", code: "DAY_ENDED_BY_OPERATOR", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "start-a-20261104T100000Z-1-off" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
-    { label: "a refused re-press of a card whose earlier press admitted a Session", code: "none", attempt: 2, presses: [started("start-a", 50), { card: "start-a", id: "20261104000000000-start-a-again", at: m(40), receipt: { reason: "the one-shot START allowance is consumed" } }], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named("start-a/20261104000000000-start-a-again", "consumed-card", "no-session") },
-    { label: "a card calling that refused re-press a failed attempt", code: "PREVIOUS_MISMATCH", attempt: 2, presses: [started("start-a", 50), { card: "start-a", id: "20261104000000000-start-a-again", at: m(40), receipt: { reason: "the one-shot START allowance is consumed" } }], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named("start-a/20261104000000000-start-a-again", "consumed-card", "failed-attempt") },
-    { label: "an admitted Session no press of its card owns", code: "EVIDENCE_MISMATCH", attempt: 2, presses: [refused("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "x", "failed-attempt") },
+    { label: "a refused re-press of a card whose earlier press admitted a Session", code: "none", attempt: 2, presses: [started("start-a", 50), { card: "start-a", id: "20261104000000000-start-a-again", at: m(40), receipt: { reason: "the one-shot START allowance is consumed" } }], steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }], previous: named("start-a/20261104000000000-start-a-again", "consumed-card", "no-session") },
+    { label: "a card calling that refused re-press a failed attempt", code: "PREVIOUS_MISMATCH", attempt: 2, presses: [started("start-a", 50), { card: "start-a", id: "20261104000000000-start-a-again", at: m(40), receipt: { reason: "the one-shot START allowance is consumed" } }], steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }], previous: named("start-a/20261104000000000-start-a-again", "consumed-card", "failed-attempt") },
+    { label: "an admitted Session no press of its card owns", code: "EVIDENCE_MISMATCH", attempt: 2, presses: [refused("start-a", 40)], steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "x", "clean-batch") },
     { label: "a press snapshot changed from what the receipt recorded", code: "APPROVAL_CHANGED", attempt: 1, previous: null, approval: { record: { plan: "the-plan-the-receipt-names" } } },
-    { label: "the executor returning its own Grant to Off", code: "none", attempt: 2, presses: [{ card: "start-a", at: m(40), status: "failed", receipt: { reason: "verification failed", productionActivated: true, offCleanup: "returned_off", allowanceConsumed: true } }], steps: [{ activate: "start-a" }, { off: "start-a-20261104T100000Z-1-off" }], previous: named(pressKey("start-a"), "failed-verification", "failed-attempt") },
+    { label: "the executor returning its own Grant to Off: not the operator's Off, but a failed batch", code: "FAILED_BATCH", attempt: 2, presses: [{ card: "start-a", at: m(40), status: "failed", receipt: { reason: "verification failed", productionActivated: true, offCleanup: "returned_off", allowanceConsumed: true } }], steps: [{ activate: "start-a" }, { off: "start-a-20261104T100000Z-1-off" }], previous: named(pressKey("start-a"), "failed-verification", "failed-attempt") },
     { label: "another Grant activated since the approval", code: "PRODUCTION_CHANGED", attempt: 2, steps: [{ activate: "dashboard-toggle-2-beef", admitted: 1 }, { off: "rowan-off-x" }], previous: null },
     { label: "a policy revision the chain does not explain", code: "PRODUCTION_CHANGED", attempt: 1, previous: null, revisionOffset: 1 },
-    { label: "a fourth attempt", code: "ATTEMPTS_EXHAUSTED", attempt: 3, presses: [started("start-a", 50), started("start-b", 40), started("start-c", 30)], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }, { activate: "start-c" }, { off: "rowan-off-c" }], previous: named(pressKey("start-c"), "c", "failed-attempt") },
-    { label: "an attempt already used, which counts", code: "ATTEMPT_MISMATCH", attempt: 1, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
+    { label: "a fourth batch after three clean ones, which no count caps (Decision 0181)", code: "none", attempt: 4,
+      presses: [started("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "scope-complete", kind: "clean-batch" }), started("start-c", 30, { press: pressKey("start-b"), cause: "scope-complete", kind: "clean-batch" })],
+      steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }, { activate: "start-b", clean: true }, { off: "rowan-off-b" }, { activate: "start-c", clean: true }, { off: "rowan-off-c" }],
+      previous: named(pressKey("start-c"), "scope-complete", "clean-batch") },
+    { label: "a clean batch, which does not stop the next card", code: "none", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "scope-complete", "clean-batch") },
+    { label: "a clean batch still Active, whose next card waits only on production being Off", code: "none", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a", clean: true }], previous: named(pressKey("start-a"), "scope-complete", "clean-batch") },
+    { label: "one failed batch in this day, which stops for the operator", code: "FAILED_BATCH", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-stuck-20261104" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
+    { label: "a failed batch after a clean one in this day", code: "FAILED_BATCH", attempt: 3,
+      presses: [started("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "scope-complete", kind: "clean-batch" })],
+      steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }], previous: named(pressKey("start-b"), "stuck-run", "failed-attempt") },
+    { label: "a batch that reached scope complete with an Action escalated, which failed", code: "FAILED_BATCH", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a", clean: true, escalated: 1 }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "escalated", "failed-attempt") },
+    { label: "a failed batch still running when the day was pressed", code: "FAILED_BATCH", attempt: 2, presses: [started("start-a", 150)], earlier: [{ activate: "start-a" }], steps: [{ off: "rowan-off-stuck-20261104" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
+    { label: "a failed batch over before the day was pressed, which the operator's press moved past", code: "none", attempt: 2, presses: [started("start-a", 150)], earlier: [{ activate: "start-a" }, { off: "dashboard-toggle-1-abcd" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
+    { label: "a card calling a clean batch a failed attempt", code: "PREVIOUS_MISMATCH", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "stuck-run", "failed-attempt") },
+    { label: "a card calling a failed batch clean", code: "PREVIOUS_MISMATCH", attempt: 2, presses: [started("start-a", 150)], earlier: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "scope-complete", "clean-batch") },
+    { label: "an attempt already used, which counts", code: "ATTEMPT_MISMATCH", attempt: 1, presses: [started("start-a", 40)], steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "scope-complete", "clean-batch") },
     { label: "a START that admitted no Session is no attempt", code: "none", attempt: 1, presses: [started("start-a", 40)], steps: [{ activate: "start-a", admitted: 0 }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "no-admission", "no-session") },
     { label: "a refused press with no attempt used", code: "none", attempt: 1, presses: [refused("start-a", 40)], previous: named(pressKey("start-a"), "origin-moved", "no-session") },
     { label: "a third refused re-press", code: "REPRESSES_EXHAUSTED", attempt: 1,
@@ -222,16 +254,20 @@ export function dayScenarios(now: number): DayScenario[] {
       presses: [refused("start-a", 50), refused("start-b", 40, undefined, { press: pressKey("start-a"), cause: "capacity-stale" })],
       previous: named(pressKey("start-b"), "capacity-stale", "no-session") },
     { label: "a same-cause third attempt", code: "SAME_CAUSE", attempt: 3,
-      presses: [started("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt" })],
-      steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }],
+      presses: [started("start-a", 160), started("start-b", 140, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt" })],
+      earlier: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }],
       previous: named(pressKey("start-b"), "stuck-run", "failed-attempt") },
     { label: "a third attempt on a different cause", code: "none", attempt: 3,
-      presses: [started("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt" })],
-      steps: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }],
+      presses: [started("start-a", 160), started("start-b", 140, { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt" })],
+      earlier: [{ activate: "start-a" }, { off: "rowan-off-a" }, { activate: "start-b" }, { off: "rowan-off-b" }],
       previous: named(pressKey("start-b"), "provider-outage", "failed-attempt") },
+    { label: "two clean batches named for one cause, which no attempt failed on", code: "none", attempt: 3,
+      presses: [started("start-a", 50), started("start-b", 40, { press: pressKey("start-a"), cause: "scope-complete", kind: "clean-batch" })],
+      steps: [{ activate: "start-a", clean: true }, { off: "rowan-off-a" }, { activate: "start-b", clean: true }, { off: "rowan-off-b" }],
+      previous: named(pressKey("start-b"), "scope-complete", "clean-batch") },
     { label: "a card with no cause named for the latest press", code: "PREVIOUS_CAUSE_REQUIRED", attempt: 1, presses: [refused("start-a", 40)], previous: null },
     { label: "a card naming another press as the latest", code: "PREVIOUS_MISMATCH", attempt: 1, presses: [refused("start-a", 40)], previous: named(pressKey("start-zzz"), "x", "no-session") },
-    { label: "a card calling a failed attempt a refusal", code: "PREVIOUS_MISMATCH", attempt: 2, presses: [started("start-a", 40)], steps: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "x", "no-session") },
+    { label: "a card calling a failed attempt a refusal", code: "PREVIOUS_MISMATCH", attempt: 2, presses: [started("start-a", 150)], earlier: [{ activate: "start-a" }, { off: "rowan-off-a" }], previous: named(pressKey("start-a"), "x", "no-session") },
     { label: "a latest press still running", code: "PREVIOUS_UNSETTLED", attempt: 1, presses: [{ card: "start-a", at: m(5), status: "running", receipt: { outcome: "in_progress" } }], previous: named(pressKey("start-a"), "x", "no-session") },
     { label: "a successful START receipt production does not record", code: "EVIDENCE_MISMATCH", attempt: 1, presses: [started("start-a", 40)], previous: named(pressKey("start-a"), "x", "failed-attempt") }
   ];
@@ -241,7 +277,7 @@ export function writeDayScenario(library: string, scenario: DayScenario, now: nu
   const baseline = 83;
   const approval = writeDayApproval(library, { pressedAt: now - 60 * MINUTE, baseline, ...scenario.approval });
   (scenario.presses ?? []).forEach((spec, index) => writeStartPress(library, spec, index));
-  const { evidence, revision } = evidenceOf(baseline, now, scenario.steps ?? []);
+  const { evidence, revision } = evidenceOf(baseline, now, scenario.steps ?? [], scenario.earlier ?? []);
   scenario.after?.(library, approval, now);
   return { approval, evidence, revision, policyRevision: revision + (scenario.revisionOffset ?? 0) };
 }
