@@ -4,7 +4,7 @@ type: decision
 id: "0191"
 slug: may-arcadia-s-deterministic-relay-launch-successor-coordinator-sessions-signal
 project: arcadia
-status: open
+status: approved
 question: May Arcadia's deterministic relay launch successor coordinator sessions (Signal, Rowan) by itself when a coordinator's context crosses the handoff threshold?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107
 updated: 2026-11-07
+answer: "A. Yes, pinned: the relay launches successor coordinators without an operator step"
+decided: 2026-11-07
 ---
 
 # Decision 0191: May Arcadia's deterministic relay launch successor coordinator sessions (Signal, Rowan) by itself when a coordinator's context crosses the handoff threshold?
