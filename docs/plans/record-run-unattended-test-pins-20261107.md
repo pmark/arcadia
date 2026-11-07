@@ -137,11 +137,11 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-governed-record-path
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-record-run-test-pins-execution-build-20261107
+    source: Agent Ask amend-pin-governed-record-path-acceptance-wording-20261107
     why: "isGovernedRecordPath decides which settlement files a Session may touch, and its exact path list is not asserted directly, so widening a prefix would pass every test today."
     acceptance_criteria:
       - tests/pin-governed-record-path.test.ts is a new test file that imports isGovernedRecordPath from ../src/sessions/scopeCriteria.js and asserts isGovernedRecordPath is true for each of PROJECT.md, MISSION_LOG.md, docs/plans/x.md, docs/decisions/0001-x.md and .arcadia/asks/x.yaml.
-      - The same test file asserts it is false for each of project.md, docs/plansx.md, src/x.ts, tests/x.test.ts and ./PROJECT.md.
+      - The same test file asserts it is false for each of project.md, docs/plansx.md, src/x.ts, a path under tests/ ending in .test.ts, and ./PROJECT.md.
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-governed-record-path.test.ts, a new test file that imports only vitest and src/sessions/scopeCriteria.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
