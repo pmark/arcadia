@@ -25,13 +25,14 @@ launched by Signal on 2026-11-07. Evidence is pinned to main at `a53277b78`.
    registered coordinator's context occupancy, decides when a handoff is due,
    assembles the state capsule, launches the successor, verifies delivery of its
    first prompt, and records the custody transfer.
-2. **Trigger:** context occupancy read from the host's own transcript file. It
-   uses the same formula as Claude Code's documented `used_percentage`. Prepare
+2. **Trigger:** context occupancy read from the host's own transcript file. This
+   was observed for Claude and Codex; OpenCode is unverified. It uses the
+   formula that Claude Code's documentation gives for `used_percentage`. Prepare
    at 50% of the window, due at 60%, forced at 75%.
-3. **Capsule:** one versioned record per coordinator in the configured
-   workspace. Arcadia derives most of it from canonical sources on every tick.
-   The agent adds only a short journal of judgements, as it goes. Nothing is
-   assembled under pressure.
+3. **Capsule:** a live projection per coordinator in the configured workspace,
+   plus an immutable snapshot for each handoff generation. Arcadia derives most
+   of it from canonical sources on every tick. The agent adds only a short
+   journal of judgements, as it goes. Nothing is assembled under pressure.
 4. **Launch:** coordinators run as host CLI sessions under tmux, which Arcadia
    can start, observe and stop. The operator reaches them through Remote
    Control. The desktop app's `start_session` stays a convenience and is never
@@ -40,8 +41,29 @@ launched by Signal on 2026-11-07. Evidence is pinned to main at `a53277b78`.
    pretend they can. A consequential approval goes to a durable surface the
    operator acts on once, such as the existing batch-merge card, a Decision or a
    day grant. Any session can then verify it. The one new authority needed is a
-   standing Decision that lets the relay launch successor coordinators. It is
-   prepared as an Agent Ask proposal, not settled.
+   standing Decision that lets the relay launch successor coordinators. The
+   same Decision would also amend the existing rules this design changes,
+   listed below. It is prepared as an Agent Ask proposal, not settled.
+
+## Rules this design changes
+
+Building it changes existing guidance. None of these may be built as routine
+work. Each needs the operator's Decision, named here so that no change slips
+through as an implementation detail.
+
+| Existing rule | Where | What changes |
+| --- | --- | --- |
+| "Run the harness unmodified", "Do not add orchestration code, a queue service or a second runner" | `docs/agent-guidance/standard-harness.md` | The relay is new orchestration code: a scheduled tick that launches and stops coordinator sessions. The harness itself still runs unmodified (stock `claude`, `codex` and `opencode` binaries) |
+| "Handoffs go to files … a checked-in file or an Agent Ask, never chat" | same | The capsule is a workspace file, not a checked-in one. Its precedent is the `incomplete_resumable` lease handoff receipt in the workspace. The Decision has to accept that, or require each generation's snapshot to be filed as an Agent Ask preview |
+| "Use existing explicit checkpoints, not a new polling loop, hook, timer, supervisor service or session launcher" | `.agents/skills/arcadia-handoff/SKILL.md` | The design adds a timer tick, hooks and a session launcher. The skill would be amended to point at the relay once it ships |
+| Posting to GitHub needs an explicit Decision | `docs/agent-guidance/agent-peer-watch.md` | The relay records custody on the coordination Issue. That comment needs Decision scope, or the record stays in the workspace only |
+| Interactive launch is something "only an operator at the terminal opts in" | `src/sessions/index.ts` (`--interactive`) | The relay would start interactive sessions with no operator at the terminal |
+| Launching a session needs authorization | AGENTS.md, Constitution | The standing Decision in the last section of this document |
+| Hooks in `.claude/settings.json` or `~/.codex/hooks.json` are persistent configuration | AGENTS.md | Change 6 needs its own approval |
+
+Only the read-only parts are routine without a Decision: the `budget`
+measurement, `capsule --check`, `verify` and the pings, which already have
+standing.
 
 ## What happened: the evidence
 
@@ -65,8 +87,9 @@ on each main-chain assistant message. The model was Opus with a 1M-token window.
 | 11-07 17:47:56 | 977,536 before, 101k after | `compact_boundary`, trigger `manual` |
 
 Across the whole run, the most occupancy grew in any one hour was 117,752
-tokens, or 11.8% of the window. Rowan's memory records a jump from 43% to 72% in
-about an hour of subagent reports. That is 29 points.
+tokens, or 11.8% of the window. The operator's agent memory (not a pinned
+file, so unverified) records Rowan jumping from 43% to 72% in about an hour of
+subagent reports. That is 29 points.
 
 ### The five hypotheses
 
@@ -76,7 +99,7 @@ about an hour of subagent reports. That is 29 points.
 | H2 | `start_session` fails over Remote Control, which puts the operator in the loop | **Confirmed, and conditional.** The same tool started Rowan at 05:28Z and Momentum Keeper at 15:11Z. It refused only when the operator's latest turn arrived over Remote Control. The launch path depends on which device the operator is holding | Tool results in the same transcript |
 | H3 | Chat authority words die with their session | **Confirmed.** The night note says it outright: "The approval lives in THIS Signal session ... a successor Signal must get the operator's word again." Observation rows 3, 9 and 13, plus the 11-06 handoff, add that the host classifier rejects a merge under the standing order alone and needs the operator's word in the acting session's own chat | `signal-night-handoff-20261107.md`; `signal-observations.md` |
 | H4 | Live state is scattered and carried unevenly | **Confirmed.** Copies of the waiter in the scratchpad vanish on restart (exit 127). `quiet-watch.sh` lives only in a notes folder. Background subagents die with their parent: the #2211 builder and Clara were "gone with this session." Handoff notes are append-only narrative (17.6 KB, with "supersedes" blocks), so a successor has to read all of it to find the current state. Signal's 11-06 14:33Z takeover found a red check that had sat for an hour, because no handoff field carried open escalations | Night note; observation row 22 |
-| H5 | Agents cannot measure their own context | **Partly wrong.** No agent tool reports it, but every host writes the numbers to a file a script can read. See the next section | Host matrix |
+| H5 | Agents cannot measure their own context | **Partly wrong.** No agent tool reports it, but Claude Code and Codex were both observed writing the numbers to a file a script can read. OpenCode is unverified. See the next section | Host matrix |
 
 ## Host capabilities
 
@@ -93,8 +116,8 @@ documentation, not seen here) or **inferred** (neither).
 | Deliver a later message to a running session | Desktop sessions: only from another session's turn (cross-session messages). A tmux pane: `tmux send-keys`, which reads as user input (see Authority) | **Observed in `--help`:** `codex queue` | **Inferred:** `run --attach --session` |
 | Stop a session | tmux kill, or `claude stop` for `--bg` | tmux kill | tmux kill |
 
-What this means: every host already writes the occupancy data and gives a
-command-line launch. Arcadia already runs these launches in tmux for build
+What this means: Claude Code and Codex already write the occupancy data
+(OpenCode is unverified), and all three give a command-line launch. Arcadia already runs these launches in tmux for build
 Sessions. The desktop app is the one surface a script cannot drive.
 
 ## Is the operator's assumption right?
@@ -153,9 +176,10 @@ rather than pretending otherwise.
   refuses to report a percentage when the registry and an observed `preTokens`
   disagree.
 - **Fallback when usage is missing or unreadable:** the state is
-  `unmeasured`. It pings once per episode and uses transcript bytes as a coarse
-  proxy (prepare at 4 MB of main-chain text). It never reports a percentage it
-  does not have.
+  `unmeasured`. It pings once per episode and counts main-chain turns as a
+  coarse proxy. Its threshold is uncalibrated: set it from the first measured
+  renewals, and until then treat `unmeasured` for more than an hour as *due*.
+  It never reports a percentage it does not have.
 - **Thresholds:**
   - *prepare* at 50%: tell the coordinator to bring its journal up to date.
   - *due* at 60%: start the handoff at the next safe point.
@@ -169,24 +193,45 @@ rather than pretending otherwise.
   running `arcadia coordinator hold --until <event> --max 20m`. That is for a
   consequential operation already in flight, such as a press or merge. The relay
   records the hold. A hold ends at its event or at 20 minutes, whichever comes
-  first.
+  first. Only one hold is allowed per episode: a second `hold` is refused. At
+  *forced*, the relay still launches, but it does not stop the predecessor
+  while a hold is open (see (c) step 5).
 
 ### (b) The state capsule
 
-The capsule is one record per coordinator role and Project:
-`<workspace>/coordinators/<project>/<role>/capsule.json`, plus an append-only
-`generations.jsonl`. It lives in the configured workspace, never a scratchpad or
-notes folder, so it survives restarts. It is a **derived projection**: it never
-grants authority, and every field points to its canonical source. The precedent
-is the `incomplete_resumable` lease handoff that `arcadia go` resumes from
-(Decision 0051).
+Each coordinator role and Project has three files in the configured workspace,
+under `<workspace>/coordinators/<project>/<role>/`. That location is never a
+scratchpad or notes folder, so the files survive restarts.
+
+- `live.json`, the live projection, rewritten each tick.
+- `snapshots/<generation>.json`, written once when a handoff starts and never
+  changed afterwards. Its sha is the one the launch prompt pins.
+- `generations.jsonl`, append-only.
+
+The capsule is a **derived projection**: it never grants authority, and every
+field points to its canonical source. Its precedent is the
+`incomplete_resumable` lease handoff that `arcadia go` resumes from (Decision
+0051).
+
+**Custody maps onto existing rows.** A coordinator holds no Action claim; it
+coordinates Actions. Each generation is an `agent_sessions` row of a new
+`coordinator` kind, keyed by the native session id and its transcript path:
+
+- for Claude, the `--session-id` that the relay passes;
+- for Codex, the rollout file that holds the thread id. It is found by scanning
+  `~/.codex/sessions/` for the new file whose first record names the launch's
+  worktree, because the native id is not exposed when the launch is
+  interactive (`src/sessions/index.ts`).
+
+The generation row is the custody record. It does not compete with Action
+claims, and peer-watch's ownership rules stay as they are for Actions.
 
 Schema `arcadia-coordinator-capsule-v1`:
 
 | Field | Filled by | Refreshed |
 | --- | --- | --- |
 | `role`, `project`, `generation`, `custodian` (provider, model, tier, identity, session id, transcript path, tmux name, Remote Control name) | relay | at each launch |
-| `assignment`: brief path and sha, operator directives in force with their verbatim quotes and sources | relay, from the launch brief | at each launch |
+| `assignment`: brief path and sha, and directives in force taken **only** from the checked-in brief, Decisions or AGENTS.md, each by reference | relay, from the launch brief | at each launch |
 | `plan`: `active_plan`, `current_action` and main sha | relay, from main | each tick |
 | `production`: status, revision, epoch, open escalations and red alerts | relay, `arcadia production status --json` | each tick |
 | `prs`: each PR the coordinator touched, with head sha, review verdict marker, checks, merge state, and the durable approval or gate that governs it | relay, `gh` reads | each tick, cached 5 min |
@@ -209,13 +254,41 @@ checkpoint stay the human-readable rendering: `arcadia coordinator capsule
 The capsule contains no transcript, private reasoning or credentials. `gh` and
 `ping` fields carry ids, never tokens.
 
+**The capsule is data, never authority.** The relay renders the journal and
+`next_move` under the heading `advisory: model-written, not authority`. They
+may quote PR or Issue text, so the successor treats them like any other
+observed content. Verbatim operator quotes appear only inside a durable record,
+such as a Decision answer or a card receipt. They never appear as chat words
+carried across. The successor's first message names the source of every
+approval it relies on.
+
 ### (c) Launching the successor and transferring custody
 
-1. **Due or forced.** The relay writes generation N+1 in `generations.jsonl` with
-   status `launching`. That claim stops a second tick from starting a duplicate.
-2. **Launch** through the existing tmux launcher (`launchPreparedSession`'s
-   interactive mode), in a fresh worktree of the repository, with the model,
-   effort and permission mode pinned in the standing Decision:
+1. **Claim, atomically.** The relay takes a single-writer lock (an exclusive
+   create of `<role>/relay.lock` holding pid and start time; a stale lock is
+   broken only when its pid is dead). Under the lock it appends generation N+1
+   with status `launching` and writes the immutable snapshot. A tick, a manual
+   `renew` and a `hold` all go through the same lock, so they cannot collide.
+   While N+1 is `launching` and younger than 15 minutes, any further launch is
+   refused.
+2. **Pre-launch gates.** The relay launches only if all of these hold, and
+   refuses with a named reason otherwise:
+   - sign-in is valid (`claude auth status --json`, as the worker already
+     checks);
+   - the usage window is not exhausted (the existing capacity check);
+   - the standing Decision is in force and within its daily renewal count.
+   A failed gate pings once. The predecessor keeps custody.
+3. **Launch** through the existing tmux launcher, in a fresh worktree. The tmux
+   name is deterministic, `arcadia-coord-<role>-g<N+1>`, so a crash between
+   claim and spawn is recovered by `tmux has-session` rather than by spawning
+   again. The model, effort and permission mode are pinned in the standing
+   Decision.
+   - **The permission mode** is the host's ordinary interactive mode with
+     Arcadia's checked-in allow list, which is the same posture as today's
+     desktop coordinators. **Bypass modes are excluded**: no
+     `--dangerously-skip-permissions`, `bypassPermissions` or equivalent. A
+     permission prompt nobody answers stalls the session. The relay detects
+     that as no acceptance (step 6), and it is never auto-approved.
    - Claude: `claude --remote-control "<title>" --session-id <uuid> --name "<title>" --model <id> --effort <e> "<resume prompt>"`.
    - Codex: `codex --cd <worktree> --model <id> "<resume prompt>"`. Codex can
      also take messages later through `codex queue`.
@@ -223,32 +296,58 @@ The capsule contains no transcript, private reasoning or credentials. `gh` and
 
    The resume prompt is fixed text: "You are <role> generation N+1. Run
    `arcadia coordinator verify --generation N+1`, then `accept`." It also
-   carries the capsule path and sha. It has no free-form state, so there is
-   nothing to lose.
-3. **Delivery check.** Within 2 minutes, the relay reads the successor's
+   carries the snapshot path and sha. The host classifier will read this as a
+   user turn, because it is the session's first message. That is acceptable
+   only because the text is a fixed template that the reviewed relay code
+   renders. It holds no approval, quote or free-form state, so no authority can
+   ride on it. The same reasoning is why the relay never injects later messages
+   with `tmux send-keys`.
+4. **Delivery check.** Within 2 minutes, the relay reads the successor's
    transcript and matches its first user message against the prompt's hash.
    This meets AGENTS.md's "verify actual prompt delivery."
-4. **Acceptance.** The successor runs `verify` (section f) and then
-   `arcadia coordinator accept --generation N+1 --capsule-sha <sha>`. The relay
-   marks N+1 as `custodian` and N as `handed_off`.
-5. **Stand-down of N.** For a tmux-hosted predecessor, the relay stops its pane
-   10 minutes after acceptance. For a desktop predecessor (only during
-   migration), a project UserPromptSubmit/Stop hook adds "custody moved to
-   generation N+1; stand down" to its next turn. Until then the predecessor
-   keeps custody, so coordination never has a gap.
-6. **If the launch fails** (no prompt delivered, no acceptance within 15
-   minutes, or the process exited): the relay kills the failed attempt, waits
-   one tick, and retries once with a fresh session id. After the second failure
-   it sends one `arcadia ping send --kind attention` naming the exact failure and
+5. **Acceptance and fencing.** The successor runs `verify` (section f) and then
+   `arcadia coordinator accept --generation N+1 --snapshot-sha <sha>`. The relay
+   marks N+1 `custodian` and N `handed_off` in one locked write. **From that
+   moment, mutating coordinator commands check the caller's generation**:
+   `arcadia ping send` with a coordinator role, `coordinator note`,
+   `coordinator subscribe`, preparing a batch-merge card and `renew`. A
+   predecessor that runs any of them gets a refusal that names its successor.
+   Read commands stay open. Two coordinators can still both *read*, but only
+   one can act through Arcadia.
+6. **Stand-down of N.**
+   - **tmux-hosted predecessor.** The relay stops its pane only when the
+     predecessor is idle: its transcript shows the turn ended, no hold is open,
+     and no subagent or background task is running (every `Agent` or
+     background `Bash` call in its transcript has a recorded completion).
+     Otherwise it waits.
+     At 60 minutes it pings once instead of killing.
+   - **Desktop predecessor** (only during migration). The relay cannot stop it.
+     The generation fence in step 5 is what stops it acting through Arcadia.
+     A project hook, once installed (change 6), adds "custody moved to
+     generation N+1; stand down" to its next turn. Hooks installed after the
+     predecessor started may not load. Until a predecessor has been started
+     after the hook was installed, the relay also sends one `fyi` ping that
+     names both sessions, so the operator can see there are two. At *forced*,
+     this is the only case where a live predecessor can keep doing things
+     outside Arcadia's commands (direct `gh` or `git`). The design says so
+     plainly rather than claiming a fence it does not have.
+   - Until acceptance, the predecessor keeps custody, so coordination never has
+     a gap.
+7. **If the launch fails** (no prompt delivered, no acceptance within 15
+   minutes, or the process exited), the relay marks the generation `failed`,
+   stops that tmux name, waits one tick, and retries once with a fresh session
+   id. The retry passes the same pre-launch gates. After a second failure it
+   sends one `arcadia ping send --kind attention`, naming the exact failure and
    the exact `arcadia coordinator renew` command that would retry. The
    predecessor stays custodian and is told to work in a low-context mode: no
-   large reads, delegate to subagents, keep the journal current. That alert is a
-   visible step for the operator, never a hidden one. Provider fallback
+   large reads, delegate to subagents, keep the journal current. That alert is
+   a visible step for the operator, never a hidden one. Provider fallback
    (Claude to Codex) is **off** unless the standing Decision names it, because
    AGENTS.md forbids an unapproved paid fallback.
-7. **Titles and records.** The successor retitles itself `⭐ 🚦` through the host
-   tool. The relay records the custody change on the coordination Issue
-   (#1929 today) using the resolved identity.
+8. **Titles and records.** The successor retitles itself `⭐ 🚦` through the host
+   tool. The custody record is the generation row in the workspace. A comment
+   on the coordination Issue (#1929 today) is posted only if the standing
+   Decision includes it (see "Rules this design changes").
 
 ### (d) Authority continuity
 
@@ -264,10 +363,11 @@ The design rules:
 1. **Move consequential approvals out of chat.** When the operator approves a
    merge in chat, the coordinator turns it straight into the existing
    batch-merge card (`src/decisions/batchMerge.ts`), with heads pinned. The
-   operator's single tap is a receipt that any session, and the script runner,
-   can verify. The tap costs the operator the same as typing "yes", and it
-   outlives the session. The card's script runs the merge, so no agent
-   classifier is involved.
+   operator's tap is a receipt that any session, and the script runner, can
+   verify. It is one extra tap after the chat "yes", or the only input if the
+   operator taps without typing. It is offered because it replaces a chat
+   approval that dies with its session, not because it is free. The card's
+   script runs the merge, so no agent classifier is involved.
 2. **Name what will be lost.** The capsule's `approvals.chat_only` lists every
    chat approval not yet exercised. The relay warns at *prepare*. The
    coordinator then either exercises the approval or prepares the card before
@@ -302,20 +402,21 @@ The design rules:
 
 `arcadia coordinator verify --generation N` is deterministic and read-only:
 
-1. The capsule's sha matches the prompt, and the generation is the newest
-   `launching` row.
+1. The immutable snapshot's sha matches the prompt, and the generation is the
+   newest `launching` row.
 2. It re-derives every relay-owned field from its source *now* and prints the
-   differences (PR heads, production revision and epoch, Decision numbers,
-   pending pings, sessions alive).
-3. Every subscription is armed, and its cursor is not older than the capsule.
+   differences from the snapshot (PR heads, production revision and epoch,
+   Decision numbers, pending pings, sessions alive). A difference is expected
+   and fine: it shows what changed during the handoff. It is not a failure.
+3. Every subscription is armed, and its cursor is not older than the snapshot.
 4. Every journal entry is listed with its age. An entry older than 2 hours is
    marked `stale`.
 5. Every chat-only approval is listed as lost, with its prepared card, if any.
 6. One `next_move` exists and names a command.
 
 It exits 0 only when items 1 to 3 pass. Items 4 to 6 are warnings the successor
-reports in its first message. `accept` refuses unless `verify` passed at the
-same capsule sha within the last 10 minutes.
+reports in its first message. `accept` refuses unless `verify` passed against
+the same snapshot sha within the last 10 minutes.
 
 ### (g) The vital few first changes
 
@@ -323,8 +424,8 @@ Ranked by how far each one moves toward fully automatic transitions.
 
 | Rank | Change | What it moves | Authority |
 | --- | --- | --- | --- |
-| 1 | **`arcadia coordinator register` and `budget`, plus a relay tick on the launchd timer that pings at prepare, due and forced.** Read-only measurement, one ping per episode | Detection becomes code. On 11-07 it would have pinged at 05:09Z, 12.5 h before compaction | Routine. Code PR, no new authority; pings are existing standing pings |
-| 2 | **The capsule assembler, `note`, `verify` and `accept`, with custody generations.** | Handoffs no longer depend on assembly under pressure or a narrative note. Custody becomes a record | Routine code PR. A new workspace table or file; it changes no governance record |
+| 1 | **`arcadia coordinator register` and `budget`, plus a relay tick on the launchd timer that pings at prepare, due and forced.** Read-only measurement, one ping per episode | Detection becomes code. On 11-07 it would have pinged at 05:09Z, 12.5 h before compaction | The `budget` command alone is routine: read-only, and its pings already have standing. **Scheduling it on the launchd timer is new timer work** (see "Rules this design changes"), so it waits for the Decision. Any of A, B or C covers it |
+| 2 | **The capsule (live view and immutable snapshots), `note`, `verify` and `accept`, custody generations as `agent_sessions` rows, and the generation fence on mutating coordinator commands.** | Handoffs no longer depend on assembly under pressure or a narrative note. Custody becomes a record, and only the custodian can act through Arcadia | Code PR. The fence changes what agents may do, so the operator merges it |
 | 3 | **Relay launch (`arcadia coordinator renew`) through the tmux launcher, with the delivery check, one retry and the alert path.** | Removes the agent and the operator from the launch. The step that failed at 17:06Z | **Needs the standing Decision** (launch authority). Probes P1 and P2 first |
 | 4 | **Approvals to durable surfaces:** guidance makes a chat merge approval become a batch-merge card at once, and `approvals.chat_only` is tracked | Removes re-approval after each handoff | Guidance PR. It changes how agents seek approval, so the operator merges it |
 | 5 | **Watcher continuity:** check in quiet-watch as a mode, add subscriptions and cursors to the capsule, and liveness-check them | Wakes survive handoffs and restarts | Routine. Merge in a production gap |
@@ -337,15 +438,22 @@ Deferred, each with its revival trigger:
 | Moving from tmux to `claude --bg` or `codex remote-control` | Probe P2 shows the combination works with Remote Control and a clean stop |
 | OpenCode coordinator support | An OpenCode coordinator is assigned, or probe P4 passes |
 | Provider fallback on launch failure | Two relay launches fail on one provider within a week, and a Decision names the fallback |
-| Fencing a stale coordinator's mutating commands by custody generation | Two coordinators are first observed acting in the same generation |
+| Fencing a stale coordinator's direct `gh` and `git` writes, beyond Arcadia's own commands | A predecessor is observed writing to GitHub after `handed_off` |
 | Recalibrating thresholds | Ten recorded renewals, or one forced renewal |
 | Relay injection of mid-session wakes (`tmux send-keys`) | Never by default: typed text reads as operator input to the host classifier. Revisit only with a host-supported, labelled channel |
 
 ## Pre-mortem: how this could fail
 
 - **The relay launches a duplicate coordinator.** Prevented by the
-  `launching` generation claim, and by refusing to launch while N+1 is
+  single-writer lock, the `launching` generation claim, the deterministic tmux
+  name checked with `has-session`, and refusing to launch while N+1 is
   `launching` and younger than 15 minutes.
+- **Two coordinators act after a handoff.** The generation fence refuses the
+  predecessor's mutating Arcadia commands. Direct `gh` and `git` writes are not
+  fenced. That gap is named in (c) step 6 and in the Deferred table.
+- **The stand-down kills in-flight work.** The pane is stopped only when the
+  predecessor is idle, with no open hold and no running subagent or
+  background task. Otherwise the relay pings instead.
 - **Occupancy is misread after a model switch or `/fast`.** The window comes
   from the registry for the model on the *latest* usage line. A mismatch reads
   as `unmeasured`, never as a guess.
@@ -364,8 +472,10 @@ Deferred, each with its revival trigger:
 
 ## Probes to run before change 3
 
-Each is read-only or uses a throwaway session in a fixture worktree. None
-touches production.
+P1 and P2 start real sessions, so they spend tokens. Each needs the operator's
+approval before it runs, with a spend bound of one short prompt per probe, and
+a stop with `claude stop` or by killing the tmux pane. They use a throwaway
+fixture worktree and never touch production. P3 and P4 are read-only.
 
 - **P1:** start `claude --remote-control "probe" --name probe "say hi"` in tmux.
   Check it appears in the operator's Remote Control list, on desktop and phone,
@@ -381,16 +491,25 @@ touches production.
 **Standing order: may Arcadia's relay launch successor coordinators?**
 
 - **A. Yes, pinned.** The relay may launch one successor per registered
-  coordinator role (Rowan, Signal) at *due* or *forced*. Same provider and
-  model as the outgoing coordinator, at most two attempts per renewal and six
-  renewals a day, expiring after 30 days. **Consequence:** handoffs need no
-  operator step. Each renewal costs one fresh session's start-up tokens. The
-  operator is pinged only when both attempts fail.
+  coordinator role (Rowan, Signal) at *due* or *forced*, with the same provider
+  and model as the outgoing coordinator. Limits:
+  - at most two attempts per renewal and six renewals a day;
+  - the ordinary interactive permission mode, never a bypass mode;
+  - it expires after 30 days.
+
+  The same answer also accepts the rule changes listed in "Rules this design
+  changes": the relay timer, the workspace capsule as the handoff file, the
+  unattended interactive launch, and an optional custody comment on the
+  coordination Issue. Project hooks (change 6) stay a separate approval.
+  **Consequence:** handoffs need no operator step. Each renewal costs one fresh
+  session's start-up tokens. The operator is pinged only when both attempts
+  fail or a pre-launch gate refuses.
 - **B. Yes, but ask first.** The relay prepares everything and pings a
   one-tap "Start successor" card at *due*, and launches at *forced* only if the
   card was not pressed. **Consequence:** one tap per handoff while you are
   awake, automatic overnight. Slower.
-- **C. No.** The relay measures and alerts only (changes 1, 2 and 5).
+- **C. No launches.** The relay timer only measures and alerts (changes 1, 2
+  and 5). The timer and the workspace capsule are accepted; launching is not.
   **Consequence:** detection and the capsule improve, but someone still starts
   each successor by hand, so the 17:06Z failure can recur.
 
