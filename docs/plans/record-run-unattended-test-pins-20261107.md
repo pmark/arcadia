@@ -169,11 +169,11 @@ actions:
     references: []
   - id: pin-timeline-summary-and-order
     title: Pin that timeline text ordering is by code unit and that summaries flatten whitespace and cut at 240 characters, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that timeline text ordering is by code unit and that summaries flatten whitespace and cut at 240 characters, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-timeline-summary-and-order-6e66afa87560; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-timeline-summary-and-order
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-timeline-summary-and-order
+current_action: pin-answer-menu-letters
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
