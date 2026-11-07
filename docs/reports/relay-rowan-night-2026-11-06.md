@@ -103,7 +103,7 @@ touches and about 6.5 hours.
 This part covers what happened after #2153 merged at 19:58Z. **Sources:** Signal's
 log rows 30–32, #1929 from 19:00Z, PRs #2148–#2176, the lessons captured
 since, host state at 05:30Z, and one transcript search to confirm S034's
-wording. On #1929, 2026-11-06 took **23 operator touches** across the UTC day
+wording. The records this part filed are dated up to about 05:40Z. On #1929, 2026-11-06 took **23 operator touches** across the UTC day
 (Part 1 counted about 17 up to 19:00Z). About 8 more followed before 05:30Z.
 
 | # | UTC | Actor | Event | Operator touch | Min lost | Class | Evidence |
@@ -148,7 +148,7 @@ Ranked by what changes dispatch and operator touches per run.
    is previewed, not settled: a press during the open run window can take
    the next Decision number (row 24, #1275), so settle it after the window
    closes.
-4. **Off is one obvious step** (row 39; Part 1 row 27, where Rowan asked how).
+4. **Off is one obvious step** (row 39; Signal's log row 27 records Rowan asking how).
    Cost: 2 questions. **Form:** a proposed REQ-019 and source S034 in the
    Relay brief, in this PR, unconfirmed until the operator confirms it.
 5. **Signal Behavior.** **Form:** proposal Ask
@@ -180,7 +180,7 @@ one off-site host action.
 - The two-PR amendment from Part 1 is resolved in practice: #2157, #2161 and
   #2174 each landed as a single PR.
 - Still open, with no new form: #2129 (blocked in round 2, idle since 05:02Z on
-  2026-11-06), and #2173 (draft, superseded by the re-plan).
+  2026-11-06), and #2173 (draft, superseded by the re-plan). #2171 is closed.
 - The Ask `propose-relay-workspace-switches-and-perpetual-rowan-20261106` is
   missing from checked-in records and from the pending list. Signal 1's
   transcript says it was saved, but no receipt was found. Revival trigger: the
