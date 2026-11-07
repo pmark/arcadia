@@ -13,12 +13,13 @@ actions:
     title: Pin that stored effort keys map to the native Claude and Codex reasoning effort values and unknown keys pass through, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that stored effort keys map to the native Claude and Codex reasoning effort values and unknown keys pass through, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-reasoning-effort-mapping
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "claudeReasoningEffort and codexReasoningEffort translate stored effort keys into the values passed to the coding agents, and no test calls either directly, so moving e3_deep from high to xhigh would pass every test today."
     acceptance_criteria:
       - tests/pin-reasoning-effort-mapping.test.ts is a new test file that imports claudeReasoningEffort and codexReasoningEffort from ../src/codingAgents/reasoningEffort.js and asserts both return "low" for "e1_brief", "medium" for "e2_standard", "high" for "e3_deep" and "xhigh" for "e4_rigorous".
@@ -32,12 +33,13 @@ actions:
     title: Pin that the CLI treats only an exact --json argument as a request for JSON output, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that the CLI treats only an exact --json argument as a request for JSON output, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-cli-wants-json
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "wantsJson decides whether a command prints JSON or text, and no test calls it directly, so loosening it to a prefix match would pass every test today."
     acceptance_criteria:
       - tests/pin-cli-wants-json.test.ts is a new test file that imports wantsJson from ../src/cli/response.js and asserts wantsJson returns true for ["--json"] and for ["status", "--json", "extra"].
@@ -51,12 +53,13 @@ actions:
     title: Pin that a requirement id joins project, plan and Action id with slashes and no normalization, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that a requirement id joins project, plan and Action id with slashes and no normalization, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-requirement-id-format
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "requirementIdFor builds the key under which role lineage tracks a requirement, and no test calls it directly, so changing the separator or folding case would silently orphan recorded lineage."
     acceptance_criteria:
       - tests/pin-requirement-id-format.test.ts is a new test file that imports requirementIdFor from ../src/sessions/roleLineage.js and asserts requirementIdFor("arcadia", "my-plan", "do-thing") returns "arcadia/my-plan/do-thing".
@@ -70,12 +73,13 @@ actions:
     title: Pin the stable plan, proposal and plan-question document reference formats, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin the stable plan, proposal and plan-question document reference formats, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-doc-ref-builders
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "planDocRef, proposalDocRef and planQuestionDocRef build the external keys document rows are stored under, and no test calls them directly, so a format change would fork every existing row without failing a test."
     acceptance_criteria:
       - tests/pin-doc-ref-builders.test.ts is a new test file that imports planDocRef, proposalDocRef and planQuestionDocRef from ../src/docs/types.js and asserts planDocRef("my-plan") returns "plan/my-plan" and proposalDocRef("my-proposal") returns "proposal/my-proposal".
@@ -89,12 +93,13 @@ actions:
     title: Pin that the required-checks repair request id combines the failed Session id and head under a fixed prefix, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that the required-checks repair request id combines the failed Session id and head under a fixed prefix, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-checks-repair-request-id
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "requiredChecksRepairRequestId makes the repair row unique per failed Session and exact head, and no test calls it directly, so dropping the head from the id would collapse repairs for different heads without failing a test."
     acceptance_criteria:
       - tests/pin-checks-repair-request-id.test.ts is a new test file that imports requiredChecksRepairRequestId from ../src/sessions/reviewRepair.js and asserts requiredChecksRepairRequestId("session-1", "abc123") returns "worker-tick-checks-repair-session-1-abc123".
@@ -108,12 +113,13 @@ actions:
     title: Pin that the handoff request prefix lowercases the work item id and dashes every run of other characters, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that the handoff request prefix lowercases the work item id and dashes every run of other characters, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-handoff-request-prefix
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "handoffRequestPrefix names every handoff request id for one Action, and no test calls it directly, so a change to its normalization would split one Action's handoffs across prefixes."
     acceptance_criteria:
       - tests/pin-handoff-request-prefix.test.ts is a new test file that imports handoffRequestPrefix from ../src/clarify/handoff.js and asserts handoffRequestPrefix("Arcadia/Pin_X  Y") returns "handoff-arcadia-pin-x-y-".
@@ -127,12 +133,13 @@ actions:
     title: Pin that a review response value is trimmed, lowercased and whitespace-collapsed, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that a review response value is trimmed, lowercased and whitespace-collapsed, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-review-response-normalization
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "normalizeReviewResponseValue is applied before a review verdict is compared, and no test calls it directly, so dropping the lowercasing would reject valid verdicts without failing a test."
     acceptance_criteria:
       - tests/pin-review-response-normalization.test.ts is a new test file that imports normalizeReviewResponseValue from ../src/review/responseParser.js and asserts normalizeReviewResponseValue("  Needs   CHANGES\n now ") returns "needs changes now" and normalizeReviewResponseValue("approved") returns "approved".
@@ -146,12 +153,13 @@ actions:
     title: Pin the image MIME type to file extension mapping and its bin fallback, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin the image MIME type to file extension mapping and its bin fallback, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-image-mime-extension
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "mimeTypeToExtension picks the extension an artifact image is stored under, and no test calls it directly, so changing jpg to jpeg or making the match case-insensitive would pass every test today."
     acceptance_criteria:
       - tests/pin-image-mime-extension.test.ts is a new test file that imports mimeTypeToExtension from ../src/intelligence/artifacts/imageMeta.js and asserts mimeTypeToExtension returns "png" for "image/png", "jpg" for "image/jpeg", "gif" for "image/gif" and "webp" for "image/webp".
@@ -165,12 +173,13 @@ actions:
     title: Pin which relative paths count as authoritative control records, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin which relative paths count as authoritative control records, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-authoritative-control-path
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "isAuthoritativeControlPath decides which records can govern dispatch, and no test calls it directly, so widening it to any docs path would let a supporting record's defect hide an active pointer without failing a test."
     acceptance_criteria:
       - tests/pin-authoritative-control-path.test.ts is a new test file that imports isAuthoritativeControlPath from ../src/docs/discover.js and asserts isAuthoritativeControlPath returns true for "PROJECT.md", "docs/plans/my-plan.md", "docs/decisions/0001-x.md" and the backslash form "docs\\plans\\my-plan.md".
@@ -184,12 +193,13 @@ actions:
     title: Pin that a stable proposal id is agentask_ followed by the first 18 fingerprint characters, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that a stable proposal id is agentask_ followed by the first 18 fingerprint characters, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-stable-proposal-id
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "stableProposalId derives the id an Agent Ask proposal is stored and settled under, and no test calls it directly, so changing the prefix length would orphan every pending proposal without failing a test."
     acceptance_criteria:
       - tests/pin-stable-proposal-id.test.ts is a new test file that imports stableProposalId from ../src/ask/agentAsk.js and asserts stableProposalId("abcdefghijklmnopqrstuvwxyz") returns "agentask_abcdefghijklmnopqr".
@@ -203,12 +213,13 @@ actions:
     title: "Pin the North Star step reason helpers: gate and remainder prefixes and the one-line 300-character cut, with a new test file."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Pin the North Star step reason helpers: gate and remainder prefixes and the one-line 300-character cut, with a new test file."
     expected_artifact: Evidence satisfying Agent Ask pin-north-star-step-reasons
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "completesGate, remainderOf and oneLineReason shape the reason printed beside every North Star step, and no test calls them directly, so a change to the cut length or ellipsis would pass every test today."
     acceptance_criteria:
       - "tests/pin-north-star-step-reasons.test.ts is a new test file that imports STEP_REASON_MAX_LENGTH, completesGate, oneLineReason and remainderOf from ../src/northStar/stepReason.js and asserts completesGate(\"G1 ready\") returns \"Completes gate: G1 ready\" and remainderOf(\"Build it\") returns \"Remainder of Build it\"."
@@ -222,12 +233,13 @@ actions:
     title: Pin the plan milestone and Log entry document reference formats, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin the plan milestone and Log entry document reference formats, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-milestone-and-log-doc-refs
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "planMilestoneDocRef and logEntryDocRef build the keys that stop retitled milestones and same-day Log entries from forking or colliding, and no test calls them directly, so a change to either format would pass every test today."
     acceptance_criteria:
       - "tests/pin-milestone-and-log-doc-refs.test.ts is a new test file that imports planMilestoneDocRef and logEntryDocRef from ../src/docs/types.js and asserts planMilestoneDocRef(\"my-plan\", \"Ship It: v2!\") returns \"plan/my-plan?milestone=ship-it-v2\" and planMilestoneDocRef(\"my-plan\", \"!!!\") returns \"plan/my-plan?milestone=milestone\"."
@@ -241,12 +253,13 @@ actions:
     title: Pin that a frontmatter YAML scalar is JSON-quoted only when a colon, hash or leading indicator would change its meaning, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that a frontmatter YAML scalar is JSON-quoted only when a colon, hash or leading indicator would change its meaning, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-yaml-scalar-quoting
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "yamlScalar keeps generated frontmatter parseable, and no test calls it directly, so quoting every value or never quoting a colon would pass every test until a document failed to parse."
     acceptance_criteria:
       - tests/pin-yaml-scalar-quoting.test.ts is a new test file that imports yamlScalar from ../src/docs/frontmatter.js and asserts yamlScalar("  plain value  ") returns "plain value" and yamlScalar("a-b") returns "a-b".
@@ -261,12 +274,13 @@ actions:
     title: Pin that a launch agent's workspace is the value following a --workspace argument and is null otherwise, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that a launch agent's workspace is the value following a --workspace argument and is null otherwise, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-launch-agent-workspace-arg
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "launchAgentWorkspace groups launchd agents by the workspace they serve, and no test calls it directly, so accepting the --workspace=path form or a flag as a value would pass every test today."
     acceptance_criteria:
       - tests/pin-launch-agent-workspace-arg.test.ts is a new test file that imports launchAgentWorkspace from ../src/runtime/launchAgents.js and asserts launchAgentWorkspace(["node", "arcadia", "worker", "--workspace", "/w/one"]) returns "/w/one".
@@ -280,12 +294,13 @@ actions:
     title: Pin that lesson keywords are lowercase alphanumeric words of at least three characters, de-duplicated in order and capped at 32, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that lesson keywords are lowercase alphanumeric words of at least three characters, de-duplicated in order and capped at 32, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-lesson-keywords
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "lessonKeywords feeds lesson retrieval, and no test calls it directly, so changing the minimum length, the order or the cap would pass every test today."
     acceptance_criteria:
       - tests/pin-lesson-keywords.test.ts is a new test file that imports lessonKeywords from ../src/learning/lessons.js and asserts lessonKeywords("Fix the CLI-Retry, a b of 42!") equals ["fix", "the", "cli", "retry"] and lessonKeywords("beta alpha beta ALPHA gamma") equals ["beta", "alpha", "gamma"].
@@ -299,12 +314,13 @@ actions:
     title: Pin how a Project slug becomes a Cloudflare Worker name, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin how a Project slug becomes a Cloudflare Worker name, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-cloudflare-worker-name
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "cloudflareWorkerName derives the name a staging Worker is deployed under, and no test calls it directly, so changing the 54-character cap or the dash handling would rename deployments without failing a test."
     acceptance_criteria:
       - tests/pin-cloudflare-worker-name.test.ts is a new test file that imports cloudflareWorkerName from ../src/projects/stagingDeployment.js and asserts cloudflareWorkerName("My Field_Notes!!") returns "my-field-notes", cloudflareWorkerName("--abc--") returns "abc" and cloudflareWorkerName of 60 "a" characters returns 54 "a" characters.
@@ -318,12 +334,13 @@ actions:
     title: Pin the production liveness duration format and the stale episode key, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin the production liveness duration format and the stale episode key, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-liveness-duration-format
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "formatDuration and staleEpisodeKey word the liveness alert and let the outbox recognise a retry of it, and no test calls them directly, so a rounding or unit change would pass every test today."
     acceptance_criteria:
       - tests/pin-liveness-duration-format.test.ts is a new test file that imports formatDuration and staleEpisodeKey from ../src/commands/productionLiveness.js and asserts formatDuration returns "0s" for 0, "1s" for 1499, "59s" for 59000, "1m 0s" for 60000, "2m 5s" for 125000 and "59m 59s" for 3599000.
@@ -337,12 +354,13 @@ actions:
     title: "Pin that the first repository stack frame is the first tests, src or scripts file:line, with a new test file."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Pin that the first repository stack frame is the first tests, src or scripts file:line, with a new test file."
     expected_artifact: Evidence satisfying Agent Ask pin-repository-frame-extraction
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "firstRepositoryFrame labels soak failures by where they happened, and no test calls it directly, so matching node_modules frames or dropping the column handling would pass every test today."
     acceptance_criteria:
       - "tests/pin-repository-frame-extraction.test.ts is a new test file that imports firstRepositoryFrame from ../src/soak/rehearsalSoak.js and asserts firstRepositoryFrame returns \"src/foo/bar.ts:12\" for a stack whose frames are, in order, node_modules/x/index.js:5:1, src/foo/bar.ts:12:3 and tests/baz.test.ts:7:1."
@@ -357,12 +375,13 @@ actions:
     title: Pin that defect summary similarity is the Jaccard ratio of significant words and 0 when a side has none, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that defect summary similarity is the Jaccard ratio of significant words and 0 when a side has none, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-defect-summary-similarity
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "summarySimilarity decides whether two defect reports are near-duplicates, and no test calls it directly, so changing the stop words, the length floor or the ratio would pass every test today."
     acceptance_criteria:
       - tests/pin-defect-summary-similarity.test.ts is a new test file that imports summarySimilarity from ../src/defect/signal.js and asserts summarySimilarity("Login FAILS on retry", "login  fails retry") returns 1, summarySimilarity("alpha beta gamma", "alpha beta delta") returns 0.5 and summarySimilarity("alpha beta", "gamma delta") returns 0.
@@ -376,12 +395,13 @@ actions:
     title: Pin that governed prose is rendered inline with Markdown, entities and @ escaped, with a new test file.
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: Pin that governed prose is rendered inline with Markdown, entities and @ escaped, with a new test file.
     expected_artifact: Evidence satisfying Agent Ask pin-inline-text-escaping
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-2-20261107
+    source: Agent Ask amend-record-run-test-pins-part-2-execution-build-20261107
     why: "inlineText keeps a criterion from becoming Markdown block syntax or notifying a GitHub user inside the operator QA plan, and no test calls it directly, so dropping one escape would pass every test today."
     acceptance_criteria:
       - tests/pin-inline-text-escaping.test.ts is a new test file that imports inlineText from ../src/sessions/operatorQaPlan.js and asserts inlineText applied to the text of one, two and three separated by a newline, a tab, runs of spaces and a BEL control character (code point 7), with leading and trailing spaces, returns "one two three".
