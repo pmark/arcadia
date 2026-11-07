@@ -3755,6 +3755,8 @@ The optional iCloud file-ingress job also starts automatically and checks its dr
 
 A **liveness check** also runs once a minute, outside all of the above. While production is Active, it sends one Discord ping if the worker stops making progress for 5 minutes, naming how long, the worker's pid and any long-lived child, with a link to `/production`. It sends one more line when the worker recovers. If the worker is in a code review, it waits until the reviewer's own 15-minute timeout plus those 5 minutes. It only alerts: it restarts nothing, and recovery stays with you. `ARCADIA_LIVENESS_STALE_SECONDS` at restart changes the 5 minutes. `pnpm logs liveness` shows its runs, and `scripts/services.sh status` shows whether it is installed.
 
+When `scripts/services.sh status` shows `worker: stopped` and the worker's pidfile belongs to a live process that is not the managed worker, such as a stale `com.arcadia.worker` launchd job, status names the holder and prints the command that retires it (`launchctl bootout gui/<uid>/<label>`). It only reports: you run the command. Likewise `arcadia worker install` refuses, and the protected replacement warns, naming that command instead of silently leaving the stray agent.
+
 Do not start separate legacy processes manually. Anything outside this list is not part of the normal local service set.
 
 Intelligence defaults to independent cloud, Codex CLI, Claude Code CLI, and local

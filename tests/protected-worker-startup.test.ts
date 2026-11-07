@@ -103,6 +103,16 @@ describe("protected compiled worker startup", () => {
     expect(() => assertWorkerInstallCustody("/workspace", [], true)).toThrow();
     expect(() => assertWorkerInstallCustody("/workspace", [{ ...agent, workspace: "/other" }], false)).not.toThrow();
   });
+  it("names the colliding worker agents and the operator's retire command when it refuses (Issue #2183)", () => {
+    const stale = { label: "com.arcadia.worker", role: "worker", workspace: "/workspace", verdict: "pinned", plistPath: "/home/Library/LaunchAgents/com.arcadia.worker.plist" } as LaunchAgentAudit;
+    const uid = process.getuid?.() ?? 0;
+    let message = "";
+    try { assertWorkerInstallCustody("/workspace", [stale], false); } catch (error) { message = error instanceof Error ? error.message : String(error); }
+    expect(message).toContain("Existing or ambiguous worker custody");
+    expect(message).toContain("com.arcadia.worker");
+    expect(message).toContain(`launchctl bootout gui/${uid}/com.arcadia.worker`);
+    expect(message).toContain("nothing was changed");
+  });
   it("refuses a partial or symlinked compiled worker graph", () => {
     const f = fixture();
     expect(() => validateGoBrokerWorkerCode(f.directory)).toThrow("compiled package");
