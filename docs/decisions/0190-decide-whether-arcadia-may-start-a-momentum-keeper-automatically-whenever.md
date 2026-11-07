@@ -4,7 +4,7 @@ type: decision
 id: "0190"
 slug: decide-whether-arcadia-may-start-a-momentum-keeper-automatically-whenever
 project: arcadia
-status: open
+status: approved
 question: Decide whether Arcadia may start a Momentum Keeper automatically whenever managed production turns Active, and stop it when production turns Off.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107
 updated: 2026-11-07
+answer: A. Start one Momentum Keeper automatically at Active and stop it at Off
+decided: 2026-11-07
 ---
 
 # Decision 0190: Decide whether Arcadia may start a Momentum Keeper automatically whenever managed production turns Active, and stop it when production turns Off.
