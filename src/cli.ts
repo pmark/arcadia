@@ -99,6 +99,7 @@ import {
   MOMENTUM_DEFAULT_IDLE_MINUTES
 } from "./production/momentumWatch.js";
 import { renderProductionIdleFrontSuccess, runProductionIdleFrontCommand } from "./commands/productionIdleFront.js";
+import { renderCoordinatorBudgetSuccess, runCoordinatorBudgetCommand } from "./commands/coordinatorBudget.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -1621,6 +1622,16 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--route-at <time>", "When a route for the current block was recorded")
   ).action((options: { workspace: string; wakesDir?: string; expectWake?: string[]; tapReadyAt?: string; routeAt?: string; json?: boolean }) =>
     runCliAction("production.idle-front", options, () => runProductionIdleFrontCommand(options), renderProductionIdleFrontSuccess)
+  );
+  const coordinator = program.command("coordinator").description("Coordinator sessions (⭐ Signal, 🚦 Rowan): context budget for handoff before compaction");
+  addJsonOption(
+    coordinator
+      .command("budget")
+      .description("Read-only: each live coordinator's context occupancy from its own transcript, its level (prepare 50%, due 60%, forced 75%, or unmeasured) and the pages the liveness timer already sent. Run it at each wake; writes, pings and starts nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--session <id>", "This session's id (default CLAUDE_CODE_SESSION_ID or CODEX_THREAD_ID)")
+  ).action((options: { workspace: string; session?: string; json?: boolean }) =>
+    runCliAction("coordinator.budget", options, () => runCoordinatorBudgetCommand(options), renderCoordinatorBudgetSuccess)
   );
   addJsonOption(
     production
