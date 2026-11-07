@@ -40,6 +40,28 @@ describe("namedTestFiles", () => {
     ])).toEqual([]);
   });
 
+  // 2026-11-07 incident: Action pin-governed-record-path named tests/x.test.ts only as a
+  // string the new test asserts about, and pre-acceptance refused 26 relaunches with
+  // "tests/x.test.ts (missing)". Paths quoted as data are never files the change must contain.
+  it("does not require a test path the criteria quote as data: a value list, a source location or a string literal", () => {
+    expect(namedTestFiles([
+      "tests/pin-governed-record-path.test.ts is a new test file that imports isGovernedRecordPath from ../src/sessions/scopeCriteria.js and asserts isGovernedRecordPath is true for each of PROJECT.md, MISSION_LOG.md, docs/plans/x.md, docs/decisions/0001-x.md and .arcadia/asks/x.yaml.",
+      "The same test file asserts it is false for each of project.md, docs/plansx.md, src/x.ts, tests/x.test.ts and ./PROJECT.md.",
+      "The same test asserts isWorkerMergeSafePath returns true for tests/worker-merge.test.ts, docs/guide.md and notes.md.",
+      "tests/pin-repository-frame-extraction.test.ts is a new test file that imports firstRepositoryFrame from ../src/soak/rehearsalSoak.js and asserts firstRepositoryFrame returns \"src/foo/bar.ts:12\" for a stack whose frames are, in order, node_modules/x/index.js:5:1, src/foo/bar.ts:12:3 and tests/baz.test.ts:7:1.",
+      "The same test file asserts firstRepositoryFrame(\"at scripts/run.mjs:9:2\") returns \"scripts/run.mjs:9\" and firstRepositoryFrame(\"at tests/a.test.ts:3:1\") returns \"tests/a.test.ts:3\".",
+      "Apart from the settlement records Arcadia writes, the change touches only tests/pin-governed-record-path.test.ts; tests/tail.test.ts passes."
+    ])).toEqual(["tests/pin-governed-record-path.test.ts", "tests/pin-repository-frame-extraction.test.ts", "tests/tail.test.ts"]);
+  });
+
+  it("still requires a file named before a value list or outside a string literal", () => {
+    expect(namedTestFiles([
+      "tests/lister.test.ts asserts the lister returns false for each of src/a.ts and src/b.ts.",
+      "The message \"done\" appears and tests/after-quote.test.ts passes.",
+      "tests/colon.test.ts: a case is added."
+    ])).toEqual(["tests/lister.test.ts", "tests/after-quote.test.ts", "tests/colon.test.ts"]);
+  });
+
   it("still requires a named file when a removal verb governs something else", () => {
     expect(namedTestFiles([
       "tests/review-repair-loop.test.ts asserts a patch that deletes test files is refused.",

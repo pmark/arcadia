@@ -114,13 +114,41 @@ function removes(criterion: string, file: string): boolean {
     || new RegExp(String.raw`${name}['"\x60]?\s+(?:is|are|was|were|gets|will\s+be)\s+${REMOVAL_VERB}\b`, "i").test(criterion);
 }
 
-/** The test files an Action's acceptance criteria name explicitly (and do not remove), in first-mention order. */
+// "returns true for <a>, <b> and <c>", "is false for each of <a> and <b>": the
+// rest of that sentence lists values an assertion is made about.
+const VALUE_LIST = /\b(?:true|false)\s+for\s+(?:each\s+of\s+|all\s+of\s+|every\s+one\s+of\s+)?/gi;
+const SENTENCE_END = /[.;](?=\s|$)/g;
+
+/**
+ * Whether the mention at `index` is data a criterion asserts about rather than
+ * a file the change must contain (2026-11-07: "asserts it is false for each of
+ * ..., tests/x.test.ts and ./PROJECT.md" refused 26 relaunches as missing): a
+ * source location (`tests/a.test.ts:3`), text inside a double-quoted string
+ * literal, or an item of a true/false value list in the same sentence.
+ */
+function namedAsData(criterion: string, index: number, file: string): boolean {
+  const end = index + file.length;
+  if (/^:\d/.test(criterion.slice(end))) return true;
+  const quotesBefore = criterion.slice(0, index).split("\"").length - 1;
+  if (quotesBefore % 2 === 1 && criterion.indexOf("\"", end) !== -1) return true;
+  for (const list of criterion.matchAll(VALUE_LIST)) {
+    const start = list.index + list[0].length;
+    if (start > index) break;
+    SENTENCE_END.lastIndex = start;
+    const stop = SENTENCE_END.exec(criterion)?.index ?? criterion.length;
+    if (index < stop) return true;
+  }
+  return false;
+}
+
+/** The test files an Action's acceptance criteria name explicitly as files (not as data, and not removed), in first-mention order. */
 export function namedTestFiles(criteria: readonly string[]): string[] {
   const found: string[] = [];
   for (const criterion of criteria) {
     for (const match of criterion.matchAll(NAMED_TEST_FILE)) {
       const file = match[1];
       if (file.split("/").some((segment) => segment === "." || segment === "..")) continue;
+      if (namedAsData(criterion, match.index, file)) continue;
       if (removes(criterion, file)) continue;
       if (!found.includes(file)) found.push(file);
     }
