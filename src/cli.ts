@@ -80,10 +80,17 @@ import {
   runPingSentCommand
 } from "./commands/ping.js";
 import {
+  renderOperatorInteractionListSuccess,
+  renderOperatorInteractionRecordSuccess,
+  runOperatorInteractionListCommand,
+  runOperatorInteractionRecordCommand
+} from "./commands/operatorInteraction.js";
+import {
   LIVENESS_DEFAULT_STALE_SECONDS,
   renderProductionLivenessCheckSuccess,
   runProductionLivenessCheckCommand
 } from "./commands/productionLiveness.js";
+import { renderProductionIdleFrontSuccess, runProductionIdleFrontCommand } from "./commands/productionIdleFront.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -469,11 +476,15 @@ import {
   renderDigestComposeSuccess,
   renderDigestExportSuccess,
   renderDigestMarkPostedSuccess,
+  renderDigestPreviewSuccess,
   renderDigestRunSuccess,
+  renderDigestShowSuccess,
   runDigestComposeCommand,
   runDigestExportCommand,
   runDigestMarkPostedCommand,
-  runDigestRunCommand
+  runDigestPreviewCommand,
+  runDigestRunCommand,
+  runDigestShowCommand
 } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
@@ -1176,8 +1187,9 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--fix-pull-request <url>", "Decision 0173: the merged pull request that fixed the cause")
     .option("--fix-commit <sha>", "Decision 0173: that fix's commit, which must be on origin main")
     .option("--reproduction <path>", "Decision 0173: the repository fixture or replay that reproduces the cause")
+    .option("--fix-cause <slug>", "Decision 0187: the cause that fix addresses; after a failed batch it must equal --previous-cause")
     .option("--observed-cleared <pointer>", "Decision 0173: for an outside cause with no code fix, where it was observed cleared")
-  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; observedCleared?: string; json?: boolean }) =>
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; fixCause?: string; observedCleared?: string; json?: boolean }) =>
     runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
   addJsonOption(startRun.command("day-pins")
     .description("Decision 0173: print the pins of one day-grant card for the operator to press; writes nothing and grants nothing")
@@ -1205,6 +1217,32 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--check-only", "Only the read-only checks that precede the daily claim; claims and changes nothing")
   ).action((options: { repository: string; workspace: string; project: string; card: string; runId: string; runDirectory: string; release: string; policyRevision: string; policyEpoch: string; checkOnly?: boolean; json?: boolean }) =>
     runCliAction("start-run.sign-in", options, () => runStartRunSignInCommand(options), renderStartRunSignInSuccess));
+
+  const operatorInteraction = program.command("operator-interaction")
+    .description("Record when an agent acted on the operator's words, so the digest can count operator touches; local and append-only");
+  addJsonOption(operatorInteraction.command("record")
+    .description("Append one interaction: the operator's exact words, what they unlocked, and whether only the operator could have done it. Records; authorizes nothing")
+    .requiredOption("--words <text>", "The operator's exact words, e.g. \"Yes merge them\"")
+    .requiredOption("--unlocked <text>", "What the interaction unlocked, e.g. \"merge of PR #2184\"")
+    .option("--required", "Only the operator's authority could do this")
+    .option("--avoidable", "The system could have proceeded without asking")
+    .option("--ref <ref>", "The PR, card or Decision it acted on")
+    .option("--project <slug>", "Project slug")
+    .option("--at <instant>", "When the operator said it (default now)")
+    .option("--waiting-since <instant>", "When the work started waiting for this answer")
+    .option("--agent <name>", "Who is recording it")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; words: string; unlocked: string; required?: boolean; avoidable?: boolean; ref?: string; project?: string; at?: string; waitingSince?: string; agent?: string; json?: boolean }) =>
+    runCliAction("operator-interaction.record", options, () => runOperatorInteractionRecordCommand(options), renderOperatorInteractionRecordSuccess)
+  );
+  addJsonOption(operatorInteraction.command("list")
+    .description("List recorded operator interactions (default: the last 7 days)")
+    .option("--since <instant>", "Inclusive start")
+    .option("--until <instant>", "Exclusive end")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
+    runCliAction("operator-interaction.list", options, () => runOperatorInteractionListCommand(options), renderOperatorInteractionListSuccess)
+  );
 
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })
@@ -1551,6 +1589,18 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--dashboard-url <url>", "Dashboard base for the /production link (default ARCADIA_DASHBOARD_URL)")
   ).action((options: { workspace: string; staleSeconds?: string; dashboardUrl?: string; json?: boolean }) =>
     runCliAction("production.liveness-check", options, () => runProductionLivenessCheckCommand(options), renderProductionLivenessCheckSuccess)
+  );
+  addJsonOption(
+    production
+      .command("idle-front")
+      .description("Read-only: critical-path idle minutes by cause and whether any wake is armed; prints one JSON row then timeline events as NDJSON. Pings nobody, writes nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--wakes-dir <path>", "Armed-until heartbeat files (default <workspace>/.arcadia/armed-wakes)")
+      .option("--expect-wake <session-or-role>", "A session or role that should hold an armed wake (repeatable)", (value: string, previous: string[] = []) => [...previous, value])
+      .option("--tap-ready-at <time>", "When a one-tap operator item (e.g. a START card) became ready, if no reader here sees it")
+      .option("--route-at <time>", "When a route for the current block was recorded")
+  ).action((options: { workspace: string; wakesDir?: string; expectWake?: string[]; tapReadyAt?: string; routeAt?: string; json?: boolean }) =>
+    runCliAction("production.idle-front", options, () => runProductionIdleFrontCommand(options), renderProductionIdleFrontSuccess)
   );
   addJsonOption(
     production
@@ -3383,6 +3433,37 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("digest.run", options, () => runDigestRunCommand(options), renderDigestRunSuccess)
+  );
+  addJsonOption(
+    digest
+      .command("preview")
+      .description("Print a digest for a window without storing it: progress by goal, what needs you, where activity happened")
+      .option("--project <project>", "Project id or slug (default: the portfolio roll-up)")
+      .option("--period <period>", "day, week, or month (default day: the last completed local day)", "day")
+      .option("--from <instant>", "Inclusive ISO-8601 window start (with --to)")
+      .option("--to <instant>", "Exclusive ISO-8601 window end (with --from)")
+      .option("--ai", "Ask the local model for the headline (submits one Intelligence job; stores no digest)")
+      .option("--detail", "Also print every recorded fact behind the page")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    project?: string;
+    period?: string;
+    from?: string;
+    to?: string;
+    ai?: boolean;
+    detail?: boolean;
+    json?: boolean;
+  }) => runCliAction("digest.preview", options, () => runDigestPreviewCommand(options), renderDigestPreviewSuccess));
+  addJsonOption(
+    digest
+      .command("show")
+      .description("Print one stored digest as delivered")
+      .argument("<digest-id>", "Narrative digest id")
+      .option("--detail", "Also print every recorded fact behind the page")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((digestId: string, options: { workspace: string; detail?: boolean; json?: boolean }) =>
+    runCliAction("digest.show", options, () => runDigestShowCommand({ ...options, digestId }), renderDigestShowSuccess)
   );
   addJsonOption(
     digest
