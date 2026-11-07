@@ -1862,14 +1862,14 @@ threshold per session through `arcadia ping` (agent `Coordinator budget`, kind
 - **Thresholds** (the design's starting values): prepare 50%, due 60%, forced
   75%. `👆 HANDOFF PREPARE: <title> at 51% context — …`, `👆👆 HANDOFF DUE:
   <title> at 61% context — start its successor: …`, `👆👆👆 HANDOFF OVERDUE: …`.
-  A jump past several lines pages only the highest. A compaction starts a new
-  episode. A paged line opens again only after occupancy falls 5 points under
-  it.
+  A jump past several lines pages only the highest. Each line pages at most
+  once per episode; a compaction starts a new episode.
 - **Unmeasured.** No usage line, no registered window, a window below an
-  observed compaction, or tokens above the window: `👆👆 HANDOFF DUE: <title>
-  context unmeasured — treat it as due: …`, with the reason and the main-chain
-  turn count as a labelled coarse proxy, never a percentage. A session with no
-  usage at all is held for its first 60 minutes.
+  observed compaction, tokens above the window, or a session file that cannot
+  be read: `👆👆 HANDOFF DUE: <title> context unmeasured — treat it as due: …`,
+  with the reason and the main-chain turn count as a labelled coarse proxy,
+  never a percentage. A session with no usage at all is held for its first 60
+  minutes, and one just compacted with no new count for 10 minutes.
 - **Marker.** Each coordinator past prepare, or unmeasured, has
   `<workspace>/.arcadia/coordinator-budget/<agent>-<session>.json` (level,
   `handoff_due`, tokens, window, next step, pings sent), removed when it is

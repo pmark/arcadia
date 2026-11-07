@@ -36,11 +36,11 @@ export type BudgetLevel = "ok" | ThresholdLevel | "unmeasured";
 export type PageLevel = ThresholdLevel | "unmeasured";
 
 /**
- * A paged threshold opens again only once occupancy falls this many points
- * under it without a compaction (which already starts a new episode), so a
- * reading that wobbles across a line pages once.
+ * Just after a compaction a Codex rollout has no token count yet. That gap
+ * lasts until the next turn, so it is not paged as unmeasured for this long
+ * after the compaction (review R1-2).
  */
-export const BUDGET_REARM_POINTS = 5;
+export const UNMEASURED_AFTER_COMPACTION_MINUTES = 10;
 
 /**
  * A session that has written no main-chain usage yet is unmeasured, but it
@@ -330,21 +330,24 @@ export function sessionKey(agent: CoordinatorAgent, sessionId: string): string {
 export function decidePage(
   previous: SessionBudgetState | undefined,
   read: Pick<SessionRead, "episodeStart" | "occupancy" | "noUsageYet">,
-  options: { fileAgeMinutes: number }
+  options: { fileAgeMinutes: number; now?: Date }
 ): { page: PageLevel | null; paged: Partial<Record<PageLevel, PagedRecord>> } {
+  // An episode pages each line at most once: the ping outbox's episode key
+  // enforces the same rule, so a reading that wobbles across a line never
+  // re-pages within the episode (review R1-1).
   const paged: Partial<Record<PageLevel, PagedRecord>> =
     previous && previous.episodeStart === read.episodeStart ? { ...previous.paged } : {};
   const level = levelOf(read.occupancy);
   if (read.occupancy.kind === "measured") {
-    const { percent } = read.occupancy;
-    for (const threshold of THRESHOLD_LEVELS) {
-      if (paged[threshold] && percent < BUDGET_THRESHOLDS[threshold] - BUDGET_REARM_POINTS) delete paged[threshold];
-    }
     if (level === "ok" || level === "unmeasured") return { page: null, paged };
     return { page: paged[level] ? null : level, paged };
   }
   if (paged.unmeasured) return { page: null, paged };
   if (read.noUsageYet && options.fileAgeMinutes < UNMEASURED_FRESH_MINUTES) return { page: null, paged };
+  if (read.episodeStart && options.now) {
+    const since = (options.now.getTime() - Date.parse(read.episodeStart)) / 60_000;
+    if (since >= 0 && since < UNMEASURED_AFTER_COMPACTION_MINUTES) return { page: null, paged };
+  }
   return { page: "unmeasured", paged };
 }
 

@@ -133,8 +133,9 @@ Compaction is strongly discouraged.
   context (see `docs/agent-guidance/coordinator-handoff-design.md` once merged).
   At every wake run `arcadia coordinator budget`: it measures your context and
   Rowan's from the host's transcripts (prepare 50%, due 60%, forced 75%, or
-  unmeasured), and the liveness timer pages the operator once per line. A
-  `HANDOFF DUE` banner for your session is the trigger.
+  unmeasured). Once the installed timer release includes #2242, the liveness
+  timer also pages the operator once per line. A `HANDOFF DUE` banner for your
+  session is the trigger.
 - **Where.** Write a "HANDOFF TO SIGNAL n+1" block into the notes folder. Include:
   - open urgent items and pending operator answers;
   - Rowan's session id and state;

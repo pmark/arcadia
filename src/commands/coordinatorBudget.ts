@@ -179,7 +179,14 @@ function discoverClaude(sources: BudgetSources, options: DiscoverOptions, proble
         const title = lastClaudeTitle(readTail(file, TITLE_TAIL_BYTES));
         const role = coordinatorRoleOfTitle(title);
         if (!role && !wanted) continue;
-        const read = readClaudeTranscript(readFileSync(file, "utf8"), { statusLine: hint });
+        let read: SessionRead;
+        try {
+          read = readClaudeTranscript(readFileSync(file, "utf8"), { statusLine: hint });
+        } catch (error) {
+          // A titled coordinator whose transcript cannot be read is unmeasured, not skipped (review R1-3).
+          read = unreadableRead("claude", fileSessionId, title, error);
+          problems.push(`Claude transcript ${file} could not be read: ${errorText(error)}`);
+        }
         found.push({ read: { ...read, title: read.title ?? title, sessionId: read.sessionId ?? fileSessionId }, role, transcript: file, fileAgeMinutes: fileAgeMinutes(file, options.now) });
       } catch (error) {
         if (!isMissing(error)) problems.push(`Claude transcript ${file} could not be read: ${errorText(error)}`);
@@ -187,6 +194,19 @@ function discoverClaude(sources: BudgetSources, options: DiscoverOptions, proble
     }
   }
   return found;
+}
+
+function unreadableRead(agent: CoordinatorAgent, sessionId: string, title: string | null, error: unknown): SessionRead {
+  return {
+    agent,
+    sessionId,
+    title,
+    model: null,
+    occupancy: { kind: "unmeasured", reason: `its session file could not be read (${errorText(error)})` },
+    episodeStart: null,
+    turns: 0,
+    noUsageYet: false
+  };
 }
 
 function fileAgeMinutes(file: string, now: Date): number {
@@ -251,7 +271,13 @@ function discoverCodex(sources: BudgetSources, options: DiscoverOptions, problem
       const age = options.now.getTime() - statSync(file).mtimeMs;
       if (age > liveMs && id !== options.alsoSession) continue;
       const title = titles.get(id) ?? null;
-      const read = readCodexRollout(readFileSync(file, "utf8"), title);
+      let read: SessionRead;
+      try {
+        read = readCodexRollout(readFileSync(file, "utf8"), title);
+      } catch (error) {
+        read = unreadableRead("codex", id, title, error);
+        problems.push(`Codex rollout ${file} could not be read: ${errorText(error)}`);
+      }
       found.push({ read: { ...read, sessionId: read.sessionId ?? id }, role: coordinatorRoleOfTitle(title), transcript: file, fileAgeMinutes: fileAgeMinutes(file, options.now) });
     } catch (error) {
       if (!isMissing(error)) problems.push(`Codex rollout ${file} could not be read: ${errorText(error)}`);
@@ -342,7 +368,7 @@ export interface CoordinatorBudgetCheckData {
 export interface CoordinatorBudgetDependencies {
   now?: () => number;
   sources?: BudgetSources;
-  queuePing?: (input: LivenessPingInput) => { id: string };
+  queuePing?: (input: LivenessPingInput) => { id: string; deduplicated?: boolean };
 }
 
 export interface CoordinatorBudgetCheckOptions {
@@ -374,8 +400,9 @@ function rowOf(found: DiscoveredSession, marker: string | null, pings: Partial<R
   };
 }
 
-function queueThroughPing(input: LivenessPingInput): { id: string } {
-  return runPingSendCommand(input).data.ping;
+function queueThroughPing(input: LivenessPingInput): { id: string; deduplicated?: boolean } {
+  const { ping, deduplicated } = runPingSendCommand(input).data;
+  return { id: ping.id, deduplicated };
 }
 
 /**
@@ -404,7 +431,7 @@ export function runCoordinatorBudgetCheck(
     const { read } = found;
     const key = sessionKey(read.agent, read.sessionId);
     const previous = state.sessions[key];
-    const decision = decidePage(previous, read, { fileAgeMinutes: found.fileAgeMinutes });
+    const decision = decidePage(previous, read, { fileAgeMinutes: found.fileAgeMinutes, now });
     let paged = decision.paged;
     let page: PageLevel | null = null;
     let pingId: string | null = null;
@@ -412,7 +439,7 @@ export function runCoordinatorBudgetCheck(
     if (decision.page) {
       const outgoing = budgetPingMessage(read, decision.page);
       try {
-        pingId = queue({
+        const queued = queue({
           workspace: workspacePath,
           message: outgoing,
           kind: "attention",
@@ -421,10 +448,14 @@ export function runCoordinatorBudgetCheck(
           episodeKey: budgetEpisodeKey(read.agent, read.sessionId, decision.page),
           episodeAfter: read.episodeStart,
           now
-        }).id;
+        });
+        pingId = queued.id;
         paged = markPaged(paged, decision.page, { pingId, at: now.toISOString() });
-        page = decision.page;
-        message = outgoing;
+        // The outbox already holds this episode's page (a lost state file): record it, never report it as queued again (R1-1).
+        if (!queued.deduplicated) {
+          page = decision.page;
+          message = outgoing;
+        }
       } catch (error) {
         failures.push(`The ${decision.page} page for ${key} was not queued and will be retried on the next run: ${errorText(error)}`);
         paged = previous && previous.episodeStart === read.episodeStart ? previous.paged : {};
@@ -466,7 +497,12 @@ export function runCoordinatorBudgetCheck(
   // Keep a week of sessions not seen this run, so a coordinator that pauses past the live window never pages a threshold twice.
   for (const [key, session] of Object.entries(state.sessions)) {
     if (next.sessions[key]) continue;
-    if (now.getTime() - Date.parse(session.lastSeen) < STATE_RETENTION_MS) next.sessions[key] = session;
+    if (now.getTime() - Date.parse(session.lastSeen) < STATE_RETENTION_MS) {
+      next.sessions[key] = session;
+      continue;
+    }
+    // A session dropped from state takes its marker with it (review R1-6).
+    try { unlinkSync(markerPath(workspacePath, session.agent, session.sessionId)); } catch { /* none, or already gone */ }
   }
   const stateFile = path.join(budgetDir(workspacePath), STATE_FILE);
   if (stateProblem !== null || JSON.stringify(stripSeen(next)) !== JSON.stringify(stripSeen(state))) {

@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -251,8 +251,24 @@ describe("the liveness timer pages each threshold once per session", () => {
     writeClaude(home, SIGNAL, "⭐ Signal 3", [{ tokens: 650_000 }]);
     check(root, sources(home));
     rmSync(path.join(root, ".arcadia", "coordinator-budget", "state.json"));
-    check(root, sources(home));
+    const again = check(root, sources(home));
     expect(pending(root)).toHaveLength(1);
+    // The deduplicated page is recorded as sent, and not reported as queued again (R1-1).
+    expect(again.data.coordinators[0]).toMatchObject({ page: null, message: null });
+    expect(Object.keys(again.data.coordinators[0]?.pings ?? {}).sort()).toEqual(["due", "prepare"]);
+  });
+
+  it("drops a session's marker with its state after a week unseen (R1-6)", () => {
+    const root = workspace();
+    const home = claudeHome();
+    writeClaude(home, SIGNAL, "⭐ Signal 3", [{ tokens: 650_000 }]);
+    check(root, sources(home));
+    expect(existsSync(markerPath(root, "claude", SIGNAL))).toBe(true);
+    rmSync(path.join(home, "-Users-someone-project", `${SIGNAL}.jsonl`));
+    check(root, sources(home), Date.now() + 24 * 60 * 60_000);
+    expect(existsSync(markerPath(root, "claude", SIGNAL))).toBe(true);
+    check(root, sources(home), Date.now() + 8 * 24 * 60 * 60_000);
+    expect(existsSync(markerPath(root, "claude", SIGNAL))).toBe(false);
   });
 
   it("opens a new episode after a compaction, so a later crossing pages again", () => {
@@ -289,6 +305,41 @@ describe("the liveness timer pages each threshold once per session", () => {
     const response = check(root, sources(null, codex));
     expect(response.data.coordinators[0]).toMatchObject({ agent: "codex", sessionId: ROWAN, level: "due", page: "due" });
     expect(pending(root)[0]?.message).toMatch(/^👆👆 HANDOFF DUE: 🚦 Rowan \(codex\) at 63% context/);
+  });
+
+  function codexRollout(lines: unknown[]): { root: string; codex: string; file: string } {
+    const root = workspace();
+    const codex = temp("arcadia-budget-codex-");
+    writeFileSync(path.join(codex, "session_index.jsonl"), `${JSON.stringify({ id: ROWAN, thread_name: "🚦 Rowan (codex)" })}\n`);
+    const directory = path.join(codex, "sessions", "2026", "11", "07");
+    mkdirSync(directory, { recursive: true });
+    const file = path.join(directory, `rollout-2026-11-07T12-09-46-${ROWAN}.jsonl`);
+    writeFileSync(file, lines.map((line) => JSON.stringify(line)).join("\n"));
+    return { root, codex, file };
+  }
+
+  it("holds the unmeasured page for 10 minutes after a Codex compaction, then pages (R1-2)", () => {
+    const compactedAt = new Date().toISOString();
+    const { root, codex } = codexRollout([
+      { type: "session_meta", payload: { id: ROWAN } },
+      { type: "event_msg", payload: { type: "token_count", info: { last_token_usage: { input_tokens: 100_000 }, model_context_window: 475_000 } } },
+      { type: "compacted", timestamp: compactedAt, payload: {} }
+    ]);
+    expect(check(root, sources(null, codex)).data.coordinators[0]).toMatchObject({ level: "unmeasured", page: null });
+    expect(check(root, sources(null, codex), Date.now() + 11 * 60_000).data.coordinators[0]?.page).toBe("unmeasured");
+    expect(pending(root)[0]?.message).toContain("compacted since its last token count");
+  });
+
+  it("pages unmeasured for a titled coordinator whose session file cannot be read (R1-3)", () => {
+    const { root, codex, file } = codexRollout([{ type: "session_meta", payload: { id: ROWAN } }]);
+    chmodSync(file, 0o000);
+    try {
+      expect(() => check(root, sources(null, codex))).toThrow(/Codex rollout .* could not be read/);
+      expect(pending(root)).toHaveLength(1);
+      expect(pending(root)[0]?.message).toMatch(/^👆👆 HANDOFF DUE: 🚦 Rowan \(codex\) context unmeasured .*could not be read/);
+    } finally {
+      chmodSync(file, 0o644);
+    }
   });
 });
 
