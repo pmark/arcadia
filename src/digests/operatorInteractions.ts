@@ -26,6 +26,7 @@ import type { DigestOperatorInteraction, DigestOperatorInteractions, DigestScope
 export const INTERACTION_LIMITATIONS = [
   "Counts operator card presses (run receipts), dashboard Offs (policy receipts) and interactions agents recorded from the operator's words.",
   "GitHub merges are not counted from GitHub (all use the operator's token); Decision answers and acted-on pings are counted only when an agent records them.",
+  "A Project's own digest counts only presses and recorded interactions that name that Project; the portfolio digest counts every one, including dashboard Offs.",
   "Waiting time sums recorded waits and the in-window time of Actions still stopped on the operator; a resolved stop leaves no record, so the figure can undercount."
 ];
 

@@ -176,7 +176,14 @@ export function splitForDiscord(content: string, digestId: string): string[] {
   if (content.length <= DISCORD_MAX_MESSAGE_LENGTH) return [content];
   const messages: string[] = [];
   let current = "";
+  // A heading that stands alone ("**Needs you** · 6") travels with the block after it.
+  const blocks: string[] = [];
   for (const block of content.split("\n\n")) {
+    const previous = blocks.at(-1);
+    if (previous !== undefined && /^\*\*[^\n]*$/.test(previous)) blocks[blocks.length - 1] = `${previous}\n\n${block}`;
+    else blocks.push(block);
+  }
+  for (const block of blocks) {
     const piece = block.length > DISCORD_MAX_MESSAGE_LENGTH ? truncateBlock(block, digestId) : block;
     const joined = current ? `${current}\n\n${piece}` : piece;
     if (joined.length <= DISCORD_MAX_MESSAGE_LENGTH) {

@@ -343,5 +343,10 @@ describe("Discord delivery of a long page", () => {
     expect(parts.every((part) => part.length <= 2000)).toBe(true);
     expect(parts.join("\n\n")).toBe(body);
     expect(splitForDiscord("short", "digest_fixture")).toEqual(["short"]);
+    // A lone heading never ends a message: it travels with the block after it.
+    const headed = [section("Summary", 25), "**Needs you** · 2", section("1. item", 3)].join("\n\n");
+    const headedParts = splitForDiscord(headed, "digest_fixture");
+    expect(headedParts.some((part) => part.startsWith("**Needs you** · 2\n\n**1. item**"))).toBe(true);
+    expect(headedParts.every((part) => !part.endsWith("**Needs you** · 2"))).toBe(true);
   });
 });

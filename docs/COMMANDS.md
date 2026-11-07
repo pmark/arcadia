@@ -456,6 +456,14 @@ otherwise good entry — the digest still composed and can still be posted.
 The model sees only `DigestSummaryFacts`, the numbers and names the page
 already shows, never raw Log or Decision text.
 
+```sh
+pnpm arcadia digest mark-posted digest_example --message-id 123 --workspace "$WORKSPACE" --json
+```
+
+Records that a composed digest reached its delivery surface. Until it is
+recorded, the digest comes back as `pending-delivery` on the next run rather
+than being lost behind the once-per-period guard.
+
 ## Preview Or Show A Digest
 
 ```sh
@@ -485,14 +493,6 @@ The digest counts these together with what records already prove: operator
 card presses (run receipts without a delegation) and Offs switched from the
 dashboard. GitHub merges are never counted from GitHub, because every merge
 uses the operator's token. Recording authorizes nothing.
-
-```sh
-pnpm arcadia digest mark-posted digest_example --message-id 123 --workspace "$WORKSPACE" --json
-```
-
-Records that a composed digest reached its delivery surface. Until it is
-recorded, the digest comes back as `pending-delivery` on the next run rather
-than being lost behind the once-per-period guard.
 
 ## Manage Artifacts And Expected Outcomes
 
