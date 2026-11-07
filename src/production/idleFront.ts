@@ -22,10 +22,16 @@ import { normalizeTime, timelineEvent, type TimelineEvent } from "../timeline/sc
  *
  * - from `tap_ready` on: **waiting on the operator** (a ready one-tap item is
  *   in front of them);
- * - before the first detection evidence (a ping or a policy change recorded
- *   after the block began): **detection lag**;
+ * - before the first detection evidence recorded strictly after the block
+ *   began (an operator-granted policy receipt, or a ping naming a scope Action
+ *   or production): **detection lag**;
  * - the rest: **no ready work** when the scope has nothing left to run, else
- *   **no route** (somebody knows, but no tap is ready yet).
+ *   **no route** (somebody knows, but no tap is ready yet). With no known
+ *   scope the rest has no honest cause, so the split is null.
+ *
+ * One operator-bound blocker on any scope Action marks the whole path
+ * blocked, even while another scope Action is admitted: production runs the
+ * scope serially, so a stopped Action holds the path.
  *
  * It grants nothing, pings nobody and writes nothing.
  */
@@ -40,9 +46,15 @@ export const ARMED_WAKE_SCHEMA = "arcadia-armed-wake-v1" as const;
  * run with nothing admitted still reads as moving.
  */
 export const ACTIVE_IDLE_GRACE_MS = 5 * 60_000;
+/**
+ * The longest wait anyone arms today is 6 h (`wait-for-event.sh pr`, Signal's
+ * night handoff); `timeline --wait` defaults to 110 minutes. An armed-until
+ * further ahead than this is not believed.
+ */
+export const MAX_ARMED_HORIZON_MS = 6 * 3_600_000;
 
 export type CriticalPathState = "moving" | "blocked" | "inactive" | "unreadable";
-export type BlockerClass = "none" | "no_route" | "waiting_on_operator" | "no_ready_work" | "unreadable";
+export type BlockerClass = "none" | "no_route" | "waiting_on_operator" | "no_ready_work" | "unknown" | "unreadable";
 export type IdleCause = "detection_lag" | "no_route" | "waiting_on_operator" | "no_ready_work";
 export type IdleMinutesByCause = Record<IdleCause, number>;
 
@@ -92,6 +104,8 @@ export interface IdleFrontInput {
   wakes: ArmedWake[];
   /** Sessions or roles that should hold an armed wake. */
   expectWakes: string[];
+  /** False when the process list could not be read; default true. */
+  processesReadable?: boolean;
   /** Caller-supplied times for what no reader here can see yet (a published START card). */
   hints: { tapReadyAt?: string; routeAt?: string };
 }
@@ -119,7 +133,8 @@ export interface IdleFrontRow {
   idle_minutes: number | null;
   idle_minutes_by_cause: IdleMinutesByCause | null;
   armed_wakes: ArmedWake[];
-  no_armed_wake: boolean;
+  /** null when the process list was unreadable and no heartbeat file is live: unknown, never a false healthy. */
+  no_armed_wake: boolean | null;
   missing_wakes: string[];
   notes: string[];
 }
@@ -132,18 +147,23 @@ function ms(time: string | null | undefined): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
-function minutes(span: number): number {
-  return Math.round(Math.max(0, span) / 6_000) / 10;
+/** Whole tenths of a minute, so the parts of a split sum exactly to the total. */
+function tenths(span: number): number {
+  return Math.round(Math.max(0, span) / 6_000);
 }
 
 function iso(value: number | null): string | null {
   return value === null ? null : new Date(value).toISOString();
 }
 
-function liveWakes(wakes: ArmedWake[], now: number): ArmedWake[] {
+function liveWakes(wakes: ArmedWake[], now: number, notes: string[]): ArmedWake[] {
   return wakes.filter((wake) => {
     if (wake.source === "process") return true;
     const until = ms(wake.armedUntil);
+    if (until !== null && until > now + MAX_ARMED_HORIZON_MS) {
+      notes.push(`${wake.evidence}: armedUntil ${wake.armedUntil} is beyond the ${MAX_ARMED_HORIZON_MS / 3_600_000} h horizon; ignored.`);
+      return false;
+    }
     return until !== null && until > now;
   });
 }
@@ -151,11 +171,13 @@ function liveWakes(wakes: ArmedWake[], now: number): ArmedWake[] {
 export function classifyIdleFront(input: IdleFrontInput): IdleFrontRow {
   const now = input.now.getTime();
   const { production } = input;
-  const armed = liveWakes(input.wakes, now);
+  const notes: string[] = [];
+  const armed = liveWakes(input.wakes, now, notes);
   const missing = input.expectWakes.filter((name) => !armed.some((wake) => wake.session === name || wake.role === name));
   const merged = new Set(input.mergedActions);
   const ready = input.scopeActions.length > 0 ? input.scopeActions.filter((action) => !merged.has(action)).length : null;
-  const notes: string[] = [];
+  const processesReadable = input.processesReadable !== false;
+  if (!processesReadable) notes.push("The process list could not be read; running waiters are unknown.");
   const base = {
     schema: IDLE_FRONT_ROW_SCHEMA,
     ts: input.now.toISOString(),
@@ -170,7 +192,7 @@ export function classifyIdleFront(input: IdleFrontInput): IdleFrontRow {
     ready_actions: ready,
     blockers: input.blockers,
     armed_wakes: armed,
-    no_armed_wake: armed.length === 0,
+    no_armed_wake: armed.length > 0 ? false : processesReadable ? true : null,
     missing_wakes: missing,
     notes
   };
@@ -185,10 +207,18 @@ export function classifyIdleFront(input: IdleFrontInput): IdleFrontRow {
   const active = production.desiredState === "active";
   const lastMovement = input.movements.map(ms).filter((value): value is number => value !== null && value <= now).reduce<number | null>((max, value) => (max === null || value > max ? value : max), null);
 
-  let blockedSince: number | null;
+  const state: CriticalPathState = active ? "blocked" : "inactive";
+  const unmeasured = (note: string): IdleFrontRow => {
+    notes.push(note);
+    return { ...base, critical_path: { ...base.critical_path, state }, blocker_class: operatorBlockers.length > 0 ? "no_route" : "unknown", blocked_since: null, detected_at: null, route_at: iso(routeHint), tap_ready: null, idle_minutes: null, idle_minutes_by_cause: null };
+  };
+
+  let blockedSince: number;
   let tapReady: number | null = ms(input.hints.tapReadyAt);
   if (operatorBlockers.length > 0) {
-    blockedSince = Math.min(...operatorBlockers.map((blocker) => ms(blocker.since) ?? now));
+    const sinces = operatorBlockers.map((blocker) => ms(blocker.since));
+    if (sinces.some((since) => since === null)) return unmeasured("A blocker's start time is unreadable; idle minutes are unknown, not zero.");
+    blockedSince = Math.min(...sinces.map((since) => since ?? now));
     for (const blocker of operatorBlockers) {
       const since = ms(blocker.since);
       if (blocker.tapReady && since !== null && (tapReady === null || since < tapReady)) tapReady = since;
@@ -196,40 +226,38 @@ export function classifyIdleFront(input: IdleFrontInput): IdleFrontRow {
   } else if (active && production.liveAdmissions > 0) {
     return { ...base, blocker_class: "none", blocked_since: null, detected_at: null, route_at: iso(routeHint), tap_ready: null, idle_minutes: 0, idle_minutes_by_cause: { ...ZERO } };
   } else {
-    blockedSince = lastMovement ?? ms(production.policyUpdatedAt) ?? now;
+    if (lastMovement === null) return unmeasured("No movement record found (no merge, admission or activation); idle minutes are unknown, not zero.");
+    blockedSince = lastMovement;
     if (active && now - blockedSince < ACTIVE_IDLE_GRACE_MS) {
       notes.push("Active with nothing admitted, inside the between-ticks grace.");
       return { ...base, blocker_class: "none", blocked_since: null, detected_at: null, route_at: iso(routeHint), tap_ready: null, idle_minutes: 0, idle_minutes_by_cause: { ...ZERO } };
     }
   }
-  if (lastMovement === null && operatorBlockers.length === 0) notes.push("No movement record found; blocked_since falls back to the policy's last change.");
 
-  const detected = input.detections.map((detection) => ms(detection.at)).filter((value): value is number => value !== null && value >= blockedSince && value <= now).reduce<number | null>((min, value) => (min === null || value < min ? value : min), null);
+  // Strictly after: the record that set blocked_since (an activation's own receipt) is not someone noticing the stall.
+  const detected = input.detections.map((detection) => ms(detection.at)).filter((value): value is number => value !== null && value > blockedSince && value <= now).reduce<number | null>((min, value) => (min === null || value < min ? value : min), null);
   const tap = tapReady === null ? null : Math.min(now, Math.max(blockedSince, tapReady));
   const lagEnd = Math.min(detected ?? now, tap ?? now);
   const restEnd = tap ?? now;
-  const noReadyWork = ready === 0 || (ready === null && operatorBlockers.length === 0);
-  const byCause: IdleMinutesByCause = {
-    detection_lag: minutes(lagEnd - blockedSince),
-    no_route: noReadyWork ? 0 : minutes(restEnd - lagEnd),
-    waiting_on_operator: tap === null ? 0 : minutes(now - tap),
-    no_ready_work: noReadyWork ? minutes(restEnd - lagEnd) : 0
-  };
-  const blockerClass: BlockerClass = tap !== null
-    ? "waiting_on_operator"
-    : operatorBlockers.length === 0 && noReadyWork
-      ? "no_ready_work"
-      : "no_route";
+  const scopeUnknown = ready === null && operatorBlockers.length === 0;
+  const noReadyWork = ready === 0 && operatorBlockers.length === 0;
+  const lag = tenths(lagEnd - blockedSince);
+  const rest = tenths(restEnd - lagEnd);
+  const operator = tap === null ? 0 : tenths(now - tap);
+  const blockerClass: BlockerClass = tap !== null ? "waiting_on_operator" : scopeUnknown ? "unknown" : noReadyWork ? "no_ready_work" : "no_route";
+  if (scopeUnknown) notes.push("No scope is known (none active, none retained); the cause split is unknown.");
   return {
     ...base,
-    critical_path: { ...base.critical_path, state: active ? "blocked" : "inactive" },
+    critical_path: { ...base.critical_path, state },
     blocker_class: blockerClass,
     blocked_since: iso(blockedSince),
     detected_at: iso(detected),
     route_at: iso(routeHint ?? tap),
     tap_ready: iso(tap),
-    idle_minutes: minutes(now - blockedSince),
-    idle_minutes_by_cause: byCause
+    idle_minutes: (lag + rest + operator) / 10,
+    idle_minutes_by_cause: scopeUnknown
+      ? null
+      : { detection_lag: lag / 10, no_route: noReadyWork ? 0 : rest / 10, waiting_on_operator: operator / 10, no_ready_work: noReadyWork ? rest / 10 : 0 }
   };
 }
 
@@ -309,15 +337,58 @@ export function idleFrontInputFromStatus(status: IdleFrontStatusView, extras: Id
   };
 }
 
-/** Waiters that exist today: the session-notifications waiter, Signal's quiet watch, the Issue watcher and `timeline --wait`. */
-const WAITER_COMMAND = /wait-for-event\.sh|quiet-watch\.sh|comms-watch-issue\.mjs|\btimeline\b.*\s--wait\b/;
-const SHELL_WRAPPER = /^\S*\b(?:zsh|bash|sh)\s+-c\s/;
+/** Waiter scripts that exist today: the session-notifications waiter, Signal's quiet watch and the Issue watcher. */
+const WAITER_SCRIPTS = new Set(["wait-for-event.sh", "quiet-watch.sh", "comms-watch-issue.mjs"]);
+const INTERPRETERS = new Set(["bash", "sh", "zsh", "node"]);
 
-export function wakesFromProcesses(rows: Array<{ pid: number; command: string }>): ArmedWake[] {
+function basename(token: string): string {
+  return token.slice(token.lastIndexOf("/") + 1);
+}
+
+/**
+ * Whether one `ps` command line is a running waiter. Anchored on argv, not a
+ * substring: the program is an interpreter running a waiter script (or the
+ * script itself), or Arcadia's CLI running `timeline --wait`. An editor or
+ * pager on a script, a `-c` wrapper, and a `timeline --wait` naming another
+ * `--workspace` are not this workspace's armed wake.
+ */
+function isWaiter(command: string, workspacePath: string | null): boolean {
+  const argv = command.trim().split(/\s+/);
+  const program = basename(argv[0] ?? "");
+  if (WAITER_SCRIPTS.has(program)) return true;
+  if (!INTERPRETERS.has(program) && program !== "arcadia") return false;
+  if (argv.includes("-c") || argv.includes("-e") || argv.includes("--eval")) return false;
+  const script = argv.slice(1).find((token) => !token.startsWith("-"));
+  if (program !== "arcadia" && script && WAITER_SCRIPTS.has(basename(script))) return true;
+  const timeline = argv.indexOf("timeline");
+  if (timeline < 0 || !argv.slice(timeline + 1).includes("--wait")) return false;
+  if (program !== "arcadia" && !argv.slice(1, timeline).some((token) => /(^|\/)(cli\.(js|ts)|arcadia)$/.test(token))) return false;
+  const flag = argv.indexOf("--workspace", timeline);
+  const named = flag >= 0 ? argv[flag + 1] : undefined;
+  return !named || workspacePath === null || named.replace(/\/+$/, "") === workspacePath.replace(/\/+$/, "");
+}
+
+export function wakesFromProcesses(rows: Array<{ pid: number; command: string }>, workspacePath: string | null = null): ArmedWake[] {
   return rows
-    // A host's `zsh -c …` wrapper names the waiter it starts; count the waiter, not its wrapper.
-    .filter((row) => WAITER_COMMAND.test(row.command) && !SHELL_WRAPPER.test(row.command))
+    .filter((row) => isWaiter(row.command, workspacePath))
     .map((row) => ({ session: null, role: null, armedAt: null, armedUntil: null, source: "process" as const, evidence: `pid ${row.pid}: ${row.command.slice(0, 160)}` }));
+}
+
+/**
+ * Detection evidence from timeline events, critical-path records only: a
+ * policy receipt the operator granted (an automated Terminal Off has no
+ * grantor and detects nothing), and a ping whose text names a scope Action or
+ * production. Any other ping is a side front and cannot end detection lag.
+ */
+export function detectionsFromTimeline(events: TimelineEvent[], scopeActions: string[]): IdleFrontInput["detections"] {
+  const names = scopeActions.flatMap((action) => [action, action.slice(action.indexOf("/") + 1)]).filter(Boolean);
+  return events
+    .filter((event) => {
+      if (event.kind.startsWith("production.policy.")) return event.actor.tool === "operator";
+      if (event.kind !== "ping.created") return false;
+      return /\bproduction\b/i.test(event.summary) || names.some((name) => event.summary.includes(name));
+    })
+    .map((event) => ({ at: event.time, evidence: event.evidence[0]?.value ?? event.id }));
 }
 
 function text(value: unknown): string | null {
@@ -370,7 +441,7 @@ export function idleFrontTimelineEvents(row: IdleFrontRow, workspace: string): T
     provenance: { event: "arcadia production idle-front: production status, worker merges, production and ping timeline records; read-only" }
   });
   if (check) events.push(check);
-  if (row.no_armed_wake || row.missing_wakes.length > 0) {
+  if (row.no_armed_wake !== false || row.missing_wakes.length > 0) {
     const wake = timelineEvent({
       id: `timeline:no-armed-wake:${row.ts}`,
       time: row.ts,
@@ -378,7 +449,11 @@ export function idleFrontTimelineEvents(row: IdleFrontRow, workspace: string): T
       source: "timeline",
       kind: "momentum.no_armed_wake",
       workKind: "observe",
-      summary: row.no_armed_wake ? "No armed wake: no waiter process and no unexpired armed-until file" : `No armed wake for ${row.missing_wakes.join(", ")}`,
+      summary: row.no_armed_wake === null
+        ? "Armed wake unknown: the process list was unreadable and no armed-until file is live"
+        : row.no_armed_wake
+          ? "No armed wake: no waiter process and no unexpired armed-until file"
+          : `No armed wake for ${row.missing_wakes.join(", ")}`,
       subjects: { workspace },
       attention: true,
       evidence: row.armed_wakes.map((wake) => ({ kind: "row" as const, value: wake.evidence })),

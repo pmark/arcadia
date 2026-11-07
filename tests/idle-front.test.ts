@@ -6,7 +6,9 @@ import {
   ACTIVE_IDLE_GRACE_MS,
   ARMED_WAKE_SCHEMA,
   IDLE_FRONT_ROW_SCHEMA,
+  MAX_ARMED_HORIZON_MS,
   classifyIdleFront,
+  detectionsFromTimeline,
   idleFrontInputFromStatus,
   idleFrontTimelineEvents,
   parseArmedWakeFile,
@@ -15,6 +17,7 @@ import {
   type IdleFrontStatusView
 } from "../src/production/idleFront.js";
 import { renderProductionIdleFrontSuccess, runProductionIdleFrontCommand } from "../src/commands/productionIdleFront.js";
+import { timelineEvent, type TimelineEvent } from "../src/timeline/schema.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const at = (clock: string) => `2026-11-07T${clock}.000Z`;
@@ -287,5 +290,152 @@ describe("runProductionIdleFrontCommand: the read-only CLI surface", () => {
 
   it("refuses a hint that is not a time", async () => {
     await expect(runProductionIdleFrontCommand({ tapReadyAt: "soon" }, { now: () => NOW, listProcesses: () => [] })).rejects.toThrow(/--tap-ready-at/);
+  });
+});
+
+function sumsToTotal(row: ReturnType<typeof classifyIdleFront>): void {
+  const parts = Object.values(row.idle_minutes_by_cause ?? {}).reduce((sum, value) => sum + Math.round(value * 10), 0);
+  expect(parts).toBe(Math.round((row.idle_minutes ?? 0) * 10));
+}
+
+function policyEvent(time: string, transition: string, granted: boolean): TimelineEvent {
+  return timelineEvent({
+    id: `production:policy:${time}`, time, clock: "workspace-db", source: "production", kind: `production.policy.${transition}`, workKind: "operate", summary: transition,
+    actor: { tool: granted ? "operator" : "unknown", name: null, tier: null, role: null, account: null, confidence: granted ? "high" : "none" },
+    evidence: [{ kind: "receipt", value: `production_policy_receipts/${time}` }], provenance: {}
+  }) as TimelineEvent;
+}
+
+function pingEvent(time: string, message: string): TimelineEvent {
+  return timelineEvent({
+    id: `pings:${time}`, time, clock: "workspace-db", source: "pings", kind: "ping.created", workKind: "observe", summary: `Ping (attention, pending): ${message}`,
+    evidence: [{ kind: "row", value: `operator_pings/${time}` }], provenance: {}
+  }) as TimelineEvent;
+}
+
+describe("review round 1: detection evidence and honest nulls", () => {
+  const scope = ["arcadia/pin-a", "arcadia/pin-b"];
+  const activeStatus = (): IdleFrontStatusView => ({
+    read: { status: "ok", policy: { desiredState: "active", revision: 104, epoch: 57, updatedAt: at("16:00:00"), scope: { actions: scope } } },
+    display: { label: "Active · No admitted work" },
+    liveAdmissions: 0,
+    admissions: [],
+    operatorEscalations: [],
+    redAlerts: [],
+    launchBlockers: [],
+    inactiveConfiguration: null
+  });
+
+  it("charges a silent stall after activation entirely to detection lag", () => {
+    const detections = detectionsFromTimeline([policyEvent(at("16:00:00"), "activate", true)], scope);
+    const row = classifyIdleFront(idleFrontInputFromStatus(activeStatus(), { now: NOW, merges: [], detections }));
+    expect(row.blocked_since).toBe(at("16:00:00"));
+    expect(row.detected_at).toBeNull();
+    expect(row.idle_minutes_by_cause).toEqual({ detection_lag: 60, no_route: 0, waiting_on_operator: 0, no_ready_work: 0 });
+  });
+
+  it("keeps only grantor policy receipts and pings that name a scope Action or production", () => {
+    const detections = detectionsFromTimeline([
+      policyEvent(at("16:10:00"), "terminal_off", false),
+      pingEvent(at("16:11:00"), "Rebuster #45 needs a review"),
+      pingEvent(at("16:12:00"), "pin-b is waiting on a packet"),
+      pingEvent(at("16:13:00"), "Production stalled"),
+      policyEvent(at("16:14:00"), "activate", true)
+    ], scope);
+    expect(detections.map((detection) => detection.at)).toEqual([at("16:12:00"), at("16:13:00"), at("16:14:00")]);
+  });
+
+  it("does not let an unrelated ping end detection lag", () => {
+    const detections = detectionsFromTimeline([pingEvent(at("16:05:00"), "Design brief #534 ready")], scope);
+    const row = classifyIdleFront(idleFrontInputFromStatus(activeStatus(), { now: NOW, merges: [], detections }));
+    expect(row.idle_minutes_by_cause?.detection_lag).toBe(60);
+  });
+
+  it("reports an unknown scope as unknown, not as no ready work", () => {
+    const row = classifyIdleFront(input({ scopeActions: [], production: { ...input().production, desiredState: "inactive", liveAdmissions: 0, label: "Inactive · Idle" }, movements: [at("16:00:00")] }));
+    expect(row.blocker_class).toBe("unknown");
+    expect(row.ready_actions).toBeNull();
+    expect(row.idle_minutes).toBe(60);
+    expect(row.idle_minutes_by_cause).toBeNull();
+  });
+
+  it("gives null minutes for an unparseable blocker time or no movement record", () => {
+    const badSince = classifyIdleFront(input({ blockers: [{ source: "escalation", key: "arcadia/pin-a", kind: "x", since: "not a time", operatorBound: true, tapReady: false }] }));
+    expect(badSince.critical_path.state).toBe("blocked");
+    expect(badSince.idle_minutes).toBeNull();
+    expect(badSince.idle_minutes_by_cause).toBeNull();
+    const noMovement = classifyIdleFront(input({ production: { ...input().production, desiredState: "inactive", liveAdmissions: 0, label: "Inactive · Idle" }, movements: [] }));
+    expect(noMovement.critical_path.state).toBe("inactive");
+    expect(noMovement.blocked_since).toBeNull();
+    expect(noMovement.idle_minutes).toBeNull();
+  });
+
+  it("rounds so the parts always sum exactly to the total", () => {
+    const row = classifyIdleFront(input({
+      production: { ...input().production, desiredState: "inactive", liveAdmissions: 0, label: "Inactive · Idle" },
+      movements: [at("16:00:03")],
+      detections: [{ at: at("16:10:06"), evidence: "p" }],
+      hints: { tapReadyAt: at("16:31:09") }
+    }));
+    sumsToTotal(row);
+    expect(row.idle_minutes_by_cause?.waiting_on_operator).toBeGreaterThan(0);
+  });
+});
+
+describe("review round 1: armed-wake evidence", () => {
+  const WS = "/w/live";
+  it("anchors waiter processes on an interpreter and the script argument", () => {
+    const wakes = wakesFromProcesses([
+      { pid: 1, ppid: 0, elapsedSeconds: 1, command: "vim scripts/wait-for-event.sh" },
+      { pid: 2, ppid: 0, elapsedSeconds: 1, command: "less /x/quiet-watch.sh" },
+      { pid: 3, ppid: 0, elapsedSeconds: 1, command: "grep timeline --wait" },
+      { pid: 4, ppid: 0, elapsedSeconds: 1, command: "bash -c bash /x/quiet-watch.sh" },
+      { pid: 5, ppid: 0, elapsedSeconds: 1, command: "/bin/bash scripts/wait-for-event.sh production" },
+      { pid: 6, ppid: 0, elapsedSeconds: 1, command: "/x/scripts/wait-for-event.sh pr 2184" },
+      { pid: 7, ppid: 0, elapsedSeconds: 1, command: "node scripts/comms-watch-issue.mjs 1929" },
+      { pid: 8, ppid: 0, elapsedSeconds: 1, command: "node dist/cli.js timeline --wait --workspace /w/other" },
+      { pid: 9, ppid: 0, elapsedSeconds: 1, command: "node dist/cli.js timeline --wait --workspace /w/live" },
+      { pid: 10, ppid: 0, elapsedSeconds: 1, command: "arcadia timeline --wait --scope production" }
+    ], WS);
+    expect(wakes.map((wake) => wake.evidence.split(":")[0])).toEqual(["pid 5", "pid 6", "pid 7", "pid 9", "pid 10"]);
+  });
+
+  it("ignores a heartbeat armed beyond the horizon", () => {
+    const far = new Date(NOW.getTime() + MAX_ARMED_HORIZON_MS + 60_000).toISOString();
+    const near = new Date(NOW.getTime() + MAX_ARMED_HORIZON_MS - 60_000).toISOString();
+    const row = classifyIdleFront(input({ wakes: [
+      { session: "rowan", role: null, armedAt: null, armedUntil: far, source: "heartbeat-file", evidence: "rowan.json" },
+      { session: "signal", role: null, armedAt: null, armedUntil: near, source: "heartbeat-file", evidence: "signal.json" }
+    ] }));
+    expect(row.armed_wakes.map((wake) => wake.session)).toEqual(["signal"]);
+    expect(row.notes.join(" ")).toMatch(/rowan\.json/);
+  });
+
+  it("reports the armed state as unknown when the process list could not be read", () => {
+    const row = classifyIdleFront(input({ processesReadable: false }));
+    expect(row.no_armed_wake).toBeNull();
+    const events = idleFrontTimelineEvents(row, "/w");
+    expect(events.find((event) => event.kind === "momentum.no_armed_wake")?.summary).toMatch(/unknown/);
+  });
+});
+
+describe("review round 1: command guards", () => {
+  const roots: string[] = [];
+  afterEach(() => {
+    for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  });
+
+  it("refuses a --tap-ready-at or --route-at later than now", async () => {
+    await expect(runProductionIdleFrontCommand({ tapReadyAt: at("17:30:00") }, { now: () => NOW, listProcesses: () => [] })).rejects.toThrow(/--tap-ready-at/);
+    await expect(runProductionIdleFrontCommand({ routeAt: at("17:30:00") }, { now: () => NOW, listProcesses: () => [] })).rejects.toThrow(/--route-at/);
+  });
+
+  it("keeps the check running when ps fails, reporting waiters unreadable", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-idle-front-ps-"));
+    roots.push(root);
+    initWorkspace(root);
+    const response = await runProductionIdleFrontCommand({ workspace: root }, { now: () => NOW, listProcesses: () => { throw new Error("ps timed out"); } });
+    expect(response.data.row.no_armed_wake).toBeNull();
+    expect(response.warnings.join(" ")).toMatch(/ps timed out/);
   });
 });

@@ -6,6 +6,7 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import {
   classifyIdleFront,
+  detectionsFromTimeline,
   idleFrontInputFromStatus,
   idleFrontTimelineEvents,
   parseArmedWakeFile,
@@ -56,10 +57,12 @@ export interface ProductionIdleFrontData {
   wakeReadProblems: string[];
 }
 
-function hint(value: string | undefined, flag: string): string | undefined {
+function hint(value: string | undefined, flag: string, now: Date): string | undefined {
   if (value === undefined) return undefined;
   const time = normalizeTime(value);
   if (!time) throw validationError(`${flag} must be an ISO time.`, { [flag]: value });
+  // A future time would clamp to now and read as a ready tap with zero minutes.
+  if (Date.parse(time) > now.getTime()) throw validationError(`${flag} must not be later than now.`, { [flag]: value, now: now.toISOString() });
   return time;
 }
 
@@ -92,8 +95,8 @@ export async function runProductionIdleFrontCommand(
   options: ProductionIdleFrontOptions,
   dependencies: ProductionIdleFrontDependencies = {}
 ): Promise<CommandSuccess<ProductionIdleFrontData>> {
-  const hints = { tapReadyAt: hint(options.tapReadyAt, "--tap-ready-at"), routeAt: hint(options.routeAt, "--route-at") };
   const now = (dependencies.now ?? (() => new Date()))();
+  const hints = { tapReadyAt: hint(options.tapReadyAt, "--tap-ready-at", now), routeAt: hint(options.routeAt, "--route-at", now) };
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const status = runProductionStatusCommand({ workspace: workspacePath }).data;
   const merges = withReadOnlyDatabase(workspacePath, (db) => listWorkerMerges(db, MERGE_ROWS));
@@ -103,20 +106,28 @@ export async function runProductionIdleFrontCommand(
     now,
     collectors: () => [productionCollector, pingsCollector]
   });
-  const detections = timeline.events
-    .filter((event) => event.kind.startsWith("production.policy.") || event.kind === "ping.created")
-    .map((event) => ({ at: event.time, evidence: event.evidence[0]?.value ?? event.id }));
   const wakesDir = path.resolve(options.wakesDir ?? path.join(workspacePath, ".arcadia", "armed-wakes"));
   const files = readWakeFiles(wakesDir);
-  const wakes = [...wakesFromProcesses((dependencies.listProcesses ?? listProcesses)()), ...files.wakes];
-  const row = classifyIdleFront(idleFrontInputFromStatus(status, { now, merges, detections, wakes, expectWakes: options.expectWake ?? [], hints }));
+  let processes: ProcessRow[] | null = null;
+  let processProblem: string | null = null;
+  try {
+    processes = (dependencies.listProcesses ?? listProcesses)();
+  } catch (error) {
+    // A slow or refused `ps` makes waiters unknown; it never stops the check.
+    processProblem = `Could not list processes: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  const wakes = [...wakesFromProcesses(processes ?? [], workspacePath), ...files.wakes];
+  const input = idleFrontInputFromStatus(status, { now, merges, wakes, expectWakes: options.expectWake ?? [], hints });
+  input.detections = detectionsFromTimeline(timeline.events, input.scopeActions);
+  input.processesReadable = processes !== null;
+  const row = classifyIdleFront(input);
   const failed = timeline.sources.filter((source) => source.error).map((source) => `Could not read ${source.describe}: ${source.error}`);
   if (failed.length > 0) row.notes.push("A detection source failed; detection lag may be over-counted.");
   return createSuccess({
     command: "production.idle-front",
     workspace: workspacePath,
     data: { row, events: idleFrontTimelineEvents(row, workspacePath), wakesDir, wakeReadProblems: files.problems },
-    warnings: [...failed, ...files.problems.map((problem) => `Armed-wake file skipped: ${problem}`)]
+    warnings: [...failed, ...(processProblem ? [processProblem] : []), ...files.problems.map((problem) => `Armed-wake file skipped: ${problem}`)]
   });
 }
 
