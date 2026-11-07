@@ -450,7 +450,9 @@ process.stdout.write(JSON.stringify({originatingRun:d.originatingCard+"/"+d.orig
 #   - Decision 0181 (which re-decided Decision 0170's three attempts): no failed batch in this day. A batch is an activation that
 #     admitted a Session; it is clean only when the tick recorded scope complete inside that run with no escalation, and any
 #     other end fails it (fail closed). A failed batch counts unless it was over before the operator's press opened the day;
-#     after one, only the operator's next day-grant press opens a way on;
+#     Decision 0187 (which re-decided that stop): a counted failed batch is passed only when the card after its press called it
+#     a failed attempt and named a merged fix whose cause is the named cause; P1 checks each fix is on the reviewed revision,
+#     dated after its batch ended, and that Decision 0187 is answered with option A there. Otherwise it stops for the operator;
 #   - fewer than 2 re-presses after a refusal in this day, however the card is re-prepared, and the same refusal does not recur;
 #   - the card names the latest press with its cause, evidence and clearance, and no two failed attempts share a named cause.
 # The cause is Rowan's judgement: it is recorded and compared here, not proved.
@@ -486,7 +488,7 @@ check_day_grant() {
 const c=require("crypto");
 const [lib,id,dj,descriptorPath,evidenceJson,currentPress,mode,maxPreflightAge]=process.argv.slice(1);
 const d=JSON.parse(dj),me=JSON.parse(fs.readFileSync(descriptorPath,"utf8")).startRun,ev=JSON.parse(evidenceJson).data;
-const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_FAILED_BATCHES=1,MAX_REPRESSES=2,ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_REPRESSES=2,ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 // Decision 0181: a batch (an activation that admitted a Session) is clean only with a scope-complete record and no escalation.
 const failedBatch=(x)=>{if(!(x.admitted>=1))return false;const s=x.scopeComplete;return !(s&&Number.isInteger(s.merged)&&s.merged>=1&&s.escalated===0)};
 const sha=(b)=>c.createHash("sha256").update(b).digest("hex");
@@ -546,7 +548,6 @@ if(((me.production)||{}).revision!==revision)fail("PRODUCTION_CHANGED: this card
 const attempts=ev.activations.filter((x)=>Date.parse(x.at)>=EARLIEST&&x.admitted>=1).length;
 // Decision 0181: a batch that fails stops for the operator. Any failed batch not over before the press that opened this day counts.
 const failed=ev.activations.filter((x)=>failedBatch(x)&&!(typeof x.endedAt==="string"&&Date.parse(x.endedAt)<opens));
-if(failed.length>=MAX_FAILED_BATCHES)fail("FAILED_BATCH: the batch "+failed[0].requestId+" (activated "+failed[0].at+") failed under the day approved at "+pr.startedAt+": it admitted a Session and did not reach scope complete without an escalation; Decision 0181 stops for the operator, and only their next day-grant press opens another day");
 // Every /actions press of a START card since Decision 0170, except the one running now.
 const presses=[];
 for(const card of ls(ops)){if(!SLUG.test(card))continue;
@@ -564,6 +565,23 @@ for(const card of ls(ops)){if(!SLUG.test(card))continue;
   if(activation&&presses.length>before&&!presses.slice(before).some((x)=>x.admitted))fail("EVIDENCE_MISMATCH: production records a Session admitted under "+card+", but no press of that card consumed its allowance");}
 presses.sort((x,y)=>x.t-y.t);
 const latest=presses.at(-1)||null;
+// Decision 0187: the card after a failed press may go on when it names a fix merged for the cause of that batch. For the latest press
+// that card is this one; for an earlier failure it is the press that followed it, whose fix P1 checks again at the pin of this card.
+// Anything else (no owning press, a batch the operator pressed, a follower the operator pressed, a clearance by observation,
+// another cause) stops for the operator. Decision 0187 covers a failed delegated batch only, so the owner must be Rowan press.
+// A named cause in full: a stable slug, an evidence pointer and a well-formed clearance (this card, and each earlier follower).
+const prevValid=(prev)=>{if(!prev||typeof prev!=="object")return false;const cl=prev.clearance||{};
+  const clearOk=cl.kind==="merged-fix"?(keys(cl)==="commit,kind,pullRequest,reproduction"||(keys(cl)==="cause,commit,kind,pullRequest,reproduction"&&typeof cl.cause==="string"&&SLUG.test(cl.cause)&&!word(cl.cause)))&&/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(cl.pullRequest)&&/^[0-9a-f]{40}$/.test(cl.commit)&&typeof cl.reproduction==="string"&&cl.reproduction.length>0&&cl.reproduction.length<=300&&!cl.reproduction.includes("\n")&&!p.isAbsolute(cl.reproduction)&&!cl.reproduction.split("/").some((x)=>x===".."||x==="."||x===""):cl.kind==="observed-cleared"&&keys(cl)==="kind,observation"&&pointer(cl.observation);
+  return keys(prev)==="cause,clearance,evidence,kind,press"&&typeof prev.press==="string"&&prev.press.includes("/")&&(prev.kind==="failed-attempt"||prev.kind==="clean-batch"||prev.kind==="no-session")&&typeof prev.cause==="string"&&SLUG.test(prev.cause)&&!word(prev.cause)&&pointer(prev.evidence)&&clearOk};
+const mergedFix=(b,o,n)=>{if(!(o.mark&&o.mark.decision==="0173")||!prevValid(n))return null;const cl=n.clearance;
+  if(n.press!==o.key||n.kind!=="failed-attempt"||cl.kind!=="merged-fix"||cl.cause!==n.cause)return null;
+  if(typeof b.endedAt!=="string"||!Number.isFinite(Date.parse(b.endedAt)))return null;
+  return {batch:b.requestId,press:o.key,endedAt:b.endedAt,commit:cl.commit,reproduction:cl.reproduction,cause:n.cause}};
+const cleared=[];
+for(const b of failed){const o=presses.find((x)=>x.card===b.requestId&&x.admitted),nx=o?presses[presses.indexOf(o)+1]:undefined;
+  const n=!o?null:o===latest?d.previous:(nx&&nx.mark&&nx.mark.decision==="0173"&&nx.del&&nx.del.decision==="0173"?nx.del.previous:null),f=o?mergedFix(b,o,n):null;
+  if(!f)fail("FAILED_BATCH: the batch "+b.requestId+" (activated "+b.at+") failed under the day approved at "+pr.startedAt+": it admitted a Session and did not reach scope complete without an escalation; Decision 0181 stops for the operator unless the card after it names a merged fix for that cause (Decision 0187: previous.kind failed-attempt, a merged-fix clearance whose cause is the named cause, merged after the batch ended)");
+  cleared.push(f);}
 if(latest&&(latest.status==="running"||(latest.r&&latest.r.outcome==="in_progress")))fail("PREVIOUS_UNSETTLED: the latest START press "+latest.key+" has not finished; read its receipt before any other press");
 let rePresses=0;
 presses.forEach((x,i)=>{if(x.t>=opens&&x.mark&&x.mark.decision==="0173"&&i>0&&!presses[i-1].admitted)rePresses+=1;});
@@ -576,9 +594,7 @@ const prev=d.previous;
 if(!latest){if(prev!==null)fail("PREVIOUS_MISMATCH: this card names "+((prev||{}).press)+", but no START press has happened since Decision 0170");}
 else{
   if(prev===null||prev===undefined)fail("PREVIOUS_CAUSE_REQUIRED: the latest START press "+latest.key+" needs its cause named on this card, with an evidence pointer and how it was cleared");
-  const cl=prev.clearance||{};
-  const clearOk=cl.kind==="merged-fix"?keys(cl)==="commit,kind,pullRequest,reproduction"&&/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(cl.pullRequest)&&/^[0-9a-f]{40}$/.test(cl.commit)&&typeof cl.reproduction==="string"&&cl.reproduction.length>0&&cl.reproduction.length<=300&&!cl.reproduction.includes("\n")&&!p.isAbsolute(cl.reproduction)&&!cl.reproduction.split("/").some((x)=>x===".."||x==="."||x===""):cl.kind==="observed-cleared"&&keys(cl)==="kind,observation"&&pointer(cl.observation);
-  if(keys(prev)!=="cause,clearance,evidence,kind,press"||typeof prev.press!=="string"||!prev.press.includes("/")||(prev.kind!=="failed-attempt"&&prev.kind!=="clean-batch"&&prev.kind!=="no-session")||typeof prev.cause!=="string"||!SLUG.test(prev.cause)||word(prev.cause)||!pointer(prev.evidence)||!clearOk)fail("INVALID_DELEGATION: the cause on this card needs a stable slug, an evidence pointer and how it was cleared");
+  if(!prevValid(prev))fail("INVALID_DELEGATION: the cause on this card needs a stable slug, an evidence pointer and how it was cleared");
   if(prev.press!==latest.key)fail("PREVIOUS_MISMATCH: this card names "+prev.press+", but the latest START press is "+latest.key);
   const kind=!latest.admitted?"no-session":latest.failed?"failed-attempt":"clean-batch";
   if(prev.kind!==kind)fail("PREVIOUS_MISMATCH: this card calls "+latest.key+" a "+prev.kind+", but production record makes it a "+kind);
@@ -593,12 +609,13 @@ const m=rj(p.join(lib,"reviewed",id+".json"))||{};
 if(typeof m.premortem!=="string"||!m.premortem.trim())fail("PREMORTEM_REQUIRED: the reviewed manifest of this card names no fresh pre-mortem");
 if(mode==="run"){const fresh=ls(p.join(lib,"runs",id)).map((run)=>rj(p.join(lib,"runs",id,run,"receipt.json"))).some((x)=>x&&x.mode==="preflight"&&x.outcome==="preflight_ok"&&(x.record||{}).reviewedRevision===me.reviewedRevision&&now-Date.parse(x.updatedAt)<=Number(maxPreflightAge));
   if(!fresh)fail("PREFLIGHT_REQUIRED: this card has no passing preflight at its revision from the last 2 hours");}
-process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"+d.approvalRun,approvalPressAt:pr.startedAt,windowClosesAt:new Date(closes).toISOString(),attempt:d.attempt,attemptsBefore:attempts,failedBatchesToday:failed.length,rePressesToday:rePresses,previous:prev||null,chainKey:latest?latest.card+"--"+latest.pr:"first",premortem:m.premortem,baselineRevision:baseline}));
+process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"+d.approvalRun,approvalPressAt:pr.startedAt,windowClosesAt:new Date(closes).toISOString(),attempt:d.attempt,attemptsBefore:attempts,failedBatchesToday:failed.length,clearedFailures:cleared,rePressesToday:rePresses,previous:prev||null,chainKey:latest?latest.card+"--"+latest.pr:"first",premortem:m.premortem,baselineRevision:baseline}));
 ' "$LIBRARY_DIR" "$ID" "$DELEGATION" "$DESCRIPTOR" "$evidence" "${OPERATOR_RUN_ID:-}" "$MODE" "$DAY_GRANT_PREFLIGHT_MAX_AGE_MS")" || refuse "Decision 0173: $out"
   rec delegation "$out"
   DAY_WINDOW_CLOSES="$(jq -r '.windowClosesAt' <<<"$out")"
   DAY_CHAIN_KEY="$(jq -r '.chainKey' <<<"$out")"
   DAY_APPROVAL_OPENS="$(jq -r '.approvalPressAt' <<<"$out")"
+  DAY_CLEARED_FAILURES="$(jq -c '.clearedFailures' <<<"$out")"
 }
 # Decision 0173: every power ends at hour 24, only the operator's latest approval opens the day, and an operator STOP ends it.
 # A press that began inside the window still may not take its allowance or activate after any of those.
@@ -654,7 +671,7 @@ phase_p0() {
 # Decision 0173 at the reviewed revision: its option A is the recorded answer, and a named merged fix is really on main with
 # its fixture or replay present. Whether the fixture truly reproduces the cause, or the fix's review happened, is recorded only.
 check_day_grant_at_pin() {
-  local file content kind commit reproduction
+  local file content kind commit reproduction ended batch
   file="$(grep -E -m1 '^docs/decisions/0173-.*\.md$' <<<"$1" || true)"
   [[ -n "$file" ]] || refuse "Decision 0173 is not in docs/decisions at $PIN"
   # The frontmatter only: the Decision's body quotes every option.
@@ -672,6 +689,26 @@ check_day_grant_at_pin() {
     commit="$(jq -r '.previous.clearance.commit' <<<"$DELEGATION")"; reproduction="$(jq -r '.previous.clearance.reproduction' <<<"$DELEGATION")"
     git_repo merge-base --is-ancestor "$commit" "$PIN" 2>/dev/null || refuse "Decision 0173: the fix commit $commit named for the previous attempt is not on the reviewed revision $PIN"
     git_repo cat-file -e "$PIN:$reproduction" 2>/dev/null || refuse "Decision 0173: the reproduction $reproduction named for the previous attempt is missing at $PIN"
+  fi
+  # The continue-after-fix Decision (0187 when written): a card going on past a failed batch needs its option A on the reviewed
+  # revision, and each fix P0 passed (this card's, or the one the card after an earlier failure named) on the reviewed revision
+  # and merged after its batch ended. Until the answer is on main, a failed batch stops for the operator as Decision 0181 had it.
+  if [[ "$(jq 'length' <<<"${DAY_CLEARED_FAILURES:-[]}")" != 0 ]]; then
+    # By its slug alone, never a number: every START sign-in mints the next number, and this one was raced for twice on
+    # 2026-11-07. Exactly one record may carry the slug; its id comes from that file name and must match its frontmatter.
+    local slug=decide-what-unattended-production-does-after-a-delegated-batch-fails-under-the matches id
+    matches="$(grep -E "^docs/decisions/[0-9]{4}-$slug\.md\$" <<<"$1" || true)"
+    [[ -n "$matches" ]] || refuse "Decision 0173: FAILED_BATCH: no Decision record at $PIN has the slug $slug, so a failed batch still stops for the operator (Decision 0181)"
+    [[ "$(wc -l <<<"$matches" | tr -d ' ')" == 1 ]] || refuse "Decision 0173: FAILED_BATCH: more than one Decision record at $PIN has the slug $slug, so the continue-after-fix Decision cannot be told apart and a failed batch still stops for the operator"
+    file="$matches"; id="${file#docs/decisions/}"; id="${id:0:4}"
+    content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision $id frontmatter could not be read at $PIN"
+    jq -e --arg id "$id" '(.id | tostring) == $id and .status == "approved" and ((.answer // "") | tostring | startswith("A. Continue after a reviewed fix merges"))' <<<"$content" >/dev/null || refuse "Decision 0173: FAILED_BATCH: Decision $id ($file) is not answered with option A at $PIN, so a failed batch still stops for the operator (Decision 0181)"
+    while IFS=$'\t' read -r commit ended batch reproduction; do
+      git_repo merge-base --is-ancestor "$commit" "$PIN" 2>/dev/null || refuse "Decision 0173: FAILED_BATCH: the fix commit $commit named for the failed batch $batch is not on the reviewed revision $PIN"
+      git_repo cat-file -e "$PIN:$reproduction" 2>/dev/null || refuse "Decision 0173: FAILED_BATCH: the reproduction $reproduction named for the failed batch $batch is missing at $PIN"
+      node -e 'process.exit(Number(process.argv[1])*1000>Date.parse(process.argv[2])?0:1)' "$(git_repo show -s --format=%ct "$commit" 2>/dev/null || true)" "$ended" \
+        || refuse "Decision 0173: FAILED_BATCH: the fix commit $commit is dated before the failed batch $batch ended at $ended; the continue-after-fix Decision goes on only after a fix merged after the failure"
+    done < <(jq -r '.[] | [.commit, .endedAt, .batch, .reproduction] | @tsv' <<<"$DAY_CLEARED_FAILURES")
   fi
 }
 phase_p1() {
