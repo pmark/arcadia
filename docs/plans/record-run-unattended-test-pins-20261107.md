@@ -89,11 +89,11 @@ actions:
     references: []
   - id: pin-journey-action-key-split
     title: Pin that the journey splits project/action keys and refuses malformed keys, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the journey splits project/action keys and refuses malformed keys, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-journey-action-key-split-d91ad7a92d97; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-journey-action-key-split
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-journey-action-key-split
+current_action: pin-surface-date-validation
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
