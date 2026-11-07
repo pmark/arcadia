@@ -64,7 +64,8 @@ const planDocument = (status: "active" | "draft", done: string[] = [], actions: 
 ].join("\n");
 const projectDocument = (activePlan: string) => `---\nslug: arcadia\nactive_plan: ${activePlan}\n---\n`;
 const decisionDocument = (id: string, status = "approved", answer = "Yes") => `---\nid: "${id}"\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
-const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170", "0173"];
+const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170", "0173", "0181"];
+const DECISION_ANSWERS: Record<string, string> = { "0173": '"A. Daily grant: START and routine run operations"', "0181": "A. Continued serial runs" };
 
 type Scenario = "same" | "behind" | "pin-unfetched" | "origin-moved" | "diverged" | "ahead";
 interface BoxOptions {
@@ -134,7 +135,7 @@ function box(options: BoxOptions = {}) {
   for (const id of DECISIONS) {
     const body = options.decisions?.[id];
     if (body === null) continue;
-    files[`docs/decisions/${id}-fixture.md`] = body ?? decisionDocument(id, "approved", id === "0173" ? '"A. Daily grant: START and routine run operations"' : "Yes");
+    files[`docs/decisions/${id}-fixture.md`] = body ?? decisionDocument(id, "approved", DECISION_ANSWERS[id] ?? "Yes");
   }
   if (options.withoutFile) delete files[options.withoutFile];
   for (const [file, content] of Object.entries(files)) {
@@ -656,6 +657,9 @@ describe("start-run executor: Decision 0173 presses within the operator's day ap
     const expectP1 = (b: Box, reason: RegExp) => expectRefusedClean(b, b.run("preflight"), "P1", reason, b.head());
     expectP1(box({ dayGrant: FIRST, projectPointer: "something-else" }), /does not point at it/);
     expectP1(box({ dayGrant: FIRST, decisions: { "0173": decisionDocument("0173", "approved", '"B. Daily grant: START and retries only"') } }), /not answered with option A/);
+    // Decision 0181: every day-grant card needs option A at the pin, even one whose requiredDecisions omit it.
+    expectP1(box({ dayGrant: FIRST, decisions: { "0181": decisionDocument("0181", "approved", "C. No production until concurrency is built") } }), /Decision 0181 is not answered with option A/);
+    expectP1(box({ dayGrant: FIRST, decisions: { "0181": null } }), /Decision 0181 is not in docs\/decisions/);
     expectP1(box({ dayGrant: FIRST, planStatus: "draft", activation: true }), /no planActivation|covers the active Plan/);
     const fix = { kind: "merged-fix" as const, pullRequest: "https://github.com/pmark/arcadia/pull/1", commit: "d".repeat(40), reproduction: "src/production/workerMerge.ts" };
     const refused = { label: "", code: "", attempt: 1, presses: [{ card: "start-a", at: Date.now() - 600_000, receipt: {} }] };

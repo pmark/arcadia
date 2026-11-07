@@ -278,22 +278,38 @@ describe("Decision 0173 production record", () => {
     const db = new Database(":memory:");
     ensureProductionPolicyTables(db);
     db.exec("CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, event_type TEXT NOT NULL, payload_json TEXT NOT NULL, created_at TEXT NOT NULL)");
-    const receipt = db.prepare(`INSERT INTO production_policy_receipts (id, request_id, transition, revision_before, revision_after, epoch_after, receipt_json, created_at) VALUES (?, ?, ?, ?, ?, 1, '{}', ?)`);
-    receipt.run("r1", "start-a", "activate", 95, 96, "2026-11-05T21:53:45.950Z");
-    receipt.run("r2", "rowan-off-attempt-3-scope-complete", "deactivate", 96, 97, "2026-11-05T22:46:47.752Z");
-    receipt.run("r3", "start-b", "activate", 97, 98, "2026-11-06T12:53:16.230Z");
-    receipt.run("r4", "rowan-off-b", "deactivate", 98, 99, "2026-11-06T17:05:08.366Z");
-    receipt.run("r5", "start-c", "activate", 99, 100, "2026-11-06T23:38:58.998Z");
+    const scoped = (...actions: string[]) => JSON.stringify({ scope: { actions } });
+    const receipt = db.prepare(`INSERT INTO production_policy_receipts (id, request_id, transition, revision_before, revision_after, epoch_after, receipt_json, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)`);
+    receipt.run("r1", "start-a", "activate", 95, 96, scoped("arcadia/a", "arcadia/b"), "2026-11-05T21:53:45.950Z");
+    receipt.run("r2", "rowan-off-attempt-3-scope-complete", "deactivate", 96, 97, "{}", "2026-11-05T22:46:47.752Z");
+    receipt.run("r3", "start-b", "activate", 97, 98, scoped("arcadia/c"), "2026-11-06T12:53:16.230Z");
+    receipt.run("r4", "rowan-off-b", "deactivate", 98, 99, "{}", "2026-11-06T17:05:08.366Z");
+    receipt.run("r5", "start-c", "activate", 99, 100, scoped("arcadia/d"), "2026-11-06T23:38:58.998Z");
+    receipt.run("r6", "rowan-off-c", "deactivate", 100, 101, "{}", "2026-11-07T00:47:57.728Z");
+    // Two Projects in scope, only one announced: unproved. Then a scope that cannot be read, and negative counts.
+    receipt.run("r7", "start-d", "activate", 101, 102, scoped("arcadia/e", "other/f"), "2026-11-07T07:00:00.000Z");
+    receipt.run("r8", "rowan-off-d", "deactivate", 102, 103, "{}", "2026-11-07T08:00:00.000Z");
+    receipt.run("r9", "start-e", "activate", 103, 104, "not json", "2026-11-07T09:00:00.000Z");
+    receipt.run("r10", "rowan-off-e", "deactivate", 104, 105, "{}", "2026-11-07T10:00:00.000Z");
+    receipt.run("r11", "start-f", "activate", 105, 106, scoped("arcadia/g", "other/h"), "2026-11-07T11:00:00.000Z");
     const event = db.prepare("INSERT INTO events (id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)");
     event.run("e1", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 96, merged: 3, escalated: 0 }), "2026-11-05T22:44:21.530Z");
     event.run("e2", "managed_production.tick", JSON.stringify({ policyRevision: 98 }), "2026-11-06T13:00:00.000Z");
     event.run("e3", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 100, merged: 2, escalated: 1 }), "2026-11-07T00:00:00.000Z");
+    event.run("e4", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 102, merged: 1, escalated: 0 }), "2026-11-07T07:30:00.000Z");
+    event.run("e5", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 104, merged: 1, escalated: 0 }), "2026-11-07T09:30:00.000Z");
+    event.run("e6", "managed_production.scope_complete", JSON.stringify({ projectSlug: "arcadia", policyRevision: 106, merged: 1, escalated: 1 }), "2026-11-07T11:30:00.000Z");
+    event.run("e7", "managed_production.scope_complete", JSON.stringify({ projectSlug: "other", policyRevision: 106, merged: 1, escalated: -1 }), "2026-11-07T11:40:00.000Z");
     const { activations } = readDayGrantEvidence(db, "2026-11-03T19:26:51Z");
     expect(activations.map((a) => [a.requestId, a.endedAt, a.scopeComplete])).toEqual([
       ["start-a", "2026-11-05T22:46:47.752Z", { merged: 3, escalated: 0 }],
       ["start-b", "2026-11-06T17:05:08.366Z", null],
-      ["start-c", null, { merged: 2, escalated: 1 }]
+      ["start-c", "2026-11-07T00:47:57.728Z", { merged: 2, escalated: 1 }],
+      ["start-d", "2026-11-07T08:00:00.000Z", null],
+      ["start-e", "2026-11-07T10:00:00.000Z", null],
+      ["start-f", null, { merged: 2, escalated: Number.NaN }]
     ]);
+    expect(activations.map((a) => isFailedBatch({ admitted: 1, scopeComplete: a.scopeComplete }))).toEqual([false, true, true, true, true, true]);
     db.close();
   });
 });

@@ -660,6 +660,12 @@ check_day_grant_at_pin() {
   # The frontmatter only: the Decision's body quotes every option.
   content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision 0173's frontmatter could not be read at $PIN"
   jq -e '.status == "approved" and ((.answer // "") | tostring | startswith("A. Daily grant"))' <<<"$content" >/dev/null || refuse "Decision 0173 is not answered with option A at $PIN"
+  # Decision 0181 option A replaced Decision 0170's three attempts with the failed-batch stop P0 checked; every day-grant card
+  # needs it on the reviewed revision, whatever the card's requiredDecisions list.
+  file="$(grep -E -m1 '^docs/decisions/0181-.*\.md$' <<<"$1" || true)"
+  [[ -n "$file" ]] || refuse "Decision 0181 is not in docs/decisions at $PIN; a Decision 0173 card's failed-batch gate implements it"
+  content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision 0181's frontmatter could not be read at $PIN"
+  jq -e '.status == "approved" and ((.answer // "") | tostring | startswith("A. Continued serial runs"))' <<<"$content" >/dev/null || refuse "Decision 0181 is not answered with option A at $PIN"
   [[ "$(jq -r '.startRun.planActivation // .planActivation // null | type' "$DESCRIPTOR")" == null ]] || refuse "a Decision 0173 card runs on the active Plan and carries no planActivation"
   kind="$(jq -r '.previous.clearance.kind // ""' <<<"$DELEGATION")"
   if [[ "$kind" == merged-fix ]]; then
