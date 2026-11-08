@@ -1293,7 +1293,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("ping.sent", options, () => runPingSentCommand(options), renderPingSentSuccess)
   );
 
-  const coordinator = program.command("coordinator").description("Coordinator handoff state: the state capsule, its journal, watcher subscriptions, verify and accept (docs/agent-guidance/coordinator-handoff-design.md). Data, never authority; launches nothing");
+  const coordinator = program.command("coordinator").description("Coordinator sessions (⭐ Signal, 🚦 Rowan): context budget for handoff before compaction, and handoff state (the state capsule, its journal, watcher subscriptions, verify and accept)");
   const coordinatorScope = (command: Command): Command => addJsonOption(command
     .requiredOption("--project <slug>", "Project slug, e.g. arcadia")
     .requiredOption("--role <role>", "Coordinator role, e.g. rowan or signal")
@@ -1681,7 +1681,6 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   ).action((options: { workspace: string; wakesDir?: string; expectWake?: string[]; tapReadyAt?: string; routeAt?: string; json?: boolean }) =>
     runCliAction("production.idle-front", options, () => runProductionIdleFrontCommand(options), renderProductionIdleFrontSuccess)
   );
-  const coordinator = program.command("coordinator").description("Coordinator sessions (⭐ Signal, 🚦 Rowan): context budget for handoff before compaction");
   addJsonOption(
     coordinator
       .command("budget")
