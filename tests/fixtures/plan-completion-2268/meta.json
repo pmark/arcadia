@@ -1,0 +1,39 @@
+{
+ "source": "pmark/arcadia PR #2268: commits 43349caae99ec5a9b256798c781412d8f2920825 (preserve) and 6fa32eb8c33fcf48eae59a1d8fbe22e24233592b (settlement, parent 43349caae). series.patch is git format-patch of both; parent-PROJECT.md (trimmed after its front matter) and parent-plan.md are the settlement commit's parent revision. commitFiles is GitHub's per-commit file read (filename, previous_filename, sha).",
+ "commitFiles": {
+  "43349caae99ec5a9b256798c781412d8f2920825": [
+   {
+    "path": ".arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml",
+    "previousPath": null,
+    "blob": "96c84db67c252c0074a0120fb156c4ea07b35f1c"
+   },
+   {
+    "path": "tests/pin-agent-role-guard.test.ts",
+    "previousPath": null,
+    "blob": "a728802526ae7c5439679533d8ca965e42fd8bbe"
+   }
+  ],
+  "6fa32eb8c33fcf48eae59a1d8fbe22e24233592b": [
+   {
+    "path": ".arcadia/asks/archive/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml",
+    "previousPath": ".arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml",
+    "blob": "afa6fe9976e6b66b4f107c0ebe10f0642aae7a2b"
+   },
+   {
+    "path": "MISSION_LOG.md",
+    "previousPath": null,
+    "blob": "67068846148fa37afc8d5086d1ceb5cdbb26073e"
+   },
+   {
+    "path": "PROJECT.md",
+    "previousPath": null,
+    "blob": "fc66e2edf7139fc4ccaf00b9811e7628130d0232"
+   },
+   {
+    "path": "docs/plans/record-run-unattended-test-pins-20261107.md",
+    "previousPath": null,
+    "blob": "a7cb02039f188f399bda63c0e3022345bf3e2fd1"
+   }
+  ]
+ }
+}
