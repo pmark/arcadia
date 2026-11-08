@@ -261,7 +261,9 @@ describe("Operator QA plan rendering", () => {
     }), facts({ changedFiles, pathExists: (candidate) => exists.has(candidate) }));
     expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT} -- docs/old.md\`.`);
     expect(body).toContain(`inspect \`src/kept.ts\` with \`git show ${COMMIT}:src/kept.ts\`; then inspect \`src/untouched.ts\` with \`git show ${COMMIT}:src/untouched.ts\`.`);
-    expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT} -- src/missing.ts\`.`);
+    // A path the patch does not change is never a diff scope: that diff would print nothing (Issue #2324).
+    expect(body).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT}\`.`);
+    expect(body).not.toContain("-- src/missing.ts");
     expect(body).not.toContain("git show " + COMMIT + ":docs/old.md");
   });
 
@@ -328,7 +330,9 @@ describe("Operator QA plan rendering", () => {
       const absent = rendered(source({ acceptanceCriteria: [criterion], validationCommands: [] }), facts({
         changedFiles: [{ status: "A", path: TEST_FILE }], pathExists: exists(TEST_FILE)
       }));
-      expect(stepOf(absent)).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT} -- ${SAMPLE}\`.`);
+      // The sample is neither present nor changed, so it is not a diff scope (Issue #2324).
+      expect(stepOf(absent)).toContain(`- **Do:** read the change with \`git diff ${BASE} ${COMMIT}\`.`);
+      expect(stepOf(absent)).not.toContain(`-- ${SAMPLE}`);
     });
 
     it("states the substitution and claims only what the substituted file shows", () => {
