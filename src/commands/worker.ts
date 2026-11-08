@@ -556,7 +556,7 @@ export interface LostWorkerLockDependencies {
  * benign restart overlap). Never boots out, kills or restarts anything.
  */
 export function reportLostWorkerLock(workspacePath: string, logfile: string, holderPid: number, dependencies: LostWorkerLockDependencies = {}): WorkerLockLostSignal | null {
-  const ownLabel = (dependencies.ownLabel ?? (() => process.env["XPC_SERVICE_NAME"]?.trim() || null))();
+  const ownLabel = (dependencies.ownLabel ?? (() => { const name = process.env["XPC_SERVICE_NAME"]?.trim(); return name && /^com\./.test(name) ? name : null; }))();
   const holderLabel = (dependencies.holderLabel ?? launchdLabelForPid)(holderPid);
   if (ownLabel && holderLabel === ownLabel) return null;
   const signal: WorkerLockLostSignal = { at: new Date().toISOString(), loserLabel: ownLabel, loserPid: process.pid, holderPid, holderLabel };
@@ -1290,7 +1290,7 @@ export function runWorkerStatusCommand(options: WorkerOptions): void {
   const overlong = classified.health === "running" && record ? isTickOverlong(workspacePath, record) : false;
   const health = overlong ? "unhealthy" : classified.health;
   const lost = readLockLostSignal(workspacePath);
-  if (lost) {
+  if (lost && isProcessAlive(lost.holderPid)) {
     process.stdout.write(`Worker lock lost at ${lost.at}: ${lost.loserLabel ?? "a worker"} yielded to PID ${lost.holderPid} (${lost.holderLabel ? `launchd job ${lost.holderLabel}` : "not a launchd job"}). Retire the competing worker; see worker.log.\n`);
   }
 

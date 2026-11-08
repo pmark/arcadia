@@ -178,18 +178,18 @@ describe("worker start losing the pidfile race (Issue #2179)", () => {
   it("logs an ERROR naming the competing launchd label, writes a signal, and reports it in status", () => {
     const { root } = workspace();
     const logfile = path.join(root, ".arcadia", "worker.log");
-    const signal = reportLostWorkerLock(root, logfile, 3151, {
+    const signal = reportLostWorkerLock(root, logfile, process.pid, {
       ownLabel: () => "com.arcadia.local.742852621.worker",
-      holderLabel: (pid) => (pid === 3151 ? "com.arcadia.worker" : null)
+      holderLabel: (pid) => (pid === process.pid ? "com.arcadia.worker" : null)
     });
-    expect(signal).toMatchObject({ loserLabel: "com.arcadia.local.742852621.worker", holderPid: 3151, holderLabel: "com.arcadia.worker" });
+    expect(signal).toMatchObject({ loserLabel: "com.arcadia.local.742852621.worker", holderPid: process.pid, holderLabel: "com.arcadia.worker" });
     const text = readFileSync(logfile, "utf8");
     expect(text).toContain("ERROR: com.arcadia.local.742852621.worker");
     expect(text).toContain("launchd job com.arcadia.worker");
     expect(text).toContain("NOT running");
     expect(text).toContain("launchctl bootout");
     expect(readLockLostSignal(root)).toMatchObject({ holderLabel: "com.arcadia.worker" });
-    expect(captureStdout(() => runWorkerStatusCommand({ workspace: root }))).toContain("yielded to PID 3151 (launchd job com.arcadia.worker)");
+    expect(captureStdout(() => runWorkerStatusCommand({ workspace: root }))).toContain(`yielded to PID ${process.pid} (launchd job com.arcadia.worker)`);
   });
 
   it("names a holder that is not a launchd job, and stays quiet for the same job", () => {
@@ -211,6 +211,7 @@ describe("worker start losing the pidfile race (Issue #2179)", () => {
 
   it("the CLI still exits 0 but logs the loss loudly and leaves a signal; the next start clears it", () => {
     const { root } = workspace();
+    vi.stubEnv("XPC_SERVICE_NAME", "");
     writeRecord(root, { pid: process.pid, owner: "existing", at: Date.now() });
     const result = runCli(["worker", "start", "--workspace", root]);
     expect(result.status).toBe(0);
