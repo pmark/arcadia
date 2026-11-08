@@ -368,11 +368,11 @@ actions:
     references: []
   - id: pin-markdown-speech-strip
     title: Pin how Markdown is stripped for speech, keeping words and snake_case while removing markup, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how Markdown is stripped for speech, keeping words and snake_case while removing markup, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-markdown-speech-strip-905f1b5daa0f; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-markdown-speech-strip
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-markdown-speech-strip
+current_action: pin-agent-role-guard
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
