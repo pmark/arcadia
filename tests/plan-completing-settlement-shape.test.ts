@@ -366,7 +366,7 @@ describe("a Plan-completing settlement (Issue #2270)", () => {
     const patch = readFileSync(path.join(dir, "series.patch"), "utf8");
     const SETTLEMENT = "6fa32eb8c33fcf48eae59a1d8fbe22e24233592b";
     const PLAN = "docs/plans/record-run-unattended-test-pins-20261107.md";
-    const parents = { [SETTLEMENT]: { "PROJECT.md": readFileSync(path.join(dir, "parent-PROJECT.md"), "utf8"), [PLAN]: readFileSync(path.join(dir, "parent-plan.md"), "utf8") } };
+    const parents = { [SETTLEMENT]: { "PROJECT.md": readFileSync(path.join(dir, "parent-PROJECT.txt"), "utf8"), [PLAN]: readFileSync(path.join(dir, "parent-plan.txt"), "utf8") } };
     const commits = Object.keys(meta.commitFiles);
     const files = [...new Set(Object.values(meta.commitFiles).flat().map((file) => file.path))];
     const real = (evidence: ParentDocuments | null) => checkGovernedRecords(patch, { declaredFiles: files, declaredCommits: commits, commitFiles: meta.commitFiles, parentDocuments: evidence });

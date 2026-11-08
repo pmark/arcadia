@@ -1,5 +1,5 @@
 {
- "source": "pmark/arcadia PR #2268: commits 43349caae99ec5a9b256798c781412d8f2920825 (preserve) and 6fa32eb8c33fcf48eae59a1d8fbe22e24233592b (settlement, parent 43349caae). series.patch is git format-patch of both; parent-PROJECT.md (trimmed after its front matter) and parent-plan.md are the settlement commit's parent revision. commitFiles is GitHub's per-commit file read (filename, previous_filename, sha).",
+ "source": "pmark/arcadia PR #2268: commits 43349caae99ec5a9b256798c781412d8f2920825 (preserve) and 6fa32eb8c33fcf48eae59a1d8fbe22e24233592b (settlement, parent 43349caae). series.patch is git format-patch of both; parent-PROJECT.txt (trimmed after its front matter) and parent-plan.txt are the settlement commit's parent revision. commitFiles is GitHub's per-commit file read (filename, previous_filename, sha).",
  "commitFiles": {
   "43349caae99ec5a9b256798c781412d8f2920825": [
    {
