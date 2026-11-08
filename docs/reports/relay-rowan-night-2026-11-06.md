@@ -100,8 +100,8 @@ touches and about 6.5 hours.
 
 ## Part 2: the evening and the night after (to 2026-11-07 05:30Z)
 
-This part covers what Part 1 left out: events from 19:00Z on (rows 30–32
-happened before #2153 merged at 19:58Z) up to 05:30Z. **Sources:** Signal's
+This part covers what Part 1 left out: events from 19:00Z up to 05:30Z.
+Row 30 happened before #2153 merged at 19:58Z, and the rest after. **Sources:** Signal's
 log rows 30–32, #1929 from 19:00Z, PRs #2148–#2176, the lessons captured
 since, host state at 05:30Z, and one transcript search to confirm S034's
 wording. The records this part filed are dated up to about 05:40Z. On #1929, 2026-11-06 took **23 operator touches** across the UTC day
