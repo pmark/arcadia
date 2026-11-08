@@ -7,7 +7,7 @@ status: active
 milestone: Record run unattended test pins 20261107
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-07
+updated: 2026-11-08
 actions:
   - id: pin-red-alert-token-estimate
     title: Pin that the red-alert diagnosis token estimate rounds characters divided by four up, with a new test file.
@@ -249,11 +249,11 @@ actions:
     references: []
   - id: pin-close-out-canonical-json
     title: Pin that close-out canonical JSON sorts keys by code unit, drops undefined values and keeps array order, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that close-out canonical JSON sorts keys by code unit, drops undefined values and keeps array order, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-close-out-canonical-json-dcc13f31fe87; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-close-out-canonical-json
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-close-out-canonical-json
+current_action: pin-card-expiry-parse
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
