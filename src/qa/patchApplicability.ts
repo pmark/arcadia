@@ -45,15 +45,16 @@
  * The Plan-completing settlement (#2270) is a verified shape only with the
  * commit's parent revision of PROJECT.md and the Plan (`parentDocuments`):
  * one Plan, the active one, completed at its current Action with every other
- * Action already done, in front-matter lines only. The parent is read with the
- * repository's own YAML front-matter parser (a parse error, duplicate key or
- * odd `actions` list refuses), and the Plan is the one whose `slug` is the
- * parent's `active_plan`; a second Plan with the same slug is not visible
- * from the evidence. Residual there: the
+ * Action already done or deferred. The commit's hunks are applied to the
+ * parent's text (they must apply exactly), both sides are read with the
+ * repository's own YAML front-matter parser, and the parsed change must be
+ * exactly that: no body change, no other key, Action or PROJECT.md change. A
+ * second Plan with the same slug and project is not visible from one Plan's
+ * evidence, and the `updated:` date is not compared. Residual there: the
  * evidence is the commit's parent, not the merge result, so an Action added to
  * the Plan on the base branch after the branch point is not seen; and a Plan
- * whose other Actions are deferred, or that has a queued successor, stays
- * refused.
+ * whose other Actions are deferred only by a Decision, or that has a queued
+ * successor, stays refused.
  *
  * Residual: a forged attestation can still make shape-limited governed edits
  * pass this check (add Agent Ask data files or archive them, by rename or as a
@@ -603,6 +604,11 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
       }
       endHunk();
     }
+    // The marker follows a hunk's last counted line, so that hunk has already closed.
+    if (current && line.startsWith("\\ ") && current.hunks.length > 0) {
+      current.hunks[current.hunks.length - 1].push(line);
+      continue;
+    }
     if (line.startsWith("diff --git ")) {
       const match = SIMPLE_DIFF_HEADER.exec(line);
       current = {
@@ -934,7 +940,7 @@ function governedShapeViolations(
   // A Plan-completing settlement removes current_action outright and sets the
   // Plan `complete`; each half is only collected here and verified together,
   // against the parent revision, after every file is read.
-  const planCompletions: Array<{ file: ParsedFile; plan: string; id: string; doneHere: string[] }> = [];
+  const planCompletions: Array<{ file: ParsedFile; plan: string; id: string }> = [];
   const projectRemovals: Array<{ file: ParsedFile; id: string }> = [];
   // Every Agent Ask id this same patch series makes available: drafted
   // (added, anywhere under .arcadia/asks/, not yet archived), archived by a
@@ -1059,8 +1065,7 @@ function governedShapeViolations(
       continue;
     }
     planMoves.set(target, [...(planMoves.get(target) ?? []), ...moves]);
-    const doneHere: string[] = [];
-    if (completion) planCompletions.push({ file, plan: target, id: moves[0], doneHere });
+    if (completion) planCompletions.push({ file, plan: target, id: moves[0] });
     for (const lines of file.hunks) {
       lines.forEach((line, index) => {
         if (!line.startsWith("-")) return;
@@ -1070,10 +1075,7 @@ function governedShapeViolations(
           const owner = lines.slice(0, index).reverse().find((candidate) => ACTION_ID.test(candidate.slice(1)));
           const id = owner?.startsWith(" ") ? ACTION_ID.exec(owner.slice(1))?.[1] : undefined;
           if (!id) violateFile("the Action whose status changes is not shown in the hunk's context");
-          else {
-            done.set(target, [...(done.get(target) ?? []), id]);
-            doneHere.push(id);
-          }
+          else done.set(target, [...(done.get(target) ?? []), id]);
           return;
         }
         // A removed `next_action` line only starts a recognized rewrite at its
@@ -1161,79 +1163,113 @@ function governedShapeViolations(
 
 /** The same fence `src/docs/parse.ts` uses for a managed document's front matter. */
 const FRONT_MATTER_FENCE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+/** A parent document above this is refused before any YAML parse (the largest Plan is about 0.5 MB), so a huge one cannot stall a review. */
+const MAX_PARENT_DOCUMENT_CHARS = 1024 * 1024;
+
+interface FrontMatterDocument {
+  data: Record<string, unknown>;
+  /** Everything after the closing fence, byte for byte. */
+  body: string;
+}
 
 /**
  * A document's front matter as the repository's own parser reads it (the same
- * fence and the `yaml` package, whose default refuses duplicate keys), with
- * the lines it spans (1-based, the fences excluded). Null on a missing fence,
- * any parse error, or a front matter that is not a mapping: the evidence is
- * then unusable and the completion stays refused.
+ * fence and the `yaml` package, whose default refuses duplicate keys), and its
+ * body. Null on a document over the size bound, a missing fence, any parse
+ * error, or a front matter that is not a mapping: the evidence is then
+ * unusable and the completion stays refused.
  */
-function parseFrontMatter(text: string): { data: Record<string, unknown>; firstLine: number; lastLine: number } | null {
+function parseFrontMatter(text: string): FrontMatterDocument | null {
+  if (text.length > MAX_PARENT_DOCUMENT_CHARS) return null;
   const match = FRONT_MATTER_FENCE.exec(text);
   if (!match) return null;
   try {
     const data = parseYaml(match[1]) as unknown;
     if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
-    return { data: data as Record<string, unknown>, firstLine: 2, lastLine: match[1].split(/\r?\n/).length + 1 };
+    return { data: data as Record<string, unknown>, body: match[2] };
   } catch {
     return null;
   }
 }
 
-/** Each Action's id and status from the parsed `actions` list; null when it is not an array of mappings with unique string ids and string statuses. */
-function planActionStatuses(data: Record<string, unknown>): Map<string, string> | null {
-  const actions = data.actions;
-  if (!Array.isArray(actions) || actions.length === 0) return null;
-  const statuses = new Map<string, string>();
-  for (const action of actions as unknown[]) {
-    if (action === null || typeof action !== "object" || Array.isArray(action)) return null;
-    const { id, status } = action as Record<string, unknown>;
-    if (typeof id !== "string" || typeof status !== "string" || statuses.has(id)) return null;
-    statuses.set(id, status);
-  }
-  return statuses;
+/** Structural equality of parsed YAML values. A cycle, which a YAML alias can form, is never equal. */
+function sameValue(left: unknown, right: unknown, path: Set<object> = new Set()): boolean {
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+  if (path.has(left)) return false;
+  path.add(left);
+  const same = Array.isArray(left) || Array.isArray(right)
+    ? Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => sameValue(value, right[index], path))
+    : Object.keys(left).length === Object.keys(right).length && Object.keys(left).every((key) => Object.hasOwn(right, key)
+      && sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key], path));
+  path.delete(left);
+  return same;
 }
 
-/** The old-side line numbers of a file's removed lines that satisfy a test. */
-function removedOldLines(file: ParsedFile, test: (line: string) => boolean): number[] {
-  const found: number[] = [];
-  file.hunks.forEach((lines, hunk) => {
-    let oldLine = file.hunkStarts[hunk];
-    for (const line of lines) {
-      if (line.startsWith("\\") || line.startsWith("+")) continue;
-      if (line.startsWith("-") && test(line.slice(1))) found.push(oldLine);
-      oldLine += 1;
-    }
-  });
-  return found;
-}
-
-/** Whether the file's only removed line matching `test` is inside the parent's real front matter and reads `expected` there. */
-function removedFrontMatterLine(file: ParsedFile, base: string, test: (line: string) => boolean, expected: string): boolean {
-  const front = parseFrontMatter(base);
-  const found = removedOldLines(file, test);
-  return front !== null && found.length === 1 && Number.isInteger(found[0]) && found[0] >= front.firstLine && found[0] <= front.lastLine
-    && base.split(/\r?\n/)[found[0] - 1] === expected;
+/** The mapping without the named keys. */
+function without(data: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(data).filter(([key]) => !keys.includes(key)));
 }
 
 /**
- * Why a Plan's removed-only `current_action` plus `status: active` ->
- * `complete` is not a verified completion; null when it is. It is one only
- * when the commit's parent revision was read and shows: the Plan `active` and
- * named by PROJECT.md's `active_plan`, both pointers at exactly the Action this
- * commit marks done (and only that one), that Action not yet done, and every
- * other Action already done. The same commit must remove PROJECT.md's
- * pointer, it is the commit's only completion, and each changed line (the
- * status replacement, both pointers) is the front matter's own, at the line
- * the parent has it.
+ * The file's hunks applied to the parent's text: every context and removed
+ * line must match the parent at its stated old line exactly (a CR before the
+ * newline aside), or null. A hunk with a no-newline marker is not applied.
+ */
+function applyHunks(base: string, file: ParsedFile): string | null {
+  const baseLines = base.split("\n");
+  const out: string[] = [];
+  let position = 0;
+  for (let hunk = 0; hunk < file.hunks.length; hunk++) {
+    const lines = file.hunks[hunk];
+    const start = file.hunkStarts[hunk];
+    // An insertion-only hunk (`-N,0`) names the line after which it applies.
+    const oldCount = lines.filter((line) => line.startsWith(" ") || line.startsWith("-")).length;
+    const copyTo = oldCount === 0 ? start : start - 1;
+    if (!Number.isInteger(start) || start < 0 || copyTo < position || copyTo > baseLines.length) return null;
+    while (position < copyTo) out.push(baseLines[position++]);
+    for (const line of lines) {
+      const kind = line[0];
+      const text = line.slice(1);
+      if (kind === "+") { out.push(text); continue; }
+      if (kind !== " " && kind !== "-") return null;
+      const original = baseLines[position];
+      if (original === undefined || original.replace(/\r$/, "") !== text) return null;
+      if (kind === " ") out.push(original);
+      position += 1;
+    }
+  }
+  while (position < baseLines.length) out.push(baseLines[position++]);
+  return out.join("\n");
+}
+
+/**
+ * Why a Plan-completing commit is not a verified completion; null when it is.
+ * The judgement is made on parsed documents, never on the patch's lines: the
+ * commit's hunks are applied to the parent revision of PROJECT.md and the Plan
+ * (which must apply exactly), both sides are parsed, and the change must be
+ * exactly this and nothing else:
+ * - the parent Plan is `active`, belongs to PROJECT.md's project, is the one
+ *   whose slug is PROJECT.md's `active_plan` (the resolver's case-insensitive
+ *   rule, src/docs/dispatch.ts), and PROJECT.md and the Plan both have
+ *   `current_action` at the Action being completed;
+ * - the result Plan is `complete` with no `current_action`, that Action is now
+ *   `done` (its `next_action` may change) and was not before, every other
+ *   Action is identical and already `done` or `deferred` (what
+ *   `resolveFinishedActivePlan` counts as finished, from the Action itself),
+ *   the Actions keep their ids and order, no other key changes but `updated`,
+ *   and the body is byte for byte the parent's;
+ * - the result PROJECT.md differs only by losing `current_action` (and
+ *   `updated`), with its body unchanged.
+ * It must also be the commit's only completion, with the removal in the same
+ * commit. A Decision-based deferral is not evidence here and stays refused.
  */
 function planCompletionRefusal(
-  completion: { file: ParsedFile; plan: string; id: string; doneHere: string[] },
+  completion: { file: ParsedFile; plan: string; id: string },
   commits: ParsedCommit[], parentDocuments: ParentDocuments | null | undefined,
   allCompletions: ReadonlyArray<{ file: ParsedFile }>, allRemovals: ReadonlyArray<{ file: ParsedFile; id: string }>
 ): string | null {
-  const { file, plan, id, doneHere } = completion;
+  const { file, plan, id } = completion;
   const unverifiable = (why: string) => `the Plan is completed here (current_action removed, status complete), but ${why}`;
   const sha = commits[file.commit]?.sha;
   const documents = parentDocuments && sha ? parentDocuments[sha] : undefined;
@@ -1243,37 +1279,56 @@ function planCompletionRefusal(
   if (allCompletions.filter((entry) => entry.file.commit === file.commit).length !== 1) return unverifiable("the commit completes more than one Plan");
   const removals = allRemovals.filter((entry) => entry.file.commit === file.commit);
   if (removals.length !== 1 || removals[0].id !== id) return unverifiable("the same commit does not remove PROJECT.md's current_action at that Action");
-  const project = parseFrontMatter(projectBase);
-  const front = parseFrontMatter(base);
-  if (!project || !front) return unverifiable("the parent revision's PROJECT.md or Plan front matter could not be parsed");
-  // The real resolver (src/docs/dispatch.ts) finds the active Plan by its slug, never by file name.
-  if (typeof front.data.slug !== "string" || project.data.active_plan !== front.data.slug || project.data.current_action !== id) {
-    return unverifiable("the parent revision's PROJECT.md does not name this Plan's slug as active_plan with current_action at that Action");
+
+  const planResultText = applyHunks(base, file);
+  const projectResultText = applyHunks(projectBase, removals[0].file);
+  if (planResultText === null || projectResultText === null) return unverifiable("a hunk does not apply exactly to the parent revision's document");
+  const parentPlan = parseFrontMatter(base);
+  const parentProject = parseFrontMatter(projectBase);
+  const resultPlan = parseFrontMatter(planResultText);
+  const resultProject = parseFrontMatter(projectResultText);
+  if (!parentPlan || !parentProject || !resultPlan || !resultProject) return unverifiable("a document's front matter could not be parsed (or is over the size bound)");
+
+  const lower = (value: unknown) => typeof value === "string" ? value.toLowerCase() : null;
+  if (lower(parentPlan.data.slug) === null || lower(parentPlan.data.slug) !== lower(parentProject.data.active_plan)
+    || lower(parentPlan.data.project) === null || lower(parentPlan.data.project) !== lower(parentProject.data.slug)) {
+    return unverifiable("the parent revision's PROJECT.md does not name this Plan (by slug and project) as its active_plan");
   }
-  if (!removedFrontMatterLine(removals[0].file, projectBase, (line) => PLAN_POINTER.test(line), `current_action: ${id}`)) {
-    return unverifiable("the removed PROJECT.md current_action line is not the front matter's own line at the parent revision");
+  if (parentProject.data.current_action !== id || parentPlan.data.current_action !== id || parentPlan.data.status !== "active") {
+    return unverifiable("the parent revision's Plan is not active with PROJECT.md and the Plan both at that Action");
   }
-  if (doneHere.length !== 1 || doneHere[0] !== id) return unverifiable("the Action marked done is not exactly the one current_action leaves");
-  if (front.data.status !== "active" || front.data.current_action !== id) {
-    return unverifiable("the parent revision's Plan is not active with current_action at that Action");
+
+  if (!sameValue(without(parentProject.data, ["current_action", "updated"]), without(resultProject.data, ["current_action", "updated"]))
+    || Object.hasOwn(resultProject.data, "current_action") || parentProject.body !== resultProject.body) {
+    return unverifiable("PROJECT.md changes by more than losing current_action");
   }
-  const statuses = planActionStatuses(front.data);
-  if (!statuses || !statuses.has(id)) return unverifiable("the parent revision's Plan Actions could not be read");
-  const notDone = [...statuses].filter(([action, status]) => action !== id && status !== "done").map(([action]) => action);
-  if (statuses.get(id) === "done" || notDone.length > 0) {
-    return unverifiable(notDone.length > 0 ? `Action ${notDone.join(", ")} is not done at the parent revision` : `Action ${id} was already done at the parent revision`);
+  if (resultPlan.data.status !== "complete" || Object.hasOwn(resultPlan.data, "current_action")
+    || !sameValue(without(parentPlan.data, ["status", "current_action", "updated", "actions"]), without(resultPlan.data, ["status", "current_action", "updated", "actions"]))) {
+    return unverifiable("the Plan changes by more than becoming complete and losing current_action");
   }
-  // Each changed line is the front matter's own, not a body line that happens to read the same.
-  if (!removedFrontMatterLine(file, base, (line) => PLAN_STATUS.test(line), "status: active")
-    || !file.hunks.some((lines) => lines.some((line, index) => line === "-status: active" && (lines[index + 1] === "+status: complete"
-      // The writer's `updated:` bump may sit directly below `status:`: the pair is replaced together.
-      || (/^-updated: \d{4}-\d{2}-\d{2}$/.test(lines[index + 1] ?? "") && lines[index + 2] === "+status: complete" && /^\+updated: \d{4}-\d{2}-\d{2}$/.test(lines[index + 3] ?? "")))))) {
-    return unverifiable("the status change is not the front matter's own `status: active` line replaced in place by `status: complete`");
+  if (parentPlan.body !== resultPlan.body) return unverifiable("the Plan's body changes");
+
+  const before = parentPlan.data.actions;
+  const after = resultPlan.data.actions;
+  if (!Array.isArray(before) || !Array.isArray(after) || before.length === 0 || before.length !== after.length) return unverifiable("the Plan's Actions are not the same list before and after");
+  const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  const seen = new Set<string>();
+  let completed = false;
+  for (let index = 0; index < before.length; index++) {
+    const was = record(before[index]);
+    const now = record(after[index]);
+    if (!was || !now || typeof was.id !== "string" || now.id !== was.id || seen.has(was.id)) return unverifiable("the Plan's Actions do not keep unique ids in the same order");
+    seen.add(was.id);
+    if (was.id === id) {
+      completed = true;
+      if (was.status === "done" || now.status !== "done" || !sameValue(without(was, ["status", "next_action"]), without(now, ["status", "next_action"]))) {
+        return unverifiable(`Action ${id} does not change from not-done to done with nothing else but its next_action`);
+      }
+    } else if (!sameValue(was, now) || (was.status !== "done" && was.status !== "deferred")) {
+      return unverifiable(`Action ${String(was.id)} is not unchanged and already done or deferred at the parent revision`);
+    }
   }
-  if (!removedFrontMatterLine(file, base, (line) => PLAN_POINTER.test(line), `current_action: ${id}`)) {
-    return unverifiable("the removed Plan current_action line is not the front matter's own line at the parent revision");
-  }
-  return null;
+  return completed ? null : unverifiable(`Action ${id} is not in the Plan`);
 }
 
 const DATED_UPDATED = /^updated: (\d{4}-\d{2}-\d{2})$/;
