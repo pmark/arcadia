@@ -4,7 +4,7 @@
 - Evidence observed: November 8, 2026, America/Los_Angeles.
 - Retrospective source: `pmark/arcadia@1dcc6295be6037056d548f551b33fec81ad4ea50`.
 - Candidate: `pmark/arcadia@ef638bc883ae7ae661a2d811f701a58afcb7726f`. The reviewed candidate merged into `main` through [PR #2287](https://github.com/pmark/arcadia/pull/2287) on November 8, 2026 at 21:06 UTC, as commit [`564789b97`](https://github.com/pmark/arcadia/commit/564789b97dfedba5f80146bb6c30ce4884d12f1a).
-- Eligibility: editorial draft requested directly. A shipped-change cutoff and publication eligibility have not been established. The canonical URL in frontmatter is the intended GitHub Pages destination under Decision 0165.
+- Eligibility: operator explicitly requested this ship note for the Field Notes site and feed. The preflight fix merged on November 8. The preceding published ship note, One press, is dated November 1, in the previous America/Los_Angeles calendar week. The canonical URL in frontmatter is the intended GitHub Pages destination under Decision 0165.
 - Authoring: Clara / Claudia Mason, Claude Sonnet 5.5, medium. Rowan edited for clarity and added the METR source.
 
 | Claim | Primary source | Limit |
@@ -29,4 +29,4 @@ The repeated Field Notes habit is editorial direction proposed in this post.
 
 ## Delivery handoff
 
-Draft for the [Arcadia Field Notes blog](https://pmark.github.io/arcadia/) under [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). Publication eligibility is pending.
+Publication authorized for the [Arcadia Field Notes blog](https://pmark.github.io/arcadia/) and its feed under [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). The delivery outcome is recorded after verifying the page and feed. To unpublish, set the article status to `withdrawn` in a reviewed PR and verify the next Blog deployment removes the page and feed entry.
