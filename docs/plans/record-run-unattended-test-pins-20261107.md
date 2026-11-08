@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: record-run-unattended-test-pins-20261107
 project: arcadia
-status: active
+status: complete
 milestone: Record run unattended test pins 20261107
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -388,11 +388,11 @@ actions:
     references: []
   - id: pin-agent-role-guard
     title: Pin that the agent role guard accepts exactly builder and critic, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the agent role guard accepts exactly builder and critic, with a new test file.
+    next_action: Completed via Agent Ask complete-pin-agent-role-guard-ed616c8b216c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-agent-role-guard
     clarification: clarified
     confidence: high
@@ -407,7 +407,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-agent-role-guard
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
