@@ -171,11 +171,11 @@ actions:
     references: []
   - id: pin-authoritative-control-path
     title: Pin which relative paths count as authoritative control records, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which relative paths count as authoritative control records, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-authoritative-control-path-debf0b75c552; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-authoritative-control-path
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-authoritative-control-path
+current_action: pin-stable-proposal-id
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
