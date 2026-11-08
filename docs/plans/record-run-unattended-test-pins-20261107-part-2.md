@@ -71,11 +71,11 @@ actions:
     references: []
   - id: pin-doc-ref-builders
     title: Pin the stable plan, proposal and plan-question document reference formats, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the stable plan, proposal and plan-question document reference formats, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-doc-ref-builders-371c65af4a4b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-doc-ref-builders
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-doc-ref-builders
+current_action: pin-checks-repair-request-id
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
