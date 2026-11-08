@@ -45,7 +45,11 @@
  * The Plan-completing settlement (#2270) is a verified shape only with the
  * commit's parent revision of PROJECT.md and the Plan (`parentDocuments`):
  * one Plan, the active one, completed at its current Action with every other
- * Action already done, in front-matter lines only. Residual there: the
+ * Action already done, in front-matter lines only. The parent is read with the
+ * repository's own YAML front-matter parser (a parse error, duplicate key or
+ * odd `actions` list refuses), and the Plan is the one whose `slug` is the
+ * parent's `active_plan`; a second Plan with the same slug is not visible
+ * from the evidence. Residual there: the
  * evidence is the commit's parent, not the merge result, so an Action added to
  * the Plan on the base branch after the branch point is not seen; and a Plan
  * whose other Actions are deferred, or that has a queued successor, stays
@@ -74,6 +78,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { parse as parseYaml } from "yaml";
 import { autoSettleRequestId } from "../ask/autoSettleRequestId.js";
 
 export type PatchFileClass =
@@ -1154,44 +1159,40 @@ function governedShapeViolations(
   return { violations, carriedAsks, nextActionRewrites };
 }
 
-/** The front matter's top-level `key: value` lines; null when the document has no front matter. */
-function frontMatterScalars(text: string): Map<string, string> | null {
-  const lines = text.split(/\r?\n/);
-  const end = lines.indexOf("---", 1);
-  if (lines[0] !== "---" || end === -1) return null;
-  const scalars = new Map<string, string>();
-  for (const line of lines.slice(1, end)) {
-    const match = /^([A-Za-z_][\w-]*): (\S.*)$/.exec(line);
-    if (match && !scalars.has(match[1])) scalars.set(match[1], match[2].trim());
+/** The same fence `src/docs/parse.ts` uses for a managed document's front matter. */
+const FRONT_MATTER_FENCE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+
+/**
+ * A document's front matter as the repository's own parser reads it (the same
+ * fence and the `yaml` package, whose default refuses duplicate keys), with
+ * the lines it spans (1-based, the fences excluded). Null on a missing fence,
+ * any parse error, or a front matter that is not a mapping: the evidence is
+ * then unusable and the completion stays refused.
+ */
+function parseFrontMatter(text: string): { data: Record<string, unknown>; firstLine: number; lastLine: number } | null {
+  const match = FRONT_MATTER_FENCE.exec(text);
+  if (!match) return null;
+  try {
+    const data = parseYaml(match[1]) as unknown;
+    if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
+    return { data: data as Record<string, unknown>, firstLine: 2, lastLine: match[1].split(/\r?\n/).length + 1 };
+  } catch {
+    return null;
   }
-  return scalars;
 }
 
-/** Each Action's id and status in a Plan document's front matter, read by the line shapes the settlement writer uses; null when unreadable. */
-function planActionStatuses(text: string): Map<string, string> | null {
-  const lines = text.split(/\r?\n/);
-  const end = lines.indexOf("---", 1);
-  if (lines[0] !== "---" || end === -1) return null;
+/** Each Action's id and status from the parsed `actions` list; null when it is not an array of mappings with unique string ids and string statuses. */
+function planActionStatuses(data: Record<string, unknown>): Map<string, string> | null {
+  const actions = data.actions;
+  if (!Array.isArray(actions) || actions.length === 0) return null;
   const statuses = new Map<string, string>();
-  let current: string | null = null;
-  let inActions = false;
-  for (const line of lines.slice(1, end)) {
-    if (/^\S/.test(line)) inActions = line === "actions:";
-    if (!inActions) continue;
-    const id = ACTION_ID.exec(line)?.[1];
-    if (id !== undefined) {
-      if (statuses.has(id)) return null;
-      statuses.set(id, "");
-      current = id;
-    } else if (current !== null) {
-      const status = ACTION_STATUS.exec(line)?.[1];
-      if (status !== undefined) {
-        if (statuses.get(current) !== "") return null;
-        statuses.set(current, status);
-      }
-    }
+  for (const action of actions as unknown[]) {
+    if (action === null || typeof action !== "object" || Array.isArray(action)) return null;
+    const { id, status } = action as Record<string, unknown>;
+    if (typeof id !== "string" || typeof status !== "string" || statuses.has(id)) return null;
+    statuses.set(id, status);
   }
-  return statuses.size > 0 && [...statuses.values()].every((status) => status !== "") ? statuses : null;
+  return statuses;
 }
 
 /** The old-side line numbers of a file's removed lines that satisfy a test. */
@@ -1208,12 +1209,12 @@ function removedOldLines(file: ParsedFile, test: (line: string) => boolean): num
   return found;
 }
 
-/** Whether the file's only removed line matching `test` is the front matter's own line, reading `expected` at that old line of `base`. */
+/** Whether the file's only removed line matching `test` is inside the parent's real front matter and reads `expected` there. */
 function removedFrontMatterLine(file: ParsedFile, base: string, test: (line: string) => boolean, expected: string): boolean {
-  const baseLines = base.split(/\r?\n/);
-  const fenceEnd = baseLines.indexOf("---", 1);
+  const front = parseFrontMatter(base);
   const found = removedOldLines(file, test);
-  return found.length === 1 && Number.isInteger(found[0]) && found[0] >= 2 && found[0] <= fenceEnd && baseLines[found[0] - 1] === expected;
+  return front !== null && found.length === 1 && Number.isInteger(found[0]) && found[0] >= front.firstLine && found[0] <= front.lastLine
+    && base.split(/\r?\n/)[found[0] - 1] === expected;
 }
 
 /**
@@ -1242,19 +1243,21 @@ function planCompletionRefusal(
   if (allCompletions.filter((entry) => entry.file.commit === file.commit).length !== 1) return unverifiable("the commit completes more than one Plan");
   const removals = allRemovals.filter((entry) => entry.file.commit === file.commit);
   if (removals.length !== 1 || removals[0].id !== id) return unverifiable("the same commit does not remove PROJECT.md's current_action at that Action");
-  const project = frontMatterScalars(projectBase);
-  if (!project || `docs/plans/${project.get("active_plan")}.md` !== plan || project.get("current_action") !== id) {
-    return unverifiable("the parent revision's PROJECT.md does not name this Plan as active_plan with current_action at that Action");
+  const project = parseFrontMatter(projectBase);
+  const front = parseFrontMatter(base);
+  if (!project || !front) return unverifiable("the parent revision's PROJECT.md or Plan front matter could not be parsed");
+  // The real resolver (src/docs/dispatch.ts) finds the active Plan by its slug, never by file name.
+  if (typeof front.data.slug !== "string" || project.data.active_plan !== front.data.slug || project.data.current_action !== id) {
+    return unverifiable("the parent revision's PROJECT.md does not name this Plan's slug as active_plan with current_action at that Action");
   }
   if (!removedFrontMatterLine(removals[0].file, projectBase, (line) => PLAN_POINTER.test(line), `current_action: ${id}`)) {
     return unverifiable("the removed PROJECT.md current_action line is not the front matter's own line at the parent revision");
   }
   if (doneHere.length !== 1 || doneHere[0] !== id) return unverifiable("the Action marked done is not exactly the one current_action leaves");
-  const front = frontMatterScalars(base);
-  if (!front || front.get("status") !== "active" || front.get("current_action") !== id) {
+  if (front.data.status !== "active" || front.data.current_action !== id) {
     return unverifiable("the parent revision's Plan is not active with current_action at that Action");
   }
-  const statuses = planActionStatuses(base);
+  const statuses = planActionStatuses(front.data);
   if (!statuses || !statuses.has(id)) return unverifiable("the parent revision's Plan Actions could not be read");
   const notDone = [...statuses].filter(([action, status]) => action !== id && status !== "done").map(([action]) => action);
   if (statuses.get(id) === "done" || notDone.length > 0) {
@@ -1262,7 +1265,9 @@ function planCompletionRefusal(
   }
   // Each changed line is the front matter's own, not a body line that happens to read the same.
   if (!removedFrontMatterLine(file, base, (line) => PLAN_STATUS.test(line), "status: active")
-    || !file.hunks.some((lines) => lines.some((line, index) => line === "-status: active" && lines[index + 1] === "+status: complete"))) {
+    || !file.hunks.some((lines) => lines.some((line, index) => line === "-status: active" && (lines[index + 1] === "+status: complete"
+      // The writer's `updated:` bump may sit directly below `status:`: the pair is replaced together.
+      || (/^-updated: \d{4}-\d{2}-\d{2}$/.test(lines[index + 1] ?? "") && lines[index + 2] === "+status: complete" && /^\+updated: \d{4}-\d{2}-\d{2}$/.test(lines[index + 3] ?? "")))))) {
     return unverifiable("the status change is not the front matter's own `status: active` line replaced in place by `status: complete`");
   }
   if (!removedFrontMatterLine(file, base, (line) => PLAN_POINTER.test(line), `current_action: ${id}`)) {

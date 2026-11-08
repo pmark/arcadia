@@ -22,8 +22,8 @@ const SETTLED = "Written by `arcadia agent-ask settle --apply` (asksettle_012345
 const askContent = (fields: Record<string, string> = {}) => `${JSON.stringify({ request_id: "complete-last", project: "p", target_ref: `action/${LAST}`, intent: "complete", notes: "real", ...fields }, null, 2)}\n`;
 
 type Statuses = Record<string, string>;
-function plan(opts: { status: string | null; actions: Statuses; current: string | null; completedVia?: string; body?: string[] }): string {
-  const lines = ["---", "arcadia: v1", "type: plan", "slug: p", ...(opts.status === null ? [] : [`status: ${opts.status}`]), "updated: 2026-11-08", "actions:"];
+function plan(opts: { status: string | null; actions: Statuses; current: string | null; completedVia?: string; body?: string[]; slug?: string }): string {
+  const lines = ["---", "arcadia: v1", "type: plan", `slug: ${opts.slug ?? "p"}`, ...(opts.status === null ? [] : [`status: ${opts.status}`]), "updated: 2026-11-08", "actions:"];
   for (const [id, status] of Object.entries(opts.actions)) {
     lines.push(`  - id: ${id}`, `    title: Do ${id}.`, `    status: ${status}`, "    effort: session",
       `    next_action: ${status === "done" && opts.completedVia && id === LAST ? `Completed via Agent Ask ${opts.completedVia}; no further action.` : status === "done" ? "Completed via Agent Ask earlier; no further action." : `Do ${id}.`}`);
@@ -232,6 +232,53 @@ describe("a Plan-completing settlement (Issue #2270)", () => {
       const result = check(s, s.parents);
       expect(shapeOf(result, PLAN_PATH)).toMatchObject({ verified: false });
       expect(shapeOf(result, "PROJECT.md")).toMatchObject({ verified: false });
+    });
+  });
+
+  describe("review round 2: the parent is read by the real YAML parser", () => {
+    const withExtra = (content: string, extra: string[]) => content.replace("questions: []", `${extra.join("\n")}\nquestions: []`);
+    const baseOf = (slug = "p") => plan({ status: "active", actions: COMPLETING.base, current: LAST, slug });
+    const afterOf = (slug = "p") => plan({ ...COMPLETING.after, completedVia: "complete-last", slug });
+    const withHidden = (extra: string[]): Scenario => ({
+      ...COMPLETING,
+      baseFiles: { [PLAN_PATH]: withExtra(baseOf(), extra) },
+      settleFiles: { [PLAN_PATH]: withExtra(afterOf(), extra) }
+    });
+    const refused = (scenario: Scenario) => {
+      const s = series(scenario);
+      expect(shapeOf(check(s, s.parents), PLAN_PATH)).toMatchObject({ verified: false });
+      expect(shapeOf(check(s, s.parents), "PROJECT.md")).toMatchObject({ verified: false });
+    };
+
+    it("H1: refuses an open Action written after a column-0 comment", () => {
+      refused(withHidden(["# parked below", "  - id: hidden", "    title: Hidden", "    status: open", "    next_action: Hidden."]));
+    });
+    it("H2: refuses an open Action written in flow style", () => {
+      refused(withHidden(["  - {id: hidden, title: Hidden, status: open}"]));
+    });
+    it("H3: refuses an open Action written with quoted keys", () => {
+      refused(withHidden(['  - "id": hidden', "    title: Hidden", '    "status": open']));
+    });
+    it("D1: refuses a parent with a duplicate current_action", () => {
+      refused(withHidden([`current_action: ${LAST}`]));
+    });
+    it("D3: refuses a parent with a duplicate status", () => {
+      refused(withHidden(["status: active"]));
+    });
+    it("A1: refuses completing the file whose slug is not active_plan, though its name is", () => {
+      refused({
+        ...COMPLETING,
+        baseFiles: { [PLAN_PATH]: baseOf("other"), "docs/plans/zzz.md": baseOf("p") },
+        settleFiles: { [PLAN_PATH]: afterOf("other") }
+      });
+    });
+
+    it("allows the writer's updated: bump directly below status:", () => {
+      const base = baseOf().replace("updated: 2026-11-08", "updated: 2026-11-07");
+      expect(base).toContain("status: active\nupdated: 2026-11-07");
+      const s = series({ ...COMPLETING, baseFiles: { [PLAN_PATH]: base } });
+      expect(s.patch).toContain("-status: active\n-updated: 2026-11-07\n+status: complete\n+updated: 2026-11-08");
+      expect(shapeOf(check(s, s.parents), PLAN_PATH)).toMatchObject({ verified: true });
     });
   });
 });
