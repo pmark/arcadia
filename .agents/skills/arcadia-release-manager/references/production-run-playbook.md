@@ -94,7 +94,10 @@ batch, and only then ask for the press.
    took an Off and four operator answers. If a menu offers a card outside this
    item, say so in the option's consequence: its candidate waits for the
    operator's merge, and the design the acceptance needs must be written into the
-   Action, because a headless Session at the start tier will not choose it.
+   Action, because a headless Session at the start tier will not choose it. A
+   planning-routed Action is different: the run waits for a planning Decision and
+   produces no candidate. Correct its route, or the Plan, before the pre-press
+   gate, rather than offering it on a card.
 6. **Governed records on remote main.** Settlement and pointer commits merged
    as merge commits (never squash); `current_action` names an eligible in-scope
    Action and the scheduler preview identifies the first pinned Action; the

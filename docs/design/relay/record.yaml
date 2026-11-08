@@ -143,7 +143,7 @@ frame:
         - M3
         - M4
         - M5
-      proof: A Playwright test from every Workspace route, while production is Active, shows the Off control, presses it once, and sees Inactive with the new revision; a Relay test where "how do I stop this?" returns the control rather than instructions or an action Relay takes itself; and the operator finding it unaided on their phone.
+      proof: A Playwright test from every Workspace route, while production is Active, shows the Off control, presses it once, and sees Inactive with the new revision; the same test with the status read failing still shows the control and lets it be pressed, and the new revision shows once the read is restored; a Relay test where "how do I stop this?" returns the control rather than instructions or an action Relay takes itself; and the operator finding it unaided on their phone.
     - id: REQ-020
       status: proposed
       statement: An operator's approval is given once, on a surface that records its exact scope (the PRs, cards or steps it names) and its end (expiry, or what voids it), and any session or Relay view inside that scope can read the record. A sentence relayed from another session never counts as approval, and no one relies on an approval whose record they cannot see.

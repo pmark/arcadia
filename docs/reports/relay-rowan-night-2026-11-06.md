@@ -100,7 +100,8 @@ touches and about 6.5 hours.
 
 ## Part 2: the evening and the night after (to 2026-11-07 05:30Z)
 
-This part covers what happened after #2153 merged at 19:58Z. **Sources:** Signal's
+This part covers what Part 1 left out: events from 19:00Z on (rows 30–32
+happened before #2153 merged at 19:58Z) up to 05:30Z. **Sources:** Signal's
 log rows 30–32, #1929 from 19:00Z, PRs #2148–#2176, the lessons captured
 since, host state at 05:30Z, and one transcript search to confirm S034's
 wording. The records this part filed are dated up to about 05:40Z. On #1929, 2026-11-06 took **23 operator touches** across the UTC day
@@ -133,8 +134,12 @@ Ranked by what changes dispatch and operator touches per run.
    the worker on the host, and the operator is off-site. That's one refused press
    and at least 95 minutes so far, and it recurs at every reboot. **Form:**
    Issue #2179, relayed to the current custodian on #1929. Restarting the worker
-   is runtime recovery, so it's the operator's call. Later fixed by #2275: a lost race is
-   now loud, and a card with a downed worker is no longer ready to press.
+   is runtime recovery, so it's the operator's call. #2275 later made the lost
+   race loud (an ERROR log, `worker-lock-lost.json`, `worker status`) and stopped
+   `work monitor` calling such a card ready to press. It did not retire the
+   legacy agent: `~/Library/LaunchAgents/com.arcadia.worker.plist` is still
+   installed, so a reboot can repeat the race, and the governed worker still
+   needs a host restart to recover.
 2. **Pinned Actions are buildable unattended as written** (rows 33–37, 40, 41).
    Cost: the narrative-summarization run took about 6 touches (23:08, 00:20,
    00:43 and three re-plan answers), three worker attempts and about three
@@ -160,14 +165,15 @@ Ranked by what changes dispatch and operator touches per run.
    offering. It also adds a per-night tally of touches avoided against touches
    caused, with a stop rule.
 
-**Counterfactual for item 1.** Suppose the governed install had retired the
-legacy agent, or a lost race had failed loudly. After the 03:53Z reboot,
-either the governed worker would hold the pidfile, or liveness would have
-flagged the gap at about 03:55Z. Either way the 04:29Z press would not have
-refused at P2, so one touch is saved. The card would also not have spent
-more than 95 minutes unpressable, and the custodian who took over at 05:29Z
-would not have been about to hit the same refusal. Each future reboot saves
-one off-site host action.
+**Counterfactual for item 1.** Prevention and alerting save different things.
+If the governed install had retired the legacy agent, the governed worker
+would have held the pidfile after the 03:53Z reboot. The 04:29Z press would
+not have refused at P2, the card would not have spent more than 95 minutes
+unpressable, and no reboot would need a host action. A loud failure alone
+(what #2275 shipped) would have flagged the gap at about 03:55Z and stopped
+the failed press, saving that touch. The card would still stay unpressable
+until someone restarted the governed worker on the host, so it saves the
+touch but not the time.
 
 **Deduplicated, resolved or in flight.**
 - The wake source (row 42) is in flight: Decision 0184 A, the design in
