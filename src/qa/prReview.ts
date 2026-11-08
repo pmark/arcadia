@@ -1634,17 +1634,18 @@ function readCommitObjectFiles(
 /**
  * `PROJECT.md` and Plan documents as each candidate commit's first parent held
  * them, from GitHub's Git object reads, for the commits that change both (the
- * only commits that can be a Plan-completing settlement). Null when nothing was
- * asked for; a commit whose parent or any document could not be read is left
- * out, which leaves that completion refused rather than guessed.
+ * only commits that can be a Plan-completing settlement). Always an object
+ * (empty when no commit qualifies); a commit with other than one parent, or
+ * any of whose documents could not be read, is left out, which leaves that
+ * completion refused rather than guessed.
  */
-function readParentDocuments(
+export function readParentDocuments(
   cwd: string,
   repository: string,
   commitFiles: CommitObjectFiles,
   parentsOf: Readonly<Record<string, readonly string[]>>,
   runCommand: NonNullable<QaPrReviewDependencies["runCommand"]>
-): ParentDocuments | null {
+): ParentDocuments {
   const read: Record<string, Record<string, string>> = {};
   for (const [oid, files] of Object.entries(commitFiles)) {
     const paths = files.map((file) => file.path);
@@ -1657,7 +1658,7 @@ function readParentDocuments(
       for (const filePath of ["PROJECT.md", ...plans]) {
         const content = runCommand({
           command: "gh",
-          args: ["api", "--method", "GET", "-H", "Accept: application/vnd.github.raw", `repos/${repository}/contents/${filePath}?ref=${shas[0]}`],
+          args: ["api", "--method", "GET", "-H", "Accept: application/vnd.github.raw", `repos/${repository}/contents/${filePath.split("/").map(encodeURIComponent).join("/")}?ref=${shas[0]}`],
           cwd,
           timeoutMs: 30_000
         });

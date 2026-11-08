@@ -42,6 +42,15 @@
  * verdict-level and only anchors the claims to this patch: the per-file
  * classification above alone decides whether any claim can be accepted.
  *
+ * The Plan-completing settlement (#2270) is a verified shape only with the
+ * commit's parent revision of PROJECT.md and the Plan (`parentDocuments`):
+ * one Plan, the active one, completed at its current Action with every other
+ * Action already done, in front-matter lines only. Residual there: the
+ * evidence is the commit's parent, not the merge result, so an Action added to
+ * the Plan on the base branch after the branch point is not seen; and a Plan
+ * whose other Actions are deferred, or that has a queued successor, stays
+ * refused.
+ *
  * Residual: a forged attestation can still make shape-limited governed edits
  * pass this check (add Agent Ask data files or archive them, by rename or as a
  * deletion beside a same-Ask archive copy differing only in candidate_revision,
@@ -1086,19 +1095,13 @@ function governedShapeViolations(
   // Plan-completing settlements: verified against the parent revision, or refused.
   const verifiedCompletions = new Set<ParsedFile>();
   for (const completion of planCompletions) {
-    const refusal = planCompletionRefusal(completion, commits, parentDocuments);
+    const refusal = planCompletionRefusal(completion, commits, parentDocuments, planCompletions, projectRemovals);
     if (refusal) violate(completion.plan, refusal);
     else verifiedCompletions.add(completion.file);
   }
   for (const removal of projectRemovals) {
     const completion = planCompletions.find((entry) => entry.file.commit === removal.file.commit && entry.id === removal.id && verifiedCompletions.has(entry.file));
-    const sha = commits[removal.file.commit]?.sha;
-    const base = parentDocuments && sha ? parentDocuments[sha]?.["PROJECT.md"] : undefined;
-    const front = base === undefined ? null : frontMatterScalars(base);
-    if (!completion) violate("PROJECT.md", "PROJECT.md's current_action may be removed only by the same commit's verified completion of that Action as the last Action of its Plan");
-    else if (!front || front.get("current_action") !== removal.id || `docs/plans/${front.get("active_plan")}.md` !== completion.plan) {
-      violate("PROJECT.md", "PROJECT.md's current_action may be removed only for the active Plan, at the Action the parent revision's PROJECT.md names");
-    }
+    if (!completion) violate("PROJECT.md", "PROJECT.md's current_action may be removed only by the same commit's verified completion of the active Plan at that Action");
   }
   // The pointer may only leave an Action this patch marks done, and every
   // Action marked done must be the one the pointer left.
@@ -1191,24 +1194,61 @@ function planActionStatuses(text: string): Map<string, string> | null {
   return statuses.size > 0 && [...statuses.values()].every((status) => status !== "") ? statuses : null;
 }
 
+/** The old-side line numbers of a file's removed lines that satisfy a test. */
+function removedOldLines(file: ParsedFile, test: (line: string) => boolean): number[] {
+  const found: number[] = [];
+  file.hunks.forEach((lines, hunk) => {
+    let oldLine = file.hunkStarts[hunk];
+    for (const line of lines) {
+      if (line.startsWith("\\") || line.startsWith("+")) continue;
+      if (line.startsWith("-") && test(line.slice(1))) found.push(oldLine);
+      oldLine += 1;
+    }
+  });
+  return found;
+}
+
+/** Whether the file's only removed line matching `test` is the front matter's own line, reading `expected` at that old line of `base`. */
+function removedFrontMatterLine(file: ParsedFile, base: string, test: (line: string) => boolean, expected: string): boolean {
+  const baseLines = base.split(/\r?\n/);
+  const fenceEnd = baseLines.indexOf("---", 1);
+  const found = removedOldLines(file, test);
+  return found.length === 1 && Number.isInteger(found[0]) && found[0] >= 2 && found[0] <= fenceEnd && baseLines[found[0] - 1] === expected;
+}
+
 /**
  * Why a Plan's removed-only `current_action` plus `status: active` ->
  * `complete` is not a verified completion; null when it is. It is one only
- * when the commit's parent revision of the Plan was read and shows: the Plan
- * `active`, `current_action` at exactly the Action this commit marks done (and
- * only that one), that Action not yet done, and every other Action already
- * done. The status line must also be the front matter's own, at the line the
- * parent has it.
+ * when the commit's parent revision was read and shows: the Plan `active` and
+ * named by PROJECT.md's `active_plan`, both pointers at exactly the Action this
+ * commit marks done (and only that one), that Action not yet done, and every
+ * other Action already done. The same commit must remove PROJECT.md's
+ * pointer, it is the commit's only completion, and each changed line (the
+ * status replacement, both pointers) is the front matter's own, at the line
+ * the parent has it.
  */
 function planCompletionRefusal(
   completion: { file: ParsedFile; plan: string; id: string; doneHere: string[] },
-  commits: ParsedCommit[], parentDocuments: ParentDocuments | null | undefined
+  commits: ParsedCommit[], parentDocuments: ParentDocuments | null | undefined,
+  allCompletions: ReadonlyArray<{ file: ParsedFile }>, allRemovals: ReadonlyArray<{ file: ParsedFile; id: string }>
 ): string | null {
   const { file, plan, id, doneHere } = completion;
   const unverifiable = (why: string) => `the Plan is completed here (current_action removed, status complete), but ${why}`;
   const sha = commits[file.commit]?.sha;
-  const base = parentDocuments && sha ? parentDocuments[sha]?.[plan] : undefined;
-  if (base === undefined) return unverifiable("the Plan document at the commit's parent revision was not read, so it cannot be shown that every other Action was already done");
+  const documents = parentDocuments && sha ? parentDocuments[sha] : undefined;
+  const base = documents?.[plan];
+  const projectBase = documents?.["PROJECT.md"];
+  if (base === undefined || projectBase === undefined) return unverifiable("the Plan and PROJECT.md at the commit's parent revision were not both read, so it cannot be shown that every other Action was already done");
+  if (allCompletions.filter((entry) => entry.file.commit === file.commit).length !== 1) return unverifiable("the commit completes more than one Plan");
+  const removals = allRemovals.filter((entry) => entry.file.commit === file.commit);
+  if (removals.length !== 1 || removals[0].id !== id) return unverifiable("the same commit does not remove PROJECT.md's current_action at that Action");
+  const project = frontMatterScalars(projectBase);
+  if (!project || `docs/plans/${project.get("active_plan")}.md` !== plan || project.get("current_action") !== id) {
+    return unverifiable("the parent revision's PROJECT.md does not name this Plan as active_plan with current_action at that Action");
+  }
+  if (!removedFrontMatterLine(removals[0].file, projectBase, (line) => PLAN_POINTER.test(line), `current_action: ${id}`)) {
+    return unverifiable("the removed PROJECT.md current_action line is not the front matter's own line at the parent revision");
+  }
   if (doneHere.length !== 1 || doneHere[0] !== id) return unverifiable("the Action marked done is not exactly the one current_action leaves");
   const front = frontMatterScalars(base);
   if (!front || front.get("status") !== "active" || front.get("current_action") !== id) {
@@ -1220,20 +1260,13 @@ function planCompletionRefusal(
   if (statuses.get(id) === "done" || notDone.length > 0) {
     return unverifiable(notDone.length > 0 ? `Action ${notDone.join(", ")} is not done at the parent revision` : `Action ${id} was already done at the parent revision`);
   }
-  // The removed `status:` line is the front matter's own, not a body line that happens to read the same.
-  const baseLines = base.split(/\r?\n/);
-  const fenceEnd = baseLines.indexOf("---", 1);
-  const statusLines: number[] = [];
-  file.hunks.forEach((lines, hunk) => {
-    let oldLine = file.hunkStarts[hunk];
-    for (const line of lines) {
-      if (line.startsWith("\\") || line.startsWith("+")) continue;
-      if (line.startsWith("-") && PLAN_STATUS.test(line.slice(1))) statusLines.push(oldLine);
-      oldLine += 1;
-    }
-  });
-  if (statusLines.length !== 1 || !Number.isInteger(statusLines[0]) || statusLines[0] < 2 || statusLines[0] > fenceEnd || baseLines[statusLines[0] - 1] !== "status: active") {
-    return unverifiable("the removed status line is not the front matter's own `status: active` line at the parent revision");
+  // Each changed line is the front matter's own, not a body line that happens to read the same.
+  if (!removedFrontMatterLine(file, base, (line) => PLAN_STATUS.test(line), "status: active")
+    || !file.hunks.some((lines) => lines.some((line, index) => line === "-status: active" && lines[index + 1] === "+status: complete"))) {
+    return unverifiable("the status change is not the front matter's own `status: active` line replaced in place by `status: complete`");
+  }
+  if (!removedFrontMatterLine(file, base, (line) => PLAN_POINTER.test(line), `current_action: ${id}`)) {
+    return unverifiable("the removed Plan current_action line is not the front matter's own line at the parent revision");
   }
   return null;
 }

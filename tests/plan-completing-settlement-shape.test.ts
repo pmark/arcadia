@@ -22,19 +22,19 @@ const SETTLED = "Written by `arcadia agent-ask settle --apply` (asksettle_012345
 const askContent = (fields: Record<string, string> = {}) => `${JSON.stringify({ request_id: "complete-last", project: "p", target_ref: `action/${LAST}`, intent: "complete", notes: "real", ...fields }, null, 2)}\n`;
 
 type Statuses = Record<string, string>;
-function plan(opts: { status: string; actions: Statuses; current: string | null; completedVia?: string }): string {
-  const lines = ["---", "arcadia: v1", "type: plan", "slug: p", `status: ${opts.status}`, "updated: 2026-11-08", "actions:"];
+function plan(opts: { status: string | null; actions: Statuses; current: string | null; completedVia?: string; body?: string[] }): string {
+  const lines = ["---", "arcadia: v1", "type: plan", "slug: p", ...(opts.status === null ? [] : [`status: ${opts.status}`]), "updated: 2026-11-08", "actions:"];
   for (const [id, status] of Object.entries(opts.actions)) {
     lines.push(`  - id: ${id}`, `    title: Do ${id}.`, `    status: ${status}`, "    effort: session",
       `    next_action: ${status === "done" && opts.completedVia && id === LAST ? `Completed via Agent Ask ${opts.completedVia}; no further action.` : status === "done" ? "Completed via Agent Ask earlier; no further action." : `Do ${id}.`}`);
   }
   lines.push("questions: []");
   if (opts.current !== null) lines.push(`current_action: ${opts.current}`);
-  lines.push("recommended_model: standard", "---", "", "# Body", "");
+  lines.push("recommended_model: standard", "---", "", "# Body", ...(opts.body ?? []), "");
   return lines.join("\n");
 }
-const project = (opts: { activePlan: string; current: string | null }) =>
-  ["---", "slug: arcadia", "status: active", `active_plan: ${opts.activePlan}`, ...(opts.current === null ? [] : [`current_action: ${opts.current}`]), "updated: 2026-11-08", "---", ""].join("\n");
+const project = (opts: { activePlan: string; current: string | null; updated?: string }) =>
+  ["---", "slug: arcadia", "status: active", `active_plan: ${opts.activePlan}`, ...(opts.current === null ? [] : [`current_action: ${opts.current}`]), `updated: ${opts.updated ?? "2026-11-08"}`, "---", ""].join("\n");
 
 const temporary: string[] = [];
 afterEach(() => { for (const dir of temporary.splice(0)) rmSync(dir, { recursive: true, force: true }); });
@@ -48,8 +48,12 @@ interface Scenario {
   baseCurrent?: string;
   basePlanStatus?: string;
   baseActivePlan?: string;
-  after: { status: string; actions: Statuses; current: string | null };
+  after: { status: string | null; actions: Statuses; current: string | null; body?: string[] };
   projectAfter?: string | null;
+  /** Extra or replaced whole files in the base and in the settlement commit. */
+  baseFiles?: Record<string, string>;
+  settleFiles?: Record<string, string>;
+  baseBody?: string[];
 }
 
 /** A base commit, the preserved Ask draft, and the settlement commit; returns the series as the review reads it. */
@@ -67,9 +71,10 @@ function series(scenario: Scenario) {
   const commit = (files: Record<string, string | null>, message: string) => { write(files); git(["add", "-A"]); git(["commit", "-q", "--no-verify", "-F", "-"], message); };
   git(["init", "-q", "-b", "main"]);
   commit({
-    [PLAN_PATH]: plan({ status: scenario.basePlanStatus ?? "active", actions: scenario.base, current: scenario.baseCurrent ?? LAST }),
+    [PLAN_PATH]: plan({ status: scenario.basePlanStatus ?? "active", actions: scenario.base, current: scenario.baseCurrent ?? LAST, body: scenario.baseBody }),
     "PROJECT.md": project({ activePlan: scenario.baseActivePlan ?? "p", current: scenario.baseCurrent ?? LAST }),
-    "MISSION_LOG.md": "# Mission Log\n", "README.md": "# Fixture\n"
+    "MISSION_LOG.md": "# Mission Log\n", "README.md": "# Fixture\n",
+    ...scenario.baseFiles
   }, "base");
   const base = git(["rev-parse", "HEAD"]).trim();
   commit({ [DRAFT]: askContent({ candidate_revision: "abcdef1" }), "docs/work.md": "The work.\n" }, "chore(candidate): preserve\n\nArcadia-Preservation-Request: worker-tick-preserve-session_fixture\n");
@@ -77,7 +82,8 @@ function series(scenario: Scenario) {
     [DRAFT]: null, [ARCHIVE]: askContent({ candidate_revision: "1234567" }),
     [PLAN_PATH]: plan({ ...scenario.after, completedVia: "complete-last" }),
     "PROJECT.md": project({ activePlan: scenario.baseActivePlan ?? "p", current: scenario.projectAfter === undefined ? null : scenario.projectAfter }),
-    "MISSION_LOG.md": "# Mission Log\n\n## 2026-11-08 — Completed it\n"
+    "MISSION_LOG.md": "# Mission Log\n\n## 2026-11-08 — Completed it\n",
+    ...scenario.settleFiles
   }, `chore(arcadia): settle complete-last\n\n${SETTLED}\n`);
   const commits = git(["rev-list", "--reverse", `${base}..HEAD`]).trim().split("\n");
   const commitFiles: Record<string, CommitObjectFile[]> = {};
@@ -88,7 +94,10 @@ function series(scenario: Scenario) {
       const [, , oldBlob, newBlob, status] = meta.split(" ");
       return { path: paths[paths.length - 1], previousPath: paths.length > 1 ? paths[0] : null, blob: status === "D" ? oldBlob : newBlob };
     });
-    parents[oid] = Object.fromEntries(["PROJECT.md", PLAN_PATH].map((file) => [file, git(["show", `${oid}^:${file}`])]));
+    parents[oid] = {};
+    for (const file of commitFiles[oid].map((entry) => entry.path).filter((entry) => entry === "PROJECT.md" || /^docs\/plans\/[^/]+\.md$/.test(entry))) {
+      try { parents[oid][file] = git(["show", `${oid}^:${file}`]); } catch { /* absent at the parent */ }
+    }
   }
   const patch = git(["format-patch", "--stdout", "--no-signature", `${base}..HEAD`]);
   const files = git(["diff", "--name-only", base, "HEAD"]).trim().split("\n");
@@ -123,7 +132,7 @@ describe("a Plan-completing settlement (Issue #2270)", () => {
     for (const evidence of [undefined, null, {}, { [s.settlement]: {} }]) {
       const result = check(s, evidence);
       expect(shapeOf(result, PLAN_PATH)).toMatchObject({ verified: false });
-      expect(shapeOf(result, PLAN_PATH)?.detail).toContain("parent revision was not read");
+      expect(shapeOf(result, PLAN_PATH)?.detail).toContain("parent revision were not both read");
       expect(shapeOf(result, "PROJECT.md")).toMatchObject({ verified: false });
     }
   });
@@ -175,5 +184,54 @@ describe("a Plan-completing settlement (Issue #2270)", () => {
   it("refuses a Plan completion that leaves the Action it completes not done", () => {
     const s = series({ ...COMPLETING, after: { status: "complete", actions: { "first-one": "done", "second-one": "done", [LAST]: "open" }, current: null } });
     expect(shapeOf(check(s, s.parents), PLAN_PATH)).toMatchObject({ verified: false });
+  });
+
+  describe("review round 1 probes", () => {
+    const Q = "docs/plans/q.md";
+    const qBase = plan({ status: "active", actions: { q1: "done", q2: "open" }, current: "q2" });
+    const qDone = plan({ status: "complete", actions: { q1: "done", q2: "done" }, current: null, completedVia: "complete-last" });
+    // `p` is the active Plan in PROJECT.md but is not completed; `q` is a second `status: active` Plan.
+    const nonActive: Scenario = {
+      base: { "first-one": "done", [LAST]: "open" },
+      after: { status: "active", actions: { "first-one": "done", [LAST]: "open" }, current: LAST },
+      baseFiles: { [Q]: qBase },
+      settleFiles: { [Q]: qDone }
+    };
+
+    it("F1: refuses completing a non-active Plan when PROJECT.md is untouched", () => {
+      const s = series({ ...nonActive, projectAfter: LAST });
+      const result = check(s, s.parents);
+      expect(shapeOf(result, Q)).toMatchObject({ verified: false });
+      expect(shapeOf(result, Q)?.detail).toContain("PROJECT.md");
+    });
+
+    it("F1b: refuses it when PROJECT.md only has its updated: bumped", () => {
+      const s = series({ ...nonActive, projectAfter: LAST, settleFiles: { ...nonActive.settleFiles, "PROJECT.md": project({ activePlan: "p", current: LAST, updated: "2026-11-09" }) } });
+      expect(shapeOf(check(s, s.parents), Q)).toMatchObject({ verified: false });
+    });
+
+    it("F5: refuses completing p and q in one commit with the removal naming p", () => {
+      const s = series({ ...COMPLETING, baseFiles: { [Q]: qBase }, settleFiles: { [Q]: qDone } });
+      const result = check(s, s.parents);
+      expect(shapeOf(result, Q)).toMatchObject({ verified: false });
+      expect(shapeOf(result, PLAN_PATH)).toMatchObject({ verified: false });
+      expect(shapeOf(result, PLAN_PATH)?.detail).toContain("more than one Plan");
+      expect(shapeOf(result, "PROJECT.md")).toMatchObject({ verified: false });
+    });
+
+    it("F3: refuses deleting the front-matter status and adding status: complete in the body", () => {
+      const s = series({ ...COMPLETING, after: { status: null, actions: COMPLETING.after.actions, current: null, body: ["status: complete"] } });
+      const result = check(s, s.parents);
+      expect(shapeOf(result, PLAN_PATH)).toMatchObject({ verified: false });
+      expect(shapeOf(result, "PROJECT.md")).toMatchObject({ verified: false });
+    });
+
+    it("F7: refuses removing a body-line current_action while the front-matter pointer stays", () => {
+      const body = ["", "```", "current_action: second-one", "```"];
+      const s = series({ ...COMPLETING, baseBody: body, after: { status: "complete", actions: COMPLETING.after.actions, current: LAST, body: [] } });
+      const result = check(s, s.parents);
+      expect(shapeOf(result, PLAN_PATH)).toMatchObject({ verified: false });
+      expect(shapeOf(result, "PROJECT.md")).toMatchObject({ verified: false });
+    });
   });
 });

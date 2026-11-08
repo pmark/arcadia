@@ -19,7 +19,7 @@ const PINNED: Record<number, string> = {
   3: "9472880392716139c6025b5f0dd4f9a69dd21a9ab16b5a5780760ffecd1863d8",
   4: "6ce71b9d2472ed26a13c4d3d07e8eb2bb1e8cf86fe0dd7c4b9297b2a507c7f99",
   // #2270: a Plan-completing settlement verifies against the parent revision's Plan; not re-pinned again until it ships.
-  5: "a8b4114ef404601e5c0cc684e19c472e68efb9b3e16efde6493b7912fc570df9"
+  5: "50da1c0195c815858107443cf662c2dcdec5738086b65ad7756fb9e96c1b431c"
 };
 
 function judgementContentHash(): string {
