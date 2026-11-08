@@ -91,11 +91,11 @@ actions:
     references: []
   - id: pin-checks-repair-request-id
     title: Pin that the required-checks repair request id combines the failed Session id and head under a fixed prefix, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the required-checks repair request id combines the failed Session id and head under a fixed prefix, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-checks-repair-request-id-7cbc78c0fa08; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-checks-repair-request-id
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-checks-repair-request-id
+current_action: pin-handoff-request-prefix
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
