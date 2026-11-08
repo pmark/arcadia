@@ -2,14 +2,15 @@
 
 Parts 1 and 2 are in [relay-rowan-night-2026-11-06.md](relay-rowan-night-2026-11-06.md)
 (Part 1 merged as #2153; Part 2 is #2181 and may still be open). This part is its own
-file so that it doesn't edit the same lines as #2181. It covers the night the operator
+file so that the report doesn't conflict with #2181 (the Relay record and brief hunks still sit beside #2181's, so the second PR to merge needs a trivial rebase). It covers the night the operator
 set "a record for unattended sessions": Plan `record-run-unattended-test-pins-20261107`,
 20 test-only pins in four 5-Action batches under one day grant.
 
 **Result.** 19 of 20 Actions done: 18 merged by the worker with no operator merge, and
 Action 15 landed by hand (#2260) after an exact-head independent review. Pins merge at
-about one per 15 minutes when nothing is wrong. Worker merges without a worker failure:
-14 in a row (Actions 1 to 14, per Signal 3's log). Best run with no operator input at
+about one per 15 minutes when nothing is wrong (my estimate from the merge times in
+Signal 3's log). Signal 3's log counts a "streak" of 14 for Actions 1 to 14, meaning
+no Action failed and was left unmerged; it still includes the stalls in rows 45 and 49. Best run with no operator input at
 all: 5 (batch 1, per Rowan's handoff). Action 20 (the last) stalled on #2270 and
 production went Off at 03:18Z; at 05:29Z the operator answered "1A 2A 3B 4A".
 
@@ -27,7 +28,7 @@ gap, (d) product defect, (e) Plan or card design error, (f) a gate that worked,
 
 | # | UTC | Actor | Event | Operator touch | Min lost | Class | Evidence |
 |---|---|---|---|---|---|---|---|
-| 45 | 16:17–17:17 | Planner | After the batch-1 Off it bound Action 6's packet to codex while the Active policy permits only claude; refused 78+ times and read as an operator tap | no | 48 | d | #2217, #2219 |
+| 45 | 16:17–17:17 (minutes counted from 16:29, when the card was pressed) | Planner | After the batch-1 Off it bound Action 6's packet to codex while the Active policy permits only claude; refused 78+ times and read as an operator tap | no | 48 | d | #2217, #2219 |
 | 46 | 17:17–19:54 | Host, operator | Replacing the packet needed `arcadia review reject`, refused to Rowan by the host; Off 18:11; #2219 merged 19:37 (77 min after it was ready); Active 19:54 | yes | 157 | a | #2217, Keeper log 17:17 to 19:54 |
 | 47 | 15:56–17:01 | Gate PRs | Decision numbers 0185, 0186 and 0188 collided or were renumbered | no | not measured | d | #1275 comment |
 | 48 | 17:30–21:55 | Signal | The operator's "Yes merge them" lived in Signal 2's chat; Signal 3 needed a new word per PR; relays about reviews were wrong twice | yes | not measured | a | [S035](../design/relay/sources/S035-approvals-do-not-carry.md) |

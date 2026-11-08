@@ -65,8 +65,8 @@ batch, and only then ask for the press.
      review still returned needs-follow-up, because the Plan-completing
      settlement is outside the governed-record shape (#2270). Until #2270 is
      fixed, a card holding a Plan's last Action fails the pre-mortem as well,
-     and production does not announce a finished Plan (`scope_complete`,
-     #2273): decide completion from the last merge plus no `current_action` on
+     and production may not announce a finished Plan (`scope_complete`,
+     #2273; read from the code, not confirmed by a run): decide completion from the last merge plus no `current_action` on
      main.
 5. **Action shape.** Pinned Actions touch only `WORKER_MERGE_SAFE_PATHS`
    (`src/production/workerMerge.ts`), never `src/production` or
@@ -143,9 +143,9 @@ batch, and only then ask for the press.
   that session's own chat.
 - A watcher that cannot read is silent. `gh` fails TLS inside the Claude Code
   sandbox and the Monitor tool is sandboxed, so run a `gh` watcher with the
-  sandbox off, and confirm its `WATCHING` line and one real read before you
-  idle; the script retries failed reads until TIMEOUT without telling a
-  background caller (#2274). A PR watcher also waits for required checks to
+  sandbox off, and confirm one real read before you idle (a `pr` watch prints
+  `WATCHING` before it reads anything); the script prints one stderr line on
+  its first failed read and then retries silently until TIMEOUT (#2274). A PR watcher also waits for required checks to
   exist on the current head, not only for the PR state to change.
 - At each wake, or every 10 minutes without one, check: `arcadia production status` (escalations, red
   alerts), recent `operator_pings`, open PRs for the pinned Actions, and the
