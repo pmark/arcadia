@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { execFileSync } from "node:child_process";
+import { stringify } from "yaml";
 import { assertOperatorSettlementContract } from "../src/operatorActions/operatorExecution.js";
 import { buildDiagnosticAsk, governingDecisionReferences, GOVERNING_DECISIONS } from "../src/production/startRunSignIn.js";
 import { runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
@@ -179,7 +180,7 @@ describe("arcadia start-run pins", () => {
   const planDoc = (status: string, doneAction = "") => `---\nslug: fixture-plan\nproject: arcadia\nstatus: ${status}\nactions:\n  - id: first-action\n    status: ${doneAction === "first-action" ? "done" : "open"}\n  - id: second-action\n    status: open\n---\nbody\n`;
   const decision = (status = "approved", answer = "Yes") => `---\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
 
-  function fixture(options: { planStatus?: string; origin?: string; decisions?: Record<string, string>; files?: Record<string, string>; production?: Partial<ReturnType<StartRunPinsDeps["production"]>>; queueTop?: string[]; workers?: string; done?: string; cards?: string[]; } = {}) {
+  function fixture(options: { planDocument?: string; planStatus?: string; origin?: string; decisions?: Record<string, string>; files?: Record<string, string>; production?: Partial<ReturnType<StartRunPinsDeps["production"]>>; queueTop?: string[]; workers?: string; done?: string; cards?: string[]; } = {}) {
     const repository = mkdtempSync(path.join(os.tmpdir(), "arcadia-start-run-pins-"));
     directories.push(repository);
     const library = path.join(repository, "artifacts", "generated", "operator-scripts");
@@ -190,7 +191,7 @@ describe("arcadia start-run pins", () => {
     const decisions: Record<string, string> = options.decisions ?? { "0130": decision(), "0058": decision(), "0097": decision(), "0134": decision(), "0156": decision(), "0157": decision(), "0141": decision(), "0143": decision(), "0161": decision(), "0162": decision(), "0163": decision() };
     const files: Record<string, string> = options.files ?? {
       "scripts/start-run.sh": EXECUTOR, "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "x",
-      "docs/plans/fixture-plan.md": planDoc(options.planStatus ?? "active", options.done)
+      "docs/plans/fixture-plan.md": options.planDocument ?? planDoc(options.planStatus ?? "active", options.done)
     };
     const calls: string[][] = [];
     const deps: StartRunPinsDeps = {
@@ -237,6 +238,41 @@ describe("arcadia start-run pins", () => {
     // Only read-only git verbs.
     expect(f.calls.every(([verb]) => ["ls-remote", "rev-parse", "ls-tree", "show"].includes(verb))).toBe(true);
   });
+  function planWithCriteria(criteria: string[], nextAction = "Build the test."): string {
+    return `---\n${stringify({
+      slug: "fixture-plan",
+      project: "arcadia",
+      status: "active",
+      actions: [
+        { id: "first-action", status: "open", next_action: nextAction, acceptance_criteria: criteria },
+        { id: "second-action", status: "open" },
+        { id: "unselected", status: "open", acceptance_criteria: ["Ignore this \u200B criterion for this card."] }
+      ]
+    })}---\nbody\n`;
+  }
+
+  it("refuses pins before reading live state when criteria would require an example path or contain invisible text", () => {
+    const f = fixture({ planDocument: planWithCriteria([
+      'Assert classify("tests/example.test.ts") returns false.',
+      "Match a literal \u200B here."
+    ], "Build \u2060 the test.") });
+    const production = vi.spyOn(f.deps, "production");
+    expect(() => buildStartRunPins(f.args, f.deps)).toThrow(
+      /first-action: next_action.*U\+2060[^]*first-action: acceptance_criteria\[2\].*U\+200B[^]*first-action: acceptance_criteria would require example path tests\/example\.test\.ts/
+    );
+    expect(production).not.toHaveBeenCalled();
+  });
+
+  it("allows real quoted test commands, example paths already treated as data, and visible Unicode", () => {
+    const f = fixture({ planDocument: planWithCriteria([
+      'Run "pnpm exec vitest run tests/real.test.ts" and verify the café label.',
+      "Assert it is false for each of tests/example.test.ts and ./PROJECT.md.",
+      'Assert classify("tests/real.test.ts") is true.',
+      "Write the ASCII escape \\u200B in the test."
+    ]) });
+    expect(buildStartRunPins(f.args, f.deps).startRun.actions).toEqual(["first-action", "second-action"]);
+  });
+
   it("emits a Decision 0163 delegation block for Rowan's successor with --delegated-from, and refuses when the chain refuses", () => {
     const plan = "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider";
     const acts = ["bound-guidance-test-teardown-retries", "assert-tmux-temp-launcher-removed", "cover-retired-descriptor-byte-change"];

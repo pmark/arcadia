@@ -15,6 +15,7 @@ import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, DAY_GRANT_EXECUTOR_PATH, findC
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { readDayGrantEvidence } from "../production/policy.js";
+import { namedTestFiles } from "../sessions/completionValidation.js";
 import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
 import { runProductionStatusCommand } from "./production.js";
 
@@ -127,6 +128,38 @@ function frontmatter(content: string, label: string): Record<string, unknown> {
   return parseYaml(match[1]) as Record<string, unknown>;
 }
 
+interface StartRunPlanAction {
+  id?: string;
+  status?: string;
+  next_action?: string;
+  acceptance_criteria?: unknown[];
+}
+
+/** Check the text the pinned Action will hand to completion validation. */
+export function startRunCriteriaFindings(action: StartRunPlanAction): string[] {
+  const criteria = Array.isArray(action.acceptance_criteria) ? action.acceptance_criteria : [];
+  const findings: string[] = [];
+  const checkText = (label: string, value: unknown): void => {
+    if (typeof value !== "string") return;
+    const invisible = value.match(/[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/gu) ?? [];
+    const codes = [...new Set(invisible)].map((char) => `U+${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
+    if (codes.length) findings.push(`${label} contains invisible characters (${codes.join(", ")}); spell out the escape.`);
+  };
+  checkText("next_action", action.next_action);
+  const textCriteria = criteria.filter((criterion): criterion is string => typeof criterion === "string");
+  const required = namedTestFiles(textCriteria);
+  criteria.forEach((criterion, index) => checkText(`acceptance_criteria[${index + 1}]`, criterion));
+  const withoutExamples = namedTestFiles(textCriteria.map((criterion) => {
+    // A quoted argument or an explicitly labelled example is data. Keep the
+    // actual criterion intact for the runtime parser, then compare its result.
+    return criterion.replace(/(\bexample(?:\s+(?:path|input|value|string))?(?:\s*:\s*|\s+)|[\w$.]\(\s*)(["'`])([^\s"'`]+)\2/gi, "$1example-value");
+  }));
+  for (const file of required.filter((entry) => !withoutExamples.includes(entry))) {
+    findings.push(`acceptance_criteria would require example path ${file} as a test file; reword it as data.`);
+  }
+  return findings;
+}
+
 /** The main checkout of the repository (ignored host files such as consumed markers live there, not in a worktree). */
 function mainCheckout(repository: string, deps: StartRunPinsDeps): string {
   try {
@@ -165,12 +198,15 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   if (!slug.test(project)) throw validationError(`Plan ${plan} does not name its Project.`);
   const planStatus = String(planFrontmatter.status ?? "");
   if (planStatus !== "active" && planStatus !== "draft") throw validationError(`Plan ${plan} is ${planStatus || "of unknown status"}; a START card needs an active Plan or a draft with a pinned activation.`);
-  const planActions = (Array.isArray(planFrontmatter.actions) ? planFrontmatter.actions : []) as Array<{ id?: string; status?: string }>;
+  const planActions = (Array.isArray(planFrontmatter.actions) ? planFrontmatter.actions : []) as StartRunPlanAction[];
+  const criteriaFindings: string[] = [];
   for (const action of actions) {
     const found = planActions.find((entry) => entry.id === action);
     if (!found) throw validationError(`Action ${action} is not in Plan ${plan} at origin main.`);
     if (found.status === "done") throw validationError(`Action ${action} is already done; a START card pins only open Actions.`);
+    criteriaFindings.push(...startRunCriteriaFindings(found).map((finding) => `${action}: ${finding}`));
   }
+  if (criteriaFindings.length) throw validationError(`START criteria preflight failed:\n${criteriaFindings.join("\n")}`);
   if (planStatus === "draft") notes.push("The Plan is a draft: embed its pinned planActivation block in the descriptor (Decision 0157) before review.");
 
   let delegatedFrom: { card: string; run: string } | null = null;
