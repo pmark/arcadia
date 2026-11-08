@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-07
+updated: 2026-11-08
 ---
 
 # Mission Log: Arcadia
@@ -3068,3 +3068,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-agent-watch-ref-parsing.test.ts is a new test file that imports parseAgentRef, parseActionRef and normalizeBranch from ../src/agentWatch/contract.js and asserts parseAgentRef("claude/heavy") equals { agent: "claude", tier: "heavy" } and parseAgentRef returns null for each of "claude/huge", "gpt/light", "Claude/heavy" and "claude"."; "The same test file asserts parseActionRef("arcadia/pin-x") equals { project: "arcadia", actionId: "pin-x" } and returns null for each of "Arcadia/x", "a/b/c" and "a"; and that normalizeBranch returns "main" for "refs/heads/main", "feature/x" for "feature/x", and null for " main", "", null and undefined."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-agent-watch-ref-parsing.test.ts, a new test file that imports only vitest and src/agentWatch/contract.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-agent-watch-ref-parsing-042a5f7d77b3).
+
+## 2026-11-08 — Completed arcadia/pin-close-out-canonical-json
+
+- **Did:** Completed Action arcadia/pin-close-out-canonical-json from accepted evidence (Candidate bc0b385480c553ee0cdf4f757cabbd881ade7fda).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-close-out-canonical-json.test.ts is a new test file that imports canonicalJson from ../src/plans/closeOut.js and asserts canonicalJson({ b: 1, a: [{ d: undefined, c: null }] }) is '{"a":[{"c":null}],"b":1}', canonicalJson([3, 1, 2]) is "[3,1,2]" and canonicalJson({ B: 1, a: 2 }) is '{"B":1,"a":2}'."; "The same test file asserts canonicalJson({ y: 2, x: 1 }) equals canonicalJson({ x: 1, y: 2 })."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-close-out-canonical-json.test.ts, a new test file that imports only vitest and src/plans/closeOut.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-close-out-canonical-json-dcc13f31fe87).
