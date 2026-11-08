@@ -4,7 +4,7 @@ type: decision
 id: "0194"
 slug: decide-whether-decision-0182-s-standing-order-covers-three-routine-governed
 project: arcadia
-status: open
+status: approved
 question: "Decide whether Decision 0182's standing order covers three routine governed steps that Rowan put to the operator one at a time on 2026-11-06: merging a settlement pull request, declaring `execution: build` on an approved build Plan's Action, and the later steps of a recovery route the operator already chose."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: record-run-unattended-test-pins-20261107
-updated: 2026-11-08
+updated: 2026-11-07
+answer: A. All three are obvious judgement under the standing order
+decided: 2026-11-07
 ---
 
 # Decision 0194: Decide whether Decision 0182's standing order covers three routine governed steps that Rowan put to the operator one at a time on 2026-11-06: merging a settlement pull request, declaring `execution: build` on an approved build Plan's Action, and the later steps of a recovery route the operator already chose.
