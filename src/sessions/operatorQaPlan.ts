@@ -192,7 +192,7 @@ function renderPlan(
   const pathExists = facts.pathExists
     ?? ((candidate: string) => facts.changedFiles.some((file) => file.path === candidate && !file.status.startsWith("D")));
   const judged = criteria.map((criterion) => {
-    const named = criterionPaths(criterion, facts.changedFiles);
+    const named = criterionPaths(maskDataLiterals(criterion), facts.changedFiles);
     const passing = passingCommands(criterion, named, validation);
     const claims = criterionClaims(criterion);
     return { criterion, named, passing, claims, testsPass: passing === null && claims.testsPass !== null };
@@ -245,12 +245,22 @@ function renderPlan(
       ].join(" ")} This step inspects no file: one file's content cannot show that. The criterion, exactly as worded: ${quoted}`);
       return;
     }
-    const absent = named.filter((candidate) => !pathExists(candidate));
+    // A path the patch does not change cannot be diffed: a diff scoped to it prints nothing.
+    const absent = named.filter((candidate) => !pathExists(candidate) && facts.changedFiles.some((file) => file.path === candidate));
     const existing = named.filter((candidate) => pathExists(candidate));
     const provenElsewhere = passing !== null || testsPass || claims.scope || claims.requiredChecks;
     const present = inspectedPaths(existing, named, facts.changedFiles, provenElsewhere, criterion);
     const substituted = present.length > 0 && existing.length > 0 && !present.every((candidate) => existing.includes(candidate)) ? existing : [];
     const literals = present.length > 0 ? criterionLiterals(criterion) : [];
+    // Quoted test input (after "asserts"/"expects"/"returns") is data, never a file. It is looked for in the criterion's
+    // test file: one this criterion names, or for "the same test file" the nearest earlier criterion's.
+    const data = dataLiterals(criterion);
+    const presentTests = present.filter((candidate) => TEST_PATH.test(candidate));
+    const dataFiles = data.length === 0 ? [] : presentTests.length > 0
+      ? presentTests
+      : present.length === 0 && SAME_FILE.test(criterion)
+        ? earlierTestFile(judged.slice(0, index), pathExists)
+        : [];
     const bytes = /newline|byte|whitespace|exactly|empty/i.test(criterion);
     const actions: string[] = [];
     for (const target of present) {
@@ -258,7 +268,12 @@ function renderPlan(
       actions.push(`inspect ${code(target)} with ${code(bytes ? `${show} | od -c` : show)}`);
       for (const literal of literals) actions.push(`run ${code(`${show} | grep -Fxn -- ${shellQuote(literal)}`)}`);
     }
-    if (present.length === 0) {
+    for (const target of dataFiles) {
+      const show = `git show ${facts.commitSha}:${shellWord(target)}`;
+      if (!present.includes(target)) actions.push(`inspect ${code(target)} with ${code(show)}`);
+      for (const literal of data) actions.push(`run ${code(`${show} | grep -Fn -- ${shellQuote(literal)}`)}`);
+    }
+    if (present.length === 0 && dataFiles.length === 0) {
       const scope = absent.length > 0 ? ` -- ${absent.map(shellWord).join(" ")}` : "";
       actions.push(`read the change with ${code(`git diff ${facts.baseRevision} ${facts.commitSha}${scope}`)}`);
     }
@@ -267,9 +282,11 @@ function renderPlan(
       lines.push(`- **Substitution:** the existing ${substituted.length === 1 ? "path" : "paths"} the criterion names, ${substituted.map((candidate) => code(candidate)).join(", ")}, ${substituted.length === 1 ? "was" : "were"} not changed by this candidate, so this step does not inspect ${substituted.length === 1 ? "it" : "them"} and inspects the candidate's changed test ${present.length === 1 ? "file" : "files"} instead.`);
     }
     const outputs = [
-      ...(present.length > 0 ? [bytes ? `${code("od -c")} shows every byte (a newline as ${code("\\n")})` : "the file content is shown"] : []),
+      ...((present.length > 0 || dataFiles.length > 0) ? [bytes ? `${code("od -c")} shows every byte (a newline as ${code("\\n")})` : "the file content is shown"] : []),
       ...(literals.length > 0 ? [`${code("grep -Fxn")} prints each quoted text that is a whole line with its line number, and nothing when no line matches`] : []),
-      ...(present.length === 0 ? ["the diff shows what changed"] : [])
+      ...(dataFiles.length > 0 ? [`${code("grep -Fn")} prints each line of the file that contains a quoted value, with its line number, and nothing when no line contains it`] : []),
+      ...(data.length > 0 && dataFiles.length === 0 ? ["the quoted values are test input, not files, so this step does not search for them and what they assert stays unproven by this step"] : []),
+      ...(present.length === 0 && dataFiles.length === 0 ? ["the diff shows what changed"] : [])
     ];
     if (provenElsewhere) {
       // Inspection cannot show that a command or test passes (Issue #986), which
@@ -572,13 +589,64 @@ function isDocumentPath(filePath: string): boolean {
   return /\.(?:md|markdown|rst|adoc|asciidoc|txt)$/.test(lowered) && !/(^|\/)(src|scripts|tests?|templates|fixtures)\//.test(lowered);
 }
 
-/** Quoted text in the criterion: candidate whole lines to look for, read-only. */
+/** Wording that says a criterion's quoted text is what a test asserts: input and expected values, not content. */
+const ASSERTION_WORD = /\b(?:asserts?|expects?|returns?)\b|\bexample\s+(?:path|input|value|string)s?\s*:/i;
+/** "The same test file" and its kin: the file an earlier criterion named. */
+const SAME_FILE = /\bsame\s+(?:test\s+)?file\b|\bthat\s+test\s+file\b/i;
+
+/** Every quoted span in the criterion, with whether the criterion's wording makes it test data. */
+function quotedSpans(criterion: string): { start: number; end: number; literal: string; data: boolean }[] {
+  const spans: { start: number; end: number; literal: string; data: boolean }[] = [];
+  for (const match of criterion.matchAll(/["“]([^"“”]+)["”]/g)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    // A quoted command that "passes" is what the criterion is about, not an input to it.
+    const command = /^\s*(?:passes|pass|fails|exits|runs|succeeds)\b/i.test(criterion.slice(end));
+    spans.push({ start, end, literal: match[1], data: !command && ASSERTION_WORD.test(criterion.slice(0, start)) });
+  }
+  return spans;
+}
+
+/** The criterion with its test-data quotes emptied, so a quoted example path is never read as a path it names. */
+function maskDataLiterals(criterion: string): string {
+  let masked = "";
+  let from = 0;
+  for (const span of quotedSpans(criterion)) {
+    if (!span.data) continue;
+    masked += `${criterion.slice(from, span.start)}""`;
+    from = span.end;
+  }
+  return masked + criterion.slice(from);
+}
+
+function usableLiteral(literal: string): boolean {
+  return Boolean(literal) && literal.trim() === literal && literal.length <= MAX_LITERAL_CHARS && !/\p{Cc}/u.test(literal);
+}
+
+/** Quoted test data the criterion says a test asserts: looked for (as a substring) in the test file, never a file. */
+function dataLiterals(criterion: string): string[] {
+  const found: string[] = [];
+  for (const span of quotedSpans(criterion)) {
+    if (span.data && usableLiteral(span.literal) && !found.includes(span.literal)) found.push(span.literal);
+  }
+  return found.slice(0, MAX_PATHS_PER_CRITERION);
+}
+
+/** The test file a nearest earlier criterion names, when it exists at the candidate commit. */
+function earlierTestFile(earlier: readonly { named: readonly string[] }[], pathExists: (path: string) => boolean): string[] {
+  for (let index = earlier.length - 1; index >= 0; index -= 1) {
+    const tests = earlier[index].named.filter((candidate) => TEST_PATH.test(candidate) && pathExists(candidate));
+    if (tests.length > 0) return tests.slice(0, 1);
+  }
+  return [];
+}
+
+/** Quoted text in the criterion that is not test data: candidate whole lines to look for, read-only. */
 function criterionLiterals(criterion: string): string[] {
   const found: string[] = [];
-  for (const match of criterion.matchAll(/["“]([^"“”]+)["”]/g)) {
-    const literal = match[1];
-    if (!literal || literal.trim() !== literal || literal.length > MAX_LITERAL_CHARS || /\p{Cc}/u.test(literal)) continue;
-    if (!found.includes(literal)) found.push(literal);
+  for (const span of quotedSpans(criterion)) {
+    if (span.data || !usableLiteral(span.literal)) continue;
+    if (!found.includes(span.literal)) found.push(span.literal);
   }
   return found.slice(0, MAX_PATHS_PER_CRITERION);
 }
