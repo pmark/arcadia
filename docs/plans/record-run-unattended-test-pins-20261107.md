@@ -348,11 +348,11 @@ actions:
     references: []
   - id: pin-narration-text-split
     title: Pin how narration text splits into chunks by paragraph, sentence and hard wrap, and refuses a bad chunk size, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how narration text splits into chunks by paragraph, sentence and hard wrap, and refuses a bad chunk size, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-narration-text-split-fa59bc3e5a3d; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-narration-text-split
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-narration-text-split
+current_action: pin-markdown-speech-strip
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
