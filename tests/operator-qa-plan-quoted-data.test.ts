@@ -122,4 +122,58 @@ describe("Operator QA plan: quoted criterion text that is test data (Issue #2324
     expect(result.status).toBe("rendered");
     expect(result.body).toContain(`git show ${COMMIT}:MARKER.md | grep -Fxn -- 'hello world'`);
   });
+
+  const plan = (criteria: string[], changedFiles: ChangedFile[]): string => {
+    const result = renderOperatorQaPlan({
+      kind: "action-acceptance", actionKey: "p/a", actionTitle: null, acceptanceCriteria: criteria, validationCommands: []
+    }, { branch: "b", baseBranch: "main", baseRevision: BASE, commitSha: COMMIT, changedFiles });
+    expect(result.status).toBe("rendered");
+    return result.body;
+  };
+
+  it("claims od -c only when the Do line runs it, including on a 'same test file' criterion", () => {
+    const testFile = "tests/pin-way-trigger-parsing.test.ts";
+    const body = plan([
+      `${testFile} is a new test file that asserts parseTrigger returns "go".`,
+      "The same test file asserts parseTrigger gives exactly \"stop\" for \"STOP \" and an empty result for \"\".",
+      NO_RUN_TAIL
+    ], [{ status: "A", path: testFile }]);
+    const step4 = body.slice(body.indexOf("### Step 4"), body.indexOf("### Step 5"));
+    expect(step4).toContain(`git show ${COMMIT}:${testFile} | od -c`);
+    expect(step4).toContain("grep -Fn -- 'stop'");
+    // Every od -c the Expected line names is one the Do line runs.
+    expect(step4.includes("shows every byte")).toBe(step4.includes("| od -c`"));
+  });
+
+  it("does not let an earlier sentence's returns turn a later file-content quote into test input", () => {
+    const body = plan(["Helper returns 5. MARKER.md contains the line \"hello world\"."], [{ status: "A", path: "MARKER.md" }]);
+    expect(body).toContain(`git show ${COMMIT}:MARKER.md | grep -Fxn -- 'hello world'`);
+    expect(body).not.toContain("test input");
+  });
+
+  it("lets a contains cue after returns win within one sentence, while a list after returns stays data", () => {
+    const body = plan(["src/foo.ts exports f which returns \"bar\" and the file contains \"export const x\"."], [{ status: "M", path: "src/foo.ts" }]);
+    expect(body).toContain(`git show ${COMMIT}:src/foo.ts | grep -Fxn -- 'export const x'`);
+    // "bar" is test input, but no test file is named, so the step says it does not search for it.
+    expect(body).not.toContain("-- 'bar'");
+    expect(body).toContain("the values the criterion words as test input (`bar`) are not files");
+    const four = plan([
+      "tests/t.test.ts asserts f returns false for \"a1\", \"b2\", \"c3\" and \"d4\"."
+    ], [{ status: "A", path: "tests/t.test.ts" }]);
+    for (const value of ["a1", "b2", "c3", "d4"]) expect(four).toContain(`grep -Fn -- '${value}'`);
+    expect(four).not.toContain("grep -Fxn");
+  });
+
+  it("says which named paths the patch does not change, and greps every test file an earlier criterion names", () => {
+    const unchanged = plan(["src/missing.ts is not created."], [{ status: "M", path: "README.md" }]);
+    expect(unchanged).toContain("`src/missing.ts` is a path the criterion names that this candidate does not change");
+    expect(unchanged).not.toContain("-- src/missing.ts");
+    const two = plan([
+      "tests/a.test.ts and tests/b.test.ts are new test files that assert f returns \"x1\".",
+      "The same test file asserts f returns \"y2\"."
+    ], [{ status: "A", path: "tests/a.test.ts" }, { status: "A", path: "tests/b.test.ts" }]);
+    const step4 = two.slice(two.indexOf("### Step 4"));
+    expect(step4).toContain(`${COMMIT}:tests/a.test.ts | grep -Fn -- 'y2'`);
+    expect(step4).toContain(`${COMMIT}:tests/b.test.ts | grep -Fn -- 'y2'`);
+  });
 });

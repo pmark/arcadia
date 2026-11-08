@@ -247,6 +247,7 @@ function renderPlan(
     }
     // A path the patch does not change cannot be diffed: a diff scoped to it prints nothing.
     const absent = named.filter((candidate) => !pathExists(candidate) && facts.changedFiles.some((file) => file.path === candidate));
+    const unchanged = named.filter((candidate) => !pathExists(candidate) && !facts.changedFiles.some((file) => file.path === candidate));
     const existing = named.filter((candidate) => pathExists(candidate));
     const provenElsewhere = passing !== null || testsPass || claims.scope || claims.requiredChecks;
     const present = inspectedPaths(existing, named, facts.changedFiles, provenElsewhere, criterion);
@@ -270,7 +271,7 @@ function renderPlan(
     }
     for (const target of dataFiles) {
       const show = `git show ${facts.commitSha}:${shellWord(target)}`;
-      if (!present.includes(target)) actions.push(`inspect ${code(target)} with ${code(show)}`);
+      if (!present.includes(target)) actions.push(`inspect ${code(target)} with ${code(bytes ? `${show} | od -c` : show)}`);
       for (const literal of data) actions.push(`run ${code(`${show} | grep -Fn -- ${shellQuote(literal)}`)}`);
     }
     if (present.length === 0 && dataFiles.length === 0) {
@@ -285,8 +286,9 @@ function renderPlan(
       ...((present.length > 0 || dataFiles.length > 0) ? [bytes ? `${code("od -c")} shows every byte (a newline as ${code("\\n")})` : "the file content is shown"] : []),
       ...(literals.length > 0 ? [`${code("grep -Fxn")} prints each quoted text that is a whole line with its line number, and nothing when no line matches`] : []),
       ...(dataFiles.length > 0 ? [`${code("grep -Fn")} prints each line of the file that contains a quoted value, with its line number, and nothing when no line contains it`] : []),
-      ...(data.length > 0 && dataFiles.length === 0 ? ["the quoted values are test input, not files, so this step does not search for them and what they assert stays unproven by this step"] : []),
-      ...(present.length === 0 && dataFiles.length === 0 ? ["the diff shows what changed"] : [])
+      ...(data.length > 0 && dataFiles.length === 0 ? [`the values the criterion words as test input (${data.map((value) => code(value)).join(", ")}) are not files and no test file is named to search for them, so this step does not search for them and what they assert stays unproven by this step`] : []),
+      ...(present.length === 0 && dataFiles.length === 0 ? ["the diff shows what changed"] : []),
+      ...(unchanged.length > 0 ? [`${unchanged.map((candidate) => code(candidate)).join(", ")} ${unchanged.length === 1 ? "is a path" : "are paths"} the criterion names that this candidate does not change and that ${unchanged.length === 1 ? "does" : "do"} not exist at the candidate commit, so nothing in this step shows ${unchanged.length === 1 ? "it" : "them"}`] : [])
     ];
     if (provenElsewhere) {
       // Inspection cannot show that a command or test passes (Issue #986), which
@@ -594,6 +596,20 @@ const ASSERTION_WORD = /\b(?:asserts?|expects?|returns?)\b|\bexample\s+(?:path|i
 /** "The same test file" and its kin: the file an earlier criterion named. */
 const SAME_FILE = /\bsame\s+(?:test\s+)?file\b|\bthat\s+test\s+file\b/i;
 
+/** A cue that the text after it quotes what a file holds, which wins over an assertion word before it. */
+const FILE_CONTENT_CUE = /\b(?:contains?|includes?|says?|reads?|states?|mentions?|has the line)\b/i;
+
+/**
+ * Whether a quote that follows `before` is what a test asserts: an assertion word
+ * earlier in the same sentence, with no file-content cue between that word and the quote.
+ */
+function assertedBefore(before: string): boolean {
+  const sentence = before.slice(Math.max(0, ...[...before.matchAll(/[.;!?](?=\s)/g)].map((boundary) => (boundary.index ?? 0) + 1)));
+  const words = [...sentence.matchAll(new RegExp(ASSERTION_WORD.source, "gi"))];
+  const last = words[words.length - 1];
+  return last !== undefined && !FILE_CONTENT_CUE.test(sentence.slice((last.index ?? 0) + last[0].length));
+}
+
 /** Every quoted span in the criterion, with whether the criterion's wording makes it test data. */
 function quotedSpans(criterion: string): { start: number; end: number; literal: string; data: boolean }[] {
   const spans: { start: number; end: number; literal: string; data: boolean }[] = [];
@@ -602,7 +618,7 @@ function quotedSpans(criterion: string): { start: number; end: number; literal: 
     const end = start + match[0].length;
     // A quoted command that "passes" is what the criterion is about, not an input to it.
     const command = /^\s*(?:passes|pass|fails|exits|runs|succeeds)\b/i.test(criterion.slice(end));
-    spans.push({ start, end, literal: match[1], data: !command && ASSERTION_WORD.test(criterion.slice(0, start)) });
+    spans.push({ start, end, literal: match[1], data: !command && assertedBefore(criterion.slice(0, start)) });
   }
   return spans;
 }
@@ -636,7 +652,7 @@ function dataLiterals(criterion: string): string[] {
 function earlierTestFile(earlier: readonly { named: readonly string[] }[], pathExists: (path: string) => boolean): string[] {
   for (let index = earlier.length - 1; index >= 0; index -= 1) {
     const tests = earlier[index].named.filter((candidate) => TEST_PATH.test(candidate) && pathExists(candidate));
-    if (tests.length > 0) return tests.slice(0, 1);
+    if (tests.length > 0) return tests;
   }
   return [];
 }
