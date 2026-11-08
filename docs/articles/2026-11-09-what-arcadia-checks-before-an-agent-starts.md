@@ -1,6 +1,6 @@
 ---
 title: "What Arcadia checks before an agent starts"
-date: "2026-11-08"
+date: "2026-11-09"
 type: ship
 slug: "what-arcadia-checks-before-an-agent-starts"
 summary: "A GitHub guide prompted Arcadia to compare two runs and add a check that catches confusing instructions before an agent starts."
