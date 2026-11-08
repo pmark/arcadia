@@ -314,9 +314,12 @@ approval it relies on.
    The resume prompt is fixed text: "You are <role> generation N+1. Run
    `arcadia coordinator subscribe --from-snapshot <sha>`, then
    `arcadia coordinator verify --generation N+1`, then `accept`." It also
-   carries the snapshot path and sha. `subscribe --from-snapshot` re-arms each
-   watcher the snapshot lists, with its last cursor (section e), so `verify`
-   item 3 can pass. The host classifier will read this as a
+   carries the snapshot path and sha. `subscribe --from-snapshot` records each
+   watcher the snapshot lists, with its last cursor (section e), as inherited
+   and unarmed; it starts no process. The successor runs each watcher itself in
+   the background and registers it with a plain `subscribe "<command line>"
+   --cursor <c>`, and `verify` item 3 fails until it has. "Armed" means the
+   successor registered the watcher, not that a running process was proven. The host classifier will read this as a
    user turn, because it is the session's first message. That is acceptable
    only because the text is a fixed template that the reviewed relay code
    renders. It holds no approval, quote or free-form state, so no authority can
@@ -440,9 +443,14 @@ The design rules:
   `quiet-watch.sh`'s logic as a mode of `scripts/wait-for-event.sh`, or of
   `arcadia timeline --wait` once Decision 0184 A ships. A watcher is registered
   as `arcadia coordinator subscribe "<command line>" --cursor <c>`.
-- **The successor re-arms each subscription** first, through the resume
-  prompt's `subscribe --from-snapshot`, with its last cursor, so events that landed during the handoff still fire (the
-  re-baselining defect in `docs/design/session-notifications.md`).
+- **The successor arms each subscription itself** first. The resume prompt's
+  `subscribe --from-snapshot` only records the snapshot's watchers as inherited
+  and unarmed, with their last cursors. The successor then runs each watcher in
+  the background (the harness wakes a session only for a watcher that session
+  runs) and registers it with a plain `subscribe "<command line>" --cursor <c>`,
+  so events that landed during the handoff still fire (the re-baselining defect
+  in `docs/design/session-notifications.md`). "Armed" means registered by the
+  successor, not that a process was proven running; liveness is change 5.
 - **The relay checks liveness:** each tick it confirms a live process for each
   subscription, matched on a marker in its argv, and pings once if a
   subscription has been dead for over 5 minutes.
@@ -461,7 +469,8 @@ The design rules:
    differences from the snapshot (PR heads, production revision and epoch,
    Decision numbers, pending pings, sessions alive). A difference is expected
    and fine: it shows what changed during the handoff. It is not a failure.
-3. Every subscription is armed, and its cursor is not older than the snapshot.
+3. Every subscription is armed by this generation (registered by the successor,
+   not merely inherited), and its cursor is not older than the snapshot.
 4. Every journal entry is listed with its age. An entry older than 2 hours is
    marked `stale`.
 5. Every chat-only approval is listed as lost, with its prepared card, if any.
