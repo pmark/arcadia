@@ -80,6 +80,18 @@ import {
   runPingSentCommand
 } from "./commands/ping.js";
 import {
+  renderCoordinatorAcceptSuccess,
+  renderCoordinatorCapsuleSuccess,
+  renderCoordinatorNoteSuccess,
+  renderCoordinatorSubscribeSuccess,
+  renderCoordinatorVerifySuccess,
+  runCoordinatorAcceptCommand,
+  runCoordinatorCapsuleCommand,
+  runCoordinatorNoteCommand,
+  runCoordinatorSubscribeCommand,
+  runCoordinatorVerifyCommand
+} from "./commands/coordinator.js";
+import {
   renderOperatorInteractionListSuccess,
   renderOperatorInteractionRecordSuccess,
   runOperatorInteractionListCommand,
@@ -1264,7 +1276,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--agent <name>", "Who is pinging, shown in the message")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; todo?: string; agent?: string; json?: boolean }) =>
-    runCliAction("ping.send", options, () => runPingSendCommand({ ...options, message: message.join(" ") }), renderPingSendSuccess)
+    runCliAction("ping.send", options, () => runPingSendCommand({ ...options, message: message.join(" "), env: process.env }), renderPingSendSuccess)
   );
   addJsonOption(ping.command("pending")
     .description("List operator pings pending Discord delivery")
@@ -1279,6 +1291,52 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; id: string; messageId: string; json?: boolean }) =>
     runCliAction("ping.sent", options, () => runPingSentCommand(options), renderPingSentSuccess)
+  );
+
+  const coordinator = program.command("coordinator").description("Coordinator sessions (⭐ Signal, 🚦 Rowan): context budget for handoff before compaction, and handoff state (the state capsule, its journal, watcher subscriptions, verify and accept)");
+  const coordinatorScope = (command: Command): Command => addJsonOption(command
+    .requiredOption("--project <slug>", "Project slug, e.g. arcadia")
+    .requiredOption("--role <role>", "Coordinator role, e.g. rowan or signal")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace()));
+  coordinatorScope(coordinator.command("capsule")
+    .description("Refresh and print the live capsule (<workspace>/coordinators/<project>/<role>/live.json) from canonical sources")
+    .option("--check", "Exit 1 when the journal is stale, no next move is recorded, or a chat-only approval would be lost")
+    .option("--markdown", "Print the handoff template rendering instead of a summary")
+    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
+  ).action((options: { workspace: string; project: string; role: string; check?: boolean; markdown?: boolean; repo?: string; json?: boolean }) =>
+    runCliAction("coordinator.capsule", options, () => runCoordinatorCapsuleCommand(options), renderCoordinatorCapsuleSuccess)
+  );
+  coordinatorScope(coordinator.command("note")
+    .description("Add one short judgement to the coordinator's journal (at most 20 kept). Advisory, never authority. Custody-guarded")
+    .argument("<text...>", "The note (500 characters at most)")
+    .option("--next-move", "Record this as the one exact next command instead of a journal entry")
+    .option("--chat-approval", "Record a chat-only approval that will not carry across a handoff")
+    .option("--pr <number>", "A PR this concerns; the capsule tracks its head, checks and verdict marker (repeatable)", collectRepeatable, [] as string[])
+  ).action((text: string[], options: { workspace: string; project: string; role: string; nextMove?: boolean; chatApproval?: boolean; pr: string[]; json?: boolean }) =>
+    runCliAction("coordinator.note", options, () => runCoordinatorNoteCommand({ ...options, text: text.join(" "), env: process.env }), renderCoordinatorNoteSuccess)
+  );
+  coordinatorScope(coordinator.command("subscribe")
+    .description("Register a checked-in watcher command line with its cursor, or re-arm every watcher a pinned snapshot lists. Custody-guarded")
+    .argument("[command-line]", "The watcher's checked-in command line")
+    .option("--cursor <cursor>", "The watcher's last event cursor")
+    .option("--from-snapshot <sha>", "Re-arm the watchers the snapshot with this sha lists (the incoming generation)")
+  ).action((commandLine: string | undefined, options: { workspace: string; project: string; role: string; cursor?: string; fromSnapshot?: string; json?: boolean }) =>
+    runCliAction("coordinator.subscribe", options, () => runCoordinatorSubscribeCommand({ ...options, commandLine, env: process.env }), renderCoordinatorSubscribeSuccess)
+  );
+  coordinatorScope(coordinator.command("verify")
+    .description("Prove a launching generation has the whole state: snapshot sha, drift since the snapshot, watchers re-armed (exit 1 unless these pass), then journal, lost approvals and next move as warnings")
+    .requiredOption("--generation <n>", "The launching generation", (value: string) => Number(value))
+    .option("--snapshot-sha <sha>", "The sha the launch prompt pinned")
+    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
+  ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha?: string; repo?: string; json?: boolean }) =>
+    runCliAction("coordinator.verify", options, () => runCoordinatorVerifyCommand(options), renderCoordinatorVerifySuccess)
+  );
+  coordinatorScope(coordinator.command("accept")
+    .description("Take custody as the incoming generation after a passing verify on the same sha within 10 minutes; the predecessor becomes handed_off. Custody-guarded")
+    .requiredOption("--generation <n>", "The incoming generation", (value: string) => Number(value))
+    .requiredOption("--snapshot-sha <sha>", "The sha the launch prompt pinned")
+  ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha: string; json?: boolean }) =>
+    runCliAction("coordinator.accept", options, () => runCoordinatorAcceptCommand({ ...options, env: process.env }), renderCoordinatorAcceptSuccess)
   );
 
   const nativeMail = program.command("native-mail").description("Local addressed mail between native coding-agent sessions on this machine (relationship/provenance records only; grants no authority)");
@@ -1623,7 +1681,6 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   ).action((options: { workspace: string; wakesDir?: string; expectWake?: string[]; tapReadyAt?: string; routeAt?: string; json?: boolean }) =>
     runCliAction("production.idle-front", options, () => runProductionIdleFrontCommand(options), renderProductionIdleFrontSuccess)
   );
-  const coordinator = program.command("coordinator").description("Coordinator sessions (⭐ Signal, 🚦 Rowan): context budget for handoff before compaction");
   addJsonOption(
     coordinator
       .command("budget")

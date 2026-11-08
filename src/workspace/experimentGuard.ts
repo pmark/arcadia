@@ -152,6 +152,12 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "operator-interaction list": ALLOWED,
   "ping send": ALLOWED,
   "ping pending": ALLOWED,
+  // Coordinator handoff state lives under the resolved workspace's own coordinators/ directory.
+  "coordinator capsule": ALLOWED,
+  "coordinator note": ALLOWED,
+  "coordinator subscribe": ALLOWED,
+  "coordinator verify": ALLOWED,
+  "coordinator accept": ALLOWED,
   "ping sent": DELIVERY_RECEIPT,
   "action settle": ALLOWED,
   "native-mail send": NATIVE_MAIL_WRITE,

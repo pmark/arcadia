@@ -1,0 +1,233 @@
+import { execFileSync } from "node:child_process";
+import type Database from "better-sqlite3";
+import type { CommandSuccess } from "../cli/response.js";
+import { createSuccess } from "../cli/response.js";
+import { validationError } from "../cli/errors.js";
+import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { withDatabase } from "../db/connection.js";
+import {
+  buildCapsule,
+  checkCapsule,
+  hashSnapshotFile,
+  readCapsuleFile,
+  renderCapsuleMarkdown,
+  writeLiveCapsule,
+  type Capsule,
+  type CapsuleCheck,
+  type CapsuleSources
+} from "../coordinator/capsule.js";
+import {
+  acceptGeneration,
+  assertCoordinatorCustody,
+  currentCustodian,
+  custodianOf,
+  type CustodyAdmission
+} from "../coordinator/generations.js";
+import { withRelayLock } from "../coordinator/lock.js";
+import { coordinatorPaths } from "../coordinator/paths.js";
+import { defaultCapsuleSources } from "../coordinator/sources.js";
+import {
+  appendJournal,
+  normalizeNoteText,
+  parsePrNumbers,
+  readCoordinatorState,
+  writeCoordinatorState
+} from "../coordinator/state.js";
+import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
+
+interface Scope { workspace: string; project: string; role: string }
+type SourceOverride = { sources?: CapsuleSources; repo?: string };
+
+function repositoryRoot(explicit?: string): string {
+  if (explicit) return explicit;
+  try {
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || process.cwd();
+  } catch {
+    return process.cwd();
+  }
+}
+
+function sourcesFor(db: Database.Database, workspacePath: string, scope: Scope, options: SourceOverride, now: Date): CapsuleSources {
+  return options.sources ?? defaultCapsuleSources({
+    db, repoRoot: repositoryRoot(options.repo), project: scope.project, paths: coordinatorPaths(workspacePath, scope.project, scope.role), now
+  });
+}
+
+function generationOf(admission: CustodyAdmission): number | null {
+  return admission.kind === "unfenced" ? null : admission.generation.generation;
+}
+
+/** Rebuilds the live projection from canonical sources and the coordinator's own state. Callers hold the relay lock. */
+function refreshLive(db: Database.Database, workspacePath: string, scope: Scope, sources: CapsuleSources, now: Date): Capsule {
+  const paths = coordinatorPaths(workspacePath, scope.project, scope.role);
+  const custodian = currentCustodian(db, scope.project, scope.role);
+  const capsule = buildCapsule({
+    project: scope.project, role: scope.role, generation: custodian?.generation ?? null, custodian: custodianOf(custodian),
+    assignment: { briefPath: custodian?.briefPath ?? null, briefSha: custodian?.briefSha ?? null, directives: [] },
+    state: readCoordinatorState(paths), sources, now
+  });
+  writeLiveCapsule(paths, capsule);
+  return capsule;
+}
+
+export interface CoordinatorCapsuleData { livePath: string; capsule: Capsule; check: CapsuleCheck; markdown: string | null }
+
+/** `arcadia coordinator capsule`: refresh and print the live view; `--check` fails on a stale journal or a missing next move. */
+export function runCoordinatorCapsuleCommand(options: Scope & SourceOverride & { now?: Date; check?: boolean; markdown?: boolean }): CommandSuccess<CoordinatorCapsuleData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  const paths = coordinatorPaths(workspacePath, options.project, options.role);
+  const data = withDatabase(workspacePath, (db) => withRelayLock(paths.root, () => {
+    const capsule = refreshLive(db, workspacePath, options, sourcesFor(db, workspacePath, options, options, now), now);
+    return { livePath: paths.live, capsule, check: checkCapsule(capsule, now), markdown: options.markdown ? renderCapsuleMarkdown(capsule, now) : null };
+  }));
+  if (options.check && !data.check.passed) process.exitCode = 1;
+  return createSuccess({ command: "coordinator.capsule", workspace: workspacePath, data });
+}
+
+export function renderCoordinatorCapsuleSuccess(response: CommandSuccess<CoordinatorCapsuleData>): string[] {
+  const { data } = response;
+  if (data.markdown) return [data.markdown.trimEnd()];
+  return [
+    `Capsule for ${data.capsule.role} (${data.capsule.project}), generation ${data.capsule.generation ?? "none"}: ${data.livePath}`,
+    data.check.passed ? "Check: passed." : `Check: ${data.check.problems.length} problem(s).`,
+    ...data.check.problems.map((problem) => `- ${problem}`)
+  ];
+}
+
+export interface CoordinatorNoteData { journalEntries: number; nextMove: string | null; chatOnlyApprovals: number; prs: number[] }
+
+/** `arcadia coordinator note`: the agent's short journal of judgements, written as it goes. Guarded. */
+export function runCoordinatorNoteCommand(options: Scope & {
+  text: string; nextMove?: boolean; chatApproval?: boolean; pr?: string[]; now?: Date; env?: NodeJS.ProcessEnv;
+}): CommandSuccess<CoordinatorNoteData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  const text = normalizeNoteText(options.text);
+  const prs = parsePrNumbers(options.pr);
+  if (options.nextMove && options.chatApproval) throw validationError("A note is either --next-move or --chat-approval, not both.", { reason: "note_kind_conflict" });
+  const paths = coordinatorPaths(workspacePath, options.project, options.role);
+  const data = withDatabase(workspacePath, (db) => withRelayLock(paths.root, () => {
+    const admission = assertCoordinatorCustody(db, { command: "note", env: options.env, project: options.project, role: options.role, now });
+    const entry = { at: now.toISOString(), text, generation: generationOf(admission) };
+    let state = readCoordinatorState(paths);
+    if (options.nextMove) state = { ...state, nextMove: entry };
+    else if (options.chatApproval) state = { ...state, chatOnlyApprovals: [...state.chatOnlyApprovals, entry] };
+    else state = appendJournal(state, entry);
+    state = { ...state, prs: [...new Set([...state.prs, ...prs])] };
+    writeCoordinatorState(paths, state);
+    return { journalEntries: state.journal.length, nextMove: state.nextMove?.text ?? null, chatOnlyApprovals: state.chatOnlyApprovals.length, prs: state.prs };
+  }));
+  return createSuccess({ command: "coordinator.note", workspace: workspacePath, data });
+}
+
+export function renderCoordinatorNoteSuccess(response: CommandSuccess<CoordinatorNoteData>): string[] {
+  const { data } = response;
+  return [`Noted. Journal ${data.journalEntries}/20; next move: ${data.nextMove ?? "none"}; chat-only approvals: ${data.chatOnlyApprovals}; tracked PRs: ${data.prs.map((pr) => `#${pr}`).join(", ") || "none"}.`];
+}
+
+export interface CoordinatorSubscribeData { subscriptions: Array<{ command: string; cursor: string; armedByGeneration: number | null }>; fromSnapshot: string | null }
+
+/**
+ * `arcadia coordinator subscribe "<command line>" --cursor <c>` registers a
+ * checked-in watcher; `--from-snapshot <sha>` re-arms every watcher the pinned
+ * snapshot lists, with its last cursor (design section e). Guarded; the
+ * incoming generation may run only the `--from-snapshot` form.
+ */
+export function runCoordinatorSubscribeCommand(options: Scope & {
+  commandLine?: string; cursor?: string; fromSnapshot?: string; now?: Date; env?: NodeJS.ProcessEnv;
+}): CommandSuccess<CoordinatorSubscribeData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  if (options.fromSnapshot ? options.commandLine !== undefined : options.commandLine === undefined) {
+    throw validationError("Give either a watcher command line with --cursor, or --from-snapshot <sha>.", { reason: "subscribe_form" });
+  }
+  const paths = coordinatorPaths(workspacePath, options.project, options.role);
+  const data = withDatabase(workspacePath, (db) => withRelayLock(paths.root, () => {
+    const at = now.toISOString();
+    let state = readCoordinatorState(paths);
+    if (options.fromSnapshot) {
+      const admission = assertCoordinatorCustody(db, { command: "subscribe-from-snapshot", env: options.env, project: options.project, role: options.role, snapshotSha: options.fromSnapshot, now });
+      if (admission.kind === "unfenced") {
+        throw validationError("subscribe --from-snapshot re-arms watchers for a relay-launched generation; run it with that generation's coordinator identity.", { reason: "subscribe_from_snapshot_identity" });
+      }
+      const file = admission.generation.snapshotPath;
+      if (!file || hashSnapshotFile(file) !== options.fromSnapshot) {
+        throw validationError(`The snapshot for generation ${admission.generation.generation} is missing or does not match ${options.fromSnapshot}; nothing was re-armed.`, { reason: "snapshot_mismatch" });
+      }
+      const snapshot = readCapsuleFile(file);
+      const generation = admission.generation.generation;
+      const rearmed = snapshot.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedAt: at, armedByGeneration: generation }));
+      const kept = state.subscriptions.filter((have) => !rearmed.some((next) => next.command === have.command));
+      state = { ...state, subscriptions: [...kept, ...rearmed] };
+    } else {
+      const admission = assertCoordinatorCustody(db, { command: "subscribe", env: options.env, project: options.project, role: options.role, now });
+      const command = (options.commandLine ?? "").trim();
+      if (command === "") throw validationError("A subscription needs its checked-in command line.", { reason: "empty_subscription" });
+      if (!options.cursor) throw validationError("A subscription needs --cursor <c> (its last event cursor).", { reason: "subscription_cursor" });
+      const next = { command, cursor: options.cursor, armedAt: at, armedByGeneration: generationOf(admission) };
+      state = { ...state, subscriptions: [...state.subscriptions.filter((have) => have.command !== command), next] };
+    }
+    writeCoordinatorState(paths, state);
+    return {
+      subscriptions: state.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedByGeneration: subscription.armedByGeneration })),
+      fromSnapshot: options.fromSnapshot ?? null
+    };
+  }));
+  return createSuccess({ command: "coordinator.subscribe", workspace: workspacePath, data });
+}
+
+export function renderCoordinatorSubscribeSuccess(response: CommandSuccess<CoordinatorSubscribeData>): string[] {
+  return [
+    response.data.fromSnapshot ? `Re-armed from snapshot ${response.data.fromSnapshot}.` : "Subscription registered.",
+    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, generation ${subscription.armedByGeneration ?? "none"})`)
+  ];
+}
+
+/** `arcadia coordinator verify --generation N`: exits 0 only when items 1 to 3 pass. */
+export function runCoordinatorVerifyCommand(options: Scope & SourceOverride & { generation: number; snapshotSha?: string; now?: Date }): CommandSuccess<VerifyResult> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  if (!Number.isInteger(options.generation) || options.generation < 1) throw validationError("--generation must be a positive integer.", { reason: "invalid_generation" });
+  const data = withDatabase(workspacePath, (db) => verifyGeneration(db, workspacePath, {
+    project: options.project, role: options.role, generation: options.generation, snapshotSha: options.snapshotSha,
+    sources: sourcesFor(db, workspacePath, options, options, now), now
+  }));
+  if (!data.passed) process.exitCode = 1;
+  return createSuccess({ command: "coordinator.verify", workspace: workspacePath, data });
+}
+
+export function renderCoordinatorVerifySuccess(response: CommandSuccess<VerifyResult>): string[] {
+  const { data } = response;
+  return [
+    `Verify generation ${data.generation}: ${data.passed ? "passed" : "FAILED"} (snapshot ${data.snapshotSha ?? "none"}).`,
+    ...data.items.map((item) => `${item.passed ? "ok  " : item.required ? "FAIL" : "warn"} ${item.id}. ${item.detail}`),
+    ...data.drift.map((change) => `  changed during handoff: ${change.field}: ${JSON.stringify(change.snapshot)} -> ${JSON.stringify(change.now)}`),
+    ...(data.journal.length > 0 ? ["Journal (advisory: model-written, not authority):"] : []),
+    ...data.journal.map((entry) => `  ${entry.ageMinutes} min${entry.stale ? " (stale)" : ""}: ${entry.text}`),
+    ...data.lostApprovals.map((approval) => `  lost chat-only approval: ${approval.text}`)
+  ];
+}
+
+export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string }
+
+/** `arcadia coordinator accept --generation N --snapshot-sha <sha>`: the custody transfer (design step 5). */
+export function runCoordinatorAcceptCommand(options: Scope & { generation: number; snapshotSha: string; now?: Date; env?: NodeJS.ProcessEnv }): CommandSuccess<CoordinatorAcceptData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  const paths = coordinatorPaths(workspacePath, options.project, options.role);
+  const data = withDatabase(workspacePath, (db) => withRelayLock(paths.root, () => {
+    const admission = assertCoordinatorCustody(db, { command: "accept", env: options.env, project: options.project, role: options.role, snapshotSha: options.snapshotSha, now });
+    if (admission.kind !== "incoming" || admission.generation.generation !== options.generation) {
+      throw validationError(`accept is run by the incoming generation ${options.generation} itself, with its own coordinator identity.`, { reason: "accept_identity" });
+    }
+    const result = acceptGeneration(db, paths, admission.generation, now);
+    return { ...result, snapshotSha: options.snapshotSha };
+  }));
+  return createSuccess({ command: "coordinator.accept", workspace: workspacePath, data });
+}
+
+export function renderCoordinatorAcceptSuccess(response: CommandSuccess<CoordinatorAcceptData>): string[] {
+  const { data } = response;
+  return [`Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`];
+}
