@@ -150,9 +150,12 @@ export function startRunCriteriaFindings(action: StartRunPlanAction): string[] {
   const required = namedTestFiles(textCriteria);
   criteria.forEach((criterion, index) => checkText(`acceptance_criteria[${index + 1}]`, criterion));
   const withoutExamples = namedTestFiles(textCriteria.map((criterion) => {
-    // A quoted argument or an explicitly labelled example is data. Keep the
-    // actual criterion intact for the runtime parser, then compare its result.
-    return criterion.replace(/(\bexample(?:\s+(?:path|input|value|string))?(?:\s*:\s*|\s+)|[\w$.]\(\s*)(["'`])([^\s"'`]+)\2/gi, "$1example-value");
+    // Mask quoted arguments in direct assertions and explicitly labelled data.
+    // Keep command text intact, even when a command contains function calls.
+    return criterion
+      .replace(/(\b(?:asserts?|expects?)\s+(?:that\s+)?`?[\w$.]+\()([^()\r\n]*)(\))/gi,
+        (_match, start: string, args: string, end: string) => start + args.replace(/(^\s*|,\s*)(["'`])([^\s"'`]+)\2(?=\s*(?:,|$))/g, "$1example-value") + end)
+      .replace(/(\b(?:asserts?|expects?)\s+[^"'`\r\n]*?\breturns?\s+|\bexample\s+(?:path|input|value|string)\s*:\s*)(["'`])([^\s"'`]+)\2/gi, "$1example-value");
   }));
   for (const file of required.filter((entry) => !withoutExamples.includes(entry))) {
     findings.push(`acceptance_criteria would require example path ${file} as a test file; reword it as data.`);

@@ -253,12 +253,13 @@ describe("arcadia start-run pins", () => {
 
   it("refuses pins before reading live state when criteria would require an example path or contain invisible text", () => {
     const f = fixture({ planDocument: planWithCriteria([
-      'Assert classify("tests/example.test.ts") returns false.',
-      "Match a literal \u200B here."
+      'Assert classify(repo, "tests/example.test.ts") returns false.',
+      "Match a literal \u200B here.",
+      'Assert parse returns "tests/result.test.ts".'
     ], "Build \u2060 the test.") });
     const production = vi.spyOn(f.deps, "production");
     expect(() => buildStartRunPins(f.args, f.deps)).toThrow(
-      /first-action: next_action.*U\+2060[^]*first-action: acceptance_criteria\[2\].*U\+200B[^]*first-action: acceptance_criteria would require example path tests\/example\.test\.ts/
+      /first-action: next_action.*U\+2060[^]*first-action: acceptance_criteria\[2\].*U\+200B[^]*first-action: acceptance_criteria would require example path tests\/example\.test\.ts[^]*would require example path tests\/result\.test\.ts/
     );
     expect(production).not.toHaveBeenCalled();
   });
@@ -268,6 +269,8 @@ describe("arcadia start-run pins", () => {
       'Run "pnpm exec vitest run tests/real.test.ts" and verify the café label.',
       "Assert it is false for each of tests/example.test.ts and ./PROJECT.md.",
       'Assert classify("tests/real.test.ts") is true.',
+      `Run \`node -e 'if (!require("node:fs").existsSync("tests/checked.test.ts")) process.exit(1)'\`.`,
+      'Run the example "tests/another-real.test.ts" to verify the documented flow.',
       "Write the ASCII escape \\u200B in the test."
     ]) });
     expect(buildStartRunPins(f.args, f.deps).startRun.actions).toEqual(["first-action", "second-action"]);
