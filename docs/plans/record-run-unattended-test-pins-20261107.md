@@ -308,11 +308,11 @@ actions:
     references: []
   - id: pin-issue-ref-parsing
     title: "Pin how narration parses GitHub issue URLs, owner/repo#number refs and bare numbers with a repo, with a new test file."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin how narration parses GitHub issue URLs, owner/repo#number refs and bare numbers with a repo, with a new test file."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-issue-ref-parsing-7d08941ca753; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-issue-ref-parsing
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-issue-ref-parsing
+current_action: pin-way-trigger-parsing
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
