@@ -131,11 +131,11 @@ actions:
     references: []
   - id: pin-review-response-normalization
     title: Pin that a review response value is trimmed, lowercased and whitespace-collapsed, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a review response value is trimmed, lowercased and whitespace-collapsed, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-review-response-normalization-4e9be3cb5f52; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-review-response-normalization
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-review-response-normalization
+current_action: pin-image-mime-extension
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
