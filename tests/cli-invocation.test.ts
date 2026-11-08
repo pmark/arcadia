@@ -176,6 +176,7 @@ describe("path options are wired to the invocation-aware resolver", () => {
       "push-unpushed --repo",
       "raise --repo",
       "reconcile --repo",
+      "renew --repo",
       "select-next --repo",
       // `operator-action settle-ask --dir` writes the pinned button into the
       // caller's own checkout of the Project's library, so it must resolve

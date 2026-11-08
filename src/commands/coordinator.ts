@@ -34,6 +34,13 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
+import { renewCoordinator, systemRelayDeps, type RelayDeps, type RenewResult } from "../coordinator/relay.js";
+import { observeProviderCapacity } from "../codingAgents/capacity.js";
+import { checkProviderSignIn } from "../codingAgents/signIn.js";
+import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
+import { queueOperatorPing } from "../ping/operatorPing.js";
+import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
+import { getWorkspacePaths } from "../workspace/paths.js";
 
 interface Scope { workspace: string; project: string; role: string }
 type SourceOverride = { sources?: CapsuleSources; repo?: string };
@@ -230,4 +237,41 @@ export function runCoordinatorAcceptCommand(options: Scope & { generation: numbe
 export function renderCoordinatorAcceptSuccess(response: CommandSuccess<CoordinatorAcceptData>): string[] {
   const { data } = response;
   return [`Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`];
+}
+
+/**
+ * `arcadia coordinator renew`: the relay launch (change 3). Inert until the
+ * standing Decision recording answer A is on main (RELAY_LAUNCH_DECISION_ID).
+ * Custody-guarded: a caller with a coordinator identity must be the custodian.
+ */
+export function runCoordinatorRenewCommand(options: Scope & { repo?: string; effort?: string; env?: NodeJS.ProcessEnv; deps?: RelayDeps }): CommandSuccess<RenewResult> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const repoRoot = repositoryRoot(options.repo);
+  const data = withDatabase(workspacePath, (db) => {
+    assertCoordinatorCustody(db, { command: "renew", env: options.env, project: options.project, role: options.role });
+    const deps = options.deps ?? systemRelayDeps({
+      sources: () => defaultCapsuleSources({ db, repoRoot, project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
+      ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
+      signIn: (provider) => checkProviderSignIn(provider, workspacePath),
+      capacity: (provider) => {
+        const registries = loadPhase3Registries(workspacePath);
+        validatePhase3Registries(registries);
+        const unmeteredProvider = unmeteredProviderSelector(loadWorkspaceConfig(getWorkspacePaths(workspacePath).configFile).codingAgent);
+        const decision = observeProviderCapacity(registries.codingAgents.profiles, { now: new Date(), unmeteredProvider }).providers.find((entry) => entry.providerId === provider);
+        return decision ? { admitted: decision.admitted, reason: decision.reason } : { admitted: false, reason: `No capacity reading for ${provider}.` };
+      }
+    });
+    return renewCoordinator(db, workspacePath, { project: options.project, role: options.role, repoRoot, effort: options.effort ?? "e3_deep" }, deps);
+  });
+  if (data.outcome !== "launched") process.exitCode = 1;
+  return createSuccess({ command: "coordinator.renew", workspace: workspacePath, data });
+}
+
+export function renderCoordinatorRenewSuccess(response: CommandSuccess<RenewResult>): string[] {
+  const { data } = response;
+  if (data.outcome === "launched") {
+    return [`Launched ${data.tmuxName} as generation ${data.generation} (session ${data.sessionId}, attempt ${data.attempts}); prompt delivered. Custody moves when it runs accept.`];
+  }
+  if (data.outcome === "refused") return [`Not launched (${data.reason}): ${data.detail}`];
+  return [`Not launched after ${data.attempts} attempts; operator pinged.`, ...data.failures.map((failure) => `- ${failure}`)];
 }

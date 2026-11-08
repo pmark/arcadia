@@ -184,10 +184,11 @@ export function seedCustodianGeneration(
   }, input.lock);
 }
 
-function markFailed(db: Database.Database, paths: CoordinatorPaths, project: string, role: string, generation: number, reason: string, now: Date): void {
+function markFailed(db: Database.Database, paths: CoordinatorPaths, project: string, role: string, generation: number, reason: string, now: Date): boolean {
   const changed = db.prepare(`UPDATE coordinator_generations SET status = 'failed', failure_reason = ?, updated_at = ?
     WHERE project = ? AND role = ? AND generation = ? AND status = 'launching'`).run(reason, now.toISOString(), project, role, generation).changes;
   if (changed > 0) appendLog(paths, "failed", { generation, reason }, now);
+  return changed > 0;
 }
 
 /**
@@ -209,7 +210,8 @@ function recoverIncompleteClaims(db: Database.Database, paths: CoordinatorPaths,
 export interface ClaimInput extends GenerationIdentity {
   project: string;
   role: string;
-  tmuxName: string;
+  /** Default: the deterministic `arcadia-coord-<role>-g<N>` (design step 3). */
+  tmuxName?: string;
   remoteControlName?: string | null;
   briefPath?: string | null;
   briefSha?: string | null;
@@ -226,6 +228,7 @@ export interface ClaimResult {
   /** Returned once, for the launcher to set as ARCADIA_COORDINATOR_TOKEN; stored only as a hash. */
   token: string;
   recovered: number[];
+  tmuxName: string;
 }
 
 /**
@@ -249,10 +252,11 @@ export function claimNextGeneration(db: Database.Database, workspace: string, in
       throw refused(`Generation ${launching.generation} of ${input.role} is launching but unresolved after ${Math.round(ageMs / 60_000)} min; mark it failed (no acceptance) before claiming again.`, "launching_unresolved", { generation: launching.generation });
     }
     const generation = maxGeneration(db, input.project, input.role) + 1;
+    const tmuxName = input.tmuxName ?? `arcadia-coord-${input.role}-g${generation}`;
     const custodian: CapsuleCustodian = {
       provider: input.provider, model: input.model, tier: input.tier, identity: input.identity,
       sessionId: input.nativeSessionId ?? null, transcriptPath: input.transcriptPath ?? null,
-      tmuxName: input.tmuxName, remoteControlName: input.remoteControlName ?? null
+      tmuxName, remoteControlName: input.remoteControlName ?? null
     };
     const capsule = buildCapsule({
       project: input.project, role: input.role, generation, custodian,
@@ -277,11 +281,11 @@ export function claimNextGeneration(db: Database.Database, workspace: string, in
         token_hash, created_at, updated_at)
         VALUES (?, ?, ?, 'launching', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(input.project, input.role, generation, input.provider, input.model, input.tier, input.identity,
-          input.nativeSessionId ?? null, input.transcriptPath ?? null, input.tmuxName, input.remoteControlName ?? null,
+          input.nativeSessionId ?? null, input.transcriptPath ?? null, tmuxName, input.remoteControlName ?? null,
           input.briefPath ?? null, input.briefSha ?? null, snapshot.path, snapshot.sha, hashToken(token), at, at);
     });
-    appendLog(paths, "launching", { generation, snapshotSha: snapshot.sha, provider: input.provider, model: input.model, tmuxName: input.tmuxName }, now);
-    return { generation, snapshotPath: snapshot.path, snapshotSha: snapshot.sha, token, recovered };
+    appendLog(paths, "launching", { generation, snapshotSha: snapshot.sha, provider: input.provider, model: input.model, tmuxName }, now);
+    return { generation, snapshotPath: snapshot.path, snapshotSha: snapshot.sha, token, recovered, tmuxName };
   }, input.lock);
 }
 
@@ -290,10 +294,10 @@ export function failGeneration(
   db: Database.Database,
   workspace: string,
   input: { project: string; role: string; generation: number; reason: string; now?: Date; lock?: RelayLockDeps }
-): void {
+): boolean {
   const now = input.now ?? new Date();
   const paths = coordinatorPaths(workspace, input.project, input.role);
-  withRelayLock(paths.root, () => writeTransaction(db, () => markFailed(db, paths, input.project, input.role, input.generation, input.reason, now)), input.lock);
+  return withRelayLock(paths.root, () => writeTransaction(db, () => markFailed(db, paths, input.project, input.role, input.generation, input.reason, now)), input.lock);
 }
 
 /** Records a passing `verify` (its only write), which `accept` requires. */
@@ -404,4 +408,10 @@ export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths,
 
 export function snapshotFileFor(paths: CoordinatorPaths, generation: number): string {
   return snapshotPath(paths, generation);
+}
+
+/** Records where a launched generation's transcript is expected (design step 4). */
+export function recordTranscriptPath(db: Database.Database, project: string, role: string, generation: number, transcriptPath: string, now: Date, remoteControlName: string | null = null): void {
+  db.prepare("UPDATE coordinator_generations SET transcript_path = ?, remote_control_name = COALESCE(?, remote_control_name), updated_at = ? WHERE project = ? AND role = ? AND generation = ?")
+    .run(transcriptPath, remoteControlName, now.toISOString(), project, role, generation);
 }
