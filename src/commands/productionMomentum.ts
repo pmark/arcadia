@@ -39,6 +39,12 @@ import {
   type RunWindow,
   type SlotTransition
 } from "../production/momentumWatch.js";
+import {
+  renderCoordinatorBudgetCheckLines,
+  runCoordinatorBudgetCheck,
+  type CoordinatorBudgetCheckData,
+  type CoordinatorBudgetDependencies
+} from "./coordinatorBudget.js";
 import { runPingSendCommand } from "./ping.js";
 import { readWakeFiles, runProductionIdleFrontCommand } from "./productionIdleFront.js";
 import {
@@ -310,19 +316,22 @@ export interface LivenessTimerOptions extends ProductionLivenessOptions {
 }
 
 export interface LivenessTimerData extends ProductionLivenessData {
-  /** null when the momentum alarm failed this run; the failure is thrown after both checks ran. */
+  /** null when the momentum alarm failed this run; the failure is thrown after every check ran. */
   momentum: ProductionMomentumData | null;
+  /** The coordinator context budget (#2242); null when it failed this run. */
+  coordinatorBudget: CoordinatorBudgetCheckData | null;
 }
 
 /**
  * `arcadia production liveness-check`: the worker check first, unchanged, then
- * the momentum alarm. Neither can stop the other: a failure in either is
- * collected, and the run throws once, after both, carrying any lines the other
- * queued, so the log keeps every page and the exit code is non-zero.
+ * the momentum alarm, then the coordinator context budget (#2242). None can
+ * stop another: a failure in any is collected, and the run throws once, after
+ * all three, carrying any lines the others queued, so the log keeps every page
+ * and the exit code is non-zero.
  */
 export async function runProductionLivenessTimerCommand(
   options: LivenessTimerOptions,
-  dependencies: { liveness?: ProductionLivenessDependencies; momentum?: ProductionMomentumDependencies } = {}
+  dependencies: { liveness?: ProductionLivenessDependencies; momentum?: ProductionMomentumDependencies; budget?: CoordinatorBudgetDependencies } = {}
 ): Promise<CommandSuccess<LivenessTimerData>> {
   // Refuse bad thresholds before either check runs, so a bad flag never half-runs the timer.
   parseIdleMinutes(options.idleMinutes);
@@ -345,14 +354,26 @@ export async function runProductionLivenessTimerCommand(
   } catch (error) {
     failures.push(`Momentum alarm: ${errorText(error)}`);
   }
+  let budget: CommandSuccess<CoordinatorBudgetCheckData> | null = null;
+  try {
+    budget = runCoordinatorBudgetCheck(
+      { workspace: liveness?.workspace ?? options.workspace, dashboardUrl: options.dashboardUrl },
+      { ...(dependencies.liveness?.now ? { now: dependencies.liveness.now } : {}), ...dependencies.budget }
+    );
+  } catch (error) {
+    failures.push(`Coordinator budget: ${errorText(error)}`);
+  }
   if (failures.length > 0) {
     // The worker check's own error, unchanged, when it is the only news.
-    if (livenessError !== null && failures.length === 1 && (momentum === null || renderProductionMomentumLines(momentum.data).length === 0)) {
+    if (livenessError !== null && failures.length === 1
+      && (momentum === null || renderProductionMomentumLines(momentum.data).length === 0)
+      && (budget === null || renderCoordinatorBudgetCheckLines(budget.data).length === 0)) {
       throw livenessError instanceof Error ? livenessError : new Error(String(livenessError));
     }
     const queued = [
       ...(liveness ? renderProductionLivenessCheckSuccess(liveness) : []),
-      ...(momentum ? renderProductionMomentumLines(momentum.data) : [])
+      ...(momentum ? renderProductionMomentumLines(momentum.data) : []),
+      ...(budget ? renderCoordinatorBudgetCheckLines(budget.data) : [])
     ];
     throw validationError([...failures, ...queued].join(" | "));
   }
@@ -360,7 +381,7 @@ export async function runProductionLivenessTimerCommand(
   return createSuccess({
     command: "production.liveness-check",
     workspace: base.workspace,
-    data: { ...base.data, momentum: momentum?.data ?? null }
+    data: { ...base.data, momentum: momentum?.data ?? null, coordinatorBudget: budget?.data ?? null }
   });
 }
 
@@ -369,7 +390,8 @@ export function renderProductionLivenessTimerSuccess(response: CommandSuccess<Li
   const stamp = new Date().toISOString();
   return [
     ...renderProductionLivenessCheckSuccess(response),
-    ...(response.data.momentum ? renderProductionMomentumLines(response.data.momentum, stamp) : [])
+    ...(response.data.momentum ? renderProductionMomentumLines(response.data.momentum, stamp) : []),
+    ...(response.data.coordinatorBudget ? renderCoordinatorBudgetCheckLines(response.data.coordinatorBudget, stamp) : [])
   ];
 }
 

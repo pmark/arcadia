@@ -131,6 +131,11 @@ Compaction is strongly discouraged.
 - **When.** Hand off at a natural break well before the context limit, using the
   [handoff skill](../arcadia-handoff/SKILL.md). Coordinators trigger at about 50–60%
   context (see `docs/agent-guidance/coordinator-handoff-design.md` once merged).
+  At every wake run `arcadia coordinator budget`: it measures your context and
+  Rowan's from the host's transcripts (prepare 50%, due 60%, forced 75%, or
+  unmeasured). Once the installed timer release includes #2242, the liveness
+  timer also pages the operator once per line. A `HANDOFF DUE` banner for your
+  session is the trigger.
 - **Where.** Write a "HANDOFF TO SIGNAL n+1" block into the notes folder. Include:
   - open urgent items and pending operator answers;
   - Rowan's session id and state;

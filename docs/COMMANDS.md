@@ -1834,6 +1834,53 @@ non-zero after both, carrying any page the other queued.
 `--minutes`, default 60, at most 360); besides the CLI's usual activity row it writes nothing else. A keeper runs it at
 every wake with `--minutes` covering its next fallback wake.
 
+## Coordinator Context Budget (#2242)
+
+```bash
+pnpm arcadia coordinator budget [--session <id>] [--workspace <path>] [--json]
+```
+
+Change (1) of the coordinator handoff design (PR #2223). After the momentum
+alarm, the same `production liveness-check` timer run measures each live
+coordinator's context occupancy from the host's own files and pages once per
+threshold per session through `arcadia ping` (agent `Coordinator budget`, kind
+`attention`). It calls no model and starts, stops or messages no session.
+
+- **Coordinators** are sessions whose title starts with ⭐ (Signal) or 🚦
+  (Rowan) and whose file was written in the last 120 minutes. Helpers (↳) and
+  untitled sessions are ignored. Claude: the last `custom-title` line of
+  `~/.claude/projects/*/<session>.jsonl`. Codex: `thread_name` in
+  `~/.codex/session_index.jsonl`, with its `sessions/**/rollout-*-<id>.jsonl`.
+- **Occupancy.** Claude: the last main-chain (not `isSidechain`) assistant
+  `message.usage`, `input_tokens + cache_creation_input_tokens +
+  cache_read_input_tokens`; after a `compact_boundary` with no turn yet, its
+  `compactMetadata.postTokens`. The window comes from the status-line capture
+  when its `session_id` is this session, else from a hand-registered table in
+  `src/coordinators/budget.ts` with each model's evidence. Codex: the last
+  `token_count` event's `info.last_token_usage.input_tokens` over
+  `info.model_context_window`.
+- **Thresholds** (the design's starting values): prepare 50%, due 60%, forced
+  75%. `👆 HANDOFF PREPARE: <title> at 51% context — …`, `👆👆 HANDOFF DUE:
+  <title> at 61% context — start its successor: …`, `👆👆👆 HANDOFF OVERDUE: …`.
+  A jump past several lines pages only the highest. Each line pages at most
+  once per episode; a compaction starts a new episode.
+- **Unmeasured.** No usage line, no registered window, a window below an
+  observed compaction, tokens above the window, or a session file that cannot
+  be read: `👆👆 HANDOFF DUE: <title> context unmeasured — treat it as due: …`,
+  with the reason and the main-chain turn count as a labelled coarse proxy,
+  never a percentage. A session with no usage at all is held for its first 60
+  minutes, and one just compacted with no new count for 10 minutes.
+- **Marker.** Each coordinator past prepare, or unmeasured, has
+  `<workspace>/.arcadia/coordinator-budget/<agent>-<session>.json` (level,
+  `handoff_due`, tokens, window, next step, pings sent), removed when it is
+  back under prepare. State is in `state.json` beside it; the outbox's episode
+  key (`budget <level> <agent>:<session>`) stops a repeat after a lost state.
+
+`coordinator budget` is the read-only view a coordinator runs at each wake:
+it measures every live coordinator now, shows the pages the timer already
+sent, and leads with this session's banner (`--session`, default
+`CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`). It writes and records nothing.
+
 ## Check A Design Record Or Field Guide
 
 ```bash
