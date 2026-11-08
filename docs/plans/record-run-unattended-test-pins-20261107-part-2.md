@@ -51,11 +51,11 @@ actions:
     references: []
   - id: pin-requirement-id-format
     title: Pin that a requirement id joins project, plan and Action id with slashes and no normalization, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a requirement id joins project, plan and Action id with slashes and no normalization, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-requirement-id-format-a2a6c2f5bcfc; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-requirement-id-format
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-requirement-id-format
+current_action: pin-doc-ref-builders
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
