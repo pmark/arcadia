@@ -136,14 +136,14 @@ interface StartRunPlanAction {
 }
 
 /** Check the text the pinned Action will hand to completion validation. */
-export function startRunCriteriaFindings(action: StartRunPlanAction): string[] {
+export function startRunCriteriaFindings(action: StartRunPlanAction): { errors: string[]; warnings: string[] } {
   const criteria = Array.isArray(action.acceptance_criteria) ? action.acceptance_criteria : [];
-  const findings: string[] = [];
+  const errors: string[] = [];
   const checkText = (label: string, value: unknown): void => {
     if (typeof value !== "string") return;
     const invisible = value.match(/[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/gu) ?? [];
     const codes = [...new Set(invisible)].map((char) => `U+${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
-    if (codes.length) findings.push(`${label} contains invisible characters (${codes.join(", ")}); spell out the escape.`);
+    if (codes.length) errors.push(`${label} contains invisible characters (${codes.join(", ")}); spell out the escape.`);
   };
   checkText("next_action", action.next_action);
   const textCriteria = criteria.filter((criterion): criterion is string => typeof criterion === "string");
@@ -157,10 +157,11 @@ export function startRunCriteriaFindings(action: StartRunPlanAction): string[] {
         (_match, start: string, args: string, end: string) => start + args.replace(/(^\s*|,\s*)(["'`])([^\s"'`]+)\2(?=\s*(?:,|$))/g, "$1example-value") + end)
       .replace(/(\b(?:asserts?|expects?)\s+[^"'`\r\n]*?\breturns?\s+|\bexample\s+(?:path|input|value|string)\s*:\s*)(["'`])([^\s"'`]+)\2/gi, "$1example-value");
   }));
-  for (const file of required.filter((entry) => !withoutExamples.includes(entry))) {
-    findings.push(`acceptance_criteria would require example path ${file} as a test file; reword it as data.`);
-  }
-  return findings;
+  // An assertion can intentionally refer to a real file. Let the operator
+  // clarify ambiguous paths without blocking an otherwise valid card.
+  const warnings = required.filter((file) => !withoutExamples.includes(file))
+    .map((file) => `acceptance_criteria would require ${file} as a test file; clarify if it is example data.`);
+  return { errors, warnings };
 }
 
 /** The main checkout of the repository (ignored host files such as consumed markers live there, not in a worktree). */
@@ -202,14 +203,18 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   const planStatus = String(planFrontmatter.status ?? "");
   if (planStatus !== "active" && planStatus !== "draft") throw validationError(`Plan ${plan} is ${planStatus || "of unknown status"}; a START card needs an active Plan or a draft with a pinned activation.`);
   const planActions = (Array.isArray(planFrontmatter.actions) ? planFrontmatter.actions : []) as StartRunPlanAction[];
-  const criteriaFindings: string[] = [];
+  const criteriaErrors: string[] = [];
+  const criteriaWarnings: string[] = [];
   for (const action of actions) {
     const found = planActions.find((entry) => entry.id === action);
     if (!found) throw validationError(`Action ${action} is not in Plan ${plan} at origin main.`);
     if (found.status === "done") throw validationError(`Action ${action} is already done; a START card pins only open Actions.`);
-    criteriaFindings.push(...startRunCriteriaFindings(found).map((finding) => `${action}: ${finding}`));
+    const { errors, warnings } = startRunCriteriaFindings(found);
+    criteriaErrors.push(...errors.map((finding) => `${action}: ${finding}`));
+    criteriaWarnings.push(...warnings.map((finding) => `${action}: ${finding}`));
   }
-  if (criteriaFindings.length) throw validationError(`START criteria preflight failed:\n${criteriaFindings.join("\n")}`);
+  if (criteriaErrors.length) throw validationError(`START criteria preflight failed:\n${[...criteriaErrors, ...criteriaWarnings].join("\n")}`);
+  notes.push(...criteriaWarnings);
   if (planStatus === "draft") notes.push("The Plan is a draft: embed its pinned planActivation block in the descriptor (Decision 0157) before review.");
 
   let delegatedFrom: { card: string; run: string } | null = null;

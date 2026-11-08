@@ -15,7 +15,7 @@ import { discoverDocs } from "../src/docs/discover.js";
 import type { NormalizedAgentAsk } from "../src/ask/agentAsk.js";
 import { assertProjectLibraryEntry, startRunLauncher, validateOperatorScriptContract, planAmendmentLauncher, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { START_RUN_KEYS, validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
-import { buildStartRunPins, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
+import { buildStartRunPins, runStartRunPinsCommand, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
 
 const root = path.resolve(import.meta.dirname, "..");
 const PIN = "a".repeat(40);
@@ -251,7 +251,7 @@ describe("arcadia start-run pins", () => {
     })}---\nbody\n`;
   }
 
-  it("refuses pins before reading live state when criteria would require an example path or contain invisible text", () => {
+  it("refuses invisible text before reading live state and reports example paths in the same diagnostic", () => {
     const f = fixture({ planDocument: planWithCriteria([
       'Assert classify(repo, "tests/example.test.ts") returns false.',
       "Match a literal \u200B here.",
@@ -259,7 +259,7 @@ describe("arcadia start-run pins", () => {
     ], "Build \u2060 the test.") });
     const production = vi.spyOn(f.deps, "production");
     expect(() => buildStartRunPins(f.args, f.deps)).toThrow(
-      /first-action: next_action.*U\+2060[^]*first-action: acceptance_criteria\[2\].*U\+200B[^]*first-action: acceptance_criteria would require example path tests\/example\.test\.ts[^]*would require example path tests\/result\.test\.ts/
+      /first-action: next_action.*U\+2060[^]*first-action: acceptance_criteria\[2\].*U\+200B[^]*first-action: acceptance_criteria would require tests\/example\.test\.ts[^]*would require tests\/result\.test\.ts/
     );
     expect(production).not.toHaveBeenCalled();
   });
@@ -273,7 +273,22 @@ describe("arcadia start-run pins", () => {
       'Run the example "tests/another-real.test.ts" to verify the documented flow.',
       "Write the ASCII escape \\u200B in the test."
     ]) });
-    expect(buildStartRunPins(f.args, f.deps).startRun.actions).toEqual(["first-action", "second-action"]);
+    const result = runStartRunPinsCommand(f.args, f.deps);
+    expect(result.data.startRun.actions).toEqual(["first-action", "second-action"]);
+    expect(result.warnings).toEqual([]);
+  });
+
+  it("warns about ambiguous paths without refusing a valid file assertion", () => {
+    const f = fixture({ planDocument: planWithCriteria([
+      'Assert classify(repo, "tests/example.test.ts") returns false.',
+      'Assert existsSync("tests/real.test.ts") returns true.'
+    ]) });
+    const result = runStartRunPinsCommand(f.args, f.deps);
+    expect(result.data.startRun.actions).toEqual(["first-action", "second-action"]);
+    expect(result.warnings).toEqual([
+      "first-action: acceptance_criteria would require tests/example.test.ts as a test file; clarify if it is example data.",
+      "first-action: acceptance_criteria would require tests/real.test.ts as a test file; clarify if it is example data."
+    ]);
   });
 
   it("emits a Decision 0163 delegation block for Rowan's successor with --delegated-from, and refuses when the chain refuses", () => {

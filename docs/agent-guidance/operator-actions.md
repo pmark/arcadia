@@ -255,10 +255,10 @@ pinned descriptor, so per-card review is small.
   still a draft embeds its `planActivation` block beside it (the only runner that
   may). Get the pins from live state with
   `arcadia start-run pins --plan <slug> --actions a,b,c --provider claude-code-cli --expires-hours <n>`;
-  it writes nothing and emits no script. If the criteria preflight refuses, correct
-  the reported Action text through the governed Plan path before computing pins
-  again. Spell out flagged invisible characters as escapes and clarify which
-  test paths are examples and which the Action must deliver.
+  it writes nothing and emits no script. Criteria containing invisible characters
+  refuse pinning. Spell out the characters as escapes in the governed Plan.
+  Review any test-path warnings before preparing the descriptor and clarify
+  which paths are examples and which the Action must deliver.
 - **What one press may do:** fast-forward the clean main checkout to the pinned sha
   only, `go-broker ensure`, then reinstall the pinned worker label from that
   compiled release (`worker install --replace-label`, run by the release itself,
