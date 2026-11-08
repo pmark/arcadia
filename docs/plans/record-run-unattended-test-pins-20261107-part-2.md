@@ -31,11 +31,11 @@ actions:
     references: []
   - id: pin-cli-wants-json
     title: Pin that the CLI treats only an exact --json argument as a request for JSON output, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the CLI treats only an exact --json argument as a request for JSON output, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-cli-wants-json-c36363af9626; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-cli-wants-json
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-cli-wants-json
+current_action: pin-requirement-id-format
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
