@@ -111,11 +111,11 @@ actions:
     references: []
   - id: pin-handoff-request-prefix
     title: Pin that the handoff request prefix lowercases the work item id and dashes every run of other characters, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the handoff request prefix lowercases the work item id and dashes every run of other characters, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-handoff-request-prefix-e1e85bfdd007; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-handoff-request-prefix
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-handoff-request-prefix
+current_action: pin-review-response-normalization
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
