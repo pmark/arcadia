@@ -21,7 +21,7 @@ const PINNED: Record<number, string> = {
   // #2270: a Plan-completing settlement verifies against the parent revision's Plan.
   5: "1b87c333ff3b402bf252cfd4e1fef4f5c3d90b02b0f2ccfc78fd37cd3871eea6",
   // #2281: a Plan completion is judged on the parsed documents before and after the patch.
-  6: "02a5979367080764c37c013b592411ca102a17cdad79db19f411fa4e1ffd00fe"
+  6: "3b17ba72b989e2152853d53a2617b0d3ab3cfa5a542e9d39dcbf197987b5bf95"
 };
 
 function judgementContentHash(): string {

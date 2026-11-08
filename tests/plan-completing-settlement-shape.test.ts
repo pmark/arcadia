@@ -265,6 +265,9 @@ describe("a Plan-completing settlement (Issue #2270)", () => {
     it("D3: refuses a parent with a duplicate status", () => {
       refused(withHidden(["status: active"]));
     });
+    it("refuses a parent whose front matter holds a YAML cycle, without throwing", () => {
+      refused(withHidden(["cycle: &x", "  self: *x"]));
+    });
     it("A1: refuses completing the file whose slug is not active_plan, though its name is", () => {
       refused({
         ...COMPLETING,
@@ -351,6 +354,17 @@ describe("a Plan-completing settlement (Issue #2270)", () => {
         baseFiles: { [PLAN_PATH]: plan({ status: "active", actions: COMPLETING.base, current: LAST, body: pad }) },
         settleFiles: { [PLAN_PATH]: afterOf(COMPLETING.after.actions, pad) }
       });
+    });
+
+    it("refuses a completion that also drops PROJECT.md's final newline, which only the patch's marker shows", () => {
+      const line = "updated: 2026-01-01";
+      const s = series({
+        ...COMPLETING,
+        baseFiles: { "PROJECT.md": `${project({ activePlan: "p", current: LAST })}${line}\n` },
+        settleFiles: { "PROJECT.md": `${project({ activePlan: "p", current: null })}${line}` }
+      });
+      expect(s.patch).toContain("\\ No newline at end of file");
+      expect(shapeOf(check(s, s.parents), "PROJECT.md")).toMatchObject({ verified: false });
     });
 
     it("refuses a hunk that does not apply exactly to the parent evidence", () => {

@@ -53,8 +53,8 @@
  * evidence, and the `updated:` date is not compared. Residual there: the
  * evidence is the commit's parent, not the merge result, so an Action added to
  * the Plan on the base branch after the branch point is not seen; and a Plan
- * whose other Actions are deferred, or that has a queued successor, stays
- * refused.
+ * whose other Actions are deferred only by a Decision, or that has a queued
+ * successor, stays refused.
  *
  * Residual: a forged attestation can still make shape-limited governed edits
  * pass this check (add Agent Ask data files or archive them, by rename or as a
@@ -603,6 +603,11 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
         continue;
       }
       endHunk();
+    }
+    // The marker follows a hunk's last counted line, so that hunk has already closed.
+    if (current && line.startsWith("\\ ") && current.hunks.length > 0) {
+      current.hunks[current.hunks.length - 1].push(line);
+      continue;
     }
     if (line.startsWith("diff --git ")) {
       const match = SIMPLE_DIFF_HEADER.exec(line);
@@ -1187,17 +1192,18 @@ function parseFrontMatter(text: string): FrontMatterDocument | null {
   }
 }
 
-/** Structural equality of parsed YAML values. */
-function sameValue(left: unknown, right: unknown): boolean {
+/** Structural equality of parsed YAML values. A cycle, which a YAML alias can form, is never equal. */
+function sameValue(left: unknown, right: unknown, path: Set<object> = new Set()): boolean {
   if (left === right) return true;
-  if (Array.isArray(left) || Array.isArray(right)) {
-    return Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => sameValue(value, right[index]));
-  }
   if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
-  const leftKeys = Object.keys(left);
-  const rightKeys = Object.keys(right);
-  return leftKeys.length === rightKeys.length && leftKeys.every((key) => Object.hasOwn(right, key)
-    && sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key]));
+  if (path.has(left)) return false;
+  path.add(left);
+  const same = Array.isArray(left) || Array.isArray(right)
+    ? Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => sameValue(value, right[index], path))
+    : Object.keys(left).length === Object.keys(right).length && Object.keys(left).every((key) => Object.hasOwn(right, key)
+      && sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key], path));
+  path.delete(left);
+  return same;
 }
 
 /** The mapping without the named keys. */
