@@ -1322,15 +1322,15 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("coordinator.note", options, () => runCoordinatorNoteCommand({ ...options, text: text.join(" "), env: process.env }), renderCoordinatorNoteSuccess)
   );
   coordinatorScope(coordinator.command("subscribe")
-    .description("Register a checked-in watcher command line with its cursor, or re-arm every watcher a pinned snapshot lists. Custody-guarded")
+    .description("Register a checked-in watcher command line with its cursor, or record every watcher a pinned snapshot lists as inherited (not armed; run each yourself, then register it with a plain subscribe). Custody-guarded")
     .argument("[command-line]", "The watcher's checked-in command line")
     .option("--cursor <cursor>", "The watcher's last event cursor")
-    .option("--from-snapshot <sha>", "Re-arm the watchers the snapshot with this sha lists (the incoming generation)")
+    .option("--from-snapshot <sha>", "Record the watchers the snapshot with this sha lists as inherited and unarmed (the incoming generation); starts no process")
   ).action((commandLine: string | undefined, options: { workspace: string; project: string; role: string; cursor?: string; fromSnapshot?: string; json?: boolean }) =>
     runCliAction("coordinator.subscribe", options, () => runCoordinatorSubscribeCommand({ ...options, commandLine, env: process.env }), renderCoordinatorSubscribeSuccess)
   );
   coordinatorScope(coordinator.command("verify")
-    .description("Prove a launching generation has the whole state: snapshot sha, drift since the snapshot, watchers re-armed (exit 1 unless these pass), then journal, lost approvals and next move as warnings")
+    .description("Prove a launching generation has the whole state: snapshot sha, drift since the snapshot, watchers armed by this generation (exit 1 unless these pass), then journal, lost approvals and next move as warnings")
     .requiredOption("--generation <n>", "The launching generation", (value: string) => Number(value))
     .option("--snapshot-sha <sha>", "The sha the launch prompt pinned")
     .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)

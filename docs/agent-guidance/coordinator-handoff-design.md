@@ -312,8 +312,11 @@ approval it relies on.
    - OpenCode: `opencode run -i --model <id> "<resume prompt>"` (probe P4).
 
    The resume prompt is fixed text: "You are <role> generation N+1. Run
-   `arcadia coordinator subscribe --from-snapshot <sha>`, then
-   `arcadia coordinator verify --generation N+1`, then `accept`." It also
+   `arcadia coordinator subscribe --from-snapshot <sha>` to list the inherited
+   watchers (it starts none), start each listed watcher yourself in the
+   background and register it with `arcadia coordinator subscribe "<command>"
+   --cursor <c>`, then `arcadia coordinator verify --generation N+1`, then
+   `accept`." It also
    carries the snapshot path and sha. `subscribe --from-snapshot` records each
    watcher the snapshot lists, with its last cursor (section e), as inherited
    and unarmed; it starts no process. The successor runs each watcher itself in
@@ -341,13 +344,19 @@ approval it relies on.
      refusal names the successor.
    - *The one exception: the incoming generation.* Before acceptance the
      custodian is still N, so the guard would refuse N+1's own handoff. It
-     therefore admits exactly two commands from a caller that is not the
-     custodian: `subscribe --from-snapshot` and `accept`. It admits them only
-     under the transfer lock, only for the newest `launching` generation, only
-     when the caller's token matches that row and the sha matches its
-     snapshot, and, for `accept`, only when `verify` passed against that sha
-     within the last 10 minutes. Every other command and caller gets the
-     ordinary check.
+     therefore admits exactly three commands from a caller that is not the
+     custodian: `subscribe --from-snapshot`, `accept`, and a plain
+     `subscribe "<command>" --cursor <c>` (the successor arming a watcher it
+     runs). It admits them only under the transfer lock, only for the newest
+     `launching` generation, and only when the caller's token matches that row.
+     `subscribe --from-snapshot` and `accept` also need the sha to match the
+     row's snapshot. `accept` further needs `verify` to have passed against that
+     sha within the last 10 minutes and the snapshot file to still hash to the
+     recorded sha. A plain `subscribe` from the incoming generation is accepted
+     only for a command line already recorded as inherited from its snapshot;
+     it carries no sha. `subscribe --from-snapshot` also clears any earlier
+     verify pass, so `accept` needs a fresh `verify`. Every other command and
+     caller gets the ordinary check.
    - *Exact commands guarded:* `arcadia coordinator note`, `subscribe`,
      `hold`, `renew` and `accept`, and `arcadia ping send` whenever
      `ARCADIA_COORDINATOR_ROLE` is set.
@@ -469,8 +478,13 @@ The design rules:
    differences from the snapshot (PR heads, production revision and epoch,
    Decision numbers, pending pings, sessions alive). A difference is expected
    and fine: it shows what changed during the handoff. It is not a failure.
-3. Every subscription is armed by this generation (registered by the successor,
-   not merely inherited), and its cursor is not older than the snapshot.
+3. Every subscription *in the snapshot* is armed by this generation (registered
+   by the successor, not merely inherited). The check does not compare cursors,
+   and the successor may arm a watcher with any cursor. **Known gap, a gate
+   before any real `renew`:** a watcher the predecessor registers *after* the
+   snapshot is not in the snapshot, so verify ignores it and still passes, and
+   the successor cannot arm it (plain `subscribe` accepts only inherited lines).
+   That watcher can be left running under no one's custody.
 4. Every journal entry is listed with its age. An entry older than 2 hours is
    marked `stale`.
 5. Every chat-only approval is listed as lost, with its prepared card, if any.

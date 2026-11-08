@@ -355,6 +355,25 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => [row.generation, row.status])).toEqual([[1, "handed_off"], [2, "custodian"]]);
   });
 
+  it("re-running --from-snapshot after a passing verify clears it, so accept needs a fresh verify", () => {
+    const { ws, claimed, env } = handoff();
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
+    armInherited(ws, env, at(3));
+    expect(runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) }).data.passed).toBe(true);
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(5), env });
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(6), env })).toThrow(/verify/);
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => row.status)).toEqual(["custodian", "launching"]);
+  });
+
+  it("a failing log write does not stop failGeneration from marking the row failed", () => {
+    const { ws } = handoff();
+    const paths = coordinatorPaths(ws, "arcadia", "rowan");
+    unlinkSync(paths.generationsLog);
+    mkdirSync(paths.generationsLog);
+    expect(withDatabase(ws, (db) => failGeneration(db, ws, { ...base, generation: 2, reason: "launch_failed", now: at(3) }))).toBe(true);
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => row.status)).toEqual(["custodian", "failed"]);
+  });
+
   it("the guard refuses an unknown generation or token and names the custodian", () => {
     const { ws } = handoff();
     expect(() => withDatabase(ws, (db) => assertCoordinatorCustody(db, { command: "note", env: envFor(9, "x"), now: at(3) }))).toThrow(/generation 1/);
@@ -363,6 +382,24 @@ describe("verify, subscribe --from-snapshot and accept", () => {
 });
 
 describe("repositoryRoot", () => {
+  it("capsule and verify keep the invocation root even inside a linked worktree", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-coord-linked-"));
+    roots.push(root);
+    const main = path.join(root, "main");
+    mkdirSync(main);
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: main });
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty", "-m", "i"], { cwd: main });
+    const linked = path.join(root, "linked");
+    execFileSync("git", ["worktree", "add", "-q", linked], { cwd: main });
+    const before = process.env.ARCADIA_INVOKED_FROM;
+    process.env.ARCADIA_INVOKED_FROM = linked;
+    try {
+      expect(repositoryRoot()).toBe(execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: linked, encoding: "utf8" }).trim());
+    } finally {
+      if (before === undefined) delete process.env.ARCADIA_INVOKED_FROM; else process.env.ARCADIA_INVOKED_FROM = before;
+    }
+  });
+
   it("resolves from the invocation directory, not the process directory", () => {
     const root = mkdtempSync(path.join(tmpdir(), "arcadia-coord-repo-"));
     roots.push(root);
