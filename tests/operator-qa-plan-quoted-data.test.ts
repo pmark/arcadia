@@ -88,6 +88,8 @@ describe("Operator QA plan: quoted criterion text that is test data (Issue #2324
         const { body } = render(testCase);
         expect(body).not.toContain("grep -Fxn");
         expect(body).not.toContain(`git show ${COMMIT}:PROJECT.md`);
+        // An import specifier such as ../src/docs/discover.js is never shown or diffed.
+        expect(body).not.toMatch(/git (?:show [0-9a-f]{40}:|diff [^`]* -- )\S*(?:discover|types|launchAgents|rehearsalSoak)\.js/);
         expect(body).toContain(`git show ${COMMIT}:${testCase.testFile}`);
       });
 
@@ -164,10 +166,16 @@ describe("Operator QA plan: quoted criterion text that is test data (Issue #2324
     expect(four).not.toContain("grep -Fxn");
   });
 
-  it("says which named paths the patch does not change, and greps every test file an earlier criterion names", () => {
+  it("greps every test file an earlier criterion names; an import specifier is neither diffed nor shown", () => {
     const unchanged = plan(["src/missing.ts is not created."], [{ status: "M", path: "README.md" }]);
-    expect(unchanged).toContain("`src/missing.ts` is a path the criterion names that this candidate does not change");
     expect(unchanged).not.toContain("-- src/missing.ts");
+    const imports = plan([
+      "tests/t.test.ts is a new test file that imports f from ../src/docs/discover.js and asserts f returns \"a1\".",
+      "No src/ change is made."
+    ], [{ status: "A", path: "tests/t.test.ts" }]);
+    expect(imports).not.toMatch(/git diff [0-9a-f]{40} [0-9a-f]{40} --/);
+    expect(imports).not.toMatch(/git show [0-9a-f]{40}:\S*discover\.js/);
+    expect(imports).not.toContain("is a path the criterion names");
     const two = plan([
       "tests/a.test.ts and tests/b.test.ts are new test files that assert f returns \"x1\".",
       "The same test file asserts f returns \"y2\"."

@@ -247,7 +247,6 @@ function renderPlan(
     }
     // A path the patch does not change cannot be diffed: a diff scoped to it prints nothing.
     const absent = named.filter((candidate) => !pathExists(candidate) && facts.changedFiles.some((file) => file.path === candidate));
-    const unchanged = named.filter((candidate) => !pathExists(candidate) && !facts.changedFiles.some((file) => file.path === candidate));
     const existing = named.filter((candidate) => pathExists(candidate));
     const provenElsewhere = passing !== null || testsPass || claims.scope || claims.requiredChecks;
     const present = inspectedPaths(existing, named, facts.changedFiles, provenElsewhere, criterion);
@@ -287,8 +286,7 @@ function renderPlan(
       ...(literals.length > 0 ? [`${code("grep -Fxn")} prints each quoted text that is a whole line with its line number, and nothing when no line matches`] : []),
       ...(dataFiles.length > 0 ? [`${code("grep -Fn")} prints each line of the file that contains a quoted value, with its line number, and nothing when no line contains it`] : []),
       ...(data.length > 0 && dataFiles.length === 0 ? [`the values the criterion words as test input (${data.map((value) => code(value)).join(", ")}) are not files and no test file is named to search for them, so this step does not search for them and what they assert stays unproven by this step`] : []),
-      ...(present.length === 0 && dataFiles.length === 0 ? ["the diff shows what changed"] : []),
-      ...(unchanged.length > 0 ? [`${unchanged.map((candidate) => code(candidate)).join(", ")} ${unchanged.length === 1 ? "is a path" : "are paths"} the criterion names that this candidate does not change and that ${unchanged.length === 1 ? "does" : "do"} not exist at the candidate commit, so nothing in this step shows ${unchanged.length === 1 ? "it" : "them"}`] : [])
+      ...(present.length === 0 && dataFiles.length === 0 ? ["the diff shows what changed"] : [])
     ];
     if (provenElsewhere) {
       // Inspection cannot show that a command or test passes (Issue #986), which
