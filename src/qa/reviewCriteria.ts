@@ -49,8 +49,11 @@ export const CODE_REVIEW_PR_CRITERIA = [
  *    every review and hands them its per-fact result: the rule's assurances
  *    (an auto-settle id, a split archive, a retirement) apply only where that
  *    result says verified.
+ * 5: #2270, the settlement completing a Plan's last Action (current_action
+ *    removed, Plan status complete) is a verified shape when the commit's
+ *    parent revision of the Plan shows every other Action done.
  */
-export const JUDGEMENT_REVISION = 4;
+export const JUDGEMENT_REVISION = 5;
 
 export const REFUSED_NOT_APPLICABLE_FINDING_TITLE = "Refused not-applicable claim";
 /** The deterministic check row that accepts or refuses the reviewer's not-applicable claims. */

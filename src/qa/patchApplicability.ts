@@ -104,7 +104,18 @@ export interface PatchEvidence {
    * nothing without it.
    */
   commitFiles?: CommitObjectFiles | null;
+  /**
+   * Governed documents (`PROJECT.md`, `docs/plans/*.md`) as they stood at each
+   * commit's first parent, by full commit id then path, read from the Git
+   * object. A Plan-completing settlement (the last Action done, the Plan
+   * `complete`, `current_action` removed) is a verified shape only with it:
+   * the patch cannot show that every other Action was already done. Null,
+   * omitted or missing an entry leaves that shape refused (fail closed).
+   */
+  parentDocuments?: ParentDocuments | null;
 }
+
+export type ParentDocuments = Readonly<Record<string, Readonly<Record<string, string>>>>;
 
 /** One file a commit changes, read from the commit's Git object rather than from patch text, so no commit message reaches it. */
 export interface CommitObjectFile {
@@ -401,7 +412,7 @@ function analyzePatch(patch: string, evidence: PatchEvidence) {
     files.filter((file) => file.commit === index).every((file) => !file.special && !file.executableMode && file.paths.every(isGovernedRecordPath)));
   const retired = retiredCompletionDrafts(files, commits);
   const splitArchives = splitArchiveMoves(files, governedCommit);
-  const shapes = governedShapeViolations(files, retired, splitArchives);
+  const shapes = governedShapeViolations(files, retired, splitArchives, commits, evidence.parentDocuments);
   const shapeViolations = shapes.violations;
   const consumed = consumedCompletionDraftCreations(files, commits, governedCommit, retired, splitArchives);
   const byPath = new Map<string, PathEntry>();
@@ -872,6 +883,8 @@ function askScalar(content: string, key: string): string | null {
 const PLAN_POINTER = /^current_action: ([A-Za-z0-9][\w.-]*)$/;
 const UPDATED = /^updated: \d{4}-\d{2}-\d{2}$/;
 const ACTION_STATUS = /^ {4}status: (\S+)$/;
+/** The Plan's own front-matter status, never an Action's (those are indented). */
+const PLAN_STATUS = /^status: (\S+)$/;
 const ACTION_ID = /^ {2}- id: (\S+)$/;
 /** Any single-line `next_action` value, old or new — recognized generically; {@link NEXT_ACTION_CANONICAL_COMPLETED} gates what a new one may say. */
 const NEXT_ACTION_FIELD = /^ {4}next_action:.*$/;
@@ -895,7 +908,8 @@ const NEXT_ACTION_CANONICAL_COMPLETED = /^ {4}next_action: Completed via Agent A
  * (the pointer leaves only the Action marked done) is checked here too.
  */
 function governedShapeViolations(
-  files: ParsedFile[], retired: Map<ParsedFile, string> = new Map(), splitArchives: Set<ParsedFile> = new Set()
+  files: ParsedFile[], retired: Map<ParsedFile, string> = new Map(), splitArchives: Set<ParsedFile> = new Set(),
+  commits: ParsedCommit[] = [], parentDocuments: ParentDocuments | null | undefined = undefined
 ): { violations: Map<string, string>; carriedAsks: CarriedAsk[]; nextActionRewrites: Map<string, Array<{ id: string; requestId: string; commit: number }>> } {
   const violations = new Map<string, string>();
   const violate = (filePath: string, reason: string) => { if (!violations.has(filePath)) violations.set(filePath, reason); };
@@ -903,6 +917,11 @@ function governedShapeViolations(
   const nextActionRewrites = new Map<string, Array<{ id: string; requestId: string; commit: number }>>();
   const planMoves = new Map<string, string[]>();
   const projectMoves: string[] = [];
+  // A Plan-completing settlement removes current_action outright and sets the
+  // Plan `complete`; each half is only collected here and verified together,
+  // against the parent revision, after every file is read.
+  const planCompletions: Array<{ file: ParsedFile; plan: string; id: string; doneHere: string[] }> = [];
+  const projectRemovals: Array<{ file: ParsedFile; id: string }> = [];
   // Every Agent Ask id this same patch series makes available: drafted
   // (added, anywhere under .arcadia/asks/, not yet archived), archived by a
   // same-name rename, or archived directly (added straight into
@@ -981,6 +1000,7 @@ function governedShapeViolations(
     // status-done tie enforced in the hunk pass below are what actually gate
     // what a *new* next_action line may say and which Action it may belong to.
     const keyOf = (line: string): string | null => PLAN_POINTER.test(line) ? "current_action" : UPDATED.test(line) ? "updated"
+      : target !== "PROJECT.md" && PLAN_STATUS.test(line) ? "planStatus"
       : target !== "PROJECT.md" && ACTION_STATUS.test(line) ? "status"
       : target !== "PROJECT.md" && NEXT_ACTION_FIELD.test(line) ? "next_action" : null;
     const bad = [...removed, ...added].find((line) => keyOf(line) === null);
@@ -998,19 +1018,35 @@ function governedShapeViolations(
     // below still separately requires the single matched pair to sit next to
     // each other and match the canonical form, so a same-count but
     // non-adjacent or non-canonical pair still refuses there.
+    const moves = removed.flatMap((line) => PLAN_POINTER.exec(line)?.[1] ?? []);
+    const destinations = added.flatMap((line) => PLAN_POINTER.exec(line)?.[1] ?? []);
+    // The one non-replacement shape: the pointer removed outright. In a Plan
+    // it is allowed only beside `status: active` -> `status: complete`, and the
+    // two stand or fall together; PROJECT.md's removal is tied to a verified
+    // completion of its own active Plan below.
+    const removedOnly = moves.length === 1 && destinations.length === 0;
+    const statusFrom = removed.flatMap((line) => PLAN_STATUS.exec(line)?.[1] ?? []);
+    const statusTo = added.flatMap((line) => PLAN_STATUS.exec(line)?.[1] ?? []);
+    const completes = target !== "PROJECT.md" && statusFrom.length === 1 && statusTo.length === 1 && statusFrom[0] === "active" && statusTo[0] === "complete";
+    if (statusFrom.length + statusTo.length > 0 && !(completes && removedOnly)) {
+      violateFile("a Plan's status may only change from active to complete together with its current_action being removed, as the settlement completing its last Action");
+    }
+    const completion = removedOnly && (target === "PROJECT.md" || completes);
     for (const key of ["current_action", "updated", "status", "next_action"]) {
+      if (key === "current_action" && completion) continue;
       if (removed.filter((line) => keyOf(line) === key).length !== added.filter((line) => keyOf(line) === key).length) {
         violateFile(`${key} must be replaced line for line`);
       }
     }
-    const moves = removed.flatMap((line) => PLAN_POINTER.exec(line)?.[1] ?? []);
-    const destinations = added.flatMap((line) => PLAN_POINTER.exec(line)?.[1] ?? []);
     if (moves.some((from, index) => from === destinations[index])) violateFile("current_action must move to a different Action");
     if (target === "PROJECT.md") {
       projectMoves.push(...moves);
+      if (completion) projectRemovals.push({ file, id: moves[0] });
       continue;
     }
     planMoves.set(target, [...(planMoves.get(target) ?? []), ...moves]);
+    const doneHere: string[] = [];
+    if (completion) planCompletions.push({ file, plan: target, id: moves[0], doneHere });
     for (const lines of file.hunks) {
       lines.forEach((line, index) => {
         if (!line.startsWith("-")) return;
@@ -1020,7 +1056,10 @@ function governedShapeViolations(
           const owner = lines.slice(0, index).reverse().find((candidate) => ACTION_ID.test(candidate.slice(1)));
           const id = owner?.startsWith(" ") ? ACTION_ID.exec(owner.slice(1))?.[1] : undefined;
           if (!id) violateFile("the Action whose status changes is not shown in the hunk's context");
-          else done.set(target, [...(done.get(target) ?? []), id]);
+          else {
+            done.set(target, [...(done.get(target) ?? []), id]);
+            doneHere.push(id);
+          }
           return;
         }
         // A removed `next_action` line only starts a recognized rewrite at its
@@ -1042,6 +1081,23 @@ function governedShapeViolations(
         if (!id) violateFile("the Action whose next_action changes is not shown in the hunk's context");
         else nextActionRewrites.set(target, [...(nextActionRewrites.get(target) ?? []), { id, requestId: match[1], commit: file.commit }]);
       });
+    }
+  }
+  // Plan-completing settlements: verified against the parent revision, or refused.
+  const verifiedCompletions = new Set<ParsedFile>();
+  for (const completion of planCompletions) {
+    const refusal = planCompletionRefusal(completion, commits, parentDocuments);
+    if (refusal) violate(completion.plan, refusal);
+    else verifiedCompletions.add(completion.file);
+  }
+  for (const removal of projectRemovals) {
+    const completion = planCompletions.find((entry) => entry.file.commit === removal.file.commit && entry.id === removal.id && verifiedCompletions.has(entry.file));
+    const sha = commits[removal.file.commit]?.sha;
+    const base = parentDocuments && sha ? parentDocuments[sha]?.["PROJECT.md"] : undefined;
+    const front = base === undefined ? null : frontMatterScalars(base);
+    if (!completion) violate("PROJECT.md", "PROJECT.md's current_action may be removed only by the same commit's verified completion of that Action as the last Action of its Plan");
+    else if (!front || front.get("current_action") !== removal.id || `docs/plans/${front.get("active_plan")}.md` !== completion.plan) {
+      violate("PROJECT.md", "PROJECT.md's current_action may be removed only for the active Plan, at the Action the parent revision's PROJECT.md names");
     }
   }
   // The pointer may only leave an Action this patch marks done, and every
@@ -1093,6 +1149,93 @@ function governedShapeViolations(
     }
   }
   return { violations, carriedAsks, nextActionRewrites };
+}
+
+/** The front matter's top-level `key: value` lines; null when the document has no front matter. */
+function frontMatterScalars(text: string): Map<string, string> | null {
+  const lines = text.split(/\r?\n/);
+  const end = lines.indexOf("---", 1);
+  if (lines[0] !== "---" || end === -1) return null;
+  const scalars = new Map<string, string>();
+  for (const line of lines.slice(1, end)) {
+    const match = /^([A-Za-z_][\w-]*): (\S.*)$/.exec(line);
+    if (match && !scalars.has(match[1])) scalars.set(match[1], match[2].trim());
+  }
+  return scalars;
+}
+
+/** Each Action's id and status in a Plan document's front matter, read by the line shapes the settlement writer uses; null when unreadable. */
+function planActionStatuses(text: string): Map<string, string> | null {
+  const lines = text.split(/\r?\n/);
+  const end = lines.indexOf("---", 1);
+  if (lines[0] !== "---" || end === -1) return null;
+  const statuses = new Map<string, string>();
+  let current: string | null = null;
+  let inActions = false;
+  for (const line of lines.slice(1, end)) {
+    if (/^\S/.test(line)) inActions = line === "actions:";
+    if (!inActions) continue;
+    const id = ACTION_ID.exec(line)?.[1];
+    if (id !== undefined) {
+      if (statuses.has(id)) return null;
+      statuses.set(id, "");
+      current = id;
+    } else if (current !== null) {
+      const status = ACTION_STATUS.exec(line)?.[1];
+      if (status !== undefined) {
+        if (statuses.get(current) !== "") return null;
+        statuses.set(current, status);
+      }
+    }
+  }
+  return statuses.size > 0 && [...statuses.values()].every((status) => status !== "") ? statuses : null;
+}
+
+/**
+ * Why a Plan's removed-only `current_action` plus `status: active` ->
+ * `complete` is not a verified completion; null when it is. It is one only
+ * when the commit's parent revision of the Plan was read and shows: the Plan
+ * `active`, `current_action` at exactly the Action this commit marks done (and
+ * only that one), that Action not yet done, and every other Action already
+ * done. The status line must also be the front matter's own, at the line the
+ * parent has it.
+ */
+function planCompletionRefusal(
+  completion: { file: ParsedFile; plan: string; id: string; doneHere: string[] },
+  commits: ParsedCommit[], parentDocuments: ParentDocuments | null | undefined
+): string | null {
+  const { file, plan, id, doneHere } = completion;
+  const unverifiable = (why: string) => `the Plan is completed here (current_action removed, status complete), but ${why}`;
+  const sha = commits[file.commit]?.sha;
+  const base = parentDocuments && sha ? parentDocuments[sha]?.[plan] : undefined;
+  if (base === undefined) return unverifiable("the Plan document at the commit's parent revision was not read, so it cannot be shown that every other Action was already done");
+  if (doneHere.length !== 1 || doneHere[0] !== id) return unverifiable("the Action marked done is not exactly the one current_action leaves");
+  const front = frontMatterScalars(base);
+  if (!front || front.get("status") !== "active" || front.get("current_action") !== id) {
+    return unverifiable("the parent revision's Plan is not active with current_action at that Action");
+  }
+  const statuses = planActionStatuses(base);
+  if (!statuses || !statuses.has(id)) return unverifiable("the parent revision's Plan Actions could not be read");
+  const notDone = [...statuses].filter(([action, status]) => action !== id && status !== "done").map(([action]) => action);
+  if (statuses.get(id) === "done" || notDone.length > 0) {
+    return unverifiable(notDone.length > 0 ? `Action ${notDone.join(", ")} is not done at the parent revision` : `Action ${id} was already done at the parent revision`);
+  }
+  // The removed `status:` line is the front matter's own, not a body line that happens to read the same.
+  const baseLines = base.split(/\r?\n/);
+  const fenceEnd = baseLines.indexOf("---", 1);
+  const statusLines: number[] = [];
+  file.hunks.forEach((lines, hunk) => {
+    let oldLine = file.hunkStarts[hunk];
+    for (const line of lines) {
+      if (line.startsWith("\\") || line.startsWith("+")) continue;
+      if (line.startsWith("-") && PLAN_STATUS.test(line.slice(1))) statusLines.push(oldLine);
+      oldLine += 1;
+    }
+  });
+  if (statusLines.length !== 1 || !Number.isInteger(statusLines[0]) || statusLines[0] < 2 || statusLines[0] > fenceEnd || baseLines[statusLines[0] - 1] !== "status: active") {
+    return unverifiable("the removed status line is not the front matter's own `status: active` line at the parent revision");
+  }
+  return null;
 }
 
 const DATED_UPDATED = /^updated: (\d{4}-\d{2}-\d{2})$/;

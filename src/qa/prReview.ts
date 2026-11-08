@@ -38,7 +38,7 @@ import { assertVerdictHead, beginIndependentVerdict, finishIndependentVerdict, i
 import { getSessionRoleAttempt, latestRoleAttempt, type IndependentVerdictRole } from "../sessions/enrollment.js";
 import { readProductionPolicySafely } from "../production/policy.js";
 import { normalizeStatusCheck, type NormalizedStatusCheck, type RawStatusCheck } from "../workMonitoring/pullRequests.js";
-import { checkGovernedRecords, classifyPatchApplicability, evaluateNotApplicableClaims, patchTouchesGovernedRecord, type CommitObjectFile, type CommitObjectFiles, type GovernedRecordFact } from "./patchApplicability.js";
+import { checkGovernedRecords, classifyPatchApplicability, evaluateNotApplicableClaims, patchTouchesGovernedRecord, type CommitObjectFile, type CommitObjectFiles, type GovernedRecordFact, type ParentDocuments } from "./patchApplicability.js";
 import { sessionTokensFromLog } from "../production/sessionCapability.js";
 import type { ReviewEffectivenessTelemetry } from "../reports/modelEffectiveness.js";
 import {
@@ -513,8 +513,13 @@ export function runQaPrReviewCommand(
   // Read once per review: the governed-record check and a not-applicable claim both need it, and null (unreadable) fails both closed.
   const declaredCommits = readPullRequestCommitOids(project.repositoryPath, reference.repository, reference.number, runCommand);
   // Only a patch with a governed record gets the check; null (unreadable) leaves nothing verified.
+  const commitParents: Record<string, string[]> = {};
   const commitFiles = declaredCommits && patchTouchesGovernedRecord(patchResult.stdout)
-    ? readCommitObjectFiles(project.repositoryPath, reference.repository, declaredCommits, runCommand)
+    ? readCommitObjectFiles(project.repositoryPath, reference.repository, declaredCommits, runCommand, commitParents)
+    : null;
+  // Only a commit that touches PROJECT.md and a Plan can be a Plan-completing settlement; its parent's copies are the evidence that settlement needs.
+  const parentDocuments = commitFiles
+    ? readParentDocuments(project.repositoryPath, reference.repository, commitFiles, commitParents, runCommand)
     : null;
   const prompt = buildReviewPrompt(profile, candidate, pullRequest, patchResult.stdout, sandboxProof, renderReviewerIdentityBlock({
     // The reviewer judges someone else's work: named in the critic role, from
@@ -523,7 +528,7 @@ export function runQaPrReviewCommand(
     model: reviewer.model,
     effort: reviewer.effort,
     registry: loadIdentityModelTierRegistry(workspacePath)
-  }), lineage?.settlementRecords ?? [], lineage?.settled, declaredCommits, commitFiles);
+  }), lineage?.settlementRecords ?? [], lineage?.settled, declaredCommits, commitFiles, parentDocuments);
   writeFileSync(promptPath, prompt, "utf8");
   const preReviewPullRequest = sandboxProof.passed
     ? attachCompletionEvidence(tryReadPullRequest(project.repositoryPath, reference.repository, reference.number, runCommand))
@@ -599,7 +604,8 @@ export function runQaPrReviewCommand(
     {
       profile,
       patch: patchResult.stdout,
-      declaredCommits
+      declaredCommits,
+      parentDocuments
     }
   );
   const verdict = combineVerdicts(parsedModel.verdict, deterministic);
@@ -1191,12 +1197,12 @@ export function scopeJudgementSection(records: readonly string[], settled?: { pr
  * patch text. A patch with no governed record gets no section. `commitFiles`
  * is what each commit's Git object changes; without it nothing reads Verified.
  */
-export function governedRecordCheckSection(patch: string, declaredFiles: readonly string[], declaredCommits: readonly string[] | null, commitFiles: CommitObjectFiles | null = null): string[] {
+export function governedRecordCheckSection(patch: string, declaredFiles: readonly string[], declaredCommits: readonly string[] | null, commitFiles: CommitObjectFiles | null = null, parentDocuments: ParentDocuments | null = null): string[] {
   const heading = "## Governed-record check";
   const noAssurance = "No assurance in the Governed records rule applies to this patch: judge its governed records from the diff like any other change.";
   let check: ReturnType<typeof checkGovernedRecords>;
   try {
-    check = checkGovernedRecords(patch, { declaredFiles, declaredCommits, commitFiles });
+    check = checkGovernedRecords(patch, { declaredFiles, declaredCommits, commitFiles, parentDocuments });
   } catch (error) {
     return [heading, `Arcadia's check could not run (${JSON.stringify(error instanceof Error ? error.message : String(error))}). ${noAssurance}`, ""];
   }
@@ -1243,7 +1249,8 @@ export function buildReviewPrompt(
   settlementRecords: readonly string[] = [],
   settled?: { preservedCommit: string; head: string },
   declaredCommits: readonly string[] | null = null,
-  commitFiles: CommitObjectFiles | null = null
+  commitFiles: CommitObjectFiles | null = null,
+  parentDocuments: ParentDocuments | null = null
 ): string {
   const criteria = profile.criteria
     .map((criterion) => `- \`${criterion.id}\` — ${criterion.name}: ${criterion.description}`)
@@ -1280,7 +1287,7 @@ export function buildReviewPrompt(
     JSON.stringify(pullRequest, null, 2),
     "",
     ...scopeJudgementSection(settlementRecords, settled),
-    ...governedRecordCheckSection(patch, (pullRequest.files ?? []).map((file) => file.path), declaredCommits, commitFiles),
+    ...governedRecordCheckSection(patch, (pullRequest.files ?? []).map((file) => file.path), declaredCommits, commitFiles, parentDocuments),
     ...(profile.role === "qa" ? requiredCiEvidenceSection(pullRequest.statusCheckRollup ?? []) : []),
     "## Complete patch",
     "```diff",
@@ -1309,8 +1316,9 @@ export function assemblePrReviewPrompt(input: {
   /** The pull request's commit ids; omitted or null fails the governed-record check closed. */
   declaredCommits?: readonly string[] | null;
   commitFiles?: CommitObjectFiles | null;
+  parentDocuments?: ParentDocuments | null;
 }): string {
-  return buildReviewPrompt(PR_REVIEW_ROLES[input.role ?? "qa"], input.candidate, input.pullRequest, input.patch, input.sandboxProof, input.identity, input.settlementRecords, input.settled, input.declaredCommits ?? null, input.commitFiles ?? null);
+  return buildReviewPrompt(PR_REVIEW_ROLES[input.role ?? "qa"], input.candidate, input.pullRequest, input.patch, input.sandboxProof, input.identity, input.settlementRecords, input.settled, input.declaredCommits ?? null, input.commitFiles ?? null, input.parentDocuments ?? null);
 }
 
 function parseModelVerdict(
@@ -1545,6 +1553,8 @@ interface NotApplicableReviewInput {
   patch: string;
   /** The pull request's commit ids; null when unreadable, undefined when no claim needed it. */
   declaredCommits: string[] | null | undefined;
+  /** Parent-revision governed documents; absent leaves a Plan-completing settlement refused. */
+  parentDocuments?: ParentDocuments | null;
 }
 
 /**
@@ -1591,20 +1601,22 @@ function readCommitObjectFiles(
   cwd: string,
   repository: string,
   commits: readonly string[],
-  runCommand: NonNullable<QaPrReviewDependencies["runCommand"]>
+  runCommand: NonNullable<QaPrReviewDependencies["runCommand"]>,
+  parentsOut: Record<string, string[]> = {}
 ): Record<string, CommitObjectFile[]> | null {
   const read: Record<string, CommitObjectFile[]> = {};
   try {
     for (const oid of commits) {
       const result = runCommand({
         command: "gh",
-        args: ["api", "--method", "GET", `repos/${repository}/commits/${oid}`, "--jq", "{files: [.files[] | {filename, previous_filename, sha}]}"],
+        args: ["api", "--method", "GET", `repos/${repository}/commits/${oid}`, "--jq", "{files: [.files[] | {filename, previous_filename, sha}], parents: [.parents[].sha]}"],
         cwd,
         timeoutMs: 30_000
       });
       if (result.status !== 0) return null;
-      const parsed = JSON.parse(result.stdout) as { files?: unknown };
+      const parsed = JSON.parse(result.stdout) as { files?: unknown; parents?: unknown };
       if (!Array.isArray(parsed.files) || parsed.files.length >= COMMIT_OBJECT_FILE_PAGE) return null;
+      if (Array.isArray(parsed.parents) && parsed.parents.every((sha) => typeof sha === "string")) parentsOut[oid] = parsed.parents;
       const files = (parsed.files as Array<{ filename?: unknown; previous_filename?: unknown; sha?: unknown } | null>).map((file) => ({
         path: file?.filename,
         previousPath: typeof file?.previous_filename === "string" ? file.previous_filename : null,
@@ -1615,6 +1627,47 @@ function readCommitObjectFiles(
     }
   } catch {
     return null;
+  }
+  return read;
+}
+
+/**
+ * `PROJECT.md` and Plan documents as each candidate commit's first parent held
+ * them, from GitHub's Git object reads, for the commits that change both (the
+ * only commits that can be a Plan-completing settlement). Null when nothing was
+ * asked for; a commit whose parent or any document could not be read is left
+ * out, which leaves that completion refused rather than guessed.
+ */
+function readParentDocuments(
+  cwd: string,
+  repository: string,
+  commitFiles: CommitObjectFiles,
+  parentsOf: Readonly<Record<string, readonly string[]>>,
+  runCommand: NonNullable<QaPrReviewDependencies["runCommand"]>
+): ParentDocuments | null {
+  const read: Record<string, Record<string, string>> = {};
+  for (const [oid, files] of Object.entries(commitFiles)) {
+    const paths = files.map((file) => file.path);
+    const plans = paths.filter((filePath) => /^docs\/plans\/[^/]+\.md$/.test(filePath));
+    if (!paths.includes("PROJECT.md") || plans.length === 0) continue;
+    try {
+      const shas = parentsOf[oid];
+      if (!shas || shas.length !== 1 || !/^[0-9a-f]{40}$/.test(shas[0])) continue;
+      const documents: Record<string, string> = {};
+      for (const filePath of ["PROJECT.md", ...plans]) {
+        const content = runCommand({
+          command: "gh",
+          args: ["api", "--method", "GET", "-H", "Accept: application/vnd.github.raw", `repos/${repository}/contents/${filePath}?ref=${shas[0]}`],
+          cwd,
+          timeoutMs: 30_000
+        });
+        if (content.status !== 0) throw new Error("unreadable");
+        documents[filePath] = content.stdout;
+      }
+      read[oid] = documents;
+    } catch {
+      // Left out: the completion it would have verified stays refused.
+    }
   }
   return read;
 }
@@ -1638,7 +1691,8 @@ function evaluateModelNotApplicableClaims(
   }
   const applicability = classifyPatchApplicability(review.patch, {
     declaredFiles: pullRequest.files.map((file) => file.path),
-    declaredCommits: review.declaredCommits ?? null
+    declaredCommits: review.declaredCommits ?? null,
+    parentDocuments: review.parentDocuments ?? null
   });
   const evaluation = evaluateNotApplicableClaims(claims, applicability, { summary: model.summary });
   const touched = applicability.files.map((file) => `${file.path} (${file.class})`).join(", ") || "none";
