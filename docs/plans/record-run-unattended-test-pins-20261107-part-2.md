@@ -151,11 +151,11 @@ actions:
     references: []
   - id: pin-image-mime-extension
     title: Pin the image MIME type to file extension mapping and its bin fallback, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the image MIME type to file extension mapping and its bin fallback, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-image-mime-extension-05a68a019dd2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-image-mime-extension
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-image-mime-extension
+current_action: pin-authoritative-control-path
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
