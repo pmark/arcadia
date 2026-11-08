@@ -515,6 +515,64 @@ export function isProcessAlive(pid: number): boolean {
   }
 }
 
+/** Written when this worker loses the pidfile race to a process under another label; cleared by the next successful start. */
+export function lockLostSignalPath(workspacePath: string): string {
+  return path.join(arcadiaDir(workspacePath), "worker-lock-lost.json");
+}
+
+export interface WorkerLockLostSignal {
+  at: string;
+  /** This worker's own launchd label (XPC_SERVICE_NAME), or null when run by hand. */
+  loserLabel: string | null;
+  loserPid: number;
+  holderPid: number;
+  /** The launchd job that owns the holder, or null when the holder is not a launchd job. */
+  holderLabel: string | null;
+}
+
+/** The launchd label owning `pid`, from `launchctl list` (PID, status, label columns); null when it has none. Read-only. */
+export function launchdLabelForPid(pid: number, exec: typeof execFileSync = execFileSync): string | null {
+  try {
+    const out = String(exec("launchctl", ["list"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }));
+    for (const line of out.split("\n")) {
+      const [first, , label] = line.trim().split(/\s+/);
+      if (first === String(pid) && label) return label;
+    }
+  } catch {}
+  return null;
+}
+
+export interface LostWorkerLockDependencies {
+  /** This worker's own launchd label; default is the XPC_SERVICE_NAME launchd sets in a job's environment. */
+  ownLabel?: () => string | null;
+  holderLabel?: (pid: number) => string | null;
+}
+
+/**
+ * Issue #2179: a worker that finds a live holder of the pidfile exits 0 (a non-zero exit would be a launchd crash loop,
+ * #303), so the exit status says nothing. When the holder runs under a different launchd label, or none, the loss must
+ * not be silent: an ERROR line in worker.log naming the competing label, the operator's remedy, and a signal file that
+ * `worker status` reports until a worker next starts. Returns the signal, or null when the holder is this same job (a
+ * benign restart overlap). Never boots out, kills or restarts anything.
+ */
+export function reportLostWorkerLock(workspacePath: string, logfile: string, holderPid: number, dependencies: LostWorkerLockDependencies = {}): WorkerLockLostSignal | null {
+  const ownLabel = (dependencies.ownLabel ?? (() => process.env["XPC_SERVICE_NAME"]?.trim() || null))();
+  const holderLabel = (dependencies.holderLabel ?? launchdLabelForPid)(holderPid);
+  if (ownLabel && holderLabel === ownLabel) return null;
+  const signal: WorkerLockLostSignal = { at: new Date().toISOString(), loserLabel: ownLabel, loserPid: process.pid, holderPid, holderLabel };
+  try { writeFileSync(lockLostSignalPath(workspacePath), `${JSON.stringify(signal)}\n`, "utf8"); } catch {}
+  const who = holderLabel ? `launchd job ${holderLabel}` : "a process that is not a launchd job";
+  const remedy = holderLabel
+    ? ` Operator remedy, not run here: ${launchdBootoutCommand(holderLabel)}, then move its plist out of ~/Library/LaunchAgents, then launchctl kickstart -k gui/$(id -u)/${ownLabel ?? "<managed worker label>"}.`
+    : " Stop that process, then restart this worker.";
+  log(logfile, `ERROR: ${ownLabel ?? "this worker"} (PID ${process.pid}) lost the worker lock to PID ${holderPid}, ${who}, and is NOT running. START cards refuse until the managed worker holds the lock.${remedy}`);
+  return signal;
+}
+
+export function readLockLostSignal(workspacePath: string): WorkerLockLostSignal | null {
+  try { return JSON.parse(readFileSync(lockLostSignalPath(workspacePath), "utf8")) as WorkerLockLostSignal; } catch { return null; }
+}
+
 export interface WorkerTickOptions {
   workspacePath: string;
   pid: number;
@@ -939,6 +997,7 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     // no token with which to prove that it is ours or safely fence it; the
     // service restart that stopped it is the migration boundary.
     process.stdout.write(`Legacy worker still running (PID ${legacyPid}); leaving it in place until restart.\n`);
+    reportLostWorkerLock(workspacePath, logfile, legacyPid);
     process.exit(0);
   }
   const startNow = (dependencies.now ?? Date.now)();
@@ -955,6 +1014,7 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     // with KeepAlive SuccessfulExit false below, a clean exit leaves the agent
     // stopped instead of respawning it against a supervisor that already won.
     process.stdout.write(`Worker already running (PID ${decision.pid}); leaving it in place.\n`);
+    if (decision.pid) reportLostWorkerLock(workspacePath, logfile, decision.pid);
     process.exit(0);
   }
   if (decision.action === "recover" && existing) {
@@ -971,6 +1031,7 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
   const identity = { pid: process.pid, owner: randomUUID() };
   try {
     writeWorkerHeartbeat(workspacePath, identity);
+    try { unlinkSync(lockLostSignalPath(workspacePath)); } catch {}
   } catch (error) {
     // The owner was just terminated, so a record that still names its PID would
     // be an orphaned pidfile pointing at a dead process — the next start would
@@ -1228,6 +1289,10 @@ export function runWorkerStatusCommand(options: WorkerOptions): void {
   const { pid } = classified;
   const overlong = classified.health === "running" && record ? isTickOverlong(workspacePath, record) : false;
   const health = overlong ? "unhealthy" : classified.health;
+  const lost = readLockLostSignal(workspacePath);
+  if (lost) {
+    process.stdout.write(`Worker lock lost at ${lost.at}: ${lost.loserLabel ?? "a worker"} yielded to PID ${lost.holderPid} (${lost.holderLabel ? `launchd job ${lost.holderLabel}` : "not a launchd job"}). Retire the competing worker; see worker.log.\n`);
+  }
 
   if (health === "running") {
     process.stdout.write(`Worker: running (PID ${pid})\n`);

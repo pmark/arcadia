@@ -34,12 +34,12 @@ const deps = (overrides: Partial<RunWindowDeps> = {}): RunWindowDeps => ({
   ...overrides
 });
 
-function card(id: string, pins: { reviewedRevision?: string; expires_at?: string; consumed?: boolean } = {}): void {
+function card(id: string, pins: { reviewedRevision?: string; expires_at?: string; consumed?: boolean; workerLabel?: string } = {}): void {
   writeFileSync(path.join(library, `${id}.json`), JSON.stringify({
     schema: "arcadia-operator-script-v1",
     id,
     expires_at: pins.expires_at ?? "2026-11-05T00:00:00.000Z",
-    startRun: { schema: "arcadia-start-run-v1", reviewedRevision: pins.reviewedRevision ?? MAIN }
+    startRun: { schema: "arcadia-start-run-v1", reviewedRevision: pins.reviewedRevision ?? MAIN, ...(pins.workerLabel ? { workerLabel: pins.workerLabel } : {}) }
   }));
   if (pins.consumed) writeFileSync(path.join(library, `${id}.consumed.json`), JSON.stringify({ state: "CONSUMED" }));
 }
@@ -137,5 +137,26 @@ describe("work monitor run window", () => {
     expect(lines[0]).toMatch(/^Run window: OPEN/);
     expect(lines).toContain("Working-copy safety");
     expect(Object.keys((response as { data: object }).data)).toEqual(["snapshot", "attentionLines", "runWindow"]);
+  });
+
+  // Issue #2179: the card used to read "ready to press" while preflight P2 would refuse for a worker with no PID.
+  it("says a waiting card is not pressable when its pinned worker job has no running PID", () => {
+    const label = "com.arcadia.local.742852621.worker";
+    card("start-run-down", { workerLabel: label });
+    const asked: string[] = [];
+    const down = observe(deps({ workerRunning: (l) => { asked.push(l); return false; } }));
+    expect(asked).toEqual([label]);
+    expect(down.state).toBe("open");
+    expect(down.reasons[0]).toMatchObject({ kind: "start_card_waiting", pressable: false });
+    expect(down.reasons[0]?.detail).toContain(`not pressable: worker ${label} has no running PID`);
+    expect(down.reasons[0]?.detail).not.toContain("ready to press");
+
+    const up = observe(deps({ workerRunning: () => true }));
+    expect(up.reasons[0]).toMatchObject({ pressable: true });
+    expect(up.reasons[0]?.detail).toContain("ready to press");
+
+    // Unknown (launchctl unavailable) must not invent a refusal.
+    const unknown = observe(deps({ workerRunning: () => null }));
+    expect(unknown.reasons[0]).toMatchObject({ pressable: true });
   });
 });

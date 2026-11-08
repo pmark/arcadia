@@ -4118,3 +4118,5 @@ Ask unsettled. This source repair does not install or adopt itself: independent
 current-head review, required CI and separately receipted adoption remain before
 any new guarded R465 delivery. Production stays Off; no R465 live success is
 claimed.
+
+When the managed worker loses the pidfile to another launchd label (Issue #2179, a legacy `com.arcadia.worker` that wins after a reboot), it still exits 0 so launchd does not crash-loop it, but it now writes an `ERROR: ... lost the worker lock to PID N, launchd job <label>` line to `worker.log`, leaves `.arcadia/worker-lock-lost.json`, and `arcadia worker status` reports it until a worker next starts. `arcadia work monitor` says a waiting START card is "not pressable: worker <label> has no running PID" instead of "ready to press" when preflight P2 would refuse. Nothing here retires the legacy agent: you run the printed `launchctl bootout` and move its plist aside.

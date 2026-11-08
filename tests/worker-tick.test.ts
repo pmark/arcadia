@@ -8,6 +8,9 @@ import {
   createWorkerTick,
   decideWorkerStart,
   isProcessAlive,
+  launchdLabelForPid,
+  readLockLostSignal,
+  reportLostWorkerLock,
   isWorkspaceWorkerCommand,
   runManagedProductionIteration,
   runWorkerInstallCommand,
@@ -168,6 +171,51 @@ describe("worker start already-running guard", () => {
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Legacy worker still running");
     expect(readFileSync(pidfile, "utf8")).toBe(String(process.pid));
+  });
+});
+
+describe("worker start losing the pidfile race (Issue #2179)", () => {
+  it("logs an ERROR naming the competing launchd label, writes a signal, and reports it in status", () => {
+    const { root } = workspace();
+    const logfile = path.join(root, ".arcadia", "worker.log");
+    const signal = reportLostWorkerLock(root, logfile, 3151, {
+      ownLabel: () => "com.arcadia.local.742852621.worker",
+      holderLabel: (pid) => (pid === 3151 ? "com.arcadia.worker" : null)
+    });
+    expect(signal).toMatchObject({ loserLabel: "com.arcadia.local.742852621.worker", holderPid: 3151, holderLabel: "com.arcadia.worker" });
+    const text = readFileSync(logfile, "utf8");
+    expect(text).toContain("ERROR: com.arcadia.local.742852621.worker");
+    expect(text).toContain("launchd job com.arcadia.worker");
+    expect(text).toContain("NOT running");
+    expect(text).toContain("launchctl bootout");
+    expect(readLockLostSignal(root)).toMatchObject({ holderLabel: "com.arcadia.worker" });
+    expect(captureStdout(() => runWorkerStatusCommand({ workspace: root }))).toContain("yielded to PID 3151 (launchd job com.arcadia.worker)");
+  });
+
+  it("names a holder that is not a launchd job, and stays quiet for the same job", () => {
+    const { root } = workspace();
+    const logfile = path.join(root, ".arcadia", "worker.log");
+    expect(reportLostWorkerLock(root, logfile, 99, { ownLabel: () => "com.arcadia.local.1.worker", holderLabel: () => "com.arcadia.local.1.worker" })).toBeNull();
+    expect(readLockLostSignal(root)).toBeNull();
+    expect(reportLostWorkerLock(root, logfile, 99, { ownLabel: () => null, holderLabel: () => null })).toMatchObject({ holderLabel: null });
+    expect(readFileSync(logfile, "utf8")).toContain("not a launchd job");
+  });
+
+  it("reads the launchd label for a pid from launchctl list and nothing else", () => {
+    const calls: string[][] = [];
+    const exec = ((_: string, args: string[]) => { calls.push(args); return "PID\tStatus\tLabel\n3151\t0\tcom.arcadia.worker\n-\t0\tcom.arcadia.local.1.worker\n"; }) as never;
+    expect(launchdLabelForPid(3151, exec)).toBe("com.arcadia.worker");
+    expect(launchdLabelForPid(7, exec)).toBeNull();
+    expect(calls.every((args) => args.length === 1 && args[0] === "list")).toBe(true);
+  });
+
+  it("the CLI still exits 0 but logs the loss loudly and leaves a signal; the next start clears it", () => {
+    const { root } = workspace();
+    writeRecord(root, { pid: process.pid, owner: "existing", at: Date.now() });
+    const result = runCli(["worker", "start", "--workspace", root]);
+    expect(result.status).toBe(0);
+    expect(readFileSync(path.join(root, ".arcadia", "worker.log"), "utf8")).toContain("ERROR:");
+    expect(readLockLostSignal(root)).toMatchObject({ holderPid: process.pid });
   });
 });
 
