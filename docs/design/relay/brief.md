@@ -68,6 +68,7 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-017 Relay always available | S023 | Mine: including a failed view, an uncertain send and an open Artifact, and the proof |
 | REQ-018 Mobile-first, XR as the horizon | S022 | Mine: the proof |
 | REQ-019 Off is one obvious step (proposed, not yet confirmed) | S034 | Mine: from every view, Relay answering with the control instead of acting, and the proof |
+| REQ-020 Approvals carry across sessions (proposed, not yet confirmed) | S035 | Mine: a recorded scope and end, a relayed sentence never counting, and the proof |
 
 The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
 implementation" of DeepSeek's benefits; "no OpenAI integration" is my reading of that.

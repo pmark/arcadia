@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { assertWorkerReplacementCustody, runWorkerInstallCommand, type ProtectedWorkerLaunch } from "../src/commands/worker.js";
+import { assertWorkerReplacementCustody, describeIdleWorkerAgents, runWorkerInstallCommand, type ProtectedWorkerLaunch } from "../src/commands/worker.js";
 import type { LaunchAgentAudit } from "../src/runtime/launchAgents.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -39,6 +39,19 @@ describe("assertWorkerReplacementCustody", () => {
     ["another running worker for this workspace", LABEL, [agent(), agent({ label: "com.arcadia.worker", workspace: "/workspace" })], (label) => label === "com.arcadia.worker", /Another worker agent com\.arcadia\.worker is running/]
   ])("refuses %s", (_label, label, agents, running, reason) => {
     expect(() => assertWorkerReplacementCustody("/workspace", label, agents, running, "/workspace")).toThrow(reason);
+  });
+  it("names the exact retire command when another worker agent is running (Issue #2183)", () => {
+    const uid = process.getuid?.() ?? 0;
+    expect(() => assertWorkerReplacementCustody("/workspace", LABEL, [agent(), agent({ label: "com.arcadia.worker", workspace: "/workspace" })], (label) => label === "com.arcadia.worker", "/workspace"))
+      .toThrow(`launchctl bootout gui/${uid}/com.arcadia.worker`);
+  });
+  it("describes an idle stray worker agent with the retire command and the plist that would bring it back", () => {
+    const uid = process.getuid?.() ?? 0;
+    const warning = describeIdleWorkerAgents([agent({ label: "com.arcadia.worker", plistPath: "/home/Library/LaunchAgents/com.arcadia.worker.plist" })]);
+    expect(warning).toContain("Warning: idle worker agent(s) left in place: com.arcadia.worker");
+    expect(warning).toContain(`launchctl bootout gui/${uid}/com.arcadia.worker`);
+    expect(warning).toContain("/home/Library/LaunchAgents/com.arcadia.worker.plist");
+    expect(describeIdleWorkerAgents([])).toBe("");
   });
   it("accepts a live agent with no --workspace only when the ambient default workspace is this one", () => {
     expect(() => assertWorkerReplacementCustody("/workspace", LABEL, [agent()], () => false, "/elsewhere")).toThrow(/not one readable worker agent/);
@@ -84,6 +97,18 @@ describe("worker install --replace-label", () => {
     const launchctl = s.exec.mock.calls.map(([, args]) => (args as string[])[0]);
     expect(launchctl).toEqual(["bootout", "print", "bootstrap"]);
     expect(s.exec.mock.calls[2][1]).toEqual(["bootstrap", `gui/${process.getuid?.() ?? 0}`, s.plist]);
+  });
+
+  it("warns with the retire command about an idle legacy agent and runs no launchctl against it (Issue #2183)", () => {
+    const s = setup();
+    const out: string[] = [];
+    vi.spyOn(process.stdout, "write").mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    const audit = () => ({ directory: "", agents: [agent({ workspace: s.workspace }), agent({ label: "com.arcadia.worker", workspace: s.workspace })], counts: { pinned: 2, unpinned: 0, unreadable: 0, duplicate: 0 } });
+    runWorkerInstallCommand({ workspace: s.workspace, replaceLabel: LABEL }, { ...s.deps, auditLaunchAgents: audit });
+    const text = out.join("");
+    expect(text).toContain(`launchctl bootout gui/${process.getuid?.() ?? 0}/com.arcadia.worker`);
+    expect(text).not.toContain("left untouched");
+    expect(s.exec.mock.calls.some(([, args]) => (args as string[]).some((arg) => arg.endsWith("/com.arcadia.worker")))).toBe(false);
   });
 
   it("waits, bounded, until launchd reports the old job gone before bootstrapping", () => {

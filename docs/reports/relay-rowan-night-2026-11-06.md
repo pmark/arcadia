@@ -133,7 +133,8 @@ Ranked by what changes dispatch and operator touches per run.
    the worker on the host, and the operator is off-site. That's one refused press
    and at least 95 minutes so far, and it recurs at every reboot. **Form:**
    Issue #2179, relayed to the current custodian on #1929. Restarting the worker
-   is runtime recovery, so it's the operator's call.
+   is runtime recovery, so it's the operator's call. Later fixed by #2275: a lost race is
+   now loud, and a card with a downed worker is no longer ready to press.
 2. **Pinned Actions are buildable unattended as written** (rows 33–37, 40, 41).
    Cost: the narrative-summarization run took about 6 touches (23:08, 00:20,
    00:43 and three re-plan answers), three worker attempts and about three

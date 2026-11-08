@@ -129,6 +129,13 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
       `Arcadia Intelligence listening on http://127.0.0.1:${port} ` +
         `(workspace: ${workspacePath}, LiteLLM: ${config.liteLlmBaseUrl}, ${enabledRouteCount} route(s) configured)\n`,
     );
+    if (!config.liteLlmApiKey) {
+      process.stderr.write(
+        `Arcadia Intelligence started without ARCADIA_LITELLM_API_KEY (cwd: ${process.cwd()}); ` +
+          "if the LiteLLM proxy requires authentication, its routes will answer 401. Set ARCADIA_LITELLM_API_KEY " +
+          "in the service environment (the .env in the directory the service starts from).\n",
+      );
+    }
   });
 }
 

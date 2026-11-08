@@ -137,12 +137,20 @@ frame:
         - M3
       proof: Playwright at phone, keyboard-height and desktop sizes, the operator using it on their phone, and a schema test that answers, blocks and cues carry no layout, markup or URL fields.
     - id: REQ-019
+      status: proposed
       statement: While production is Active, the operator can find and press Off from any Workspace view in one step, and asking Relay how to stop answers with that same control. Afterwards the view shows production Off with its revision, and the operator never needs to ask anyone how.
       mission:
         - M3
         - M4
         - M5
       proof: A Playwright test from every Workspace route, while production is Active, shows the Off control, presses it once, and sees Inactive with the new revision; a Relay test where "how do I stop this?" returns the control rather than instructions or an action Relay takes itself; and the operator finding it unaided on their phone.
+    - id: REQ-020
+      status: proposed
+      statement: An operator's approval is given once, on a surface that records its exact scope (the PRs, cards or steps it names) and its end (expiry, or what voids it), and any session or Relay view inside that scope can read the record. A sentence relayed from another session never counts as approval, and no one relies on an approval whose record they cannot see.
+      mission:
+        - M3
+        - M4
+      proof: A test where a successor session, given only the record, finds an approval for each PR it names and none for a PR it does not; a relayed message that quotes an approval is not counted, and neither is a record in which a session copied a relayed approval, which the successor rejects; an expired or voided approval is shown as ended before it is relied on; and the operator, over a night with two session handoffs, never repeating a word they already gave.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
@@ -373,6 +381,13 @@ sources:
     retention: repo
     path: sources/S034-where-is-the-off-button.md
     sha256: 98cf7aea5b0a9c06a7e857081f70b37841927e0d1db86542c0f2c60e757d279c
+  - id: S035
+    title: Operator approvals during the record run, and why they did not carry
+    kind: operator
+    added: 2026-11-08
+    retention: repo
+    path: sources/S035-approvals-do-not-carry.md
+    sha256: 58cb209afe151d2a6c32dcbcf343834ebe44d74352edb2ad8660dfb23e80bd29
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent

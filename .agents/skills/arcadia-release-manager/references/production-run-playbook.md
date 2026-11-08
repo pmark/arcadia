@@ -37,7 +37,16 @@ batch, and only then ask for the press.
 2. **Real validator dry run.** Each pinned Action's named test passes
    `validateCompletionCandidate` (Seatbelt, dependencyRoot = main checkout)
    twice, well under the 900 s bound. A test that needs host tools (tmux) can
-   silently skip there.
+   silently skip there. Also check the criteria text, not only the test. Scan the
+   decoded values of each pinned Action's criteria and `next_action` (parse the
+   Plan, because an escaped `\u200B` in the YAML is invisible to a text search of
+   the file) with `rg -nP '[^\x20-\x7E\n]'`, and fail the card on any non-ASCII,
+   invisible or control character (a literal tab counts). Also fail it when
+   `namedTestFiles` would treat a test-shaped path the criteria use as data
+   (`tests/x.test.ts` as an argument, quoted or not) as a required file, which
+   pre-acceptance then demands. On 2026-11-07 the second cost 26 Sessions and
+   about 109 minutes (#2240) and the first a batch stop and a hand landing
+   (#2260); #2272 asks for the deterministic check.
 3. **Real reviewer dry run when review code or prompts changed.** Re-run the
    QA and code-review reviewers on a real past candidate's evidence with the
    new prompt, old vs new.
@@ -54,7 +63,14 @@ batch, and only then ask for the press.
      successor and drops `current_action`, so its PR can never pass CI and
      the run cannot finish (#2147: one red PR, an Off and about six hours).
      Until #2147 is fixed, that card fails the pre-mortem; give the operator the
-     route as a menu.
+     route as a menu. The contract test is not the reviewer's shape check:
+     on 2026-11-08 the 20th Action's simulation passed the contract and its
+     review still returned needs-follow-up, because the Plan-completing
+     settlement is outside the governed-record shape (#2270). Until #2270 is
+     fixed, a card holding a Plan's last Action fails the pre-mortem as well,
+     and production may not announce a finished Plan (`scope_complete`,
+     #2273; read from the code, not confirmed by a run): decide completion from the last merge plus no `current_action` on
+     main.
 5. **Action shape.** Pinned Actions touch only `WORKER_MERGE_SAFE_PATHS`
    (`src/production/workerMerge.ts`), never `src/production` or
    `src/sessions` (those are never repaired unattended). Each Action routes
@@ -140,6 +156,13 @@ batch, and only then ask for the press.
   for an in-scope Action, such as a red required check. A host that reserves
   timed polling for the user's own request needs the operator's word once, in
   that session's own chat.
+- A watcher that cannot read is silent. `gh` fails TLS inside the Claude Code
+  sandbox and the Monitor tool is sandboxed, so run a `gh` watcher with the
+  sandbox off, and confirm one real read before you idle (a `pr` watch prints
+  `WATCHING` before it reads anything); the script prints one stderr line on
+  its first failed read and then retries silently until TIMEOUT (#2274). A `pr`
+  watch reports merges and closures, not required-check events; check required
+  checks on the current head separately.
 - At each wake, or every 10 minutes without one, check: `arcadia production status` (escalations, red
   alerts), recent `operator_pings`, open PRs for the pinned Actions, and the
   worker log tail. A quiet log is not progress: the tick logs each escalation

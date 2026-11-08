@@ -1,0 +1,16 @@
+agent_ask: v1
+request_id: amend-record-run-way-trigger-wording-20261107
+project: arcadia
+intent: plan
+target_ref: plan/record-run-unattended-test-pins-20261107
+requested_authority: propose
+desired_result: "Make pin-way-trigger-parsing's second criterion verbatim-checkable by naming the exact JSON.stringify({ entries: [...] }) input that parseTriggers reads, after independent review of PR #2178 found that a bare array could be read from the current wording and returns []. Only that criterion changes; the route and other criteria are unchanged."
+actions:
+  - target_ref: action/pin-way-trigger-parsing
+    desired_result: "Pin that Way lookup trigger parsing tolerates malformed input, skips incomplete entries and drops empty phrases, with a new test file."
+    execution: build
+    acceptance:
+      - "tests/pin-way-trigger-parsing.test.ts is a new test file that imports parseTriggers from ../src/way/lookup.js and asserts parseTriggers returns [] for null, for \"not json\" and for \"{}\"."
+      - "The same test file asserts that for the input JSON.stringify({ entries: [{ path: \"a.md\", trigger: \"alpha beta, , gamma\" }, { path: 3, trigger: \"x\" }, { path: \"b.md\" }] }), the result's paths are exactly [\"a.md\"] and its first entry has exactly 2 trigger phrases."
+      - "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."
+      - "Apart from the settlement records Arcadia writes, the change touches only tests/pin-way-trigger-parsing.test.ts, a new test file that imports only vitest and src/way/lookup.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation."

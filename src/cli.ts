@@ -80,10 +80,26 @@ import {
   runPingSentCommand
 } from "./commands/ping.js";
 import {
-  LIVENESS_DEFAULT_STALE_SECONDS,
-  renderProductionLivenessCheckSuccess,
-  runProductionLivenessCheckCommand
-} from "./commands/productionLiveness.js";
+  renderOperatorInteractionListSuccess,
+  renderOperatorInteractionRecordSuccess,
+  runOperatorInteractionListCommand,
+  runOperatorInteractionRecordCommand
+} from "./commands/operatorInteraction.js";
+import { LIVENESS_DEFAULT_STALE_SECONDS } from "./commands/productionLiveness.js";
+import {
+  renderKeeperHeartbeatSuccess,
+  renderProductionLivenessTimerSuccess,
+  runKeeperHeartbeatCommand,
+  runProductionLivenessTimerCommand
+} from "./commands/productionMomentum.js";
+import {
+  KEEPER_DEFAULT_GRACE_MINUTES,
+  KEEPER_DEFAULT_HEARTBEAT_MINUTES,
+  KEEPER_MAX_HEARTBEAT_MINUTES,
+  MOMENTUM_DEFAULT_IDLE_MINUTES
+} from "./production/momentumWatch.js";
+import { renderProductionIdleFrontSuccess, runProductionIdleFrontCommand } from "./commands/productionIdleFront.js";
+import { renderCoordinatorBudgetSuccess, runCoordinatorBudgetCommand } from "./commands/coordinatorBudget.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -469,11 +485,15 @@ import {
   renderDigestComposeSuccess,
   renderDigestExportSuccess,
   renderDigestMarkPostedSuccess,
+  renderDigestPreviewSuccess,
   renderDigestRunSuccess,
+  renderDigestShowSuccess,
   runDigestComposeCommand,
   runDigestExportCommand,
   runDigestMarkPostedCommand,
-  runDigestRunCommand
+  runDigestPreviewCommand,
+  runDigestRunCommand,
+  runDigestShowCommand
 } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
@@ -1176,8 +1196,9 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--fix-pull-request <url>", "Decision 0173: the merged pull request that fixed the cause")
     .option("--fix-commit <sha>", "Decision 0173: that fix's commit, which must be on origin main")
     .option("--reproduction <path>", "Decision 0173: the repository fixture or replay that reproduces the cause")
+    .option("--fix-cause <slug>", "Decision 0187: the cause that fix addresses; after a failed batch it must equal --previous-cause")
     .option("--observed-cleared <pointer>", "Decision 0173: for an outside cause with no code fix, where it was observed cleared")
-  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; observedCleared?: string; json?: boolean }) =>
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; fixCause?: string; observedCleared?: string; json?: boolean }) =>
     runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
   addJsonOption(startRun.command("day-pins")
     .description("Decision 0173: print the pins of one day-grant card for the operator to press; writes nothing and grants nothing")
@@ -1205,6 +1226,32 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--check-only", "Only the read-only checks that precede the daily claim; claims and changes nothing")
   ).action((options: { repository: string; workspace: string; project: string; card: string; runId: string; runDirectory: string; release: string; policyRevision: string; policyEpoch: string; checkOnly?: boolean; json?: boolean }) =>
     runCliAction("start-run.sign-in", options, () => runStartRunSignInCommand(options), renderStartRunSignInSuccess));
+
+  const operatorInteraction = program.command("operator-interaction")
+    .description("Record when an agent acted on the operator's words, so the digest can count operator touches; local and append-only");
+  addJsonOption(operatorInteraction.command("record")
+    .description("Append one interaction: the operator's exact words, what they unlocked, and whether only the operator could have done it. Records; authorizes nothing")
+    .requiredOption("--words <text>", "The operator's exact words, e.g. \"Yes merge them\"")
+    .requiredOption("--unlocked <text>", "What the interaction unlocked, e.g. \"merge of PR #2184\"")
+    .option("--required", "Only the operator's authority could do this")
+    .option("--avoidable", "The system could have proceeded without asking")
+    .option("--ref <ref>", "The PR, card or Decision it acted on")
+    .option("--project <slug>", "Project slug")
+    .option("--at <instant>", "When the operator said it (default now)")
+    .option("--waiting-since <instant>", "When the work started waiting for this answer")
+    .option("--agent <name>", "Who is recording it")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; words: string; unlocked: string; required?: boolean; avoidable?: boolean; ref?: string; project?: string; at?: string; waitingSince?: string; agent?: string; json?: boolean }) =>
+    runCliAction("operator-interaction.record", options, () => runOperatorInteractionRecordCommand(options), renderOperatorInteractionRecordSuccess)
+  );
+  addJsonOption(operatorInteraction.command("list")
+    .description("List recorded operator interactions (default: the last 7 days)")
+    .option("--since <instant>", "Inclusive start")
+    .option("--until <instant>", "Exclusive end")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
+    runCliAction("operator-interaction.list", options, () => runOperatorInteractionListCommand(options), renderOperatorInteractionListSuccess)
+  );
 
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })
@@ -1545,12 +1592,46 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   addJsonOption(
     production
       .command("liveness-check")
-      .description("One timer run: page once when the worker stops making progress while production is Active, and once when it recovers. Reads the database read-only; restarts nothing")
+      .description("One timer run: page once when the worker stops making progress while production is Active, and once when it recovers; then the momentum alarm: page once when the critical path idles past the threshold or no Momentum Keeper heartbeat is live while a run window is open, and once when each clears. Reads the database read-only; restarts and starts nothing")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--stale-seconds <seconds>", `Silence that counts as stuck, outside a code review (default ${LIVENESS_DEFAULT_STALE_SECONDS})`)
+      .option("--idle-minutes <minutes>", `Critical-path idle that pages while a run window is open (default ${MOMENTUM_DEFAULT_IDLE_MINUTES})`)
+      .option("--keeper-grace-minutes <minutes>", `How long past its armed-until a keeper heartbeat may lapse before it pages (default ${KEEPER_DEFAULT_GRACE_MINUTES})`)
       .option("--dashboard-url <url>", "Dashboard base for the /production link (default ARCADIA_DASHBOARD_URL)")
-  ).action((options: { workspace: string; staleSeconds?: string; dashboardUrl?: string; json?: boolean }) =>
-    runCliAction("production.liveness-check", options, () => runProductionLivenessCheckCommand(options), renderProductionLivenessCheckSuccess)
+  ).action((options: { workspace: string; staleSeconds?: string; idleMinutes?: string; keeperGraceMinutes?: string; dashboardUrl?: string; json?: boolean }) =>
+    runCliAction("production.liveness-check", options, () => runProductionLivenessTimerCommand(options), renderProductionLivenessTimerSuccess)
+  );
+  addJsonOption(
+    production
+      .command("keeper-heartbeat")
+      .description("The Momentum Keeper's heartbeat: write its armed-until file, saying it is live and will wake again within --minutes. Writes that one file (and the usual activity row); pings nobody, starts nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--minutes <minutes>", `Until the keeper's next wake, at most ${KEEPER_MAX_HEARTBEAT_MINUTES} (default ${KEEPER_DEFAULT_HEARTBEAT_MINUTES})`)
+      .option("--session <name>", "The keeper session's name, for the alarm's recovery line")
+  ).action((options: { workspace: string; minutes?: string; session?: string; json?: boolean }) =>
+    runCliAction("production.keeper-heartbeat", options, () => runKeeperHeartbeatCommand(options), renderKeeperHeartbeatSuccess)
+  );
+  addJsonOption(
+    production
+      .command("idle-front")
+      .description("Read-only: critical-path idle minutes by cause and whether any wake is armed; prints one JSON row then timeline events as NDJSON. Pings nobody, writes nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--wakes-dir <path>", "Armed-until heartbeat files (default <workspace>/.arcadia/armed-wakes)")
+      .option("--expect-wake <session-or-role>", "A session or role that should hold an armed wake (repeatable)", (value: string, previous: string[] = []) => [...previous, value])
+      .option("--tap-ready-at <time>", "When a one-tap operator item (e.g. a START card) became ready, if no reader here sees it")
+      .option("--route-at <time>", "When a route for the current block was recorded")
+  ).action((options: { workspace: string; wakesDir?: string; expectWake?: string[]; tapReadyAt?: string; routeAt?: string; json?: boolean }) =>
+    runCliAction("production.idle-front", options, () => runProductionIdleFrontCommand(options), renderProductionIdleFrontSuccess)
+  );
+  const coordinator = program.command("coordinator").description("Coordinator sessions (⭐ Signal, 🚦 Rowan): context budget for handoff before compaction");
+  addJsonOption(
+    coordinator
+      .command("budget")
+      .description("Read-only: each live coordinator's context occupancy from its own transcript, its level (prepare 50%, due 60%, forced 75%, or unmeasured) and the pages the liveness timer already sent. Run it at each wake; writes, pings and starts nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--session <id>", "This session's id (default CLAUDE_CODE_SESSION_ID or CODEX_THREAD_ID)")
+  ).action((options: { workspace: string; session?: string; json?: boolean }) =>
+    runCliAction("coordinator.budget", options, () => runCoordinatorBudgetCommand(options), renderCoordinatorBudgetSuccess)
   );
   addJsonOption(
     production
@@ -3383,6 +3464,37 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("digest.run", options, () => runDigestRunCommand(options), renderDigestRunSuccess)
+  );
+  addJsonOption(
+    digest
+      .command("preview")
+      .description("Print a digest for a window without storing it: progress by goal, what needs you, where activity happened")
+      .option("--project <project>", "Project id or slug (default: the portfolio roll-up)")
+      .option("--period <period>", "day, week, or month (default day: the last completed local day)", "day")
+      .option("--from <instant>", "Inclusive ISO-8601 window start (with --to)")
+      .option("--to <instant>", "Exclusive ISO-8601 window end (with --from)")
+      .option("--ai", "Ask the local model for the headline (submits one Intelligence job; stores no digest)")
+      .option("--detail", "Also print every recorded fact behind the page")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    project?: string;
+    period?: string;
+    from?: string;
+    to?: string;
+    ai?: boolean;
+    detail?: boolean;
+    json?: boolean;
+  }) => runCliAction("digest.preview", options, () => runDigestPreviewCommand(options), renderDigestPreviewSuccess));
+  addJsonOption(
+    digest
+      .command("show")
+      .description("Print one stored digest as delivered")
+      .argument("<digest-id>", "Narrative digest id")
+      .option("--detail", "Also print every recorded fact behind the page")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((digestId: string, options: { workspace: string; detail?: boolean; json?: boolean }) =>
+    runCliAction("digest.show", options, () => runDigestShowCommand({ ...options, digestId }), renderDigestShowSuccess)
   );
   addJsonOption(
     digest
@@ -6049,7 +6161,7 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
-  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check", "liveness-check"].includes(second ?? "")) {
+  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check", "liveness-check", "keeper-heartbeat"].includes(second ?? "")) {
     return `production.${second}`;
   }
 

@@ -794,8 +794,25 @@ function attemptAutomaticPlanningResolution(
   input: { workspace: string; profiles: CodingAgentProfile[] },
   transition: ProjectTransition,
   actionKey: string,
-  log: (message: string) => void
+  log: (message: string) => void,
+  /**
+   * Set when the refused packet is bound to a provider the Active policy does
+   * not permit (Issue #2217): its replacement is prepared only under a
+   * policy-permitted profile, and the old packet's still-open approval
+   * Decision (if any) is rejected as superseded, never approved.
+   */
+  providerMismatch?: { decisionId: string | null }
 ): string | null {
+  // Issue #2217: with production Off (including an Off committed while this
+  // tick was already running) no policy names the permitted providers, so the
+  // selector below would fall back to the registry default and bind an
+  // immutable packet the next grant may refuse forever. Preparation waits for
+  // the Active tick, whose policy chooses the provider.
+  const policyNow = readProductionPolicySafely(db);
+  if (policyNow.status !== "ok" || policyNow.policy.desiredState !== "active") {
+    log(`Production is Off; not preparing a build packet for ${actionKey} until an Active policy names its permitted providers.`);
+    return PREPARATION_DEFERRED_WHILE_OFF;
+  }
   const context = transition.dispatch.context;
   if (!context) {
     return null;
@@ -813,6 +830,11 @@ function attemptAutomaticPlanningResolution(
   const requestedProfile = predictedPurpose
     ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose, resolveWorkItemPolicyIdentity(db, workItem)) ?? undefined
     : undefined;
+  if (providerMismatch && (predictedPurpose !== "build" || !requestedProfile)) {
+    // Nothing the Active policy permits can carry this build: re-planning
+    // would only bind the same refused default again.
+    return null;
+  }
   // The planner is a separately identified, read-only helper attempt (it
   // writes packet records, never the candidate), reached only after the
   // deterministic launch preview reported `planning_required`. Being called
@@ -825,7 +847,12 @@ function attemptAutomaticPlanningResolution(
   const now = new Date();
   try {
     const planned = runHelperAttempt(db, { role: "planner", requirement, actorId: "host-planner:work-plan", retryAuthorized: true, rerunPassed: true, now }, () => {
-      const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
+      const prepared = runWorkPlanCommand({
+        workspace: input.workspace,
+        workId: workItem.id,
+        agentProfile: requestedProfile,
+        ...(providerMismatch ? { replaceProfileMismatchedPacket: true } : {})
+      });
       const invocation = prepared.data.buildInvocation ?? prepared.data.codexInvocation;
       const kind = prepared.data.buildInvocation ? "build_packet_ready" : prepared.data.planningDecision ? "planning_approval_pending" : null;
       return { outcome: kind !== null ? "passed" as const : "inconclusive" as const, receipt: { kind, invocationId: invocation?.id ?? null, promptPath: invocation?.prompt_path ?? null } };
@@ -841,6 +868,12 @@ function attemptAutomaticPlanningResolution(
     if (planned.replayed) {
       log(`The planner attempt for ${actionKey} already finished for this exact Action input (${planned.attempt.status}); not re-running it.`);
       return null;
+    }
+    if (planned.receipt.kind === "build_packet_ready" && providerMismatch) {
+      supersedeProviderMismatchedPacketApproval(db, providerMismatch.decisionId, planned.receipt.invocationId, requestedProfile!, log);
+      log(`Replaced the build packet for ${actionKey}, which was bound to a provider the active production policy does not permit, `
+        + `with one bound to ${requestedProfile}; it still needs its own build-packet approval.`);
+      return "build_packet_ready";
     }
     if (planned.receipt.kind === "build_packet_ready") {
       log(`Automatically prepared a build packet for ${actionKey} (was planning_required); it still needs its own build-packet approval.`);
@@ -858,6 +891,51 @@ function attemptAutomaticPlanningResolution(
     }
     log(`Automatic planning_required resolution failed for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
+  }
+}
+
+/**
+ * Returned by planning resolution when production is Off: nothing was
+ * prepared, and nothing is escalated, because the next Active tick prepares
+ * it under the policy that will admit it (Issue #2217).
+ */
+const PREPARATION_DEFERRED_WHILE_OFF = "preparation_deferred_while_off";
+
+/**
+ * Escalation kind for a packet bound to a provider the Active policy does not
+ * permit when no permitted replacement could be prepared (Issue #2217). Its
+ * remedy is the policy/provider mismatch itself, never an approval tap.
+ */
+const PROVIDER_NOT_PERMITTED_ESCALATION = "provider_not_permitted";
+
+/**
+ * Rejects the still-open approval Decision of a build packet that was just
+ * replaced because its provider is not permitted (Issue #2217), so Review
+ * never offers an approval that could not launch. An approved, rejected or
+ * missing Decision, or one that belongs to the replacement packet, is left
+ * exactly as it is.
+ */
+function supersedeProviderMismatchedPacketApproval(
+  db: Database.Database,
+  decisionId: string | null,
+  replacementInvocationId: string | null,
+  replacementProfile: string,
+  log: (message: string) => void
+): void {
+  if (!decisionId) return;
+  try {
+    const item = getReviewItem(db, decisionId);
+    if (!item || item.resolved_intent !== "CodexBuildPacketApproval" || (item.status !== "open" && item.status !== "deferred")) return;
+    if (!item.codex_invocation_id || item.codex_invocation_id === replacementInvocationId) return;
+    updateReviewItemStatus(db, item.id, {
+      status: "rejected",
+      decisionNote: `Superseded by the managed-production tick: this build packet is bound to a provider the active production policy does not permit, `
+        + `so it could never launch. Replaced by build packet ${replacementInvocationId ?? "(new)"} bound to ${replacementProfile}, which needs its own approval.`
+    });
+    log(`Rejected superseded build packet Decision ${item.id} (its packet's provider is not permitted by the active production policy).`);
+  } catch (error) {
+    // Advisory cleanup: the replacement packet is already the one the launch preview uses.
+    log(`Could not reject superseded build packet Decision ${decisionId}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -2942,7 +3020,11 @@ function attemptProjectLaunch(
         }
       }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
-      if (packetLifecycleKind === "build_packet_approval_pending") {
+      // Issue #2217: the existing packet is bound to a provider the Active
+      // policy does not permit. Its provider is immutable, so approving it can
+      // never launch; it is replaced instead (below), never approved here.
+      const providerMismatchedPacket = rawCode === "provider_not_permitted" && error.details?.packetProviderNotPermitted === true;
+      if (packetLifecycleKind === "build_packet_approval_pending" && !providerMismatchedPacket) {
         const approved = attemptDelegatedPacketApproval(db, {
           actionKey,
           projectSlug: input.projectSlug,
@@ -2974,6 +3056,18 @@ function attemptProjectLaunch(
       const supersededPacket = packetLifecycleKind === "stale_packet" && error.details?.packetLifecycleSupersededInput === true;
       const resolvedLifecycleKind = rawCode === "no_validation_commands"
         ? null
+        : providerMismatchedPacket
+          ? attemptAutomaticPlanningResolution(
+              db,
+              { workspace: input.workspace, profiles: input.options.profiles },
+              transition,
+              actionKey,
+              input.log,
+              { decisionId: typeof error.details?.packetLifecycleDecisionId === "string" ? error.details.packetLifecycleDecisionId : null }
+            )
+              // No permitted replacement could be prepared: the refusal is the
+              // provider mismatch itself, never a packet approval to tap.
+              ?? (packetLifecycleKind === "build_packet_approval_pending" ? PROVIDER_NOT_PERMITTED_ESCALATION : packetLifecycleKind)
         : packetLifecycleKind === "planning_required" || supersededPacket
           ? attemptAutomaticPlanningResolution(
               db,
@@ -3001,8 +3095,8 @@ function attemptProjectLaunch(
         ? ENVIRONMENT_WALL_ESCALATION_KIND
         : rawCode === "no_validation_commands" || (rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode))
         ? rawCode
-        : resolvedLifecycleKind === PLANNER_ATTEMPTS_EXHAUSTED
-          ? PLANNER_ATTEMPTS_EXHAUSTED
+        : resolvedLifecycleKind === PLANNER_ATTEMPTS_EXHAUSTED || resolvedLifecycleKind === PROVIDER_NOT_PERMITTED_ESCALATION
+          ? resolvedLifecycleKind
           : resolvedLifecycleKind && (NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
               || (supersededPacket && resolvedLifecycleKind === "stale_packet"))
             ? resolvedLifecycleKind
@@ -3014,6 +3108,8 @@ function attemptProjectLaunch(
           ? developmentLineageRemedy(rawCode, error.details)
           : escalationKind === PLANNER_ATTEMPTS_EXHAUSTED
           ? PLANNER_ATTEMPTS_EXHAUSTED_REMEDY
+          : escalationKind === PROVIDER_NOT_PERMITTED_ESCALATION
+          ? prerequisites?.find((entry) => entry.startsWith("provider not permitted")) ?? null
           : rawCode === "no_validation_commands"
           ? prerequisites?.find((entry) => entry.startsWith("no validation commands")) ?? null
           : typeof error.details?.packetLifecycleRemedy === "string"
@@ -3031,9 +3127,10 @@ function attemptProjectLaunch(
         if (newlyDetected) {
           input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${shownRemedy ?? error.message}`);
         }
-      } else if (rawCode === ENVIRONMENT_WALL_TRANSIENT_CODE) {
+      } else if (rawCode === ENVIRONMENT_WALL_TRANSIENT_CODE || resolvedLifecycleKind === PREPARATION_DEFERRED_WHILE_OFF) {
         // Still refused, only rechecking: keep any recorded escalation, exactly
-        // as the tick-side transient branch does; a launch clears it.
+        // as the tick-side transient branch does; a launch clears it. An Off
+        // committed mid-tick is the same kind of wait (Issue #2217).
       } else if (!escalateStalledPlanningGate(db, {
         actionKey,
         projectSlug: input.projectSlug,

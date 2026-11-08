@@ -390,6 +390,10 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       packetLifecycleRemedy: preview.packetLifecycle?.remedy ?? null,
       packetLifecycleDecisionId: preview.packetLifecycle?.kind === "build_packet_approval_pending" ? preview.packetLifecycle.decisionId : null,
       packetLifecycleSupersededInput: preview.packetLifecycle?.kind === "stale_packet" && preview.packetLifecycle.supersededInput === true,
+      // The provider mismatch belongs to an existing immutable packet (Issue
+      // #2217), so its remedy is a replacement packet, not an approval.
+      packetProviderNotPermitted: preview.packet !== null && preview.packet !== undefined
+        && preview.prerequisites.some((entry) => entry.startsWith("provider not permitted")),
       // Named the same as `issueAdmission`'s own refusal code (policy.ts) so a
       // caller need not distinguish "caught at preview" from "caught at
       // admission" -- both are the identical policy-provider mismatch.

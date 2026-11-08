@@ -21,6 +21,7 @@ import { effectiveDevelopmentAttempt, requirementIdentity, settleDevelopmentAtte
 import { getSessionRepair } from "./reviewRepair.js";
 import { createArtifactRecord, getArtifact, getProjectMetadata } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
+import { claimedFileChangeRefusal } from "./claimedFileChanges.js";
 import { criteriaValidationCommands, namedTestFiles, validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
 import { candidateScopeRefusal, isGovernedRecordPath, settlementRecordPaths } from "./scopeCriteria.js";
 import { completionExecutionPassed, completionSupplementDirectory, writeSupplementFile, type CompletionSupplementEnvelope, type CompletionSupplementBinding, type CompletionSupplementPin, readCompletionEvidence, type CompletionEvidenceBinding, type CompletionEvidenceReference, type CompletionEvidenceView } from "./completionValidationEvidence.js";
@@ -590,8 +591,14 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     ? `Scope check refused the completion: the Action's acceptance criteria at the base ${session.base_revision.slice(0, 12)} could not be read.`
     : candidateScopeRefusal(worktree, session.base_revision, evidence.candidateRevision ?? "HEAD", baseCriteria);
   let validation: CompletionValidationResult | null = null;
-  const validateBeforeSettle = () => {
+  // Issue #2261: a claim that a test or source file changed is measured from where this Session's own work
+  // began: the base, or for a review repair the failed work it started from (the base diff already holds that).
+  const repairStart = getSessionRepair(db, session.id)?.start_revision ?? null;
+  const validateBeforeSettle = (draft: { evidence: ReadonlyArray<{ note: string | null }> }) => {
     if (scopeRefusal) return { ok: false as const, reason: scopeRefusal };
+    const claimRefusal = claimedFileChangeRefusal(worktree, repairStart ?? session.base_revision, evidence.candidateRevision ?? "HEAD", draft.evidence,
+      repairStart ? "the repair's start revision" : "the base revision");
+    if (claimRefusal) return { ok: false as const, reason: claimRefusal };
     validation ??= validateCompletionCandidate({
       repository: session.repository_path, worktree, base: session.base_revision, workspace,
     evidenceBinding: completionEvidenceBinding(session),
@@ -610,7 +617,7 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     // left, draft included, so that commit is what its evidence describes.
     evidencedRevision: evidence.candidateRevision,
     // A review repair Session settles only a completion it drafted itself.
-    excludeDraftsAt: getSessionRepair(db, session.id)?.start_revision ?? null,
+    excludeDraftsAt: repairStart,
     validateBeforeSettle
   });
   if (!result.settled) {
@@ -632,8 +639,12 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
         remedy: `This is a host fault, not a candidate defect. Fix the host condition the message names (a runner or dependencies missing in the checkout, an unsupported host, or a validation that needs a longer bound), then clear this hold with \`arcadia production reset-repair-budget\` for ${actionKey} so the Action relaunches; the candidate is preserved at ${worktree} on ${session.branch}.`
       } };
     }
-    // The same refusal repeating across relaunches of one Action is a stuck loop, not progress.
-    const { attempts } = recordPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey), fingerprintPreservationRefusal(refusal, { candidate: evidence.candidateRevision ?? null }), refusal, new Date());
+    // The same refusal repeating across relaunches of one Action is a stuck loop, not progress. Its draft's
+    // file name and the candidate revision are not new evidence: a relaunch that redrafts under a new request
+    // id gets a new preserve commit every time, and once fingerprinting both let 26 relaunches of one
+    // unchanged refusal through (2026-11-07). Only the refusal itself, at most this many times running, counts.
+    const fingerprint = fingerprintPreservationRefusal(draftedCompletionRefusal(worktree, result.reason, undefined, result.detail), null);
+    const { attempts } = recordPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey), fingerprint, refusal, new Date());
     if (attempts >= MAX_IDENTICAL_PRESERVATION_REFUSALS) {
       const message = `${refusal} It was refused the same way ${attempts} times in a row, so it is not offered for automatic resumption.`;
       return { kind: "refused", reason: message, hold: {
