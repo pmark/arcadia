@@ -328,11 +328,11 @@ actions:
     references: []
   - id: pin-way-trigger-parsing
     title: Pin that Way lookup trigger parsing tolerates malformed input, skips incomplete entries and drops empty phrases, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that Way lookup trigger parsing tolerates malformed input, skips incomplete entries and drops empty phrases, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-way-trigger-parsing-170e6979f41b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-way-trigger-parsing
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-way-trigger-parsing
+current_action: pin-narration-text-split
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
