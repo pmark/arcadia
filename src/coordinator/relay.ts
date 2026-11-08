@@ -29,12 +29,17 @@ import {
  */
 
 /**
- * DECISION-PLACEHOLDER: the governed Decision recording answer A to #2223 (the
- * next free number after 0190). While this is null, `renew` refuses before any
- * claim, worktree or launch. Set it to the Decision's four-digit id once that
- * Decision is on main.
+ * The governed Decision recording answer A to #2223, named by its full file
+ * stem under `docs/decisions/`. Two Decisions share the number 0191, so the
+ * number alone is ambiguous: the gate reads exactly `<stem>.md` on main and
+ * requires its front matter `id` and `slug` to match the stem. Null keeps
+ * `renew` refusing (`decision_pending`) before any claim, worktree or launch.
  */
-export const RELAY_LAUNCH_DECISION_ID: string | null = null;
+export const RELAY_LAUNCH_DECISION_ID: string | null =
+  "0191-may-arcadia-s-deterministic-relay-launch-successor-coordinator-sessions-signal";
+
+/** A Decision file stem: its four-digit number, a hyphen, then its slug. */
+const DECISION_STEM = /^(\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)$/;
 
 /** Limits pinned by answer A of the design's Decision. */
 export const RELAY_LIMITS = {
@@ -113,13 +118,15 @@ function refuse(reason: RelayRefusal, detail: string): RenewResult {
   return { outcome: "refused", reason, detail };
 }
 
-/** Reads a Decision file from `origin/main` (never the working tree, which a session can edit). */
+/**
+ * Reads exactly `docs/decisions/<stem>.md` from `origin/main` (never the
+ * working tree, which a session can edit). No prefix match: a stem that is not
+ * a full `<number>-<slug>` returns null.
+ */
 export function readDecisionFromMain(repoRoot: string, id: string): string | null {
+  if (!DECISION_STEM.test(id)) return null;
   try {
-    const names = execFileSync("git", ["-C", repoRoot, "ls-tree", "--name-only", "origin/main", "docs/decisions/"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 })
-      .split("\n").map((line) => line.trim()).filter((line) => path.basename(line).startsWith(`${id}-`) && line.endsWith(".md"));
-    if (names.length !== 1) return null;
-    return execFileSync("git", ["-C", repoRoot, "show", `origin/main:${names[0]}`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 });
+    return execFileSync("git", ["-C", repoRoot, "show", `origin/main:docs/decisions/${id}.md`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 15_000 });
   } catch {
     return null;
   }
@@ -132,10 +139,17 @@ export function readRelayDecision(
   id: string | null = RELAY_LAUNCH_DECISION_ID,
   read: (repoRoot: string, id: string) => string | null = readDecisionFromMain
 ): DecisionGate {
-  if (id === null) return { inForce: false, reason: "The standing Decision recording answer A to #2223 is not yet on main (DECISION-PLACEHOLDER)." };
+  if (id === null) return { inForce: false, reason: "The standing Decision recording answer A to #2223 is not named (RELAY_LAUNCH_DECISION_ID is null)." };
+  const stem = DECISION_STEM.exec(id);
+  if (!stem) return { inForce: false, reason: `Decision ${id} is not a full <number>-<slug> file stem; a bare number can name more than one Decision.` };
   const raw = read(repoRoot, id);
   if (raw === null) return { inForce: false, reason: `Decision ${id} is not on origin/main.` };
   const text = raw.slice(0, 8_000);
+  const fileId = /^id:\s*"?(\d{4})"?\s*$/m.exec(text)?.[1];
+  const fileSlug = /^slug:\s*"?([a-z0-9-]+)"?\s*$/m.exec(text)?.[1];
+  if (fileId !== stem[1] || fileSlug !== stem[2]) {
+    return { inForce: false, reason: `Decision ${id} on main has id ${fileId ?? "unreadable"} and slug ${fileSlug ?? "unreadable"}, not an exact match.` };
+  }
   const status = /^status:\s*(\S+)/m.exec(text)?.[1];
   const answer = /^answer:\s*"?(.+?)"?\s*$/m.exec(text)?.[1] ?? "";
   const decided = /^decided:\s*(\S+)/m.exec(text)?.[1];

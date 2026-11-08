@@ -7,6 +7,7 @@ import { COORDINATOR_ENV, listGenerations, seedCustodianGeneration } from "../sr
 import {
   RELAY_LAUNCH_DECISION_ID,
   claudeProjectSlug,
+  readDecisionFromMain,
   readFirstUserMessage,
   readRelayDecision,
   renewCoordinator,
@@ -78,28 +79,44 @@ function fakeDeps(projects: string, options: { deliver: boolean[]; inForce?: boo
 }
 
 describe("coordinator relay launch (change 3)", () => {
-  it("is inert until the governed Decision id is filled in", () => {
-    expect(RELAY_LAUNCH_DECISION_ID).toBeNull();
+  it("names the relay Decision by its full stem and matches it exactly", () => {
+    const stem = "0191-may-arcadia-s-deterministic-relay-launch-successor-coordinator-sessions-signal";
+    expect(RELAY_LAUNCH_DECISION_ID).toBe(stem);
     const { repo } = setup();
-    expect(readRelayDecision(repo, new Date()).inForce).toBe(false);
+    const decision = (id: string, slug: string, answer: string) =>
+      `---\nid: "${id}"\nslug: ${slug}\nstatus: approved\nanswer: "${answer}"\ndecided: 2026-11-07\n---\n`;
+    const otherStem = "0191-authorize-one-start-card-worker-claude-usage-diagnostic-2026-11-07-f9415ce1";
     const onMain: Record<string, string> = {
-      "0191": "---\nstatus: approved\nanswer: A. Yes, pinned\ndecided: 2026-11-07\n---\n",
-      "0192": "---\nstatus: approved\nanswer: C. No launches\ndecided: 2026-11-07\n---\n"
+      [stem]: decision("0191", stem.slice(5), "A. Yes, pinned"),
+      [otherStem]: decision("0191", otherStem.slice(5), "A. Approve"),
+      "0192-relay-c": decision("0192", "relay-c", "C. No launches"),
+      "0194-wrong-slug": decision("0194", "some-other-slug", "A. Yes"),
+      "0195-wrong-id": decision("0196", "wrong-id", "A. Yes")
     };
     const read = (_repo: string, id: string) => onMain[id] ?? null;
-    expect(readRelayDecision(repo, new Date("2026-11-08T00:00:00Z"), "0191", read).inForce).toBe(true);
-    expect(readRelayDecision(repo, new Date("2026-12-20T00:00:00Z"), "0191", read).reason).toMatch(/expired/);
-    expect(readRelayDecision(repo, new Date("2026-11-08T00:00:00Z"), "0192", read).inForce).toBe(false);
-    // A file in the working tree is not main: the default reader uses origin/main only.
-    writeFileSync(path.join(repo, "docs", "decisions", "0193-relay.md"), onMain["0191"]);
-    expect(readRelayDecision(repo, new Date("2026-11-08T00:00:00Z"), "0193").inForce).toBe(false);
+    const at = new Date("2026-11-08T00:00:00Z");
+    expect(readRelayDecision(repo, at, stem, read)).toMatchObject({ inForce: true });
+    expect(readRelayDecision(repo, new Date("2026-12-20T00:00:00Z"), stem, read).reason).toMatch(/expired/);
+    // A bare number is ambiguous (two Decisions are numbered 0191): refused before any read.
+    expect(readRelayDecision(repo, at, "0191", () => onMain[stem]).reason).toMatch(/not a full <number>-<slug> file stem/);
+    expect(readRelayDecision(repo, at, "0192-relay-c", read).inForce).toBe(false);
+    // The file's own id and slug must equal the stem.
+    expect(readRelayDecision(repo, at, "0194-wrong-slug", read).reason).toMatch(/not an exact match/);
+    expect(readRelayDecision(repo, at, "0195-wrong-id", read).reason).toMatch(/not an exact match/);
+    // A stem that names no file is not in force; a prefix of a real stem names none.
+    expect(readRelayDecision(repo, at, "0191-may-arcadia", read).inForce).toBe(false);
+    // The default reader takes no prefix match and reads origin/main only, never the working tree.
+    expect(readDecisionFromMain(repo, "0191")).toBeNull();
+    writeFileSync(path.join(repo, "docs", "decisions", "0193-relay.md"), onMain[stem]);
+    expect(readRelayDecision(repo, at, "0193-relay").inForce).toBe(false);
+    expect(readRelayDecision(repo, at, null, read).inForce).toBe(false);
   });
 
   it("refuses before any claim or launch when the Decision is not in force", () => {
     const { ws, repo, projects } = setup();
     const fake = fakeDeps(projects, { deliver: [true], inForce: false });
     const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
-    expect(result).toMatchObject({ outcome: "refused", reason: "decision_pending" });
+    expect(result).toMatchObject({ outcome: "refused", reason: "decision_not_in_force" });
     expect(fake.launches).toEqual([]);
     expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))).toHaveLength(1);
   });
