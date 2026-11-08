@@ -6,7 +6,7 @@
  * are real `git format-patch` output over real commits.
  */
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -23,7 +23,7 @@ const askContent = (fields: Record<string, string> = {}) => `${JSON.stringify({ 
 
 type Statuses = Record<string, string>;
 function plan(opts: { status: string | null; actions: Statuses; current: string | null; completedVia?: string; body?: string[]; slug?: string }): string {
-  const lines = ["---", "arcadia: v1", "type: plan", `slug: ${opts.slug ?? "p"}`, ...(opts.status === null ? [] : [`status: ${opts.status}`]), "updated: 2026-11-08", "actions:"];
+  const lines = ["---", "arcadia: v1", "type: plan", "project: arcadia", `slug: ${opts.slug ?? "p"}`, ...(opts.status === null ? [] : [`status: ${opts.status}`]), "updated: 2026-11-08", "actions:"];
   for (const [id, status] of Object.entries(opts.actions)) {
     lines.push(`  - id: ${id}`, `    title: Do ${id}.`, `    status: ${status}`, "    effort: session",
       `    next_action: ${status === "done" && opts.completedVia && id === LAST ? `Completed via Agent Ask ${opts.completedVia}; no further action.` : status === "done" ? "Completed via Agent Ask earlier; no further action." : `Do ${id}.`}`);
@@ -141,7 +141,7 @@ describe("a Plan-completing settlement (Issue #2270)", () => {
     const s = series({ ...COMPLETING, base: { "first-one": "done", "second-one": "open", [LAST]: "open" }, after: { status: "complete", actions: { "first-one": "done", "second-one": "open", [LAST]: "done" }, current: null } });
     const result = check(s, s.parents);
     expect(shapeOf(result, PLAN_PATH)).toMatchObject({ verified: false });
-    expect(shapeOf(result, PLAN_PATH)?.detail).toContain("second-one is not done");
+    expect(shapeOf(result, PLAN_PATH)?.detail).toContain("Action second-one");
     expect(shapeOf(result, "PROJECT.md")).toMatchObject({ verified: false });
   });
 
@@ -279,6 +279,105 @@ describe("a Plan-completing settlement (Issue #2270)", () => {
       const s = series({ ...COMPLETING, baseFiles: { [PLAN_PATH]: base } });
       expect(s.patch).toContain("-status: active\n-updated: 2026-11-07\n+status: complete\n+updated: 2026-11-08");
       expect(shapeOf(check(s, s.parents), PLAN_PATH)).toMatchObject({ verified: true });
+    });
+  });
+
+  describe("review round 3: the outcome is judged on parsed before and after documents", () => {
+    const withExtra = (content: string, extra: string[]) => content.replace("questions: []", `${extra.join("\n")}\nquestions: []`);
+    const baseOf = () => plan({ status: "active", actions: COMPLETING.base, current: LAST });
+    const afterOf = (actions: Statuses = COMPLETING.after.actions, body?: string[]) => plan({ status: "complete", actions, current: null, completedVia: "complete-last", body });
+    const refused = (scenario: Scenario) => {
+      const s = series(scenario);
+      expect(shapeOf(check(s, s.parents), PLAN_PATH)).toMatchObject({ verified: false });
+      expect(shapeOf(check(s, s.parents), "PROJECT.md")).toMatchObject({ verified: false });
+    };
+    const OPEN_LAST = { "first-one": "done", "second-one": "done", [LAST]: "open" };
+
+    it("B1: refuses a decoy Action in a fenced body example marked done while the real Action stays open", () => {
+      const decoy = (status: string) => ["", "```yaml", `  - id: ${LAST}`, `    status: ${status}`, "```"];
+      refused({
+        ...COMPLETING,
+        baseFiles: { [PLAN_PATH]: plan({ status: "active", actions: OPEN_LAST, current: LAST, body: decoy("open") }) },
+        settleFiles: { [PLAN_PATH]: afterOf(OPEN_LAST, decoy("done")) }
+      });
+    });
+
+    it("B2: refuses a decoy Action in a front-matter block scalar", () => {
+      const decoy = (status: string) => ["notes: |", `  - id: ${LAST}`, `    status: ${status}`];
+      refused({
+        ...COMPLETING,
+        baseFiles: { [PLAN_PATH]: withExtra(plan({ status: "active", actions: OPEN_LAST, current: LAST }), decoy("open")) },
+        settleFiles: { [PLAN_PATH]: withExtra(afterOf(OPEN_LAST), decoy("done")) }
+      });
+    });
+
+    it("refuses a body change in the completion", () => {
+      refused({ ...COMPLETING, settleFiles: { [PLAN_PATH]: afterOf(COMPLETING.after.actions, ["", "Extra."]) } });
+    });
+
+    it("A6: refuses a Plan of another project than PROJECT.md's", () => {
+      refused({
+        ...COMPLETING,
+        baseFiles: { [PLAN_PATH]: baseOf().replace("project: arcadia", "project: elsewhere") },
+        settleFiles: { [PLAN_PATH]: afterOf().replace("project: arcadia", "project: elsewhere") }
+      });
+    });
+
+    it("accepts a deferred sibling Action, as resolveFinishedActivePlan counts it finished", () => {
+      const base = { "first-one": "done", "second-one": "deferred", [LAST]: "open" };
+      const s = series({ ...COMPLETING, base, after: { ...COMPLETING.after, actions: { ...base, [LAST]: "done" } } });
+      const result = check(s, s.parents);
+      expect(shapeOf(result, PLAN_PATH)).toMatchObject({ verified: true });
+      expect(shapeOf(result, "PROJECT.md")).toMatchObject({ verified: true });
+    });
+
+    it("refuses a sibling Action in any other non-done status", () => {
+      const base = { "first-one": "done", "second-one": "blocked", [LAST]: "open" };
+      const s = series({ ...COMPLETING, base, after: { ...COMPLETING.after, actions: { ...base, [LAST]: "done" } } });
+      expect(shapeOf(check(s, s.parents), PLAN_PATH)).toMatchObject({ verified: false });
+    });
+
+    it("O3: verifies status directly above the pointer", () => {
+      const base = baseOf().replace(`current_action: ${LAST}\n`, "").replace("status: active\n", `status: active\ncurrent_action: ${LAST}\n`);
+      const s = series({ ...COMPLETING, baseFiles: { [PLAN_PATH]: base } });
+      expect(s.patch).toContain(`-status: active\n-current_action: ${LAST}\n+status: complete`);
+      expect(shapeOf(check(s, s.parents), PLAN_PATH)).toMatchObject({ verified: true });
+    });
+
+    it("refuses a parent document over the size bound before parsing it", () => {
+      const pad = ["", "x".repeat(1_100_000)];
+      refused({
+        ...COMPLETING,
+        baseFiles: { [PLAN_PATH]: plan({ status: "active", actions: COMPLETING.base, current: LAST, body: pad }) },
+        settleFiles: { [PLAN_PATH]: afterOf(COMPLETING.after.actions, pad) }
+      });
+    });
+
+    it("refuses a hunk that does not apply exactly to the parent evidence", () => {
+      const s = series(COMPLETING);
+      const evidence = { [s.settlement]: { ...s.parents[s.settlement], [PLAN_PATH]: s.parents[s.settlement][PLAN_PATH].replace("recommended_model: standard", "recommended_model: heavy") } };
+      expect(shapeOf(check(s, evidence), PLAN_PATH)).toMatchObject({ verified: false });
+    });
+  });
+
+  describe("PR #2268's real settlement (pmark/arcadia commits 43349caae and 6fa32eb8c)", () => {
+    const dir = path.join(import.meta.dirname, "fixtures", "plan-completion-2268");
+    const meta = JSON.parse(readFileSync(path.join(dir, "meta.json"), "utf8")) as { commitFiles: Record<string, CommitObjectFile[]> };
+    const patch = readFileSync(path.join(dir, "series.patch"), "utf8");
+    const SETTLEMENT = "6fa32eb8c33fcf48eae59a1d8fbe22e24233592b";
+    const PLAN = "docs/plans/record-run-unattended-test-pins-20261107.md";
+    const parents = { [SETTLEMENT]: { "PROJECT.md": readFileSync(path.join(dir, "parent-PROJECT.md"), "utf8"), [PLAN]: readFileSync(path.join(dir, "parent-plan.md"), "utf8") } };
+    const commits = Object.keys(meta.commitFiles);
+    const files = [...new Set(Object.values(meta.commitFiles).flat().map((file) => file.path))];
+    const real = (evidence: ParentDocuments | null) => checkGovernedRecords(patch, { declaredFiles: files, declaredCommits: commits, commitFiles: meta.commitFiles, parentDocuments: evidence });
+
+    it("verifies PROJECT.md and the Plan with the parent documents, and refuses both without", () => {
+      const verified = real(parents);
+      expect(shapeOf(verified, PLAN)).toMatchObject({ verified: true });
+      expect(shapeOf(verified, "PROJECT.md")).toMatchObject({ verified: true });
+      const bare = real(null);
+      expect(shapeOf(bare, PLAN)).toMatchObject({ verified: false });
+      expect(shapeOf(bare, "PROJECT.md")).toMatchObject({ verified: false });
     });
   });
 });

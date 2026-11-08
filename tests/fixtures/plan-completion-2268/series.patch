@@ -1,0 +1,136 @@
+From 43349caae99ec5a9b256798c781412d8f2920825 Mon Sep 17 00:00:00 2001
+From: Arcadia Controller <controller@arcadia.local>
+Date: Sun, 8 Nov 2026 02:51:35 +0000
+Subject: [PATCH 1/2] chore(candidate): preserve pin-agent-role-guard candidate
+ for handoff
+
+Arcadia-Preservation-Request: worker-tick-preserve-session_2d365b1868184f69a9
+Arcadia-Candidate-Fingerprint: f4cd1dfaffc71ec4884bf354808d803559fa18f2
+---
+ ...complete-pin-agent-role-guard-2885366337e2.yaml |  1 +
+ tests/pin-agent-role-guard.test.ts                 | 14 ++++++++++++++
+ 2 files changed, 15 insertions(+)
+ create mode 100644 .arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml
+ create mode 100644 tests/pin-agent-role-guard.test.ts
+
+diff --git a/.arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml b/.arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml
+new file mode 100644
+index 000000000..96c84db67
+--- /dev/null
++++ b/.arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml
+@@ -0,0 +1 @@
++{"agent_ask":"v1","request_id":"complete-pin-agent-role-guard-2885366337e2","project":"arcadia","intent":"complete","target_ref":"action/pin-agent-role-guard","candidate_revision":"2885366337e2e38164aad4bfaf123ebe2b9c05ff","evidence":[{"criterion":"tests/pin-agent-role-guard.test.ts is a new test file that imports isAgentRole from ../src/codingAgents/agentIdentity.js and asserts isAgentRole returns true for \"builder\" and \"critic\", and false for each of \"Builder\", \"reviewer\", \"\" and \" builder\".","status":"met","note":"Created tests/pin-agent-role-guard.test.ts. Ran pnpm exec vitest run tests/pin-agent-role-guard.test.ts after the dependency bridge: 1 file passed, 5 tests passed."},{"criterion":"No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.","status":"met","note":"Ran git status --short: only the untracked tests/pin-agent-role-guard.test.ts. No src/ edits, and behaviour matched every assertion, so there is no mismatch to report."},{"criterion":"Apart from the settlement records Arcadia writes, the change touches only tests/pin-agent-role-guard.test.ts, a new test file that imports only vitest and src/codingAgents/agentIdentity.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.","status":"met","note":"git status --short shows only tests/pin-agent-role-guard.test.ts. It imports only vitest and ../src/codingAgents/agentIdentity.js, and it is a pure synchronous check with no network, timer, child process, database or service. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build)."}],"desired_result":"Mark pin-agent-role-guard complete."}
+diff --git a/tests/pin-agent-role-guard.test.ts b/tests/pin-agent-role-guard.test.ts
+new file mode 100644
+index 000000000..a72880252
+--- /dev/null
++++ b/tests/pin-agent-role-guard.test.ts
+@@ -0,0 +1,14 @@
++import { describe, expect, it } from "vitest";
++
++import { isAgentRole } from "../src/codingAgents/agentIdentity.js";
++
++describe("isAgentRole", () => {
++  it("accepts builder and critic", () => {
++    expect(isAgentRole("builder")).toBe(true);
++    expect(isAgentRole("critic")).toBe(true);
++  });
++
++  it.each(["Builder", "reviewer", "", " builder"])("rejects %j", (value) => {
++    expect(isAgentRole(value)).toBe(false);
++  });
++});
+
+From 6fa32eb8c33fcf48eae59a1d8fbe22e24233592b Mon Sep 17 00:00:00 2001
+From: Arcadia Controller <controller@arcadia.local>
+Date: Sat, 7 Nov 2026 18:52:51 -0800
+Subject: [PATCH 2/2] chore(arcadia): settle
+ auto-settle-arcadia-pin-agent-role-guard-6b2385ff54c8
+
+- Marked Action arcadia/pin-agent-role-guard done with accepted evidence for all 3 criteria.
+- Plan record-run-unattended-test-pins-20261107 is complete; every Action is done. Select a new active Plan when ready. Successor activation was held: the Plan is inside the Active production scope. On /production press "Turn production Off" (one click), then apply the Plan change; the current Plan stays active and queued behind until then.
+- Archived the settled Ask file to .arcadia/asks/archive/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml.
+
+Written by `arcadia agent-ask settle --apply` (asksettle_1fa0a35e756d4b6190).
+Arcadia writes and lands its own managed documents; it did not author the
+decision they record.
+---
+ ...ent-ask-complete-pin-agent-role-guard-2885366337e2.yaml | 2 +-
+ MISSION_LOG.md                                             | 7 +++++++
+ PROJECT.md                                                 | 1 -
+ docs/plans/record-run-unattended-test-pins-20261107.md     | 7 +++----
+ 4 files changed, 11 insertions(+), 6 deletions(-)
+ rename .arcadia/asks/{ => archive}/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml (93%)
+
+diff --git a/.arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml b/.arcadia/asks/archive/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml
+similarity index 93%
+rename from .arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml
+rename to .arcadia/asks/archive/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml
+index 96c84db67..afa6fe997 100644
+--- a/.arcadia/asks/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml
++++ b/.arcadia/asks/archive/agent-ask-complete-pin-agent-role-guard-2885366337e2.yaml
+@@ -1 +1 @@
+-{"agent_ask":"v1","request_id":"complete-pin-agent-role-guard-2885366337e2","project":"arcadia","intent":"complete","target_ref":"action/pin-agent-role-guard","candidate_revision":"2885366337e2e38164aad4bfaf123ebe2b9c05ff","evidence":[{"criterion":"tests/pin-agent-role-guard.test.ts is a new test file that imports isAgentRole from ../src/codingAgents/agentIdentity.js and asserts isAgentRole returns true for \"builder\" and \"critic\", and false for each of \"Builder\", \"reviewer\", \"\" and \" builder\".","status":"met","note":"Created tests/pin-agent-role-guard.test.ts. Ran pnpm exec vitest run tests/pin-agent-role-guard.test.ts after the dependency bridge: 1 file passed, 5 tests passed."},{"criterion":"No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.","status":"met","note":"Ran git status --short: only the untracked tests/pin-agent-role-guard.test.ts. No src/ edits, and behaviour matched every assertion, so there is no mismatch to report."},{"criterion":"Apart from the settlement records Arcadia writes, the change touches only tests/pin-agent-role-guard.test.ts, a new test file that imports only vitest and src/codingAgents/agentIdentity.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.","status":"met","note":"git status --short shows only tests/pin-agent-role-guard.test.ts. It imports only vitest and ../src/codingAgents/agentIdentity.js, and it is a pure synchronous check with no network, timer, child process, database or service. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build)."}],"desired_result":"Mark pin-agent-role-guard complete."}
++{"agent_ask":"v1","request_id":"complete-pin-agent-role-guard-2885366337e2","project":"arcadia","intent":"complete","target_ref":"action/pin-agent-role-guard","candidate_revision":"43349caae99ec5a9b256798c781412d8f2920825","evidence":[{"criterion":"tests/pin-agent-role-guard.test.ts is a new test file that imports isAgentRole from ../src/codingAgents/agentIdentity.js and asserts isAgentRole returns true for \"builder\" and \"critic\", and false for each of \"Builder\", \"reviewer\", \"\" and \" builder\".","status":"met","note":"Created tests/pin-agent-role-guard.test.ts. Ran pnpm exec vitest run tests/pin-agent-role-guard.test.ts after the dependency bridge: 1 file passed, 5 tests passed."},{"criterion":"No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.","status":"met","note":"Ran git status --short: only the untracked tests/pin-agent-role-guard.test.ts. No src/ edits, and behaviour matched every assertion, so there is no mismatch to report."},{"criterion":"Apart from the settlement records Arcadia writes, the change touches only tests/pin-agent-role-guard.test.ts, a new test file that imports only vitest and src/codingAgents/agentIdentity.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.","status":"met","note":"git status --short shows only tests/pin-agent-role-guard.test.ts. It imports only vitest and ../src/codingAgents/agentIdentity.js, and it is a pure synchronous check with no network, timer, child process, database or service. Lint and tsc were not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build)."}],"desired_result":"Mark pin-agent-role-guard complete."}
+diff --git a/MISSION_LOG.md b/MISSION_LOG.md
+index 0500417f3..670688461 100644
+--- a/MISSION_LOG.md
++++ b/MISSION_LOG.md
+@@ -3117,3 +3117,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
+ - **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-markdown-speech-strip.test.ts is a new test file that imports stripMarkdownForSpeech from ../src/intelligence/text/markdown.js and asserts stripMarkdownForSpeech("# Title\n\n**Bold** and `code` see [docs](http://x) ![img](y)\n- item\n> quote\nsnake_case_name") returns "Title\n\nBold and code see docs\nitem\nquote\nsnake_case_name" (written with those JavaScript escapes)."; "The same test file asserts stripMarkdownForSpeech("```ts\nconst a = 1;\n```") returns "const a = 1;"."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-markdown-speech-strip.test.ts, a new test file that imports only vitest and src/intelligence/text/markdown.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+ - **Next:** Advanced to the next eligible Action in the explicit queue order.
+ - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-markdown-speech-strip-905f1b5daa0f).
++
++## 2026-11-08 — Completed arcadia/pin-agent-role-guard
++
++- **Did:** Completed Action arcadia/pin-agent-role-guard from accepted evidence (Candidate 43349caae99ec5a9b256798c781412d8f2920825).
++- **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-agent-role-guard.test.ts is a new test file that imports isAgentRole from ../src/codingAgents/agentIdentity.js and asserts isAgentRole returns true for "builder" and "critic", and false for each of "Builder", "reviewer", "" and " builder"."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-agent-role-guard.test.ts, a new test file that imports only vitest and src/codingAgents/agentIdentity.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
++- **Next:** Plan complete; every Action is done.
++- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-agent-role-guard-6b2385ff54c8).
+diff --git a/PROJECT.md b/PROJECT.md
+index 5c142e16c..fc66e2edf 100644
+--- a/PROJECT.md
++++ b/PROJECT.md
+@@ -8,7 +8,6 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
+ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
+ milestone: Record run unattended test pins 20261107
+ active_plan: record-run-unattended-test-pins-20261107
+-current_action: pin-agent-role-guard
+ updated: 2026-11-08
+ ---
+ 
+diff --git a/docs/plans/record-run-unattended-test-pins-20261107.md b/docs/plans/record-run-unattended-test-pins-20261107.md
+index 5bb2cfa5b..a7cb02039 100644
+--- a/docs/plans/record-run-unattended-test-pins-20261107.md
++++ b/docs/plans/record-run-unattended-test-pins-20261107.md
+@@ -3,7 +3,7 @@ arcadia: v1
+ type: plan
+ slug: record-run-unattended-test-pins-20261107
+ project: arcadia
+-status: active
++status: complete
+ milestone: Record run unattended test pins 20261107
+ token_impact: medium
+ token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
+@@ -388,11 +388,11 @@ actions:
+     references: []
+   - id: pin-agent-role-guard
+     title: Pin that the agent role guard accepts exactly builder and critic, with a new test file.
+-    status: open
++    status: done
+     responsibility: agent
+     execution: build
+     effort: session
+-    next_action: Pin that the agent role guard accepts exactly builder and critic, with a new test file.
++    next_action: Completed via Agent Ask auto-settle-arcadia-pin-agent-role-guard-6b2385ff54c8; no further action.
+     expected_artifact: Evidence satisfying Agent Ask pin-agent-role-guard
+     clarification: clarified
+     confidence: high
+@@ -407,7 +407,6 @@ actions:
+     references: []
+ questions: []
+ decisions: []
+-current_action: pin-agent-role-guard
+ recommended_model: standard
+ recommended_reasoning_effort: medium
+ ---
