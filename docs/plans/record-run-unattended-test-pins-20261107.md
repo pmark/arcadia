@@ -269,11 +269,11 @@ actions:
     references: []
   - id: pin-card-expiry-parse
     title: Pin that Decision card expiry accepts only strict ISO instants with valid calendar, clock and offset fields, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that Decision card expiry accepts only strict ISO instants with valid calendar, clock and offset fields, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-card-expiry-parse-9cadd38ad51b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-card-expiry-parse
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-card-expiry-parse
+current_action: pin-ci-text-neutralization
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
