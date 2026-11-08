@@ -439,7 +439,12 @@ export function completionEvidenceForReview(db: Database.Database, workspace: st
       const parent = git(session.worktree_path, ["rev-parse", `${head}^`]).trim();
       const files = git(session.worktree_path, ["diff-tree", "--no-commit-id", "--name-only", "-r", "--no-renames", head]).trim().split("\n").filter(Boolean);
       const patch = git(session.worktree_path, ["format-patch", "--stdout", "--no-signature", `${parent}..${head}`]);
-      const classified = classifyPatchApplicability(patch, { declaredFiles: files, declaredCommits: [head] });
+      // A Plan-completing settlement is a verified shape only against its parent's Plan; read from the local object, unreadable leaves it refused.
+      const parentDocuments: Record<string, string> = {};
+      for (const file of files.filter((candidate) => candidate === "PROJECT.md" || /^docs\/plans\/[^/]+\.md$/.test(candidate))) {
+        try { parentDocuments[file] = git(session.worktree_path, ["show", `${parent}:${file}`]); } catch { /* left out */ }
+      }
+      const classified = classifyPatchApplicability(patch, { declaredFiles: files, declaredCommits: [head], parentDocuments: { [head]: parentDocuments } });
       // Exactly one canonical settlement, changing only supported governed records.
       // An ancestor or a governance-shaped filename alone never extends the proof.
       if (classified.inert && classified.files.length > 0 && classified.files.every(file => file.class === "governed-record")) trees.push(tree(parent));
