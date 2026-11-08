@@ -51,11 +51,11 @@ actions:
     references: []
   - id: pin-requirement-id-format
     title: Pin that a requirement id joins project, plan and Action id with slashes and no normalization, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a requirement id joins project, plan and Action id with slashes and no normalization, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-requirement-id-format-a2a6c2f5bcfc; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-requirement-id-format
     clarification: clarified
     confidence: high
@@ -71,11 +71,11 @@ actions:
     references: []
   - id: pin-doc-ref-builders
     title: Pin the stable plan, proposal and plan-question document reference formats, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the stable plan, proposal and plan-question document reference formats, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-doc-ref-builders-371c65af4a4b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-doc-ref-builders
     clarification: clarified
     confidence: high
@@ -91,11 +91,11 @@ actions:
     references: []
   - id: pin-checks-repair-request-id
     title: Pin that the required-checks repair request id combines the failed Session id and head under a fixed prefix, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the required-checks repair request id combines the failed Session id and head under a fixed prefix, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-checks-repair-request-id-7cbc78c0fa08; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-checks-repair-request-id
     clarification: clarified
     confidence: high
@@ -111,11 +111,11 @@ actions:
     references: []
   - id: pin-handoff-request-prefix
     title: Pin that the handoff request prefix lowercases the work item id and dashes every run of other characters, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the handoff request prefix lowercases the work item id and dashes every run of other characters, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-handoff-request-prefix-e1e85bfdd007; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-handoff-request-prefix
     clarification: clarified
     confidence: high
@@ -131,11 +131,11 @@ actions:
     references: []
   - id: pin-review-response-normalization
     title: Pin that a review response value is trimmed, lowercased and whitespace-collapsed, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a review response value is trimmed, lowercased and whitespace-collapsed, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-review-response-normalization-4e9be3cb5f52; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-review-response-normalization
     clarification: clarified
     confidence: high
@@ -151,11 +151,11 @@ actions:
     references: []
   - id: pin-image-mime-extension
     title: Pin the image MIME type to file extension mapping and its bin fallback, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the image MIME type to file extension mapping and its bin fallback, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-image-mime-extension-05a68a019dd2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-image-mime-extension
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-requirement-id-format
+current_action: pin-authoritative-control-path
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

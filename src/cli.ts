@@ -1213,7 +1213,11 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--fix-cause <slug>", "Decision 0187: the cause that fix addresses; after a failed batch it must equal --previous-cause")
     .option("--observed-cleared <pointer>", "Decision 0173: for an outside cause with no code fix, where it was observed cleared")
   ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; fixCause?: string; observedCleared?: string; json?: boolean }) =>
-    runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
+    runCliAction("start-run.pins", options, () => {
+      const response = runStartRunPinsCommand(options);
+      if (!options.json) for (const warning of response.warnings) process.stderr.write(`Warning: ${warning}\n`);
+      return response;
+    }, renderStartRunPinsSuccess));
   addJsonOption(startRun.command("day-pins")
     .description("Decision 0173: print the pins of one day-grant card for the operator to press; writes nothing and grants nothing")
     .requiredOption("--plan <slug>", "The active Plan the day would cover")
