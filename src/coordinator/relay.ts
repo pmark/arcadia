@@ -101,7 +101,8 @@ export function renderResumePrompt(input: { project: string; role: string; gener
   const scope = `--project ${input.project} --role ${input.role}`;
   return [
     `You are ${input.role} generation ${input.generation} for ${input.project}.`,
-    `Run \`arcadia coordinator subscribe ${scope} --from-snapshot ${input.snapshotSha}\`,`,
+    `Run \`arcadia coordinator subscribe ${scope} --from-snapshot ${input.snapshotSha}\` to list the inherited watchers (it starts none),`,
+    `start each listed watcher yourself in the background and register it with \`arcadia coordinator subscribe ${scope} "<command>" --cursor <c>\`,`,
     `then \`arcadia coordinator verify ${scope} --generation ${input.generation} --snapshot-sha ${input.snapshotSha}\`,`,
     `then \`arcadia coordinator accept ${scope} --generation ${input.generation} --snapshot-sha ${input.snapshotSha}\`.`,
     `Snapshot: ${input.snapshotPath} (sha ${input.snapshotSha}).`,

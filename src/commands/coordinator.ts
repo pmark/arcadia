@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
+import { invocationRoot } from "../cli/invocation.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import {
@@ -45,12 +46,15 @@ import { getWorkspacePaths } from "../workspace/paths.js";
 interface Scope { workspace: string; project: string; role: string }
 type SourceOverride = { sources?: CapsuleSources; repo?: string };
 
-function repositoryRoot(explicit?: string): string {
+export function repositoryRoot(explicit?: string): string {
   if (explicit) return explicit;
+  // The launcher changes into Arcadia's own checkout, so the repository is the
+  // one the operator stood in (invocationRoot), not process.cwd().
+  const from = invocationRoot();
   try {
-    return execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || process.cwd();
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: from, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || from;
   } catch {
-    return process.cwd();
+    return from;
   }
 }
 
@@ -133,7 +137,7 @@ export function renderCoordinatorNoteSuccess(response: CommandSuccess<Coordinato
   return [`Noted. Journal ${data.journalEntries}/20; next move: ${data.nextMove ?? "none"}; chat-only approvals: ${data.chatOnlyApprovals}; tracked PRs: ${data.prs.map((pr) => `#${pr}`).join(", ") || "none"}.`];
 }
 
-export interface CoordinatorSubscribeData { subscriptions: Array<{ command: string; cursor: string; armedByGeneration: number | null }>; fromSnapshot: string | null }
+export interface CoordinatorSubscribeData { subscriptions: Array<{ command: string; cursor: string; armedByGeneration: number | null; inherited: boolean }>; fromSnapshot: string | null }
 
 /**
  * `arcadia coordinator subscribe "<command line>" --cursor <c>` registers a
@@ -163,21 +167,26 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
         throw validationError(`The snapshot for generation ${admission.generation.generation} is missing or does not match ${options.fromSnapshot}; nothing was re-armed.`, { reason: "snapshot_mismatch" });
       }
       const snapshot = readCapsuleFile(file);
-      const generation = admission.generation.generation;
-      const rearmed = snapshot.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedAt: at, armedByGeneration: generation }));
-      const kept = state.subscriptions.filter((have) => !rearmed.some((next) => next.command === have.command));
-      state = { ...state, subscriptions: [...kept, ...rearmed] };
+      // Recorded as inherited and unarmed: the CLI starts no process, and only
+      // the successor running the watcher itself may then arm it with a plain
+      // `subscribe "<command>" --cursor <c>`. Verify reports the true state.
+      const inherited = snapshot.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedAt: at, armedByGeneration: null, inherited: true }));
+      const kept = state.subscriptions.filter((have) => !inherited.some((next) => next.command === have.command));
+      state = { ...state, subscriptions: [...kept, ...inherited] };
     } else {
       const admission = assertCoordinatorCustody(db, { command: "subscribe", env: options.env, project: options.project, role: options.role, now });
       const command = (options.commandLine ?? "").trim();
       if (command === "") throw validationError("A subscription needs its checked-in command line.", { reason: "empty_subscription" });
+      if (admission.kind === "incoming" && !state.subscriptions.some((have) => have.inherited && have.command === command)) {
+        throw validationError("The incoming generation may arm only a watcher inherited from its snapshot (run subscribe --from-snapshot first, then give that exact command line).", { reason: "subscribe_not_inherited" });
+      }
       if (!options.cursor) throw validationError("A subscription needs --cursor <c> (its last event cursor).", { reason: "subscription_cursor" });
       const next = { command, cursor: options.cursor, armedAt: at, armedByGeneration: generationOf(admission) };
       state = { ...state, subscriptions: [...state.subscriptions.filter((have) => have.command !== command), next] };
     }
     writeCoordinatorState(paths, state);
     return {
-      subscriptions: state.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedByGeneration: subscription.armedByGeneration })),
+      subscriptions: state.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedByGeneration: subscription.armedByGeneration, inherited: subscription.inherited === true })),
       fromSnapshot: options.fromSnapshot ?? null
     };
   }));
@@ -186,8 +195,10 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
 
 export function renderCoordinatorSubscribeSuccess(response: CommandSuccess<CoordinatorSubscribeData>): string[] {
   return [
-    response.data.fromSnapshot ? `Re-armed from snapshot ${response.data.fromSnapshot}.` : "Subscription registered.",
-    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, generation ${subscription.armedByGeneration ?? "none"})`)
+    response.data.fromSnapshot
+      ? `Inherited watchers from snapshot ${response.data.fromSnapshot}; none is armed. Run each in the background yourself, then register it with subscribe "<command>" --cursor <c>.`
+      : "Subscription registered.",
+    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, ${subscription.inherited ? "inherited, not armed" : `armed by generation ${subscription.armedByGeneration ?? "none"}`})`)
   ];
 }
 
@@ -216,7 +227,7 @@ export function renderCoordinatorVerifySuccess(response: CommandSuccess<VerifyRe
   ];
 }
 
-export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string }
+export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string; warnings?: string[] }
 
 /** `arcadia coordinator accept --generation N --snapshot-sha <sha>`: the custody transfer (design step 5). */
 export function runCoordinatorAcceptCommand(options: Scope & { generation: number; snapshotSha: string; now?: Date; env?: NodeJS.ProcessEnv }): CommandSuccess<CoordinatorAcceptData> {
@@ -236,7 +247,10 @@ export function runCoordinatorAcceptCommand(options: Scope & { generation: numbe
 
 export function renderCoordinatorAcceptSuccess(response: CommandSuccess<CoordinatorAcceptData>): string[] {
   const { data } = response;
-  return [`Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`];
+  return [
+    `Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`,
+    ...(data.warnings ?? []).map((warning) => `warning: ${warning}`)
+  ];
 }
 
 /**

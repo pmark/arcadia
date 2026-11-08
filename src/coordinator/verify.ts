@@ -65,12 +65,12 @@ export function verifyGeneration(
   }
 
   const unarmed = (snapshot?.subscriptions ?? []).filter((wanted) => !state.subscriptions.some((have) =>
-    have.command === wanted.command && have.armedByGeneration === input.generation && Date.parse(have.armedAt) >= Date.parse(snapshot!.observedAt)));
+    have.command === wanted.command && !have.inherited && have.armedByGeneration === input.generation && Date.parse(have.armedAt) >= Date.parse(snapshot!.observedAt)));
   items.push({
     id: 3, required: true, passed: snapshot !== null && unarmed.length === 0,
     detail: snapshot === null ? "no matching snapshot"
-      : unarmed.length === 0 ? `${snapshot.subscriptions.length} subscription(s) re-armed by generation ${input.generation}`
-        : `not re-armed by generation ${input.generation}: ${unarmed.map((subscription) => subscription.command).join(", ")}; run arcadia coordinator subscribe --from-snapshot <sha>`
+      : unarmed.length === 0 ? `${snapshot.subscriptions.length} subscription(s) armed by generation ${input.generation}`
+        : `not armed by generation ${input.generation}: ${unarmed.map((subscription) => subscription.command).join(", ")}; run each watcher yourself in the background, then register it with arcadia coordinator subscribe "<command>" --cursor <c> (subscribe --from-snapshot only records it as inherited)`
   });
 
   const journal = (snapshot?.journal ?? []).map((entry) => {

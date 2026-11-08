@@ -144,6 +144,21 @@ function appendLog(paths: CoordinatorPaths, event: string, fields: Record<string
   appendFileSync(paths.generationsLog, `${JSON.stringify({ at: now.toISOString(), event, ...fields })}\n`, { mode: 0o600 });
 }
 
+/**
+ * The generations log is an audit trail; the database row is the custody
+ * record. After the row has committed, a log failure must not undo or fail
+ * the operation (a claim would lose its one-time token). Returns a warning
+ * instead, once, with no retry.
+ */
+function appendLogAfterCommit(paths: CoordinatorPaths, event: string, fields: Record<string, unknown>, now: Date): string | null {
+  try {
+    appendLog(paths, event, fields, now);
+    return null;
+  } catch (error) {
+    return `generations log write failed after the "${event}" event committed (${error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160)}); custody in the database is unaffected`;
+  }
+}
+
 function refused(message: string, reason: string, details: Record<string, unknown> = {}): ArcadiaError {
   return new ArcadiaError("VALIDATION_ERROR", message, 2, { reason, ...details });
 }
@@ -229,6 +244,8 @@ export interface ClaimResult {
   token: string;
   recovered: number[];
   tmuxName: string;
+  /** Non-fatal problems after the claim committed, such as a failed log write. */
+  warnings?: string[];
 }
 
 /**
@@ -284,8 +301,8 @@ export function claimNextGeneration(db: Database.Database, workspace: string, in
           input.nativeSessionId ?? null, input.transcriptPath ?? null, tmuxName, input.remoteControlName ?? null,
           input.briefPath ?? null, input.briefSha ?? null, snapshot.path, snapshot.sha, hashToken(token), at, at);
     });
-    appendLog(paths, "launching", { generation, snapshotSha: snapshot.sha, provider: input.provider, model: input.model, tmuxName }, now);
-    return { generation, snapshotPath: snapshot.path, snapshotSha: snapshot.sha, token, recovered, tmuxName };
+    const warning = appendLogAfterCommit(paths, "launching", { generation, snapshotSha: snapshot.sha, provider: input.provider, model: input.model, tmuxName }, now);
+    return { generation, snapshotPath: snapshot.path, snapshotSha: snapshot.sha, token, recovered, tmuxName, ...(warning ? { warnings: [warning] } : {}) };
   }, input.lock);
 }
 
@@ -360,12 +377,17 @@ export function assertCoordinatorCustody(
   if (!row) throw deny(`this caller (${role} generation ${Number.isInteger(generation) ? generation : "unset"}) holds no matching custody token`);
   if (input.role && input.role !== row.role) throw deny(`this caller is ${row.role}, not ${input.role}`);
   if (row.status === "custodian") return { kind: "custodian", generation: toRecord(row) };
-  if (row.status === "launching" && (input.command === "subscribe-from-snapshot" || input.command === "accept")) {
+  if (row.status === "launching" && (input.command === "subscribe-from-snapshot" || input.command === "accept" || input.command === "subscribe")) {
     if (row.generation !== maxGeneration(db, row.project, row.role)) throw deny(`generation ${row.generation} is not the newest generation`);
-    if (!input.snapshotSha || input.snapshotSha !== row.snapshot_sha) {
+    // A plain `subscribe` carries no sha; the command narrows it to inherited watchers.
+    if (input.command !== "subscribe" && (!input.snapshotSha || input.snapshotSha !== row.snapshot_sha)) {
       throw deny(`the snapshot sha does not match generation ${row.generation}'s pinned snapshot`);
     }
     if (input.command === "accept") {
+      const onDisk = hashSnapshotFile(row.snapshot_path);
+      if (onDisk !== row.snapshot_sha) {
+        throw refused(`accept refused: generation ${row.generation}'s snapshot file ${onDisk === null ? "is missing or unreadable" : "no longer hashes to its recorded sha"}; custody is unchanged. Run verify again after the relay restores or reclaims the snapshot.`, "snapshot_changed", { generation: row.generation });
+      }
       const fresh = row.verified_sha === input.snapshotSha && row.verified_at !== null && now.getTime() - Date.parse(row.verified_at) <= ACCEPT_VERIFY_WINDOW_MS;
       if (!fresh) {
         throw refused(`accept needs a passing \`arcadia coordinator verify --generation ${row.generation}\` on snapshot ${input.snapshotSha} within the last 10 minutes; run verify, then accept.`, "verify_required", { generation: row.generation });
@@ -381,7 +403,7 @@ export function assertCoordinatorCustody(
  * `handed_off`. From then on the guarded commands refuse N. Callers hold the
  * relay lock and have passed `assertCoordinatorCustody({ command: "accept" })`.
  */
-export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths, incoming: GenerationRecord, now: Date): { custodian: number; handedOff: number | null } {
+export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths, incoming: GenerationRecord, now: Date): { custodian: number; handedOff: number | null; warnings?: string[] } {
   const at = now.toISOString();
   const handedOff = writeTransaction(db, () => {
     const previous = currentCustodian(db, incoming.project, incoming.role);
@@ -394,7 +416,7 @@ export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths,
     if (changed !== 1) throw refused(`Generation ${incoming.generation} is no longer launching; nothing was accepted.`, "not_launching");
     return previous?.generation ?? null;
   });
-  appendLog(paths, "accepted", { generation: incoming.generation, handedOff }, now);
+  const warning = appendLogAfterCommit(paths, "accepted", { generation: incoming.generation, handedOff }, now);
   // Custody has transferred; refreshing the projection is best effort, and a
   // corrupt live.json is rebuilt by the next `capsule` refresh.
   try {
@@ -403,7 +425,7 @@ export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths,
       writeLiveCapsule(paths, { ...live, generation: incoming.generation, custodian: custodianOf({ ...incoming, status: "custodian" }) });
     }
   } catch { /* the projection is not the record */ }
-  return { custodian: incoming.generation, handedOff };
+  return { custodian: incoming.generation, handedOff, ...(warning ? { warnings: [warning] } : {}) };
 }
 
 export function snapshotFileFor(paths: CoordinatorPaths, generation: number): string {

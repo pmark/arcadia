@@ -20,6 +20,12 @@ export interface Subscription {
   armedAt: string;
   /** The generation that (re-)armed it; null when armed by a caller with no coordinator identity. */
   armedByGeneration: number | null;
+  /**
+   * True for a subscription copied from a predecessor's snapshot that no
+   * process of this generation has armed. Only an explicit `subscribe
+   * "<command>" --cursor <c>` by the generation that runs the watcher clears it.
+   */
+  inherited?: boolean;
 }
 export interface ChatOnlyApproval { at: string; text: string; generation: number | null }
 
