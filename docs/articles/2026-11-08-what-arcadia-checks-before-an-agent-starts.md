@@ -3,7 +3,7 @@ title: "What Arcadia checks before an agent starts"
 date: "2026-11-08"
 type: ship
 slug: "what-arcadia-checks-before-an-agent-starts"
-summary: "A GitHub guide prompted Arcadia to compare two runs and propose a check that catches confusing instructions before an agent starts."
+summary: "A GitHub guide prompted Arcadia to compare two runs and add a check that catches confusing instructions before an agent starts."
 author: "Arcadia (drafted by Clara / Claudia Mason)"
 status: draft
 claims_receipt: "docs/articles/receipts/what-arcadia-checks-before-an-agent-starts.md"
@@ -24,4 +24,4 @@ That's a habit we'd like to repeat in Field Notes. Cite the idea, compare it wit
 
 ## What is not done
 
-The fix is an [open, independently reviewed pull request](https://github.com/pmark/arcadia/pull/2287#issuecomment-6724444365). It has yet to run in a live Arcadia run, so any time savings remain unmeasured.
+[The fix is now on Arcadia’s main branch](https://github.com/pmark/arcadia/pull/2287). The offline checks passed. We still need a live run with the updated version to see whether it prevents retries in practice.

@@ -3,7 +3,7 @@
 - Draft: [What Arcadia checks before an agent starts](../2026-11-08-what-arcadia-checks-before-an-agent-starts.md)
 - Evidence observed: November 8, 2026, America/Los_Angeles.
 - Retrospective source: `pmark/arcadia@1dcc6295be6037056d548f551b33fec81ad4ea50`.
-- Candidate: `pmark/arcadia@ef638bc883ae7ae661a2d811f701a58afcb7726f`. The public PR was open, clean, and unmerged when checked.
+- Candidate: `pmark/arcadia@ef638bc883ae7ae661a2d811f701a58afcb7726f`. The reviewed candidate merged into `main` through [PR #2287](https://github.com/pmark/arcadia/pull/2287) on November 8, 2026 at 21:06 UTC, as commit [`564789b97`](https://github.com/pmark/arcadia/commit/564789b97dfedba5f80146bb6c30ce4884d12f1a).
 - Eligibility: editorial draft requested directly. A shipped-change cutoff and publication eligibility have not been established. The canonical URL in frontmatter is the intended GitHub Pages destination under Decision 0165.
 - Authoring: Clara / Claudia Mason, Claude Sonnet 5.5, medium. Rowan edited for clarity and added the METR source.
 
@@ -14,7 +14,7 @@
 | Both runs involved test-only work. Review and QA occupied the longest stage in the clean run. | [Clean-run evidence](https://github.com/pmark/arcadia/blob/1dcc6295be6037056d548f551b33fec81ad4ea50/docs/managed-production-readiness.md#L18-L66) and [record-run overview](https://github.com/pmark/arcadia/blob/1dcc6295be6037056d548f551b33fec81ad4ea50/docs/reports/relay-record-run-night-2026-11-07.md#L1-L19) | Timing is limited to those runs. The clean-run evidence does not isolate CI wait, review execution, and QA execution. |
 | Arcadia mistook an example test path for a required file and retried. | [Incident #2272](https://github.com/pmark/arcadia/issues/2272) and [record run, row 49](https://github.com/pmark/arcadia/blob/1dcc6295be6037056d548f551b33fec81ad4ea50/docs/reports/relay-record-run-night-2026-11-07.md#L28-L81) | A reported event in the test-only run. |
 | The candidate warns on ambiguous filenames, refuses targeted invisible characters before card pinning, reuses the completion parser, and adds no AI calls. | [Pinned candidate source](https://github.com/pmark/arcadia/blob/ef638bc883ae7ae661a2d811f701a58afcb7726f/src/commands/startRun.ts#L131-L220) and [PR #2287](https://github.com/pmark/arcadia/pull/2287) | Ambiguous paths are advisory. The check detects specific invisible characters and a bounded set of path patterns. |
-| Independent review, offline tests and GitHub CI passed. Live results and time savings remain unmeasured. | [Review and offline test evidence](https://github.com/pmark/arcadia/pull/2287#issuecomment-6724398417), [final review](https://github.com/pmark/arcadia/pull/2287#issuecomment-6724444365), and [GitHub CI](https://github.com/pmark/arcadia/actions/runs/42503213179) | Evidence applies to the reviewed candidate. |
+| The change is on main. Independent review, offline tests and GitHub CI passed. Live results and time savings remain unmeasured. | [Merged PR](https://github.com/pmark/arcadia/pull/2287), [review and offline test evidence](https://github.com/pmark/arcadia/pull/2287#issuecomment-6724398417), [final review](https://github.com/pmark/arcadia/pull/2287#issuecomment-6724444365), and [GitHub CI](https://github.com/pmark/arcadia/actions/runs/42503213179) | Evidence applies to the reviewed candidate. |
 
 The repeated Field Notes habit is editorial direction proposed in this post.
 
@@ -23,8 +23,8 @@ The repeated Field Notes habit is editorial direction proposed in this post.
 - Reviewer: separate read-only Codex context `field_notes_factcheck`.
 - Reviewed article SHA-256: `4172944db116d19f3192e7debdeb19577097325bc9a9c0464cdb034120c85f31`.
 - Reviewed evidence receipt SHA-256: `b393e0db26e6851e04bb0561ed5c454dbf201708e12c6e4ff64872421f5fb1d3`.
-- The article body is identical to the reviewed draft. Repository filing changed its receipt path and intended canonical URL.
-- Findings: none blocking. Recheck PR #2287 and live-use status before publication.
+- Repository filing initially changed only the receipt path and intended canonical URL. After #2287 merged, the summary and limitation section were updated to reflect the verified merge. The delta review is tracked on [draft filing PR #2312](https://github.com/pmark/arcadia/pull/2312).
+- Findings: none blocking. Recheck live-use status before publication.
 - Verdict: PASS
 
 ## Delivery handoff
