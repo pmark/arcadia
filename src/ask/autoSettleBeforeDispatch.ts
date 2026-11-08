@@ -39,9 +39,11 @@ export interface AutoSettlePendingCompletionInput {
    * Issue #1599: the host's pre-acceptance validation, run once a draft has
    * passed every evidence and revision check and before anything is settled.
    * A refusal leaves the draft unsettled with `AUTO_SETTLE_VALIDATION_REFUSED`
-   * and the returned reason. Omitted where no such check applies.
+   * and the returned reason. Omitted where no such check applies. It is given
+   * the draft under judgement (Issue #2261: a check of what the draft's own
+   * evidence claims); a callback that ignores it is unaffected.
    */
-  validateBeforeSettle?: () => { ok: true } | { ok: false; reason: string };
+  validateBeforeSettle?: (draft: { path: string; evidence: NormalizedAgentAsk["evidence"] }) => { ok: true } | { ok: false; reason: string };
 }
 
 export interface AutoSettlePendingCompletionResult {
@@ -246,7 +248,7 @@ function attemptSettleOneDraft(
   effectiveContent = withRequestId(effectiveContent, requestId);
 
   const settlementRequestId = `settle-${requestId}`.slice(0, 120);
-  const validation = input.validateBeforeSettle?.();
+  const validation = input.validateBeforeSettle?.({ path: draft.path, evidence: draft.normalized.evidence });
   if (validation && !validation.ok) {
     return { settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED, detail: validation.reason, askPath: draft.path };
   }
