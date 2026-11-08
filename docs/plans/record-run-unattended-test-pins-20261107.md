@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: record-run-unattended-test-pins-20261107
 project: arcadia
-status: active
+status: draft
 milestone: Record run unattended test pins 20261107
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-07
+updated: 2026-11-08
 actions:
   - id: pin-red-alert-token-estimate
     title: Pin that the red-alert diagnosis token estimate rounds characters divided by four up, with a new test file.
@@ -129,11 +129,11 @@ actions:
     references: []
   - id: pin-governed-record-path
     title: Pin exactly which repository paths count as governed records for Session scope checks, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin exactly which repository paths count as governed records for Session scope checks, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-governed-record-path-8cd950f5e743; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-governed-record-path
     clarification: clarified
     confidence: high
@@ -149,11 +149,11 @@ actions:
     references: []
   - id: pin-ask-intent-work-kind
     title: Pin how the timeline maps each Agent Ask intent to a work kind, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the timeline maps each Agent Ask intent to a work kind, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-ask-intent-work-kind-5270d047dc81; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-ask-intent-work-kind
     clarification: clarified
     confidence: high
@@ -169,11 +169,11 @@ actions:
     references: []
   - id: pin-timeline-summary-and-order
     title: Pin that timeline text ordering is by code unit and that summaries flatten whitespace and cut at 240 characters, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that timeline text ordering is by code unit and that summaries flatten whitespace and cut at 240 characters, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-timeline-summary-and-order-6e66afa87560; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-timeline-summary-and-order
     clarification: clarified
     confidence: high
@@ -189,11 +189,11 @@ actions:
     references: []
   - id: pin-answer-menu-letters
     title: Pin how Decision answer menus map letters to options and read a Decision slug from a doc ref, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how Decision answer menus map letters to options and read a Decision slug from a doc ref, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-answer-menu-letters-3592e2c54062; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-answer-menu-letters
     clarification: clarified
     confidence: high
@@ -209,11 +209,11 @@ actions:
     references: []
   - id: pin-lesson-scope-normalization
     title: "Pin that lesson scopes are trimmed and accepted only as arcadia or project:<slug>, with a new test file."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin that lesson scopes are trimmed and accepted only as arcadia or project:<slug>, with a new test file."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-lesson-scope-normalization-d0a777382cb1; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-lesson-scope-normalization
     clarification: clarified
     confidence: high
@@ -229,11 +229,11 @@ actions:
     references: []
   - id: pin-agent-watch-ref-parsing
     title: Pin how the agent watch contract parses agent/tier refs, project/action refs and branch names, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the agent watch contract parses agent/tier refs, project/action refs and branch names, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-agent-watch-ref-parsing-042a5f7d77b3; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-agent-watch-ref-parsing
     clarification: clarified
     confidence: high
@@ -249,11 +249,11 @@ actions:
     references: []
   - id: pin-close-out-canonical-json
     title: Pin that close-out canonical JSON sorts keys by code unit, drops undefined values and keeps array order, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that close-out canonical JSON sorts keys by code unit, drops undefined values and keeps array order, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-close-out-canonical-json-dcc13f31fe87; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-close-out-canonical-json
     clarification: clarified
     confidence: high
@@ -269,11 +269,11 @@ actions:
     references: []
   - id: pin-card-expiry-parse
     title: Pin that Decision card expiry accepts only strict ISO instants with valid calendar, clock and offset fields, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that Decision card expiry accepts only strict ISO instants with valid calendar, clock and offset fields, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-card-expiry-parse-9cadd38ad51b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-card-expiry-parse
     clarification: clarified
     confidence: high
@@ -289,11 +289,11 @@ actions:
     references: []
   - id: pin-ci-text-neutralization
     title: Pin how review repair neutralizes CI text by blanking control characters, swapping backticks and breaking mentions, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how review repair neutralizes CI text by blanking control characters, swapping backticks and breaking mentions, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-ci-text-neutralization-549bfe86e10c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-ci-text-neutralization
     clarification: clarified
     confidence: high
@@ -308,11 +308,11 @@ actions:
     references: []
   - id: pin-issue-ref-parsing
     title: "Pin how narration parses GitHub issue URLs, owner/repo#number refs and bare numbers with a repo, with a new test file."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin how narration parses GitHub issue URLs, owner/repo#number refs and bare numbers with a repo, with a new test file."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-issue-ref-parsing-7d08941ca753; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-issue-ref-parsing
     clarification: clarified
     confidence: high
@@ -328,11 +328,11 @@ actions:
     references: []
   - id: pin-way-trigger-parsing
     title: Pin that Way lookup trigger parsing tolerates malformed input, skips incomplete entries and drops empty phrases, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that Way lookup trigger parsing tolerates malformed input, skips incomplete entries and drops empty phrases, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-way-trigger-parsing-170e6979f41b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-way-trigger-parsing
     clarification: clarified
     confidence: high
@@ -348,11 +348,11 @@ actions:
     references: []
   - id: pin-narration-text-split
     title: Pin how narration text splits into chunks by paragraph, sentence and hard wrap, and refuses a bad chunk size, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how narration text splits into chunks by paragraph, sentence and hard wrap, and refuses a bad chunk size, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-narration-text-split-fa59bc3e5a3d; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-narration-text-split
     clarification: clarified
     confidence: high
@@ -368,11 +368,11 @@ actions:
     references: []
   - id: pin-markdown-speech-strip
     title: Pin how Markdown is stripped for speech, keeping words and snake_case while removing markup, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how Markdown is stripped for speech, keeping words and snake_case while removing markup, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-markdown-speech-strip-905f1b5daa0f; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-markdown-speech-strip
     clarification: clarified
     confidence: high
@@ -388,11 +388,11 @@ actions:
     references: []
   - id: pin-agent-role-guard
     title: Pin that the agent role guard accepts exactly builder and critic, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the agent role guard accepts exactly builder and critic, with a new test file.
+    next_action: Completed via Agent Ask complete-pin-agent-role-guard-ed616c8b216c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-agent-role-guard
     clarification: clarified
     confidence: high
@@ -407,7 +407,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-governed-record-path
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

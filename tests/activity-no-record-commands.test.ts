@@ -103,6 +103,7 @@ function invocations(): Record<string, string[][]> {
     "audit host-preview": [["audit", "host-preview", "--root", path.join(root, "missing-site"), "--seconds", "1"]],
     "production liveness-check": [["production", "liveness-check"]],
     "production idle-front": [["production", "idle-front"]],
+    "coordinator budget": [["coordinator", "budget"], ["coordinator", "budget", "--session", "not a session id"]],
     init: [
       ["init", path.join(root, "fresh")],
       ["init", path.join(root, "workspaces", "exp-test-20261005"), "--profile", "experiment"],
