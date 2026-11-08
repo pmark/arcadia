@@ -83,6 +83,21 @@ batch, and only then ask for the press.
    evidence (lint, tsc) are verified by required CI. Compare each Action's
    fields in the Ask with the Plan file actually written: draft-Plan creation
    dropped `execution: build` (#2134), and only the pre-mortem caught it.
+   A clarification amendment leaves `execution` unset too, so check the route on
+   every pinned Action, not only on new Plans: a missing route cost an operator
+   question twice on 2026-11-06 (09:07Z and 23:08Z).
+   The pre-mortem checks this item explicitly and fails a card that breaks it.
+   On 2026-11-06 a card pinned `narrative-summarization`, whose acceptance needed
+   an async job wired into the synchronous `src/docs/sync.ts`. The pre-mortem
+   passed it. Two light-tier attempts refused the design, a third shipped an
+   unwired module that the worker's review failed (#2171, #2173), and recovery
+   took an Off and four operator answers. If a menu offers a card outside this
+   item, say so in the option's consequence: its candidate waits for the
+   operator's merge, and the design the acceptance needs must be written into the
+   Action, because a headless Session at the start tier will not choose it. A
+   planning-routed Action is different: the run waits for a planning Decision and
+   produces no candidate. Correct its route, or the Plan, before the pre-press
+   gate, rather than offering it on a card.
 6. **Governed records on remote main.** Settlement and pointer commits merged
    as merge commits (never squash); `current_action` names an eligible in-scope
    Action and the scheduler preview identifies the first pinned Action; the
