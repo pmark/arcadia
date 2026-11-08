@@ -35,22 +35,22 @@ gap, (d) product defect, (e) Plan or card design error, (f) a gate that worked,
 | 49 | 20:11–22:34 | Worker | Pin 7's criterion quoted `tests/x.test.ts` as data; validation demanded it as a file; 26 Sessions (52 launches by the Keeper's count); Off 21:26 to 22:17 | no | 124 (109 over cadence) | d | #2240, #2236, #2241 |
 | 50 | 21:55–22:21 | Signal 3 | `gh` fails TLS in the sandbox and Monitor is sandboxed: the PR watcher had to run unsandboxed | no | not measured | b | Signal 3 log 21:55 |
 | 51 | 22:56–23:25 | Race | Two 0191 Decision files on main; no CI check trips; the operator answered A (grandfather) | yes | 29 | d | #1275, #2250 |
-| 52 | 00:38–01:27 | Worker, Rowan | Pin 15's criterion and QA expected an escape; the Session wrote the invisible literal; round 1 settled a claimed file change that was not in the diff; Off 01:10; B at 01:26; landed by hand #2260 | yes | 47 | d | #2258, #2259, #2260, #2261 |
+| 52 | 00:38–01:27 | Worker, Rowan | Pin 15's criterion and QA expected an escape; the Session wrote the invisible literal; round 1 settled a claimed file change that was not in the diff; Off 01:10; B at 01:26; landed by hand #2260 | yes | 47 (32 before the Off, about 15 of it normal build time; 15 waiting for B) | d | #2258, #2259, #2260, #2261 |
 | 53 | 00:54–01:05 | QA, code review | Caught the invisible literal and then the false-evidence repair before any merge | no | 0 | f | #2258, #2259 |
 | 54 | 01:13–01:17 | Flynn, helper | Theory that Sessions cannot write escapes; withdrawn on counter-evidence; precautionary amendment #2262 built and closed unsettled | no | helper time, not measured | e | #2262 |
 | 55 | 03:03–05:29 | Worker | Action 20 (the Plan's last): the Plan-completing settlement fails the reviewer's shape check; repairs cannot converge; 3 Sessions; Off 03:18 | yes | 131 (03:18 to the operator's answer) | d | #2268, #2271, #2270 |
-| 56 | 03:19–03:25 | Rowan 1 | No `scope_complete` after the last Action, so Rowan decided completion by hand | no | not measured | d | #2273 |
+| 56 | 03:19–03:25 | Rowan 1 | Predicted from the code, not observed (Action 20 never merged, so the event was not yet due): no `scope_complete` is written after a Plan's last Action, so Rowan's handoff says to decide completion from the last merge and no `current_action` | no | not measured | d | #2273 |
 | 57 | 03:20 | Rowan 1 | Handed off at 61% context; `start_session` refused over Remote Control; the paste prompt was the fallback | yes (paste) | not measured | g | Signal 3 log 03:20 |
 
 ## Idle accounting: operator-bound against defect-bound
 
-Each window is counted once, by the cause that held the next move. These are my sums
+Each window is counted once, by the cause that held the next move, and a defect window starts after the normal ~15 minute build of the Action it hit (so rows 49, 52 and 55 start later than the Action was admitted). These are my sums
 from the logs, not a measurement by the tick.
 
 | Cause | Windows | Minutes |
 |---|---|---|
 | Operator-bound | 17:17–19:54 (row 46); 01:11–01:26 (row 52); 03:18–05:29 (row 55) | 157 + 15 + 131 = 303; 172 without the last |
-| Defect-bound | 16:29–17:17 (row 45); 20:30–22:34 (row 49); 00:38–01:10 (row 52); 02:49–03:18 (row 55) | 48 + 124 + 32 + 29 = 233 |
+| Defect-bound | 16:29–17:17 (row 45); 20:45–22:34 (row 49); 00:53–01:10 (row 52); 03:03–03:18 (row 55) | 48 + 109 + 17 + 15 = 189 |
 
 The brief gave about 205 minutes operator-bound. I could not reproduce that figure
 from these notes, and the nearest sum depends on where the 03:18 to 05:29 window,
@@ -65,7 +65,7 @@ classifies this by cause, so this part adds a measurement and no new form.
 Ranked by what changes dispatch and operator touches per run.
 
 1. **Plan text must be satisfiable by a headless Session** (rows 49, 52, 53, 54).
-   Cost: about 109 minutes and 26 Sessions on pin 7, about 47 minutes, a batch stop
+   Cost: about 109 minutes and 26 Sessions on pin 7, about 32 minutes (17 over cadence, then 15 waiting for the operator's word), a batch stop
    and one operator word on pin 15, plus a wasted helper. The instances are fixed
    (#2236, #2241, #2260, #2263); the class is open. **Form:** new Issue #2272 (a
    deterministic scan of criteria for non-printing and non-ASCII characters and for
