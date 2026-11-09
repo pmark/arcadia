@@ -1,0 +1,39 @@
+---
+arcadia: v1
+type: decision
+id: "0202"
+slug: decide-how-arcadia-treats-opencode-now-that-the-operator-has-said-it-is-a
+project: arcadia
+status: open
+question: Decide how Arcadia treats OpenCode now that the operator has said it is a weekly token allocation like Codex and Claude Code, and not the API-key billing Decision 0118's rationale describes.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: A. Helpers use it freely; production's order stays
+options:
+  - label: A. Helpers use it freely; production's order stays
+    consequence: Corrects 0118's premise. A coordinator can start an OpenCode helper or reviewer the way it starts a Codex or Claude one, with no separate approval, so low-cost mechanical work can move there straight away. Production keeps OpenCode last and 0118's admission rule, so the critical path doesn't change. A helper can run out of allowance without warning, and the coordinator then falls back to another provider. Revisit production's order once Arcadia can read the remaining allowance.
+    recommended: true
+  - label: B. Same footing everywhere, including production
+    consequence: Does everything in A, and also moves OpenCode up production's provider order and retires 0118's daily ceiling, which could save Codex and Claude allocation. A production run could hit the weekly limit with no warning and stop. It needs a reviewed config change and a replay before the next run, so it spends critical-path time and adds a failure mode.
+    recommended: false
+  - label: C. Correct the record only
+    consequence: Corrects 0118's premise in the record and changes no behavior. Each OpenCode helper still needs its own approval, so a request like last night's can stall again, and production stays as it is. It's the smallest change.
+    recommended: false
+confidence: high
+plan: record-run-unattended-test-pins-20261107-part-2
+updated: 2026-11-09
+---
+
+# Decision 0202: Decide how Arcadia treats OpenCode now that the operator has said it is a weekly token allocation like Codex and Claude Code, and not the API-key billing Decision 0118's rationale describes.
+
+## Options
+
+- **A. Helpers use it freely; production's order stays** (recommended): Corrects 0118's premise. A coordinator can start an OpenCode helper or reviewer the way it starts a Codex or Claude one, with no separate approval, so low-cost mechanical work can move there straight away. Production keeps OpenCode last and 0118's admission rule, so the critical path doesn't change. A helper can run out of allowance without warning, and the coordinator then falls back to another provider. Revisit production's order once Arcadia can read the remaining allowance.
+- **B. Same footing everywhere, including production**: Does everything in A, and also moves OpenCode up production's provider order and retires 0118's daily ceiling, which could save Codex and Claude allocation. A production run could hit the weekly limit with no warning and stop. It needs a reviewed config change and a replay before the next run, so it spends critical-path time and adds a failure mode.
+- **C. Correct the record only**: Corrects 0118's premise in the record and changes no behavior. Each OpenCode helper still needs its own approval, so a request like last night's can stall again, and production stays as it is. It's the smallest change.
+
+## Rationale
+
+Operator, 2026-11-09: "OpenCode's usage works exactly like my Codex and Claude Code plans, where I am allocated tokens on a weekly basis." Decision 0118 admitted OpenCode to unattended production under a daily token ceiling because it "runs on API-key billing with no rolling window", and docs/model-selection.md ranks it last, for the case where Codex and Claude credits run out. On that same premise, a triage held the operator's requested OpenCode helper for a night (Issue 2342). What stays true under every option: Arcadia has no probe for remaining OpenCode allowance (src/codingAgents/providerUsage.ts:57), so it can't warn before the weekly allocation runs out. This Decision also answers the pending proposal correct-decision-0118-opencode-plan-premise-20261109. It raises the question only; it changes no config, Plan or queue.
+
+Proposed by Agent Ask decide-opencode-allocation-footing-20261109.
