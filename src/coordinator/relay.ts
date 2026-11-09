@@ -62,7 +62,7 @@ const ALLOWED_PERMISSION_MODES = new Set(["auto", "default"]);
 
 export type RelayRefusal =
   | "decision_pending" | "decision_not_in_force" | "no_custodian" | "provider_unsupported"
-  | "renewal_limit" | "sign_in" | "capacity" | "launch_in_progress";
+  | "renewal_limit" | "sign_in" | "capacity" | "launch_in_progress" | "repository_unresolved";
 
 export interface DecisionGate { inForce: boolean; reason: string }
 
@@ -92,7 +92,7 @@ export interface RenewInput {
 }
 
 export type RenewResult =
-  | { outcome: "launched"; generation: number; tmuxName: string; sessionId: string; snapshotSha: string; worktree: string; attempts: number }
+  | { outcome: "launched"; generation: number; tmuxName: string; sessionId: string; snapshotSha: string; worktree: string; attempts: number; warnings?: string[] }
   | { outcome: "refused"; reason: RelayRefusal; detail: string }
   | { outcome: "failed"; attempts: number; failures: string[]; pinged: boolean };
 
@@ -101,7 +101,8 @@ export function renderResumePrompt(input: { project: string; role: string; gener
   const scope = `--project ${input.project} --role ${input.role}`;
   return [
     `You are ${input.role} generation ${input.generation} for ${input.project}.`,
-    `Run \`arcadia coordinator subscribe ${scope} --from-snapshot ${input.snapshotSha}\`,`,
+    `Run \`arcadia coordinator subscribe ${scope} --from-snapshot ${input.snapshotSha}\` to list the inherited watchers (it starts none),`,
+    `start each listed watcher yourself in the background and register it with \`arcadia coordinator subscribe ${scope} "<command>" --cursor <c>\`,`,
     `then \`arcadia coordinator verify ${scope} --generation ${input.generation} --snapshot-sha ${input.snapshotSha}\`,`,
     `then \`arcadia coordinator accept ${scope} --generation ${input.generation} --snapshot-sha ${input.snapshotSha}\`.`,
     `Snapshot: ${input.snapshotPath} (sha ${input.snapshotSha}).`,
@@ -253,7 +254,7 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
     const transcript = path.join(deps.claudeProjectsDirectory, claudeProjectSlug(worktree), `${sessionId}.jsonl`);
     recordTranscriptPath(db, input.project, input.role, claim.generation, transcript, deps.now(), name);
     const prompt = renderResumePrompt({ project: input.project, role: input.role, generation: claim.generation, snapshotSha: claim.snapshotSha, snapshotPath: claim.snapshotPath });
-    const launched = (attempts: number): RenewResult => ({ outcome: "launched", generation: claim.generation, tmuxName: claim.tmuxName, sessionId, snapshotSha: claim.snapshotSha, worktree, attempts });
+    const launched = (attempts: number): RenewResult => ({ outcome: "launched", generation: claim.generation, tmuxName: claim.tmuxName, sessionId, snapshotSha: claim.snapshotSha, worktree, attempts, ...(claim.warnings ? { warnings: claim.warnings } : {}) });
     try {
       // The generation is new, so its deterministic name existing means a foreign
       // or leftover session: refuse to reuse it and never kill what we did not start.

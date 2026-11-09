@@ -1,10 +1,12 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runPingSendCommand } from "../src/commands/ping.js";
 import {
+  repositoryRoot,
   runCoordinatorAcceptCommand,
   runCoordinatorCapsuleCommand,
   runCoordinatorNoteCommand,
@@ -72,6 +74,11 @@ function envFor(generation: number, token: string): NodeJS.ProcessEnv {
     [COORDINATOR_ENV.role]: "rowan",
     [COORDINATOR_ENV.generation]: String(generation), [COORDINATOR_ENV.token]: token
   };
+}
+
+/** The successor runs each inherited watcher itself, then registers it; this stands in for that step. */
+function armInherited(ws: string, env: NodeJS.ProcessEnv, now: Date, commandLine = "scripts/wait-for-event.sh --pr 2236", cursor = "c-10") {
+  return runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine, cursor, now, env });
 }
 
 function claim(ws: string, now = at(1)) {
@@ -238,6 +245,7 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     expect(before.data.items.find((item) => item.id === 3)?.passed).toBe(false);
 
     runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(4), env });
+    armInherited(ws, env, at(4));
     const after = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources({ head: "ccc333" }), now: at(5) });
     expect(after.data.passed).toBe(true);
     expect(after.data.drift).toEqual([{ field: "plan.mainSha", snapshot: "aaa111", now: "ccc333" }]);
@@ -253,6 +261,7 @@ describe("verify, subscribe --from-snapshot and accept", () => {
   it("accept needs a passing verify on the same sha within 10 minutes, then fences the predecessor", () => {
     const { ws, claimed, env } = handoff();
     runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
+    armInherited(ws, env, at(3));
     expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(4), env })).toThrow(/verify/);
     runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) });
     expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(15), env })).toThrow(/10 minutes/);
@@ -277,25 +286,134 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     const next = claim(ws, at(19));
     const nextEnv = envFor(3, next.token);
     runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: next.snapshotSha, now: at(20), env: nextEnv });
+    armInherited(ws, nextEnv, at(20));
     runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 3, snapshotSha: next.snapshotSha, sources: sources(), now: at(20) });
     runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 3, snapshotSha: next.snapshotSha, now: at(21), env: nextEnv });
     expect(() => runCoordinatorNoteCommand({ workspace: ws, ...base, text: "late", now: at(22), env })).toThrow(/generation 3/);
     expect(() => runPingSendCommand({ workspace: ws, message: "late", env })).toThrow(/custody/);
   });
 
-  it("admits the incoming generation only for subscribe --from-snapshot and accept", () => {
+  it("admits the incoming generation only for subscribe --from-snapshot, accept, and arming an inherited watcher", () => {
     const { ws, claimed, env } = handoff();
     expect(() => runCoordinatorNoteCommand({ workspace: ws, ...base, text: "early", now: at(3), env })).toThrow(/custody/);
-    expect(() => runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine: "x", cursor: "1", now: at(3), env })).toThrow(/custody/);
+    expect(() => runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine: "x", cursor: "1", now: at(3), env })).toThrow(/inherited/);
     expect(() => runPingSendCommand({ workspace: ws, message: "hi", env })).toThrow(/custody/);
     // A sha that is not the launching row's snapshot is refused.
     expect(() => runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: "e".repeat(64), now: at(3), env })).toThrow(/snapshot/);
     expect(() => runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env })).not.toThrow();
   });
 
+  it("subscribe --from-snapshot records inherited, unarmed watchers and verify does not report them armed", () => {
+    const { ws, claimed, env } = handoff();
+    const result = runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
+    expect(result.data.subscriptions).toEqual([{ command: "scripts/wait-for-event.sh --pr 2236", cursor: "c-10", armedByGeneration: null, inherited: true }]);
+    const unarmed = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) });
+    expect(unarmed.data.passed).toBe(false);
+    expect(unarmed.data.items.find((item) => item.id === 3)).toMatchObject({ passed: false });
+    expect(unarmed.data.items.find((item) => item.id === 3)?.detail).toMatch(/not armed by generation 2/);
+    // Only the successor's explicit arm of that exact command clears it.
+    armInherited(ws, env, at(5));
+    const armed = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(6) });
+    expect(armed.data.items.find((item) => item.id === 3)).toMatchObject({ passed: true });
+  });
+
+  it("accept refuses a snapshot file changed after verify, names the reason and leaves custody unchanged", () => {
+    const { ws, claimed, env } = handoff();
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
+    armInherited(ws, env, at(3));
+    expect(runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) }).data.passed).toBe(true);
+    const file = claimed.snapshotPath;
+    chmodSync(file, 0o600); // snapshots are written read-only
+    writeFileSync(file, `${readFileSync(file, "utf8")} `);
+    const statuses = () => withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => [row.generation, row.status]);
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(5), env })).toThrow(/no longer hashes/);
+    expect(statuses()).toEqual([[1, "custodian"], [2, "launching"]]);
+    unlinkSync(file);
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(5), env })).toThrow(/missing or unreadable/);
+    expect(statuses()).toEqual([[1, "custodian"], [2, "launching"]]);
+  });
+
+  it("a failing generations log write after commit leaves the claim's token returned and the accept successful, with warnings", () => {
+    const ws = workspace();
+    seed(ws);
+    const paths = coordinatorPaths(ws, "arcadia", "rowan");
+    // A directory where the log file belongs makes every append throw.
+    unlinkSync(paths.generationsLog);
+    mkdirSync(paths.generationsLog);
+    runCoordinatorNoteCommand({ workspace: ws, ...base, text: "arcadia production status", nextMove: true, now: at(1), env: {} });
+    const claimed = claim(ws, at(2));
+    expect(claimed.token).toMatch(/^[0-9a-f]{48}$/);
+    expect(claimed.warnings?.[0]).toMatch(/log write failed/);
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => [row.generation, row.status])).toEqual([[1, "custodian"], [2, "launching"]]);
+
+    const env = envFor(2, claimed.token);
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
+    runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) });
+    const accepted = runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(5), env });
+    expect(accepted.data.custodian).toBe(2);
+    expect(accepted.data.warnings?.[0]).toMatch(/log write failed/);
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => [row.generation, row.status])).toEqual([[1, "handed_off"], [2, "custodian"]]);
+  });
+
+  it("re-running --from-snapshot after a passing verify clears it, so accept needs a fresh verify", () => {
+    const { ws, claimed, env } = handoff();
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
+    armInherited(ws, env, at(3));
+    expect(runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) }).data.passed).toBe(true);
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(5), env });
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(6), env })).toThrow(/verify/);
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => row.status)).toEqual(["custodian", "launching"]);
+  });
+
+  it("a failing log write does not stop failGeneration from marking the row failed", () => {
+    const { ws } = handoff();
+    const paths = coordinatorPaths(ws, "arcadia", "rowan");
+    unlinkSync(paths.generationsLog);
+    mkdirSync(paths.generationsLog);
+    expect(withDatabase(ws, (db) => failGeneration(db, ws, { ...base, generation: 2, reason: "launch_failed", now: at(3) }))).toBe(true);
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => row.status)).toEqual(["custodian", "failed"]);
+  });
+
   it("the guard refuses an unknown generation or token and names the custodian", () => {
     const { ws } = handoff();
     expect(() => withDatabase(ws, (db) => assertCoordinatorCustody(db, { command: "note", env: envFor(9, "x"), now: at(3) }))).toThrow(/generation 1/);
     expect(withDatabase(ws, (db) => assertCoordinatorCustody(db, { command: "note", env: {}, now: at(3) }))).toEqual({ kind: "unfenced" });
+  });
+});
+
+describe("repositoryRoot", () => {
+  it("capsule and verify keep the invocation root even inside a linked worktree", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-coord-linked-"));
+    roots.push(root);
+    const main = path.join(root, "main");
+    mkdirSync(main);
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: main });
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty", "-m", "i"], { cwd: main });
+    const linked = path.join(root, "linked");
+    execFileSync("git", ["worktree", "add", "-q", linked], { cwd: main });
+    const before = process.env.ARCADIA_INVOKED_FROM;
+    process.env.ARCADIA_INVOKED_FROM = linked;
+    try {
+      expect(repositoryRoot()).toBe(execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: linked, encoding: "utf8" }).trim());
+    } finally {
+      if (before === undefined) delete process.env.ARCADIA_INVOKED_FROM; else process.env.ARCADIA_INVOKED_FROM = before;
+    }
+  });
+
+  it("resolves from the invocation directory, not the process directory", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-coord-repo-"));
+    roots.push(root);
+    const repo = path.join(root, "operator-repo");
+    mkdirSync(repo);
+    execFileSync("git", ["init", "-q", repo]);
+    const before = process.env.ARCADIA_INVOKED_FROM;
+    process.env.ARCADIA_INVOKED_FROM = repo;
+    try {
+      expect(repositoryRoot()).toBe(execFileSync("git", ["-C", repo, "rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim());
+      expect(repositoryRoot()).not.toBe(execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8" }).trim());
+      expect(repositoryRoot("/explicit")).toBe("/explicit");
+    } finally {
+      if (before === undefined) delete process.env.ARCADIA_INVOKED_FROM; else process.env.ARCADIA_INVOKED_FROM = before;
+    }
   });
 });

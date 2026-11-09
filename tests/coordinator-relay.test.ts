@@ -1,8 +1,11 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runCoordinatorRenewCommand } from "../src/commands/coordinator.js";
 import type { CapsuleSources } from "../src/coordinator/capsule.js";
+import { coordinatorPaths } from "../src/coordinator/paths.js";
 import { COORDINATOR_ENV, listGenerations, seedCustodianGeneration } from "../src/coordinator/generations.js";
 import {
   RELAY_LAUNCH_DECISION_ID,
@@ -192,5 +195,63 @@ describe("coordinator relay launch (change 3)", () => {
     expect(() => withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep", permissionMode: "bypassPermissions" }, fake.deps)))
       .toThrow(/bypass/);
     expect(fake.launches).toEqual([]);
+  });
+
+  function repoWithLinkedWorktree(root: string) {
+    const main = path.join(root, "main-repo");
+    mkdirSync(main);
+    const run = (cwd: string, ...args: string[]) => execFileSync("git", args, { cwd, stdio: "ignore" });
+    run(main, "init", "-q", "-b", "main");
+    run(main, "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty", "-m", "init");
+    const linked = path.join(root, "linked-coord");
+    run(main, "worktree", "add", "-q", linked);
+    return { main: realpathSync(main), linked: realpathSync(linked) };
+  }
+
+  function withInvokedFrom<T>(directory: string, body: () => T): T {
+    const before = process.env.ARCADIA_INVOKED_FROM;
+    process.env.ARCADIA_INVOKED_FROM = directory;
+    try { return body(); } finally { if (before === undefined) delete process.env.ARCADIA_INVOKED_FROM; else process.env.ARCADIA_INVOKED_FROM = before; }
+  }
+
+  it("renew run from a coordinator's own linked worktree launches from the main worktree, never nested", () => {
+    const { root, ws, projects } = setup();
+    const { main, linked } = repoWithLinkedWorktree(root);
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const result = withInvokedFrom(linked, () => runCoordinatorRenewCommand({ workspace: ws, project: "arcadia", role: "rowan", env: {}, deps: fake.deps }));
+    expect(result.data).toMatchObject({ outcome: "launched", generation: 2, worktree: path.join(main, ".claude", "worktrees", "coord-rowan-g2") });
+    expect(fake.launches[0].cwd).toBe(path.join(main, ".claude", "worktrees", "coord-rowan-g2"));
+  });
+
+  it("an explicit --repo wins over the invocation directory for renew", () => {
+    const { root, ws, projects } = setup();
+    const { linked } = repoWithLinkedWorktree(root);
+    const explicit = path.join(root, "explicit-repo");
+    mkdirSync(explicit);
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const result = withInvokedFrom(linked, () => runCoordinatorRenewCommand({ workspace: ws, project: "arcadia", role: "rowan", repo: explicit, env: {}, deps: fake.deps }));
+    expect(result.data).toMatchObject({ outcome: "launched", worktree: path.join(explicit, ".claude", "worktrees", "coord-rowan-g2") });
+  });
+
+  it("renew refuses with repository_unresolved, not a Decision refusal, outside any repository", () => {
+    const { root, ws, projects } = setup();
+    const outside = path.join(root, "not-a-repo");
+    mkdirSync(outside);
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const result = withInvokedFrom(outside, () => runCoordinatorRenewCommand({ workspace: ws, project: "arcadia", role: "rowan", env: {}, deps: fake.deps }));
+    process.exitCode = undefined;
+    expect(result.data).toMatchObject({ outcome: "refused", reason: "repository_unresolved" });
+    expect(fake.launches).toEqual([]);
+  });
+
+  it("renew reports a failed log write as a warning and still launches", () => {
+    const { ws, repo, projects } = setup();
+    const log = coordinatorPaths(ws, "arcadia", "rowan").generationsLog;
+    unlinkSync(log);
+    mkdirSync(log);
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
+    expect(result).toMatchObject({ outcome: "launched", generation: 2 });
+    expect(result.outcome === "launched" ? result.warnings?.[0] : null).toMatch(/log write failed/);
   });
 });

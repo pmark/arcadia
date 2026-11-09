@@ -1,8 +1,10 @@
 import { execFileSync } from "node:child_process";
+import path from "node:path";
 import type Database from "better-sqlite3";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
+import { invocationRoot } from "../cli/invocation.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import {
@@ -19,6 +21,7 @@ import {
 import {
   acceptGeneration,
   assertCoordinatorCustody,
+  clearVerifyPass,
   currentCustodian,
   custodianOf,
   type CustodyAdmission
@@ -45,12 +48,31 @@ import { getWorkspacePaths } from "../workspace/paths.js";
 interface Scope { workspace: string; project: string; role: string }
 type SourceOverride = { sources?: CapsuleSources; repo?: string };
 
-function repositoryRoot(explicit?: string): string {
+export function repositoryRoot(explicit?: string): string {
+  if (explicit) return explicit;
+  // The launcher changes into Arcadia's own checkout, so the repository is the
+  // one the operator stood in (invocationRoot), not process.cwd().
+  const from = invocationRoot();
+  try {
+    return execFileSync("git", ["rev-parse", "--show-toplevel"], { cwd: from, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || from;
+  } catch {
+    return from;
+  }
+}
+
+/**
+ * The repository `renew` cuts the successor's worktree from: always the main
+ * worktree, so a renew run from a coordinator's own linked worktree never nests
+ * the successor inside it. An explicit --repo wins. Null when the invocation
+ * directory is not inside a repository with a main worktree.
+ */
+export function mainWorktreeRoot(explicit?: string): string | null {
   if (explicit) return explicit;
   try {
-    return execFileSync("git", ["rev-parse", "--show-toplevel"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || process.cwd();
+    const common = execFileSync("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd: invocationRoot(), encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return common !== "" && path.basename(common) === ".git" ? path.dirname(common) : null;
   } catch {
-    return process.cwd();
+    return null;
   }
 }
 
@@ -133,13 +155,14 @@ export function renderCoordinatorNoteSuccess(response: CommandSuccess<Coordinato
   return [`Noted. Journal ${data.journalEntries}/20; next move: ${data.nextMove ?? "none"}; chat-only approvals: ${data.chatOnlyApprovals}; tracked PRs: ${data.prs.map((pr) => `#${pr}`).join(", ") || "none"}.`];
 }
 
-export interface CoordinatorSubscribeData { subscriptions: Array<{ command: string; cursor: string; armedByGeneration: number | null }>; fromSnapshot: string | null }
+export interface CoordinatorSubscribeData { subscriptions: Array<{ command: string; cursor: string; armedByGeneration: number | null; inherited: boolean }>; fromSnapshot: string | null }
 
 /**
  * `arcadia coordinator subscribe "<command line>" --cursor <c>` registers a
- * checked-in watcher; `--from-snapshot <sha>` re-arms every watcher the pinned
- * snapshot lists, with its last cursor (design section e). Guarded; the
- * incoming generation may run only the `--from-snapshot` form.
+ * checked-in watcher; `--from-snapshot <sha>` records every watcher the pinned
+ * snapshot lists as inherited and unarmed, starting nothing (design section e).
+ * Guarded; the incoming generation may run `--from-snapshot`, and a plain
+ * subscribe only for a watcher inherited from its snapshot, which arms it.
  */
 export function runCoordinatorSubscribeCommand(options: Scope & {
   commandLine?: string; cursor?: string; fromSnapshot?: string; now?: Date; env?: NodeJS.ProcessEnv;
@@ -156,28 +179,35 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
     if (options.fromSnapshot) {
       const admission = assertCoordinatorCustody(db, { command: "subscribe-from-snapshot", env: options.env, project: options.project, role: options.role, snapshotSha: options.fromSnapshot, now });
       if (admission.kind === "unfenced") {
-        throw validationError("subscribe --from-snapshot re-arms watchers for a relay-launched generation; run it with that generation's coordinator identity.", { reason: "subscribe_from_snapshot_identity" });
+        throw validationError("subscribe --from-snapshot records inherited watchers for a relay-launched generation; run it with that generation's coordinator identity.", { reason: "subscribe_from_snapshot_identity" });
       }
       const file = admission.generation.snapshotPath;
       if (!file || hashSnapshotFile(file) !== options.fromSnapshot) {
-        throw validationError(`The snapshot for generation ${admission.generation.generation} is missing or does not match ${options.fromSnapshot}; nothing was re-armed.`, { reason: "snapshot_mismatch" });
+        throw validationError(`The snapshot for generation ${admission.generation.generation} is missing or does not match ${options.fromSnapshot}; nothing was recorded.`, { reason: "snapshot_mismatch" });
       }
       const snapshot = readCapsuleFile(file);
-      const generation = admission.generation.generation;
-      const rearmed = snapshot.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedAt: at, armedByGeneration: generation }));
-      const kept = state.subscriptions.filter((have) => !rearmed.some((next) => next.command === have.command));
-      state = { ...state, subscriptions: [...kept, ...rearmed] };
+      // Recorded as inherited and unarmed: the CLI starts no process, and only
+      // the successor running the watcher itself may then arm it with a plain
+      // `subscribe "<command>" --cursor <c>`. Verify reports the true state.
+      const inherited = snapshot.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedAt: at, armedByGeneration: null, inherited: true }));
+      const kept = state.subscriptions.filter((have) => !inherited.some((next) => next.command === have.command));
+      state = { ...state, subscriptions: [...kept, ...inherited] };
+      // Re-flagging watchers invalidates any earlier verify pass: accept needs a fresh one.
+      clearVerifyPass(db, options.project, options.role, admission.generation.generation, now);
     } else {
       const admission = assertCoordinatorCustody(db, { command: "subscribe", env: options.env, project: options.project, role: options.role, now });
       const command = (options.commandLine ?? "").trim();
       if (command === "") throw validationError("A subscription needs its checked-in command line.", { reason: "empty_subscription" });
+      if (admission.kind === "incoming" && !state.subscriptions.some((have) => have.inherited && have.command === command)) {
+        throw validationError("The incoming generation may arm only a watcher inherited from its snapshot (run subscribe --from-snapshot first, then give that exact command line).", { reason: "subscribe_not_inherited" });
+      }
       if (!options.cursor) throw validationError("A subscription needs --cursor <c> (its last event cursor).", { reason: "subscription_cursor" });
       const next = { command, cursor: options.cursor, armedAt: at, armedByGeneration: generationOf(admission) };
       state = { ...state, subscriptions: [...state.subscriptions.filter((have) => have.command !== command), next] };
     }
     writeCoordinatorState(paths, state);
     return {
-      subscriptions: state.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedByGeneration: subscription.armedByGeneration })),
+      subscriptions: state.subscriptions.map((subscription) => ({ command: subscription.command, cursor: subscription.cursor, armedByGeneration: subscription.armedByGeneration, inherited: subscription.inherited === true })),
       fromSnapshot: options.fromSnapshot ?? null
     };
   }));
@@ -186,8 +216,10 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
 
 export function renderCoordinatorSubscribeSuccess(response: CommandSuccess<CoordinatorSubscribeData>): string[] {
   return [
-    response.data.fromSnapshot ? `Re-armed from snapshot ${response.data.fromSnapshot}.` : "Subscription registered.",
-    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, generation ${subscription.armedByGeneration ?? "none"})`)
+    response.data.fromSnapshot
+      ? `Inherited watchers from snapshot ${response.data.fromSnapshot}; none is armed. Run each in the background yourself, then register it with subscribe "<command>" --cursor <c>.`
+      : "Subscription registered.",
+    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, ${subscription.inherited ? "inherited, not armed" : `armed by generation ${subscription.armedByGeneration ?? "none"}`})`)
   ];
 }
 
@@ -216,7 +248,7 @@ export function renderCoordinatorVerifySuccess(response: CommandSuccess<VerifyRe
   ];
 }
 
-export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string }
+export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string; warnings?: string[] }
 
 /** `arcadia coordinator accept --generation N --snapshot-sha <sha>`: the custody transfer (design step 5). */
 export function runCoordinatorAcceptCommand(options: Scope & { generation: number; snapshotSha: string; now?: Date; env?: NodeJS.ProcessEnv }): CommandSuccess<CoordinatorAcceptData> {
@@ -236,7 +268,10 @@ export function runCoordinatorAcceptCommand(options: Scope & { generation: numbe
 
 export function renderCoordinatorAcceptSuccess(response: CommandSuccess<CoordinatorAcceptData>): string[] {
   const { data } = response;
-  return [`Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`];
+  return [
+    `Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`,
+    ...(data.warnings ?? []).map((warning) => `warning: ${warning}`)
+  ];
 }
 
 /**
@@ -246,9 +281,12 @@ export function renderCoordinatorAcceptSuccess(response: CommandSuccess<Coordina
  */
 export function runCoordinatorRenewCommand(options: Scope & { repo?: string; effort?: string; env?: NodeJS.ProcessEnv; deps?: RelayDeps }): CommandSuccess<RenewResult> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const repoRoot = repositoryRoot(options.repo);
-  const data = withDatabase(workspacePath, (db) => {
+  const repoRoot = mainWorktreeRoot(options.repo);
+  const data = withDatabase(workspacePath, (db): RenewResult => {
     assertCoordinatorCustody(db, { command: "renew", env: options.env, project: options.project, role: options.role });
+    if (repoRoot === null) {
+      return { outcome: "refused", reason: "repository_unresolved", detail: "The invocation directory is not inside a git repository with a main worktree; run renew from the repository or pass --repo <path>." };
+    }
     const deps = options.deps ?? systemRelayDeps({
       sources: () => defaultCapsuleSources({ db, repoRoot, project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
       ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
@@ -270,7 +308,10 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
 export function renderCoordinatorRenewSuccess(response: CommandSuccess<RenewResult>): string[] {
   const { data } = response;
   if (data.outcome === "launched") {
-    return [`Launched ${data.tmuxName} as generation ${data.generation} (session ${data.sessionId}, attempt ${data.attempts}); prompt delivered. Custody moves when it runs accept.`];
+    return [
+      `Launched ${data.tmuxName} as generation ${data.generation} (session ${data.sessionId}, attempt ${data.attempts}); prompt delivered. Custody moves when it runs accept.`,
+      ...(data.warnings ?? []).map((warning) => `warning: ${warning}`)
+    ];
   }
   if (data.outcome === "refused") return [`Not launched (${data.reason}): ${data.detail}`];
   return [`Not launched after ${data.attempts} attempts; operator pinged.`, ...data.failures.map((failure) => `- ${failure}`)];
