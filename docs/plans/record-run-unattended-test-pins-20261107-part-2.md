@@ -191,11 +191,11 @@ actions:
     references: []
   - id: pin-stable-proposal-id
     title: Pin that a stable proposal id is agentask_ followed by the first 18 fingerprint characters, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a stable proposal id is agentask_ followed by the first 18 fingerprint characters, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-stable-proposal-id-ea61977f7589; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-stable-proposal-id
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-stable-proposal-id
+current_action: pin-north-star-step-reasons
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
