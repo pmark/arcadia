@@ -121,6 +121,15 @@ stays on Codex and Claude. opencode's own model catalogue is wide, which is why
 exactly one model is pinned here rather than delegated to an unvalidated
 `provider/model` string.
 
+**OpenCode is a plan with a weekly allocation.** Operator, 2026-11-09: "OpenCode's
+usage works exactly like my Codex and Claude Code plans, where I am allocated
+tokens on a weekly basis." So a helper on OpenCode draws on an existing allocation,
+as one on Codex or Claude does, and isn't new spend. Decision 0118's rationale,
+"API-key billing with no rolling window", is wrong on this; its correction is
+proposed in Agent Ask `correct-decision-0118-opencode-plan-premise-20261109`.
+Arcadia still has no probe for remaining OpenCode allowance, so headroom stays
+unknown, and `costRank` above is unchanged until that Ask is settled.
+
 **No tier 3/4 exists at this layer.** Cheaper, faster model families are real
 and useful, but "boilerplate/unit tests" is not a unit Arcadia can route
 separately from the Action that contains it. Arcadia still has no intra-session
