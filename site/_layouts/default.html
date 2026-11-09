@@ -15,10 +15,8 @@
 <a class="skip-link" href="#main">Skip to content</a>
 {% if page.canyon %}
 <div class="canyon-landscape" aria-hidden="true">
-  <canvas class="canyon-sky"></canvas>
-  <canvas class="canyon-stars"></canvas>
   <img class="canyon-still" src="{{ '/assets/canyon.svg' | relative_url }}" alt="">
-  <canvas class="canyon-terrain"></canvas>
+  <canvas class="canyon-frame"></canvas>
 </div>
 <script type="module" src="{{ '/assets/canyon.js' | relative_url }}"></script>
 {% endif %}

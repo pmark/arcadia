@@ -2,10 +2,8 @@
   const root = document.body;
   const landscape = root.querySelector('.canyon-landscape');
   const pause = root.querySelector('.motion-control');
-  const canvas = root.querySelector('.canyon-sky');
-  const ctx = canvas.getContext('2d');
-  const starCanvas = root.querySelector('.canyon-stars');
-  const sctx = starCanvas.getContext('2d');
+  const canvas = root.querySelector('.canyon-frame');
+  const ctx = canvas.getContext('2d', { alpha:false });
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const forcedColors = matchMedia('(forced-colors: active)');
   const darkQuery = matchMedia('(prefers-color-scheme: dark)');
@@ -19,7 +17,7 @@
   } catch {}
   const isStill = () => paused || reduceMotion.matches || forcedColors.matches;
   const isDark = () => darkQuery.matches;
-  const phase = () => isStill() ? 0 : phaseSince(Date.now() - started);
+  const phase = () => phaseSince(Date.now() - started);
   let W = 0;
   let H = 0;
 
@@ -79,10 +77,7 @@ function skyAt(p, dark) {
 }
 const altitude = (p) => Math.cos(2 * Math.PI * (p - 0.5));
 const nightAt = (p) => smooth(0.1, -0.12, altitude(p));
-function draw() {
-    if (!canvas || !ctx)
-        return;
-    const p = phase();
+function drawSky(p) {
     const dark = isDark();
     const [zenith, midSky, horizon] = skyAt(p, dark);
     const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -97,7 +92,7 @@ function draw() {
     const theta = 2 * Math.PI * (p - 0.5);
     const sx = W / 2 + W * 0.46 * Math.sin(theta);
     const sy = H * 0.97 - H * 0.81 * Math.max(alt, -0.1);
-    const breath = isStill() ? 1 : 1 + 0.06 * Math.sin((Date.now() / 1000) * ((2 * Math.PI) / 90));
+    const breath = 1 + 0.06 * Math.sin((Date.now() / 1000) * ((2 * Math.PI) / 90));
     const R = Math.max(W, H) * (0.24 + 0.12 * (1 - Math.max(0, alt))) * breath;
     const glow = mix([70, 150, 255], [255, 226, 190], smooth(0.08, 0.38, alt));
     const strength = (dark ? 0.55 : 0.6) * smooth(-0.18, 0.02, alt) * (1 - 0.5 * smooth(0.05, 0.4, alt));
@@ -147,10 +142,7 @@ const scrolled = () => window.scrollY;
 let lastY = scrolled();
 let lastT = performance.now();
 let vel = 0;
-function drawStars() {
-    if (!starCanvas || !sctx)
-        return;
-    const still = isStill();
+function drawStars(p, night) {
     const y0 = scrolled();
     const dy = y0 - lastY;
     const ms = performance.now();
@@ -166,41 +158,36 @@ function drawStars() {
     const cy = H + P;
     const band = H + 2 * pad;
     const now = Date.now() / 1000;
-    const p = phase();
-    const skyT = still ? 0 : now;
     const omega = W / 100 / (P + H / 2);
-    const scroll = still ? 0 : y0;
-    const night = nightAt(p);
     const seen = 0.92 + 0.08 * night;
-    sctx.clearRect(0, 0, W, H);
     for (const s of stars) {
         const radius = P - pad + s.v * band;
         const half = Math.asin(Math.min(1, (W / 2 + pad) / radius));
         const span = 2 * half;
-        const a = -half + ((((s.u * span + omega * (1 + 0.3 * s.z) * skyT) % span) + span) % span);
+        const a = -half + ((((s.u * span + omega * (1 + 0.3 * s.z) * now) % span) + span) % span);
         const x = cx + radius * Math.sin(a);
-        let y = cy - radius * Math.cos(a) - scroll * s.z * 0.35;
+        let y = cy - radius * Math.cos(a) - y0 * s.z * 0.35;
         y = ((((y + pad) % band) + band) % band) - pad;
-        const twinkle = still ? 0.8 : 0.6 + 0.4 * Math.sin(now * ((2 * Math.PI) / s.period) + s.tw);
+        const twinkle = 0.6 + 0.4 * Math.sin(now * ((2 * Math.PI) / s.period) + s.tw);
         const { tint } = s;
         const alpha = s.alpha * seen * twinkle;
         const len = Math.min(90, Math.abs(vel) * s.z * 5);
-        if (!still && len > 1.5) {
+        if (len > 1.5) {
             const tail = y + Math.sign(vel) * len;
-            const streak = sctx.createLinearGradient(x, y, x, tail);
+            const streak = ctx.createLinearGradient(x, y, x, tail);
             streak.addColorStop(0, rgb(tint, alpha * 0.6));
             streak.addColorStop(1, rgb(tint, 0));
-            sctx.strokeStyle = streak;
-            sctx.lineWidth = s.px;
-            sctx.beginPath();
-            sctx.moveTo(x, y);
-            sctx.lineTo(x, tail);
-            sctx.stroke();
+            ctx.strokeStyle = streak;
+            ctx.lineWidth = s.px;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, tail);
+            ctx.stroke();
         }
-        sctx.fillStyle = rgb(tint, alpha);
-        sctx.beginPath();
-        sctx.arc(x, y, s.px, 0, 7);
-        sctx.fill();
+        ctx.fillStyle = rgb(tint, alpha);
+        ctx.beginPath();
+        ctx.arc(x, y, s.px, 0, 7);
+        ctx.fill();
     }
     const earth = night * smooth(0.77, 0.81, p) * smooth(0.97, 0.9, p);
     if (earth > 0.01) {
@@ -208,15 +195,16 @@ function drawStars() {
         const half = Math.asin(Math.min(1, (W / 2 + pad) / radius));
         const a = -half + 2 * half * (0.45 + (p - 0.77) * 2);
         const ex = cx + radius * Math.sin(a);
-        const ey = cy - radius * Math.cos(a) - scroll * 0.042;
-        sctx.fillStyle = rgb([184, 214, 255], earth);
-        sctx.beginPath();
-        sctx.arc(ex, ey, 2, 0, 7);
-        sctx.fill();
+        const ey = cy - radius * Math.cos(a) - y0 * 0.042;
+        ctx.fillStyle = rgb([184, 214, 255], earth);
+        ctx.beginPath();
+        ctx.arc(ex, ey, 2, 0, 7);
+        ctx.fill();
     }
 }
 
 
+  let terrainFrame;
   let paintTerrain = () => {};
   let resizeTerrain = () => {};
   let frame = 0;
@@ -226,24 +214,34 @@ function drawStars() {
 
   function paint() {
     frame = 0;
-    if (!W || !H || document.hidden) return;
+    if (!ctx || !terrainFrame || !W || !H || isStill() || document.hidden) return;
     const p = phase();
     const night = nightAt(p);
-    const scroll = isStill() ? 0 : window.scrollY;
+    const scroll = window.scrollY;
     const nightStep = Math.round(night * 100);
     if (nightStep !== previousNight) {
       root.style.setProperty('--night', String(nightStep / 100));
       root.dataset.light = nightStep > 50 ? 'night' : 'day';
       previousNight = nightStep;
     }
-    draw();
-    drawStars();
     const terrainPhase = Math.round(p * 1200);
-    if (!isStill() && (terrainPhase !== previousTerrainPhase || scroll !== previousTerrainScroll)) {
+    if (terrainPhase !== previousTerrainPhase || scroll !== previousTerrainScroll) {
       paintTerrain(scroll, p, night);
       previousTerrainPhase = terrainPhase;
       previousTerrainScroll = scroll;
     }
+
+    // Present one complete, opaque frame. Resizing an on-screen layer outside
+    // this callback would clear it while the other layers were still visible.
+    if (canvas.width !== terrainFrame.width || canvas.height !== terrainFrame.height) {
+      canvas.width = terrainFrame.width;
+      canvas.height = terrainFrame.height;
+    }
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    drawSky(p);
+    drawStars(p, night);
+    ctx.drawImage(terrainFrame, 0, 0, W, H);
+    if (root.dataset.terrain !== 'live') root.dataset.terrain = 'live';
   }
 
   function schedule() {
@@ -251,13 +249,11 @@ function drawStars() {
   }
 
   function resize() {
-    W = landscape.clientWidth;
-    H = landscape.clientHeight;
-    if (!W || !H) return;
-    canvas.width = W;
-    canvas.height = H;
-    starCanvas.width = W;
-    starCanvas.height = H;
+    const width = landscape.clientWidth;
+    const height = landscape.clientHeight;
+    if (!width || !height || (width === W && height === H)) return;
+    W = width;
+    H = height;
     seedStars();
     resizeTerrain();
     previousTerrainPhase = undefined;
@@ -272,13 +268,20 @@ function drawStars() {
   let timer;
   let loadingTerrain = false;
 
+  function showStill() {
+    delete root.dataset.terrain;
+    delete root.dataset.light;
+    root.style.removeProperty('--night');
+    previousNight = -1;
+  }
+
   function refreshMotion() {
     clearInterval(timer);
     timer = undefined;
     pause.hidden = reduceMotion.matches || forcedColors.matches;
     pause.setAttribute('aria-pressed', String(paused));
     if (isStill()) {
-      delete root.dataset.terrain;
+      showStill();
     } else {
       if (!document.hidden) timer = setInterval(schedule, 100);
       enableTerrain();
@@ -301,7 +304,10 @@ function drawStars() {
   document.addEventListener('visibilitychange', refreshMotion);
 
   function startTerrain(THREE) {
-    const surface = root.querySelector('.canyon-terrain');
+    const surface = document.createElement('canvas');
+    const snapshot = document.createElement('canvas');
+    const snapshotContext = snapshot.getContext('2d');
+    if (!snapshotContext) return;
     const renderer = new THREE.WebGLRenderer({ canvas:surface, alpha:true, antialias:true });
     const scene = new THREE.Scene();
     const fog = new THREE.FogExp2('#6c7496', .027);
@@ -388,7 +394,6 @@ function drawStars() {
     };
 
     paintTerrain = (scroll, p, night) => {
-      if (surface.hidden) return;
       const travel = Math.max(0, scroll) * .0355;
       const cell = Math.floor(travel / spacing);
       const z = cell * spacing - travel;
@@ -401,23 +406,32 @@ function drawStars() {
       floor.material.color.copy(floorDay).lerp(floorNight, night);
       rock.color.copy(rockDay).lerp(rockNight, night);
       renderer.render(scene, camera);
-      root.dataset.terrain = 'live';
+      // Copy synchronously while WebGL's non-preserved drawing buffer is valid.
+      // The cached terrain also serves frames where only the sky moves.
+      if (snapshot.width !== surface.width || snapshot.height !== surface.height) {
+        snapshot.width = surface.width;
+        snapshot.height = surface.height;
+      }
+      snapshotContext.globalCompositeOperation = 'copy';
+      snapshotContext.drawImage(surface, 0, 0);
     };
 
     surface.addEventListener('webglcontextlost', event => {
       event.preventDefault();
-      surface.hidden = true;
-      delete root.dataset.terrain;
+      terrainFrame = undefined;
+      showStill();
     });
     surface.addEventListener('webglcontextrestored', () => {
-      surface.hidden = false;
+      terrainFrame = snapshot;
       refreshTheme();
     });
-    resize();
+    terrainFrame = snapshot;
+    if (W && H) resizeTerrain();
+    refreshTheme();
   }
 
   async function enableTerrain() {
-    if (loadingTerrain) return;
+    if (!ctx || loadingTerrain) return;
     loadingTerrain = true;
     try {
       const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.min.js');
