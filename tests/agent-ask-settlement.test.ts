@@ -1489,6 +1489,29 @@ describe("Agent Ask settlement", () => {
     expect(plan.actions.find((action) => action.id === "build-release-proof")?.why).toBe("Everything after it is judged against this proof.");
   });
 
+  it("carries each child's declared execution route into a new draft Plan (Issue #2134)", () => {
+    const { workspace, repo } = fixture();
+    const request = draftPlanAsk("ask-draft-plan-route").replace(
+      "  - desired_result: Build release proof",
+      "  - desired_result: Build release proof\n    execution: build"
+    );
+    expect(request).toContain("execution: build");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan-route",
+      disposition: "accepted", responsibility: "agent", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan-route",
+      disposition: "accepted", responsibility: "agent", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "deliver-release-readiness")!;
+    expect(plan.actions.find((action) => action.id === "build-release-proof")?.executionRoute).toBe("build");
+    expect(plan.actions.find((action) => action.id === "publish-release-guide")?.executionRoute).toBeNull();
+    expect(discoverDocs(repo).errors.filter((error) => error.relativePath === "docs/plans/deliver-release-readiness.md")).toEqual([]);
+  });
+
   it("creates a complete inactive draft Plan from one plan-shaped Ask", () => {
     const { workspace, repo } = fixture();
     const proposal = runAgentAskPreviewCommand({ workspace, request: draftPlanAsk("ask-draft-plan") });
