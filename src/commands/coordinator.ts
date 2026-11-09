@@ -198,8 +198,10 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
       const admission = assertCoordinatorCustody(db, { command: "subscribe", env: options.env, project: options.project, role: options.role, now });
       const command = (options.commandLine ?? "").trim();
       if (command === "") throw validationError("A subscription needs its checked-in command line.", { reason: "empty_subscription" });
-      if (admission.kind === "incoming" && !state.subscriptions.some((have) => have.inherited && have.command === command)) {
-        throw validationError("The incoming generation may arm only a watcher inherited from its snapshot (run subscribe --from-snapshot first, then give that exact command line).", { reason: "subscribe_not_inherited" });
+      // The incoming generation may register any watcher the state already holds: one inherited
+      // from the snapshot, or one the predecessor registered after it (a late watcher).
+      if (admission.kind === "incoming" && !state.subscriptions.some((have) => have.command === command)) {
+        throw validationError("The incoming generation may register only a watcher the predecessor already recorded (run subscribe --from-snapshot first, then give that exact command line).", { reason: "subscribe_not_inherited" });
       }
       if (!options.cursor) throw validationError("A subscription needs --cursor <c> (its last event cursor).", { reason: "subscription_cursor" });
       const next = { command, cursor: options.cursor, armedAt: at, armedByGeneration: generationOf(admission) };
@@ -217,9 +219,9 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
 export function renderCoordinatorSubscribeSuccess(response: CommandSuccess<CoordinatorSubscribeData>): string[] {
   return [
     response.data.fromSnapshot
-      ? `Inherited watchers from snapshot ${response.data.fromSnapshot}; none is armed. Run each in the background yourself, then register it with subscribe "<command>" --cursor <c>.`
-      : "Subscription registered.",
-    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, ${subscription.inherited ? "inherited, not armed" : `armed by generation ${subscription.armedByGeneration ?? "none"}`})`)
+      ? `Inherited watchers from snapshot ${response.data.fromSnapshot}; none is registered by you yet. Run each in the background yourself, then register it with subscribe "<command>" --cursor <c>.`
+      : "Subscription registered (a record; it does not prove the watcher process is running).",
+    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, ${subscription.inherited ? "inherited, not registered by this generation" : `registered by generation ${subscription.armedByGeneration ?? "none"}`})`)
   ];
 }
 
@@ -241,6 +243,7 @@ export function renderCoordinatorVerifySuccess(response: CommandSuccess<VerifyRe
   return [
     `Verify generation ${data.generation}: ${data.passed ? "passed" : "FAILED"} (snapshot ${data.snapshotSha ?? "none"}).`,
     ...data.items.map((item) => `${item.passed ? "ok  " : item.required ? "FAIL" : "warn"} ${item.id}. ${item.detail}`),
+    ...data.cursorChanges.map((change) => `  cursor changed (warning, not a refusal): ${change.command}: ${change.from} -> ${change.to}`),
     ...data.drift.map((change) => `  changed during handoff: ${change.field}: ${JSON.stringify(change.snapshot)} -> ${JSON.stringify(change.now)}`),
     ...(data.journal.length > 0 ? ["Journal (advisory: model-written, not authority):"] : []),
     ...data.journal.map((entry) => `  ${entry.ageMinutes} min${entry.stale ? " (stale)" : ""}: ${entry.text}`),
@@ -284,11 +287,8 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
   const repoRoot = mainWorktreeRoot(options.repo);
   const data = withDatabase(workspacePath, (db): RenewResult => {
     assertCoordinatorCustody(db, { command: "renew", env: options.env, project: options.project, role: options.role });
-    if (repoRoot === null) {
-      return { outcome: "refused", reason: "repository_unresolved", detail: "The invocation directory is not inside a git repository with a main worktree; run renew from the repository or pass --repo <path>." };
-    }
     const deps = options.deps ?? systemRelayDeps({
-      sources: () => defaultCapsuleSources({ db, repoRoot, project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
+      sources: () => defaultCapsuleSources({ db, repoRoot: repoRoot ?? repositoryRoot(), project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
       ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
       signIn: (provider) => checkProviderSignIn(provider, workspacePath),
       capacity: (provider) => {

@@ -85,7 +85,8 @@ export interface RelayDeps {
 export interface RenewInput {
   project: string;
   role: string;
-  repoRoot: string;
+  /** The repository the successor's worktree is cut from; null when the caller could not resolve one (a refusal that pings). */
+  repoRoot: string | null;
   /** Abstract effort key (e3_deep) or a native value; pinned by the Decision. */
   effort: string;
   permissionMode?: string;
@@ -94,7 +95,7 @@ export interface RenewInput {
 export type RenewResult =
   | { outcome: "launched"; generation: number; tmuxName: string; sessionId: string; snapshotSha: string; worktree: string; attempts: number; warnings?: string[] }
   | { outcome: "refused"; reason: RelayRefusal; detail: string }
-  | { outcome: "failed"; attempts: number; failures: string[]; pinged: boolean };
+  | { outcome: "failed"; attempts: number; failures: string[]; pinged: boolean; warnings?: string[] };
 
 /** The fixed resume prompt (design step 3). It holds no approval, quote or free-form state. */
 export function renderResumePrompt(input: { project: string; role: string; generation: number; snapshotSha: string; snapshotPath: string }): string {
@@ -204,11 +205,22 @@ function generationStatus(db: Database.Database, project: string, role: string, 
  */
 export function renewCoordinator(db: Database.Database, workspace: string, input: RenewInput, deps: RelayDeps): RenewResult {
   const now = deps.now();
+  // Log-write warnings from claims and failures are surfaced in the result, never dropped.
+  const warnings: string[] = [];
+  const onWarning = (warning: string) => { warnings.push(warning); };
   const permissionMode = input.permissionMode ?? RELAY_PERMISSION_MODE;
   if (!ALLOWED_PERMISSION_MODES.has(permissionMode)) {
     throw new ArcadiaError("VALIDATION_ERROR", `The relay launches only in an ordinary interactive permission mode (auto or default), never ${permissionMode}; bypass modes are excluded.`, 2, { reason: "bypass_mode" });
   }
-  const decision = deps.decision(input.repoRoot, now);
+  if (input.repoRoot === null) {
+    // The Decision gate reads origin/main of the repository, so nothing can be checked. A tick that
+    // omitted --repo would otherwise refuse on every run with nobody told (#2286 gate 4).
+    const detail = "The invocation directory is not inside a repository with a primary worktree (the primary worktree, not the worktree that has main checked out); run renew from the repository or pass --repo <path>. Any tick or timer that runs renew must pass --repo.";
+    deps.ping(`Coordinator relay could not start ${input.role} (${input.project}): repository unresolved; the predecessor keeps custody. Pass --repo <primary checkout> to renew. ${detail}`.slice(0, 500));
+    return refuse("repository_unresolved", detail);
+  }
+  const repoRoot = input.repoRoot;
+  const decision = deps.decision(repoRoot, now);
   if (!decision.inForce) return refuse(RELAY_LAUNCH_DECISION_ID === null ? "decision_pending" : "decision_not_in_force", decision.reason);
 
   const custodian = currentCustodian(db, input.project, input.role);
@@ -218,7 +230,7 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
   // A launch older than the acceptance window that was never accepted failed (design step 7).
   const stale = newestLaunching(db, input.project, input.role);
   if (stale && now.getTime() - Date.parse(stale.createdAt) >= CLAIM_LAUNCHING_FRESH_MS) {
-    failGeneration(db, workspace, { project: input.project, role: input.role, generation: stale.generation, reason: "no_acceptance", now });
+    failGeneration(db, workspace, { project: input.project, role: input.role, generation: stale.generation, reason: "no_acceptance", now, onWarning });
     if (stale.tmuxName) deps.tmux.killSession?.(stale.tmuxName);
   } else if (stale) {
     return refuse("launch_in_progress", `Generation ${stale.generation} is still launching; one successor at a time.`);
@@ -250,20 +262,21 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
       briefPath: custodian.briefPath, briefSha: custodian.briefSha, sources: deps.sources(), now: deps.now()
     });
     const name = `${input.role} g${claim.generation}`;
-    const worktree = path.join(input.repoRoot, ".claude", "worktrees", `coord-${input.role}-g${claim.generation}`);
+    const worktree = path.join(repoRoot, ".claude", "worktrees", `coord-${input.role}-g${claim.generation}`);
     const transcript = path.join(deps.claudeProjectsDirectory, claudeProjectSlug(worktree), `${sessionId}.jsonl`);
     recordTranscriptPath(db, input.project, input.role, claim.generation, transcript, deps.now(), name);
     const prompt = renderResumePrompt({ project: input.project, role: input.role, generation: claim.generation, snapshotSha: claim.snapshotSha, snapshotPath: claim.snapshotPath });
-    const launched = (attempts: number): RenewResult => ({ outcome: "launched", generation: claim.generation, tmuxName: claim.tmuxName, sessionId, snapshotSha: claim.snapshotSha, worktree, attempts, ...(claim.warnings ? { warnings: claim.warnings } : {}) });
+    warnings.push(...(claim.warnings ?? []));
+    const launched = (attempts: number): RenewResult => ({ outcome: "launched", generation: claim.generation, tmuxName: claim.tmuxName, sessionId, snapshotSha: claim.snapshotSha, worktree, attempts, ...(warnings.length > 0 ? { warnings: [...warnings] } : {}) });
     try {
       // The generation is new, so its deterministic name existing means a foreign
       // or leftover session: refuse to reuse it and never kill what we did not start.
       if (deps.tmux.hasSession(claim.tmuxName)) {
-        failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "tmux_name_taken", now: deps.now() });
+        failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "tmux_name_taken", now: deps.now(), onWarning });
         failures.push(`attempt ${attempt}: tmux session ${claim.tmuxName} already exists; left untouched`);
         continue;
       }
-      if (!existsSync(worktree)) deps.createWorktree(input.repoRoot, worktree);
+      if (!existsSync(worktree)) deps.createWorktree(repoRoot, worktree);
       deps.tmux.launch({
         name: claim.tmuxName, cwd: worktree, command: "env",
         args: [
@@ -274,7 +287,7 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
       });
     } catch (error) {
       failures.push(`attempt ${attempt}: launch failed (${error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160)})`);
-      if (failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "launch_failed", now: deps.now() })) {
+      if (failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "launch_failed", now: deps.now(), onWarning })) {
         deps.tmux.killSession?.(claim.tmuxName);
       }
       continue;
@@ -289,7 +302,7 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
     // The successor may have accepted even though the transcript read lagged:
     // only a still-launching row is failed, and only a row we failed is stopped.
     if (generationStatus(db, input.project, input.role, claim.generation) !== "launching") return launched(attempt);
-    if (failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "prompt_not_delivered", now: deps.now() })) {
+    if (failGeneration(db, workspace, { project: input.project, role: input.role, generation: claim.generation, reason: "prompt_not_delivered", now: deps.now(), onWarning })) {
       deps.tmux.killSession?.(claim.tmuxName);
       failures.push(`attempt ${attempt}: prompt not delivered to ${claim.tmuxName} within 2 minutes`);
     } else {
@@ -299,7 +312,7 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
   // The retry command leads so the 500-character cap can never cut it off.
   const head = `Coordinator relay could not renew ${input.role} (${input.project}); the predecessor keeps custody and should work in low-context mode. Retry: ${retry}. `;
   deps.ping(`${head}${failures.join("; ")}`.slice(0, 500));
-  return { outcome: "failed", attempts: RELAY_LIMITS.attemptsPerRenewal, failures, pinged: true };
+  return { outcome: "failed", attempts: RELAY_LIMITS.attemptsPerRenewal, failures, pinged: true, ...(warnings.length > 0 ? { warnings } : {}) };
 }
 
 /** The real host dependencies. */

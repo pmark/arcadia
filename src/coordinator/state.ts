@@ -76,3 +76,45 @@ export function appendJournal(state: CoordinatorState, entry: JournalEntry): Coo
   const journal = [...state.journal, entry];
   return { ...state, journal: journal.slice(Math.max(0, journal.length - JOURNAL_LIMIT)) };
 }
+
+/** What the watcher checks need from a snapshot (a `Capsule` satisfies it). */
+export interface SnapshotWatchers { observedAt: string; subscriptions: Array<{ command: string; cursor: string }> }
+
+/** A subscription counts as registered by `generation` only when that generation registered it, after the snapshot, and it is no longer flagged inherited. */
+function registeredBy(have: Subscription, generation: number, snapshot: SnapshotWatchers): boolean {
+  return !have.inherited && have.armedByGeneration === generation && Date.parse(have.armedAt) >= Date.parse(snapshot.observedAt);
+}
+
+/**
+ * Every watcher the successor owes, fail closed (#2286 gate 1): each one the
+ * snapshot lists plus each one the state file holds now. A watcher the
+ * predecessor registered after the snapshot is in the state but not in the
+ * snapshot; it is reported with `late: true` and verify and accept refuse until
+ * the successor registers it too. "Registered" is a record, never proof that a
+ * process is running (design change 5).
+ */
+export function unregisteredWatchers(snapshot: SnapshotWatchers, state: CoordinatorState, generation: number): Array<{ command: string; late: boolean }> {
+  const wanted = new Map<string, boolean>();
+  for (const subscription of snapshot.subscriptions) wanted.set(subscription.command, false);
+  for (const subscription of state.subscriptions) if (!wanted.has(subscription.command)) wanted.set(subscription.command, true);
+  return [...wanted]
+    .filter(([command]) => !state.subscriptions.some((have) => have.command === command && registeredBy(have, generation, snapshot)))
+    .map(([command, late]) => ({ command, late }));
+}
+
+/**
+ * Cursor rule (#2286 gate 3). Cursors are opaque event positions with no
+ * defined order, so Arcadia can tell only "same" from "different", and a
+ * successor that resumes later legitimately holds a different one. Refusing a
+ * difference would stick that handoff, and accepting it silently hides a
+ * possible gap (or replay). So a difference never refuses: it is reported as a
+ * warning naming both cursors, for the successor to state in its first message.
+ */
+export function cursorChanges(snapshot: SnapshotWatchers, state: CoordinatorState, generation: number): Array<{ command: string; from: string; to: string }> {
+  const changes: Array<{ command: string; from: string; to: string }> = [];
+  for (const wanted of snapshot.subscriptions) {
+    const have = state.subscriptions.find((candidate) => candidate.command === wanted.command && registeredBy(candidate, generation, snapshot));
+    if (have && have.cursor !== wanted.cursor) changes.push({ command: wanted.command, from: wanted.cursor, to: have.cursor });
+  }
+  return changes;
+}

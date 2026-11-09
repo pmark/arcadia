@@ -25,6 +25,7 @@ import {
 } from "../src/coordinator/generations.js";
 import { ALIVE_START_UNKNOWN, acquireRelayLock, releaseRelayLock } from "../src/coordinator/lock.js";
 import { coordinatorPaths } from "../src/coordinator/paths.js";
+import { readCoordinatorState, writeCoordinatorState } from "../src/coordinator/state.js";
 import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -238,7 +239,7 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     return { ws, claimed, env: envFor(2, claimed.token) };
   }
 
-  it("verify fails until every subscription is re-armed, then passes and reports drift as information", () => {
+  it("verify fails until every watcher is registered by the successor, then passes and reports drift as information", () => {
     const { ws, claimed, env } = handoff();
     const before = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(3) });
     expect(before.data.passed).toBe(false);
@@ -293,28 +294,92 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     expect(() => runPingSendCommand({ workspace: ws, message: "late", env })).toThrow(/custody/);
   });
 
-  it("admits the incoming generation only for subscribe --from-snapshot, accept, and arming an inherited watcher", () => {
+  it("admits the incoming generation only for subscribe --from-snapshot, accept, and registering a watcher the state already holds", () => {
     const { ws, claimed, env } = handoff();
     expect(() => runCoordinatorNoteCommand({ workspace: ws, ...base, text: "early", now: at(3), env })).toThrow(/custody/);
-    expect(() => runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine: "x", cursor: "1", now: at(3), env })).toThrow(/inherited/);
+    expect(() => runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine: "x", cursor: "1", now: at(3), env })).toThrow(/already recorded/);
     expect(() => runPingSendCommand({ workspace: ws, message: "hi", env })).toThrow(/custody/);
     // A sha that is not the launching row's snapshot is refused.
     expect(() => runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: "e".repeat(64), now: at(3), env })).toThrow(/snapshot/);
     expect(() => runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env })).not.toThrow();
   });
 
-  it("subscribe --from-snapshot records inherited, unarmed watchers and verify does not report them armed", () => {
+  it("subscribe --from-snapshot records inherited watchers and verify does not report them registered", () => {
     const { ws, claimed, env } = handoff();
     const result = runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
     expect(result.data.subscriptions).toEqual([{ command: "scripts/wait-for-event.sh --pr 2236", cursor: "c-10", armedByGeneration: null, inherited: true }]);
     const unarmed = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) });
     expect(unarmed.data.passed).toBe(false);
     expect(unarmed.data.items.find((item) => item.id === 3)).toMatchObject({ passed: false });
-    expect(unarmed.data.items.find((item) => item.id === 3)?.detail).toMatch(/not armed by generation 2/);
+    expect(unarmed.data.items.find((item) => item.id === 3)?.detail).toMatch(/not registered by generation 2/);
     // Only the successor's explicit arm of that exact command clears it.
     armInherited(ws, env, at(5));
     const armed = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(6) });
     expect(armed.data.items.find((item) => item.id === 3)).toMatchObject({ passed: true });
+  });
+
+  it("a watcher the predecessor registers after the snapshot fails verify closed, then the successor can register it", () => {
+    const { ws, claimed, env } = handoff();
+    // The predecessor (no relay token) is still custodian and registers a watcher the snapshot does not list.
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine: "scripts/late-watch.sh --pr 2300", cursor: "l-1", now: at(3), env: {} });
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(4), env });
+    armInherited(ws, env, at(4));
+    const failed = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(5) });
+    expect(failed.data.passed).toBe(false);
+    const item = failed.data.items.find((entry) => entry.id === 3);
+    expect(item).toMatchObject({ passed: false });
+    expect(item?.detail).toMatch(/scripts\/late-watch\.sh --pr 2300 \(registered by the predecessor after the snapshot\)/);
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(6), env })).toThrow(/verify/);
+    // The incoming generation may register a late watcher the state holds (plain subscribe used to refuse it).
+    armInherited(ws, env, at(6), "scripts/late-watch.sh --pr 2300", "l-1");
+    const passed = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(7) });
+    expect(passed.data.passed).toBe(true);
+    expect(passed.data.items.find((entry) => entry.id === 3)?.detail).toMatch(/does not prove the process is running/);
+  });
+
+  it("accept re-checks the watchers under the lock: a late watcher or a re-flagged one after verify refuses and drops the verify pass", () => {
+    const { ws, claimed, env } = handoff();
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
+    armInherited(ws, env, at(3));
+    expect(runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) }).data.passed).toBe(true);
+    const statuses = () => withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => [row.generation, row.status]);
+    // Between verify and accept the predecessor registers another watcher.
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine: "scripts/late-watch.sh --pr 2300", cursor: "l-1", now: at(5), env: {} });
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(6), env })).toThrow(/not registered by generation 2: scripts\/late-watch\.sh/);
+    expect(statuses()).toEqual([[1, "custodian"], [2, "launching"]]);
+    // The pass was dropped, so even after the successor registers it, accept needs a fresh verify.
+    armInherited(ws, env, at(7), "scripts/late-watch.sh --pr 2300", "l-1");
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(8), env })).toThrow(/verify/);
+    runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(8) });
+    // A `--from-snapshot` after verify re-flags the watcher inherited; accept refuses that too.
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(9), env });
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(10), env })).toThrow(/verify/);
+    expect(statuses()).toEqual([[1, "custodian"], [2, "launching"]]);
+    // Re-flag with a valid pass in hand (the pass is dropped by --from-snapshot, so write the state directly to prove the lock-time check itself).
+    armInherited(ws, env, at(11));
+    armInherited(ws, env, at(11), "scripts/late-watch.sh --pr 2300", "l-1");
+    runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(12) });
+    const paths = coordinatorPaths(ws, "arcadia", "rowan");
+    const state = readCoordinatorState(paths);
+    writeCoordinatorState(paths, { ...state, subscriptions: state.subscriptions.map((subscription) => ({ ...subscription, inherited: true })) });
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(13), env })).toThrow(/not registered by generation 2/);
+    expect(statuses()).toEqual([[1, "custodian"], [2, "launching"]]);
+  });
+
+  it("a different cursor never refuses: it is a warning naming both cursors, so a later legitimate resume is not stuck", () => {
+    const { ws, claimed, env } = handoff();
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
+    armInherited(ws, env, at(60), "scripts/wait-for-event.sh --pr 2236", "c-42");
+    const result = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(61) });
+    expect(result.data.passed).toBe(true);
+    expect(result.data.cursorChanges).toEqual([{ command: "scripts/wait-for-event.sh --pr 2236", from: "c-10", to: "c-42" }]);
+    expect(result.data.items.find((item) => item.id === 3)?.detail).toMatch(/cursor changed for .*c-10 -> c-42/);
+    expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(62), env })).not.toThrow();
+    // The same cursor reports no change.
+    const again = handoff();
+    runCoordinatorSubscribeCommand({ workspace: again.ws, ...base, fromSnapshot: again.claimed.snapshotSha, now: at(3), env: again.env });
+    armInherited(again.ws, again.env, at(4));
+    expect(runCoordinatorVerifyCommand({ workspace: again.ws, ...base, generation: 2, snapshotSha: again.claimed.snapshotSha, sources: sources(), now: at(5) }).data.cursorChanges).toEqual([]);
   });
 
   it("accept refuses a snapshot file changed after verify, names the reason and leaves custody unchanged", () => {

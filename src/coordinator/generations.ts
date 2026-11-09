@@ -6,6 +6,7 @@ import { writeTransaction } from "../db/connection.js";
 import {
   buildCapsule,
   hashSnapshotFile,
+  readCapsuleFile,
   snapshotPath,
   writeImmutableSnapshot,
   writeLiveCapsule,
@@ -15,7 +16,7 @@ import {
 } from "./capsule.js";
 import { withRelayLock, type RelayLockDeps } from "./lock.js";
 import { coordinatorPaths, ensureCoordinatorDirectories, type CoordinatorPaths } from "./paths.js";
-import { readCoordinatorState } from "./state.js";
+import { readCoordinatorState, unregisteredWatchers } from "./state.js";
 
 /**
  * Coordinator custody (design section c). A coordinator holds no Action claim,
@@ -212,12 +213,13 @@ function markFailed(db: Database.Database, project: string, role: string, genera
  * marked `failed` with reason `claim_incomplete`. A complete row is never
  * touched. Callers hold the relay lock.
  */
-function recoverIncompleteClaims(db: Database.Database, paths: CoordinatorPaths, project: string, role: string, now: Date): number[] {
+function recoverIncompleteClaims(db: Database.Database, paths: CoordinatorPaths, project: string, role: string, now: Date, warnings: string[]): number[] {
   const recovered: number[] = [];
   const launching = newestLaunching(db, project, role);
   if (launching && hashSnapshotFile(launching.snapshotPath) !== launching.snapshotSha) {
     if (writeTransaction(db, () => markFailed(db, project, role, launching.generation, "claim_incomplete", now))) {
-      appendLogAfterCommit(paths, "failed", { generation: launching.generation, reason: "claim_incomplete" }, now);
+      const warning = appendLogAfterCommit(paths, "failed", { generation: launching.generation, reason: "claim_incomplete" }, now);
+      if (warning) warnings.push(warning);
     }
     recovered.push(launching.generation);
   }
@@ -261,7 +263,8 @@ export function claimNextGeneration(db: Database.Database, workspace: string, in
   const now = input.now ?? new Date();
   const paths = coordinatorPaths(workspace, input.project, input.role);
   return withRelayLock(paths.root, () => {
-    const recovered = recoverIncompleteClaims(db, paths, input.project, input.role, now);
+    const warnings: string[] = [];
+    const recovered = recoverIncompleteClaims(db, paths, input.project, input.role, now, warnings);
     const launching = newestLaunching(db, input.project, input.role);
     if (launching) {
       const ageMs = now.getTime() - Date.parse(launching.createdAt);
@@ -304,7 +307,8 @@ export function claimNextGeneration(db: Database.Database, workspace: string, in
           input.briefPath ?? null, input.briefSha ?? null, snapshot.path, snapshot.sha, hashToken(token), at, at);
     });
     const warning = appendLogAfterCommit(paths, "launching", { generation, snapshotSha: snapshot.sha, provider: input.provider, model: input.model, tmuxName }, now);
-    return { generation, snapshotPath: snapshot.path, snapshotSha: snapshot.sha, token, recovered, tmuxName, ...(warning ? { warnings: [warning] } : {}) };
+    if (warning) warnings.push(warning);
+    return { generation, snapshotPath: snapshot.path, snapshotSha: snapshot.sha, token, recovered, tmuxName, ...(warnings.length > 0 ? { warnings } : {}) };
   }, input.lock);
 }
 
@@ -312,13 +316,17 @@ export function claimNextGeneration(db: Database.Database, workspace: string, in
 export function failGeneration(
   db: Database.Database,
   workspace: string,
-  input: { project: string; role: string; generation: number; reason: string; now?: Date; lock?: RelayLockDeps }
+  input: { project: string; role: string; generation: number; reason: string; now?: Date; lock?: RelayLockDeps; onWarning?: (warning: string) => void }
 ): boolean {
   const now = input.now ?? new Date();
   const paths = coordinatorPaths(workspace, input.project, input.role);
   return withRelayLock(paths.root, () => {
     const changed = writeTransaction(db, () => markFailed(db, input.project, input.role, input.generation, input.reason, now));
-    if (changed) appendLogAfterCommit(paths, "failed", { generation: input.generation, reason: input.reason }, now);
+    if (changed) {
+      // The row is the record; a log that could not be appended is surfaced, never dropped.
+      const warning = appendLogAfterCommit(paths, "failed", { generation: input.generation, reason: input.reason }, now);
+      if (warning) input.onWarning?.(warning);
+    }
     return changed;
   }, input.lock);
 }
@@ -421,6 +429,16 @@ export function assertCoordinatorCustody(
  */
 export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths, incoming: GenerationRecord, now: Date): { custodian: number; handedOff: number | null; warnings?: string[] } {
   const at = now.toISOString();
+  // Verify's item 3 again, under the same lock as the transfer (#2286 gate 2): a
+  // predecessor's `subscribe` (a late watcher) or `--from-snapshot` (which
+  // re-flags watchers inherited) between verify and accept must not slip through.
+  if (incoming.snapshotPath && hashSnapshotFile(incoming.snapshotPath) === incoming.snapshotSha) {
+    const unregistered = unregisteredWatchers(readCapsuleFile(incoming.snapshotPath), readCoordinatorState(paths), incoming.generation);
+    if (unregistered.length > 0) {
+      clearVerifyPass(db, incoming.project, incoming.role, incoming.generation, now);
+      throw refused(`accept refused: not registered by generation ${incoming.generation}: ${unregistered.map((watcher) => watcher.command).join(", ")}; custody is unchanged. Register each watcher, run verify again, then accept.`, "watchers_unregistered", { generation: incoming.generation });
+    }
+  }
   const handedOff = writeTransaction(db, () => {
     const previous = currentCustodian(db, incoming.project, incoming.role);
     if (previous) {

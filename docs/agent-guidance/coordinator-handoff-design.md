@@ -124,7 +124,8 @@ Sessions. The desktop app is the one surface a script cannot drive.
 
 Mostly, yes. Arcadia can run these steps deterministically: detection, the
 canonical part of the capsule, the launch decision, the launch, the
-prompt-delivery check, the custody record, re-arming watchers and alerting.
+prompt-delivery check, the custody record, listing inherited watchers and alerting
+(the successor starts and registers each watcher itself).
 Five parts cannot be fully deterministic, and the design is built around them
 rather than pretending otherwise.
 
@@ -346,8 +347,8 @@ approval it relies on.
      custodian is still N, so the guard would refuse N+1's own handoff. It
      therefore admits exactly three commands from a caller that is not the
      custodian: `subscribe --from-snapshot`, `accept`, and a plain
-     `subscribe "<command>" --cursor <c>` (the successor arming a watcher it
-     runs). It admits them only under the transfer lock, only for the newest
+     `subscribe "<command>" --cursor <c>` (the successor registering a watcher it
+     runs, one the state file already holds). It admits them only under the transfer lock, only for the newest
      `launching` generation, and only when the caller's token matches that row.
      `subscribe --from-snapshot` and `accept` also need the sha to match the
      row's snapshot. `accept` further needs `verify` to have passed against that
@@ -478,13 +479,20 @@ The design rules:
    differences from the snapshot (PR heads, production revision and epoch,
    Decision numbers, pending pings, sessions alive). A difference is expected
    and fine: it shows what changed during the handoff. It is not a failure.
-3. Every subscription *in the snapshot* is armed by this generation (registered
-   by the successor, not merely inherited). The check does not compare cursors,
-   and the successor may arm a watcher with any cursor. **Known gap, a gate
-   before any real `renew`:** a watcher the predecessor registers *after* the
-   snapshot is not in the snapshot, so verify ignores it and still passes, and
-   the successor cannot arm it (plain `subscribe` accepts only inherited lines).
-   That watcher can be left running under no one's custody.
+3. Every watcher the snapshot lists, and every watcher the state file holds
+   now, is registered by this generation (not merely inherited). It fails
+   closed: a watcher the predecessor registered *after* the snapshot is in the
+   state file, so verify names it as late and refuses until the successor
+   registers it too (the incoming generation may register any watcher the state
+   already holds). `accept` runs this same check again under the transfer lock,
+   so a watcher registered, or re-flagged inherited by a predecessor's
+   `--from-snapshot`, between verify and accept refuses the accept and drops the
+   verify pass. "Registered" is a record, not proof that a process runs (change
+   5). **Cursor rule:** cursors are opaque, so only "same" or "different" is
+   knowable. A different cursor never refuses, because a successor that
+   resumes later legitimately holds a later one and a refusal would stick the
+   handoff. It is printed as a warning (`cursorChanges`, with both cursors) and
+   the successor states in its first message why no event was missed.
 4. Every journal entry is listed with its age. An entry older than 2 hours is
    marked `stale`.
 5. Every chat-only approval is listed as lost, with its prepared card, if any.

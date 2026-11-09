@@ -1347,7 +1347,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   coordinatorScope(coordinator.command("renew")
     .description("Launch one successor coordinator through the tmux launcher (same provider and model, Remote Control, verified prompt delivery, one retry, one attention ping on failure). Refuses until the standing relay Decision is on main. Custody-guarded")
     .option("--effort <effort>", "Reasoning effort key or native value", "e3_deep")
-    .option("--repo <path>", "Repository checkout the successor's worktree is cut from (default: this checkout)", resolveInvocationPath)
+    .option("--repo <path>", "Repository the successor's worktree is cut from (default: the primary worktree of the repository you run it in; a tick or timer must pass it)", resolveInvocationPath)
   ).action((options: { workspace: string; project: string; role: string; effort?: string; repo?: string; json?: boolean }) =>
     runCliAction("coordinator.renew", options, () => runCoordinatorRenewCommand({ ...options, env: process.env }), renderCoordinatorRenewSuccess)
   );
