@@ -6,7 +6,7 @@ import { createSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import {
   buildCapsule,
   checkCapsule,
@@ -24,7 +24,9 @@ import {
   clearVerifyPass,
   currentCustodian,
   custodianOf,
-  type CustodyAdmission
+  relayCoordinatorSessions,
+  type CustodyAdmission,
+  type RelaySessionVerdict
 } from "../coordinator/generations.js";
 import { withRelayLock } from "../coordinator/lock.js";
 import { coordinatorPaths } from "../coordinator/paths.js";
@@ -162,7 +164,8 @@ export interface CoordinatorSubscribeData { subscriptions: Array<{ command: stri
  * checked-in watcher; `--from-snapshot <sha>` records every watcher the pinned
  * snapshot lists as inherited and unarmed, starting nothing (design section e).
  * Guarded; the incoming generation may run `--from-snapshot`, and a plain
- * subscribe only for a watcher inherited from its snapshot, which arms it.
+ * subscribe only for a watcher the state already holds (inherited from its
+ * snapshot, or registered by the predecessor after it), which records it.
  */
 export function runCoordinatorSubscribeCommand(options: Scope & {
   commandLine?: string; cursor?: string; fromSnapshot?: string; now?: Date; env?: NodeJS.ProcessEnv;
@@ -198,11 +201,16 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
       const admission = assertCoordinatorCustody(db, { command: "subscribe", env: options.env, project: options.project, role: options.role, now });
       const command = (options.commandLine ?? "").trim();
       if (command === "") throw validationError("A subscription needs its checked-in command line.", { reason: "empty_subscription" });
-      if (admission.kind === "incoming" && !state.subscriptions.some((have) => have.inherited && have.command === command)) {
-        throw validationError("The incoming generation may arm only a watcher inherited from its snapshot (run subscribe --from-snapshot first, then give that exact command line).", { reason: "subscribe_not_inherited" });
+      // The incoming generation may register any watcher the state already holds: one inherited
+      // from the snapshot, or one the predecessor registered after it (a late watcher).
+      if (admission.kind === "incoming" && !state.subscriptions.some((have) => have.command === command)) {
+        throw validationError("The incoming generation may register only a watcher the predecessor already recorded (run subscribe --from-snapshot first, then give that exact command line).", { reason: "subscribe_not_inherited" });
       }
       if (!options.cursor) throw validationError("A subscription needs --cursor <c> (its last event cursor).", { reason: "subscription_cursor" });
-      const next = { command, cursor: options.cursor, armedAt: at, armedByGeneration: generationOf(admission) };
+      const previous = state.subscriptions.find((have) => have.command === command);
+      const generation = generationOf(admission);
+      const handedOverCursor = previous ? (previous.armedByGeneration === generation ? previous.handedOverCursor : previous.cursor) : undefined;
+      const next = { command, cursor: options.cursor, armedAt: at, armedByGeneration: generation, ...(handedOverCursor !== undefined ? { handedOverCursor } : {}) };
       state = { ...state, subscriptions: [...state.subscriptions.filter((have) => have.command !== command), next] };
     }
     writeCoordinatorState(paths, state);
@@ -217,9 +225,9 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
 export function renderCoordinatorSubscribeSuccess(response: CommandSuccess<CoordinatorSubscribeData>): string[] {
   return [
     response.data.fromSnapshot
-      ? `Inherited watchers from snapshot ${response.data.fromSnapshot}; none is armed. Run each in the background yourself, then register it with subscribe "<command>" --cursor <c>.`
-      : "Subscription registered.",
-    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, ${subscription.inherited ? "inherited, not armed" : `armed by generation ${subscription.armedByGeneration ?? "none"}`})`)
+      ? `Inherited watchers from snapshot ${response.data.fromSnapshot}; none is registered by you yet. Run each in the background yourself, then register it with subscribe "<command>" --cursor <c>.`
+      : "Subscription registered (a record; it does not prove the watcher process is running).",
+    ...response.data.subscriptions.map((subscription) => `- ${subscription.command} (cursor ${subscription.cursor}, ${subscription.inherited ? "inherited, not registered by this generation" : `registered by generation ${subscription.armedByGeneration ?? "none"}`})`)
   ];
 }
 
@@ -241,6 +249,7 @@ export function renderCoordinatorVerifySuccess(response: CommandSuccess<VerifyRe
   return [
     `Verify generation ${data.generation}: ${data.passed ? "passed" : "FAILED"} (snapshot ${data.snapshotSha ?? "none"}).`,
     ...data.items.map((item) => `${item.passed ? "ok  " : item.required ? "FAIL" : "warn"} ${item.id}. ${item.detail}`),
+    ...data.cursorChanges.map((change) => `  cursor changed (warning, not a refusal): ${change.command}: ${change.from} -> ${change.to}`),
     ...data.drift.map((change) => `  changed during handoff: ${change.field}: ${JSON.stringify(change.snapshot)} -> ${JSON.stringify(change.now)}`),
     ...(data.journal.length > 0 ? ["Journal (advisory: model-written, not authority):"] : []),
     ...data.journal.map((entry) => `  ${entry.ageMinutes} min${entry.stale ? " (stale)" : ""}: ${entry.text}`),
@@ -284,11 +293,8 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
   const repoRoot = mainWorktreeRoot(options.repo);
   const data = withDatabase(workspacePath, (db): RenewResult => {
     assertCoordinatorCustody(db, { command: "renew", env: options.env, project: options.project, role: options.role });
-    if (repoRoot === null) {
-      return { outcome: "refused", reason: "repository_unresolved", detail: "The invocation directory is not inside a git repository with a main worktree; run renew from the repository or pass --repo <path>." };
-    }
     const deps = options.deps ?? systemRelayDeps({
-      sources: () => defaultCapsuleSources({ db, repoRoot, project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
+      sources: () => defaultCapsuleSources({ db, repoRoot: repoRoot ?? repositoryRoot(), project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
       ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
       signIn: (provider) => checkProviderSignIn(provider, workspacePath),
       capacity: (provider) => {
@@ -303,6 +309,35 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
   });
   if (data.outcome !== "launched") process.exitCode = 1;
   return createSuccess({ command: "coordinator.renew", workspace: workspacePath, data });
+}
+
+export interface CoordinatorRelaySessionsData { project: string; allowed: string[]; sessions: RelaySessionVerdict[] }
+
+/**
+ * `arcadia coordinator relay-sessions --project <slug>`: read-only. Names the
+ * exact tmux sessions of registered, relay-launched, current custodians that
+ * START's no-competing-Session check tolerates (see relayCoordinatorSessions).
+ * It starts, stops and records nothing.
+ */
+export function runCoordinatorRelaySessionsCommand(options: { workspace: string; project: string }): CommandSuccess<CoordinatorRelaySessionsData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  // Read-only open: START's P2 is documented as making no mutation. A workspace that predates the table has no relay session.
+  const sessions = withReadOnlyDatabase(workspacePath, (db) => {
+    try { return relayCoordinatorSessions(db, options.project); } catch (error) {
+      if (error instanceof Error && /no such table/i.test(error.message)) return [];
+      throw error;
+    }
+  });
+  return createSuccess({
+    command: "coordinator.relay-sessions", workspace: workspacePath,
+    data: { project: options.project, allowed: sessions.filter((session) => session.allowed).map((session) => session.tmuxName), sessions }
+  });
+}
+
+export function renderCoordinatorRelaySessionsSuccess(response: CommandSuccess<CoordinatorRelaySessionsData>): string[] {
+  const { data } = response;
+  if (data.sessions.length === 0) return [`No relay-registered tmux session for ${data.project}.`];
+  return data.sessions.map((session) => `${session.allowed ? "allowed" : "held   "} ${session.tmuxName}: ${session.reason}`);
 }
 
 export function renderCoordinatorRenewSuccess(response: CommandSuccess<RenewResult>): string[] {
