@@ -4,7 +4,7 @@ type: decision
 id: "0200"
 slug: decide-how-a-day-approval-under-decision-0173-reaches-a-rowan-that-takes-over
 project: arcadia
-status: open
+status: approved
 question: Decide how a day approval under Decision 0173 reaches a Rowan that takes over during that day, so a handoff does not need you to retype the approval.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-09
+answer: A. Let a Rowan taking over try one press on your pressed day approval
+decided: 2026-11-09
 ---
 
 # Decision 0200: Decide how a day approval under Decision 0173 reaches a Rowan that takes over during that day, so a handoff does not need you to retype the approval.
