@@ -1,16 +1,15 @@
 // AMC sol palette and sky/star field adapted from Mission Control Site.
+// AMC sol palette and sky/star field adapted from Mission Control Site.
   const root = document.body;
   const landscape = root.querySelector('.canyon-landscape');
-  const pause = root.querySelector('.motion-control');
-  const canvas = root.querySelector('.canyon-sky');
-  const ctx = canvas.getContext('2d');
-  const starCanvas = root.querySelector('.canyon-stars');
-  const sctx = starCanvas.getContext('2d');
+  const canvas = root.querySelector('.canyon-frame');
+  const motionButton = root.querySelector('.motion-control');
+  let paused = false;
+  const ctx = canvas.getContext('2d', { alpha:false });
   const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
   const forcedColors = matchMedia('(forced-colors: active)');
   const darkQuery = matchMedia('(prefers-color-scheme: dark)');
   let started = Date.now();
-  let paused = false;
   try {
     const saved = Number(sessionStorage.getItem('field-notes-sol-start'));
     if (saved > 0 && saved <= started) started = saved;
@@ -18,10 +17,78 @@
     paused = sessionStorage.getItem('field-notes-motion-paused') === 'true';
   } catch {}
   const isStill = () => paused || reduceMotion.matches || forcedColors.matches;
-  const isDark = () => darkQuery.matches;
-  const phase = () => isStill() ? 0 : phaseSince(Date.now() - started);
+  const isDark = () => document.documentElement.dataset.theme ? document.documentElement.dataset.theme === 'dark' : darkQuery.matches;
+  let paletteBlend = Number(isDark());
+  let paletteChange;
+  const phase = () => phaseSince(Date.now() - started);
   let W = 0;
   let H = 0;
+  let displayedPath = location.pathname;
+  const UP_ANGLE = 24;
+  const ASCENT_ANGLE = 44;
+  const STATE_KEY = 'field-notes-camera-v1';
+  const FRAME_KEY = STATE_KEY + '-frame';
+  let saved;
+  try { saved = JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null'); } catch {}
+  const restoreNumber = value => Number.isFinite(value) ? Math.max(0, value) : 0;
+  const initialArticle = root.dataset.fieldView === 'article';
+  const samePath = saved?.pathname === location.pathname;
+  let feedScroll = restoreNumber(saved?.feedScroll);
+  if (!samePath && !initialArticle) feedScroll = 0;
+  let lift = samePath ? Math.min(1, restoreNumber(saved?.lift)) : Number(initialArticle);
+  let previousLift;
+  let travelAnimation;
+  if (lift !== Number(initialArticle)) startAscent(Number(initialArticle));
+  history.scrollRestoration = 'manual';
+  if (samePath) window.scrollTo(0, restoreNumber(saved.scroll));
+
+  function startAscent(target) {
+    travelAnimation = lift === target ? undefined : {
+      from:lift, target, duration:Math.max(270, 1050 * Math.abs(target - lift))
+    };
+  }
+
+  function savePosition() {
+    try {
+      sessionStorage.setItem(STATE_KEY, JSON.stringify({
+        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, lift
+      }));
+    } catch {}
+  }
+
+  function saveVisibleFrame() {
+    savePosition();
+    if (!ctx || isStill() || root.dataset.terrain !== 'live') return;
+    try {
+      const thumbnail = document.createElement('canvas');
+      thumbnail.width = Math.min(900, canvas.width);
+      thumbnail.height = Math.round(canvas.height * thumbnail.width / canvas.width);
+      thumbnail.getContext('2d').drawImage(canvas, 0, 0, thumbnail.width, thumbnail.height);
+      sessionStorage.setItem(FRAME_KEY, JSON.stringify({
+        image:thumbnail.toDataURL('image/webp', .83), width:W, height:H, pathname:location.pathname, lift, feedScroll
+      }));
+    } catch {}
+  }
+
+  async function restoreVisibleFrame() {
+    if (!samePath || !ctx || isStill() || typeof createImageBitmap !== 'function') return;
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(FRAME_KEY) || 'null');
+      if (!cached || cached.pathname !== saved.pathname || cached.lift !== saved.lift || cached.feedScroll !== saved.feedScroll) return;
+      if (cached.width !== landscape.clientWidth || cached.height !== landscape.clientHeight) return;
+      const [header, encoded] = cached.image.split(',');
+      const type = header.slice(5, header.indexOf(';'));
+      const bytes = Uint8Array.from(atob(encoded), character => character.charCodeAt(0));
+      const image = await createImageBitmap(new Blob([bytes], { type }));
+      if (root.dataset.terrain !== 'live' && !isStill()) {
+        canvas.width = image.width;
+        canvas.height = image.height;
+        ctx.drawImage(image, 0, 0);
+        root.dataset.terrain = 'cached';
+      }
+      image.close();
+    } catch {}
+  }
 
   const SOL_MS = 600_000;
 const OPENING_PHASE = 0;
@@ -79,12 +146,14 @@ function skyAt(p, dark) {
 }
 const altitude = (p) => Math.cos(2 * Math.PI * (p - 0.5));
 const nightAt = (p) => smooth(0.1, -0.12, altitude(p));
-function draw() {
-    if (!canvas || !ctx)
-        return;
-    const p = phase();
-    const dark = isDark();
-    const [zenith, midSky, horizon] = skyAt(p, dark);
+function scenePalette(p) {
+    if (paletteBlend === 0 || paletteBlend === 1) return skyAt(p, paletteBlend === 1);
+    const light = skyAt(p, false);
+    const dark = skyAt(p, true);
+    return light.map((color, index) => mix(color, dark[index], paletteBlend));
+}
+function drawSky(colors, p) {
+    const [zenith, midSky, horizon] = colors;
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, rgb(zenith));
     g.addColorStop(0.55, rgb(midSky));
@@ -97,10 +166,10 @@ function draw() {
     const theta = 2 * Math.PI * (p - 0.5);
     const sx = W / 2 + W * 0.46 * Math.sin(theta);
     const sy = H * 0.97 - H * 0.81 * Math.max(alt, -0.1);
-    const breath = isStill() ? 1 : 1 + 0.06 * Math.sin((Date.now() / 1000) * ((2 * Math.PI) / 90));
+    const breath = 1 + 0.06 * Math.sin((Date.now() / 1000) * ((2 * Math.PI) / 90));
     const R = Math.max(W, H) * (0.24 + 0.12 * (1 - Math.max(0, alt))) * breath;
     const glow = mix([70, 150, 255], [255, 226, 190], smooth(0.08, 0.38, alt));
-    const strength = (dark ? 0.55 : 0.6) * smooth(-0.18, 0.02, alt) * (1 - 0.5 * smooth(0.05, 0.4, alt));
+    const strength = (0.6 - 0.05 * paletteBlend) * smooth(-0.18, 0.02, alt) * (1 - 0.5 * smooth(0.05, 0.4, alt));
     const rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
     rg.addColorStop(0, rgb(glow, strength));
     rg.addColorStop(0.3, rgb(glow, strength * 0.4));
@@ -143,14 +212,11 @@ function seedStars() {
         };
     });
 }
-const scrolled = () => window.scrollY;
+const scrolled = () => feedScroll;
 let lastY = scrolled();
 let lastT = performance.now();
 let vel = 0;
-function drawStars() {
-    if (!starCanvas || !sctx)
-        return;
-    const still = isStill();
+function drawStars(p, night) {
     const y0 = scrolled();
     const dy = y0 - lastY;
     const ms = performance.now();
@@ -166,41 +232,36 @@ function drawStars() {
     const cy = H + P;
     const band = H + 2 * pad;
     const now = Date.now() / 1000;
-    const p = phase();
-    const skyT = still ? 0 : now;
     const omega = W / 100 / (P + H / 2);
-    const scroll = still ? 0 : y0;
-    const night = nightAt(p);
     const seen = 0.92 + 0.08 * night;
-    sctx.clearRect(0, 0, W, H);
     for (const s of stars) {
         const radius = P - pad + s.v * band;
         const half = Math.asin(Math.min(1, (W / 2 + pad) / radius));
         const span = 2 * half;
-        const a = -half + ((((s.u * span + omega * (1 + 0.3 * s.z) * skyT) % span) + span) % span);
+        const a = -half + ((((s.u * span + omega * (1 + 0.3 * s.z) * now) % span) + span) % span);
         const x = cx + radius * Math.sin(a);
-        let y = cy - radius * Math.cos(a) - scroll * s.z * 0.35;
+        let y = cy - radius * Math.cos(a) - y0 * s.z * 0.35;
         y = ((((y + pad) % band) + band) % band) - pad;
-        const twinkle = still ? 0.8 : 0.6 + 0.4 * Math.sin(now * ((2 * Math.PI) / s.period) + s.tw);
+        const twinkle = 0.6 + 0.4 * Math.sin(now * ((2 * Math.PI) / s.period) + s.tw);
         const { tint } = s;
         const alpha = s.alpha * seen * twinkle;
         const len = Math.min(90, Math.abs(vel) * s.z * 5);
-        if (!still && len > 1.5) {
+        if (len > 1.5) {
             const tail = y + Math.sign(vel) * len;
-            const streak = sctx.createLinearGradient(x, y, x, tail);
+            const streak = ctx.createLinearGradient(x, y, x, tail);
             streak.addColorStop(0, rgb(tint, alpha * 0.6));
             streak.addColorStop(1, rgb(tint, 0));
-            sctx.strokeStyle = streak;
-            sctx.lineWidth = s.px;
-            sctx.beginPath();
-            sctx.moveTo(x, y);
-            sctx.lineTo(x, tail);
-            sctx.stroke();
+            ctx.strokeStyle = streak;
+            ctx.lineWidth = s.px;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x, tail);
+            ctx.stroke();
         }
-        sctx.fillStyle = rgb(tint, alpha);
-        sctx.beginPath();
-        sctx.arc(x, y, s.px, 0, 7);
-        sctx.fill();
+        ctx.fillStyle = rgb(tint, alpha);
+        ctx.beginPath();
+        ctx.arc(x, y, s.px, 0, 7);
+        ctx.fill();
     }
     const earth = night * smooth(0.77, 0.81, p) * smooth(0.97, 0.9, p);
     if (earth > 0.01) {
@@ -208,56 +269,82 @@ function drawStars() {
         const half = Math.asin(Math.min(1, (W / 2 + pad) / radius));
         const a = -half + 2 * half * (0.45 + (p - 0.77) * 2);
         const ex = cx + radius * Math.sin(a);
-        const ey = cy - radius * Math.cos(a) - scroll * 0.042;
-        sctx.fillStyle = rgb([184, 214, 255], earth);
-        sctx.beginPath();
-        sctx.arc(ex, ey, 2, 0, 7);
-        sctx.fill();
+        const ey = cy - radius * Math.cos(a) - y0 * 0.042;
+        ctx.fillStyle = rgb([184, 214, 255], earth);
+        ctx.beginPath();
+        ctx.arc(ex, ey, 2, 0, 7);
+        ctx.fill();
     }
 }
 
 
+  let terrainFrame;
   let paintTerrain = () => {};
   let resizeTerrain = () => {};
   let frame = 0;
   let previousTerrainPhase;
   let previousTerrainScroll;
-  let previousNight = -1;
+  let previousPaletteBlend;
 
-  function paint() {
+  function paint(now) {
     frame = 0;
-    if (!W || !H || document.hidden) return;
+    if (!ctx || !terrainFrame || !W || !H || isStill() || document.hidden) return;
     const p = phase();
     const night = nightAt(p);
-    const scroll = isStill() ? 0 : window.scrollY;
-    const nightStep = Math.round(night * 100);
-    if (nightStep !== previousNight) {
-      root.style.setProperty('--night', String(nightStep / 100));
-      root.dataset.light = nightStep > 50 ? 'night' : 'day';
-      previousNight = nightStep;
+    const scroll = feedScroll;
+    if (travelAnimation) {
+      const move = travelAnimation;
+      move.started ??= now;
+      const progress = Math.min(1, (now - move.started) / move.duration);
+      const eased = progress * progress * (3 - 2 * progress);
+      lift = move.from + (move.target - move.from) * eased;
+      if (progress === 1) {
+        lift = move.target;
+        travelAnimation = undefined;
+        savePosition();
+      }
     }
-    draw();
-    drawStars();
+    if (paletteChange) {
+      const change = paletteChange;
+      change.started ??= now;
+      const progress = Math.min(1, (now - change.started) / 350);
+      paletteBlend = change.from + (change.target - change.from) * progress;
+      if (progress === 1) paletteChange = undefined;
+    }
+    const colors = scenePalette(p);
     const terrainPhase = Math.round(p * 1200);
-    if (!isStill() && (terrainPhase !== previousTerrainPhase || scroll !== previousTerrainScroll)) {
-      paintTerrain(scroll, p, night);
+    if (terrainPhase !== previousTerrainPhase || scroll !== previousTerrainScroll || lift !== previousLift || paletteBlend !== previousPaletteBlend) {
+      paintTerrain(scroll, night, lift, colors[2]);
+      previousPaletteBlend = paletteBlend;
+      previousLift = lift;
       previousTerrainPhase = terrainPhase;
       previousTerrainScroll = scroll;
     }
+
+    // Present one complete, opaque frame. Resizing an on-screen layer outside
+    // this callback would clear it while the other layers were still visible.
+    if (canvas.width !== terrainFrame.width || canvas.height !== terrainFrame.height) {
+      canvas.width = terrainFrame.width;
+      canvas.height = terrainFrame.height;
+    }
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    drawSky(colors, p);
+    drawStars(p, night);
+    ctx.drawImage(terrainFrame, 0, 0, W, H);
+    if (travelAnimation || paletteChange) schedule();
+    if (root.dataset.terrain !== 'live') root.dataset.terrain = 'live';
   }
 
   function schedule() {
-    if (!frame) frame = requestAnimationFrame(paint);
+    if (ctx && terrainFrame && !frame) frame = requestAnimationFrame(paint);
   }
 
   function resize() {
-    W = landscape.clientWidth;
-    H = landscape.clientHeight;
-    if (!W || !H) return;
-    canvas.width = W;
-    canvas.height = H;
-    starCanvas.width = W;
-    starCanvas.height = H;
+    const width = landscape.clientWidth;
+    const height = landscape.clientHeight;
+    if (!width || !height || (width === W && height === H)) return;
+    W = width;
+    H = height;
     seedStars();
     resizeTerrain();
     previousTerrainPhase = undefined;
@@ -272,13 +359,19 @@ function drawStars() {
   let timer;
   let loadingTerrain = false;
 
+  function showStill() {
+    delete root.dataset.terrain;
+  }
+
   function refreshMotion() {
     clearInterval(timer);
     timer = undefined;
-    pause.hidden = reduceMotion.matches || forcedColors.matches;
-    pause.setAttribute('aria-pressed', String(paused));
+    motionButton.hidden = reduceMotion.matches || forcedColors.matches;
+    motionButton.setAttribute('aria-pressed', String(paused));
     if (isStill()) {
-      delete root.dataset.terrain;
+      paletteBlend = Number(isDark());
+      paletteChange = undefined;
+      showStill();
     } else {
       if (!document.hidden) timer = setInterval(schedule, 100);
       enableTerrain();
@@ -286,22 +379,171 @@ function drawStars() {
     refreshTheme();
   }
 
-  pause.addEventListener('click', () => {
+  const menu = root.querySelector('.explore');
+  const menuButton = menu.querySelector('summary');
+  const home = root.querySelector('.site-title');
+  const homeURL = new URL(home.href);
+  const main = root.querySelector('main');
+  const isFeed = () => main.dataset.fieldView === 'feed';
+
+  root.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && menu.open) {
+      event.preventDefault();
+      menu.open = false;
+      menuButton.focus();
+    }
+  });
+  root.addEventListener('click', event => {
+    if (menu.open && (!menu.contains(event.target) || event.target.closest('.explore-panel a'))) {
+      const returnFocus = menu.contains(document.activeElement);
+      menu.open = false;
+      if (returnFocus) menuButton.focus();
+    }
+  });
+  menu.addEventListener('focusout', event => {
+    if (event.relatedTarget && !menu.contains(event.relatedTarget)) menu.open = false;
+  });
+
+  let pendingPage;
+  let entrySerial = 0;
+  const newEntry = () => `${performance.timeOrigin}:${++entrySerial}`;
+  const entryScroll = new Map();
+  let displayedEntry = history.state?.fieldEntry ?? newEntry();
+  history.replaceState({ ...history.state, fieldEntry:displayedEntry }, '');
+  const isFieldNotesURL = url => url.origin === homeURL.origin
+    && (url.pathname === homeURL.pathname || url.pathname.startsWith(homeURL.pathname + 'posts/'));
+
+  async function openPage(url, { push, offset }) {
+    pendingPage?.abort();
+    const request = new AbortController();
+    pendingPage = request;
+    try {
+      const response = await fetch(url, { signal:request.signal });
+      if (!response.ok) throw new Error('Page unavailable');
+      const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+      if (request.signal.aborted) return;
+      const nextMain = page.querySelector('main[data-field-view]');
+      if (!nextMain || !isFieldNotesURL(new URL(response.url))) throw new Error('Page layout unavailable');
+
+      if (push) {
+        history.replaceState({ ...history.state, fieldScroll:window.scrollY }, '');
+        history.pushState({ fieldEntry:newEntry(), fieldScroll:offset }, '', url);
+        history.scrollRestoration = 'manual';
+      }
+      const wasFeed = isFeed();
+      main.dataset.fieldView = nextMain.dataset.fieldView;
+      displayedPath = location.pathname;
+      displayedEntry = history.state?.fieldEntry ?? newEntry();
+      if (!history.state?.fieldEntry) history.replaceState({ ...history.state, fieldEntry:displayedEntry }, '');
+      main.replaceChildren(...Array.from(nextMain.childNodes, node => document.importNode(node, true)));
+      document.title = page.title;
+      for (const selector of ['link[rel="canonical"]', 'meta[name="description"]']) {
+        const replacement = page.querySelector(selector);
+        if (replacement) document.querySelector(selector)?.replaceWith(document.importNode(replacement, true));
+      }
+      root.dataset.fieldView = main.dataset.fieldView;
+      window.scrollTo(0, offset);
+      entryScroll.set(displayedEntry, window.scrollY);
+      main.focus({ preventScroll:true });
+      if (isFeed()) feedScroll = offset;
+      if (isFeed() !== wasFeed) startAscent(Number(!isFeed()));
+      savePosition();
+      schedule();
+    } catch {
+      if (!request.signal.aborted) location.assign(url);
+    } finally {
+      if (pendingPage === request) pendingPage = undefined;
+    }
+  }
+
+  root.addEventListener('click', event => {
+    const link = event.target.closest('a[href]');
+    if (!link || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey ||
+        event.shiftKey || event.altKey || link.target || link.hasAttribute('download')) return;
+    const url = new URL(link.href);
+    if (!isFieldNotesURL(url) || url.hash || url.search || url.pathname === location.pathname) return;
+    event.preventDefault();
+    void openPage(url, { push:true, offset:url.pathname === homeURL.pathname ? feedScroll : 0 });
+  });
+  window.addEventListener('popstate', event => {
+    const url = new URL(location.href);
+    if (!isFieldNotesURL(url)) return;
+    // Native fragment changes keep the current document.
+    if (url.pathname === displayedPath) {
+      pendingPage?.abort();
+      return;
+    }
+    // The old content is still mounted, even if its last scroll event is queued.
+    entryScroll.set(displayedEntry, window.scrollY);
+    const offset = entryScroll.get(event.state?.fieldEntry) ?? restoreNumber(event.state?.fieldScroll);
+    void openPage(url, { push:false, offset });
+  });
+
+  new ResizeObserver(resize).observe(landscape);
+  window.addEventListener('scroll', () => {
+    if (location.pathname !== displayedPath) return;
+    entryScroll.set(displayedEntry, window.scrollY);
+    if (isFeed()) {
+      feedScroll = Math.max(0, window.scrollY);
+      schedule();
+    }
+  }, { passive:true });
+  window.addEventListener('pagehide', () => {
+    if (location.pathname !== displayedPath) return;
+    saveVisibleFrame();
+    try { history.replaceState({ ...history.state, fieldScroll:window.scrollY }, ''); } catch {}
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && location.pathname === displayedPath) saveVisibleFrame();
+  });
+  motionButton.addEventListener('click', () => {
     paused = !paused;
     try { sessionStorage.setItem('field-notes-motion-paused', String(paused)); } catch {}
     refreshMotion();
   });
-  new ResizeObserver(resize).observe(landscape);
-  window.addEventListener('scroll', () => {
-    if (!isStill()) schedule();
-  }, { passive:true });
   reduceMotion.addEventListener('change', refreshMotion);
   forcedColors.addEventListener('change', refreshMotion);
-  darkQuery.addEventListener('change', refreshTheme);
+  const themeButtons = [...root.querySelectorAll('[data-scheme]')];
+  root.querySelector('.theme-switch').hidden = false;
+  function reflectTheme() {
+    const selected = document.documentElement.dataset.theme || 'system';
+    for (const button of themeButtons) {
+      button.setAttribute('aria-pressed', String(button.dataset.scheme === selected));
+    }
+    const target = Number(isDark());
+    if (isStill()) {
+      paletteBlend = target;
+      paletteChange = undefined;
+    } else if (target !== paletteBlend) {
+      paletteChange = { from:paletteBlend, target };
+    } else {
+      paletteChange = undefined;
+    }
+    refreshTheme();
+  }
+  for (const button of themeButtons) {
+    button.addEventListener('click', () => {
+      const selected = button.dataset.scheme;
+      if (selected === 'system') delete document.documentElement.dataset.theme;
+      else document.documentElement.dataset.theme = selected;
+      try {
+        if (selected === 'system') localStorage.removeItem('field-notes-theme');
+        else localStorage.setItem('field-notes-theme', selected);
+      } catch {}
+      reflectTheme();
+    });
+  }
+  darkQuery.addEventListener('change', () => {
+    if (!document.documentElement.dataset.theme) reflectTheme();
+  });
+  reflectTheme();
   document.addEventListener('visibilitychange', refreshMotion);
 
   function startTerrain(THREE) {
-    const surface = root.querySelector('.canyon-terrain');
+    const surface = document.createElement('canvas');
+    const snapshot = document.createElement('canvas');
+    const snapshotContext = snapshot.getContext('2d');
+    if (!snapshotContext) return;
     const renderer = new THREE.WebGLRenderer({ canvas:surface, alpha:true, antialias:true });
     const scene = new THREE.Scene();
     const fog = new THREE.FogExp2('#6c7496', .027);
@@ -310,14 +552,9 @@ function drawStars() {
     const camera = new THREE.PerspectiveCamera(61, 1, .1, 195);
     scene.add(canyon);
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(380, 340), new THREE.MeshBasicMaterial());
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.z = -90;
-    scene.add(floor);
-    const floorDay = new THREE.Color('#905849');
-    const floorNight = new THREE.Color('#34324b');
     const rockDay = new THREE.Color('#ffffff');
-    const rockNight = new THREE.Color('#8289bf');
+    const rockNight = new THREE.Color('#8b91ce');
+    const horizonTint = new THREE.Color();
     const rock = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
 
     const strata = [0, .19, .28, .45, .51, .64, .79, .89, 1, 1.02];
@@ -353,11 +590,11 @@ function drawStars() {
           const z = (lookBehind - local) * spacing;
           const opening = THREE.MathUtils.smoothstep(Math.sin((distance - 16) * .038), .06, .96);
           const wave = Math.sin(index * .69 + side) + .31 * Math.sin(index * 2.35);
-          const width = 4.55 + .73 * wave + opening * 10.8;
-          const height = (8.3 + wave * 1.42 + .6 * side) * (1 - .59 * opening);
+          const width = 3.9 + .68 * wave + opening * 1.75;
+          const height = 13 + wave * 2.05 + .75 * side - 1.55 * opening;
           return strata.map((level, band) => [
             centerAt(distance) + side * (width + level * 1.85 + .42 * Math.sin(band * 1.8 + index * .48) + (band === 9 ? 16 : 0)),
-            height * level, z
+            band === 0 ? -14 : height * level, z
           ]);
         });
 
@@ -387,37 +624,47 @@ function drawStars() {
       canyon.scale.x = THREE.MathUtils.clamp(camera.aspect * .72, .39, 1);
     };
 
-    paintTerrain = (scroll, p, night) => {
-      if (surface.hidden) return;
+    paintTerrain = (scroll, night, elevation, horizonColor) => {
       const travel = Math.max(0, scroll) * .0355;
       const cell = Math.floor(travel / spacing);
       const z = cell * spacing - travel;
       updateWalls(cell);
       const x = centerAt(travel) * canyon.scale.x;
-      camera.position.set(x, 2.58, z);
-      camera.lookAt(THREE.MathUtils.lerp(x, centerAt(travel + 14) * canyon.scale.x, .62), 2.18, z - 14);
-      const [red, green, blue] = skyAt(p, isDark())[2];
+      const height = 2.58 + elevation * 36;
+      const angle = THREE.MathUtils.lerp(UP_ANGLE, ASCENT_ANGLE, elevation);
+      camera.position.set(x, height, z);
+      camera.lookAt(THREE.MathUtils.lerp(x, centerAt(travel + 14) * canyon.scale.x, .62), height + Math.tan(angle * Math.PI / 180) * 14, z - 14);
+      const [red, green, blue] = horizonColor;
       fog.color.setRGB(red / 255, green / 255, blue / 255, THREE.SRGBColorSpace);
-      floor.material.color.copy(floorDay).lerp(floorNight, night);
-      rock.color.copy(rockDay).lerp(rockNight, night);
+      horizonTint.copy(fog.color);
+      rock.color.copy(rockDay).lerp(rockNight, night).lerp(horizonTint, .25);
       renderer.render(scene, camera);
-      root.dataset.terrain = 'live';
+      // Copy synchronously while WebGL's non-preserved drawing buffer is valid.
+      // The cached terrain also serves frames where only the sky moves.
+      if (snapshot.width !== surface.width || snapshot.height !== surface.height) {
+        snapshot.width = surface.width;
+        snapshot.height = surface.height;
+      }
+      snapshotContext.globalCompositeOperation = 'copy';
+      snapshotContext.drawImage(surface, 0, 0);
     };
 
     surface.addEventListener('webglcontextlost', event => {
       event.preventDefault();
-      surface.hidden = true;
-      delete root.dataset.terrain;
+      terrainFrame = undefined;
+      showStill();
     });
     surface.addEventListener('webglcontextrestored', () => {
-      surface.hidden = false;
+      terrainFrame = snapshot;
       refreshTheme();
     });
-    resize();
+    terrainFrame = snapshot;
+    if (W && H) resizeTerrain();
+    refreshTheme();
   }
 
   async function enableTerrain() {
-    if (loadingTerrain) return;
+    if (!ctx || loadingTerrain) return;
     loadingTerrain = true;
     try {
       const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.min.js');
@@ -427,4 +674,5 @@ function drawStars() {
     }
   }
 
+  restoreVisibleFrame();
   refreshMotion();
