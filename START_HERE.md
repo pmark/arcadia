@@ -2102,7 +2102,11 @@ whose earliest eligible Action is highest in the explicit Action queue, makes
 that Action current, and continues in the same invocation — seeding a
 one-time, reversible FIFO order first when approved legacy Actions have never
 been ordered. A genuine queue tie, an inactive Project, or a document defect
-still refuses. See Decision 0048. If the checked-out base itself is ahead and behind its
+still refuses. See Decision 0048. When an Active production scope covers the
+finished Plan, that activation is held until production is Off: press "Turn
+production Off" on /production, then run `arcadia go --apply --agent <agent>`
+(omit `--apply` to preview) to activate the successor Plan; it is one explicit
+step, and the scope-drift refusals and alerts name it. If the checked-out base itself is ahead and behind its
 remote, the host controller admits only recognized Arcadia-generated
 governance commits, one complete merge base, and a conflict-free result. It
 fetches that one upstream into an isolated controller ref, writes one

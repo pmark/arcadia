@@ -892,7 +892,7 @@ export function readProductionPolicySafely(db: Database.Database): ProductionPol
 
 /** The one-click remedy named by every scope-drift refusal and alert. */
 export const SCOPE_DRIFT_REMEDY =
-  "On /production press \"Turn production Off\" (one click), then apply the Plan change; the current Plan stays active and queued behind until then.";
+  "On /production press \"Turn production Off\" (one click), then apply the Plan change: `arcadia go --apply --agent <codex|claude|opencode>` activates the successor (Decision 0048). The current Plan stays active and queued behind until then.";
 
 /**
  * Whether `currentPlanSlug`, the Project's current Plan, is inside an Active
