@@ -1149,6 +1149,10 @@ function outOfScopePointerHold(
  * done and the pointer has moved out of scope, so the worker will never
  * launch again under this policy. One attention ping per policy revision (an
  * event row is the dedup record) tells the operator to turn production Off.
+ *
+ * A Plan whose last Action just merged has no `current_action` at all (Issue
+ * #2273), so there is no pointer to read: a null `planSlug` names the Project's
+ * checked-in `active_plan`, and the same every-in-scope-Action-done test decides.
  */
 function announceScopeComplete(
   db: Database.Database,
@@ -1156,10 +1160,14 @@ function announceScopeComplete(
 ): void {
   try {
     const read = readProductionPolicySafely(db);
-    if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope || input.planSlug === null) return;
+    if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return;
     const scopeKeys = read.policy.scope.actions.filter((key) => key.startsWith(`${input.projectSlug}/`));
     if (scopeKeys.length === 0) return;
-    const plan = discoverDocs(input.repoRoot).docs.find((doc) => doc.type === "plan" && doc.project === input.projectSlug && doc.slug === input.planSlug);
+    const docs = discoverDocs(input.repoRoot).docs;
+    const projectDoc = docs.find((doc) => doc.type === "project" && doc.slug === input.projectSlug);
+    const planSlug = input.planSlug ?? (projectDoc?.type === "project" ? projectDoc.activePlan : null) ?? null;
+    if (planSlug === null) return;
+    const plan = docs.find((doc) => doc.type === "plan" && doc.project === input.projectSlug && doc.slug === planSlug);
     if (plan?.type !== "plan") return;
     const done = new Set(plan.actions.filter((action) => action.status === "done").map((action) => `${input.projectSlug}/${action.id}`));
     if (!scopeKeys.every((key) => done.has(key))) return;
@@ -2670,6 +2678,12 @@ function attemptProjectLaunch(
   }
 
   let transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux, supersededCompletionAskIds: resumedSessionSupersededAskIds(db, input.repoRoot, input.projectSlug, input.tmux) });
+  // Issue #2273: a Plan whose last Action merged names no Action, so neither the
+  // out-of-scope-pointer branch below nor any later one is reached. Announce before
+  // the successor-activation attempt, which an Active scope over this Plan holds.
+  if (!transition.dispatch.context) {
+    announceScopeComplete(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, planSlug: null, now: input.now, log: input.log });
+  }
   if (transition.kind === "activate" && transition.activation?.candidate) {
     // Decision 0048: the active Plan cannot continue, but the explicit queue
     // names exactly one approved Plan and Action. Activate it in this same tick
