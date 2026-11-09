@@ -778,8 +778,7 @@ phase_p1() {
 # No competing Session (P2 and, again, P4).
 #
 # Decision 0156 retains "zero live admissions and no live Sessions" as a START gate (Decision 0143's no-Session guard). This
-# check RELAXES that gate for one case, and that relaxation awaits a Decision (pending Decision; none is cited here, and until
-# one is approved the tolerance should be treated as unapproved). Background: Decision 0191 launches successor coordinators
+# check RELAXES that gate for one case, as Decision 0201 option A approves. Background: Decision 0191 launches successor coordinators
 # under tmux, so a bare "no tmux session at all" refuses every START while a relay coordinator runs.
 #
 # The one tolerated case: a live tmux session that (1) has the EXACT name `arcadia coordinator relay-sessions` returns for a

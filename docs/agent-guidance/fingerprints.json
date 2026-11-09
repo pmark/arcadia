@@ -3,7 +3,7 @@
   "fingerprints": {
     "continuation": "ee9da1e2887a6a1f021f88cbdf58a0311355f8283aabc42d2c500ff61b05997f",
     "agent-asks": "e321345d3a373048ad8b9f08b9d30d715c67b39780d64187dc5f2ea93e129229",
-    "operator-actions": "472d0a78ad94b4889e23343843e4aa2a00df244dfd35677021af7b29687e0b06",
+    "operator-actions": "9b710c625fd60320e74e525aa18e2fbdecbd068aa0178d8082fd1a0fdd6386f2",
     "proposals": "2b781df466a30191591790e5029f8107dc9d6e18cc1f1cf264a90cf3d092ac62",
     "principles": "119a74f7aaaa14380943f2a965a3a8f60e71fa01f67483c801bc3be5f9ea0894",
     "pull-requests": "496e22a0f6d838b81f4cea3b5107c46a2ce33b62aa3c699c3ee70c980fb7df45",
@@ -29,7 +29,7 @@
     "native-mail-checkpoints": "d7ec26cdb43e93ba17fb253646bf2f33b14e4b3031b3a3bae1c67bd5d4bd97ae",
     "process-critic": "b8f75307eb548a87c8adffe1396418b90fe4f0b961fd8df978e1bd5a4442d3b8",
     "relay-mode": "2f35bdae84f056f7c09e74314d6f23787f8575a36e6acc6fb2c6f0654c3fa8d1",
-    "coordinator-handoff": "623e8f6c377a1c666060ceb315bd7501ad6b9772303a9b3093d3a6220fdd70aa",
+    "coordinator-handoff": "0bb534b385f66813640d102acfd68f6165be920da5bd5dded118733a038e1670",
     "signal": "1f1b13c75b07467029c44d74ddabc49eec2c905c7fe76b1c905486710027813a"
   }
 }
