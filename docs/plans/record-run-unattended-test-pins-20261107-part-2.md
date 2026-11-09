@@ -231,11 +231,11 @@ actions:
     references: []
   - id: pin-milestone-and-log-doc-refs
     title: Pin the plan milestone and Log entry document reference formats, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the plan milestone and Log entry document reference formats, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-milestone-and-log-doc-refs-d242b42d85bd; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-milestone-and-log-doc-refs
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-milestone-and-log-doc-refs
+current_action: pin-yaml-scalar-quoting
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
