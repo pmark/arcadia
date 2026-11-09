@@ -4,7 +4,7 @@ type: decision
 id: "0079"
 slug: decide-whether-to-activate-exactly-one-bounded-docker-host-audit-of-the
 project: arcadia
-status: open
+status: approved
 question: "Decide whether to activate exactly one bounded Docker host audit of the preserved PPN baseline static export, and accept the host-route substitute for Issue #847s named-profile-only check. No activation or PPN measurement has occurred."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: bootstrap-managed-production-to-build-flight-deck
-updated: 2026-10-02
+updated: 2026-11-08
+answer: Keep the Docker route inactive
+decided: 2026-11-08
 ---
 
 # Decision 0079: Decide whether to activate exactly one bounded Docker host audit of the preserved PPN baseline static export, and accept the host-route substitute for Issue #847s named-profile-only check. No activation or PPN measurement has occurred.
