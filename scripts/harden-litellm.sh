@@ -101,6 +101,8 @@ for f in "${CONFIG}" "${COMPOSE}" "${PLIST}"; do
   [ -f "${f}" ] || die "missing file: ${f} (pass --litellm-dir/--config/--compose/--plist)" 3
 done
 command -v python3 >/dev/null || die "python3 is required" 3
+COMPOSE="$(cd "$(dirname "${COMPOSE}")" && pwd -P)/$(basename "${COMPOSE}")"
+LAUNCHER="$(dirname "${COMPOSE}")/start-litellm.sh"
 
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/harden-litellm.XXXXXX")"
 trap 'rm -rf "${STAGE}"' EXIT
@@ -185,7 +187,7 @@ fi
 # a key-shaped literal in a file this script does not rewrite would survive the hardening
 UNMANAGED=()
 for f in "${DIR}/.env" "${DIR}/.env.local"; do
-  [ -f "${f}" ] && grep -Eq '(API_KEY|api_key)[:=] *["'\'']?sk-[A-Za-z0-9_-]{20,}' "${f}" && UNMANAGED+=("${f}")
+  [ -f "${f}" ] && grep -Eq '(API_KEY|api_key)["'\'']?[:=] *["'\'']?sk-[A-Za-z0-9_-]{20,}' "${f}" && UNMANAGED+=("${f}")
 done
 if [ "${#UNMANAGED[@]}" -gt 0 ]; then
   die "key-shaped literal in ${UNMANAGED[*]}; this script does not rewrite those files. Move it by hand, then rerun." 3
@@ -318,7 +320,7 @@ else
 fi
 
 for f in "${CONFIG}" "${COMPOSE}" "${LAUNCHER}" "${PLIST}"; do
-  if grep -Eq '(API_KEY|api_key)[:=] *["'\'']?sk-[A-Za-z0-9_-]{20,}' "${f}"; then verify_fail "${f} still contains a key-shaped literal"; fi
+  if grep -Eq '(API_KEY|api_key)["'\'']?[:=] *["'\'']?sk-[A-Za-z0-9_-]{20,}' "${f}"; then verify_fail "${f} still contains a key-shaped literal"; fi
 done
 [ "${FAIL}" -eq 0 ] && say "verify ok: no key-shaped literal in config, compose, launcher or plist"
 awk -v b="${BUDGET}" '/^litellm_settings:/ { f = 1; next } /^[^ #\t]/ { f = 0 } f && /^[ \t]+max_budget:/ { if ($2 + 0 == b + 0) ok = 1 } END { exit !ok }' "${CONFIG}" || verify_fail "max_budget is not ${BUDGET} under litellm_settings in the config"

@@ -59,7 +59,7 @@ ANY_KEY = re.compile(r"""api_key["']?\s*:\s*["']?sk-[A-Za-z0-9_\-]{20,}""")
 def check_shapes(lines):
     for line in lines:
         if ANY_KEY.search(line) and not KEY_LINE.match(line):
-            refuse("a literal api_key is written in a form this script will not rewrite (flow style or inline); move it by hand")
+            refuse("a literal api_key is written in a form this script will not rewrite (flow style, inline or commented out); move or delete it by hand")
 
 
 def config_keys(lines):
