@@ -332,11 +332,11 @@ actions:
     references: []
   - id: pin-liveness-duration-format
     title: Pin the production liveness duration format and the stale episode key, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the production liveness duration format and the stale episode key, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-liveness-duration-format-f3cb73598240; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-liveness-duration-format
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-liveness-duration-format
+current_action: pin-repository-frame-extraction
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
