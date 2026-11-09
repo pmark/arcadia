@@ -352,11 +352,11 @@ actions:
     references: []
   - id: pin-repository-frame-extraction
     title: "Pin that the first repository stack frame is the first tests, src or scripts file:line, with a new test file."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin that the first repository stack frame is the first tests, src or scripts file:line, with a new test file."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-repository-frame-extraction-19d9d69e9853; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-repository-frame-extraction
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-repository-frame-extraction
+current_action: pin-defect-summary-similarity
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
