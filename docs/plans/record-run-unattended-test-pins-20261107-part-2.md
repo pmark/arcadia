@@ -211,11 +211,11 @@ actions:
     references: []
   - id: pin-north-star-step-reasons
     title: "Pin the North Star step reason helpers: gate and remainder prefixes and the one-line 300-character cut, with a new test file."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin the North Star step reason helpers: gate and remainder prefixes and the one-line 300-character cut, with a new test file."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-north-star-step-reasons-34b6eb15715b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-north-star-step-reasons
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-north-star-step-reasons
+current_action: pin-milestone-and-log-doc-refs
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
