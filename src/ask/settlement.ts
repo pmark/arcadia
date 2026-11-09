@@ -2727,6 +2727,7 @@ function newDraftPlan(
     `    title: ${yamlScalar(action.desiredResult)}`,
     "    status: open",
     `    responsibility: ${responsibility}`,
+    ...(action.execution ? [`    execution: ${action.execution}`] : []),
     "    effort: session",
     `    next_action: ${yamlScalar(action.desiredResult)}`,
     `    expected_artifact: ${yamlScalar(`Evidence satisfying Agent Ask ${action.id}`)}`,
