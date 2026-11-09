@@ -133,7 +133,7 @@ COMPOSE_OUT="$("${EDIT[@]}" compose-edit "${COMPOSE}" "${STAGE}/compose" --conta
 printf '%s\n' "${COMPOSE_OUT}" >"${STAGE}/compose.out"
 
 DOCKER_BIN=""
-if [ -f "${LAUNCHER}" ]; then DOCKER_BIN="$(sed -n 's/^exec "\(.*\)" compose up$/\1/p' "${LAUNCHER}")"; fi
+if [ -f "${LAUNCHER}" ]; then DOCKER_BIN="$(sed -n 's/^exec "\([^"]*\)" compose.*$/\1/p' "${LAUNCHER}")"; fi
 if [ -z "${DOCKER_BIN}" ]; then
   DOCKER_BIN="$("${EDIT[@]}" plist-edit "${PLIST}" "${STAGE}/plist.probe" --launcher "${LAUNCHER}" | sed -n 's/^docker: //p')"
 fi
@@ -148,7 +148,7 @@ set -euo pipefail
 ${ENV_VAR}="\$(/usr/bin/security find-generic-password -s ${KC_SERVICE} -a ${KC_ACCOUNT} -w)"
 export ${ENV_VAR}
 cd "\$(dirname "\$0")"
-exec "${DOCKER_BIN}" compose up
+exec "${DOCKER_BIN}" compose -f "${COMPOSE}" up
 EOF
 
 consider() { # name real staged
@@ -194,7 +194,8 @@ fi
 # ---- production window gate for the restart -----------------------------------------------------
 PROD_STATE="unobservable"
 if command -v arcadia >/dev/null 2>&1; then
-  PROD_STATE="$(arcadia production status 2>/dev/null | head -n 1 || true)"
+  # real output: "Managed production" then an indented state label such as "Inactive" or "Active · ..."
+  PROD_STATE="$(arcadia production status 2>/dev/null | awk '/^Managed production/ { getline; sub(/^ +/, ""); print; exit }' || true)"
   [ -n "${PROD_STATE}" ] || PROD_STATE="unobservable"
 fi
 
@@ -221,7 +222,8 @@ RESTORE=()
 CHANGED_COUNT="${#CHANGED_FILES[@]}"
 if [ "${CHANGED_COUNT}" -gt 0 ] && ! ${NO_RESTART} && ! ${IGNORE_WINDOW}; then
   case "${PROD_STATE}" in
-    Active*|unobservable) die "managed production is '${PROD_STATE}'; a LiteLLM restart is deferred. Rerun after production is Off, or pass --ignore-production-window to authorize this one interruption." 3 ;;
+    Inactive*) ;;
+    *) die "managed production is '${PROD_STATE}'; a LiteLLM restart is deferred unless production reads Inactive. Rerun after production is Off, or pass --ignore-production-window to authorize this one interruption." 3 ;;
   esac
 fi
 
@@ -257,22 +259,29 @@ restore_line() {
   [ -n "${out}" ] && printf '%s; launchctl bootout gui/%s/%s 2>/dev/null; launchctl bootstrap gui/%s %q\n' "${out}" "$(id -u)" "${LABEL}" "$(id -u)" "${PLIST}"
 }
 
+if [ "${CHANGED_COUNT}" -gt 0 ]; then
+  say ""
+  say "restore (one line):"
+  say "$(restore_line)"
+fi
+
 # ---- restart -------------------------------------------------------------------------------------
 UIDN="$(id -u)"
+RESTART_FAILED=false
 if [ "${CHANGED_COUNT}" -gt 0 ] && ! ${NO_RESTART}; then
   if launchctl print "gui/${UIDN}/${LABEL}" >/dev/null 2>&1; then
     say "restart: reloading launchd job ${LABEL}"
     launchctl bootout "gui/${UIDN}/${LABEL}" >/dev/null 2>&1 || true
     for _ in 1 2 3 4 5 6 7 8 9 10; do launchctl print "gui/${UIDN}/${LABEL}" >/dev/null 2>&1 || break; sleep 1; done
-    launchctl bootstrap "gui/${UIDN}" "${PLIST}"
+    launchctl bootstrap "gui/${UIDN}" "${PLIST}" || RESTART_FAILED=true
   else
     say "restart: ${LABEL} is not loaded in launchd; running 'docker compose up -d' for the service"
     (
       cd "${DIR}"
       OPENAI_KEY_TMP="$(security find-generic-password "${KC_ARGS[@]}" -w)"
       export "${ENV_VAR}=${OPENAI_KEY_TMP}"
-      "${DOCKER_BIN}" compose up -d
-    ) >/dev/null
+      "${DOCKER_BIN}" compose -f "${COMPOSE}" up -d
+    ) >/dev/null || RESTART_FAILED=true
   fi
 elif ${NO_RESTART}; then
   say "restart: skipped (--no-restart); the running container still has the old settings"
@@ -281,6 +290,7 @@ fi
 # ---- verify --------------------------------------------------------------------------------------
 FAIL=0
 verify_fail() { say "VERIFY FAIL: $1"; FAIL=1; }
+${RESTART_FAILED} && verify_fail "the restart command failed; the restore line printed above puts the old files back"
 if ${NO_RESTART}; then
   say "verify: skipped (--no-restart)"
 else
@@ -311,20 +321,13 @@ for f in "${CONFIG}" "${COMPOSE}" "${LAUNCHER}" "${PLIST}"; do
   if grep -Eq '(API_KEY|api_key)[:=] *["'\'']?sk-[A-Za-z0-9_-]{20,}' "${f}"; then verify_fail "${f} still contains a key-shaped literal"; fi
 done
 [ "${FAIL}" -eq 0 ] && say "verify ok: no key-shaped literal in config, compose, launcher or plist"
-grep -Eq "^ *max_budget: *${BUDGET}" "${CONFIG}" 2>/dev/null || awk -v b="${BUDGET}" '/^ *max_budget:/ { if ($2 + 0 == b + 0) f = 1 } END { exit !f }' "${CONFIG}" || verify_fail "max_budget is not ${BUDGET} in the config"
+awk -v b="${BUDGET}" '/^litellm_settings:/ { f = 1; next } /^[^ #\t]/ { f = 0 } f && /^[ \t]+max_budget:/ { if ($2 + 0 == b + 0) ok = 1 } END { exit !ok }' "${CONFIG}" || verify_fail "max_budget is not ${BUDGET} under litellm_settings in the config"
 kc_has && say "verify ok: keychain item ${KC_SERVICE}/${KC_ACCOUNT} exists" || verify_fail "keychain item missing"
 
 say ""
-RL="$(restore_line || true)"
-if [ -n "${RL}" ]; then
-  say "restore (one line):"
-  say "${RL}"
-else
-  say "restore: nothing was changed, so there is nothing to restore."
-fi
+[ "${CHANGED_COUNT}" -gt 0 ] || say "restore: nothing was changed, so there is nothing to restore."
 if [ "${CHANGED_COUNT}" -gt 0 ]; then
-  say ""
-  say "Notes: the backup of the old config still contains the old key and was exposed while port 4000 listened on all interfaces."
+  say "Notes: every backup is a copy of the old file, so the config backup (and any compose or plist backup) still contains the old key, which was exposed while port 4000 listened on all interfaces."
   say "  Rotate that key at the provider, put the new one in the keychain, then delete the old backup(s)."
   say "  Keychain access: launchd reads the item with /usr/bin/security; if the key prompt appears once, choose Always Allow."
 fi

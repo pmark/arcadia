@@ -70,7 +70,7 @@ exit 0
 exit 0
 `,
   arcadia: `#!/bin/bash
-echo "\${FAKE_PRODUCTION:-Inactive}"
+printf 'Managed production\\n  %s\\n  Observed: now\\n' "\${FAKE_PRODUCTION:-Inactive}"
 `,
   lsof: `#!/bin/bash
 if [ -n "\${FAKE_LSOF_WIDE:-}" ] || ! grep -q '127.0.0.1:4000' "$FAKE_COMPOSE"; then echo 'n*:4000'; else echo 'n127.0.0.1:4000'; fi
@@ -204,6 +204,15 @@ describe("harden-litellm.sh against a fake installation", () => {
     expect(result.status).toBe(3);
     expect(f.read(f.files.config)).toBe(CONFIG);
     expect(f.backups()).toEqual([]);
+  });
+
+  it("refuses a literal key in a form it will not rewrite, before any change", () => {
+    const f = fixture();
+    writeFileSync(f.files.config, CONFIG + "extra:\n  litellm_params: {api_key: " + FAKE_KEY + "}\n");
+    const result = f.run(["--budget-usd", "25", "--apply"]);
+    expect(result.status).toBe(3);
+    expect(f.backups()).toEqual([]);
+    expect(result.out).not.toContain(FAKE_KEY);
   });
 
   it("refuses a compose file it cannot understand", () => {

@@ -53,12 +53,23 @@ def continues(line, child):
     return here > child or (here == child and line.lstrip().startswith("-"))
 
 
+ANY_KEY = re.compile(r"""api_key["']?\s*:\s*["']?sk-[A-Za-z0-9_\-]{20,}""")
+
+
+def check_shapes(lines):
+    for line in lines:
+        if ANY_KEY.search(line) and not KEY_LINE.match(line):
+            refuse("a literal api_key is written in a form this script will not rewrite (flow style or inline); move it by hand")
+
+
 def config_keys(lines):
     return [m.group(3) for m in (KEY_LINE.match(line) for line in lines) if m]
 
 
 def cmd_config_key(args):
-    keys = set(config_keys(read_lines(args.file)))
+    all_lines = read_lines(args.file)
+    check_shapes(all_lines)
+    keys = set(config_keys(all_lines))
     if len(keys) > 1:
         refuse("more than one distinct literal api_key; move them by hand")
     if args.print_key and keys:
@@ -68,6 +79,7 @@ def cmd_config_key(args):
 
 def cmd_config_edit(args):
     lines = read_lines(args.file)
+    check_shapes(lines)
     if len({k for k in config_keys(lines)}) > 1:
         refuse("more than one distinct literal api_key; move them by hand")
     changes = []
