@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: record-run-unattended-test-pins-20261107-part-2
 project: arcadia
-status: active
+status: complete
 milestone: Record run unattended test pins 20261107 part 2
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -393,11 +393,11 @@ actions:
     references: []
   - id: pin-inline-text-escaping
     title: Pin that governed prose is rendered inline with Markdown, entities and @ escaped, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that governed prose is rendered inline with Markdown, entities and @ escaped, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-inline-text-escaping-98b4bce3754c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-inline-text-escaping
     clarification: clarified
     confidence: high
@@ -414,7 +414,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-inline-text-escaping
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
