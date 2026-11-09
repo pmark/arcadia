@@ -169,8 +169,37 @@ describe("working-copy safety monitor", () => {
     expect(lines.join("\n")).not.toContain("alpha-landed");
     expect(formatWorkingCopySafetyLines(broken, 2)).toEqual([
       "Broken: Repository path is missing: /fixture/broken",
-      "Alpha / alpha-dirty — summary for alpha-dirty Preservation: UNSAVED; delivery: WORKING."
+      "Alpha / alpha-dirty — summary for alpha-dirty Preservation: UNSAVED; delivery: WORKING.",
+      "5 more not shown: Alpha 2, Beta 3."
     ]);
+  });
+
+  it("says how many lines the limit cut and from which Projects, and adds nothing when none are cut", () => {
+    // Beta is listed first so Project-name order, not insertion order, orders the summary.
+    const beta = handBuiltRepository("beta", "Beta", [
+      handBuiltCopy("beta", "Beta", "beta-dirty", "unsaved", "working"),
+      handBuiltCopy("beta", "Beta", "beta-local", "local_only", "needs_preservation"),
+      handBuiltCopy("beta", "Beta", "beta-pushed", "pushed", "needs_pr")
+    ]);
+    const alpha = handBuiltRepository("alpha", "Alpha", [
+      handBuiltCopy("alpha", "Alpha", "alpha-dirty", "unsaved", "working"),
+      handBuiltCopy("alpha", "Alpha", "alpha-local", "local_only", "needs_preservation")
+    ]);
+    const broken = { projectId: "broken", projectName: "Broken", repositoryPath: "/fixture/broken", baseRef: null, workingCopies: [], error: "Repository path is missing: /fixture/broken" };
+    const snapshot = handBuiltSnapshot([beta, alpha, broken]);
+
+    // Order: Broken error, alpha-dirty, beta-dirty, alpha-local, beta-local, beta-pushed.
+    const full = formatWorkingCopySafetyLines(snapshot, 20);
+    expect(full).toHaveLength(6);
+    expect(full.join("\n")).not.toContain("more not shown");
+    const cut = formatWorkingCopySafetyLines(snapshot, 3);
+    expect(cut).toHaveLength(4);
+    expect(cut.slice(0, 3)).toEqual(full.slice(0, 3));
+    expect(cut[3]).toBe("3 more not shown: Alpha 1, Beta 2.");
+
+    // A cut repository error line counts under its own Project.
+    expect(formatWorkingCopySafetyLines(snapshot, 0)).toEqual(["6 more not shown: Alpha 2, Beta 3, Broken 1."]);
+    expect(formatWorkingCopySafetyLines(snapshot, 6)).toEqual(full);
   });
 });
 
