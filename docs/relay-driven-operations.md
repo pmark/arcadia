@@ -48,6 +48,11 @@ Until Relay v1.0 exists, "Relay" means two things, and both count:
   `/api/feedback` from `/capture` and `/momentum`; the overlay has no such
   control yet.
 
+**The overlay alone does not feed the loop yet.** No session watches it, so a
+complaint typed there becomes an Ask or a clarification Decision, not a triage
+signal. Until that gap is built, a gap met in the overlay enters the loop only
+when the operator mentions it in a Relay-mode session, which captures it.
+
 The operator never types a command, path or format. What they type is a
 request, a complaint or an answer. A "yes" in chat is still not a Decision
 answer; Decisions are answered by the operator's own letter.
@@ -60,15 +65,17 @@ Nothing new is stored. Each kind of gap already has one home:
 | --- | --- | --- |
 | The session did something Relay should have done | `arcadia learn "Relay improvised: <kind> — …"`, exact line from the skill's table | Yes |
 | Relay could not do it at all | `arcadia learn "Relay can't yet: <kind> — …"` | Yes |
-| The operator said an Ask answer was wrong or useless | thumbs-down through `/api/feedback` or `arcadia feedback record`; in the Relay overlay or a Relay-mode chat, the session captures the operator's own words with `arcadia learn` | Yes |
+| The operator said an Ask answer was wrong or useless | thumbs-down through `/api/feedback` or `arcadia feedback record`; in a Relay-mode chat, the session captures the operator's own words with `arcadia learn` | Yes, except in the overlay |
 | Production stopped, refused or stalled | a red alert in `arcadia production status`, or an `/todo` escalation | Yes, automatic |
 | A code defect | a GitHub Issue in the owning repository | Yes |
 | A missing capability | a `proposal` Agent Ask | Yes |
 
 Capture costs about a second and no model. A repeat of the same lesson text
-adds an occurrence rather than a new lesson, so frequency builds itself and
-becomes the priority signal. That only works when the skill's table line is
-copied verbatim; a reworded tail splits one kind into several lessons.
+with new `--evidence` adds an occurrence rather than a new lesson, so frequency
+builds itself and becomes the priority signal. That only works when the skill's
+table line is copied verbatim, since a reworded tail splits one kind into
+several lessons, and when the evidence names its UTC time, since a repeat with
+no evidence or identical evidence adds no occurrence.
 
 ## 3. Triage: every new signal gets exactly one disposition
 
@@ -80,8 +87,9 @@ calendar wait gates it.
 **Input:** today the session stitches it from `arcadia learn search "Relay
 improvised:"`, `arcadia learn search "Relay can't yet:"`, `arcadia production
 status`, `arcadia feedback list` and the open Issues. That stitching is itself
-improvised (`summarize-state`), so the Plan's first Action replaces it with one
-read-only view.
+improvised (`summarize-state`), so the Plan's first Action puts the lessons and
+red alerts in one read-only view. Thumbs-down feedback and open Issues stay
+separate checks in each pass, because that view does not read them.
 
 **Dispositions** — exactly one per signal:
 
@@ -90,8 +98,8 @@ read-only view.
 | **Routed** | An existing Action already covers it | Nothing new; the signal is cited by that Action's `references` |
 | **Build** | An agent can fix it in one session with observable acceptance | One Action appended to the loop Plan by Agent Ask, with `execution: build`, a one-line `why`, and `references` citing the signal |
 | **Unblock the run** | It blocks a Session that is running now | `arcadia schedule discover --kind blocker` or `corrective` from inside that Run (Decision 0059) |
-| **Ask** | A reasonable person could choose differently, or it crosses a gate | A `decision` Agent Ask with lettered options and consequences |
-| **Not now** | It is real but not worth a slot yet | A `follow_up` or deferral that names its revival trigger |
+| **Ask** | A reasonable person could choose differently, or it crosses a gate | A `decision` Agent Ask with lettered options and consequences, whose `rationale` cites the signal so it is not asked twice |
+| **Not now** | It is real but not worth a slot yet | An Action classed `follow_up`, citing the signal in `references` and naming its revival trigger, so it does not come back as new |
 
 **Order inside the queue** follows the prioritization criterion: rank by what
 changes dispatch or operator behavior, not by implementation cost.
@@ -118,9 +126,10 @@ runs are recorded in the readiness checklist like any other.
   The loop Plan is created as an inactive draft, and the first operator choice
   in Relay is when to activate it: now, parking the current Plan's unfinished
   Actions, or when the current Plan completes. Activation is the operator's
-  choice, offered as a picker with its consequence, and follows the "Accept a
-  draft Plan before activating it" note in `docs/notes-to-self.md`. Its two
-  plumbing Actions sit at the front.
+  choice, offered as a picker with its consequence in a Relay-mode session, and
+  follows the "Accept a draft Plan before activating it" note in
+  `docs/notes-to-self.md`. The overlay cannot present or apply this choice yet.
+  Its two plumbing Actions sit at the front.
 - **Where a Build Action goes.**
   - While the loop Plan is active: `intent: action`, which places it in the
     queue at once.
@@ -161,7 +170,7 @@ already exists.
 
 | Gap | Why it matters | Action |
 | --- | --- | --- |
-| No single list of new Relay and production signals | Every triage pass is hand-stitched from five commands, which costs tokens and misses signals | `list-relay-gap-signals-for-triage` |
+| No single list of new Relay and production signals | Every triage pass stitches lessons and red alerts by hand, which costs tokens and misses signals | `list-relay-gap-signals-for-triage` |
 | Nothing shows which signals a landed change answered, or which recurred after it | The loop cannot close, and recurrence goes unseen | `show-landed-and-recurred-relay-signals` |
 
 Gaps found later, in Relay or in production, enter through step 2 like any
