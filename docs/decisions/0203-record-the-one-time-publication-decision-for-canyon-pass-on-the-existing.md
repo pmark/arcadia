@@ -4,7 +4,7 @@ type: decision
 id: "0203"
 slug: record-the-one-time-publication-decision-for-canyon-pass-on-the-existing
 project: arcadia
-status: open
+status: approved
 question: "Record the one-time publication Decision for Canyon Pass on the existing Arcadia Field Notes GitHub Pages site via PR #2381 and the existing Blog workflow, after exact-head independent review and all required checks pass."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-09
+answer: Publish Canyon Pass
+decided: 2026-11-09
 ---
 
 # Decision 0203: Record the one-time publication Decision for Canyon Pass on the existing Arcadia Field Notes GitHub Pages site via PR #2381 and the existing Blog workflow, after exact-head independent review and all required checks pass.
