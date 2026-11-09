@@ -396,7 +396,8 @@ function drawStars() {
       const x = centerAt(travel) * canyon.scale.x;
       camera.position.set(x, 2.58, z);
       camera.lookAt(THREE.MathUtils.lerp(x, centerAt(travel + 14) * canyon.scale.x, .62), 2.18, z - 14);
-      fog.color.setStyle(rgb(skyAt(p, isDark())[2]));
+      const [red, green, blue] = skyAt(p, isDark())[2];
+      fog.color.setRGB(red / 255, green / 255, blue / 255, THREE.SRGBColorSpace);
       floor.material.color.copy(floorDay).lerp(floorNight, night);
       rock.color.copy(rockDay).lerp(rockNight, night);
       renderer.render(scene, camera);
