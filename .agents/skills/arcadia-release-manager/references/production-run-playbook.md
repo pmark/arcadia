@@ -201,7 +201,10 @@ batch, and only then ask for the press.
   scope, and a permission check can match it. A standing order that names no
   PR did not pass the host's merge check; a relayed answer that named the PR did.
 - An approval counts only in the acting session's own chat. Relayed words or
-  a memory default from another session are not approval.
+  a memory default from another session are not approval. One exception: under
+  Decision 0200 option A, a day approval pressed on /actions covers a Rowan taking
+  over that day for one press without new words. If the host refuses it, the
+  day's delegation ends (Decisions 0163, 0173): do not retry.
 - Before offering "record the answer as given", dry-run the exact answer:
   `arcadia decision approve --dry-run`. For a Decision that offers options it
   records only one of their labels, so a broader answer needs a Decision that
