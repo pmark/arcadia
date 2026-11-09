@@ -353,10 +353,10 @@ function isOwnActivationCommit(cwd: string, commit: string, parent: string, subj
   const actionId = parsed?.[2].split("/").pop();
   if (!slug || !actionId || !ACTIVATE_TRAILER.test(message)) return false;
   const project = frontmatter(rawBlob(cwd, commit, "PROJECT.md"));
-  // It must really activate: the Project now names the subject's Plan and Action, the parent named a different
-  // Plan, and the activated Plan is `active`, so a hand-made commit cannot re-point at any Plan or status.
+  // It must really activate: the Project now names the subject's Plan and Action and the activated Plan is
+  // `active`, so a hand-made commit cannot re-point at any Plan or status. A same-Plan activation (the parent
+  // already named it, src/dispatch/planActivation.ts) is legitimate and accepted.
   if (project?.active_plan !== slug || project?.current_action !== actionId) return false;
-  if (frontmatter(tryGit(cwd, ["show", `${parent}:PROJECT.md`]))?.active_plan === slug) return false;
   const plan = activePlanPath(cwd, commit);
   if (plan === null) return false;
   if (frontmatter(rawBlob(cwd, commit, plan))?.status !== "active") return false;

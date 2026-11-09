@@ -184,14 +184,14 @@ describe("a local base ahead only by its own pointer commits", () => {
     expect(sync()).toMatchObject({ outcome: "refused" });
   });
 
-  it("refuses an activation-shaped commit whose parent already named the subject's Plan", () => {
+  it("reconciles over a same-Plan activation commit whose parent already named the Plan", () => {
     writeDoc(repo, "PROJECT.md", projectDoc("b0", "2026-11-01", "other-plan"));
     commitAll(repo, "point the Project at other-plan on the remote");
     git(repo, ["push", "-q", "origin", "main"]);
     git(other, ["pull", "-q", "--ff-only"]);
     activate(repo);
     remoteAdvances();
-    expect(sync()).toMatchObject({ outcome: "refused" });
+    expect(sync()).toMatchObject({ outcome: "reconciled" });
   });
 
   it("still fast-forwards a base that is only behind", () => {
