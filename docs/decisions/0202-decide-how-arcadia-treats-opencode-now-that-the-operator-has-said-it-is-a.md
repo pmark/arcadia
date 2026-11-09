@@ -4,7 +4,7 @@ type: decision
 id: "0202"
 slug: decide-how-arcadia-treats-opencode-now-that-the-operator-has-said-it-is-a
 project: arcadia
-status: open
+status: approved
 question: Decide how Arcadia treats OpenCode now that the operator has said it is a weekly token allocation like Codex and Claude Code, and not the API-key billing Decision 0118's rationale describes.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-09
+answer: A. Allow OpenCode helpers; production unchanged
+decided: 2026-11-09
 ---
 
 # Decision 0202: Decide how Arcadia treats OpenCode now that the operator has said it is a weekly token allocation like Codex and Claude Code, and not the API-key billing Decision 0118's rationale describes.
