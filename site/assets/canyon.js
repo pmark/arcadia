@@ -245,7 +245,7 @@ function drawStars(p, night) {
   }
 
   function schedule() {
-    if (!frame) frame = requestAnimationFrame(paint);
+    if (ctx && terrainFrame && !frame) frame = requestAnimationFrame(paint);
   }
 
   function resize() {
