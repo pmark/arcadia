@@ -239,6 +239,14 @@ for another assignment, or blanket permission to launch or message. Use the
 for all three systems. Unavailable tools or skills require a preserved brief and
 authorized relaunch/installation, never a replacement runner.
 
+Under Decision 0202, using OpenCode for a helper or reviewer needs no cost
+approval: it draws on the operator's weekly allocation, as Codex and Claude do.
+That removes only the cost question. Every other launch rule here stays, and
+because the in-process route is unverified, run the helper as a separately
+launched top-level OpenCode Session in its own worktree. Its remaining allowance
+can't be read, so say so in the brief and fall back to another provider if it
+runs out.
+
 Governed capacity admission is not live. Native launch evidence is recorded
 separately and does not claim, enroll or reserve an Arcadia Session. Without
 explicit host authorization, submit an Agent Ask proposal; preview grants

@@ -1,0 +1,41 @@
+---
+arcadia: v1
+type: decision
+id: "0202"
+slug: decide-how-arcadia-treats-opencode-now-that-the-operator-has-said-it-is-a
+project: arcadia
+status: approved
+question: Decide how Arcadia treats OpenCode now that the operator has said it is a weekly token allocation like Codex and Claude Code, and not the API-key billing Decision 0118's rationale describes.
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: A. Allow OpenCode helpers; production unchanged
+options:
+  - label: A. Allow OpenCode helpers; production unchanged
+    consequence: Corrects 0118's premise and says using OpenCode for a helper or reviewer needs no cost approval, the same as Codex and Claude; launch rules otherwise stay. A guidance follow-up records this. Until a coordinator has a verified way to start one itself, a helper runs as a separately launched OpenCode session. Production keeps trying Codex and Claude first, so the critical path doesn't change. A helper can run out of allowance with no warning, and the work then has to move to another provider.
+    recommended: true
+  - label: B. Also make OpenCode a full production provider
+    consequence: "Does everything in A and sets out to replace 0118's never-built daily ceiling. It could save Codex and Claude allocation, but only after new work: a higher place in the provider order, a way for the capacity gate to admit OpenCode without reading its allowance, and a replay. That takes critical-path time, and a run could then exhaust the allocation with no warning."
+    recommended: false
+  - label: C. Correct the record only
+    consequence: Corrects 0118's premise, so later briefs can stop treating OpenCode as metered. No guidance or launch route changes, and production stays as it is. Whether a helper needs approval stays up to each brief, so one could stall again the way the helper in Issue 2342 did. It's the smallest change.
+    recommended: false
+confidence: high
+plan: record-run-unattended-test-pins-20261107-part-2
+updated: 2026-11-09
+answer: A. Allow OpenCode helpers; production unchanged
+decided: 2026-11-09
+---
+
+# Decision 0202: Decide how Arcadia treats OpenCode now that the operator has said it is a weekly token allocation like Codex and Claude Code, and not the API-key billing Decision 0118's rationale describes.
+
+## Options
+
+- **A. Allow OpenCode helpers; production unchanged** (recommended): Corrects 0118's premise and says using OpenCode for a helper or reviewer needs no cost approval, the same as Codex and Claude; launch rules otherwise stay. A guidance follow-up records this. Until a coordinator has a verified way to start one itself, a helper runs as a separately launched OpenCode session. Production keeps trying Codex and Claude first, so the critical path doesn't change. A helper can run out of allowance with no warning, and the work then has to move to another provider.
+- **B. Also make OpenCode a full production provider**: Does everything in A and sets out to replace 0118's never-built daily ceiling. It could save Codex and Claude allocation, but only after new work: a higher place in the provider order, a way for the capacity gate to admit OpenCode without reading its allowance, and a replay. That takes critical-path time, and a run could then exhaust the allocation with no warning.
+- **C. Correct the record only**: Corrects 0118's premise, so later briefs can stop treating OpenCode as metered. No guidance or launch route changes, and production stays as it is. Whether a helper needs approval stays up to each brief, so one could stall again the way the helper in Issue 2342 did. It's the smallest change.
+
+## Rationale
+
+Operator, 2026-11-09: "OpenCode's usage works exactly like my Codex and Claude Code plans, where I am allocated tokens on a weekly basis." Three things rest on the old premise. Decision 0118 admitted OpenCode to unattended production under a daily token ceiling because it "runs on API-key billing with no rolling window"; that ceiling was never built. docs/model-selection.md ranks OpenCode last among providers, for when Codex and Claude credits run out. And a triage held the operator's requested OpenCode helper for a night (Issue 2342). What stays true under every option: Arcadia can't read how much OpenCode allowance remains (src/codingAgents/providerUsage.ts:57), so it can't warn before the allocation runs out. A coordinator can't yet start an OpenCode helper from inside its own session: that route is unverified (docs/agent-guidance/session-roles-and-briefs.md), though a separately launched OpenCode session did post a review on PR 1469. Once decided, this would also answer the pending proposal correct-decision-0118-opencode-plan-premise-20261109. Raising it changes no config, Plan or queue.
+
+Proposed by Agent Ask decide-opencode-allocation-footing-20261109-r2.
