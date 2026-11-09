@@ -41,6 +41,13 @@ blockquote { margin-left:0; padding-left:1rem; border-left:3px solid var(--rule)
 * { box-sizing:border-box; }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
+@supports not (color: light-dark(black, white)) {
+  :root {
+    --bg:#fcfbf9; --fg:#17130f; --muted:#4a423b; --link:#194980;
+    --brand:#a43210; --explore:#2f7fd8; --focus:#194980; --rule:#a38d84;
+    --glass:#fbf9f6; --label:#8a3216; --code:#f2f4f7;
+  }
+}
 
 body { font-family:var(--copy); isolation:isolate; }
 h1, h2, h3 { font-family:var(--display); }
@@ -99,6 +106,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 .theme-switch { display:inline-flex; gap:2px; border:1px solid var(--rule); border-radius:999px; padding:2px; }
 .theme-switch button { display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:999px; background:transparent; color:var(--fg); cursor:pointer; }
 .theme-switch button[aria-pressed="true"] { background:color-mix(in srgb,var(--explore) 18%,var(--bg)); box-shadow:inset 0 0 0 1px var(--focus); }
+@media (pointer:fine) { .theme-switch button { width:2.25rem; height:2rem; } }
 .theme-switch svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; }
 .motion-control { min-height:44px; padding:0 4px; border:0; color:var(--fg); background:transparent; cursor:pointer; font:600 .8125rem var(--display); }
 .motion-control[aria-pressed="true"] { text-decoration:underline; }

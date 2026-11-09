@@ -405,6 +405,11 @@ function drawStars(p, night) {
   });
 
   let pendingPage;
+  let entrySerial = 0;
+  const newEntry = () => `${performance.timeOrigin}:${++entrySerial}`;
+  const entryScroll = new Map();
+  let displayedEntry = history.state?.fieldEntry ?? newEntry();
+  history.replaceState({ ...history.state, fieldEntry:displayedEntry }, '');
   const isFieldNotesURL = url => url.origin === homeURL.origin
     && (url.pathname === homeURL.pathname || url.pathname.startsWith(homeURL.pathname + 'posts/'));
 
@@ -421,12 +426,15 @@ function drawStars(p, night) {
       if (!nextMain || !isFieldNotesURL(new URL(response.url))) throw new Error('Page layout unavailable');
 
       if (push) {
-        history.replaceState({ fieldScroll:window.scrollY }, '');
-        history.pushState({ fieldScroll:offset }, '', url);
+        history.replaceState({ ...history.state, fieldScroll:window.scrollY }, '');
+        history.pushState({ fieldEntry:newEntry(), fieldScroll:offset }, '', url);
+        history.scrollRestoration = 'manual';
       }
       const wasFeed = isFeed();
       main.dataset.fieldView = nextMain.dataset.fieldView;
       displayedPath = location.pathname;
+      displayedEntry = history.state?.fieldEntry ?? newEntry();
+      if (!history.state?.fieldEntry) history.replaceState({ ...history.state, fieldEntry:displayedEntry }, '');
       main.replaceChildren(...Array.from(nextMain.childNodes, node => document.importNode(node, true)));
       document.title = page.title;
       for (const selector of ['link[rel="canonical"]', 'meta[name="description"]']) {
@@ -435,6 +443,7 @@ function drawStars(p, night) {
       }
       root.dataset.fieldView = main.dataset.fieldView;
       window.scrollTo(0, offset);
+      entryScroll.set(displayedEntry, window.scrollY);
       main.focus({ preventScroll:true });
       if (isFeed()) feedScroll = offset;
       if (isFeed() !== wasFeed) startAscent(Number(!isFeed()));
@@ -464,19 +473,28 @@ function drawStars(p, night) {
       pendingPage?.abort();
       return;
     }
-    void openPage(url, { push:false, offset:restoreNumber(event.state?.fieldScroll) });
+    // The old content is still mounted, even if its last scroll event is queued.
+    entryScroll.set(displayedEntry, window.scrollY);
+    const offset = entryScroll.get(event.state?.fieldEntry) ?? restoreNumber(event.state?.fieldScroll);
+    void openPage(url, { push:false, offset });
   });
 
   new ResizeObserver(resize).observe(landscape);
   window.addEventListener('scroll', () => {
+    if (location.pathname !== displayedPath) return;
+    entryScroll.set(displayedEntry, window.scrollY);
     if (isFeed()) {
       feedScroll = Math.max(0, window.scrollY);
       schedule();
     }
   }, { passive:true });
-  window.addEventListener('pagehide', saveVisibleFrame);
+  window.addEventListener('pagehide', () => {
+    if (location.pathname !== displayedPath) return;
+    saveVisibleFrame();
+    try { history.replaceState({ ...history.state, fieldScroll:window.scrollY }, ''); } catch {}
+  });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) saveVisibleFrame();
+    if (document.hidden && location.pathname === displayedPath) saveVisibleFrame();
   });
   motionButton.addEventListener('click', () => {
     paused = !paused;
