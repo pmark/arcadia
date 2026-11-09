@@ -7,7 +7,7 @@ Nothing was closed or relabelled, and no Plan, pointer or queue moved. As the re
 ## What the operator needs to know
 
 1. **The backlog is smaller than it looks.** Of 344 open Issues, 69 mirror Actions already marked done, and 18 more look fixed and 8 are duplicates, so 95 are closure candidates.
-2. **Bugs are real but none is catastrophic.** 177 Issues read as bugs, and only 60 carry the `bug` label. Of the 139 Issues checked in code, 80 are present, 76 of them bugs and the rest features or trackers. 17 are S2 (a run fails safe but needs recovery) and none is S1.
+2. **Bugs are real but none is catastrophic.** 177 Issues read as bugs, and only 60 carry the `bug` label. Of the 139 Issues checked in code, 80 are present, and 76 of those are classified as bugs. 17 are S2 (a run fails safe but needs recovery) and none is S1.
 3. **The biggest unknown isn't in the backlog.** Unattended production has so far merged only tests and docs, so nobody has seen what a general Plan hits end to end. Fixing these bugs will help, but the first general Plan run will find others. The three-bug Plan ([PR 2177](https://github.com/pmark/arcadia/pull/2177)) is the cheapest way to find out.
 4. **Source fixes can't merge unattended yet.** `isWorkerMergeSafePath` (`src/production/workerMerge.ts:212`) allows only tests and ordinary docs. Every batch below except BT needs that operator Decision or a gap merge per Action.
 5. **Bugs arrive faster than a small allocation can clear them.** About 30 bug-shaped Issues filed in each of the last two weeks are still open, 11 to 12 of them S2 or worse. Much of that is review follow-ups, so what gets filed matters as much as what gets fixed.
