@@ -62,7 +62,7 @@ batch, and only then ask for the press.
      its Plan while the Plan is in the Active scope, the settlement holds the
      successor and drops `current_action`, so its PR can never pass CI and
      the run cannot finish (#2147: one red PR, an Off and about six hours).
-     #2147 is fixed. The contract test is not the reviewer's shape check:
+     #2147 is fixed (#2158). The contract test is not the reviewer's shape check:
      on 2026-11-08 the 20th Action's simulation passed the contract and its
      review still returned needs-follow-up, because the Plan-completing
      settlement was outside the governed-record shape (#2270). #2270 is fixed
@@ -211,8 +211,9 @@ batch, and only then ask for the press.
   (`http://arcadia-1.alpine-rattlesnake.ts.net:3020/actions/<card-id>`,
   verified 200), in chat and in `arcadia ping send --link`.
 - Ping only when the operator can act now (press, merge a green PR, answer).
-- A Discord settlement counts as an operator ping. During a quiet window hold
-  `settle --apply`.
+- A Discord settlement counts as an operator ping. During a quiet window the
+  operator set, hold `settle --apply`, unless the settlement reports something
+  blocking the critical path: that goes out at once.
 - A build-packet approval ping the policy's `packet_approval` delegation
   will approve seconds later is noise (#1659); tell the operator not to act on
   it, since a manual approval is an operator touch.
