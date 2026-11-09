@@ -4,7 +4,7 @@ type: decision
 id: "0205"
 slug: approve-the-one-time-field-notes-mobile-safari-performance-release-through-pr
 project: arcadia
-status: open
+status: approved
 question: "Approve the one-time Field Notes Mobile Safari performance release through PR #2388 and the existing Blog GitHub Pages workflow after exact-head review and required checks pass."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-09
+answer: Publish the Field Notes mobile fix
+decided: 2026-11-09
 ---
 
 # Decision 0205: Approve the one-time Field Notes Mobile Safari performance release through PR #2388 and the existing Blog GitHub Pages workflow after exact-head review and required checks pass.
