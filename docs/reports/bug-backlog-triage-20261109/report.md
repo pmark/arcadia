@@ -7,7 +7,7 @@ Nothing was closed or relabelled, and no Plan, pointer or queue moved. As the re
 ## What the operator needs to know
 
 1. **The backlog is smaller than it looks.** Of 344 open Issues, 69 mirror Actions already marked done, and 18 more look fixed and 8 are duplicates, so 95 are closure candidates.
-2. **Bugs are real but none is catastrophic.** 177 Issues read as bugs, and only 60 carry the `bug` label. Of the 139 checked in code, 80 are present, 17 of them S2 (a run fails safe but needs recovery) and none S1.
+2. **Bugs are real but none is catastrophic.** 177 Issues read as bugs, and only 60 carry the `bug` label. Of the 139 Issues checked in code, 80 are present, 76 of them bugs and the rest features or trackers. 17 are S2 (a run fails safe but needs recovery) and none is S1.
 3. **The biggest unknown isn't in the backlog.** Unattended production has so far merged only tests and docs, so nobody has seen what a general Plan hits end to end. Fixing these bugs will help, but the first general Plan run will find others. The three-bug Plan ([PR 2177](https://github.com/pmark/arcadia/pull/2177)) is the cheapest way to find out.
 4. **Source fixes can't merge unattended yet.** `isWorkerMergeSafePath` (`src/production/workerMerge.ts:212`) allows only tests and ordinary docs. Every batch below except BT needs that operator Decision or a gap merge per Action.
 5. **Bugs arrive faster than a small allocation can clear them.** About 30 bug-shaped Issues filed in each of the last two weeks are still open, 11 to 12 of them S2 or worse. Much of that is review follow-ups, so what gets filed matters as much as what gets fixed.
@@ -226,12 +226,12 @@ The same file proposes adding the `bug` label to the 120 bug-shaped Issues witho
 
 ## Weekly allocation: options for the operator
 
-Bugs as tech debt with a fixed share of each week is the operator's policy to set. It's proposed in Agent Ask `weekly-bug-allocation-policy-20261109` (`agentask_9661ac957a81696171`), and nothing is adopted here. That Ask says 79 confirmed bugs, because the review moved one more to present after it was filed.
+Bugs as tech debt with a fixed share of each week is the operator's policy to set. It's proposed in Agent Ask `weekly-bug-allocation-policy-20261109` (`agentask_9661ac957a81696171`), and nothing is adopted here. That Ask says 79 confirmed bugs and about 16 weeks. It was filed before review, and it counted every present Issue as a bug; 76 and about 16 weeks are the current figures.
 
 | Option | What it means | Consequence |
 |---|---|---|
 | **A. Surge, then floor** (recommended) | B1 to B3 take first claim, about 15 Actions. After that, 20% of production Actions, at least 5 a week. | The blockers clear soonest, which is the stated goal. Features and Relay builds wait during the surge. |
-| **B. Flat 5 a week** | 5 bug Actions every week, whatever else is running. | Predictable and cheap. The 80 confirmed bugs take about 16 weeks with no new ones, and it can't keep up with S2 inflow of 11 to 12 a week. |
+| **B. Flat 5 a week** | 5 bug Actions every week, whatever else is running. | Predictable and cheap. The 76 bugs confirmed so far take about 16 weeks with no new ones, assuming one Action per Issue, and it can't keep up with S2 inflow of 11 to 12 a week. |
 | **C. 20% with no minimum** | A fifth of production Actions go to bugs. | Scales with capacity. A quiet week fixes nothing, and blockers wait their turn. |
 | **D. No allocation** | Bugs compete with features Plan by Plan. | No new rule. The backlog keeps growing, as it has. |
 
