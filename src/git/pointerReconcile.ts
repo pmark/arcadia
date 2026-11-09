@@ -54,6 +54,9 @@ export interface BaseSyncInput {
 }
 
 const POINTER_SUBJECT = /^chore\(arcadia\): point at \S/;
+/** The Plan-activation commit `commitActivation` (src/dispatch/planActivationApply.ts) writes, and its trailer. */
+const ACTIVATE_SUBJECT = /^chore\(arcadia\): activate ([a-z0-9][a-z0-9-]*) at (\S+)$/;
+const ACTIVATE_TRAILER = /^Written by the total Arcadia Go transition resolver \([A-Za-z0-9][A-Za-z0-9_.:-]*\)\.$/m;
 
 class SyncRefusal extends Error {}
 
@@ -262,9 +265,15 @@ const CURRENT_ACTION_LINE = /^current_action\s*:/;
 
 /** The text with the frontmatter's top-level `current_action` lines removed; the body is never touched. */
 function withoutPointerLines(text: string): string {
+  return withoutFrontmatterFields(text, ["current_action"]);
+}
+
+/** The text with the frontmatter's top-level lines for `fields` removed; the body is never touched. */
+function withoutFrontmatterFields(text: string, fields: string[]): string {
   const match = FRONTMATTER.exec(text);
   if (!match) return text;
-  const kept = match[1].split("\n").filter((line) => !CURRENT_ACTION_LINE.test(line)).join("\n");
+  const lineFor = new RegExp(`^(?:${fields.join("|")})\\s*:`);
+  const kept = match[1].split("\n").filter((line) => !lineFor.test(line)).join("\n");
   return text.slice(0, match.index) + match[0].replace(match[1], () => kept) + text.slice(match.index + match[0].length);
 }
 
@@ -318,6 +327,7 @@ function isOwnPointerCommit(cwd: string, commit: string, context: { baseBranch: 
   // A real pointer commit: the writer's subject and trailer, and nothing but
   // `current_action` lines changed in PROJECT.md and the Plan it names (read
   // from the parent, so a commit cannot move `active_plan` and widen the paths).
+  if (parents.length === 1 && isOwnActivationCommit(cwd, commit, parents[0], subject, message)) return true;
   if (parents.length !== 1 || !POINTER_SUBJECT.test(subject) || !POINTER_TRAILER.test(message)) return false;
   const paths = git(cwd, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit]).split("\0").filter(Boolean);
   if (paths.length === 0) return false;
@@ -327,6 +337,37 @@ function isOwnPointerCommit(cwd: string, commit: string, context: { baseBranch: 
     const before = rawBlob(cwd, parents[0], file);
     const after = rawBlob(cwd, commit, file);
     return before !== null && after !== null && withoutPointerLines(before) === withoutPointerLines(after);
+  });
+}
+
+/**
+ * A Plan-activation commit (Issue #2018): the writer's subject and trailer, only
+ * PROJECT.md and the Plan it now names changed, PROJECT.md only in `active_plan`
+ * and `current_action`, and that Plan only in `status` and `current_action`.
+ * The Plan is read from the commit's own PROJECT.md, which must name the subject's slug.
+ */
+function isOwnActivationCommit(cwd: string, commit: string, parent: string, subject: string, message: string): boolean {
+  const parsed = ACTIVATE_SUBJECT.exec(subject);
+  const slug = parsed?.[1];
+  // The subject names `<project>/<action>` (the receipt's action key); the pointer holds the bare Action id.
+  const actionId = parsed?.[2].split("/").pop();
+  if (!slug || !actionId || !ACTIVATE_TRAILER.test(message)) return false;
+  const project = frontmatter(rawBlob(cwd, commit, "PROJECT.md"));
+  // It must really activate: the Project now names the subject's Plan and Action and the activated Plan is
+  // `active`, so a hand-made commit cannot re-point at any Plan or status. A same-Plan activation (the parent
+  // already named it, src/dispatch/planActivation.ts) is legitimate and accepted.
+  if (project?.active_plan !== slug || project?.current_action !== actionId) return false;
+  const plan = activePlanPath(cwd, commit);
+  if (plan === null) return false;
+  if (frontmatter(rawBlob(cwd, commit, plan))?.status !== "active") return false;
+  const paths = git(cwd, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit]).split("\0").filter(Boolean);
+  if (paths.length === 0) return false;
+  return paths.every((file) => {
+    const fields = file === "PROJECT.md" ? ["active_plan", "current_action"] : file === plan ? ["status", "current_action"] : null;
+    if (fields === null) return false;
+    const was = rawBlob(cwd, parent, file);
+    const now = rawBlob(cwd, commit, file);
+    return was !== null && now !== null && withoutFrontmatterFields(was, fields) === withoutFrontmatterFields(now, fields);
   });
 }
 

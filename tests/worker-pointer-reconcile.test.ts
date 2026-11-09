@@ -152,6 +152,48 @@ describe("a local base ahead only by its own pointer commits", () => {
     expect(originMain()).not.toBe(head());
   });
 
+  /** The unpushed commit `arcadia go --apply` writes when it activates `other-plan` (src/dispatch/planActivationApply.ts). */
+  function activate(cwd: string, options: { trailer?: boolean; project?: string; plan?: string } = {}): string {
+    writeDoc(cwd, "PROJECT.md", options.project ?? projectDoc("b1", "2026-11-01", "other-plan"));
+    writeDoc(cwd, OTHER_PLAN, options.plan ?? otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: active\n---\n"));
+    const trailer = options.trailer === false ? "" : "\n\n- PROJECT.md: active_plan plan-x → other-plan\n\nWritten by the total Arcadia Go transition resolver (planact_fixture).";
+    return commitAll(cwd, `chore(arcadia): activate other-plan at fixture/b1${trailer}`);
+  }
+
+  it("reconciles over its own Plan-activation commit (Issue #2018)", () => {
+    const activation = activate(repo);
+    const remoteTip = remoteAdvances();
+    const result = sync();
+    expect(result).toMatchObject({ outcome: "reconciled", reason: null, pointerCommits: [activation] });
+    expect(git(repo, ["rev-parse", `${head()}^2`]).trim()).toBe(remoteTip);
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: other-plan");
+    expect(git(repo, ["status", "--porcelain"])).toBe("");
+  });
+
+  it.each([
+    ["no trailer", { trailer: false }],
+    ["an extra PROJECT.md line", { project: projectDoc("b1", "2026-11-02", "other-plan") }],
+    ["an extra Plan line", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: active\nowner: someone\n---\n") }],
+    ["a draft activated Plan", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: draft\n---\n") }],
+    ["a complete activated Plan", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: complete\n---\n") }],
+    ["a pointer that is not the subject's Action", { project: projectDoc("a1", "2026-11-01", "other-plan") }],
+    ["a Project that does not name the subject's Plan", { project: projectDoc("b1", "2026-11-01", "plan-x") }]
+  ] as Array<[string, Parameters<typeof activate>[1]]>)("refuses an activation-shaped commit with %s", (_name, options) => {
+    activate(repo, options);
+    remoteAdvances();
+    expect(sync()).toMatchObject({ outcome: "refused" });
+  });
+
+  it("reconciles over a same-Plan activation commit whose parent already named the Plan", () => {
+    writeDoc(repo, "PROJECT.md", projectDoc("b0", "2026-11-01", "other-plan"));
+    commitAll(repo, "point the Project at other-plan on the remote");
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(other, ["pull", "-q", "--ff-only"]);
+    activate(repo);
+    remoteAdvances();
+    expect(sync()).toMatchObject({ outcome: "reconciled" });
+  });
+
   it("still fast-forwards a base that is only behind", () => {
     const tip = remoteAdvances();
     expect(sync()).toMatchObject({ outcome: "fast-forwarded", resultHead: tip });
