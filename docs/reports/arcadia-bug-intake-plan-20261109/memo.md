@@ -16,7 +16,7 @@ Operator goal, 2026-11-09: "an easy way for you to request that a bug gets logge
 
 | | Option | Consequence |
 |---|---|---|
-| ✅ **A (recommended)** | Dedupe-only intake: CREATED, APPENDED, REOPENED, LINKED or QUEUED, plus docs and skills | 6 Actions, about 1.5 to 2 sessions of build, no model spend. Agents stop searching Issues by hand from the day the guidance Action merges. A recurring `arcadia learn` lesson still becomes an Issue only when an agent files it. Slice B gets a named trigger and reuses A's key and matcher unchanged. |
+| ✅ **A (recommended)** | Dedupe-only intake: CREATED, APPENDED, LINKED or QUEUED, plus docs and skills | 6 Actions, about 1.5 to 2 sessions of build, no model spend. Agents stop searching Issues by hand from the day the guidance Action merges. A recurring `arcadia learn` lesson still becomes an Issue only when an agent files it. Slice B gets a named trigger and reuses A's key and matcher unchanged. |
 | B | A plus automatic promotion of recurring lessons | 8 Actions, roughly a third more build. Lessons that recur N times become Issues without anyone remembering to file them. This adds an unattended GitHub writer whose input is noisy (inferences, low-confidence observations), and it would run before the matcher is calibrated on real traffic. A false merge or a flood of Issues lands on a backlog of 357 open Issues that triage is still shrinking. |
 | C | Do nothing now | No build cost. Duplicates and hand searching continue (about 30 bug-shaped Issues a week, 8 duplicates found in the last triage). Decision 0121's utility stays unbuilt. |
 
@@ -36,9 +36,14 @@ The vital few are the key and matcher, the outcome engine and the guidance chang
 
 ### 2. Where the dedupe index lives: GitHub, on each call
 
-- **Read path, bounded at 4 `gh` calls:** (1) a body-marker search for the exact key; (2) one title list of every Issue in the owning repository, open and closed, with `stateReason`, ranked locally; (3) bodies for at most the top 5 candidates; (4) a live re-read of the target Issue's state right before any write.
+- **Read path, bounded at 2 list or search calls, plus 1 read per candidate (5 at most), plus 1 re-read:**
+  1. One listing of every Issue in the owning repository, open and closed, with `stateReason`, ranked locally. This uses the listing API, not the search index. Search lags writes, so the listing is what finds an Issue created moments ago.
+  2. Optionally, a body-marker search for the exact key, as a shortcut.
+  3. Bodies **and comments** for at most the top 5 candidates. Markers are counted in both.
+  4. A live re-read of the target Issue's state right before any write.
 - **Why no projection:** a projection would be a second copy of Issue state that can go stale. The Constitution allows a projection only as a signal, and every write would have to re-verify against GitHub anyway. At 940 Issues and about 7 s, the live read is cheap enough.
 - **Revival trigger for a projection:** a call takes over 30 s, or GitHub rate-limits a call twice in one week, or the weekly triage needs bulk similarity across all Issues. The projection would then refresh by `updatedAt` and still be re-verified live before every write.
+- **Decision 0049's periodic defect triage is not built.** Nothing outside `src/commands/defect.ts` reads defect signals. QUEUED signals carry source `cli.bug`. Revival trigger for a guard: if that triage is built, it must skip any signal with a pending `arcadia bug` receipt, so it can't close or promote a queued report (review F3).
 - **When GitHub is unreachable** (network failure, `gh` not signed in, a 5xx or a rate limit): record the report as a `defect` signal, so it is durable and replayable, and return **QUEUED** with no GitHub write. `arcadia bug sync` replays queued signals through the full match, so a report is never created without the duplicate check. The weekly triage and supervisors run `sync`. A partial read counts as unreachable, never as "no match".
 
 ### 3. Key, similarity and the deterministic-first design
@@ -63,19 +68,19 @@ The vital few are the key and matcher, the outcome engine and the guidance chang
 |---|---|---|
 | **CREATED** | No match, or an ambiguous match | New Issue with the `bug` label, evidence, `file:line`, related refs and the marker |
 | **APPENDED** | An open Issue matches | One comment with the evidence and marker. The receipt reports the **recurrence count**: Arcadia markers on that Issue, plus 1 for the original |
-| **REOPENED** | A closed Issue matches **with `stateReason` COMPLETED** (a regression) | Reopen, plus a comment that names the recurrence |
+| **CREATED** with `regression_of` | A closed Issue matches **with `stateReason` COMPLETED** (a regression) | A new Issue that names the closed one. **No reopen in slice A** (see §5) |
 | **LINKED** | The matched Issue is referenced by an unfinished governed Action in any Plan | Comment as for APPENDED. The receipt names the Plan and Action. **No Action write** |
 | **QUEUED** | GitHub unreachable or the read was partial | None. Durable local `defect` signal |
 
 - A match **closed as not planned or as a duplicate** gets APPENDED on the closed Issue with `closed_not_planned: true`, and is **not reopened**. A deliberate rejection is a record ("losing on purpose is a Decision"), and an agent must not undo it.
-- **Idempotence.** The request fingerprint hashes the scope, the normalized text and the sorted evidence. A replay returns the stored receipt and makes zero GitHub writes. With an empty local store, the marker search finds the earlier comment and returns the same outcome. Similar wording with different evidence is a new observation: APPENDED, and the count rises.
+- **Idempotence.** The request fingerprint hashes the scope, the normalized text and the sorted evidence. A replay returns the stored receipt and makes zero GitHub writes. With an empty local store, the request-fingerprint marker found in the matched Issue's body or comments returns the same outcome with no new write. A comment search alone can't do this: the existing marker search covers bodies only (`redAlertDiagnosis.ts:215`). Review F1 caught this. Similar wording with different evidence is a new observation: APPENDED, and the count rises.
 - **Never** closes, relabels or retitles an Issue. **Never** writes an Action, Decision, pointer, queue, Plan or `PROJECT.md`. A test asserts this through a write spy on the fixture workspace.
 
 ### 5. Authority
 
 - **Routine intake covers it:**
   - Creating an Issue and commenting in the **owning** repository. The operator's 2026-10-12 standing direction says "routine repository intake Issue", and `principles.md` says "an obvious bug is logged, not asked about".
-  - Reopening an Issue closed as completed. It is reversible, and `principles.md` says a matching Issue "gets a reference or an update". **This is the one judgment call I couldn't verify against an explicit grant.** If the reviewer or operator reads reopening as outside routine intake, slice A ships with REOPENED returning APPENDED plus a `regression: true` flag, and loses nothing.
+- **Reopening is not in slice A.** `principles.md` only says a matching Issue "gets a reference or an update", and no grant covers reopening (review F7). A recurrence of a completed Issue is filed as a **new** Issue that names the closed one. That is routine intake, it stays visible, and nothing is lost. A comment on a closed Issue would go unseen. Revival trigger for REOPENED: the operator states that reopening a regression is routine intake, for example while answering the decision Ask.
 - **The build needs no new Decision.** Decision 0121 (answered 2026-10-11) chose `arcadia bug`, and its deferral was a deferral, not a refusal. Decision 0049 approved the defect intake this extends.
 - **Exact approval boundaries:**
   1. The operator settles the Plan Ask and activates the draft Plan.
@@ -116,7 +121,13 @@ Ranks 1 to 3 are recommendations to the coordinator (Rowan, under Signal). This 
 
 ## Slice A Plan (previewed as an `intent: plan` Ask, inactive draft)
 
-Every Action is test-first, has one writer per file set, and has `execution: build`. Acceptance text avoids the validator traps from #2370: each Action names only its own test file, and there are no quoted path-like inputs or escape sequences.
+Every Action is test-first, has one writer per file set, and has `execution: build`. Acceptance text avoids the validator traps from #2370:
+- (a) each Action names only its own test file;
+- (b) there are no quoted path-like inputs, and Action 6 names documents by role, not by path;
+- (c) there are no escape sequences;
+- (d) the last Action must preview its own complete Ask before push.
+
+Thresholds are pinned from calibration paraphrases and tested on held-out paraphrases, so they aren't fitted to their own test (review F4). Action 3 owns `syncQueued`, and Action 4 only wires it (review F2).
 
 | # | Action id | Writer's file set | Depends on | Authority-adjacent |
 |---|---|---|---|---|
@@ -124,8 +135,8 @@ Every Action is test-first, has one writer per file set, and has `execution: bui
 | 2 | `bug-github-issue-index` | `src/bug/githubIndex.ts`, its own test file | none (parallel with 1) | Reuses the `GhRunner` type. Read-only |
 | 3 | `bug-intake-outcomes` | `src/bug/intake.ts`, a new `bug_receipts` table in `src/db/schema.ts`, its own test file | 1, 2 | **`src/db/schema.ts`** (shared migrations). GitHub writes |
 | 4 | `bug-cli-command` | `src/commands/bug.ts`, registration in **`src/cli.ts`**, its own test file | 3 | **`src/cli.ts`** (a conflict hot spot: rebase late) |
-| 5 | `bug-stopgap-replay-proof` | a new evidence report under `docs/reports/` | 4 | Live `gh` reads, and one live comment on #2370 for the idempotence proof (routine intake) |
-| 6 | `bug-guidance-and-skills` | `docs/COMMANDS.md`, the supervisor skill, the GitHub-issues skill, `docs/agent-guidance/principles.md` | 5 | **Agent guidance and skills.** Changes procedure, not authority. The reviewer checks this |
+| 5 | `bug-stopgap-replay-proof` | new evidence report `arcadia-bug-stopgap-replay-proof` under reports | 4 | Live `gh` reads, and **one real comment** on #2370 (routine intake). Its replay and an empty-store replay must add none |
+| 6 | `bug-guidance-and-skills` | `docs/COMMANDS.md`, the supervisor skill, the GitHub-issues skill, `docs/agent-guidance/principles.md` | 5 | **Agent guidance and skills.** Changes procedure, not authority. `.agents/skills` fails `isWorkerMergeSafePath` (`src/production/workerMerge.ts:212`), so this merges only through an interactive session under 0060/0080. It carries the Plan's completion settlement. It checks native discovery for Codex, Claude Code and OpenCode separately from the filesystem check |
 
 Token impact: small. Zero model calls at runtime. Build uses existing session allowances.
 
@@ -136,17 +147,20 @@ Token impact: small. Zero model calls at runtime. Build uses existing session al
 
 ## Previewed Asks (receipts; not settled)
 
+**Settle only v2.** Review round 1 on PR 2383 found 7 non-blocking issues, and the v2 Asks repair all of them. The round-1 previews are superseded but keep their receipts: a used request id refuses changed content. Disposing of the round-1 previews is the operator's settle step, not this planner's.
+
 | Ask | Request id | Proposal | Capture | Fingerprint | Result |
 |---|---|---|---|---|---|
-| Plan, slice A ([plan-ask.json](plan-ask.json)) | `plan-arcadia-bug-intake-slice-a-20261109` | `agentask_2552596036e2791080` | `capture_3822da73-f1b1-4da6-91bf-3f637c49c96b` | `2552596036e2…6dbe` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
-| Decision, first slice ([decision-ask.json](decision-ask.json)) | `decision-arcadia-bug-first-slice-20261109` | `agentask_eb791d9b6b481f1080` | `capture_94c9a4ce-a914-44f2-8466-fce581981231` | `eb791d9b6b48…cf6f` | ok, 1 create effect, `gate_question: reasonable_disagreement`, no refusals, 0 Project writes |
+| **v2** Plan, slice A ([plan-ask.json](plan-ask.json)) | `plan-arcadia-bug-intake-slice-a-v2-20261109` | `agentask_9ce9aa1708b6456ced` | `capture_1bff2549-c0ae-4164-ab23-8101c2047f8a` | `9ce9aa1708b6…0f6c` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
+| **v2** Decision, first slice ([decision-ask.json](decision-ask.json)) | `decision-arcadia-bug-first-slice-v2-20261109` | `agentask_7fa9afdefe782635e1` | `capture_041633bc-1538-4fe1-9a78-a45fe000d18b` | `7fa9afdefe78…d669` | ok, 1 create effect, `gate_question: reasonable_disagreement`, no refusals, 0 Project writes |
+| round 1 Plan (superseded) | `plan-arcadia-bug-intake-slice-a-20261109` | `agentask_2552596036e2791080` | `capture_3822da73-f1b1-4da6-91bf-3f637c49c96b` | `2552596036e2…6dbe` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
+| round 1 Decision (superseded) | `decision-arcadia-bug-first-slice-20261109` | `agentask_eb791d9b6b481f1080` | `capture_94c9a4ce-a914-44f2-8466-fce581981231` | `eb791d9b6b48…cf6f` | ok, 1 create effect, `gate_question: reasonable_disagreement`, no refusals, 0 Project writes |
 
-Both previews were run in workspace `martianrover`, and a replay returned the same receipts. Settling is the operator's step, through the supervisor or Signal.
+All four previews were run in workspace `martianrover`. Settling is the operator's step, through the supervisor or Signal.
 
 ## What I could not verify
 
 - **Threshold quality.** The 0.3, 0.4, 0.6 and 0.7 values are design starting points. The 2026-11-09 lessons are not in the `learn` store under the terms I searched (0 matches), so Action 1 builds its fixture from the stopgap Issue texts.
-- **Reopen authority.** See §5.
 - **Headless `gh` auth** in launched Sessions. Slice A treats an auth failure as QUEUED, so nothing is lost, but whether launched Sessions can write Issues isn't tested.
 - **Owning-repository resolution.** I assume the Project's registered repository remote is the owner. Cross-repository reports are out of slice. Revival trigger: the first report filed to the wrong repository.
 - **`execution: build` on a draft Plan.** #2134 is closed, and the draft-Plan writer emits the route (`src/ask/settlement.ts:2736`). The preview's effect summary doesn't display it, so it is proven only at settlement.
