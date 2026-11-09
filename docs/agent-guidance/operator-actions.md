@@ -315,6 +315,10 @@ pinned descriptor, so per-card review is small.
   press opens exactly 24 hours from itself, never renews, and starts nothing. If a
   press consumes its card but cannot write the approved receipt, it fails loudly and
   no day is open; the operator presses a new day-grant card, as nothing else changed.
+  Under Decision 0200 option A a pressed day approval covers any Rowan taking over
+  that day, so a successor presses once without new words. If the host refuses that
+  press, Decisions 0163 and 0173 end the day's delegation: the successor does not
+  retry or route around it, and the operator approves a new day.
   Only a press counts. Nothing can verify a chat message, and a record Rowan wrote
   about one would be self-attesting. The runner refuses a day-grant press unless its
   `Origin` matches its `Host` at a non-loopback address, with no delegated marker,
