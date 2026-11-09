@@ -1,0 +1,6828 @@
+{
+ "base_sha": "bf1b304c5b2dbf3d09270922ee23b2aea6384be8",
+ "retrieved_at": "2026-11-09T06:31:00Z",
+ "summary": {
+  "mapped-open-action": 43,
+  "unmapped": 202,
+  "action-done-issue-open": 96,
+  "fix-landed-action-unfinished": 3
+ },
+ "open_issues": [
+  {
+   "number": 341,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prove-multi-provider-production-recovery",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 446,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 440,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 346,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prove-zero-prompt-production-loop",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 347,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#harden-zero-prompt-production-loop",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 355,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#build-agent-agnostic-learning-loop",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 533,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#run-managed-production-live-soak",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 535,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#add-segment-queue-arrange",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 571,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#defect-bounded-triage-loop",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 672,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#generate-operator-scripts-for-runs-approvals",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 674,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#support-per-project-north-star",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 675,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#notify-operator-on-agent-blockers",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 677,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#sweep-merged-completions-before-dispatch",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 749,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-tidy-torn-tail-byte-offset",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2340,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2339,
+     "kind": "closes",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2337,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2177,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 1902,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 757,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#narrow-db-write-transactions-across-fs-calls",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 758,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 775,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 967,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 814,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#replay-real-pane-transcripts-through-classifier",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 823,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#keep-inactive-plan-acceptance-fingerprint-stable",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 824,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 847,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2336,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 967,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 873,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 867,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 863,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 858,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 856,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 852,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 890,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#silence-sandbox-certificate-copy-errors",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 899,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prepare-three-action-rehearsal-operator-runbooks",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#normalize-check-contexts-in-review-readiness",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-rehearsal-g1-plan-and-operator-guidance",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#code-review-not-applicable-criteria",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#code-review-not-applicable-naming",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#code-review-tests-criterion-stability",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#define-agent-peer-watch-contract",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#define-agent-comms-role",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prepare-run-2-rehearsal-scripts",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#document-rehearsal-runbook",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 946,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 903,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 901,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 900,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 925,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prepare-three-action-rehearsal-operator-runbooks",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1009,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 959,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 926,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 927,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#preserve-global-agent-defaults-in-go-install",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 929,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 940,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#keep-exempt-commands-out-of-activity-log",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#define-agent-comms-role",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#require-inline-workspace-mode",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#adopt-rehearsal-freeze-window",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prepare-run-2-rehearsal-scripts",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#accept-settled-descendant-in-g8-reconciliation",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prepare-run-3-rehearsal-scripts",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#embed-validation-evidence-in-preserved-pr-body",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#document-rehearsal-runbook",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 955,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 946,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 944,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#define-agent-comms-role",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 991,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 977,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 951,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 953,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 967,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 954,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 956,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 957,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 958,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 960,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-claim-when-passed-attempt-receipt-is-unparseable",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 961,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 962,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 963,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 964,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 965,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 976,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 988,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 978,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 984,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 988,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 987,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#document-rehearsal-runbook",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#build-fast-rehearsal-harness",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#build-checkpoint-replay-and-base-check",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-serial-pr-base-stacking",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#build-chain-rehearsal-run-scripts",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2035,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1531,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1010,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1009,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1008,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1006,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 996,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 992,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 989,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#build-fast-rehearsal-harness",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#build-checkpoint-replay-and-base-check",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-serial-pr-base-stacking",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 996,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 992,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 993,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 998,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 999,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1000,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1001,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1002,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1024,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1003,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2221,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1007,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1011,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#refuse-hidden-renames-in-committed-completion-replay",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1012,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1282,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1269,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1259,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1014,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1015,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prepare-run7-chain",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1020,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1017,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1016,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#prepare-run7-chain",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1020,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1017,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1021,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1022,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-queue-positions-of-projects-not-visible-at-arrange",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1032,
+   "links": [
+    {
+     "action": "plan/bootstrap-managed-production-to-build-flight-deck#preserve-unchanged-baseline-skill-symlinks",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1845,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1840,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1040,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1037,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1033,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1038,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1040,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1037,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1039,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1041,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1840,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1099,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1040,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1043,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1113,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1111,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1105,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1098,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1091,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1086,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1085,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1083,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1044,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1086,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1080,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1060,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1058,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1054,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1050,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1049,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1045,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1078,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1073,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1070,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1068,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1067,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1064,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1063,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1062,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1046,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1051,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1060,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1095,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1094,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1110,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1114,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1122,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2336,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2151,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1939,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1938,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1209,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1191,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1174,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1167,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1126,
+   "links": [
+    {
+     "action": "plan/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to#headless-observable-session-launch",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to#bounded-session-lifetime",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to#operator-launch-runs-to-completion",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to#prove-single-session-offline",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to#session-board-page",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to#prove-single-session-live",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to#launched-pr-review-repair-merge",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to#chain-as-loop-of-single-runs",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1130,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1128,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1127,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1129,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1150,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1135,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1139,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1163,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1140,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1147,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1144,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1155,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1483,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1250,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1244,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1164,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1159,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1160,
+   "links": [
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#prove-go-delivery-from-coding-agent-session",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#implement-project-go-conversation",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#connect-conversation-to-protected-continue",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#project-session-evidence-into-conversation",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#reconcile-conversation-retries-and-reconnects",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#prove-one-action-conversation-delivery",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#write-yaml-scalars-that-round-trip-as-strings",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1896,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1165,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1168,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1199,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1173,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#settle-superseded-decision-ask-rejection",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "fix-landed-action-unfinished"
+  },
+  {
+   "number": 1176,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#allocate-decision-numbers-from-origin-and-refuse-duplicates",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1180,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1187,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#allocate-decision-numbers-from-origin-and-refuse-duplicates",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1189,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1199,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1192,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1190,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1199,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1201,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1202,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1203,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1205,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1211,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1716,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1242,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1223,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1219,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1213,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#amend-action-consumes-block-scalar-and-literal-ids",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1396,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1229,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1212,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1214,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1245,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1212,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1221,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1222,
+     "kind": "closes",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1228,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1249,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1268,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1250,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1262,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-retired-descriptor-byte-change",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2036,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2000,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1937,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1263,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1267,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1270,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-claim-when-passed-attempt-receipt-is-unparseable",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1271,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#settle-superseded-decision-ask-rejection",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "fix-landed-action-unfinished"
+  },
+  {
+   "number": 1272,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#amend-action-consumes-block-scalar-and-literal-ids",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1396,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "fix-landed-action-unfinished"
+  },
+  {
+   "number": 1273,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-queue-positions-of-projects-not-visible-at-arrange",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1274,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#refuse-hidden-renames-in-committed-completion-replay",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1275,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#allocate-decision-numbers-from-origin-and-refuse-duplicates",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2276,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2153,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1276,
+   "links": [
+    {
+     "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#write-yaml-scalars-that-round-trip-as-strings",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1277,
+   "links": [
+    {
+     "action": "plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#declare-action-route-and-fix-the-approval-check",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1296,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1287,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1285,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1279,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1280,
+   "links": [
+    {
+     "action": "plan/recover-completed-governance-overlap-in-protected-go#reconcile-completed-governance-overlap",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/recover-completed-governance-overlap-in-protected-go#package-protected-broker-role-registry",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1385,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1378,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1283,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1281,
+   "links": [
+    {
+     "action": "plan/recover-completed-governance-overlap-in-protected-go#reconcile-completed-governance-overlap",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1564,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1284,
+   "links": [
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#decision-card-contract",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#cards-from-existing-sources",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#todo-actions-render-cards",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#delegation-policy-records",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#plan-close-out-record",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#next-plan-selector",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#blocker-reset-script",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#friction-to-test-guard",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#card-veto-verb",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a#record-operator-touch-receipts",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#replay-environment-wall-session",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#record-session-ledger",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#enforce-session-token-ceiling",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#probe-environment-inside-session",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#one-click-clear-every-blocker-kind",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#fix-docs-sync-lock-and-activation-order",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#revise-agent-roles-and-session-briefs",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#attach-the-session-probe-result-to-the-reconcile-receipt",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in#stage-pointer-with-queue-reorder-and-reproduce-live-lock",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-situation-class-an-unattended-production-run-can-hit-has-a-registered#define-situation-registry",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-situation-class-an-unattended-production-run-can-hit-has-a-registered#main-health-watch",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-situation-class-an-unattended-production-run-can-hit-has-a-registered#plan-level-repair-budget",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-situation-class-an-unattended-production-run-can-hit-has-a-registered#resume-from-state-brief",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/every-situation-class-an-unattended-production-run-can-hit-has-a-registered#settle-from-candidate-and-publish",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#stop-spending-into-an-environment-wall",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#name-every-production-stall-with-a-one-click-fix",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#declare-action-route-and-fix-the-approval-check",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#refuse-plan-changes-inside-an-active-production-scope",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#refuse-a-session-before-launch-when-its-sandbox-cannot-write",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1403,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1393,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1391,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1387,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1386,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1375,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1369,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1362,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1286,
+   "links": [
+    {
+     "action": "plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#stop-spending-into-an-environment-wall",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1564,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1416,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1287,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1320,
+   "links": [
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#scout-isolation-preflight",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#repair-scout-approved-handoff",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#expose-scout-run-evidence",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#prove-luna-scout-green-pr",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#implement-bounded-independent-admission",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#project-disposition-through-cli-api-ui",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#bounded-luna-hello-world-loop",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1394,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1392,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1390,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1371,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1325,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1323,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1322,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1921,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1914,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1912,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1908,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1905,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1836,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1834,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1448,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1327,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1328,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1329,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1648,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1413,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1325,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1339,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1384,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1372,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1367,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1344,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1340,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1381,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1379,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1372,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1367,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1343,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1347,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1346,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1356,
+   "links": [
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#scout-isolation-preflight",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#repair-scout-approved-handoff",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#expose-scout-run-evidence",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#prove-luna-scout-green-pr",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#implement-bounded-independent-admission",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#project-disposition-through-cli-api-ui",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#bounded-luna-hello-world-loop",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1394,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1392,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1390,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1371,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1357,
+   "links": [
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#scout-isolation-preflight",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#repair-scout-approved-handoff",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#expose-scout-run-evidence",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#prove-luna-scout-green-pr",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#implement-bounded-independent-admission",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#project-disposition-through-cli-api-ui",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#bounded-luna-hello-world-loop",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1394,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1392,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1390,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1365,
+   "links": [
+    {
+     "action": "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#bounded-luna-hello-world-loop",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1390,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1371,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1368,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1366,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2340,
+     "kind": "closes",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2339,
+     "kind": "closes",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2337,
+     "kind": "closes",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2177,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 1390,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1368,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1388,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1394,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1392,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1390,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1395,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1396,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1398,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1394,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1401,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1394,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1407,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1413,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1408,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1414,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1416,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1419,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1983,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1982,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1902,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1783,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1782,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1781,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1780,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1649,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1439,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1723,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1721,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1719,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1716,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1714,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1710,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1442,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1448,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1450,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1452,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1460,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1459,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1461,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1462,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1457,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1463,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1457,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1466,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1470,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-mail-ack-receipt-kind-collision",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    },
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#rebuild-cover-mail-ack-receipt-kind-collision",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1662,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1661,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1658,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1649,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1648,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1469,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1489,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1509,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#first-unattended-run",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1516,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1524,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1519,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1536,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1985,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1984,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 1937,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1902,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1648,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1560,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1539,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1549,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1550,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1563,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1551,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1565,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1566,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1567,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1568,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1569,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1570,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#test-transient-review-retry-after-exhaustion",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    },
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#refresh-decision-0130-status-and-1559-fake",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    },
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#guard-repair-gate-upsert-role",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1610,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1571,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1572,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1574,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#guard-repair-gate-upsert-role",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1588,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1587,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1582,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#test-transient-review-retry-after-exhaustion",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1610,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1588,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1587,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1585,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#refresh-decision-0130-status-and-1559-fake",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1617,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1588,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1587,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1600,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1603,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1612,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1610,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1606,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1607,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1614,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1615,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1642,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1624,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1627,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1631,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1628,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1779,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1649,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1648,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1638,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1645,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1646,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1652,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1654,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1655,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-mail-ack-receipt-kind-collision",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1656,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1657,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1660,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1670,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1676,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1679,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1680,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1689,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1678,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1681,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1682,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1685,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1684,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1686,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1695,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1694,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1697,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1694,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1698,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1694,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1702,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1703,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1708,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1717,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1716,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1724,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1725,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1731,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1732,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1738,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1739,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1740,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1742,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1772,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1744,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1748,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1746,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1743,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1747,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1746,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1759,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1761,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1797,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1768,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1763,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1902,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1765,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1767,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#rebuild-cover-mail-ack-receipt-kind-collision",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1773,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1774,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1775,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1778,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1777,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1798,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1809,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1797,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1800,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1810,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1804,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1806,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1807,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1811,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1818,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1825,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1826,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1827,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1845,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1840,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1829,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1832,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1830,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1841,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1840,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1843,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1847,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1846,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1844,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1848,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1849,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1850,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1856,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1855,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1851,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1854,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1853,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1857,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1858,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1859,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1860,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1861,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1863,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1862,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1885,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1864,
+   "links": [
+    {
+     "action": "plan/make-arcadia-go-orient-one-caller-truthfully-before-authorized-work#implement-go-live-delivery-checklist",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/make-arcadia-go-orient-one-caller-truthfully-before-authorized-work#repair-host-owned-source-completion-capabilities",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1874,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1875,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1879,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1878,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1886,
+   "links": [
+    {
+     "action": "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-project-budget-exceeded",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    },
+    {
+     "action": "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-blank-override-falls-through",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2144,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2143,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2130,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1885,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1894,
+   "links": [
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#prove-go-delivery-from-coding-agent-session",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#implement-project-go-conversation",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#connect-conversation-to-protected-continue",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#project-session-evidence-into-conversation",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#reconcile-conversation-retries-and-reconnects",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    },
+    {
+     "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#prove-one-action-conversation-delivery",
+     "provenance": "explicit:action-references",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 1896,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 1897,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1898,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1900,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1903,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1907,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1905,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1909,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1910,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1912,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1920,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1926,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1923,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 1921,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1924,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1925,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1929,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2184,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2181,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2155,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2151,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2146,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2132,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2130,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2129,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1953,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1962,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1965,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1966,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1967,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-retired-descriptor-byte-change",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1976,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1978,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1980,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 1981,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 1987,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-worker-merge-allowlist-carve-outs",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1989,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-blast-radius-safety-patterns",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1990,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-worker-merge-allowlist-carve-outs",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 1991,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-blast-radius-safety-patterns",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2004,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-recovery-unparseable-time-order",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    },
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-qa-plan-status-must-be-fail",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2126,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2118,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2089,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2088,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2087,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2037,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2008,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2007,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2011,
+   "links": [
+    {
+     "action": "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-safety-lines-order-and-limit",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2340,
+     "kind": "closes",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2339,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2337,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2177,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2145,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2130,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2013,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2016,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2010,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2015,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-work-monitor-malformed-record",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2124,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2086,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2085,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2083,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2062,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2061,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2059,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    },
+    {
+     "pr": 2058,
+     "kind": "refs",
+     "state": "CLOSED",
+     "merged": false
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2018,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-reconcile-refuses-activation-commit",
+     "provenance": "explicit:action-references",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [
+    {
+     "pr": 2125,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2037,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2023,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2021,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2023,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2025,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2024,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2026,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2037,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2029,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2038,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2039,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2044,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2072,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2047,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2049,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#recovery-signal-replay-gate",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2050,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#session-proposal-stays-out-of-candidate",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2051,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#worker-reconciles-own-pointer-commits",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2052,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#headless-session-resolves-arcadia-cli",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2053,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#qa-plan-sole-failure-spends-no-repair",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2054,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#red-alerts-for-repair-stops-and-no-progress",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2055,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-work-monitor-malformed-record",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2056,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-recovery-unparseable-time-order",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2057,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-reconcile-refuses-activation-commit",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2084,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2116,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2106,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2094,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2090,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2093,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2102,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2103,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2113,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2104,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2111,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2109,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2117,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2119,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2121,
+     "kind": "closes",
+     "state": "OPEN",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2123,
+   "links": [
+    {
+     "action": "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-qa-plan-status-must-be-fail",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2134,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2236,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2216,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2181,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2178,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    },
+    {
+     "pr": 2177,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2153,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2139,
+   "links": [
+    {
+     "action": "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-project-budget-exceeded",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2140,
+   "links": [
+    {
+     "action": "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-blank-override-falls-through",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2141,
+   "links": [
+    {
+     "action": "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-safety-lines-order-and-limit",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "complete"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2154,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2155,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2159,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2160,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2162,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#build-parser",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2163,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#build-upsert",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2164,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#wire-docs-sync-command",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2165,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#contract-work-pointer",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2166,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#second-project-validation",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2167,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#repair-clarification-response-ux",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2168,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#ingest-mission-logs",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2169,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#persist-dependencies",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2170,
+   "links": [
+    {
+     "action": "plan/portfolio-docs-protocol#narrative-summarization",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 2186,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-red-alert-token-estimate",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2187,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-defect-summary-normalization",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2188,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-scheduling-sequence-equality",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2189,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-action-doc-ref-parse",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2190,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-journey-action-key-split",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2191,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-surface-date-validation",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2192,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-governed-record-path",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2193,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-ask-intent-work-kind",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2194,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-timeline-summary-and-order",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2195,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-answer-menu-letters",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2196,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-lesson-scope-normalization",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2197,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-agent-watch-ref-parsing",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2198,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-close-out-canonical-json",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2199,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-card-expiry-parse",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2200,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-ci-text-neutralization",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2201,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-issue-ref-parsing",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2202,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-way-trigger-parsing",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2203,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-narration-text-split",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2204,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-markdown-speech-strip",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2205,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107#pin-agent-role-guard",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "draft"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2222,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2223,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2227,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2228,
+     "kind": "closes",
+     "state": "OPEN",
+     "merged": false
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2273,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2276,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2274,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2276,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2278,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2283,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2284,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2285,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2286,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2338,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2318,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2288,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-reasoning-effort-mapping",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2289,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-cli-wants-json",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2290,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-requirement-id-format",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2291,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-doc-ref-builders",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2292,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-checks-repair-request-id",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2293,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-handoff-request-prefix",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2294,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-review-response-normalization",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2295,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-image-mime-extension",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2296,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-authoritative-control-path",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2297,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-stable-proposal-id",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2298,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-north-star-step-reasons",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2299,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-milestone-and-log-doc-refs",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2300,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-yaml-scalar-quoting",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2301,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-launch-agent-workspace-arg",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2302,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-lesson-keywords",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2303,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-cloudflare-worker-name",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2304,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-liveness-duration-format",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2305,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-repository-frame-extraction",
+     "provenance": "issue-body-mirror",
+     "action_status": "done",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": "action-done-issue-open"
+  },
+  {
+   "number": 2306,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-defect-summary-similarity",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 2307,
+   "links": [
+    {
+     "action": "plan/record-run-unattended-test-pins-20261107-part-2#pin-inline-text-escaping",
+     "provenance": "issue-body-mirror",
+     "action_status": "open",
+     "plan_status": "active"
+    }
+   ],
+   "pull_requests": [],
+   "coverage": "unknown",
+   "mismatch": null
+  },
+  {
+   "number": 2314,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2316,
+   "links": [],
+   "pull_requests": [
+    {
+     "pr": 2338,
+     "kind": "refs",
+     "state": "OPEN",
+     "merged": false
+    },
+    {
+     "pr": 2318,
+     "kind": "refs",
+     "state": "MERGED",
+     "merged": true
+    }
+   ],
+   "coverage": null,
+   "mismatch": "unmapped"
+  },
+  {
+   "number": 2341,
+   "links": [],
+   "pull_requests": [],
+   "coverage": null,
+   "mismatch": "unmapped"
+  }
+ ],
+ "governed_side": [
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#settle-commit-survives-gitignored-asks",
+   "action_status": "open",
+   "issue": 512,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#serialize-decision-deferral-pointer-write",
+   "action_status": "open",
+   "issue": 505,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#treat-blocked-status-as-undispatchable",
+   "action_status": "open",
+   "issue": 494,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#close-completed-board-mirrors",
+   "action_status": "open",
+   "issue": 490,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-decision-approve-resolution-body",
+   "action_status": "open",
+   "issue": 746,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#allow-manual-preservation-first-binding-after-base-advance",
+   "action_status": "open",
+   "issue": 811,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#report-missing-validation-commands-in-broker-readiness",
+   "action_status": "open",
+   "issue": 813,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#support-action-deferral-via-agent-ask",
+   "action_status": "open",
+   "issue": 844,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#diagnose-manual-preservation-response-budget-timeout",
+   "action_status": "open",
+   "issue": 848,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#withdraw-superseded-847-activation-asks",
+   "action_status": "open",
+   "issue": 875,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#stabilize-flaky-test-suite",
+   "action_status": "open",
+   "issue": 765,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#stabilize-flaky-test-suite",
+   "action_status": "open",
+   "issue": 766,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#stabilize-flaky-test-suite",
+   "action_status": "open",
+   "issue": 768,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#stabilize-flaky-test-suite",
+   "action_status": "open",
+   "issue": 778,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#stabilize-flaky-test-suite",
+   "action_status": "open",
+   "issue": 831,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#resolve-merged-pr-review-followups",
+   "action_status": "open",
+   "issue": 916,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#resolve-merged-pr-review-followups",
+   "action_status": "open",
+   "issue": 918,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#resolve-merged-pr-review-followups",
+   "action_status": "open",
+   "issue": 921,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#resolve-merged-pr-review-followups",
+   "action_status": "open",
+   "issue": 930,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#resolve-merged-pr-review-followups",
+   "action_status": "open",
+   "issue": 933,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-reviewer-verdict-name-echo",
+   "action_status": "open",
+   "issue": 937,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#harden-peer-watch-ownership-join",
+   "action_status": "open",
+   "issue": 939,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-identity-block-fail-soft",
+   "action_status": "open",
+   "issue": 942,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#harden-experiment-guard-leak-check-attribution",
+   "action_status": "open",
+   "issue": 945,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-experiment-workspace-friction",
+   "action_status": "open",
+   "issue": 947,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#harden-activity-leak-fix-followups",
+   "action_status": "open",
+   "issue": 949,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#fix-qa-plan-check-wording",
+   "action_status": "done",
+   "issue": 974,
+   "issue_state": "pull-request",
+   "mismatch": "reference-is-a-pull-request"
+  },
+  {
+   "action": "plan/bootstrap-managed-production-to-build-flight-deck#generate-neutral-rehearsal-dry-preparation",
+   "action_status": "open",
+   "issue": 1031,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#prove-go-delivery-from-coding-agent-session",
+   "action_status": "open",
+   "issue": 1889,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#implement-project-go-conversation",
+   "action_status": "open",
+   "issue": 1889,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#connect-conversation-to-protected-continue",
+   "action_status": "open",
+   "issue": 1889,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#project-session-evidence-into-conversation",
+   "action_status": "open",
+   "issue": 1889,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#reconcile-conversation-retries-and-reconnects",
+   "action_status": "open",
+   "issue": 1889,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/deliver-one-authorized-action-through-a-persistent-go-conversation#prove-one-action-conversation-delivery",
+   "action_status": "open",
+   "issue": 1889,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/execute-one-approved-named-run-safely-with-production-off#prove-approved-run-completion",
+   "action_status": "open",
+   "issue": 1389,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/guard-the-operator-s-machine-against-data-loss-from-arcadia-s-own-scripts-and#lint-shell-scripts-for-safe-deletes",
+   "action_status": "open",
+   "issue": 1154,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/guard-the-operator-s-machine-against-data-loss-from-arcadia-s-own-scripts-and#keep-tests-off-the-live-workspace",
+   "action_status": "open",
+   "issue": 1154,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/guard-the-operator-s-machine-against-data-loss-from-arcadia-s-own-scripts-and#alert-on-unsaved-and-local-only-work",
+   "action_status": "open",
+   "issue": 1154,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and#align-ask-superpower-outcome",
+   "action_status": "open",
+   "issue": 589,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and#align-ask-superpower-outcome",
+   "action_status": "open",
+   "issue": 591,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and#trace-every-ask-to-its-outcome",
+   "action_status": "open",
+   "issue": 589,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and#trace-every-ask-to-its-outcome",
+   "action_status": "open",
+   "issue": 591,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and#route-execution-shaped-asks-to-planning",
+   "action_status": "open",
+   "issue": 589,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and#route-execution-shaped-asks-to-planning",
+   "action_status": "open",
+   "issue": 591,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/record-run-unattended-test-pins-20261107#pin-issue-ref-parsing",
+   "action_status": "done",
+   "issue": 2143,
+   "issue_state": "pull-request",
+   "mismatch": "reference-is-a-pull-request"
+  },
+  {
+   "action": "plan/recover-completed-governance-overlap-in-protected-go#reconcile-completed-governance-overlap",
+   "action_status": "open",
+   "issue": 1376,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/redesign-the-phone-dashboard-into-one-judgment-home-a-complete-operator-script#focus-runs-on-active-work-and-next-push",
+   "action_status": "open",
+   "issue": 809,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#amend-action-consumes-block-scalar-and-literal-ids",
+   "action_status": "open",
+   "issue": 1031,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions#preview-safe-concurrent-action-selection",
+   "action_status": "open",
+   "issue": 1728,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions#prove-atomic-scoped-concurrent-admission",
+   "action_status": "open",
+   "issue": 1728,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions#prove-safe-concurrent-settlement-and-integration",
+   "action_status": "open",
+   "issue": 1728,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  },
+  {
+   "action": "plan/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions#prove-one-supported-native-supervision-adapter",
+   "action_status": "open",
+   "issue": 1728,
+   "issue_state": "closed",
+   "mismatch": "issue-closed-action-unfinished"
+  }
+ ],
+ "not_assessed": "Coverage of Issue requirements by Action acceptance was compared only for verified Issues. Defect-resolution Actions lacking an Issue reference were not searched for."
+}
