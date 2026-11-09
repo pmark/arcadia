@@ -4,7 +4,7 @@ type: decision
 id: "0201"
 slug: decide-whether-start-may-run-while-one-registered-coordinator-s-tmux-window-is
 project: arcadia
-status: open
+status: approved
 question: Decide whether START may run while one registered coordinator's tmux window is open, which amends one case of the production rule Decision 0156 keeps ("zero live admissions and no live Sessions").
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-09
+answer: A. Allow START while one registered coordinator window is open, and nothing else
+decided: 2026-11-09
 ---
 
 # Decision 0201: Decide whether START may run while one registered coordinator's tmux window is open, which amends one case of the production rule Decision 0156 keeps ("zero live admissions and no live Sessions").
