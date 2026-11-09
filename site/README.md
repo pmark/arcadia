@@ -24,13 +24,15 @@ GitHub Pages; AMC ([arcadiamissioncontrol.com](https://arcadiamissioncontrol.com
   other files to the repository on `main`). Jekyll (`jekyll-feed`) then renders it.
 - `.github/workflows/blog.yml` builds on pull requests (check only) and deploys
   on pushes to `main` that touch `docs/articles/`, `site/` or the workflow.
-- Post links and the feed are rendered by Jekyll. The home page adds Canyon
-  Pass as a progressive enhancement over the static night illustration. The
+- Post links and the feed are rendered by Jekyll. The site adds Canyon
+  Pass as a progressive enhancement over a still background. The
   background follows the simulated Martian day and can be paused. The system
   reduced-motion or forced-colors preference disables the moving background.
 - The wordmark, typefaces, sol palette and star field follow the
   [Mission Control Site](https://github.com/pmark/mission-control-site).
-  The sky clock stays consistent across reloads in the same Field Notes tab.
+  Field Notes keeps the sky running between the index and articles and restores
+  the camera pose on a same-tab reload. The AMC-style icon toggle controls the
+  interface theme independently of the sky clock.
   Three.js is loaded from a version-pinned CDN when motion is enabled.
 
 ## One-time operator setup (not done by the build)
