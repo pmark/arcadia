@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Record run unattended test pins 20261107 part 2
 active_plan: record-run-unattended-test-pins-20261107-part-2
-updated: 2026-11-08
-current_action: pin-authoritative-control-path
+updated: 2026-11-09
+current_action: pin-stable-proposal-id
 ---
 
 # Arcadia

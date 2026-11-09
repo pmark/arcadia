@@ -7,7 +7,7 @@ status: active
 milestone: Record run unattended test pins 20261107 part 2
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-08
+updated: 2026-11-09
 actions:
   - id: pin-reasoning-effort-mapping
     title: Pin that stored effort keys map to the native Claude and Codex reasoning effort values and unknown keys pass through, with a new test file.
@@ -171,11 +171,11 @@ actions:
     references: []
   - id: pin-authoritative-control-path
     title: Pin which relative paths count as authoritative control records, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which relative paths count as authoritative control records, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-authoritative-control-path-4030e5f79871; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-authoritative-control-path
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-authoritative-control-path
+current_action: pin-stable-proposal-id
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

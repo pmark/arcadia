@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-08
+updated: 2026-11-09
 ---
 
 # Mission Log: Arcadia
@@ -3187,3 +3187,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-image-mime-extension.test.ts is a new test file that imports mimeTypeToExtension from ../src/intelligence/artifacts/imageMeta.js and asserts mimeTypeToExtension returns "png" for "image/png", "jpg" for "image/jpeg", "gif" for "image/gif" and "webp" for "image/webp"."; "The same test file asserts mimeTypeToExtension returns "bin" for "image/svg+xml", for "IMAGE/PNG" and for ""."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-image-mime-extension.test.ts, a new test file that imports only vitest and src/intelligence/artifacts/imageMeta.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-image-mime-extension-05a68a019dd2).
+
+## 2026-11-09 — Completed arcadia/pin-authoritative-control-path
+
+- **Did:** Completed Action arcadia/pin-authoritative-control-path from accepted evidence (Candidate 84dc13fb71ba0444908a27661e7425bdc2c63b10).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-authoritative-control-path.test.ts is a new test file that imports isAuthoritativeControlPath from ../src/docs/discover.js and asserts isAuthoritativeControlPath returns true for "PROJECT.md", "docs/plans/my-plan.md", "docs/decisions/0001-x.md" and the backslash form "docs\\plans\\my-plan.md"."; "The same test file asserts isAuthoritativeControlPath returns false for "docs/notes.md", "docs/plan/x.md", "project.md" and "sub/PROJECT.md"."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-authoritative-control-path.test.ts, a new test file that imports only vitest and src/docs/discover.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-authoritative-control-path-4030e5f79871).
