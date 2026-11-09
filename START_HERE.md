@@ -4037,7 +4037,7 @@ Without `--refresh` it makes no provider request and labels Claude's cached
 windows as credential-context-unverified. `--refresh` makes one bounded usage
 read each for Claude and Codex without writing the shared production telemetry
 or inheriting its cooldown. It reports actual request attempts, timestamps,
-HTTP/transport/parse outcomes and allowance windows. OpenCode account allowance stays unknown. Its optional local session usage is
+HTTP/transport/parse outcomes and allowance windows. OpenCode is a plan with a weekly token allocation, like Codex and Claude Code (see `docs/model-selection.md`), but Arcadia can't read how much remains, so its account allowance stays unknown. Its optional local session usage is
 reported separately and never supplies production allowance windows.
 
 Claude normally selects environment, file, then Keychain. Use
