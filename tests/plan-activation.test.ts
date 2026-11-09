@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { activateNextPlan, activatePlan } from "../src/dispatch/planActivationApply.js";
 import { resolvePlanActivation } from "../src/dispatch/planActivation.js";
 import { seedActionOrderFifo, arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
-import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
+import { activateProduction, fingerprintProductionScope, normalizeProductionScope, SCOPE_DRIFT_REMEDY } from "../src/production/policy.js";
 import { buildAgentQueue } from "../src/dispatch/queue.js";
 import { runGoCommand } from "../src/commands/go.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -635,5 +635,13 @@ describe("activatePlan receipts", () => {
         apply: true
       }))).toThrow(/queue revision changed/);
     expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: plan-a");
+  });
+});
+
+describe("the scope-held successor step is named (Issue #2159)", () => {
+  it("names `arcadia go --apply` in the scope-drift remedy and the operator guide", () => {
+    expect(SCOPE_DRIFT_REMEDY).toContain("arcadia go --apply");
+    expect(SCOPE_DRIFT_REMEDY).toContain("Turn production Off");
+    expect(readFileSync(path.resolve("START_HERE.md"), "utf8")).toMatch(/Turn\s+production Off" on \/production, then run `arcadia go --apply --agent <agent>`/);
   });
 });
