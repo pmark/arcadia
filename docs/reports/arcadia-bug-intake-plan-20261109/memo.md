@@ -80,7 +80,7 @@ The vital few are the key and matcher, the outcome engine and the guidance chang
 
 - **Routine intake covers it:**
   - Creating an Issue and commenting in the **owning** repository. The operator's 2026-10-12 standing direction says "routine repository intake Issue", and `principles.md` says "an obvious bug is logged, not asked about".
-- **Reopening is not in slice A.** `principles.md` only says a matching Issue "gets a reference or an update", and no grant covers reopening (review F7). A recurrence of a completed Issue is filed as a **new** Issue that names the closed one. That is routine intake, it stays visible, and nothing is lost. A comment on a closed Issue would go unseen. Revival trigger for REOPENED: the operator states that reopening a regression is routine intake, for example while answering the decision Ask.
+- **Reopening is not in slice A.** `principles.md` only says a matching Issue "gets a reference or an update", and no grant covers reopening (review F7). A recurrence of a completed Issue is filed as a **new** Issue that names the closed one. That is routine intake, it stays visible, and nothing is lost. A comment on a closed Issue would go unseen. Revival trigger for REOPENED: the operator records, through a Decision or an Agent Ask, that reopening a regression is routine intake. The A/B/C menu doesn't carry this choice. When an open regression Issue and its closed original both match, the report goes to the open Issue, so regressions don't multiply (round-2 N1).
 - **The build needs no new Decision.** Decision 0121 (answered 2026-10-11) chose `arcadia bug`, and its deferral was a deferral, not a refusal. Decision 0049 approved the defect intake this extends.
 - **Exact approval boundaries:**
   1. The operator settles the Plan Ask and activates the draft Plan.
@@ -147,16 +147,17 @@ Token impact: small. Zero model calls at runtime. Build uses existing session al
 
 ## Previewed Asks (receipts; not settled)
 
-**Settle only v2.** Review round 1 on PR 2383 found 7 non-blocking issues, and the v2 Asks repair all of them. The round-1 previews are superseded but keep their receipts: a used request id refuses changed content. Disposing of the round-1 previews is the operator's settle step, not this planner's.
+**Settle only the plan v3 and the decision v2.** Review round 1 on PR 2383 found 7 non-blocking issues, and the v2 Asks repair all of them. Plan v3 also repairs round-2 notes N1 and N3. The round-1 previews are superseded but keep their receipts: a used request id refuses changed content. Disposing of the round-1 previews is the operator's settle step, not this planner's.
 
 | Ask | Request id | Proposal | Capture | Fingerprint | Result |
 |---|---|---|---|---|---|
-| **v2** Plan, slice A ([plan-ask.json](plan-ask.json)) | `plan-arcadia-bug-intake-slice-a-v2-20261109` | `agentask_9ce9aa1708b6456ced` | `capture_1bff2549-c0ae-4164-ab23-8101c2047f8a` | `9ce9aa1708b6…0f6c` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
+| **v3** Plan, slice A ([plan-ask.json](plan-ask.json)) | `plan-arcadia-bug-intake-slice-a-v3-20261109` | `agentask_bb99d16cee9e1fcf55` | `capture_3be63682-d564-45aa-abdc-469fe74b553e` | `bb99d16cee9e…32cf` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
+| v2 Plan (superseded) | `plan-arcadia-bug-intake-slice-a-v2-20261109` | `agentask_9ce9aa1708b6456ced` | `capture_1bff2549-c0ae-4164-ab23-8101c2047f8a` | `9ce9aa1708b6…0f6c` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
 | **v2** Decision, first slice ([decision-ask.json](decision-ask.json)) | `decision-arcadia-bug-first-slice-v2-20261109` | `agentask_7fa9afdefe782635e1` | `capture_041633bc-1538-4fe1-9a78-a45fe000d18b` | `7fa9afdefe78…d669` | ok, 1 create effect, `gate_question: reasonable_disagreement`, no refusals, 0 Project writes |
 | round 1 Plan (superseded) | `plan-arcadia-bug-intake-slice-a-20261109` | `agentask_2552596036e2791080` | `capture_3822da73-f1b1-4da6-91bf-3f637c49c96b` | `2552596036e2…6dbe` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
 | round 1 Decision (superseded) | `decision-arcadia-bug-first-slice-20261109` | `agentask_eb791d9b6b481f1080` | `capture_94c9a4ce-a914-44f2-8466-fce581981231` | `eb791d9b6b48…cf6f` | ok, 1 create effect, `gate_question: reasonable_disagreement`, no refusals, 0 Project writes |
 
-All four previews were run in workspace `martianrover`. Settling is the operator's step, through the supervisor or Signal.
+All five previews were run in workspace `martianrover`. Settling is the operator's step, through the supervisor or Signal.
 
 ## What I could not verify
 
