@@ -26,6 +26,8 @@ export interface Subscription {
    * "<command>" --cursor <c>` by the generation that runs the watcher clears it.
    */
   inherited?: boolean;
+  /** The cursor this watcher held when another generation handed it over, the baseline for a late watcher the snapshot never listed. */
+  handedOverCursor?: string;
 }
 export interface ChatOnlyApproval { at: string; text: string; generation: number | null }
 
@@ -112,9 +114,11 @@ export function unregisteredWatchers(snapshot: SnapshotWatchers, state: Coordina
  */
 export function cursorChanges(snapshot: SnapshotWatchers, state: CoordinatorState, generation: number): Array<{ command: string; from: string; to: string }> {
   const changes: Array<{ command: string; from: string; to: string }> = [];
-  for (const wanted of snapshot.subscriptions) {
-    const have = state.subscriptions.find((candidate) => candidate.command === wanted.command && registeredBy(candidate, generation, snapshot));
-    if (have && have.cursor !== wanted.cursor) changes.push({ command: wanted.command, from: wanted.cursor, to: have.cursor });
+  for (const have of state.subscriptions) {
+    if (!registeredBy(have, generation, snapshot)) continue;
+    // The snapshot's cursor is the baseline; a late watcher (not in the snapshot) falls back to the cursor its predecessor held.
+    const from = snapshot.subscriptions.find((wanted) => wanted.command === have.command)?.cursor ?? have.handedOverCursor;
+    if (from !== undefined && from !== have.cursor) changes.push({ command: have.command, from, to: have.cursor });
   }
   return changes;
 }

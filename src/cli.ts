@@ -84,7 +84,9 @@ import {
   renderCoordinatorCapsuleSuccess,
   renderCoordinatorNoteSuccess,
   renderCoordinatorRenewSuccess,
+  renderCoordinatorRegisterSuccess,
   renderCoordinatorRelaySessionsSuccess,
+  runCoordinatorRegisterCommand,
   runCoordinatorRelaySessionsCommand,
   runCoordinatorRenewCommand,
   renderCoordinatorSubscribeSuccess,
@@ -1324,15 +1326,15 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("coordinator.note", options, () => runCoordinatorNoteCommand({ ...options, text: text.join(" "), env: process.env }), renderCoordinatorNoteSuccess)
   );
   coordinatorScope(coordinator.command("subscribe")
-    .description("Register a checked-in watcher command line with its cursor, or record every watcher a pinned snapshot lists as inherited (not armed; run each yourself, then register it with a plain subscribe). Custody-guarded")
+    .description("Register a checked-in watcher command line with its cursor, or record every watcher a pinned snapshot lists as inherited (not registered by you; run each yourself, then register it with a plain subscribe). Custody-guarded")
     .argument("[command-line]", "The watcher's checked-in command line")
     .option("--cursor <cursor>", "The watcher's last event cursor")
-    .option("--from-snapshot <sha>", "Record the watchers the snapshot with this sha lists as inherited and unarmed (the incoming generation); starts no process")
+    .option("--from-snapshot <sha>", "Record the watchers the snapshot with this sha lists as inherited, not yet registered (the incoming generation); starts no process")
   ).action((commandLine: string | undefined, options: { workspace: string; project: string; role: string; cursor?: string; fromSnapshot?: string; json?: boolean }) =>
     runCliAction("coordinator.subscribe", options, () => runCoordinatorSubscribeCommand({ ...options, commandLine, env: process.env }), renderCoordinatorSubscribeSuccess)
   );
   coordinatorScope(coordinator.command("verify")
-    .description("Prove a launching generation has the whole state: snapshot sha, drift since the snapshot, watchers armed by this generation (exit 1 unless these pass), then journal, lost approvals and next move as warnings")
+    .description("Prove a launching generation has the whole state: snapshot sha, drift since the snapshot, watchers registered by this generation, including any the predecessor registered after the snapshot (exit 1 unless these pass), then journal, lost approvals and next move as warnings")
     .requiredOption("--generation <n>", "The launching generation", (value: string) => Number(value))
     .option("--snapshot-sha <sha>", "The sha the launch prompt pinned")
     .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
@@ -1354,6 +1356,16 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("coordinator.renew", options, () => runCoordinatorRenewCommand({ ...options, env: process.env }), renderCoordinatorRenewSuccess)
   );
 
+  coordinatorScope(coordinator.command("register")
+    .description("Record an existing (desktop) coordinator as generation 1 custodian, once per role. Fence-relevant: it records only what you state, is unfenced (no token) and launches nothing. `renew` needs it")
+    .requiredOption("--provider <provider>", "claude, codex or opencode")
+    .requiredOption("--model <model>", "Model id, e.g. opus")
+    .requiredOption("--tier <tier>", "light, standard or heavy")
+    .requiredOption("--identity <identity>", "The coordinator's resolved identity, e.g. \"Claudia Atlas\"")
+    .requiredOption("--session-id <uuid>", "The coordinator's session UUID")
+  ).action((options: { workspace: string; project: string; role: string; provider: string; model: string; tier: string; identity: string; sessionId: string; json?: boolean }) =>
+    runCliAction("coordinator.register", options, () => runCoordinatorRegisterCommand(options), renderCoordinatorRegisterSuccess)
+  );
   addJsonOption(coordinator.command("relay-sessions")
     .description("Read-only: the exact tmux sessions of registered, relay-launched, current coordinator custodians that START's no-competing-Session check tolerates (none during a handoff)")
     .requiredOption("--project <slug>", "Project slug, e.g. arcadia")

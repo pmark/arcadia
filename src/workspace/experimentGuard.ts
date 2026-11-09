@@ -158,6 +158,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "coordinator subscribe": ALLOWED,
   "coordinator verify": ALLOWED,
   "coordinator relay-sessions": ALLOWED,
+  "coordinator register": ALLOWED,
   "coordinator accept": ALLOWED,
   "coordinator renew": guarded(
     "Launches a real coordinator session in tmux; an experiment workspace never launches a live successor.",

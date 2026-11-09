@@ -16,7 +16,7 @@ import {
 } from "./capsule.js";
 import { withRelayLock, type RelayLockDeps } from "./lock.js";
 import { coordinatorPaths, ensureCoordinatorDirectories, type CoordinatorPaths } from "./paths.js";
-import { readCoordinatorState, unregisteredWatchers } from "./state.js";
+import { cursorChanges, readCoordinatorState, unregisteredWatchers } from "./state.js";
 
 /**
  * Coordinator custody (design section c). A coordinator holds no Action claim,
@@ -128,7 +128,10 @@ function maxGeneration(db: Database.Database, project: string, role: string): nu
   return row.max ?? 0;
 }
 
-export interface RelaySessionVerdict { project: string; role: string; generation: number; tmuxName: string; allowed: boolean; reason: string }
+export interface RelaySessionVerdict { project: string; role: string; generation: number; tmuxName: string; nativeSessionId: string | null; allowed: boolean; reason: string }
+
+const SAFE_TMUX_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const SESSION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
  * Which tmux sessions START's no-competing-Session check (P2 and P4 of
@@ -144,7 +147,10 @@ export interface RelaySessionVerdict { project: string; role: string; generation
  *    name) never is;
  *  - while any generation of that role is `launching` (a handoff in flight),
  *    nothing for that role is allowed, so a predecessor and its successor are
- *    never both tolerated and START cannot overlap a custody transfer.
+ *    never both tolerated and START cannot overlap a custody transfer;
+ *  - the name is only a candidate: START also requires the live pane to run
+ *    the row's recorded `native_session_id` (`--session-id`), which also makes
+ *    the lookup Project-safe (two Projects share the name but not the id).
  */
 export function relayCoordinatorSessions(db: Database.Database, project: string): RelaySessionVerdict[] {
   const rows = (db.prepare("SELECT * FROM coordinator_generations WHERE project = ? AND status IN ('custodian', 'launching') ORDER BY role, generation").all(project) as Row[]).map(toRecord);
@@ -152,8 +158,10 @@ export function relayCoordinatorSessions(db: Database.Database, project: string)
   const verdicts: RelaySessionVerdict[] = [];
   for (const row of rows) {
     if (!row.tmuxName) continue;
-    const verdict = (allowed: boolean, reason: string) => verdicts.push({ project, role: row.role, generation: row.generation, tmuxName: row.tmuxName as string, allowed, reason });
+    const verdict = (allowed: boolean, reason: string) => verdicts.push({ project, role: row.role, generation: row.generation, tmuxName: row.tmuxName as string, nativeSessionId: row.nativeSessionId, allowed, reason });
     if (row.status === "launching") verdict(false, `generation ${row.generation} of ${row.role} is launching: a handoff is in flight`);
+    else if (!SAFE_TMUX_NAME.test(row.tmuxName)) verdict(false, `generation ${row.generation} of ${row.role} has a tmux name that is not a plain name`);
+    else if (!row.nativeSessionId || !SESSION_UUID.test(row.nativeSessionId)) verdict(false, `generation ${row.generation} of ${row.role} has no recorded session id to match against the running process`);
     else if (!row.relayLaunched) verdict(false, `generation ${row.generation} of ${row.role} was not launched by the relay`);
     else if (launching.has(row.role)) verdict(false, `a successor of ${row.role} is launching: a handoff is in flight`);
     else verdict(true, `registered relay-launched custodian: generation ${row.generation} of ${row.role}`);
@@ -404,7 +412,7 @@ function describeCustodians(db: Database.Database, role: string, project: string
  * current custodian, with the exception of the incoming generation, which is
  * admitted for exactly three commands: `subscribe --from-snapshot` and `accept`
  * (each only with the row's snapshot sha) and a plain `subscribe` (no sha; the
- * command itself narrows it to a watcher inherited from the snapshot). Only for
+ * command itself narrows it to a watcher the state already holds). Only for
  * the newest `launching` row and only with its token; `accept` also needs a
  * passing `verify` on that sha within 10 minutes and a snapshot file that still
  * hashes to the recorded sha. The
@@ -436,7 +444,7 @@ export function assertCoordinatorCustody(
   if (row.status === "custodian") return { kind: "custodian", generation: toRecord(row) };
   if (row.status === "launching" && (input.command === "subscribe-from-snapshot" || input.command === "accept" || input.command === "subscribe")) {
     if (row.generation !== maxGeneration(db, row.project, row.role)) throw deny(`generation ${row.generation} is not the newest generation`);
-    // A plain `subscribe` carries no sha; the command narrows it to inherited watchers.
+    // A plain `subscribe` carries no sha; the command narrows it to watchers the state already holds.
     if (input.command !== "subscribe" && (!input.snapshotSha || input.snapshotSha !== row.snapshot_sha)) {
       throw deny(`the snapshot sha does not match generation ${row.generation}'s pinned snapshot`);
     }
@@ -465,8 +473,12 @@ export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths,
   // Verify's item 3 again, under the same lock as the transfer (#2286 gate 2): a
   // predecessor's `subscribe` (a late watcher) or `--from-snapshot` (which
   // re-flags watchers inherited) between verify and accept must not slip through.
+  let changedCursors: Array<{ command: string; from: string; to: string }> = [];
   if (incoming.snapshotPath && hashSnapshotFile(incoming.snapshotPath) === incoming.snapshotSha) {
-    const unregistered = unregisteredWatchers(readCapsuleFile(incoming.snapshotPath), readCoordinatorState(paths), incoming.generation);
+    const snapshot = readCapsuleFile(incoming.snapshotPath);
+    const state = readCoordinatorState(paths);
+    changedCursors = cursorChanges(snapshot, state, incoming.generation);
+    const unregistered = unregisteredWatchers(snapshot, state, incoming.generation);
     if (unregistered.length > 0) {
       clearVerifyPass(db, incoming.project, incoming.role, incoming.generation, now);
       throw refused(`accept refused: not registered by generation ${incoming.generation}: ${unregistered.map((watcher) => watcher.command).join(", ")}; custody is unchanged. Register each watcher, run verify again, then accept.`, "watchers_unregistered", { generation: incoming.generation });
@@ -483,7 +495,7 @@ export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths,
     if (changed !== 1) throw refused(`Generation ${incoming.generation} is no longer launching; nothing was accepted.`, "not_launching");
     return previous?.generation ?? null;
   });
-  const warning = appendLogAfterCommit(paths, "accepted", { generation: incoming.generation, handedOff }, now);
+  const warning = appendLogAfterCommit(paths, "accepted", { generation: incoming.generation, handedOff, ...(changedCursors.length > 0 ? { cursorChanges: changedCursors } : {}) }, now);
   // Custody has transferred; refreshing the projection is best effort, and a
   // corrupt live.json is rebuilt by the next `capsule` refresh.
   try {

@@ -354,7 +354,7 @@ approval it relies on.
      row's snapshot. `accept` further needs `verify` to have passed against that
      sha within the last 10 minutes and the snapshot file to still hash to the
      recorded sha. A plain `subscribe` from the incoming generation is accepted
-     only for a command line already recorded as inherited from its snapshot;
+     only for a command line the state file already holds (inherited from its snapshot, or registered by the predecessor after it);
      it carries no sha. `subscribe --from-snapshot` also clears any earlier
      verify pass, so `accept` needs a fresh `verify`. Every other command and
      caller gets the ordinary check.
@@ -563,54 +563,93 @@ Deferred, each with its revival trigger:
 ## Gates before real `renew` and tick wiring (#2286)
 
 The custody fence (#2318) is on main. Real `renew` and a live tick stay gated.
-Status of each gate, from #2286 comment 6728223351:
+Status of each gate, from #2286 comment 6728223351 and review round 1 of #2338:
 
 | Gate | State |
 | --- | --- |
 | 1 Late watchers | Closed in source: verify item 3 fails closed on a watcher registered after the snapshot, and the successor can register it |
 | 2 `accept` re-checks item 3 under the lock | Closed in source, and the verify pass is dropped on refusal |
-| 3 Cursor | Rule chosen: a difference never refuses, it is a warning (section f, item 3) |
-| 4 Tick wiring passes `--repo` | Closed in source as far as code can: `renew` with no resolvable repository pings once. The tick, when wired, must still pass `--repo <primary checkout>` |
-| 5 "Armed" means registered | Wording fixed in verify, subscribe and capsule output; liveness is still change 5 |
+| 3 Cursor | Rule chosen: a difference never refuses, it is a warning (section f, item 3), with a baseline for late watchers and a line in the generations log at accept |
+| 4 Tick wiring passes `--repo` | Closed in source as far as code can: `renew` with no resolvable repository pings (the ping queue de-duplicates identical messages for 10 minutes, so a one-minute tick can still ping several times an hour). The tick, when wired, must still pass `--repo <primary checkout>` |
+| 5 "Armed" means registered | Wording fixed in verify, subscribe, capsule and CLI help; liveness is still change 5 |
 | 6 Exact-match prompt delivery | **Open until the real launch proof below.** Fixture: `tests/coordinator-relay-launch-proof.test.ts` |
-| 7 tmux and START | Closed in source (next section). #2316 (phone visibility of a tmux-launched session) is not addressed |
+| 7 tmux and START | **Relaxation written, not approved.** It relaxes a gate Decision 0156 retains (no live Sessions) and awaits a Decision (pending Decision). #2316 (phone visibility of a tmux-launched session) is not addressed |
 | 8 Stale text | Fixed |
+| 9 Registering the first custodian | `arcadia coordinator register` records a stated desktop coordinator as generation 1 (fence-relevant: see below); without a row `renew` refuses `no_custodian` |
+| 10 Stopping a tmux predecessor after accept | **Open.** Nothing stops a predecessor's pane after `accept` (design step 6's stand-down is unbuilt); a live handed-off pane refuses every START until someone stops it |
+| 11 `renew` versus START | **Open, for the tick-wiring gate.** Nothing coordinates a due renewal with a START: "START cannot overlap a custody transfer" holds only at the instants P2 and P4 read the registry. A tick must not call `renew` while a START card is pressed or running |
 
 **Tick wiring.** Whatever runs `renew` on a timer must pass `--repo <path>` of
 git's *primary* worktree (the first entry of `git worktree list`, the one with a
 `.git` directory), not a linked worktree and not "the worktree on `main`". Without
 it, `renew` resolves the invocation directory, and a timer's directory is not the
-repository.
+repository. It must also not run during a START (gate 11).
 
 ## START and the relay's tmux sessions
+
+**This relaxes a gate Decision 0156 retains and needs a Decision (pending
+Decision).** 0156 says START retains "zero live admissions and no live
+Sessions" (the no-Session guard of Decision 0143). Until a Decision approves the
+tolerance below, treat it as unapproved.
 
 `scripts/start-run.sh` P2 (and again P4, before the sign-in sequence) refuses
 START on any live tmux session, because a competing Session must never run. A
 relay-launched coordinator is a tmux session, so that check alone would refuse
-every START while one runs. The check now tolerates only a session whose
-**exact name** `arcadia coordinator relay-sessions --project <slug>` returns:
-the live tmux name of a registered, relay-launched, current custodian
-(`status = custodian`, launched by the relay, so it holds a token), and none
-at all for a role while any generation of it is `launching`.
+every START while one runs. The check now tolerates a live session only when
+both hold:
 
-Still refused: any other session (a builder, a stray, a human's), a name that
-only shares a prefix, a hand-started session that the registry does not name, a
-successor still launching or a predecessor during that handoff, a handed-off or
-failed generation's leftover session, and a registry that cannot be read (fail
-closed). The tolerated session is recorded in START's receipt
-(`relayCoordinatorSessions`). Changing the executor changes the pinned
-`executorSha256` of future START cards; cards already prepared against the old
-bytes refuse as stale and must be regenerated.
+1. its **exact name** is one `arcadia coordinator relay-sessions --project
+   <slug>` returns: the tmux name of a registered, relay-launched (token-holding)
+   `custodian` row with a plain name and a recorded session id, and none at all
+   for a role while any generation of it is `launching`; and
+2. the pane is running that row's process: a descendant of the pane's PID has
+   `--session-id <the row's native_session_id>` in its arguments. A row whose pane
+   died and a different process started under the same name are both competing
+   Sessions. The id also keeps the lookup Project-safe: two Projects can share a
+   tmux name (it carries role and generation only) but never a session id.
+
+Reading tmux fails closed. Only tmux's own "no server" answers (the patterns of
+`isNoTmuxServerError` in `src/commands/worker.ts`) mean "no sessions". A denied
+socket, any other tmux error, a mise shim that cannot run (the `tmux` on PATH
+may be a mise shim, and an untrusted `mise.toml` in the working directory makes
+it print a `mise ERROR`), and a missing `tmux` (now a P0 required tool) all
+refuse. `TMUX` and `TMUX_TMPDIR`, which choose the server socket, are stripped
+as the launcher's `tmuxQueryEnv` does, so the check reads the socket the relay
+launched on. The process table is read with `ps`; if that fails, the session is
+refused.
+
+Still refused: any other session, a prefix lookalike, a hand-started session the
+registry does not name, a successor still launching or a predecessor during
+that handoff, a handed-off or failed generation's leftover pane, a desktop
+coordinator, and an unreadable registry. The receipt records
+`relayCoordinatorSessions`: the sessions actually tolerated (live, matched and
+process-checked), not the registry's list. The executor change alters the pinned
+`executorSha256` of future START cards (P0 refuses a card whose pin differs:
+"this executor is not the one the card pins"; `staleExecutorPins` is the same
+check in `scripts/check-operator-scripts.ts`); regenerate such cards.
+
+Residual limit: the registry is a workspace database that an agent sandbox can
+write, and only the rule against direct SQLite stands in the way. A forged row
+cannot pass without also a live process carrying its recorded session id, but
+that is not a cryptographic bind; the approving Decision should say so.
 
 ## Real launch proof (gate 6), for Rowan in an Off gap
 
 The fixture proves the relay's plumbing against a stand-in `claude`; it cannot
 prove what the real `claude` writes. One real launch does. It spends one
-short coordinator start-up and needs: production Off, no START pending, the
-standing Decision 0191 in force, sign-in and capacity gates passing, and no
-tmux session on the host (the first one this creates will be the successor).
+short coordinator start-up. Prerequisites: production Off, the standing
+Decision 0191 in force, sign-in and capacity gates passing, no tmux session on
+the host (the first one this creates will be the successor), and the current
+coordinator recorded as custodian, because `renew` refuses `no_custodian`
+otherwise:
 
-Run by the current custodian coordinator (Rowan), from its own checkout:
+```bash
+arcadia coordinator register --project arcadia --role rowan --provider claude --model <model id> --tier <tier> --identity "<name>" --session-id <this session's UUID>
+```
+
+(Fence-relevant: it records only what you state. A fresh row has no watchers,
+so register at least one with `arcadia coordinator subscribe` first if you want
+the watcher path exercised.) Then, run by that custodian from its own checkout:
 
 ```bash
 arcadia coordinator renew --project arcadia --role rowan --repo /Users/pmark/Dev/MR/Arcadia/arcadia --json
@@ -623,22 +662,39 @@ Pass when all of these hold, and record each in the PR or Issue:
    appears in Remote Control (note whether it shows on the phone: #2316).
 3. The transcript at the generation row's `transcriptPath` (the slug of the
    worktree path; confirm the real path has no symlink) has, as its first
-   main-chain user message, text equal to the prompt (the delivery check
-   already enforced this; confirm it was not a near miss by reading the file).
-   Look specifically for host context added as an extra text block.
+   main-chain user message, text equal to the prompt. Read the file; look for
+   host context added as an extra text block.
 4. The successor's first message lists the inherited watchers, and it runs
    `subscribe --from-snapshot`, registers each watcher, `verify` and `accept`
    without the operator. `arcadia coordinator relay-sessions --project arcadia`
-   then lists the new tmux name as `allowed`, and the predecessor is fenced.
-5. With that session live, `scripts/start-run.sh ... preflight` for a fixture
-   card passes P2 (the tmux tolerance) and a stray `tmux new-session -d -s x`
-   makes it refuse; then `tmux kill-session -t x`.
-6. Clean stop: `tmux kill-session -t arcadia-coord-rowan-g<N>` only after the
-   next handoff or when the proof is finished, never the predecessor's pane
-   while it holds custody.
+   then lists the new tmux name as `allowed`. The seeded desktop predecessor is
+   **not** fenced: it holds no token, so the custody guard treats it as
+   unfenced (section c, step 6). What stops it is Rowan ending that session.
+5. With the accepted session live, run a freshly prepared real START card in
+   `preflight` mode (a card from the real operator-script library with its
+   hashes pinned; the fixture marker is forbidden there; no press is
+   needed). It should pass P2 and record the tolerated name. Then start a
+   stray `tmux new-session -d -s x` and expect P2 to refuse; `tmux kill-session
+   -t x`. Preflight consumes nothing. A pane that appears between P2 and P4 on a
+   real press refuses at P4 after P3 has consumed the press and reinstalled the
+   worker, so do not start or accept a successor while a press is running.
+6. Cleanup. Killing the custodian's pane (`tmux kill-session -t
+   arcadia-coord-rowan-g<N>`) leaves its row `custodian`, its name allowed and its
+   worktree behind; custody has no way back, because a second register or seed
+   refuses. Treat the proof's successor as the real coordinator, or end the
+   operator's tidy of the worktree separately. Never stop the pane of the
+   generation that holds custody while work depends on it.
 
-Any failure: stop, leave custody where it is, and file the transcript excerpt
-rather than retrying (two attempts per renewal are already the Decision's cap).
+Failure path, with owners. Rowan, as the custodian, owns the failure:
+- If delivery fails twice, the relay marks both attempts failed, stops those
+  panes itself (`killSession` on a generation it failed) and pings once.
+  Custody stays with the predecessor; file the transcript excerpt, do not retry.
+- If delivery passes but the successor never accepts, its pane stays alive and
+  its row stays `launching`. P2 refuses every START while it does. A later
+  `renew` after 15 minutes marks it failed (`no_acceptance`) and stops it. Until
+  then Rowan stops it by exact name: `tmux kill-session -t arcadia-coord-rowan-g<N>`.
+- If accept succeeded and the successor is not wanted, nothing marks it
+  handed back (gate 10); Rowan and the operator decide.
 
 ## Probes to run before change 3
 

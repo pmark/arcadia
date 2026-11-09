@@ -6,7 +6,7 @@ import { createSuccess } from "../cli/response.js";
 import { validationError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
-import { withDatabase } from "../db/connection.js";
+import { withDatabase, withReadOnlyDatabase } from "../db/connection.js";
 import {
   buildCapsule,
   checkCapsule,
@@ -25,6 +25,7 @@ import {
   currentCustodian,
   custodianOf,
   relayCoordinatorSessions,
+  seedCustodianGeneration,
   type CustodyAdmission,
   type RelaySessionVerdict
 } from "../coordinator/generations.js";
@@ -164,7 +165,8 @@ export interface CoordinatorSubscribeData { subscriptions: Array<{ command: stri
  * checked-in watcher; `--from-snapshot <sha>` records every watcher the pinned
  * snapshot lists as inherited and unarmed, starting nothing (design section e).
  * Guarded; the incoming generation may run `--from-snapshot`, and a plain
- * subscribe only for a watcher inherited from its snapshot, which arms it.
+ * subscribe only for a watcher the state already holds (inherited from its
+ * snapshot, or registered by the predecessor after it), which records it.
  */
 export function runCoordinatorSubscribeCommand(options: Scope & {
   commandLine?: string; cursor?: string; fromSnapshot?: string; now?: Date; env?: NodeJS.ProcessEnv;
@@ -206,7 +208,10 @@ export function runCoordinatorSubscribeCommand(options: Scope & {
         throw validationError("The incoming generation may register only a watcher the predecessor already recorded (run subscribe --from-snapshot first, then give that exact command line).", { reason: "subscribe_not_inherited" });
       }
       if (!options.cursor) throw validationError("A subscription needs --cursor <c> (its last event cursor).", { reason: "subscription_cursor" });
-      const next = { command, cursor: options.cursor, armedAt: at, armedByGeneration: generationOf(admission) };
+      const previous = state.subscriptions.find((have) => have.command === command);
+      const generation = generationOf(admission);
+      const handedOverCursor = previous ? (previous.armedByGeneration === generation ? previous.handedOverCursor : previous.cursor) : undefined;
+      const next = { command, cursor: options.cursor, armedAt: at, armedByGeneration: generation, ...(handedOverCursor !== undefined ? { handedOverCursor } : {}) };
       state = { ...state, subscriptions: [...state.subscriptions.filter((have) => have.command !== command), next] };
     }
     writeCoordinatorState(paths, state);
@@ -307,6 +312,34 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
   return createSuccess({ command: "coordinator.renew", workspace: workspacePath, data });
 }
 
+export interface CoordinatorRegisterData { generation: number; role: string; project: string; provider: string; model: string; sessionId: string }
+
+/**
+ * `arcadia coordinator register`: records an existing coordinator (a desktop
+ * session the relay did not launch) as generation 1 custodian, once per role.
+ * FENCE-RELEVANT: it creates the custody row `renew` requires, and it only
+ * records what its caller states (nothing is verified against the host). The
+ * row carries no custody token, so it is unfenced, has no tmux name and is
+ * never tolerated by START. It launches and stops nothing.
+ */
+export function runCoordinatorRegisterCommand(options: Scope & { provider: string; model: string; tier: string; identity: string; sessionId: string; now?: Date }): CommandSuccess<CoordinatorRegisterData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(options.sessionId)) throw validationError("--session-id must be the coordinator's session UUID.", { reason: "register_session_id" });
+  const record = withDatabase(workspacePath, (db) => seedCustodianGeneration(db, workspacePath, {
+    project: options.project, role: options.role, provider: options.provider, model: options.model, tier: options.tier,
+    identity: options.identity, nativeSessionId: options.sessionId, now: options.now
+  }));
+  return createSuccess({
+    command: "coordinator.register", workspace: workspacePath,
+    data: { generation: record.generation, role: record.role, project: record.project, provider: record.provider, model: record.model, sessionId: options.sessionId }
+  });
+}
+
+export function renderCoordinatorRegisterSuccess(response: CommandSuccess<CoordinatorRegisterData>): string[] {
+  const { data } = response;
+  return [`Registered ${data.role} (${data.project}) generation ${data.generation} as custodian: ${data.provider} ${data.model}, session ${data.sessionId}. A record of what you stated; it is unfenced and launches nothing.`];
+}
+
 export interface CoordinatorRelaySessionsData { project: string; allowed: string[]; sessions: RelaySessionVerdict[] }
 
 /**
@@ -317,7 +350,13 @@ export interface CoordinatorRelaySessionsData { project: string; allowed: string
  */
 export function runCoordinatorRelaySessionsCommand(options: { workspace: string; project: string }): CommandSuccess<CoordinatorRelaySessionsData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const sessions = withDatabase(workspacePath, (db) => relayCoordinatorSessions(db, options.project));
+  // Read-only open: START's P2 is documented as making no mutation. A workspace that predates the table has no relay session.
+  const sessions = withReadOnlyDatabase(workspacePath, (db) => {
+    try { return relayCoordinatorSessions(db, options.project); } catch (error) {
+      if (error instanceof Error && /no such table/i.test(error.message)) return [];
+      throw error;
+    }
+  });
   return createSuccess({
     command: "coordinator.relay-sessions", workspace: workspacePath,
     data: { project: options.project, allowed: sessions.filter((session) => session.allowed).map((session) => session.tmuxName), sessions }

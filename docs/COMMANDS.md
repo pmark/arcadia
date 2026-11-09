@@ -1892,7 +1892,18 @@ coordinator custodians that `scripts/start-run.sh`'s no-competing-Session check
 tolerates, with a reason for each name it holds back (a handoff in flight, not
 relay-launched). It starts, stops and records nothing and grants no authority.
 See `docs/agent-guidance/coordinator-handoff-design.md`, "START and the relay's
-tmux sessions".
+tmux sessions". A live session is tolerated only if it also runs the row's
+recorded `--session-id`, which START checks itself.
+
+```bash
+pnpm arcadia coordinator register --project <slug> --role <role> --provider <p> --model <m> --tier <t> --identity "<name>" --session-id <uuid> [--json]
+```
+
+Fence-relevant. Records an existing (desktop) coordinator as generation 1
+custodian, once per role, from what you state; nothing is verified against the
+host. The row has no custody token, so it is unfenced, has no tmux name and is
+never tolerated by START. `renew` refuses `no_custodian` without it. It
+launches and stops nothing.
 
 ## Check A Design Record Or Field Guide
 

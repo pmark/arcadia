@@ -10,6 +10,7 @@ import {
   runCoordinatorAcceptCommand,
   runCoordinatorCapsuleCommand,
   runCoordinatorNoteCommand,
+  runCoordinatorRegisterCommand,
   runCoordinatorRelaySessionsCommand,
   runCoordinatorSubscribeCommand,
   runCoordinatorVerifyCommand
@@ -384,6 +385,19 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     expect(runCoordinatorVerifyCommand({ workspace: again.ws, ...base, generation: 2, snapshotSha: again.claimed.snapshotSha, sources: sources(), now: at(5) }).data.cursorChanges).toEqual([]);
   });
 
+  it("a late watcher's cursor change has a baseline (the predecessor's cursor) and is logged at accept", () => {
+    const { ws, claimed, env } = handoff();
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine: "scripts/late-watch.sh --pr 2300", cursor: "l-1", now: at(3), env: {} });
+    runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(4), env });
+    armInherited(ws, env, at(4));
+    armInherited(ws, env, at(5), "scripts/late-watch.sh --pr 2300", "l-9");
+    const result = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(6) });
+    expect(result.data.passed).toBe(true);
+    expect(result.data.cursorChanges).toEqual([{ command: "scripts/late-watch.sh --pr 2300", from: "l-1", to: "l-9" }]);
+    runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(7), env });
+    expect(readFileSync(coordinatorPaths(ws, "arcadia", "rowan").generationsLog, "utf8")).toMatch(/"cursorChanges":\[\{"command":"scripts\/late-watch\.sh --pr 2300","from":"l-1","to":"l-9"\}\]/);
+  });
+
   it("accept refuses a snapshot file changed after verify, names the reason and leaves custody unchanged", () => {
     const { ws, claimed, env } = handoff();
     runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
@@ -515,5 +529,28 @@ describe("coordinator relay-sessions: which tmux sessions START tolerates (#2286
     expect(verdicts(ws)).toEqual([["arcadia-coord-rowan-g2", false], ["arcadia-coord-rowan-g3", false]]);
     // Another Project's sessions are not this Project's.
     expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "other" }).data.sessions).toEqual([]);
+  });
+
+  it("register records a stated desktop coordinator once, unfenced and never tolerated by START; relay-sessions opens read-only", () => {
+    const ws = workspace();
+    const registered = runCoordinatorRegisterCommand({ workspace: ws, ...base, provider: "claude", model: "opus", tier: "heavy", identity: "Claudia Atlas", sessionId: "00000000-0000-4000-8000-000000000001", now: T0 });
+    expect(registered.data).toMatchObject({ generation: 1, role: "rowan", provider: "claude" });
+    expect(() => runCoordinatorRegisterCommand({ workspace: ws, ...base, provider: "claude", model: "opus", tier: "heavy", identity: "Claudia Atlas", sessionId: "00000000-0000-4000-8000-000000000001" })).toThrow(/already has generations/);
+    expect(() => runCoordinatorRegisterCommand({ workspace: ws, project: "arcadia", role: "signal", provider: "claude", model: "opus", tier: "heavy", identity: "x", sessionId: "not-a-uuid" })).toThrow(/session UUID/);
+    const [row] = withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"));
+    expect(row).toMatchObject({ status: "custodian", relayLaunched: false, tmuxName: null });
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia" }).data.allowed).toEqual([]);
+  });
+
+  it("holds a row whose tmux name is not a plain name or whose session id is missing", () => {
+    const ws = workspace();
+    seed(ws);
+    withDatabase(ws, (db) => {
+      db.prepare("UPDATE coordinator_generations SET tmux_name = ?, token_hash = 'x', native_session_id = ? WHERE project = 'arcadia' AND role = 'rowan'").run("a\nb", null);
+    });
+    const [entry] = withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia"));
+    expect(entry).toMatchObject({ allowed: false });
+    withDatabase(ws, (db) => { db.prepare("UPDATE coordinator_generations SET tmux_name = 'arcadia-coord-rowan-g1' WHERE role = 'rowan'").run(); });
+    expect(withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia"))[0]).toMatchObject({ allowed: false, reason: expect.stringMatching(/no recorded session id/) });
   });
 });
