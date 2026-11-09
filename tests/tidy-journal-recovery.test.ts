@@ -444,6 +444,34 @@ describe("tidy journal — wired into runTidyCommand itself", () => {
     }
   );
 
+  it("truncates a torn tail at the UTF-8 byte offset when an earlier record has a non-ASCII branch", () => {
+    const root = repo();
+    commitOn(root, "claude/café-日本", "a.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/café-日本"]);
+    commitOn(root, "claude/two", "b.txt");
+    run(root, ["merge", "-q", "--no-ff", "-m", "merge", "claude/two"]);
+    const runId = createTidyRunId(new Date());
+
+    quarantineBranch(root, "claude/café-日本", runId);
+
+    const journalFile = path.join(gitCommonDir(root), "arcadia-tidy", "journal", `${runId}.ndjson`);
+    const complete = readFileSync(journalFile, "utf8");
+    expect(complete).toContain("café-日本");
+    expect(Buffer.byteLength(complete, "utf8")).toBeGreaterThan(complete.length);
+    writeFileSync(journalFile, '{"phase":"begin","op":"branch","id":"branch:torn', { flag: "a" });
+
+    // The repair runs before this append; a string-index truncation would cut
+    // into the multibyte record above.
+    quarantineBranch(root, "claude/two", runId);
+
+    const repaired = readFileSync(journalFile, "utf8");
+    expect(repaired).not.toContain("branch:torn");
+    expect(repaired.startsWith(complete)).toBe(true);
+    for (const line of repaired.split("\n").filter((entry) => entry.trim() !== "")) {
+      expect(() => JSON.parse(line)).not.toThrow();
+    }
+  });
+
   it("repairs a torn trailing record before appending, so a later op never lands after unparsable debris", () => {
     const root = repo();
     commitOn(root, "claude/one", "a.txt");

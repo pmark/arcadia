@@ -107,7 +107,7 @@ export function formatWorkingCopySafetyLines(snapshot: WorkMonitorSnapshot, limi
   };
   const errors = snapshot.repositories
     .filter((repository) => repository.error)
-    .map((repository) => `${repository.projectName}: ${repository.error}`);
+    .map((repository) => ({ projectName: repository.projectName, line: `${repository.projectName}: ${repository.error}` }));
   const attention = snapshot.repositories
     .flatMap((repository) => repository.workingCopies)
     .filter((copy) => copy.preservation !== "landed" && (copy.preservation !== "in_pr" || copy.delivery === "blocked"))
@@ -117,9 +117,22 @@ export function formatWorkingCopySafetyLines(snapshot: WorkMonitorSnapshot, limi
       const preservationLabel = copy.preservation === "pushed" && copy.pullRequestLookup !== "queried"
         ? "PUSHED, PR UNKNOWN"
         : SAFETY_LABELS[copy.preservation];
-      return `${copy.projectName} / ${identity} — ${copy.summary} Preservation: ${preservationLabel}; delivery: ${DELIVERY_LABELS[copy.delivery]}.`;
+      return {
+        projectName: copy.projectName,
+        line: `${copy.projectName} / ${identity} — ${copy.summary} Preservation: ${preservationLabel}; delivery: ${DELIVERY_LABELS[copy.delivery]}.`
+      };
     });
-  return [...errors, ...attention].slice(0, limit);
+  const entries = [...errors, ...attention];
+  const shown = entries.slice(0, limit).map((entry) => entry.line);
+  const cut = entries.slice(limit);
+  if (cut.length === 0) return shown;
+  // A cut line is never silent: say how many and which Projects they belong to.
+  const perProject = new Map<string, number>();
+  for (const entry of cut) perProject.set(entry.projectName, (perProject.get(entry.projectName) ?? 0) + 1);
+  const projects = [...perProject.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, count]) => `${name} ${count}`);
+  return [...shown, `${cut.length} more not shown: ${projects.join(", ")}.`];
 }
 
 /**
