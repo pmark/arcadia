@@ -11,6 +11,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Checked directly by Rowan.",
    "action_refs": []
   },
   {
@@ -20,6 +21,7 @@
    "canonical_issue": "pmark/arcadia#2341",
    "basis": "verified-duplicate",
    "remaining_proof": "Consolidate into pmark/arcadia#2341, preserving any unique requirement.",
+   "caveat": "Same near-limit unit shard failure as #2341; its revival trigger has since fired.",
    "action_refs": []
   },
   {
@@ -29,6 +31,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Observed code and tests.",
    "action_refs": []
   },
   {
@@ -38,6 +41,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Observed repo script fixed; inferred not that the installed skill copy is (see #1686).",
    "action_refs": []
   },
   {
@@ -47,6 +51,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Observed request id, ordering and acceptable gating with a test; the 'sort gating items first' ordering is by kind, not strictly by gate (inference).",
    "action_refs": []
   },
   {
@@ -56,29 +61,10 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Observation: fix and test present; mirror Action #1271 is stale, still status: open in the draft Plan.",
    "action_refs": [
     "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#settle-superseded-decision-ask-rejection"
    ]
-  },
-  {
-   "number": 1176,
-   "updated_at": "2026-10-10T01:02:36Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#1187",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#1187, preserving any unique requirement.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#allocate-decision-numbers-from-origin-and-refuse-duplicates"
-   ]
-  },
-  {
-   "number": 1189,
-   "updated_at": "2026-10-10T05:56:00Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "action_refs": []
   },
   {
    "number": 1190,
@@ -87,6 +73,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Resolved for the To-do surface; #1759 tracks the separate Review page.",
    "action_refs": []
   },
   {
@@ -96,6 +83,7 @@
    "canonical_issue": "pmark/arcadia#960",
    "basis": "verified-duplicate",
    "remaining_proof": "Consolidate into pmark/arcadia#960, preserving any unique requirement.",
+   "caveat": "Mirror Action of #960 (item 4 only); pair canonical.",
    "action_refs": [
     "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-claim-when-passed-attempt-receipt-is-unparseable"
    ]
@@ -107,6 +95,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Mirror Action of #1173; code resolved, so the Action needs a governed completion or closure.",
    "action_refs": [
     "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#settle-superseded-decision-ask-rejection"
    ]
@@ -118,6 +107,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Mirror Action of #1213 item 1; code and tests cover it. The Plan Action is still status: open (docs/plans seven-verified... :49) so it needs a governed completion, and item 2 stays in #1213.",
    "action_refs": [
     "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#amend-action-consumes-block-scalar-and-literal-ids"
    ]
@@ -129,6 +119,7 @@
    "canonical_issue": "pmark/arcadia#1022",
    "basis": "verified-duplicate",
    "remaining_proof": "Consolidate into pmark/arcadia#1022, preserving any unique requirement.",
+   "caveat": "Mirror Action of #1022; pair canonical.",
    "action_refs": [
     "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-queue-positions-of-projects-not-visible-at-arrange"
    ]
@@ -140,6 +131,7 @@
    "canonical_issue": "pmark/arcadia#1011",
    "basis": "verified-duplicate",
    "remaining_proof": "Consolidate into pmark/arcadia#1011, preserving any unique requirement.",
+   "caveat": "Mirror Action of #1011; pair canonical.",
    "action_refs": [
     "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#refuse-hidden-renames-in-committed-completion-replay"
    ]
@@ -151,6 +143,7 @@
    "canonical_issue": "pmark/arcadia#1187",
    "basis": "verified-duplicate",
    "remaining_proof": "Consolidate into pmark/arcadia#1187, preserving any unique requirement.",
+   "caveat": "Mirror Action of #1187; pair canonical, one fix.",
    "action_refs": [
     "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#allocate-decision-numbers-from-origin-and-refuse-duplicates"
    ]
@@ -162,25 +155,9 @@
    "canonical_issue": "pmark/arcadia#1160",
    "basis": "verified-duplicate",
    "remaining_proof": "Consolidate into pmark/arcadia#1160, preserving any unique requirement.",
+   "caveat": "Mirror Action of #1160 (and #1731); the pair is canonical, defect and Action are one fix.",
    "action_refs": [
     "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#write-yaml-scalars-that-round-trip-as-strings"
-   ]
-  },
-  {
-   "number": 1320,
-   "updated_at": "2026-10-14T02:36:20Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "action_refs": [
-    "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#bounded-luna-hello-world-loop",
-    "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#expose-scout-run-evidence",
-    "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#implement-bounded-independent-admission",
-    "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#project-disposition-through-cli-api-ui",
-    "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#prove-luna-scout-green-pr",
-    "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#repair-scout-approved-handoff",
-    "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#scout-isolation-preflight"
    ]
   },
   {
@@ -190,6 +167,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Test file located by name; withheld-EOF case not read.",
    "action_refs": []
   },
   {
@@ -199,6 +177,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Code and tests read; did not run; revival trigger (recurrence) is not shown.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries"
    ]
@@ -210,15 +189,7 @@
    "canonical_issue": "pmark/arcadia#2341",
    "basis": "verified-duplicate",
    "remaining_proof": "Consolidate into pmark/arcadia#2341, preserving any unique requirement.",
-   "action_refs": []
-  },
-  {
-   "number": 1461,
-   "updated_at": "2026-10-16T16:55:29Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Same unit-shard-near-limit cancellation as #2341 (then named unit-2).",
    "action_refs": []
   },
   {
@@ -228,6 +199,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#first-unattended-run"
    ]
@@ -239,28 +211,9 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Test read; not run. The Action's done mark also exists.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed"
-   ]
-  },
-  {
-   "number": 1615,
-   "updated_at": "2026-10-20T09:40:34Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "action_refs": []
-  },
-  {
-   "number": 1628,
-   "updated_at": "2026-10-20T17:47:47Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name"
    ]
   },
   {
@@ -270,6 +223,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-mail-ack-receipt-kind-collision"
    ]
@@ -281,6 +235,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name"
    ]
@@ -292,6 +247,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries"
    ]
@@ -303,6 +259,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Observation: stale admission can no longer yield a pass result.",
    "action_refs": []
   },
   {
@@ -312,6 +269,7 @@
    "canonical_issue": "pmark/arcadia#1628",
    "basis": "verified-duplicate",
    "remaining_proof": "Consolidate into pmark/arcadia#1628, preserving any unique requirement.",
+   "caveat": "Same test, same tmux-name collision, same acceptance.",
    "action_refs": []
   },
   {
@@ -321,6 +279,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Clean-run test read; rerun and next-run files confirmed only by matching 'is not active' assertion lines.",
    "action_refs": []
   },
   {
@@ -330,6 +289,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Observation: the cleanup defect is fixed with tests. The extra ask for a manual Off recovery CLI route (recordCommittedCompletionSettlement is only called from tick.ts) is not separately verified.",
    "action_refs": []
   },
   {
@@ -339,6 +299,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#rebuild-cover-mail-ack-receipt-kind-collision"
    ]
@@ -350,6 +311,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Code and test read; not run; the live consumed attempt is unaffected.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op"
    ]
@@ -361,6 +323,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "not run",
    "action_refs": []
   },
   {
@@ -370,6 +333,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op"
    ]
@@ -381,6 +345,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed"
    ]
@@ -392,6 +357,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-retired-descriptor-byte-change"
    ]
@@ -403,6 +369,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-worker-merge-allowlist-carve-outs"
    ]
@@ -414,6 +381,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-blast-radius-safety-patterns"
    ]
@@ -425,6 +393,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#recovery-signal-replay-gate"
    ]
@@ -436,6 +405,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#session-proposal-stays-out-of-candidate"
    ]
@@ -447,6 +417,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#worker-reconciles-own-pointer-commits"
    ]
@@ -458,6 +429,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#headless-session-resolves-arcadia-cli"
    ]
@@ -469,6 +441,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#qa-plan-sole-failure-spends-no-repair"
    ]
@@ -480,6 +453,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#red-alerts-for-repair-stops-and-no-progress"
    ]
@@ -491,6 +465,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-work-monitor-malformed-record"
    ]
@@ -502,6 +477,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-recovery-unparseable-time-order"
    ]
@@ -513,6 +489,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-reconcile-refuses-activation-commit"
    ]
@@ -524,6 +501,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "observed code and test; not run here",
    "action_refs": []
   },
   {
@@ -533,6 +511,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-qa-plan-status-must-be-fail"
    ]
@@ -544,6 +523,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-project-budget-exceeded"
    ]
@@ -555,6 +535,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-blank-override-falls-through"
    ]
@@ -566,6 +547,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-safety-lines-order-and-limit"
    ]
@@ -577,6 +559,7 @@
    "canonical_issue": null,
    "basis": "verified-resolved",
    "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+   "caveat": "Observation: code and test present. The arcadia clarify --work id lookup is not claimed fixed, but the issue's Expected is the amendment path.",
    "action_refs": []
   },
   {
@@ -586,6 +569,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/portfolio-docs-protocol#build-parser"
    ]
@@ -597,6 +581,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/portfolio-docs-protocol#build-upsert"
    ]
@@ -608,6 +593,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/portfolio-docs-protocol#wire-docs-sync-command"
    ]
@@ -619,6 +605,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/portfolio-docs-protocol#contract-work-pointer"
    ]
@@ -630,6 +617,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/portfolio-docs-protocol#second-project-validation"
    ]
@@ -641,6 +629,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/portfolio-docs-protocol#repair-clarification-response-ux"
    ]
@@ -652,6 +641,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/portfolio-docs-protocol#ingest-mission-logs"
    ]
@@ -663,6 +653,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/portfolio-docs-protocol#persist-dependencies"
    ]
@@ -674,6 +665,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-red-alert-token-estimate"
    ]
@@ -685,6 +677,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-defect-summary-normalization"
    ]
@@ -696,6 +689,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-scheduling-sequence-equality"
    ]
@@ -707,6 +701,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-action-doc-ref-parse"
    ]
@@ -718,6 +713,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-journey-action-key-split"
    ]
@@ -729,6 +725,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-surface-date-validation"
    ]
@@ -740,6 +737,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-governed-record-path"
    ]
@@ -751,6 +749,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-ask-intent-work-kind"
    ]
@@ -762,6 +761,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-timeline-summary-and-order"
    ]
@@ -773,6 +773,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-answer-menu-letters"
    ]
@@ -784,6 +785,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-lesson-scope-normalization"
    ]
@@ -795,6 +797,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-agent-watch-ref-parsing"
    ]
@@ -806,6 +809,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-close-out-canonical-json"
    ]
@@ -817,6 +821,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-card-expiry-parse"
    ]
@@ -828,6 +833,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-ci-text-neutralization"
    ]
@@ -839,6 +845,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-issue-ref-parsing"
    ]
@@ -850,6 +857,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-way-trigger-parsing"
    ]
@@ -861,6 +869,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-narration-text-split"
    ]
@@ -872,6 +881,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-markdown-speech-strip"
    ]
@@ -883,6 +893,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107#pin-agent-role-guard"
    ]
@@ -894,6 +905,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-reasoning-effort-mapping"
    ]
@@ -905,6 +917,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-cli-wants-json"
    ]
@@ -916,6 +929,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-requirement-id-format"
    ]
@@ -927,6 +941,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-doc-ref-builders"
    ]
@@ -938,6 +953,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-checks-repair-request-id"
    ]
@@ -949,6 +965,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-handoff-request-prefix"
    ]
@@ -960,6 +977,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-review-response-normalization"
    ]
@@ -971,6 +989,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-image-mime-extension"
    ]
@@ -982,6 +1001,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-authoritative-control-path"
    ]
@@ -993,6 +1013,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-stable-proposal-id"
    ]
@@ -1004,6 +1025,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-north-star-step-reasons"
    ]
@@ -1015,6 +1037,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-milestone-and-log-doc-refs"
    ]
@@ -1026,6 +1049,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-yaml-scalar-quoting"
    ]
@@ -1037,6 +1061,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-launch-agent-workspace-arg"
    ]
@@ -1048,6 +1073,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-lesson-keywords"
    ]
@@ -1059,6 +1085,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-cloudflare-worker-name"
    ]
@@ -1070,6 +1097,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-liveness-duration-format"
    ]
@@ -1081,6 +1109,7 @@
    "canonical_issue": null,
    "basis": "decision-0081-mirror",
    "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
    "action_refs": [
     "plan/record-run-unattended-test-pins-20261107-part-2#pin-repository-frame-extraction"
    ]

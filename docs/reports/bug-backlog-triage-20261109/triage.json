@@ -903,7 +903,7 @@
   "reason": "Observation: items 3 and 4 present; item 5 (date-dependent test) unchecked. Mirror #1270 covers item 4 only.",
   "evidence": [
    {
-    "source": "src/sessions/roleLineage.ts:119",
+    "source": "src/sessions/roleLineage.ts:107",
     "observation": "unparseable terminal_receipt_json rows are dropped by catch returning false rather than blocking release"
    },
    {
@@ -916,7 +916,7 @@
    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-claim-when-passed-attempt-receipt-is-unparseable"
   ],
   "batch_id": "B4-seven-bug-recut",
-  "next_step": "In developedForSupersededInput (roleLineage.ts:119) fail closed when any passed row cannot be attributed; log or require pushed for local-only.",
+  "next_step": "In developedForSupersededInput (src/sessions/roleLineage.ts:107) fail closed when any passed row cannot be attributed; log or require pushed for local-only.",
   "revival_trigger": null,
   "title": "Harden superseded-candidate claim release: local-only visibility, fail closed on unparseable receipts",
   "category": "review-followup",
@@ -2326,7 +2326,7 @@
   "reason": "Observation: fix and test present; mirror Action #1271 is stale, still status: open in the draft Plan.",
   "evidence": [
    {
-    "source": "src/ask/settlement.ts:2095",
+    "source": "src/ask/settlement.ts:2101",
     "observation": "findCommittedSettlement matches the exact 'Proposed by Agent Ask <id>.' line with lookahead, so a longer revision id no longer matches (Issue #1236)"
    },
    {
@@ -2357,10 +2357,10 @@
  {
   "number": 1176,
   "updated_at": "2026-10-10T01:02:36Z",
-  "route": "close-candidate",
+  "route": "batch",
   "area": "governance-docs",
-  "validity": "duplicate",
-  "reason": "Observation: the 0100 pair still exists. Inference: renumbering is superseded by #1275's grandfathering, and prevention is #1187.",
+  "validity": "present",
+  "reason": "The two 0100 Decision files still exist at this base. #1187 prevents new duplicates only, so this keeps the question of the existing pair open until it is answered.",
   "evidence": [
    {
     "source": "docs/decisions/0100-decide-which-governed-roles-the-arcadia-role-registry-defines.md:1",
@@ -2371,12 +2371,12 @@
     "observation": "allocation unchanged"
    }
   ],
-  "canonical_issue": "pmark/arcadia#1187",
+  "canonical_issue": null,
   "action_refs": [
    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#allocate-decision-numbers-from-origin-and-refuse-duplicates"
   ],
   "batch_id": "B4-seven-bug-recut",
-  "next_step": "Consolidate into pmark/arcadia#1187, preserving any unique requirement.",
+  "next_step": "Do not renumber; the grandfather rule of #1275 accepts the existing pairs.",
   "revival_trigger": null,
   "title": "Two Decisions numbered 0100 on main (fixture standing launch + role registry)",
   "category": "defect",
@@ -2457,10 +2457,10 @@
  {
   "number": 1189,
   "updated_at": "2026-10-10T05:56:00Z",
-  "route": "close-candidate",
+  "route": "fix",
   "area": "reviewer",
-  "validity": "resolved",
-  "reason": "Observed code and a test for the no-follow-up behaviour; Discord reply wording about the follow-up was not checked.",
+  "validity": "unknown",
+  "reason": "Downgraded from resolved by Rowan's audit: Discord reply wording about the follow-up was not checked. Observed code and a test for the no-follow-up behaviour; Discord reply wording about the follow-up was not checked.",
   "evidence": [
    {
     "source": "src/commands/review.ts:1276",
@@ -2474,8 +2474,8 @@
   "canonical_issue": null,
   "action_refs": [],
   "batch_id": null,
-  "next_step": "Re-check at the current base, then propose closure with this evidence.",
-  "revival_trigger": null,
+  "next_step": "None needed.",
+  "revival_trigger": "When this subsystem is selected for repair or the Issue is next touched.",
   "title": "review approve --no-execute still queues a run behind a new review Decision",
   "category": "defect",
   "is_bug": true,
@@ -2897,7 +2897,7 @@
     "observation": "mirror Action keep-claim-when-passed-attempt-receipt-is-unparseable is status: open"
    },
    {
-    "source": "src/sessions/roleLineage.ts:119",
+    "source": "src/sessions/roleLineage.ts:107",
     "observation": "catch-false behavior unchanged"
    }
   ],
@@ -2928,7 +2928,7 @@
   "reason": "Mirror Action of #1173; code resolved, so the Action needs a governed completion or closure.",
   "evidence": [
    {
-    "source": "src/ask/settlement.ts:2095",
+    "source": "src/ask/settlement.ts:2101",
     "observation": "exact-token Decision match already in place"
    },
    {
@@ -3310,10 +3310,10 @@
  {
   "number": 1320,
   "updated_at": "2026-10-14T02:36:20Z",
-  "route": "close-candidate",
+  "route": "fix",
   "area": "ask-capture",
-  "validity": "resolved",
-  "reason": "Observed code and a fast-rehearsal test; the ask.ts approval summary may still say 'approved. <summary>' with the worker-start hint (review.ts:1558), a residual wording issue.",
+  "validity": "unknown",
+  "reason": "Downgraded from resolved by Rowan's audit: The approval summary may still read 'approved.' with the worker pending. Observed code and a fast-rehearsal test; the ask.ts approval summary may still say 'approved. <summary>' with the worker-start hint (review.ts:1558), a residual wording issue.",
   "evidence": [
    {
     "source": "src/commands/ask.ts:654",
@@ -3339,8 +3339,8 @@
    "plan/ask-queues-approved-work-or-admits-bounded-independent-sessions-without#scout-isolation-preflight"
   ],
   "batch_id": null,
-  "next_step": "Re-check at the current base, then propose closure with this evidence.",
-  "revival_trigger": null,
+  "next_step": "None needed.",
+  "revival_trigger": "When this subsystem is selected for repair or the Issue is next touched.",
   "title": "Ask review approval hides queued execution identity and status from the requester",
   "category": "defect",
   "is_bug": true,
@@ -4028,10 +4028,10 @@
  {
   "number": 1461,
   "updated_at": "2026-10-16T16:55:29Z",
-  "route": "close-candidate",
+  "route": "fix",
   "area": "production-tick",
-  "validity": "resolved",
-  "reason": "PPN-specific observation not re-checked",
+  "validity": "unknown",
+  "reason": "Downgraded from resolved by Rowan's audit: Evidence proves only that a route can be declared; the PPN observation was not re-checked. PPN-specific observation not re-checked",
   "evidence": [
    {
     "source": "src/ask/agentAsk.ts:48",
@@ -4049,8 +4049,8 @@
   "canonical_issue": null,
   "action_refs": [],
   "batch_id": null,
-  "next_step": "Re-check at the current base, then propose closure with this evidence.",
-  "revival_trigger": null,
+  "next_step": "none needed",
+  "revival_trigger": "When this subsystem is selected for repair or the Issue is next touched.",
   "title": "Governed inspection Action receives a planning-only packet that cannot execute its acceptance criteria",
   "category": "defect",
   "is_bug": true,
@@ -4843,10 +4843,10 @@
  {
   "number": 1615,
   "updated_at": "2026-10-20T09:40:34Z",
-  "route": "close-candidate",
+  "route": "fix",
   "area": "settlement-asks",
-  "validity": "resolved",
-  "reason": "stray file still refuses by design; now named (observed)",
+  "validity": "unknown",
+  "reason": "Downgraded from resolved by Rowan's audit: Only the bypass half is fixed; a stray file still refuses by design. stray file still refuses by design; now named (observed)",
   "evidence": [
    {
     "source": "src/sessions/reconciliation.ts:905",
@@ -4864,8 +4864,8 @@
   "canonical_issue": null,
   "action_refs": [],
   "batch_id": null,
-  "next_step": "Re-check at the current base, then propose closure with this evidence.",
-  "revival_trigger": null,
+  "next_step": "none needed",
+  "revival_trigger": "When this subsystem is selected for repair or the Issue is next touched.",
   "title": "Scope/validation false refusal from stray untracked files; self-settled completions bypass #1605 and #1612",
   "category": "review-followup",
   "is_bug": true,
@@ -4950,10 +4950,10 @@
  {
   "number": 1628,
   "updated_at": "2026-10-20T17:47:47Z",
-  "route": "close-candidate",
+  "route": "verify",
   "area": "ci-tests",
-  "validity": "resolved",
-  "reason": "Traced for the named test only; Action isolate-launch-preview-tmux-name is done; other fixtures in the file not audited.",
+  "validity": "unknown",
+  "reason": "Downgraded from resolved by Rowan's audit: Only the named test was traced; other fixtures in the file were not audited. Traced for the named test only; Action isolate-launch-preview-tmux-name is done; other fixtures in the file not audited.",
   "evidence": [
    {
     "source": "tests/launch-preview.test.ts:526",
@@ -4965,8 +4965,8 @@
    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name"
   ],
   "batch_id": null,
-  "next_step": "Re-check at the current base, then propose closure with this evidence.",
-  "revival_trigger": null,
+  "next_step": "None needed for the named test.",
+  "revival_trigger": "When this subsystem is selected for repair or the Issue is next touched.",
   "title": "Flaky CI: launch-preview test collides on a fixed tmux session name within a shard",
   "category": "flake-ci",
   "is_bug": false,
@@ -5421,10 +5421,10 @@
   "evidence": [
    {
     "source": "scripts/restart-services-impl.sh:41",
-    "observation": "ARCADIA_WORKSPACE_DEFAULT still hardcoded to /Users/pmark/Dev/MR/Arcadia/workspaces/arcadia; restart exits 2 if absent (:46)"
+    "observation": "ARCADIA_WORKSPACE_DEFAULT still hardcoded to ~/Dev/MR/Arcadia/workspaces/arcadia; restart exits 2 if absent (:46)"
    },
    {
-    "source": "/Users/pmark/.codex/skills/restart-arcadia-services/scripts/restart-services.sh",
+    "source": "~/.codex/skills/restart-arcadia-services/scripts/restart-services.sh",
     "observation": "older installed helper still exists separately from the maintained controller"
    }
   ],

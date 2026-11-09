@@ -99,11 +99,11 @@ Every open Issue that is labelled `bug` or reads as one, at `bf1b304c5b2d`. Gene
 | [#1168](https://github.com/pmark/arcadia/issues/1168) | /runs To-do buries the operator's one actionable item under 267 stale Agent Asks | defect | operator-surfaces | resolved | S3 | XS | no |  | Checked |
 | [#1173](https://github.com/pmark/arcadia/issues/1173) | Rejecting a superseded Decision Ask is refused once its revision opened the same | defect | settlement-asks | resolved | S3 | XS | no |  | Checked |
 | [#1180](https://github.com/pmark/arcadia/issues/1180) | reset-single-action-fixture hardening follow-ups (review of #1179) | review-followup | replay-rehearsal | unknown | S3 | S | no |  | title and body |
-| [#1189](https://github.com/pmark/arcadia/issues/1189) | review approve --no-execute still queues a run behind a new review Decision | defect | reviewer | resolved | S3 | XS | no |  | Checked |
+| [#1189](https://github.com/pmark/arcadia/issues/1189) | review approve --no-execute still queues a run behind a new review Decision | defect | reviewer | unknown | S3 | XS | no |  | Checked |
 | [#1202](https://github.com/pmark/arcadia/issues/1202) | Tidy can miss merged PR proof when a head branch has multiple PRs | defect | tidy-worktrees | present | S3 | S | no |  | Checked |
 | [#1203](https://github.com/pmark/arcadia/issues/1203) | Tidy's no-remote-copy warning conflicts with open PRs for local branches | defect | tidy-worktrees | present | S3 | S | no |  | Checked |
 | [#1214](https://github.com/pmark/arcadia/issues/1214) | patchApplicability: owner attribution, request-id keying and fail-closed gaps in | review-followup | reviewer | unknown | S3 | S | no |  | title and body |
-| [#1320](https://github.com/pmark/arcadia/issues/1320) | Ask review approval hides queued execution identity and status from the requeste | defect | ask-capture | resolved | S3 | XS | no |  | Checked |
+| [#1320](https://github.com/pmark/arcadia/issues/1320) | Ask review approval hides queued execution identity and status from the requeste | defect | ask-capture | unknown | S3 | XS | no |  | Checked |
 | [#1322](https://github.com/pmark/arcadia/issues/1322) | Classify asserted Session-probe environment walls in rehearsal reports | defect | replay-rehearsal | unknown | S3 | XS | no |  | title and body |
 | [#1327](https://github.com/pmark/arcadia/issues/1327) | Isolate logged-out headless fixtures from inherited Claude login tokens | flake-ci | ci-tests | present | S3 | XS | no | BT-test-only | Checked |
 | [#1339](https://github.com/pmark/arcadia/issues/1339) | PR page loads slowly on every visit and lacks useful loading skeletons | defect | operator-surfaces | unknown | S3 | XS | no |  | Checked |
@@ -112,7 +112,7 @@ Every open Issue that is labelled `bug` or reads as one, at `bf1b304c5b2d`. Gene
 | [#1366](https://github.com/pmark/arcadia/issues/1366) | Session ledger rejects canonical specialist roles | defect | other | present | S3 | S | no |  | Checked |
 | [#1439](https://github.com/pmark/arcadia/issues/1439) | Preserve semantic agent authorship through GitHub squash merges | defect | identity | unknown | S3 | S | no |  | Checked |
 | [#1442](https://github.com/pmark/arcadia/issues/1442) | Existing dashboard file routes follow symlinks outside their permitted roots | defect | operator-surfaces | present | S3 | S | no |  | Checked |
-| [#1461](https://github.com/pmark/arcadia/issues/1461) | Governed inspection Action receives a planning-only packet that cannot execute i | defect | production-tick | resolved | S3 | XS | no |  | Checked |
+| [#1461](https://github.com/pmark/arcadia/issues/1461) | Governed inspection Action receives a planning-only packet that cannot execute i | defect | production-tick | unknown | S3 | XS | no |  | Checked |
 | [#1462](https://github.com/pmark/arcadia/issues/1462) | Parent-SIGKILL regression can miss executor startup under host load | flake-ci | ci-tests | unknown | S3 | S | no |  | Checked |
 | [#1466](https://github.com/pmark/arcadia/issues/1466) | Reconcile complete-intent contract with cross-Plan queue activation in release h | defect | settlement-asks | unknown | S3 | S | no |  | Checked |
 | [#1516](https://github.com/pmark/arcadia/issues/1516) | tmux launcher follow-ups from #1513 review | review-followup | provider-launch | unknown | S3 | S | no |  | title and body |
@@ -121,7 +121,7 @@ Every open Issue that is labelled `bug` or reads as one, at `bf1b304c5b2d`. Gene
 | [#1565](https://github.com/pmark/arcadia/issues/1565) | production replay git guard: remaining non-blocking bypasses (#1564 review round | review-followup | replay-rehearsal | unknown | S3 | S | no |  | title and body |
 | [#1585](https://github.com/pmark/arcadia/issues/1585) | #1584 follow-ups: status-line rewrite drops the unauthorized episode; ping on no | defect | pings-discord | unknown | S3 | S | no |  | title and body |
 | [#1603](https://github.com/pmark/arcadia/issues/1603) | Repair Sessions drift beyond the Action's scope criterion and leave stale Ask dr | defect | production-tick | unknown | S3 | XS | no |  | Checked |
-| [#1615](https://github.com/pmark/arcadia/issues/1615) | Scope/validation false refusal from stray untracked files; self-settled completi | review-followup | settlement-asks | resolved | S3 | XS | no |  | Checked |
+| [#1615](https://github.com/pmark/arcadia/issues/1615) | Scope/validation false refusal from stray untracked files; self-settled completi | review-followup | settlement-asks | unknown | S3 | XS | no |  | Checked |
 | [#1624](https://github.com/pmark/arcadia/issues/1624) | Approving an independent PR code-review item queues an execution that can only f | defect | operator-surfaces | present | S3 | S | no | B6-operator-on-phone | Checked |
 | [#1627](https://github.com/pmark/arcadia/issues/1627) | Decision proposals from Agent Asks are invisible and unanswerable for an offsite | defect | operator-surfaces | unknown | S3 | M | no |  | Checked |
 | [#1645](https://github.com/pmark/arcadia/issues/1645) | Held Action with a drafted completion Ask is re-validated every tick before the  | defect | production-tick | present | S3 | XS | no |  | Checked |
@@ -164,7 +164,7 @@ Every open Issue that is labelled `bug` or reads as one, at `bf1b304c5b2d`. Gene
 | [#2314](https://github.com/pmark/arcadia/issues/2314) | tmux long-brief test can read the fixture output before its JSON write completes | flake-ci | ci-tests | present | S3 | XS | no | BT-test-only | Checked |
 | [#978](https://github.com/pmark/arcadia/issues/978) | docs/agent-guidance/index.json points at a missing working-copy procedure | defect | agent-guidance | resolved | S4 | XS | no |  | Checked |
 | [#1051](https://github.com/pmark/arcadia/issues/1051) | plans --plan: polish from review (unfinished wording, blocked reason label, --al | review-followup | planning | unknown | S4 | S | no |  | title and body |
-| [#1176](https://github.com/pmark/arcadia/issues/1176) | Two Decisions numbered 0100 on main (fixture standing launch + role registry) | defect | governance-docs | duplicate | S4 | XS | no | B4-seven-bug-recut | Checked |
+| [#1176](https://github.com/pmark/arcadia/issues/1176) | Two Decisions numbered 0100 on main (fixture standing launch + role registry) | defect | governance-docs | present | S4 | XS | no | B4-seven-bug-recut | Checked |
 | [#1213](https://github.com/pmark/arcadia/issues/1213) | settlement writers: literal request ids outside markActionDone, and split drops  | defect | settlement-asks | present | S4 | XS | no |  | Checked |
 | [#1395](https://github.com/pmark/arcadia/issues/1395) | Dashboard noEmit diagnostic fails on existing test typings | defect | ci-tests | present | S4 | XS | no |  | Checked |
 | [#1398](https://github.com/pmark/arcadia/issues/1398) | Ask Project option does not classify an unnamed single-file work request | defect | ask-capture | present | S4 | S | no |  | Checked |

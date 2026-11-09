@@ -2,10 +2,10 @@
  "base_sha": "bf1b304c5b2dbf3d09270922ee23b2aea6384be8",
  "retrieved_at": "2026-11-09T06:31:00Z",
  "summary": {
-  "mapped-open-action": 42,
+  "mapped-open-action": 43,
   "unmapped": 202,
   "action-done-issue-open": 96,
-  "fix-landed-action-unfinished": 4
+  "fix-landed-action-unfinished": 3
  },
  "open_issues": [
   {
@@ -2624,7 +2624,7 @@
     }
    ],
    "coverage": "unknown",
-   "mismatch": "fix-landed-action-unfinished"
+   "mismatch": null
   },
   {
    "number": 1322,

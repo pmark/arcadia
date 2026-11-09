@@ -2,12 +2,12 @@
 
 **Taken:** Sunday 2026-11-08, 10:31 PM PST, against `main` at `bf1b304c5b2d`. **Issue:** [#2342](https://github.com/pmark/arcadia/issues/2342). No governed Action holds this work.
 
-This report proposes and changes nothing. Nothing was closed or relabelled, and no Plan, pointer or queue moved.
+Nothing was closed or relabelled, and no Plan, pointer or queue moved. As the request directed, this work filed seven Issues and 17 Agent Ask proposals. Those are signals and receipts, and none grants authority or queues work.
 
 ## What the operator needs to know
 
-1. **The backlog is smaller than it looks.** Of 344 open Issues, 69 mirror Actions already marked done, and 32 more are fixed or duplicates, so 101 are closure candidates.
-2. **Bugs are real but none is catastrophic.** 177 Issues read as bugs, and only 60 carry the `bug` label. Of the 139 checked in code, 79 are present, 17 of them S2 (a run fails safe but needs recovery) and none S1.
+1. **The backlog is smaller than it looks.** Of 344 open Issues, 69 mirror Actions already marked done, and 18 more look fixed and 8 are duplicates, so 95 are closure candidates.
+2. **Bugs are real but none is catastrophic.** 177 Issues read as bugs, and only 60 carry the `bug` label. Of the 139 checked in code, 80 are present, 17 of them S2 (a run fails safe but needs recovery) and none S1.
 3. **The biggest unknown isn't in the backlog.** Unattended production has so far merged only tests and docs, so nobody has seen what a general Plan hits end to end. Fixing these bugs will help, but the first general Plan run will find others. The three-bug Plan ([PR 2177](https://github.com/pmark/arcadia/pull/2177)) is the cheapest way to find out.
 4. **Source fixes can't merge unattended yet.** `isWorkerMergeSafePath` (`src/production/workerMerge.ts:212`) allows only tests and ordinary docs. Every batch below except BT needs that operator Decision or a gap merge per Action.
 5. **Bugs arrive faster than a small allocation can clear them.** About 30 bug-shaped Issues filed in each of the last two weeks are still open, 11 to 12 of them S2 or worse. Much of that is review follow-ups, so what gets filed matters as much as what gets fixed.
@@ -145,13 +145,13 @@ Accepting a completion without its evidence ([#1874](https://github.com/pmark/ar
 
 **Shared mechanism:** Defects that make Relay's reply or view wrong today, before any new Relay capability.
 
-These don't block production. They rank here only because the operator also wants Relay's gaps queued, and they make Relay's replies false today. #2343 and #2344 land with the first slice; the rest stand alone.
+These don't block production. They rank here because the operator asked for Relay's gaps to be found and queued, and because most of them make Relay's replies wrong today. #2343 and #2344 land with the first slice; the rest stand alone.
 
 | Order | Issue | Sev | Size | Fix | Acceptance |
 |---|---|---|---|---|---|
 | 1 | [#2343](https://github.com/pmark/arcadia/issues/2343) | new | S | Show the compact status with freshness in Workspace and Discord. | See the Issue. |
 | 2 | [#2344](https://github.com/pmark/arcadia/issues/2344) | new | S | Route plain questions to an answer or one clarifying reply, with no review item. | See the Issue. |
-| 3 | [#2345](https://github.com/pmark/arcadia/issues/2345) | new | S | Refuse when the allowlist is empty, with a documented setup step. | See the Issue. |
+| 3 | [#2345](https://github.com/pmark/arcadia/issues/2345) | new | S | Harden: refuse when the allowlist is empty, with a documented setup step. Today's fail-open is deliberate, with a startup warning and channel gating. | See the Issue. |
 | 4 | [#2346](https://github.com/pmark/arcadia/issues/2346) | new | S | Replace the native modal so Relay stays reachable with an Artifact open. | See the Issue. |
 | 5 | [#2347](https://github.com/pmark/arcadia/issues/2347) | new | S | Read the Journey cheaply and never draw a stopped Plan as open. | See the Issue. |
 | 6 | [#2348](https://github.com/pmark/arcadia/issues/2348) | new | S | Rank production Off first for stop questions, in a checked-in case set. | See the Issue. |
@@ -205,8 +205,8 @@ So this Plan is really five bugs. Running it unchanged would spend two Actions o
 |---|---|
 | Open Issues with no Action | 202 |
 | Open Issues whose linked Actions are all done | 96 (69 mirrors, 27 by explicit reference) |
-| Linked to an unfinished Action | 42 |
-| Fix landed, Action unfinished | 4 ([#1173](https://github.com/pmark/arcadia/issues/1173), [#1271](https://github.com/pmark/arcadia/issues/1271), [#1272](https://github.com/pmark/arcadia/issues/1272), [#1320](https://github.com/pmark/arcadia/issues/1320)) |
+| Linked to an unfinished Action | 43 |
+| Fix landed, Action unfinished | 3 ([#1173](https://github.com/pmark/arcadia/issues/1173), [#1271](https://github.com/pmark/arcadia/issues/1271), [#1272](https://github.com/pmark/arcadia/issues/1272)) |
 | Unfinished Action citing a closed Issue | 50, mostly in the old bootstrap Plan |
 | Action citing a pull request as if it were an Issue | 2 |
 
@@ -217,21 +217,21 @@ I didn't compare Issue requirements with Action acceptance beyond the checked Is
 None of these has been closed. [changes.json](changes.json) lists each with the proof still needed, and each must be re-checked at the current base first.
 
 - **69 Action mirrors.** Decision 0081 allows closing them once each Action's acceptance is re-verified at the governed base. That re-verification hasn't been done.
-- **23 resolved:** [#978](https://github.com/pmark/arcadia/issues/978), [#1041](https://github.com/pmark/arcadia/issues/1041), [#1129](https://github.com/pmark/arcadia/issues/1129), [#1168](https://github.com/pmark/arcadia/issues/1168), [#1173](https://github.com/pmark/arcadia/issues/1173), [#1189](https://github.com/pmark/arcadia/issues/1189), [#1190](https://github.com/pmark/arcadia/issues/1190), [#1271](https://github.com/pmark/arcadia/issues/1271), [#1272](https://github.com/pmark/arcadia/issues/1272), [#1320](https://github.com/pmark/arcadia/issues/1320), [#1414](https://github.com/pmark/arcadia/issues/1414), [#1419](https://github.com/pmark/arcadia/issues/1419), [#1461](https://github.com/pmark/arcadia/issues/1461), [#1536](https://github.com/pmark/arcadia/issues/1536), [#1615](https://github.com/pmark/arcadia/issues/1615), [#1628](https://github.com/pmark/arcadia/issues/1628), [#1695](https://github.com/pmark/arcadia/issues/1695), [#1738](https://github.com/pmark/arcadia/issues/1738), [#1744](https://github.com/pmark/arcadia/issues/1744), [#1800](https://github.com/pmark/arcadia/issues/1800), [#1920](https://github.com/pmark/arcadia/issues/1920), [#2084](https://github.com/pmark/arcadia/issues/2084), [#2154](https://github.com/pmark/arcadia/issues/2154). A few carry a caveat in their row, such as [#1744](https://github.com/pmark/arcadia/issues/1744), whose separate request for a manual Off recovery route isn't covered.
-- **9 duplicates:** [#1000](https://github.com/pmark/arcadia/issues/1000), [#1176](https://github.com/pmark/arcadia/issues/1176), [#1270](https://github.com/pmark/arcadia/issues/1270), [#1273](https://github.com/pmark/arcadia/issues/1273), [#1274](https://github.com/pmark/arcadia/issues/1274), [#1275](https://github.com/pmark/arcadia/issues/1275), [#1276](https://github.com/pmark/arcadia/issues/1276), [#1460](https://github.com/pmark/arcadia/issues/1460), [#1698](https://github.com/pmark/arcadia/issues/1698). The mirror Issues in that list stay useful until the seven-bug Plan runs, so close them with it.
+- **18 resolved:** [#978](https://github.com/pmark/arcadia/issues/978), [#1041](https://github.com/pmark/arcadia/issues/1041), [#1129](https://github.com/pmark/arcadia/issues/1129), [#1168](https://github.com/pmark/arcadia/issues/1168), [#1173](https://github.com/pmark/arcadia/issues/1173), [#1190](https://github.com/pmark/arcadia/issues/1190), [#1271](https://github.com/pmark/arcadia/issues/1271), [#1272](https://github.com/pmark/arcadia/issues/1272), [#1414](https://github.com/pmark/arcadia/issues/1414), [#1419](https://github.com/pmark/arcadia/issues/1419), [#1536](https://github.com/pmark/arcadia/issues/1536), [#1695](https://github.com/pmark/arcadia/issues/1695), [#1738](https://github.com/pmark/arcadia/issues/1738), [#1744](https://github.com/pmark/arcadia/issues/1744), [#1800](https://github.com/pmark/arcadia/issues/1800), [#1920](https://github.com/pmark/arcadia/issues/1920), [#2084](https://github.com/pmark/arcadia/issues/2084), [#2154](https://github.com/pmark/arcadia/issues/2154). Each row's caveat is in the file. For example, [#1744](https://github.com/pmark/arcadia/issues/1744)'s separate request for a manual Off recovery route isn't covered, and [#1190](https://github.com/pmark/arcadia/issues/1190) resolves only the To-do surface, with the Review page in [#1759](https://github.com/pmark/arcadia/issues/1759).
+- **8 duplicates:** [#1000](https://github.com/pmark/arcadia/issues/1000), [#1270](https://github.com/pmark/arcadia/issues/1270), [#1273](https://github.com/pmark/arcadia/issues/1273), [#1274](https://github.com/pmark/arcadia/issues/1274), [#1275](https://github.com/pmark/arcadia/issues/1275), [#1276](https://github.com/pmark/arcadia/issues/1276), [#1460](https://github.com/pmark/arcadia/issues/1460), [#1698](https://github.com/pmark/arcadia/issues/1698). The mirror Issues in that list stay useful until the seven-bug Plan runs, so close them with it.
 
-**Not proposed for closing, though helpers called them resolved:** [#1032](https://github.com/pmark/arcadia/issues/1032), [#1155](https://github.com/pmark/arcadia/issues/1155), [#1603](https://github.com/pmark/arcadia/issues/1603), [#1878](https://github.com/pmark/arcadia/issues/1878), [#1016](https://github.com/pmark/arcadia/issues/1016), [#1339](https://github.com/pmark/arcadia/issues/1339), [#1340](https://github.com/pmark/arcadia/issues/1340) and [#1357](https://github.com/pmark/arcadia/issues/1357). Their proof was thin, so they stay `unknown` with the reason in their row.
+**Not proposed for closing, though helpers called them resolved:** [#1032](https://github.com/pmark/arcadia/issues/1032), [#1155](https://github.com/pmark/arcadia/issues/1155), [#1603](https://github.com/pmark/arcadia/issues/1603), [#1878](https://github.com/pmark/arcadia/issues/1878), [#1016](https://github.com/pmark/arcadia/issues/1016), [#1339](https://github.com/pmark/arcadia/issues/1339), [#1340](https://github.com/pmark/arcadia/issues/1340), [#1357](https://github.com/pmark/arcadia/issues/1357), [#1615](https://github.com/pmark/arcadia/issues/1615), [#1461](https://github.com/pmark/arcadia/issues/1461), [#1628](https://github.com/pmark/arcadia/issues/1628), [#1320](https://github.com/pmark/arcadia/issues/1320) and [#1189](https://github.com/pmark/arcadia/issues/1189). Their proof was thin or partial, so they stay `unknown` with the reason in their row. [#1176](https://github.com/pmark/arcadia/issues/1176) also stays open: [#1187](https://github.com/pmark/arcadia/issues/1187) prevents new duplicate numbers, but the two existing 0100 Decisions are still there.
 
 The same file proposes adding the `bug` label to the 120 bug-shaped Issues without it. That rests mostly on helper classification from title and body, so review it before applying.
 
 ## Weekly allocation: options for the operator
 
-Bugs as tech debt with a fixed share of each week is the operator's policy to set. It's proposed in Agent Ask `weekly-bug-allocation-policy-20261109` (`agentask_9661ac957a81696171`), and nothing is adopted here.
+Bugs as tech debt with a fixed share of each week is the operator's policy to set. It's proposed in Agent Ask `weekly-bug-allocation-policy-20261109` (`agentask_9661ac957a81696171`), and nothing is adopted here. That Ask says 79 confirmed bugs, because the review moved one more to present after it was filed.
 
 | Option | What it means | Consequence |
 |---|---|---|
 | **A. Surge, then floor** (recommended) | B1 to B3 take first claim, about 15 Actions. After that, 20% of production Actions, at least 5 a week. | The blockers clear soonest, which is the stated goal. Features and Relay builds wait during the surge. |
-| **B. Flat 5 a week** | 5 bug Actions every week, whatever else is running. | Predictable and cheap. The 79 confirmed bugs take about 16 weeks with no new ones, and it can't keep up with S2 inflow of 11 to 12 a week. |
+| **B. Flat 5 a week** | 5 bug Actions every week, whatever else is running. | Predictable and cheap. The 80 confirmed bugs take about 16 weeks with no new ones, and it can't keep up with S2 inflow of 11 to 12 a week. |
 | **C. 20% with no minimum** | A fifth of production Actions go to bugs. | Scales with capacity. A quiet week fixes nothing, and blockers wait their turn. |
 | **D. No allocation** | Bugs compete with features Plan by Plan. | No new rule. The backlog keeps growing, as it has. |
 
@@ -245,23 +245,23 @@ Compared against `docs/design/relay/`, the [proposal](../../proposals/relay.md),
 
 **What exists:** the sky on every Workspace view, weather rhythm, the modal overlay, routes as the context layer, a lighter Decision page, the receipt loop with idempotent request ids, and `arcadia way lookup`. The design record shows no phone test of the overlay, routes or weather since they merged, so the operator's judgment of items 3 to 5 is still open.
 
-**New defects, filed in `pmark/arcadia`:**
+**New Issues, filed in `pmark/arcadia`:**
 
 | Issue | What's wrong |
 |---|---|
 | [#2343](https://github.com/pmark/arcadia/issues/2343) | A status Ask replies "Status shown." and shows no status |
 | [#2344](https://github.com/pmark/arcadia/issues/2344) | Plain questions come back as low-confidence captures and can create To-do items |
-| [#2345](https://github.com/pmark/arcadia/issues/2345) | The Discord bot accepts any member's message when its allowlist is empty |
+| [#2345](https://github.com/pmark/arcadia/issues/2345) | With an empty allowlist, the Discord bot accepts any member in its channels. This is deliberate today, with a startup warning, so it's hardening the Relay design requires |
 | [#2346](https://github.com/pmark/arcadia/issues/2346) | The Artifact viewer's native modal blocks Relay |
 | [#2347](https://github.com/pmark/arcadia/issues/2347) | A route reads "Open" while the Journey says the Plan stopped |
 | [#2348](https://github.com/pmark/arcadia/issues/2348) | Way lookup answers "how do I stop everything" with session-ending guidance |
 
 **Every requirement, against what's built:**
 
-| Requirement | State | Evidence | Queued as |
+| Requirement | State | Evidence | Held by |
 |---|---|---|---|
 | REQ-001 Way knowledge | Partial | Probe scored 73% against a 90% default; #2348 reproduces the stopping failure | `relay-way-knowledge-remeasure`, #2013, #2348 |
-| REQ-002 Operate by talking | Missing | No chosen concept; Ask has no read routes | `relay-first-slice-plan`, `relay-idea-to-plan` |
+| REQ-002 Operate by talking | Partial | No chosen concept. Status and review routes run but show no answer (#2343), and no other lookups exist | `relay-first-slice-plan`, `relay-idea-to-plan` |
 | REQ-003 One conversation | Missing | Thread is browser storage, five items (`workspace-ask.tsx:86`) | `relay-server-thread` |
 | REQ-004 Attention | Partial | Questions become To-do items; 493 pending proposals | #2344, `pending-proposal-backlog-disposition` |
 | REQ-005 Group channels | Missing | C-019, C-020 and C-022 are missing, C-021 conflicts | `relay-group-channels-later` |
@@ -283,7 +283,7 @@ Compared against `docs/design/relay/`, the [proposal](../../proposals/relay.md),
 
 **The operator's scenarios and the ladder that aren't covered above:**
 
-| Gap | State | Queued as |
+| Gap | State | Held by |
 |---|---|---|
 | One question at a time, answered in Relay | Missing; needs a Decision | Existing `proposal-command-center-answer-in-place-20261107` |
 | Catch up: what changed while I was away | Missing; no push or service worker either | `relay-catch-up-and-single-contact` |
@@ -324,7 +324,7 @@ Compared against `docs/design/relay/`, the [proposal](../../proposals/relay.md),
 - **Inventory:** every open Issue, all pages. 357 open items minus 13 pull requests gives 344, matching GitHub's count, with no repeats. The skill's validator passes for coverage and row shape; it doesn't check whether evidence is true.
 - **Classification:** 275 Issues read from title and body by Claude Haiku helpers, after a calibration packet I reviewed. 69 done mirrors were classified by script. Helper severity is a first guess.
 - **Verification:** 139 Issues, including all 60 labelled `bug`, were checked against the code by Claude Sonnet helpers and by me. No tests ran, to keep load off the host before batch 5. Many "present" verdicts rest on reading code, and several on a search finding no guard, which is weaker; each row says which.
-- **My audit:** I checked that the cited lines exist (one was past the end of its file), read the source behind seven verdicts, and downgraded eight thin "resolved" verdicts. I also reset helper severities on the rows I checked myself. Of the labelled bugs, 31 are present, 11 resolved, 1 duplicate and 17 unknown.
+- **My audit:** I checked that the cited lines exist (one was past the end of its file), read the source behind seven verdicts, and downgraded eight thin "resolved" verdicts. An independent review then found one false claim, which is fixed, and five more thin verdicts, now `unknown`. It also found that helper line numbers can drift by a few lines, and it corrected two, so treat a citation as pointing near the code. I also reset helper severities on the rows I checked myself. Of the labelled bugs, 31 are present, 10 resolved, 1 duplicate and 18 unknown.
 - **Not verified:** the other 205 Issues, including 69 done mirrors and about 59 unlabelled bug-shaped Issues, have validity `unknown`. Revival: when their subsystem is selected for repair. Nothing here says they are valid or invalid.
 - **Usage, from the runtime's reports:** Haiku helpers about 480,000 processed tokens, Sonnet helpers about 868,000. This session's own usage isn't available. OpenCode: none.
 
