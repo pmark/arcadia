@@ -4,7 +4,7 @@ type: decision
 id: "0204"
 slug: record-the-operator-approved-one-time-field-notes-deployment-through-pr-2385
 project: arcadia
-status: open
+status: approved
 question: "Record the operator-approved one-time Field Notes deployment through PR #2385 and the existing Blog GitHub Pages workflow after the exact head passes independent review and required checks."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-09
+answer: Deploy the Field Notes finish
+decided: 2026-11-09
 ---
 
 # Decision 0204: Record the operator-approved one-time Field Notes deployment through PR #2385 and the existing Blog GitHub Pages workflow after the exact head passes independent review and required checks.
