@@ -312,11 +312,11 @@ actions:
     references: []
   - id: pin-cloudflare-worker-name
     title: Pin how a Project slug becomes a Cloudflare Worker name, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a Project slug becomes a Cloudflare Worker name, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-cloudflare-worker-name-eabb7c95d78d; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-cloudflare-worker-name
     clarification: clarified
     confidence: high
@@ -414,7 +414,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-cloudflare-worker-name
+current_action: pin-liveness-duration-format
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
