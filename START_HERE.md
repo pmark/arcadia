@@ -1441,8 +1441,8 @@ To activate an existing draft Plan, preview a `plan` Ask targeting
 `--action <id>`, `--model <model-id>`, optional `--effort high`, and
 `--top` (or `--before`/`--after`). Apply requires the same options and
 exact preview fingerprint. The writer changes the Project milestone and both
-pointers, returns the previous Plan to draft without claiming completion, and
-replaces only that Project's queue segment. An ineligible first Action or
+pointers, returns an unfinished previous Plan to draft without claiming completion
+(a previous Plan already marked complete stays complete), and replaces only that Project's queue segment. An ineligible first Action or
 unreconciled Project Session refuses activation. Activation starts no process
 and grants no merge, deployment, spending or unattended-production authority.
 Select a model supported by the agent that will launch the next session.
