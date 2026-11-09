@@ -201,9 +201,11 @@ const stars = Array.from({ length:105 }, () => ({
 }));
 
 function drawStars(night) {
+    const texel = Math.max(W / skyCanvas.width, H / skyCanvas.height);
     for (const star of stars) {
+        const size = Math.max(star.size, texel);
         ctx.fillStyle = rgb([255, 246, 236], star.opacity * (.24 + .76 * night));
-        ctx.fillRect(star.x * W, star.y * H, star.size, star.size);
+        ctx.fillRect(star.x * W, star.y * H, size, size);
     }
 }
 
@@ -471,11 +473,7 @@ function drawStars(night) {
   function startTerrain(THREE) {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias:!coarsePointer.matches });
     const scene = new THREE.Scene();
-    const skyTexture = new THREE.CanvasTexture(skyCanvas);
-    skyTexture.colorSpace = THREE.SRGBColorSpace;
-    skyTexture.generateMipmaps = false;
-    skyTexture.minFilter = THREE.LinearFilter;
-    scene.background = skyTexture;
+    let skyTexture;
     const fog = new THREE.FogExp2('#6c7496', .027);
     scene.fog = fog;
     const canyon = new THREE.Group();
@@ -551,8 +549,19 @@ function drawStars(night) {
     resizeTerrain = () => {
       renderer.setDrawingBufferSize(W, H, coarsePointer.matches ? 1 : Math.min(devicePixelRatio, 1.35));
       const skyScale = Math.min(1, 512 / W, 768 / H);
-      skyCanvas.width = Math.max(1, Math.round(W * skyScale));
-      skyCanvas.height = Math.max(1, Math.round(H * skyScale));
+      const skyWidth = Math.max(1, Math.round(W * skyScale));
+      const skyHeight = Math.max(1, Math.round(H * skyScale));
+      if (!skyTexture || skyCanvas.width !== skyWidth || skyCanvas.height !== skyHeight) {
+        skyTexture?.dispose();
+        skyCanvas.width = skyWidth;
+        skyCanvas.height = skyHeight;
+        // The GPU storage for an uploaded texture has fixed dimensions.
+        skyTexture = new THREE.CanvasTexture(skyCanvas);
+        skyTexture.colorSpace = THREE.SRGBColorSpace;
+        skyTexture.generateMipmaps = false;
+        skyTexture.minFilter = THREE.LinearFilter;
+        scene.background = skyTexture;
+      }
       ctx.setTransform(skyCanvas.width / W, 0, 0, skyCanvas.height / H, 0, 0);
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
