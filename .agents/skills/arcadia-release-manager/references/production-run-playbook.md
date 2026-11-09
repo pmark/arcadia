@@ -62,15 +62,21 @@ batch, and only then ask for the press.
      its Plan while the Plan is in the Active scope, the settlement holds the
      successor and drops `current_action`, so its PR can never pass CI and
      the run cannot finish (#2147: one red PR, an Off and about six hours).
-     Until #2147 is fixed, that card fails the pre-mortem; give the operator the
-     route as a menu. The contract test is not the reviewer's shape check:
+     #2147 is fixed. The contract test is not the reviewer's shape check:
      on 2026-11-08 the 20th Action's simulation passed the contract and its
      review still returned needs-follow-up, because the Plan-completing
-     settlement is outside the governed-record shape (#2270). Until #2270 is
-     fixed, a card holding a Plan's last Action fails the pre-mortem as well,
-     and production may not announce a finished Plan (`scope_complete`,
-     #2273; read from the code, not confirmed by a run): decide completion from the last merge plus no `current_action` on
-     main.
+     settlement was outside the governed-record shape (#2270). #2270 is fixed
+     (#2279, #2282) and was proved live on 2026-11-09: Action 20's settlement
+     passed review at its head. A card holding a Plan's last Action no longer
+     fails the pre-mortem on those two. Production still announces no finished
+     Plan (no `scope_complete`, #2273; `start-run day-evidence` shows
+     `scopeComplete: null` and the day chain reads that batch as failed): done
+     is the merges counted plus no `current_action` on main. Rowan issues that
+     Off by hand.
+   - **Rendered QA steps:** read each Action's host-rendered Operator QA steps
+     against the expected test source before the press. On 2026-11-09 the
+     pre-mortem predicted a grep step a correct test cannot satisfy, and the
+     live reviewer returned it as a low finding (#2351).
 5. **Action shape.** Pinned Actions touch only `WORKER_MERGE_SAFE_PATHS`
    (`src/production/workerMerge.ts`), never `src/production` or
    `src/sessions` (those are never repaired unattended). Each Action routes
@@ -175,6 +181,9 @@ batch, and only then ask for the press.
   (`Escalated .* \((review_repair_rounds_exhausted|repair_budget_exhausted|review_attempts_exhausted|operator_gate|terminal_candidate|environment_wall|budget_exhausted|scope_pointer_held)\)`,
   `Review repair .*: escalated`, `Worker merge refused`, `Independent (qa|code-review) .*: (fail|needs)`),
   not only the success line you hope for.
+- A job-limit timeout on a required check shows as a cancelled shard and failed
+  `unit-N` gates, not a test failure. Read the annotation and rerun the failed
+  jobs (#2341).
 - On the first escalation, read the verdict or refusal artifact, decide
   within one cycle whether the run can still meet its criteria, and if not,
   ask for STOP and start the batch fix immediately.
@@ -202,6 +211,8 @@ batch, and only then ask for the press.
   (`http://arcadia-1.alpine-rattlesnake.ts.net:3020/actions/<card-id>`,
   verified 200), in chat and in `arcadia ping send --link`.
 - Ping only when the operator can act now (press, merge a green PR, answer).
+- A Discord settlement counts as an operator ping. During a quiet window hold
+  `settle --apply`.
 - A build-packet approval ping the policy's `packet_approval` delegation
   will approve seconds later is noise (#1659); tell the operator not to act on
   it, since a manual approval is an operator touch.
