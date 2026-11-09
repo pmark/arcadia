@@ -26,8 +26,8 @@ GitHub Pages; AMC ([arcadiamissioncontrol.com](https://arcadiamissioncontrol.com
   on pushes to `main` that touch `docs/articles/`, `site/` or the workflow.
 - Post links and the feed are rendered by Jekyll. The site adds Canyon
   Pass as a progressive enhancement over a still background. The
-  background follows the simulated Martian day and can be paused. The system
-  reduced-motion or forced-colors preference disables the moving background.
+  background follows the simulated Martian day with a static star field. The
+  system reduced-motion or forced-colors preference disables the moving background.
 - The wordmark, typefaces, sol palette and star field follow the
   [Mission Control Site](https://github.com/pmark/mission-control-site).
   Field Notes keeps the sky running between the index and articles and restores
