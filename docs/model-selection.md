@@ -124,10 +124,12 @@ exactly one model is pinned here rather than delegated to an unvalidated
 **OpenCode is a plan with a weekly allocation.** Operator, 2026-11-09: "OpenCode's
 usage works exactly like my Codex and Claude Code plans, where I am allocated
 tokens on a weekly basis." Decision 0118's rationale, "API-key billing with no
-rolling window", conflicts with this, and a correction is proposed in Agent Ask
-`correct-decision-0118-opencode-plan-premise-20261109`. Until the operator settles
-that Ask, Decision 0118, every approval gate and `costRank` above stay as they are.
-Arcadia also has no probe for remaining OpenCode allowance, so headroom is unknown.
+rolling window", was wrong on this, and its daily ceiling was never built.
+Decision 0202 (answer A) settles what follows: an OpenCode helper or reviewer
+needs no cost approval, the same as Codex and Claude, and production is
+unchanged, so `costRank` above still tries Codex and Claude first. Arcadia has
+no probe for remaining OpenCode allowance, so headroom is unknown and a helper
+can run out without warning.
 
 **No tier 3/4 exists at this layer.** Cheaper, faster model families are real
 and useful, but "boilerplate/unit tests" is not a unit Arcadia can route
