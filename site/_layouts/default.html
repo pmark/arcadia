@@ -8,11 +8,37 @@
   <meta name="description" content="{{ page.summary | default: site.description | strip_html | escape }}">
   <link rel="canonical" href="{{ page.url | absolute_url }}">
   <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ '/feed.xml' | absolute_url }}">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=Public+Sans:wght@400;600&amp;display=swap">
   <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
 </head>
-<body>
-<header class="site"><a href="{{ '/' | relative_url }}">{{ site.title }}</a> <a class="feed" href="{{ '/feed.xml' | relative_url }}">Feed</a></header>
-<main>
+<body{% if page.canyon %} class="canyon-page"{% endif %}>
+<a class="skip-link" href="#main">Skip to content</a>
+{% if page.canyon %}
+<div class="canyon-landscape" aria-hidden="true">
+  <canvas class="canyon-sky"></canvas>
+  <canvas class="canyon-stars"></canvas>
+  <img class="canyon-still" src="{{ '/assets/canyon.svg' | relative_url }}" alt="">
+  <canvas class="canyon-terrain"></canvas>
+</div>
+<script type="module" src="{{ '/assets/canyon.js' | relative_url }}"></script>
+{% endif %}
+<header class="site">
+  <div class="site-bar">
+    <a class="brand" href="https://arcadiamissioncontrol.com/">
+      <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M5.61 11A12 12 0 1 0 26.39 11" fill="none" stroke-width="3.4" stroke-linecap="round"></path>
+        <circle cx="16" cy="6.97" r="5.7"></circle>
+      </svg>
+      <span><span class="brand-tone">Arcadia</span> Mission Control</span>
+    </a>
+    <nav aria-label="Site">
+      <a href="{{ '/' | relative_url }}"{% if page.canyon %} aria-current="page"{% endif %}>Field Notes</a>
+      <a href="{{ '/feed.xml' | relative_url }}">Feed</a>
+      {% if page.canyon %}<button class="motion-control" type="button" aria-pressed="false" hidden>Pause background motion</button>{% endif %}
+    </nav>
+  </div>
+</header>
+<main id="main" tabindex="-1">
 {{ content }}
 </main>
 <footer class="site">Built from <a href="https://github.com/pmark/arcadia/tree/main/docs/articles"><code>docs/articles/</code></a> in pmark/arcadia. Feed: <a href="{{ "/feed.xml" | relative_url }}">Atom</a>.</footer>

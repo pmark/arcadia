@@ -1,15 +1,25 @@
 ---
 layout: default
 title: Posts
+canyon: true
 ---
-<p class="lede">{{ site.description }} Source notes and proposals, newest first; customer-facing guides live on <a href="https://arcadiamissioncontrol.com">Arcadia Mission Control</a>.</p>
-<ul class="posts">
+<div class="field-hero">
+  <p class="field-label"><span class="field-seal" aria-hidden="true"></span> Dispatches from the plateau</p>
+  <h1>Field Notes</h1>
+  <p>{{ site.description | escape }}</p>
+</div>
+{% if site.posts.size > 0 %}
+<ul class="posts" aria-label="Field Notes dispatches">
 {% for post in site.posts %}
   <li>
-    <a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
-    <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %B %Y" }}</time>
-    {% if post.status == "draft" %}<span class="badge">draft</span>{% endif %}
-    {% if post.summary %}<p>{{ post.summary | escape }}</p>{% endif %}
+    <article>
+      <p class="field-label">{% if forloop.first %}Latest dispatch · {% endif %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %B %Y" }}</time></p>
+      <h2><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a></h2>
+      {% if post.summary %}<p>{{ post.summary | escape }}</p>{% endif %}
+    </article>
   </li>
 {% endfor %}
 </ul>
+{% else %}
+<p class="posts-empty">There are no published dispatches yet.</p>
+{% endif %}
