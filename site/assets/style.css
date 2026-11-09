@@ -123,6 +123,10 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 [data-field-view="article"] .canyon-still { visibility:hidden; }
 .canyon-frame, .canyon-poster, :is([data-terrain="live"], [data-terrain="cached"]) .canyon-still { visibility:hidden; }
 [data-terrain="live"] .canyon-frame, [data-terrain="cached"] .canyon-poster { visibility:visible; }
+@media (prefers-reduced-motion: reduce) {
+  [data-terrain] .canyon-frame, [data-terrain] .canyon-poster { visibility:hidden; }
+  [data-field-view="feed"] .canyon-still { visibility:visible; }
+}
 
 .canyon-page main { max-width:none; padding:0; }
 .post-body {

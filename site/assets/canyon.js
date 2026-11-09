@@ -218,7 +218,11 @@ function drawStars(night) {
 
   function paint(now) {
     frame = 0;
-    if (!renderTerrain || !W || !H || isStill() || document.hidden) return;
+    if (isStill()) {
+      if (root.dataset.terrain) refreshMotion();
+      return;
+    }
+    if (!renderTerrain || !W || !H || document.hidden) return;
     const p = phase();
     const night = nightAt(p);
     const scroll = feedScroll;
