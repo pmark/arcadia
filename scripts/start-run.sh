@@ -793,11 +793,15 @@ phase_p1() {
 # here may be a mise shim; a shim that cannot run (for example an untrusted mise.toml in the working directory) prints a
 # `mise ERROR` and is therefore refused, never read as "no sessions".
 # ---------------------------------------------------------------------------------------------------------------
-tmux_q() { env -u TMUX -u TMUX_TMPDIR tmux "$@"; }
+# Bounded (a wedged tmux server must not hang the card: Issue #2084); `timeout` is a P0 tool and exits 124 when it fires.
+tmux_q() { env -u TMUX -u TMUX_TMPDIR timeout 15 tmux "$@"; }
 # Whether a descendant of pane `$1`'s process runs `--session-id $2`. Any failure to read the process table is "no".
 pane_runs_session() {
   local panes procs
-  panes="$(tmux_q list-panes -t "=$1" -F '#{pane_pid}' 2>/dev/null)" || return 1
+  # Every pane of every window of exactly this session (`-s`, and `=name:` as the repo's panePid does), and exactly one: the
+  # relay creates one pane, so a second pane or window (where a stranger could hide) is a competing Session.
+  panes="$(tmux_q list-panes -s -t "=$1:" -F '#{pane_pid}' 2>/dev/null)" || return 1
+  [[ "$(grep -c . <<<"$panes")" == 1 && "$panes" =~ ^[0-9]+$ ]] || return 1
   procs="$(ps -axo pid=,ppid=,command= 2>/dev/null)" || return 1
   node -e 'const [uuid,...panes]=process.argv.slice(1);const kids=new Map(),cmd=new Map();
 for(const l of require("fs").readFileSync(0,"utf8").split("\n")){const m=/^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l);if(!m)continue;cmd.set(m[1],m[3]);(kids.get(m[2])??kids.set(m[2],[]).get(m[2])).push(m[1])}
@@ -807,12 +811,15 @@ if(new RegExp("(^|\\s)--session-id "+uuid+"(\\s|$)").test(cmd.get(pid)??""))proc
 process.exit(1)' "$2" $panes <<<"$procs"
 }
 check_no_competing_session() {
-  local when="$1" live="" out rc=0 name uuid stray="" registry note="" pairs="" tolerated=""
-  out="$(tmux_q ls -F '#{session_name}' 2>&1)" || rc=$?
+  local when="$1" live="" out err why rc=0 name uuid stray="" registry note="" pairs="" tolerated=""
+  # stdout alone is the session list; stderr (a shim's warning, say) is kept apart for the message and never becomes a name.
+  out="$(tmux_q ls -F '#{session_name}' 2> "$RUN_DIR/tmux-ls.stderr")" || rc=$?
+  err="$(head -c 400 "$RUN_DIR/tmux-ls.stderr" 2>/dev/null)"
   if (( rc != 0 )); then
     # Only tmux's own "no server" answers (the patterns of isNoTmuxServerError in src/commands/worker.ts) mean "no sessions".
-    grep -Eqi 'no server running on|error connecting to .*\(no such file or directory\)' <<<"$out" \
-      || refuse "tmux could not be read, so START cannot show that no competing Session runs${when:+ $when} (exit $rc: ${out%%$'\n'*})"
+    why="exit $rc"; (( rc != 124 )) || why+=", timed out"
+    (( rc != 124 )) && grep -Eqi 'no server running on|error connecting to .*\(no such file or directory\)' <<<"$err" \
+      || refuse "tmux could not be read ($why), so START cannot show that no competing Session runs${when:+ $when}: ${err%%$'\n'*}${out:+ $out}"
   else
     live="$out"
   fi

@@ -124,6 +124,14 @@ describe("coordinator relay launch (change 3)", () => {
     expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))).toHaveLength(1);
   });
 
+  it("refuses any role other than the coordinator roles Decision 0191 names, before any claim or launch", () => {
+    const { ws, repo, projects } = setup();
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "builder", repoRoot: repo, effort: "e3_deep" }, fake.deps));
+    expect(result).toMatchObject({ outcome: "refused", reason: "role_not_allowed" });
+    expect(fake.launches).toEqual([]);
+  });
+
   it("launches one successor with the pinned model, effort, permission mode and custody identity, and verifies delivery", () => {
     const { ws, repo, projects } = setup();
     const fake = fakeDeps(projects, { deliver: [true] });

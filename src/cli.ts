@@ -84,9 +84,7 @@ import {
   renderCoordinatorCapsuleSuccess,
   renderCoordinatorNoteSuccess,
   renderCoordinatorRenewSuccess,
-  renderCoordinatorRegisterSuccess,
   renderCoordinatorRelaySessionsSuccess,
-  runCoordinatorRegisterCommand,
   runCoordinatorRelaySessionsCommand,
   runCoordinatorRenewCommand,
   renderCoordinatorSubscribeSuccess,
@@ -1356,16 +1354,6 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     runCliAction("coordinator.renew", options, () => runCoordinatorRenewCommand({ ...options, env: process.env }), renderCoordinatorRenewSuccess)
   );
 
-  coordinatorScope(coordinator.command("register")
-    .description("Record an existing (desktop) coordinator as generation 1 custodian, once per role. Fence-relevant: it records only what you state, is unfenced (no token) and launches nothing. `renew` needs it")
-    .requiredOption("--provider <provider>", "claude, codex or opencode")
-    .requiredOption("--model <model>", "Model id, e.g. opus")
-    .requiredOption("--tier <tier>", "light, standard or heavy")
-    .requiredOption("--identity <identity>", "The coordinator's resolved identity, e.g. \"Claudia Atlas\"")
-    .requiredOption("--session-id <uuid>", "The coordinator's session UUID")
-  ).action((options: { workspace: string; project: string; role: string; provider: string; model: string; tier: string; identity: string; sessionId: string; json?: boolean }) =>
-    runCliAction("coordinator.register", options, () => runCoordinatorRegisterCommand(options), renderCoordinatorRegisterSuccess)
-  );
   addJsonOption(coordinator.command("relay-sessions")
     .description("Read-only: the exact tmux sessions of registered, relay-launched, current coordinator custodians that START's no-competing-Session check tolerates (none during a handoff)")
     .requiredOption("--project <slug>", "Project slug, e.g. arcadia")

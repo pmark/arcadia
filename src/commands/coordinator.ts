@@ -25,7 +25,6 @@ import {
   currentCustodian,
   custodianOf,
   relayCoordinatorSessions,
-  seedCustodianGeneration,
   type CustodyAdmission,
   type RelaySessionVerdict
 } from "../coordinator/generations.js";
@@ -310,34 +309,6 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
   });
   if (data.outcome !== "launched") process.exitCode = 1;
   return createSuccess({ command: "coordinator.renew", workspace: workspacePath, data });
-}
-
-export interface CoordinatorRegisterData { generation: number; role: string; project: string; provider: string; model: string; sessionId: string }
-
-/**
- * `arcadia coordinator register`: records an existing coordinator (a desktop
- * session the relay did not launch) as generation 1 custodian, once per role.
- * FENCE-RELEVANT: it creates the custody row `renew` requires, and it only
- * records what its caller states (nothing is verified against the host). The
- * row carries no custody token, so it is unfenced, has no tmux name and is
- * never tolerated by START. It launches and stops nothing.
- */
-export function runCoordinatorRegisterCommand(options: Scope & { provider: string; model: string; tier: string; identity: string; sessionId: string; now?: Date }): CommandSuccess<CoordinatorRegisterData> {
-  const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(options.sessionId)) throw validationError("--session-id must be the coordinator's session UUID.", { reason: "register_session_id" });
-  const record = withDatabase(workspacePath, (db) => seedCustodianGeneration(db, workspacePath, {
-    project: options.project, role: options.role, provider: options.provider, model: options.model, tier: options.tier,
-    identity: options.identity, nativeSessionId: options.sessionId, now: options.now
-  }));
-  return createSuccess({
-    command: "coordinator.register", workspace: workspacePath,
-    data: { generation: record.generation, role: record.role, project: record.project, provider: record.provider, model: record.model, sessionId: options.sessionId }
-  });
-}
-
-export function renderCoordinatorRegisterSuccess(response: CommandSuccess<CoordinatorRegisterData>): string[] {
-  const { data } = response;
-  return [`Registered ${data.role} (${data.project}) generation ${data.generation} as custodian: ${data.provider} ${data.model}, session ${data.sessionId}. A record of what you stated; it is unfenced and launches nothing.`];
 }
 
 export interface CoordinatorRelaySessionsData { project: string; allowed: string[]; sessions: RelaySessionVerdict[] }

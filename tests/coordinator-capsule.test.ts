@@ -10,7 +10,6 @@ import {
   runCoordinatorAcceptCommand,
   runCoordinatorCapsuleCommand,
   runCoordinatorNoteCommand,
-  runCoordinatorRegisterCommand,
   runCoordinatorRelaySessionsCommand,
   runCoordinatorSubscribeCommand,
   runCoordinatorVerifyCommand
@@ -529,17 +528,6 @@ describe("coordinator relay-sessions: which tmux sessions START tolerates (#2286
     expect(verdicts(ws)).toEqual([["arcadia-coord-rowan-g2", false], ["arcadia-coord-rowan-g3", false]]);
     // Another Project's sessions are not this Project's.
     expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "other" }).data.sessions).toEqual([]);
-  });
-
-  it("register records a stated desktop coordinator once, unfenced and never tolerated by START; relay-sessions opens read-only", () => {
-    const ws = workspace();
-    const registered = runCoordinatorRegisterCommand({ workspace: ws, ...base, provider: "claude", model: "opus", tier: "heavy", identity: "Claudia Atlas", sessionId: "00000000-0000-4000-8000-000000000001", now: T0 });
-    expect(registered.data).toMatchObject({ generation: 1, role: "rowan", provider: "claude" });
-    expect(() => runCoordinatorRegisterCommand({ workspace: ws, ...base, provider: "claude", model: "opus", tier: "heavy", identity: "Claudia Atlas", sessionId: "00000000-0000-4000-8000-000000000001" })).toThrow(/already has generations/);
-    expect(() => runCoordinatorRegisterCommand({ workspace: ws, project: "arcadia", role: "signal", provider: "claude", model: "opus", tier: "heavy", identity: "x", sessionId: "not-a-uuid" })).toThrow(/session UUID/);
-    const [row] = withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"));
-    expect(row).toMatchObject({ status: "custodian", relayLaunched: false, tmuxName: null });
-    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia" }).data.allowed).toEqual([]);
   });
 
   it("holds a row whose tmux name is not a plain name or whose session id is missing", () => {

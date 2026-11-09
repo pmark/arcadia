@@ -575,7 +575,7 @@ Status of each gate, from #2286 comment 6728223351 and review round 1 of #2338:
 | 6 Exact-match prompt delivery | **Open until the real launch proof below.** Fixture: `tests/coordinator-relay-launch-proof.test.ts` |
 | 7 tmux and START | **Relaxation written, not approved.** It relaxes a gate Decision 0156 retains (no live Sessions) and awaits a Decision (pending Decision). #2316 (phone visibility of a tmux-launched session) is not addressed |
 | 8 Stale text | Fixed |
-| 9 Registering the first custodian | `arcadia coordinator register` records a stated desktop coordinator as generation 1 (fence-relevant: see below); without a row `renew` refuses `no_custodian` |
+| 9 Registering the first custodian | **Open, and deliberately not built here.** Nothing creates the generation-1 row (`seedCustodianGeneration` has no non-test caller), so `renew` refuses `no_custodian`. A `register` command was tried and dropped: unverified, it let any caller create a custodian for any role and then launch (review round 2, B3). The row must come from an operator-approved route, one that can verify the caller's own session, model, provider and tier (none is known to be deterministic today) and that has a governed correction path. Until then a mistaken or missing row has no correction other than that route, and `renew` cannot run at all. `renew` also refuses any role but `rowan` and `signal` |
 | 10 Stopping a tmux predecessor after accept | **Open.** Nothing stops a predecessor's pane after `accept` (design step 6's stand-down is unbuilt); a live handed-off pane refuses every START until someone stops it |
 | 11 `renew` versus START | **Open, for the tick-wiring gate.** Nothing coordinates a due renewal with a START: "START cannot overlap a custody transfer" holds only at the instants P2 and P4 read the registry. A tick must not call `renew` while a START card is pressed or running |
 
@@ -633,23 +633,29 @@ write, and only the rule against direct SQLite stands in the way. A forged row
 cannot pass without also a live process carrying its recorded session id, but
 that is not a cryptographic bind; the approving Decision should say so.
 
-## Real launch proof (gate 6), for Rowan in an Off gap
+## Real launch proof (gate 6)
+
+**Authority first.** Decision 0191 makes launching conditional on design probes
+P1 and P2 passing, each under its own operator approval. No recorded result or
+approval for P1 or P2 is known (none was found on #2223, #2286, #2318, the
+notes or the readiness doc; source comments that say "observed in probe P1" cite
+no record). Until one exists, **this proof has no stated authority and must not
+be run.** This section is the procedure for when it does. Nothing here runs P1
+or P2.
 
 The fixture proves the relay's plumbing against a stand-in `claude`; it cannot
-prove what the real `claude` writes. One real launch does. It spends one
-short coordinator start-up. Prerequisites: production Off, the standing
-Decision 0191 in force, sign-in and capacity gates passing, no tmux session on
-the host (the first one this creates will be the successor), and the current
-coordinator recorded as custodian, because `renew` refuses `no_custodian`
-otherwise:
+prove what the real `claude` writes. One real launch does, and spends one short
+coordinator start-up.
 
-```bash
-arcadia coordinator register --project arcadia --role rowan --provider claude --model <model id> --tier <tier> --identity "<name>" --session-id <this session's UUID>
-```
+Prerequisites: the authority above; production Off; Decision 0191 in force;
+sign-in and capacity gates passing; no tmux session on the host (the first one
+this creates will be the successor); and a generation-1 custodian row for the
+role, which today no command creates (gate 9). Without that row `renew` refuses
+`no_custodian`, so the proof cannot start.
 
-(Fence-relevant: it records only what you state. A fresh row has no watchers,
-so register at least one with `arcadia coordinator subscribe` first if you want
-the watcher path exercised.) Then, run by that custodian from its own checkout:
+Run by the current custodian (Rowan), from the **primary checkout**, unsandboxed
+(the sandbox denies the tmux socket and `ps`; a coordinator's own linked
+worktree has an untrusted `mise.toml`, so its `tmux` shim errors):
 
 ```bash
 arcadia coordinator renew --project arcadia --role rowan --repo /Users/pmark/Dev/MR/Arcadia/arcadia --json
@@ -670,31 +676,33 @@ Pass when all of these hold, and record each in the PR or Issue:
    then lists the new tmux name as `allowed`. The seeded desktop predecessor is
    **not** fenced: it holds no token, so the custody guard treats it as
    unfenced (section c, step 6). What stops it is Rowan ending that session.
-5. With the accepted session live, run a freshly prepared real START card in
-   `preflight` mode (a card from the real operator-script library with its
-   hashes pinned; the fixture marker is forbidden there; no press is
-   needed). It should pass P2 and record the tolerated name. Then start a
-   stray `tmux new-session -d -s x` and expect P2 to refuse; `tmux kill-session
-   -t x`. Preflight consumes nothing. A pane that appears between P2 and P4 on a
-   real press refuses at P4 after P3 has consumed the press and reinstalled the
-   worker, so do not start or accept a successor while a press is running.
-6. Cleanup. Killing the custodian's pane (`tmux kill-session -t
+5. With the accepted session live, from the primary checkout and unsandboxed,
+   run a freshly prepared real START card in `preflight` mode (a card from the
+   real operator-script library with its hashes pinned; the fixture marker is
+   forbidden there; no press). It should pass P2 and record the tolerated name.
+   Start a stray `tmux new-session -d -s x` and expect P2 to refuse; then
+   `tmux kill-session -t x`. Preflight consumes nothing. A pane that appears
+   between P2 and P4 on a real press refuses at P4 after P3 has consumed the
+   press and reinstalled the worker, so do not start or accept a successor while
+   a press is running.
+6. Afterwards. Killing the custodian's pane (`tmux kill-session -t
    arcadia-coord-rowan-g<N>`) leaves its row `custodian`, its name allowed and its
-   worktree behind; custody has no way back, because a second register or seed
-   refuses. Treat the proof's successor as the real coordinator, or end the
-   operator's tidy of the worktree separately. Never stop the pane of the
-   generation that holds custody while work depends on it.
+   worktree behind, and custody has no way back (no register or correction route
+   exists). Treat the successor as the real coordinator, and remove its worktree
+   separately only if it is not kept. Never stop the pane of the generation that
+   holds custody while work depends on it.
 
 Failure path, with owners. Rowan, as the custodian, owns the failure:
 - If delivery fails twice, the relay marks both attempts failed, stops those
   panes itself (`killSession` on a generation it failed) and pings once.
   Custody stays with the predecessor; file the transcript excerpt, do not retry.
 - If delivery passes but the successor never accepts, its pane stays alive and
-  its row stays `launching`. P2 refuses every START while it does. A later
-  `renew` after 15 minutes marks it failed (`no_acceptance`) and stops it. Until
-  then Rowan stops it by exact name: `tmux kill-session -t arcadia-coord-rowan-g<N>`.
-- If accept succeeded and the successor is not wanted, nothing marks it
-  handed back (gate 10); Rowan and the operator decide.
+  its row stays `launching`. P2 refuses every START while it does. Rowan stops it
+  by exact name (`tmux kill-session -t arcadia-coord-rowan-g<N>`). A later
+  `renew` after 15 minutes also marks it failed (`no_acceptance`) and stops it,
+  **and then launches another attempt**; do not run `renew` merely to clear it.
+- If accept succeeded and the successor is not wanted, nothing marks it handed
+  back (gate 10); Rowan and the operator decide.
 
 ## Probes to run before change 3
 

@@ -41,6 +41,9 @@ export const RELAY_LAUNCH_DECISION_ID: string | null =
 /** A Decision file stem: its four-digit number, a hyphen, then its slug. */
 const DECISION_STEM = /^(\d{4})-([a-z0-9]+(?:-[a-z0-9]+)*)$/;
 
+/** The coordinator roles Decision 0191 names. */
+export const RELAY_ROLES: ReadonlySet<string> = new Set(["rowan", "signal"]);
+
 /** Limits pinned by answer A of the design's Decision. */
 export const RELAY_LIMITS = {
   attemptsPerRenewal: 2,
@@ -61,7 +64,7 @@ export const RELAY_PERMISSION_MODE = "auto";
 const ALLOWED_PERMISSION_MODES = new Set(["auto", "default"]);
 
 export type RelayRefusal =
-  | "decision_pending" | "decision_not_in_force" | "no_custodian" | "provider_unsupported"
+  | "decision_pending" | "decision_not_in_force" | "role_not_allowed" | "no_custodian" | "provider_unsupported"
   | "renewal_limit" | "sign_in" | "capacity" | "launch_in_progress" | "repository_unresolved";
 
 export interface DecisionGate { inForce: boolean; reason: string }
@@ -212,6 +215,8 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
   if (!ALLOWED_PERMISSION_MODES.has(permissionMode)) {
     throw new ArcadiaError("VALIDATION_ERROR", `The relay launches only in an ordinary interactive permission mode (auto or default), never ${permissionMode}; bypass modes are excluded.`, 2, { reason: "bypass_mode" });
   }
+  // Decision 0191 pins one successor per registered coordinator role (Rowan, Signal): never a builder or helper role.
+  if (!RELAY_ROLES.has(input.role)) return refuse("role_not_allowed", `The relay launches successors only for the coordinator roles ${[...RELAY_ROLES].join(" and ")}, not ${input.role}.`);
   if (input.repoRoot === null) {
     // The Decision gate reads origin/main of the repository, so nothing can be checked. A tick that
     // omitted --repo would otherwise refuse on every run with nobody told (#2286 gate 4).
