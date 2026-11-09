@@ -128,6 +128,39 @@ function maxGeneration(db: Database.Database, project: string, role: string): nu
   return row.max ?? 0;
 }
 
+export interface RelaySessionVerdict { project: string; role: string; generation: number; tmuxName: string; allowed: boolean; reason: string }
+
+/**
+ * Which tmux sessions START's no-competing-Session check (P2 and P4 of
+ * scripts/start-run.sh) may tolerate for `project`: the live tmux name of a
+ * registered, relay-launched, current custodian. Read-only; a decision input,
+ * never authority. Everything else stays a competing Session.
+ *
+ * It is deliberately narrow:
+ *  - exact names only, taken from the generation row, never a prefix or pattern;
+ *  - only a row holding custody (`custodian`) that the relay launched (it holds
+ *    a token hash), so a hand-started tmux session named like one is not allowed
+ *    unless the registry already names it, and a desktop coordinator (no tmux
+ *    name) never is;
+ *  - while any generation of that role is `launching` (a handoff in flight),
+ *    nothing for that role is allowed, so a predecessor and its successor are
+ *    never both tolerated and START cannot overlap a custody transfer.
+ */
+export function relayCoordinatorSessions(db: Database.Database, project: string): RelaySessionVerdict[] {
+  const rows = (db.prepare("SELECT * FROM coordinator_generations WHERE project = ? AND status IN ('custodian', 'launching') ORDER BY role, generation").all(project) as Row[]).map(toRecord);
+  const launching = new Set(rows.filter((row) => row.status === "launching").map((row) => row.role));
+  const verdicts: RelaySessionVerdict[] = [];
+  for (const row of rows) {
+    if (!row.tmuxName) continue;
+    const verdict = (allowed: boolean, reason: string) => verdicts.push({ project, role: row.role, generation: row.generation, tmuxName: row.tmuxName as string, allowed, reason });
+    if (row.status === "launching") verdict(false, `generation ${row.generation} of ${row.role} is launching: a handoff is in flight`);
+    else if (!row.relayLaunched) verdict(false, `generation ${row.generation} of ${row.role} was not launched by the relay`);
+    else if (launching.has(row.role)) verdict(false, `a successor of ${row.role} is launching: a handoff is in flight`);
+    else verdict(true, `registered relay-launched custodian: generation ${row.generation} of ${row.role}`);
+  }
+  return verdicts;
+}
+
 export function custodianOf(record: GenerationRecord | null): CapsuleCustodian | null {
   if (!record) return null;
   return {

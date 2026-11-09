@@ -92,6 +92,11 @@ switch (key2) {
   case "advance queue":
     ok(state.queue);
     break;
+  case "coordinator relay-sessions":
+    // state.relaySessions: the exact tmux names the registry allows, or "unreadable" for a registry that cannot be read.
+    if (state.relaySessions === "unreadable") { process.stderr.write("the workspace database could not be read\n"); process.exit(1); }
+    ok({ project: get("--project"), allowed: state.relaySessions ?? [], sessions: [] });
+    break;
   case "production freeze-check":
     if (state.freeze === "refuse") { process.stderr.write("rehearsal freeze window: production is Active\n"); process.exit(1); }
     ok({ operation: args[2], state: "inactive", decision: "allowed", policyRevision: state.production.revision, policyEpoch: state.production.epoch });

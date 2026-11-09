@@ -775,16 +775,39 @@ phase_p1() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
+# No competing Session (P2 and, again, P4). Decision 0191 launches successor coordinators under tmux, so a bare "no tmux
+# session at all" would refuse every START while a relay coordinator runs. The one tolerated case is narrow: a live tmux
+# session whose EXACT name `arcadia coordinator relay-sessions` returns as a registered, relay-launched, current custodian
+# of this Project (none while a handoff is in flight). Any other session, a prefix or lookalike name, a successor still
+# launching, a hand-started coordinator, or a registry that cannot be read refuses. Fail closed throughout.
+# ---------------------------------------------------------------------------------------------------------------
+check_no_competing_session() {
+  local when="$1" live allowed name stray="" registry
+  live="$(tmux ls -F '#{session_name}' 2>/dev/null || true)"
+  if [[ -z "$live" ]]; then rec relayCoordinatorSessions '[]'; return 0; fi
+  allowed=""
+  if registry="$(arcadia coordinator relay-sessions --project "$PROJECT" --json 2>/dev/null)" \
+    && jq -e '.ok == true and (.data.allowed | type == "array")' <<<"$registry" >/dev/null 2>&1; then
+    allowed="$(jq -r '.data.allowed[]' <<<"$registry")"
+  fi
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    grep -Fxq -- "$name" <<<"$allowed" || stray+="$name "
+  done <<<"$live"
+  [[ -z "$stray" ]] || refuse "a tmux server with live sessions exists; no competing Session may run${when:+ $when} (not a registered relay coordinator: ${stray% })"
+  rec relayCoordinatorSessions "$(jq -Rn '[inputs | select(length > 0)]' <<<"$allowed")"
+}
+
+# ---------------------------------------------------------------------------------------------------------------
 # P2 state
 # ---------------------------------------------------------------------------------------------------------------
 phase_p2() {
-  local tmux_sessions freeze
+  local freeze
   phase P2 state
   check_production_off
   rec policyRevisionBefore "$PROD_REVISION"
   # ADOPT:L99-L102 (no competing Session) and the plist/PID facts the restart needs.
-  tmux_sessions="$(tmux ls 2>/dev/null || true)"
-  [[ -z "$tmux_sessions" ]] || refuse "a tmux server with live sessions exists; no competing Session may run"
+  check_no_competing_session ""
   [[ -f "$HOME/Library/LaunchAgents/$WORKER_LABEL.plist" ]] || refuse "worker launch agent $HOME/Library/LaunchAgents/$WORKER_LABEL.plist is missing"  # ADOPT:L96
   OLD_PID="$(worker_pid)"
   [[ -n "$OLD_PID" ]] || refuse "worker job $WORKER_LABEL has no running PID"  # ADOPT:L98
@@ -940,7 +963,7 @@ phase_p4_sign_in() {
   BOUND_HANDLER="$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
   # Decision 0143's Off / zero-admission / no-Session guards, fresh, before the day can be claimed.
   check_production_off
-  [[ -z "$(tmux ls 2>/dev/null || true)" ]] || refuse "a tmux server with live sessions exists; no competing Session may run before the sign-in sequence"
+  check_no_competing_session "before the sign-in sequence"
   check_capacity
   SIGN_IN_ATTEMPTED=true
   mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims this press's own sequence record before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes this press's sequence, with no retry"

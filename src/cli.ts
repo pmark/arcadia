@@ -84,6 +84,8 @@ import {
   renderCoordinatorCapsuleSuccess,
   renderCoordinatorNoteSuccess,
   renderCoordinatorRenewSuccess,
+  renderCoordinatorRelaySessionsSuccess,
+  runCoordinatorRelaySessionsCommand,
   runCoordinatorRenewCommand,
   renderCoordinatorSubscribeSuccess,
   renderCoordinatorVerifySuccess,
@@ -1350,6 +1352,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--repo <path>", "Repository the successor's worktree is cut from (default: the primary worktree of the repository you run it in; a tick or timer must pass it)", resolveInvocationPath)
   ).action((options: { workspace: string; project: string; role: string; effort?: string; repo?: string; json?: boolean }) =>
     runCliAction("coordinator.renew", options, () => runCoordinatorRenewCommand({ ...options, env: process.env }), renderCoordinatorRenewSuccess)
+  );
+
+  addJsonOption(coordinator.command("relay-sessions")
+    .description("Read-only: the exact tmux sessions of registered, relay-launched, current coordinator custodians that START's no-competing-Session check tolerates (none during a handoff)")
+    .requiredOption("--project <slug>", "Project slug, e.g. arcadia")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project: string; json?: boolean }) =>
+    runCliAction("coordinator.relay-sessions", options, () => runCoordinatorRelaySessionsCommand(options), renderCoordinatorRelaySessionsSuccess)
   );
 
   const nativeMail = program.command("native-mail").description("Local addressed mail between native coding-agent sessions on this machine (relationship/provenance records only; grants no authority)");

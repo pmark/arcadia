@@ -10,6 +10,7 @@ import {
   runCoordinatorAcceptCommand,
   runCoordinatorCapsuleCommand,
   runCoordinatorNoteCommand,
+  runCoordinatorRelaySessionsCommand,
   runCoordinatorSubscribeCommand,
   runCoordinatorVerifyCommand
 } from "../src/commands/coordinator.js";
@@ -21,6 +22,7 @@ import {
   claimNextGeneration,
   failGeneration,
   listGenerations,
+  relayCoordinatorSessions,
   seedCustodianGeneration
 } from "../src/coordinator/generations.js";
 import { ALIVE_START_UNKNOWN, acquireRelayLock, releaseRelayLock } from "../src/coordinator/lock.js";
@@ -480,5 +482,38 @@ describe("repositoryRoot", () => {
     } finally {
       if (before === undefined) delete process.env.ARCADIA_INVOKED_FROM; else process.env.ARCADIA_INVOKED_FROM = before;
     }
+  });
+});
+
+describe("coordinator relay-sessions: which tmux sessions START tolerates (#2286 item 7)", () => {
+  const verdicts = (ws: string) => withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia")).map((entry) => [entry.tmuxName, entry.allowed]);
+  const NEXT = "arcadia production status";
+
+  it("allows nothing for a desktop-seeded custodian, which has no tmux session", () => {
+    const ws = workspace();
+    seed(ws);
+    expect(verdicts(ws)).toEqual([]);
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia" }).data.allowed).toEqual([]);
+  });
+
+  it("holds the name while a successor is launching, allows only the accepted relay custodian, and holds it again during the next handoff", () => {
+    const ws = workspace();
+    seed(ws);
+    runCoordinatorNoteCommand({ workspace: ws, ...base, text: NEXT, nextMove: true, now: at(1), env: {} });
+    const claimed = claim(ws, at(2));
+    const env = envFor(2, claimed.token);
+    // A handoff in flight: the launching successor is held (and the seeded predecessor has no tmux name).
+    expect(verdicts(ws)).toEqual([["arcadia-coord-rowan-g2", false]]);
+    runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) });
+    runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(5), env });
+    // Accepted: the relay-launched custodian is the one name allowed; the handed-off generation never is.
+    expect(verdicts(ws)).toEqual([["arcadia-coord-rowan-g2", true]]);
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia" }).data.allowed).toEqual(["arcadia-coord-rowan-g2"]);
+    // Another handoff in flight holds the current custodian's name as well: START cannot overlap a transfer.
+    runCoordinatorNoteCommand({ workspace: ws, ...base, text: NEXT, nextMove: true, now: at(6), env });
+    withDatabase(ws, (db) => claimNextGeneration(db, ws, { ...base, ...launch, tmuxName: "arcadia-coord-rowan-g3", nativeSessionId: "00000000-0000-4000-8000-000000000003", sources: sources(), now: at(7) }));
+    expect(verdicts(ws)).toEqual([["arcadia-coord-rowan-g2", false], ["arcadia-coord-rowan-g3", false]]);
+    // Another Project's sessions are not this Project's.
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "other" }).data.sessions).toEqual([]);
   });
 });

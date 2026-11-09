@@ -110,6 +110,8 @@ interface BoxOptions {
   dayUsed?: boolean;
   plist?: boolean;
   tmuxSessions?: boolean;
+  /** Exact live tmux session names (`tmux ls -F '#{session_name}'`); the registry's allowed names go in state.relaySessions. */
+  tmuxLive?: string[];
   config?: unknown;
   state?: (state: Record<string, any>) => void;
 }
@@ -310,7 +312,10 @@ function box(options: BoxOptions = {}) {
   shim("sleep", "exit 0");
   // `ps -o ppid= -p <pid>`: 3333 is the source-run worker the tsx CLI (launchd PID 1111) runs as its direct child.
   shim("ps", 'case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac');
-  shim("tmux", options.tmuxSessions ? 'echo "0: 1 windows (created Sat Nov  1 00:00:00 2026)"' : "exit 1");
+  const liveNames = options.tmuxLive ?? (options.tmuxSessions ? ["0"] : []);
+  shim("tmux", liveNames.length > 0
+    ? `if [ "$1 $2" = "ls -F" ]; then printf '%s\\n' ${liveNames.map((name) => `'${name}'`).join(" ")}; else echo "0: 1 windows (created Sat Nov  1 00:00:00 2026)"; fi`
+    : "exit 1");
   writeFileSync(path.join(bin, "fake-arcadia.mjs"), readFileSync(path.join(fixtures, "fake-arcadia.mjs")));
   writeFileSync(path.join(bin, "fake-plan-runner.mjs"), readFileSync(path.join(fixtures, "fake-plan-runner.mjs")));
 
@@ -516,6 +521,32 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     ["sign-in sequence preconditions that fail", { state: (s) => { s.signin = { check: "refuse" }; } }, /sign-in sequence preconditions fail: .*not a terminal request.*\[code REQUEST_SLOT_BUSY; sequenceClaimed false\]/]
   ])("refuses %s", (_label, options, reason) => {
     const b = box(options);
+    const headBefore = b.head();
+    const result = b.run("preflight");
+    expectRefusedClean(b, result, "P2", reason, headBefore);
+  });
+});
+
+describe("start-run executor: a registered relay coordinator under tmux is not a competing Session (#2286 item 7)", () => {
+  const RELAY = "arcadia-coord-rowan-g2";
+  it("tolerates exactly the registry's relay custodian, records it, and asks the registry about this Project", () => {
+    const b = box({ scenario: "behind", tmuxLive: [RELAY], state: (s) => { s.relaySessions = [RELAY]; } });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", phase: "P2", allowanceConsumed: false });
+    expect(result.receipt!.record.relayCoordinatorSessions).toEqual([RELAY]);
+    const asked = readFileSync(path.join(b.root, "calls.log"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line).args as string[])
+      .filter((args) => args.slice(0, 2).join(" ") === "coordinator relay-sessions");
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked[0]).toContain("--project");
+  });
+  it.each<[string, BoxOptions, RegExp]>([
+    ["a stray session next to the relay coordinator", { tmuxLive: [RELAY, "stray-builder"], state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator: stray-builder/],
+    ["a session that only shares the relay's prefix", { tmuxLive: [`${RELAY}-copy`], state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator: arcadia-coord-rowan-g2-copy/],
+    ["a relay-named session the registry does not allow (a handoff in flight, a hand-started or handed-off one)", { tmuxLive: [RELAY], state: (s) => { s.relaySessions = []; } }, /not a registered relay coordinator: arcadia-coord-rowan-g2/],
+    ["a registry that cannot be read", { tmuxLive: [RELAY], state: (s) => { s.relaySessions = "unreadable"; } }, /not a registered relay coordinator/]
+  ])("still refuses %s", (_label, options, reason) => {
+    const b = box({ scenario: "behind", ...options });
     const headBefore = b.head();
     const result = b.run("preflight");
     expectRefusedClean(b, result, "P2", reason, headBefore);

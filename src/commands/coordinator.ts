@@ -24,7 +24,9 @@ import {
   clearVerifyPass,
   currentCustodian,
   custodianOf,
-  type CustodyAdmission
+  relayCoordinatorSessions,
+  type CustodyAdmission,
+  type RelaySessionVerdict
 } from "../coordinator/generations.js";
 import { withRelayLock } from "../coordinator/lock.js";
 import { coordinatorPaths } from "../coordinator/paths.js";
@@ -303,6 +305,29 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
   });
   if (data.outcome !== "launched") process.exitCode = 1;
   return createSuccess({ command: "coordinator.renew", workspace: workspacePath, data });
+}
+
+export interface CoordinatorRelaySessionsData { project: string; allowed: string[]; sessions: RelaySessionVerdict[] }
+
+/**
+ * `arcadia coordinator relay-sessions --project <slug>`: read-only. Names the
+ * exact tmux sessions of registered, relay-launched, current custodians that
+ * START's no-competing-Session check tolerates (see relayCoordinatorSessions).
+ * It starts, stops and records nothing.
+ */
+export function runCoordinatorRelaySessionsCommand(options: { workspace: string; project: string }): CommandSuccess<CoordinatorRelaySessionsData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const sessions = withDatabase(workspacePath, (db) => relayCoordinatorSessions(db, options.project));
+  return createSuccess({
+    command: "coordinator.relay-sessions", workspace: workspacePath,
+    data: { project: options.project, allowed: sessions.filter((session) => session.allowed).map((session) => session.tmuxName), sessions }
+  });
+}
+
+export function renderCoordinatorRelaySessionsSuccess(response: CommandSuccess<CoordinatorRelaySessionsData>): string[] {
+  const { data } = response;
+  if (data.sessions.length === 0) return [`No relay-registered tmux session for ${data.project}.`];
+  return data.sessions.map((session) => `${session.allowed ? "allowed" : "held   "} ${session.tmuxName}: ${session.reason}`);
 }
 
 export function renderCoordinatorRenewSuccess(response: CommandSuccess<RenewResult>): string[] {
