@@ -152,6 +152,16 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "operator-interaction list": ALLOWED,
   "ping send": ALLOWED,
   "ping pending": ALLOWED,
+  // Coordinator handoff state lives under the resolved workspace's own coordinators/ directory.
+  "coordinator capsule": ALLOWED,
+  "coordinator note": ALLOWED,
+  "coordinator subscribe": ALLOWED,
+  "coordinator verify": ALLOWED,
+  "coordinator accept": ALLOWED,
+  "coordinator renew": guarded(
+    "Launches a real coordinator session in tmux; an experiment workspace never launches a live successor.",
+    "Run it from the live workspace once the relay Decision is on main."
+  ),
   "ping sent": DELIVERY_RECEIPT,
   "action settle": ALLOWED,
   "native-mail send": NATIVE_MAIL_WRITE,
@@ -206,6 +216,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "production liveness-check": exempt("A launchd timer reads the named workspace read-only each minute; a row a minute would be noise, and only a page writes, through the ping outbox, besides its own .arcadia state files."),
   // Writes one armed-until file in the resolved workspace's .arcadia/armed-wakes; no database, ping or Project state.
   "production keeper-heartbeat": ALLOWED,
+  "coordinator budget": exempt("A coordinator runs it at every wake: it reads the host's own session transcripts and the timer's budget markers, prints, and records nothing; a row a wake would be noise."),
   "production idle-front": exempt("A repeated read-only check: reads the named workspace read-only, the process list and armed-until files, prints a row and records nothing."),
   "production runtime-check": exempt("Compares the installed broker release with a named repository's HEAD; reads no workspace and records nothing."),
   "production preview": ALLOWED,

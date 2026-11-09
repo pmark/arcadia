@@ -24,6 +24,8 @@ export interface RunWindowReason {
   /** ISO instant the window is known to hold until; null when it has no known end (Active production). */
   until: string | null;
   detail: string;
+  /** Card only: false when the press would refuse at preflight P2 because the pinned worker job has no running PID (Issue #2179). */
+  pressable?: boolean;
 }
 
 export interface RunWindow {
@@ -41,6 +43,8 @@ export interface RunWindowDeps {
   libraryDir(): string;
   /** The local view of origin/main, or null when it cannot be resolved. */
   originMain(): string | null;
+  /** Whether launchd reports a running PID for the job: true/false, or null when it cannot be told (not macOS, launchctl denied). */
+  workerRunning?(label: string): boolean | null;
 }
 
 /** Same resolution order as /actions: an explicit override, else the main checkout's library, never a worktree's copy. */
@@ -60,6 +64,16 @@ export function defaultRunWindowDeps(repositoryPath: string = process.cwd(), env
         // fall through to the same default /actions uses
       }
       return path.join(os.homedir(), "Dev/MR/Arcadia/arcadia/artifacts/generated/operator-scripts");
+    },
+    workerRunning: (label) => {
+      try {
+        const out = execFileSync("launchctl", ["list", label], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 10_000 });
+        return /"PID" = \d+;/.test(out);
+      } catch (error) {
+        // Only "not loaded" is a definite no; anything else (no launchctl, denied) leaves the answer unknown.
+        const text = String((error as { stderr?: unknown }).stderr ?? "") + String((error as Error).message ?? "");
+        return /Could not find (specified )?service|No such process|not loaded/i.test(text) ? false : null;
+      }
     },
     originMain: () => {
       try {
@@ -108,10 +122,10 @@ export function observeRunWindow(db: Database.Database, deps: RunWindowDeps = de
 function waitingStartCards(deps: RunWindowDeps, now: Date, unknown: string[]): RunWindowReason[] {
   const library = deps.libraryDir();
   const names = readdirSync(library).filter((name) => name.endsWith(".json") && !name.endsWith(".consumed.json")).sort();
-  const candidates: Array<{ id: string; reviewedRevision: string; expiresAt: string; expiry: number }> = [];
+  const candidates: Array<{ id: string; reviewedRevision: string; expiresAt: string; expiry: number; workerLabel: string | null }> = [];
   let unreadable = 0;
   for (const name of names) {
-    let descriptor: { startRun?: { reviewedRevision?: unknown }; expires_at?: unknown };
+    let descriptor: { startRun?: { reviewedRevision?: unknown; workerLabel?: unknown }; expires_at?: unknown };
     try {
       descriptor = JSON.parse(readFileSync(path.join(library, name), "utf8"));
     } catch {
@@ -131,7 +145,7 @@ function waitingStartCards(deps: RunWindowDeps, now: Date, unknown: string[]): R
       continue;
     }
     if (expiry <= now.getTime() || existsSync(path.join(library, `${id}.consumed.json`))) continue;
-    candidates.push({ id, reviewedRevision: pins.reviewedRevision, expiresAt: new Date(expiry).toISOString(), expiry });
+    candidates.push({ id, reviewedRevision: pins.reviewedRevision, expiresAt: new Date(expiry).toISOString(), expiry, workerLabel: typeof pins.workerLabel === "string" && pins.workerLabel ? pins.workerLabel : null });
   }
   if (unreadable > 0) unknown.push(`${unreadable} operator-script descriptor${unreadable === 1 ? "" : "s"} could not be read, so a waiting START card may be hidden`);
   if (candidates.length === 0) return [];
@@ -143,12 +157,19 @@ function waitingStartCards(deps: RunWindowDeps, now: Date, unknown: string[]): R
   }
   return candidates
     .filter((card) => card.reviewedRevision === origin)
-    .map((card) => ({
-      kind: "start_card_waiting" as const,
-      subject: card.id,
-      until: card.expiresAt,
-      detail: `START card ${card.id} is ready to press at origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
-    }));
+    .map((card) => {
+      // Preflight P2 refuses "worker job <label> has no running PID"; say so here instead of "ready to press" (Issue #2179).
+      const down = card.workerLabel !== null && deps.workerRunning?.(card.workerLabel) === false;
+      return {
+        kind: "start_card_waiting" as const,
+        subject: card.id,
+        until: card.expiresAt,
+        pressable: !down,
+        detail: down
+          ? `START card ${card.id} is not pressable: worker ${card.workerLabel} has no running PID, so preflight P2 would refuse (see arcadia worker status and worker.log for a lost lock); it is pinned to origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
+          : `START card ${card.id} is ready to press at origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
+      };
+    });
 }
 
 /** Lines for the top of the text output; empty when the window is closed. */

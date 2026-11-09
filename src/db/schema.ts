@@ -15,6 +15,7 @@ import { ensureCandidatePreservationTable } from "../sessions/candidatePreservat
 import { ensureSessionExitReceiptsTable } from "../sessions/reconciliation.js";
 import { ensureSchedulingTables } from "../scheduling/store.js";
 import { ensureNativeMailTables } from "../nativeMail/store.js";
+import { ensureCoordinatorGenerationsTable } from "../coordinator/generations.js";
 
 export function getSchemaPath(): string {
   const fromCwd = path.resolve("database", "schema.sql");
@@ -118,6 +119,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureActionJourneyLogTable(db);
   ensureRedAlertTables(db);
   ensureNativeMailTables(db);
+  ensureCoordinatorGenerationsTable(db);
   applyCapabilityMigrations(db);
 }
 

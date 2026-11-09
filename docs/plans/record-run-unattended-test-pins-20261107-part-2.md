@@ -3,19 +3,19 @@ arcadia: v1
 type: plan
 slug: record-run-unattended-test-pins-20261107-part-2
 project: arcadia
-status: draft
+status: active
 milestone: Record run unattended test pins 20261107 part 2
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-07
+updated: 2026-11-09
 actions:
   - id: pin-reasoning-effort-mapping
     title: Pin that stored effort keys map to the native Claude and Codex reasoning effort values and unknown keys pass through, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that stored effort keys map to the native Claude and Codex reasoning effort values and unknown keys pass through, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-reasoning-effort-mapping-f0e9121f2879; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-reasoning-effort-mapping
     clarification: clarified
     confidence: high
@@ -31,11 +31,11 @@ actions:
     references: []
   - id: pin-cli-wants-json
     title: Pin that the CLI treats only an exact --json argument as a request for JSON output, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the CLI treats only an exact --json argument as a request for JSON output, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-cli-wants-json-c36363af9626; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-cli-wants-json
     clarification: clarified
     confidence: high
@@ -51,11 +51,11 @@ actions:
     references: []
   - id: pin-requirement-id-format
     title: Pin that a requirement id joins project, plan and Action id with slashes and no normalization, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a requirement id joins project, plan and Action id with slashes and no normalization, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-requirement-id-format-a2a6c2f5bcfc; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-requirement-id-format
     clarification: clarified
     confidence: high
@@ -71,11 +71,11 @@ actions:
     references: []
   - id: pin-doc-ref-builders
     title: Pin the stable plan, proposal and plan-question document reference formats, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the stable plan, proposal and plan-question document reference formats, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-doc-ref-builders-371c65af4a4b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-doc-ref-builders
     clarification: clarified
     confidence: high
@@ -91,11 +91,11 @@ actions:
     references: []
   - id: pin-checks-repair-request-id
     title: Pin that the required-checks repair request id combines the failed Session id and head under a fixed prefix, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the required-checks repair request id combines the failed Session id and head under a fixed prefix, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-checks-repair-request-id-7cbc78c0fa08; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-checks-repair-request-id
     clarification: clarified
     confidence: high
@@ -111,11 +111,11 @@ actions:
     references: []
   - id: pin-handoff-request-prefix
     title: Pin that the handoff request prefix lowercases the work item id and dashes every run of other characters, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the handoff request prefix lowercases the work item id and dashes every run of other characters, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-handoff-request-prefix-e1e85bfdd007; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-handoff-request-prefix
     clarification: clarified
     confidence: high
@@ -131,11 +131,11 @@ actions:
     references: []
   - id: pin-review-response-normalization
     title: Pin that a review response value is trimmed, lowercased and whitespace-collapsed, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a review response value is trimmed, lowercased and whitespace-collapsed, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-review-response-normalization-4e9be3cb5f52; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-review-response-normalization
     clarification: clarified
     confidence: high
@@ -151,11 +151,11 @@ actions:
     references: []
   - id: pin-image-mime-extension
     title: Pin the image MIME type to file extension mapping and its bin fallback, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the image MIME type to file extension mapping and its bin fallback, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-image-mime-extension-05a68a019dd2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-image-mime-extension
     clarification: clarified
     confidence: high
@@ -171,11 +171,11 @@ actions:
     references: []
   - id: pin-authoritative-control-path
     title: Pin which relative paths count as authoritative control records, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which relative paths count as authoritative control records, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-authoritative-control-path-4030e5f79871; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-authoritative-control-path
     clarification: clarified
     confidence: high
@@ -191,11 +191,11 @@ actions:
     references: []
   - id: pin-stable-proposal-id
     title: Pin that a stable proposal id is agentask_ followed by the first 18 fingerprint characters, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a stable proposal id is agentask_ followed by the first 18 fingerprint characters, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-stable-proposal-id-ea61977f7589; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-stable-proposal-id
     clarification: clarified
     confidence: high
@@ -211,11 +211,11 @@ actions:
     references: []
   - id: pin-north-star-step-reasons
     title: "Pin the North Star step reason helpers: gate and remainder prefixes and the one-line 300-character cut, with a new test file."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin the North Star step reason helpers: gate and remainder prefixes and the one-line 300-character cut, with a new test file."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-north-star-step-reasons-34b6eb15715b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-north-star-step-reasons
     clarification: clarified
     confidence: high
@@ -231,11 +231,11 @@ actions:
     references: []
   - id: pin-milestone-and-log-doc-refs
     title: Pin the plan milestone and Log entry document reference formats, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the plan milestone and Log entry document reference formats, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-milestone-and-log-doc-refs-d242b42d85bd; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-milestone-and-log-doc-refs
     clarification: clarified
     confidence: high
@@ -251,11 +251,11 @@ actions:
     references: []
   - id: pin-yaml-scalar-quoting
     title: Pin that a frontmatter YAML scalar is JSON-quoted only when a colon, hash or leading indicator would change its meaning, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a frontmatter YAML scalar is JSON-quoted only when a colon, hash or leading indicator would change its meaning, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-yaml-scalar-quoting-f5940c13f2a6; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-yaml-scalar-quoting
     clarification: clarified
     confidence: high
@@ -414,6 +414,9 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: pin-launch-agent-workspace-arg
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Record run unattended test pins 20261107 part 2
