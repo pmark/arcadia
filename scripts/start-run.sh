@@ -642,7 +642,7 @@ phase_p0() {
   # A set API key can bill paid API usage instead of the Claude subscription; its value is never read.  REF:L155
   [[ -z "${ANTHROPIC_API_KEY:-}" ]] || refuse "ANTHROPIC_API_KEY is set in this host environment, which can bill paid API usage; unset it (its value was not read)"
   [[ -z "${ARCADIA_WORKSPACE:-}" ]] || refuse "ARCADIA_WORKSPACE is set; the configured workspace must resolve on its own"  # ADOPT:L72
-  for tool in git jq mise timeout node launchctl ps; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done  # REF:L159
+  for tool in git jq mise timeout node launchctl ps tmux; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done  # REF:L159
   [[ "$(cd "$LIBRARY_DIR/../../.." && pwd -P)" == "$ARCADIA_REPO" ]] || refuse "this card does not live in the library of the checkout that holds this executor"
   jq -e '.schema == "arcadia-operator-script-v1" and .kind == "grant" and (.startRun.schema == "arcadia-start-run-v1")' "$DESCRIPTOR" >/dev/null || refuse "the descriptor is not a START grant with a startRun block"
   check_preserved_history
@@ -775,16 +775,80 @@ phase_p1() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
+# No competing Session (P2 and, again, P4).
+#
+# Decision 0156 retains "zero live admissions and no live Sessions" as a START gate (Decision 0143's no-Session guard). This
+# check RELAXES that gate for one case, and that relaxation awaits a Decision (pending Decision; none is cited here, and until
+# one is approved the tolerance should be treated as unapproved). Background: Decision 0191 launches successor coordinators
+# under tmux, so a bare "no tmux session at all" refuses every START while a relay coordinator runs.
+#
+# The one tolerated case: a live tmux session that (1) has the EXACT name `arcadia coordinator relay-sessions` returns for a
+# registered, relay-launched, current custodian of this Project (none while a handoff is in flight), AND (2) is running the
+# very process that row was launched as: a descendant of that pane's PID whose arguments carry `--session-id <the row's
+# native_session_id>`. A row whose pane died, or a different process started under the same name, is a competing Session.
+#
+# Reading tmux fails closed: only tmux's own "no server" answers mean "no sessions". A denied socket, any other tmux error, a
+# mise shim failure, or a missing tmux refuses. TMUX and TMUX_TMPDIR (which choose the server socket) are stripped, as the
+# launcher's tmuxQueryEnv does, so this reads the socket the relay launched on, not one the caller's shell points at. `tmux`
+# here may be a mise shim; a shim that cannot run (for example an untrusted mise.toml in the working directory) prints a
+# `mise ERROR` and is therefore refused, never read as "no sessions".
+# ---------------------------------------------------------------------------------------------------------------
+# Bounded (a wedged tmux server must not hang the card: Issue #2084); `timeout` is a P0 tool and exits 124 when it fires.
+tmux_q() { env -u TMUX -u TMUX_TMPDIR timeout 15 tmux "$@"; }
+# Whether a descendant of pane `$1`'s process runs `--session-id $2`. Any failure to read the process table is "no".
+pane_runs_session() {
+  local panes procs
+  # Every pane of every window of exactly this session (`-s`, and `=name:` as the repo's panePid does), and exactly one: the
+  # relay creates one pane, so a second pane or window (where a stranger could hide) is a competing Session.
+  panes="$(tmux_q list-panes -s -t "=$1:" -F '#{pane_pid}' 2>/dev/null)" || return 1
+  [[ "$(grep -c . <<<"$panes")" == 1 && "$panes" =~ ^[0-9]+$ ]] || return 1
+  procs="$(ps -axo pid=,ppid=,command= 2>/dev/null)" || return 1
+  node -e 'const [uuid,...panes]=process.argv.slice(1);const kids=new Map(),cmd=new Map();
+for(const l of require("fs").readFileSync(0,"utf8").split("\n")){const m=/^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l);if(!m)continue;cmd.set(m[1],m[3]);(kids.get(m[2])??kids.set(m[2],[]).get(m[2])).push(m[1])}
+const seen=new Set(),todo=panes.filter(Boolean);
+while(todo.length){const pid=todo.pop();if(seen.has(pid))continue;seen.add(pid);
+if(new RegExp("(^|\\s)--session-id "+uuid+"(\\s|$)").test(cmd.get(pid)??""))process.exit(0);todo.push(...(kids.get(pid)??[]))}
+process.exit(1)' "$2" $panes <<<"$procs"
+}
+check_no_competing_session() {
+  local when="$1" live="" out err why rc=0 name uuid stray="" registry note="" pairs="" tolerated=""
+  # stdout alone is the session list; stderr (a shim's warning, say) is kept apart for the message and never becomes a name.
+  out="$(tmux_q ls -F '#{session_name}' 2> "$RUN_DIR/tmux-ls.stderr")" || rc=$?
+  err="$(head -c 400 "$RUN_DIR/tmux-ls.stderr" 2>/dev/null)"
+  if (( rc != 0 )); then
+    # Only tmux's own "no server" answers (the patterns of isNoTmuxServerError in src/commands/worker.ts) mean "no sessions".
+    why="exit $rc"; (( rc != 124 )) || why+=", timed out"
+    (( rc != 124 )) && grep -Eqi 'no server running on|error connecting to .*\(no such file or directory\)' <<<"$err" \
+      || refuse "tmux could not be read ($why), so START cannot show that no competing Session runs${when:+ $when}: ${err%%$'\n'*}${out:+ $out}"
+  else
+    live="$out"
+  fi
+  if [[ -z "$live" ]]; then rec relayCoordinatorSessions '[]'; return 0; fi
+  if registry="$(arcadia coordinator relay-sessions --project "$PROJECT" --json 2> "$RUN_DIR/relay-sessions.stderr")" \
+    && jq -e '.ok == true and (.data.sessions | type == "array")' <<<"$registry" >/dev/null 2>&1; then
+    pairs="$(jq -r '.data.sessions[] | select(.allowed == true) | [.tmuxName, .nativeSessionId] | @tsv' <<<"$registry")"
+  else
+    note="; the relay registry could not be read: $(cli_failure "$RUN_DIR/relay-sessions.stderr")"
+  fi
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    uuid="$(awk -F'\t' -v n="$name" '$1 == n { print $2; exit }' <<<"$pairs")"
+    if [[ -n "$uuid" ]] && pane_runs_session "$name" "$uuid"; then tolerated+="$name"$'\n'; else stray+="$name "; fi
+  done <<<"$live"
+  [[ -z "$stray" ]] || refuse "a tmux server with live sessions exists; no competing Session may run${when:+ $when} (not a registered relay coordinator running its recorded session: ${stray% }${note})"
+  rec relayCoordinatorSessions "$(jq -Rn '[inputs | select(length > 0)]' <<<"$tolerated")"
+}
+
+# ---------------------------------------------------------------------------------------------------------------
 # P2 state
 # ---------------------------------------------------------------------------------------------------------------
 phase_p2() {
-  local tmux_sessions freeze
+  local freeze
   phase P2 state
   check_production_off
   rec policyRevisionBefore "$PROD_REVISION"
   # ADOPT:L99-L102 (no competing Session) and the plist/PID facts the restart needs.
-  tmux_sessions="$(tmux ls 2>/dev/null || true)"
-  [[ -z "$tmux_sessions" ]] || refuse "a tmux server with live sessions exists; no competing Session may run"
+  check_no_competing_session ""
   [[ -f "$HOME/Library/LaunchAgents/$WORKER_LABEL.plist" ]] || refuse "worker launch agent $HOME/Library/LaunchAgents/$WORKER_LABEL.plist is missing"  # ADOPT:L96
   OLD_PID="$(worker_pid)"
   [[ -n "$OLD_PID" ]] || refuse "worker job $WORKER_LABEL has no running PID"  # ADOPT:L98
@@ -940,7 +1004,7 @@ phase_p4_sign_in() {
   BOUND_HANDLER="$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
   # Decision 0143's Off / zero-admission / no-Session guards, fresh, before the day can be claimed.
   check_production_off
-  [[ -z "$(tmux ls 2>/dev/null || true)" ]] || refuse "a tmux server with live sessions exists; no competing Session may run before the sign-in sequence"
+  check_no_competing_session "before the sign-in sequence"
   check_capacity
   SIGN_IN_ATTEMPTED=true
   mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims this press's own sequence record before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes this press's sequence, with no retry"

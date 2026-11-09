@@ -110,6 +110,16 @@ interface BoxOptions {
   dayUsed?: boolean;
   plist?: boolean;
   tmuxSessions?: boolean;
+  /** Exact live tmux session names (`tmux ls -F '#{session_name}'`); the registry's allowed names go in state.relaySessions. */
+  tmuxLive?: string[];
+  /** How `tmux ls` fails: tmux's own "no server" answer is the default; others must refuse (fail closed). */
+  tmuxError?: "denied" | "other" | "mise-shim" | "not-found" | "timeout";
+  /** A warning line on stderr beside a successful `tmux ls` (a shim's notice): it must never become a session name. */
+  tmuxWarning?: boolean;
+  /** How many panes the relay session has (default 1). */
+  relayPanes?: number;
+  /** Whether a process of the registry's native session id (--session-id) runs under the relay pane (default true). */
+  relayProcess?: boolean;
   config?: unknown;
   state?: (state: Record<string, any>) => void;
 }
@@ -309,8 +319,28 @@ function box(options: BoxOptions = {}) {
   shim("timeout", 'shift; exec "$@"');
   shim("sleep", "exit 0");
   // `ps -o ppid= -p <pid>`: 3333 is the source-run worker the tsx CLI (launchd PID 1111) runs as its direct child.
-  shim("ps", 'case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac');
-  shim("tmux", options.tmuxSessions ? 'echo "0: 1 windows (created Sat Nov  1 00:00:00 2026)"' : "exit 1");
+  shim("ps", `if [ "$1" = "-axo" ]; then
+  echo "  4242     1 tmux: pane shell"
+  echo "  4243     1 bash stray-builder"
+  ${options.relayProcess === false ? 'echo "  5151  4242 claude --session-id 99999999-9999-4999-8999-999999999999 --name other"' : 'echo "  5151  4242 claude --remote-control rowan --session-id 22222222-2222-4222-8222-222222222222 --name rowan"'}
+  exit 0
+fi
+case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac`);
+  const liveNames = options.tmuxLive ?? (options.tmuxSessions ? ["0"] : []);
+  const tmuxFailure = {
+    denied: 'echo "error connecting to /private/tmp/tmux-501/default (Operation not permitted)" >&2; exit 1',
+    other: 'echo "protocol version mismatch (client 8, server 7)" >&2; exit 1',
+    "mise-shim": 'echo "mise ERROR error parsing config file: mise.toml" >&2; exit 1',
+    "not-found": 'echo "tmux: command not found" >&2; exit 127',
+    timeout: "exit 124"
+  };
+  // tmux's own answers: a server with sessions lists them (and a pane PID); no server says so on stderr. TMUX and TMUX_TMPDIR must be stripped by the caller.
+  shim("tmux", options.tmuxError ? tmuxFailure[options.tmuxError]
+    : `if [ -n "$TMUX" ] || [ -n "$TMUX_TMPDIR" ]; then echo "TMUX leaked into the query" >&2; exit 1; fi
+case "$1" in
+  ls) ${options.tmuxWarning ? 'echo "mise WARN a shim notice" >&2; ' : ""}${liveNames.length > 0 ? `printf '%s\\n' ${liveNames.map((name) => `'${name}'`).join(" ")}` : 'echo "no server running on /private/tmp/tmux-501/default" >&2; exit 1'} ;;
+  list-panes) if [ "$2" != "-s" ] || [ "$3 $4" != "-t =${liveNames[0] ?? "none"}:" ]; then echo "list-panes must use -s -t =name:" >&2; exit 1; fi; ${Array.from({ length: options.relayPanes ?? 1 }, (_, index) => `echo ${4242 + index}`).join("; ")} ;;
+esac`);
   writeFileSync(path.join(bin, "fake-arcadia.mjs"), readFileSync(path.join(fixtures, "fake-arcadia.mjs")));
   writeFileSync(path.join(bin, "fake-plan-runner.mjs"), readFileSync(path.join(fixtures, "fake-plan-runner.mjs")));
 
@@ -516,6 +546,47 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     ["sign-in sequence preconditions that fail", { state: (s) => { s.signin = { check: "refuse" }; } }, /sign-in sequence preconditions fail: .*not a terminal request.*\[code REQUEST_SLOT_BUSY; sequenceClaimed false\]/]
   ])("refuses %s", (_label, options, reason) => {
     const b = box(options);
+    const headBefore = b.head();
+    const result = b.run("preflight");
+    expectRefusedClean(b, result, "P2", reason, headBefore);
+  });
+});
+
+describe("start-run executor: a registered relay coordinator under tmux is not a competing Session (#2286 item 7)", () => {
+  const RELAY = "arcadia-coord-rowan-g2";
+  it("tolerates exactly the registry's relay custodian, records it, and asks the registry about this Project", () => {
+    const b = box({ scenario: "behind", tmuxLive: [RELAY], state: (s) => { s.relaySessions = [RELAY]; } });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", phase: "P2", allowanceConsumed: false });
+    expect(result.receipt!.record.relayCoordinatorSessions).toEqual([RELAY]);
+    const asked = readFileSync(path.join(b.root, "calls.log"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line).args as string[])
+      .filter((args) => args.slice(0, 2).join(" ") === "coordinator relay-sessions");
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked[0]).toContain("--project");
+  });
+  it("a warning on stderr beside a successful tmux ls is not a session name", () => {
+    const b = box({ scenario: "behind", tmuxLive: [RELAY], tmuxWarning: true, state: (s) => { s.relaySessions = [RELAY]; } });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt!.record.relayCoordinatorSessions).toEqual([RELAY]);
+  });
+  it.each<[string, BoxOptions, RegExp]>([
+    ["a stray session next to the relay coordinator", { tmuxLive: [RELAY, "stray-builder"], state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator running its recorded session: stray-builder/],
+    ["a session that only shares the relay's prefix", { tmuxLive: [`${RELAY}-copy`], state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g2-copy/],
+    ["a relay-named session the registry does not allow (a handoff in flight, a hand-started or handed-off one)", { tmuxLive: [RELAY], state: (s) => { s.relaySessions = []; } }, /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g2/],
+    ["a registry that cannot be read", { tmuxLive: [RELAY], state: (s) => { s.relaySessions = "unreadable"; } }, /not a registered relay coordinator.*registry could not be read/],
+    // The name alone is not enough: the pane must run the row's recorded session id (a dead pane's row, or a process started under the name).
+    ["a session named like the registry's but running a different process", { tmuxLive: [RELAY], relayProcess: false, state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g2/],
+    // Reading tmux fails closed: only tmux's own "no server" answer means no sessions.
+    ["a tmux socket that is denied", { tmuxError: "denied" }, /tmux could not be read.*Operation not permitted/],
+    ["any other tmux error", { tmuxError: "other" }, /tmux could not be read.*protocol version mismatch/],
+    ["a mise shim that cannot run tmux", { tmuxError: "mise-shim" }, /tmux could not be read.*mise ERROR/],
+    ["a second pane in the relay session (a stranger could hide there)", { tmuxLive: [RELAY], relayPanes: 2, state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g2/],
+    ["a tmux read that times out", { tmuxError: "timeout" }, /tmux could not be read \(exit 124, timed out\)/],
+    ["tmux that is not found", { tmuxError: "not-found" }, /tmux could not be read.*command not found/]
+  ])("still refuses %s", (_label, options, reason) => {
+    const b = box({ scenario: "behind", ...options });
     const headBefore = b.head();
     const result = b.run("preflight");
     expectRefusedClean(b, result, "P2", reason, headBefore);

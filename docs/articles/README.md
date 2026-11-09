@@ -27,7 +27,7 @@ for evidence, discoverability and channel boundaries.
 
 ## Drafts
 
-- [What Arcadia checks before an agent starts](2026-11-08-what-arcadia-checks-before-an-agent-starts.md) — how GitHub’s agentic engineering guide led to a narrow check for confusing Action criteria.
+- [What Arcadia checks before an agent starts](2026-11-09-what-arcadia-checks-before-an-agent-starts.md) — how GitHub’s agentic engineering guide led to a narrow check for confusing Action criteria.
 
 - [A glossary of Arcadia session jargon, and whose word each one is](2026-11-03-glossary-of-arcadia-session-jargon.md) — about seventy-five entries from coordinator sessions, each labelled Arcadia, Claude Code, Git/GitHub, an outside tool or general engineering; opens with "classifier".
 

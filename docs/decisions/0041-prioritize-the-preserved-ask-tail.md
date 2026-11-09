@@ -4,14 +4,16 @@ type: decision
 id: "0041"
 slug: prioritize-the-preserved-ask-tail
 project: arcadia
-status: open
+status: approved
 question: Do you accept the live agent-managed queue proof and, if so, should Arcadia reactivate the guided understanding session as the next preserved Ask tail?
 gap_type: missing-decision
 recommendation: Yes. Reactivate arcadia-ask-active-sessions at build-guided-understanding-session; it is the dependency that makes later Ask-rule management and Living Songbook dogfood usable rather than isolated features.
 confidence: high
 plan: agent-ask-execution-queue
 action: dogfood-agent-managed-queue
-updated: 2026-09-01
+updated: 2026-11-08
+answer: "A. Accept the live agent-managed queue proof. Keep arcadia-ask-active-sessions superseded for now and revisit its priority when record-run-unattended-test-pins-20261107-part-2 finishes, as a candidate next Plan. Source: the operator typed 1A in the Signal 6 session on 2026-11-08 PST."
+decided: 2026-11-08
 ---
 
 # Decision 0041: Prioritize the preserved Ask tail

@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: record-run-unattended-test-pins-20261107-part-2
 project: arcadia
-status: active
+status: complete
 milestone: Record run unattended test pins 20261107 part 2
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -272,11 +272,11 @@ actions:
     references: []
   - id: pin-launch-agent-workspace-arg
     title: Pin that a launch agent's workspace is the value following a --workspace argument and is null otherwise, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a launch agent's workspace is the value following a --workspace argument and is null otherwise, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-launch-agent-workspace-arg-6c2cec9d7de4; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-launch-agent-workspace-arg
     clarification: clarified
     confidence: high
@@ -292,11 +292,11 @@ actions:
     references: []
   - id: pin-lesson-keywords
     title: Pin that lesson keywords are lowercase alphanumeric words of at least three characters, de-duplicated in order and capped at 32, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that lesson keywords are lowercase alphanumeric words of at least three characters, de-duplicated in order and capped at 32, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-lesson-keywords-35cc76d88591; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-lesson-keywords
     clarification: clarified
     confidence: high
@@ -312,11 +312,11 @@ actions:
     references: []
   - id: pin-cloudflare-worker-name
     title: Pin how a Project slug becomes a Cloudflare Worker name, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a Project slug becomes a Cloudflare Worker name, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-cloudflare-worker-name-eabb7c95d78d; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-cloudflare-worker-name
     clarification: clarified
     confidence: high
@@ -332,11 +332,11 @@ actions:
     references: []
   - id: pin-liveness-duration-format
     title: Pin the production liveness duration format and the stale episode key, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the production liveness duration format and the stale episode key, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-liveness-duration-format-f3cb73598240; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-liveness-duration-format
     clarification: clarified
     confidence: high
@@ -352,11 +352,11 @@ actions:
     references: []
   - id: pin-repository-frame-extraction
     title: "Pin that the first repository stack frame is the first tests, src or scripts file:line, with a new test file."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin that the first repository stack frame is the first tests, src or scripts file:line, with a new test file."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-repository-frame-extraction-19d9d69e9853; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-repository-frame-extraction
     clarification: clarified
     confidence: high
@@ -373,11 +373,11 @@ actions:
     references: []
   - id: pin-defect-summary-similarity
     title: Pin that defect summary similarity is the Jaccard ratio of significant words and 0 when a side has none, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that defect summary similarity is the Jaccard ratio of significant words and 0 when a side has none, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-defect-summary-similarity-9b11842e4b7c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-defect-summary-similarity
     clarification: clarified
     confidence: high
@@ -393,11 +393,11 @@ actions:
     references: []
   - id: pin-inline-text-escaping
     title: Pin that governed prose is rendered inline with Markdown, entities and @ escaped, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that governed prose is rendered inline with Markdown, entities and @ escaped, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-inline-text-escaping-98b4bce3754c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-inline-text-escaping
     clarification: clarified
     confidence: high
@@ -414,7 +414,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-launch-agent-workspace-arg
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

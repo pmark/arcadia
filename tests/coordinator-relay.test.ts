@@ -124,6 +124,14 @@ describe("coordinator relay launch (change 3)", () => {
     expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))).toHaveLength(1);
   });
 
+  it("refuses any role other than the coordinator roles Decision 0191 names, before any claim or launch", () => {
+    const { ws, repo, projects } = setup();
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "builder", repoRoot: repo, effort: "e3_deep" }, fake.deps));
+    expect(result).toMatchObject({ outcome: "refused", reason: "role_not_allowed" });
+    expect(fake.launches).toEqual([]);
+  });
+
   it("launches one successor with the pinned model, effort, permission mode and custody identity, and verifies delivery", () => {
     const { ws, repo, projects } = setup();
     const fake = fakeDeps(projects, { deliver: [true] });
@@ -233,7 +241,7 @@ describe("coordinator relay launch (change 3)", () => {
     expect(result.data).toMatchObject({ outcome: "launched", worktree: path.join(explicit, ".claude", "worktrees", "coord-rowan-g2") });
   });
 
-  it("renew refuses with repository_unresolved, not a Decision refusal, outside any repository", () => {
+  it("renew refuses with repository_unresolved outside any repository and pings, so a tick without --repo cannot refuse silently", () => {
     const { root, ws, projects } = setup();
     const outside = path.join(root, "not-a-repo");
     mkdirSync(outside);
@@ -242,6 +250,34 @@ describe("coordinator relay launch (change 3)", () => {
     process.exitCode = undefined;
     expect(result.data).toMatchObject({ outcome: "refused", reason: "repository_unresolved" });
     expect(fake.launches).toEqual([]);
+    expect(fake.pings).toHaveLength(1);
+    expect(fake.pings[0]).toMatch(/repository unresolved/);
+    expect(fake.pings[0]).toMatch(/--repo/);
+    // Nothing was claimed: custody and the generation table are untouched.
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => row.status)).toEqual(["custodian"]);
+  });
+
+  it("renew passes an explicit --repo through to the worktree and never pings for it", () => {
+    const { root, ws, projects } = setup();
+    const explicit = path.join(root, "primary");
+    mkdirSync(explicit);
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const outside = path.join(root, "not-a-repo");
+    mkdirSync(outside);
+    const result = withInvokedFrom(outside, () => runCoordinatorRenewCommand({ workspace: ws, project: "arcadia", role: "rowan", repo: explicit, env: {}, deps: fake.deps }));
+    expect(result.data).toMatchObject({ outcome: "launched" });
+    expect(fake.pings).toEqual([]);
+  });
+
+  it("renew surfaces a failed log write on a failed claim instead of discarding it", () => {
+    const { ws, repo, projects } = setup();
+    const log = coordinatorPaths(ws, "arcadia", "rowan").generationsLog;
+    unlinkSync(log);
+    mkdirSync(log);
+    const fake = fakeDeps(projects, { deliver: [false, false] });
+    const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
+    expect(result.outcome).toBe("failed");
+    expect(result.outcome === "failed" ? result.warnings?.some((warning) => /log write failed/.test(warning)) : false).toBe(true);
   });
 
   it("renew reports a failed log write as a warning and still launches", () => {

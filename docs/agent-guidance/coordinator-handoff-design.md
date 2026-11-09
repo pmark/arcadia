@@ -124,7 +124,8 @@ Sessions. The desktop app is the one surface a script cannot drive.
 
 Mostly, yes. Arcadia can run these steps deterministically: detection, the
 canonical part of the capsule, the launch decision, the launch, the
-prompt-delivery check, the custody record, re-arming watchers and alerting.
+prompt-delivery check, the custody record, listing inherited watchers and alerting
+(the successor starts and registers each watcher itself).
 Five parts cannot be fully deterministic, and the design is built around them
 rather than pretending otherwise.
 
@@ -346,14 +347,14 @@ approval it relies on.
      custodian is still N, so the guard would refuse N+1's own handoff. It
      therefore admits exactly three commands from a caller that is not the
      custodian: `subscribe --from-snapshot`, `accept`, and a plain
-     `subscribe "<command>" --cursor <c>` (the successor arming a watcher it
-     runs). It admits them only under the transfer lock, only for the newest
+     `subscribe "<command>" --cursor <c>` (the successor registering a watcher it
+     runs, one the state file already holds). It admits them only under the transfer lock, only for the newest
      `launching` generation, and only when the caller's token matches that row.
      `subscribe --from-snapshot` and `accept` also need the sha to match the
      row's snapshot. `accept` further needs `verify` to have passed against that
      sha within the last 10 minutes and the snapshot file to still hash to the
      recorded sha. A plain `subscribe` from the incoming generation is accepted
-     only for a command line already recorded as inherited from its snapshot;
+     only for a command line the state file already holds (inherited from its snapshot, or registered by the predecessor after it);
      it carries no sha. `subscribe --from-snapshot` also clears any earlier
      verify pass, so `accept` needs a fresh `verify`. Every other command and
      caller gets the ordinary check.
@@ -478,13 +479,20 @@ The design rules:
    differences from the snapshot (PR heads, production revision and epoch,
    Decision numbers, pending pings, sessions alive). A difference is expected
    and fine: it shows what changed during the handoff. It is not a failure.
-3. Every subscription *in the snapshot* is armed by this generation (registered
-   by the successor, not merely inherited). The check does not compare cursors,
-   and the successor may arm a watcher with any cursor. **Known gap, a gate
-   before any real `renew`:** a watcher the predecessor registers *after* the
-   snapshot is not in the snapshot, so verify ignores it and still passes, and
-   the successor cannot arm it (plain `subscribe` accepts only inherited lines).
-   That watcher can be left running under no one's custody.
+3. Every watcher the snapshot lists, and every watcher the state file holds
+   now, is registered by this generation (not merely inherited). It fails
+   closed: a watcher the predecessor registered *after* the snapshot is in the
+   state file, so verify names it as late and refuses until the successor
+   registers it too (the incoming generation may register any watcher the state
+   already holds). `accept` runs this same check again under the transfer lock,
+   so a watcher registered, or re-flagged inherited by a predecessor's
+   `--from-snapshot`, between verify and accept refuses the accept and drops the
+   verify pass. "Registered" is a record, not proof that a process runs (change
+   5). **Cursor rule:** cursors are opaque, so only "same" or "different" is
+   knowable. A different cursor never refuses, because a successor that
+   resumes later legitimately holds a later one and a refusal would stick the
+   handoff. It is printed as a warning (`cursorChanges`, with both cursors) and
+   the successor states in its first message why no event was missed.
 4. Every journal entry is listed with its age. An entry older than 2 hours is
    marked `stale`.
 5. Every chat-only approval is listed as lost, with its prepared card, if any.
@@ -551,6 +559,150 @@ Deferred, each with its revival trigger:
 - **Remote Control is unavailable** (sign-in, network). The session still runs
   in tmux and coordinates. The operator loses chat access, not the run. The
   relay pings once.
+
+## Gates before real `renew` and tick wiring (#2286)
+
+The custody fence (#2318) is on main. Real `renew` and a live tick stay gated.
+Status of each gate, from #2286 comment 6728223351 and review round 1 of #2338:
+
+| Gate | State |
+| --- | --- |
+| 1 Late watchers | Closed in source: verify item 3 fails closed on a watcher registered after the snapshot, and the successor can register it |
+| 2 `accept` re-checks item 3 under the lock | Closed in source, and the verify pass is dropped on refusal |
+| 3 Cursor | Rule chosen: a difference never refuses, it is a warning (section f, item 3), with a baseline for late watchers and a line in the generations log at accept |
+| 4 Tick wiring passes `--repo` | Closed in source as far as code can: `renew` with no resolvable repository pings (the ping queue de-duplicates identical messages for 10 minutes, so a one-minute tick can still ping several times an hour). The tick, when wired, must still pass `--repo <primary checkout>` |
+| 5 "Armed" means registered | Wording fixed in verify, subscribe, capsule and CLI help; liveness is still change 5 |
+| 6 Exact-match prompt delivery | **Open until the real launch proof below.** Fixture: `tests/coordinator-relay-launch-proof.test.ts` |
+| 7 tmux and START | **Relaxation written, not approved.** It relaxes a gate Decision 0156 retains (no live Sessions) and awaits a Decision (pending Decision). #2316 (phone visibility of a tmux-launched session) is not addressed |
+| 8 Stale text | Fixed |
+| 9 Registering the first custodian | **Open, and deliberately not built here.** Nothing creates the generation-1 row (`seedCustodianGeneration` has no non-test caller), so `renew` refuses `no_custodian`. A `register` command was tried and dropped: unverified, it let any caller create a custodian for any role and then launch (review round 2, B3). The row must come from an operator-approved route, one that can verify the caller's own session, model, provider and tier (none is known to be deterministic today) and that has a governed correction path. Until then a mistaken or missing row has no correction other than that route, and `renew` cannot run at all. `renew` also refuses any role but `rowan` and `signal` |
+| 10 Stopping a tmux predecessor after accept | **Open.** Nothing stops a predecessor's pane after `accept` (design step 6's stand-down is unbuilt); a live handed-off pane refuses every START until someone stops it |
+| 11 `renew` versus START | **Open, for the tick-wiring gate.** Nothing coordinates a due renewal with a START: "START cannot overlap a custody transfer" holds only at the instants P2 and P4 read the registry. A tick must not call `renew` while a START card is pressed or running |
+
+**Tick wiring.** Whatever runs `renew` on a timer must pass `--repo <path>` of
+git's *primary* worktree (the first entry of `git worktree list`, the one with a
+`.git` directory), not a linked worktree and not "the worktree on `main`". Without
+it, `renew` resolves the invocation directory, and a timer's directory is not the
+repository. It must also not run during a START (gate 11).
+
+## START and the relay's tmux sessions
+
+**This relaxes a gate Decision 0156 retains and needs a Decision (pending
+Decision).** 0156 says START retains "zero live admissions and no live
+Sessions" (the no-Session guard of Decision 0143). Until a Decision approves the
+tolerance below, treat it as unapproved.
+
+`scripts/start-run.sh` P2 (and again P4, before the sign-in sequence) refuses
+START on any live tmux session, because a competing Session must never run. A
+relay-launched coordinator is a tmux session, so that check alone would refuse
+every START while one runs. The check now tolerates a live session only when
+both hold:
+
+1. its **exact name** is one `arcadia coordinator relay-sessions --project
+   <slug>` returns: the tmux name of a registered, relay-launched (token-holding)
+   `custodian` row with a plain name and a recorded session id, and none at all
+   for a role while any generation of it is `launching`; and
+2. the pane is running that row's process: a descendant of the pane's PID has
+   `--session-id <the row's native_session_id>` in its arguments. A row whose pane
+   died and a different process started under the same name are both competing
+   Sessions. The id also keeps the lookup Project-safe: two Projects can share a
+   tmux name (it carries role and generation only) but never a session id.
+
+Reading tmux fails closed. Only tmux's own "no server" answers (the patterns of
+`isNoTmuxServerError` in `src/commands/worker.ts`) mean "no sessions". A denied
+socket, any other tmux error, a mise shim that cannot run (the `tmux` on PATH
+may be a mise shim, and an untrusted `mise.toml` in the working directory makes
+it print a `mise ERROR`), and a missing `tmux` (now a P0 required tool) all
+refuse. `TMUX` and `TMUX_TMPDIR`, which choose the server socket, are stripped
+as the launcher's `tmuxQueryEnv` does, so the check reads the socket the relay
+launched on. The process table is read with `ps`; if that fails, the session is
+refused.
+
+Still refused: any other session, a prefix lookalike, a hand-started session the
+registry does not name, a successor still launching or a predecessor during
+that handoff, a handed-off or failed generation's leftover pane, a desktop
+coordinator, and an unreadable registry. The receipt records
+`relayCoordinatorSessions`: the sessions actually tolerated (live, matched and
+process-checked), not the registry's list. The executor change alters the pinned
+`executorSha256` of future START cards (P0 refuses a card whose pin differs:
+"this executor is not the one the card pins"; `staleExecutorPins` is the same
+check in `scripts/check-operator-scripts.ts`); regenerate such cards.
+
+Residual limit: the registry is a workspace database that an agent sandbox can
+write, and only the rule against direct SQLite stands in the way. A forged row
+cannot pass without also a live process carrying its recorded session id, but
+that is not a cryptographic bind; the approving Decision should say so.
+
+## Real launch proof (gate 6)
+
+**Authority first.** Decision 0191 makes launching conditional on design probes
+P1 and P2 passing, each under its own operator approval. No recorded result or
+approval for P1 or P2 is known (none was found on #2223, #2286, #2318, the
+notes or the readiness doc; source comments that say "observed in probe P1" cite
+no record). Until one exists, **this proof has no stated authority and must not
+be run.** This section is the procedure for when it does. Nothing here runs P1
+or P2.
+
+The fixture proves the relay's plumbing against a stand-in `claude`; it cannot
+prove what the real `claude` writes. One real launch does, and spends one short
+coordinator start-up.
+
+Prerequisites: the authority above; production Off; Decision 0191 in force;
+sign-in and capacity gates passing; no tmux session on the host (the first one
+this creates will be the successor); and a generation-1 custodian row for the
+role, which today no command creates (gate 9). Without that row `renew` refuses
+`no_custodian`, so the proof cannot start.
+
+Run by the current custodian (Rowan), from the **primary checkout**, unsandboxed
+(the sandbox denies the tmux socket and `ps`; a coordinator's own linked
+worktree has an untrusted `mise.toml`, so its `tmux` shim errors):
+
+```bash
+arcadia coordinator renew --project arcadia --role rowan --repo /Users/pmark/Dev/MR/Arcadia/arcadia --json
+```
+
+Pass when all of these hold, and record each in the PR or Issue:
+
+1. The result has `outcome: launched`, `attempts: 1` and no `warnings`.
+2. `tmux has-session -t arcadia-coord-rowan-g<N>` succeeds, and the session
+   appears in Remote Control (note whether it shows on the phone: #2316).
+3. The transcript at the generation row's `transcriptPath` (the slug of the
+   worktree path; confirm the real path has no symlink) has, as its first
+   main-chain user message, text equal to the prompt. Read the file; look for
+   host context added as an extra text block.
+4. The successor's first message lists the inherited watchers, and it runs
+   `subscribe --from-snapshot`, registers each watcher, `verify` and `accept`
+   without the operator. `arcadia coordinator relay-sessions --project arcadia`
+   then lists the new tmux name as `allowed`. The seeded desktop predecessor is
+   **not** fenced: it holds no token, so the custody guard treats it as
+   unfenced (section c, step 6). What stops it is Rowan ending that session.
+5. With the accepted session live, from the primary checkout and unsandboxed,
+   run a freshly prepared real START card in `preflight` mode (a card from the
+   real operator-script library with its hashes pinned; the fixture marker is
+   forbidden there; no press). It should pass P2 and record the tolerated name.
+   Start a stray `tmux new-session -d -s x` and expect P2 to refuse; then
+   `tmux kill-session -t x`. Preflight consumes nothing. A pane that appears
+   between P2 and P4 on a real press refuses at P4 after P3 has consumed the
+   press and reinstalled the worker, so do not start or accept a successor while
+   a press is running.
+6. Afterwards. Killing the custodian's pane (`tmux kill-session -t
+   arcadia-coord-rowan-g<N>`) leaves its row `custodian`, its name allowed and its
+   worktree behind, and custody has no way back (no register or correction route
+   exists). Treat the successor as the real coordinator, and remove its worktree
+   separately only if it is not kept. Never stop the pane of the generation that
+   holds custody while work depends on it.
+
+Failure path, with owners. Rowan, as the custodian, owns the failure:
+- If delivery fails twice, the relay marks both attempts failed, stops those
+  panes itself (`killSession` on a generation it failed) and pings once.
+  Custody stays with the predecessor; file the transcript excerpt, do not retry.
+- If delivery passes but the successor never accepts, its pane stays alive and
+  its row stays `launching`. P2 refuses every START while it does. Rowan stops it
+  by exact name (`tmux kill-session -t arcadia-coord-rowan-g<N>`). A later
+  `renew` after 15 minutes also marks it failed (`no_acceptance`) and stops it,
+  **and then launches another attempt**; do not run `renew` merely to clear it.
+- If accept succeeded and the successor is not wanted, nothing marks it handed
+  back (gate 10); Rowan and the operator decide.
 
 ## Probes to run before change 3
 

@@ -269,11 +269,11 @@ export function renderCapsuleMarkdown(capsule: Capsule, now: Date): string {
   for (const approval of capsule.approvals.chat_only) lines.push(`- chat only, will not carry: ${approval.text} (${age(approval.at, now)} ago)`);
   lines.push("", "## Subscriptions");
   if (capsule.subscriptions.length === 0) lines.push("None.");
-  for (const subscription of capsule.subscriptions) lines.push(`- \`${subscription.command}\` cursor ${subscription.cursor} (armed by generation ${subscription.armedByGeneration ?? "none"})`);
+  for (const subscription of capsule.subscriptions) lines.push(`- \`${subscription.command}\` cursor ${subscription.cursor} (${subscription.inherited ? "inherited, not registered by this generation" : `registered by generation ${subscription.armedByGeneration ?? "none"}`})`);
   lines.push("", `## Journal and next move (${ADVISORY_HEADING})`);
   for (const entry of capsule.journal) lines.push(`- ${age(entry.at, now)} ago${now.getTime() - Date.parse(entry.at) > JOURNAL_STALE_MS ? " (stale)" : ""}: ${entry.text}`);
   lines.push(`Next move: ${capsule.next_move ? capsule.next_move.text : "none recorded"}`);
-  lines.push("", "## Budget", capsule.budget ? `${capsule.budget.state ?? ""} occupancy ${capsule.budget.occupancy ?? "unmeasured"} of ${capsule.budget.window ?? "?"} (${capsule.budget.source})`.trim() : "Not measured (change 1 not present).");
+  lines.push("", "## Budget", capsule.budget ? `${capsule.budget.state ?? ""} occupancy ${capsule.budget.occupancy ?? "unmeasured"} of ${capsule.budget.window ?? "?"} (${capsule.budget.source})`.trim() : "Not measured (no budget reading is recorded for this role).");
   return `${lines.join("\n")}\n`;
 }
 

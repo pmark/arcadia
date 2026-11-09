@@ -12,12 +12,17 @@
  * `notes` is an optional string of at most 200 characters.
  * `pnpm check:session-ledger` (CI runs it) rejects missing or mistyped fields.
  */
-export const SESSION_ROLES = ["lead", "driver", "reviewer", "replayer", "opus-planner"] as const;
+import agentRoles from "../../config/defaults/agent-roles.json" with { type: "json" };
+
+/** Pre-registry ledger roles; historical rows keep validating. */
+export const LEGACY_SESSION_ROLES = ["lead", "driver", "reviewer", "replayer", "opus-planner"] as const;
+/** Legacy roles plus every role id registered in config/defaults/agent-roles.json. */
+export const SESSION_ROLES: readonly string[] = [...new Set<string>([...LEGACY_SESSION_ROLES, ...agentRoles.roles.map(role => role.id)])];
 export const SESSION_OUTCOMES = ["complete", "split", "stopped"] as const;
 
 export interface SessionLedgerRow {
   session_id: string;
-  role: (typeof SESSION_ROLES)[number];
+  role: string;
   model: string;
   effort: string | null;
   /** Configured and runtime-observed effort stay separate; legacy `effort` remains accepted. */
@@ -73,7 +78,7 @@ export function validateSessionLedgerRow(row: unknown): string[] {
     if (key in row && !ok) errors.push(`field ${key} must be ${expected}`);
   };
   check("session_id", isString(row.session_id), "a non-empty string");
-  check("role", (SESSION_ROLES as readonly unknown[]).includes(row.role), `one of ${SESSION_ROLES.join("|")}`);
+  check("role", SESSION_ROLES.includes(row.role as string), `one of ${SESSION_ROLES.join("|")}`);
   check("model", isString(row.model), "a non-empty string");
   check("effort", row.effort === null || isString(row.effort), "a string or null");
   for (const key of ["configured_effort", "effective_effort", "effort_source", "review_attempt_request_id", "evidence_source", "task_class", "difficulty"]) {

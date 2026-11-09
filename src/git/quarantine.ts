@@ -227,7 +227,8 @@ function repairTornTail(file: string): void {
   const content = readFileSync(file, "utf8");
   if (content.length === 0 || content.endsWith("\n")) return;
   const lastNewline = content.lastIndexOf("\n");
-  const goodLength = lastNewline === -1 ? 0 : lastNewline + 1;
+  // ftruncate takes a byte offset; lastIndexOf returns a UTF-16 string index.
+  const goodLength = lastNewline === -1 ? 0 : Buffer.byteLength(content.slice(0, lastNewline + 1), "utf8");
   const fd = openSync(file, "r+");
   try {
     ftruncateSync(fd, goodLength);

@@ -1881,6 +1881,20 @@ it measures every live coordinator now, shows the pages the timer already
 sent, and leads with this session's banner (`--session`, default
 `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`). It writes and records nothing.
 
+## Coordinator Relay Sessions (#2286)
+
+```bash
+pnpm arcadia coordinator relay-sessions --project <slug> [--workspace <path>] [--json]
+```
+
+Read-only. Lists the exact tmux names of registered, relay-launched, current
+coordinator custodians that `scripts/start-run.sh`'s no-competing-Session check
+tolerates, with a reason for each name it holds back (a handoff in flight, not
+relay-launched). It starts, stops and records nothing and grants no authority.
+See `docs/agent-guidance/coordinator-handoff-design.md`, "START and the relay's
+tmux sessions". A live session is tolerated only if it also runs the row's
+recorded `--session-id`, which START checks itself.
+
 ## Check A Design Record Or Field Guide
 
 ```bash
