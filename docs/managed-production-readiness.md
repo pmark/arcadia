@@ -4,6 +4,16 @@ This is the **single canonical checklist** for the remaining unattended-producti
 
 ## Operator view: the rover's route from here
 
+**Update, 2026-11-09: Plan `record-run-unattended-test-pins-20261107-part-2` is complete, 20 of 20, within the same narrow envelope.** The sections below keep the 2026-11-05 proof as written; this update adds to it and does not widen it. Derived 2026-11-09 from read-only evidence: [Issue1929 comments 6734093798 (batch 5 START) and 6734550957 (final accounting)](https://github.com/pmark/arcadia/issues/1929), `arcadia production status --json` (observed 07:51Z), `arcadia start-run day-evidence`, GitHub PRs #2308 to #2351, and the code-review verdict under `workspaces/martianrover/artifacts/code-review/pull-requests/pmark-arcadia/2351/`.
+
+- **Delivered:** 20 worker merges in five batches of 5, 3, 5, 5 and 2, from 2026-11-08T19:41Z to 2026-11-09T07:20Z. Rowan landed none; the worker merged each PR at its reviewed head. Batch 2 stopped at three on [#2324](https://github.com/pmark/arcadia/issues/2324) (a QA plan read a quoted test path as a changed file; fixed by #2325, closed); the batch resumed in batch 3.
+- **Still the same envelope:** test-only Actions, concurrency one, a merge freeze on main for each batch, and Rowan issued every Off. No source Action, no concurrent run and no moving main was proved.
+- **Production is Off:** revision 123, epoch 66, zero live admissions (Off `rowan-off-part2-batch5-complete-20261109`, 07:20:36Z).
+- **First real Plan-completing settlement:** Action 20, `pin-inline-text-escaping` ([#2351](https://github.com/pmark/arcadia/pull/2351), merged 07:19:46Z), passed the worker's code review at head `a366185ca`: verdict pass with one low finding, the first live run of the #2279/#2282 check. The finding is a QA-plan grep that prints nothing on a correct test. On main the Plan is `status: complete` with no `current_action`; `active_plan` still names it until the operator chooses a successor.
+- **Corrected prediction:** a card holding a Plan's last Action no longer fails the pre-mortem for #2147 or #2270; both are closed, and #2270 is proved live by Action 20.
+- **Reads wrong, still open:** [#2273](https://github.com/pmark/arcadia/issues/2273). The final batch has `scopeComplete: null` in `start-run day-evidence`, so the day chain reads it as a failed batch although both merges landed. Done at a Plan's last Action is the last merge plus no `current_action` on main. A later delegated card needs #2273 fixed or a new day.
+- **Handoff, not yet automatic:** Rowan 2 to Rowan 3 needed the operator's approval retyped in Rowan 3's own chat. [#2338](https://github.com/pmark/arcadia/pull/2338) is open and delivers no automatic handoff; gate 9, P1, P2 and the proof remain.
+
 **Verdict, 2026-11-05: the first unattended run is proven once, within a narrow envelope.** On 2026-11-05 one serial production run on Arcadia's own repository, provider claude-code, concurrency one, delivered three Actions. Each one reached a PR that the worker merged through GitHub after independent code review and QA passed on the first round. The only operator touch was the activation press. `first-unattended-run`'s three criteria are met, and this candidate settles it.
 
 This is **not** general unattended production. The proof covers:
