@@ -173,9 +173,23 @@ describe("a local base ahead only by its own pointer commits", () => {
   it.each([
     ["no trailer", { trailer: false }],
     ["an extra PROJECT.md line", { project: projectDoc("b1", "2026-11-02", "other-plan") }],
-    ["an extra Plan line", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: active\nowner: someone\n---\n") }]
+    ["an extra Plan line", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: active\nowner: someone\n---\n") }],
+    ["a draft activated Plan", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: draft\n---\n") }],
+    ["a complete activated Plan", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: complete\n---\n") }],
+    ["a pointer that is not the subject's Action", { project: projectDoc("a1", "2026-11-01", "other-plan") }],
+    ["a Project that does not name the subject's Plan", { project: projectDoc("b1", "2026-11-01", "plan-x") }]
   ] as Array<[string, Parameters<typeof activate>[1]]>)("refuses an activation-shaped commit with %s", (_name, options) => {
     activate(repo, options);
+    remoteAdvances();
+    expect(sync()).toMatchObject({ outcome: "refused" });
+  });
+
+  it("refuses an activation-shaped commit whose parent already named the subject's Plan", () => {
+    writeDoc(repo, "PROJECT.md", projectDoc("b0", "2026-11-01", "other-plan"));
+    commitAll(repo, "point the Project at other-plan on the remote");
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(other, ["pull", "-q", "--ff-only"]);
+    activate(repo);
     remoteAdvances();
     expect(sync()).toMatchObject({ outcome: "refused" });
   });

@@ -55,7 +55,7 @@ export interface BaseSyncInput {
 
 const POINTER_SUBJECT = /^chore\(arcadia\): point at \S/;
 /** The Plan-activation commit `commitActivation` (src/dispatch/planActivationApply.ts) writes, and its trailer. */
-const ACTIVATE_SUBJECT = /^chore\(arcadia\): activate ([a-z0-9][a-z0-9-]*) at \S+$/;
+const ACTIVATE_SUBJECT = /^chore\(arcadia\): activate ([a-z0-9][a-z0-9-]*) at (\S+)$/;
 const ACTIVATE_TRAILER = /^Written by the total Arcadia Go transition resolver \([A-Za-z0-9][A-Za-z0-9_.:-]*\)\.$/m;
 
 class SyncRefusal extends Error {}
@@ -347,11 +347,19 @@ function isOwnPointerCommit(cwd: string, commit: string, context: { baseBranch: 
  * The Plan is read from the commit's own PROJECT.md, which must name the subject's slug.
  */
 function isOwnActivationCommit(cwd: string, commit: string, parent: string, subject: string, message: string): boolean {
-  const slug = ACTIVATE_SUBJECT.exec(subject)?.[1];
-  if (!slug || !ACTIVATE_TRAILER.test(message)) return false;
-  if (frontmatter(rawBlob(cwd, commit, "PROJECT.md"))?.active_plan !== slug) return false;
+  const parsed = ACTIVATE_SUBJECT.exec(subject);
+  const slug = parsed?.[1];
+  // The subject names `<project>/<action>` (the receipt's action key); the pointer holds the bare Action id.
+  const actionId = parsed?.[2].split("/").pop();
+  if (!slug || !actionId || !ACTIVATE_TRAILER.test(message)) return false;
+  const project = frontmatter(rawBlob(cwd, commit, "PROJECT.md"));
+  // It must really activate: the Project now names the subject's Plan and Action, the parent named a different
+  // Plan, and the activated Plan is `active`, so a hand-made commit cannot re-point at any Plan or status.
+  if (project?.active_plan !== slug || project?.current_action !== actionId) return false;
+  if (frontmatter(tryGit(cwd, ["show", `${parent}:PROJECT.md`]))?.active_plan === slug) return false;
   const plan = activePlanPath(cwd, commit);
   if (plan === null) return false;
+  if (frontmatter(rawBlob(cwd, commit, plan))?.status !== "active") return false;
   const paths = git(cwd, ["diff-tree", "--no-commit-id", "--name-only", "-r", "-z", commit]).split("\0").filter(Boolean);
   if (paths.length === 0) return false;
   return paths.every((file) => {
