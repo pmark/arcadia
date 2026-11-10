@@ -7,6 +7,22 @@
   <title>{% if page.title and page.url != "/" %}{{ page.title | escape }} | {% endif %}{{ site.title | escape }}</title>
   <meta name="description" content="{{ page.summary | default: site.description | strip_html | escape }}">
   <link rel="canonical" href="{{ page.url | absolute_url }}">
+  {% capture seo_title %}{% if page.title and page.url != "/" %}{{ page.title }} | {% endif %}{{ site.title }}{% endcapture %}
+  {% assign seo_description = page.summary | default: site.description | strip_html | normalize_whitespace %}
+  <meta property="og:site_name" content="{{ site.title | escape }}">
+  <meta property="og:type" content="{% if page.layout == 'post' %}article{% else %}website{% endif %}">
+  <meta property="og:title" content="{{ seo_title | strip | escape }}">
+  <meta property="og:description" content="{{ seo_description | escape }}">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta property="og:image" content="{{ '/assets/field-notes-share.png' | absolute_url }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Arcadia Field Notes: What shipped, what broke, what's next.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ seo_title | strip | escape }}">
+  <meta name="twitter:description" content="{{ seo_description | escape }}">
+  <meta name="twitter:image" content="{{ '/assets/field-notes-share.png' | absolute_url }}">
+  <meta name="twitter:image:alt" content="Arcadia Field Notes: What shipped, what broke, what's next.">
   <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ '/feed.xml' | absolute_url }}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=Public+Sans:wght@400;600&amp;display=swap">
   <script>
