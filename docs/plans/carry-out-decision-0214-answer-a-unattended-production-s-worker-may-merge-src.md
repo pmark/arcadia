@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src
 project: arcadia
-status: draft
+status: active
 milestone: "Carry out Decision 0214 answer A: unattended production's worker may merge src/** candidate changes that touch no authority boundary, after an audit proves the authority classifier covers every gate-enforcing source module."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -48,6 +48,9 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: implement-a-classifier-coverage-audit
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Carry out Decision 0214 answer A: unattended production's worker may merge src/** candidate changes that touch no authority boundary, after an audit proves the authority classifier covers every gate-enforcing source module.

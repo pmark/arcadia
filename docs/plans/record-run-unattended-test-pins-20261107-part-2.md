@@ -7,7 +7,7 @@ status: complete
 milestone: Record run unattended test pins 20261107 part 2
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-09
+updated: 2026-11-10
 actions:
   - id: pin-reasoning-effort-mapping
     title: Pin that stored effort keys map to the native Claude and Codex reasoning effort values and unknown keys pass through, with a new test file.
