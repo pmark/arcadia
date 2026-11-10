@@ -34,10 +34,10 @@ jobs:
       - name: Validate Plan close-out records
         run: mise exec -- pnpm check:plan-close-outs
       - name: Validate unit shard partition covers every test file once
-        run: mise exec -- node scripts/ci-test-shard.mjs --check 8
+        run: mise exec -- node scripts/ci-test-shard.mjs --check 12
 
   unit:
-    # Test files are split over 8 duration-balanced shards (scripts/ci-test-shard.mjs;
+    # Test files are split over 12 duration-balanced shards (scripts/ci-test-shard.mjs;
     # every test file lands in exactly one shard) so wall time is the slowest
     # small shard. Branch protection requires the checks unit-1..unit-4, so the
     # unit-N gate jobs below keep those names and fail unless every shard passed.
@@ -47,7 +47,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
       - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
@@ -63,14 +63,14 @@ jobs:
       - name: Run this shard's test files
         run: |
           mise exec -- bash -euo pipefail -c '
-            node scripts/ci-test-shard.mjs ${{ matrix.shard }} 8 > "$RUNNER_TEMP/shard-files.txt"
+            node scripts/ci-test-shard.mjs ${{ matrix.shard }} 12 > "$RUNNER_TEMP/shard-files.txt"
             test -s "$RUNNER_TEMP/shard-files.txt"
             xargs -r pnpm exec vitest run < "$RUNNER_TEMP/shard-files.txt"
           '
 
   unit-gate:
     # Required check names unit-1..unit-4 (see above). Each is red unless all
-    # eight shards succeeded, so no test can fail without blocking merge.
+    # twelve shards succeeded, so no test can fail without blocking merge.
     name: unit-${{ matrix.gate }}
     needs: unit
     if: ${{ always() }}
