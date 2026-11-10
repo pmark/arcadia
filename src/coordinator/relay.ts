@@ -6,6 +6,8 @@ import path from "node:path";
 import type Database from "better-sqlite3";
 import { ArcadiaError } from "../cli/errors.js";
 import { claudeReasoningEffort } from "../codingAgents/reasoningEffort.js";
+import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
+import { billingUnsetArgs, spendRefusalMessage } from "../spend/spendGuard.js";
 import { systemTmux, type TmuxAdapter } from "../sessions/index.js";
 import type { CapsuleSources } from "./capsule.js";
 import {
@@ -65,14 +67,14 @@ const ALLOWED_PERMISSION_MODES = new Set(["auto", "default"]);
 
 export type RelayRefusal =
   | "decision_pending" | "decision_not_in_force" | "role_not_allowed" | "no_custodian" | "provider_unsupported"
-  | "renewal_limit" | "sign_in" | "capacity" | "launch_in_progress" | "repository_unresolved";
+  | "renewal_limit" | "sign_in" | "spend" | "capacity" | "launch_in_progress" | "repository_unresolved";
 
 export interface DecisionGate { inForce: boolean; reason: string }
 
 export interface RelayDeps {
   tmux: Pick<TmuxAdapter, "hasSession" | "launch" | "killSession">;
   decision(repoRoot: string, now: Date): DecisionGate;
-  signIn(provider: string): { signedIn: boolean; remedy: string } | null;
+  signIn(provider: string): ProviderSignInStatus | null;
   capacity(provider: string): { admitted: boolean; reason: string };
   createWorktree(repoRoot: string, directory: string): void;
   /** The first main-chain user message's text in a Claude transcript, or null when none yet. */
@@ -255,6 +257,12 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
       deps.ping(`Coordinator relay held ${input.role} (${input.project}): sign-in gate refused; the predecessor keeps custody. Then: ${retry}`);
       return refuse("sign_in", signIn.remedy);
     }
+    // A risk or unknown spend verdict launches nothing: no claim, no worktree, no tmux Session.
+    const spendRefusal = signIn?.spend ? spendRefusalMessage(signIn.spend, `The relay launch of ${input.role}`) : null;
+    if (spendRefusal !== null) {
+      deps.ping(`Coordinator relay held ${input.role} (${input.project}): spend gate refused; the predecessor keeps custody. Then: ${retry}`);
+      return refuse("spend", spendRefusal);
+    }
     const capacity = deps.capacity(custodian.provider);
     if (!capacity.admitted) {
       deps.ping(`Coordinator relay held ${input.role} (${input.project}): capacity gate refused; the predecessor keeps custody. Then: ${retry}`);
@@ -285,6 +293,7 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
       deps.tmux.launch({
         name: claim.tmuxName, cwd: worktree, command: "env",
         args: [
+          ...billingUnsetArgs(),
           `${COORDINATOR_ENV.role}=${input.role}`, `${COORDINATOR_ENV.generation}=${claim.generation}`, `${COORDINATOR_ENV.token}=${claim.token}`,
           "claude", "--remote-control", name, "--session-id", sessionId, "--name", name,
           "--model", custodian.model, "--effort", claudeReasoningEffort(input.effort), "--permission-mode", permissionMode, prompt

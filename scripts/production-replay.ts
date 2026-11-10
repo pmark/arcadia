@@ -1142,6 +1142,16 @@ export function scriptedReplayFiles(input: {
   return files;
 }
 
+/**
+ * The spend seam the replayed tick gets. A simulated run (no executor, scripted or candidate) never starts a real
+ * provider, and its fixture models no spend, so its verdict is a fixed clear. With `--executor real` a real CLI Session
+ * starts, so no stub is passed: the tick runs the real spend check and refuses a non-clear verdict before it starts.
+ */
+export function replaySpendCheck(executor: ReplayOptions["executor"], now: Date): { report: (id: "claude" | "codex" | "opencode") => never } | undefined {
+  if (executor === "real") return undefined;
+  return { report: (id) => ({ verdict: "clear", providers: [{ id, verdict: "clear", codes: [], probes: [] }], warnings: [], checkedAt: now.toISOString() }) as never };
+}
+
 /** Phase 1: build the replay root from the source, then run phase 2 in an isolated child. */
 export function runProductionReplay(options: ReplayOptions): ReplayReport {
   if (options.executor !== undefined && options.executor !== "scripted" && options.executor !== "real" && !(typeof options.executor === "string" && /^candidate:\S+$/.test(options.executor))) {
@@ -1642,6 +1652,7 @@ child.on("exit", (code, signal) => { clearTimeout(timer); kill(); process.exit(c
           clock: () => now,
           capacityObservation: capacityObservation(scope.providers[0] ?? "claude-code-cli") as never,
           providerSignIn: () => ({ signedIn: true, remedy: "" }),
+          spendCheck: replaySpendCheck(manifest.executor, now),
           workerCapability: () => [],
           agentWorktreeRoot: path.join(manifest.root, "agent-worktrees", "new"),
           log: (message) => lines.push(message)

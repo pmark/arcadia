@@ -31,11 +31,11 @@ actions:
     references: ["docs/reports/spend-safety-investigation-2026-11-09.md", "https://github.com/pmark/arcadia/issues/2373", "https://github.com/pmark/arcadia/issues/2375"]
   - id: enforce-spend-check-at-launch-and-admission
     title: "Enforce the spend check in production and relay: admission refuses paid, sign-in preflight uses assessSpendRisk, Session and relay launches strip billing variables, and start-run.sh P0 runs the check."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Enforce the spend check in production and relay: admission refuses paid, sign-in preflight uses assessSpendRisk, Session and relay launches strip billing variables, go --launch and the Intelligence CLI executors refuse on risk or unknown, and start-run.sh P0 runs the check."
+    next_action: Completed via Agent Ask complete-enforce-spend-check-at-launch-and-admission-2026-11-10-r2; no further action.
     expected_artifact: Evidence satisfying Agent Ask enforce-spend-check-at-launch-and-admission
     clarification: clarified
     confidence: high

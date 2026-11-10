@@ -3286,6 +3286,12 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Next:** Next ready Action in this inactive Plan: enforce-spend-check-at-launch-and-admission.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-build-arcadia-spend-check-2026-11-10c).
 
+## 2026-11-10 — Completed arcadia/enforce-spend-check-at-launch-and-admission
+
+- **Did:** Completed Action arcadia/enforce-spend-check-at-launch-and-admission from accepted evidence (Candidate 9b5a5523c269b1c433ac15a3a8a062b99c26b926).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/provider-capacity-admission.test.ts asserts a paid capacity policy gives admitted: false, including operator_config and attestation receipts whose policy is paid, and Codex purchased credits."; "checkProviderSignIn uses assessSpendRisk, so a non-subscription auth method, a Codex login that is not ChatGPT, or a non-opencode-go/ OpenCode model refuses the launch, with a test for each."; "A launch test with a fixture ANTHROPIC_API_KEY shows the argv carries env -u ANTHROPIC_API_KEY and the launch is refused on a risk or unknown verdict."; "A relay renew test shows a risk verdict means no claim and no tmux launch."; "go --launch and the Intelligence CLI executors refuse on a risk or unknown verdict, with a test for each."; "scripts/start-run.sh P0 calls arcadia spend check --launch-env stripped and refuses on risk or unknown."; "The PR records arcadia production status showing managed production Inactive on the head that merges.".
+- **Next:** Next ready Action in this inactive Plan: alert-on-verified-spend-risk-and-require-receipts.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-enforce-spend-check-at-launch-and-admission-2026-11-10-r2).
 ## 2026-11-10 — Completed arcadia/refuse-paid-intelligence-routes-by-default
 
 - **Did:** Completed Action arcadia/refuse-paid-intelligence-routes-by-default from accepted evidence (Candidate 42c2c80728cd04e2d3c8a942f78bc20928aa1b1d).

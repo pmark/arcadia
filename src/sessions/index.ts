@@ -42,6 +42,7 @@ import { formatLaunchFailure } from "./launchFailure.js";
 import { tmuxNewSessionArgs, writeSessionLauncher } from "./tmuxLauncher.js";
 import { miseNodeDirectory } from "../runtime/mise.js";
 import { resolveHostArcadiaDirectory } from "../runtime/hostArcadiaCli.js";
+import { billingUnsetArgs } from "../spend/spendGuard.js";
 
 export { tmuxNewSessionArgs } from "./tmuxLauncher.js";
 
@@ -1489,7 +1490,9 @@ function buildSessionLaunch(db: Database.Database, session: AgentSession, regist
   // settlements must not inherit the operator action that dispatched it;
   // ordinary script helpers retain that context and remain fenced. Use env -u
   // at the child boundary even if a long-lived tmux server retained the vars.
-  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...agentIdentityEnvironmentArgs(identity), `${SESSION_ENV_MARKER}=${session.id}`, inner.command, ...inner.args] };
+  // Billing variables are stripped by construction, so the Session's real
+  // environment is the one the spend check judged (src/spend/spendGuard.ts).
+  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...billingUnsetArgs(), ...agentIdentityEnvironmentArgs(identity), `${SESSION_ENV_MARKER}=${session.id}`, inner.command, ...inner.args] };
 }
 
 function buildProviderLaunch(

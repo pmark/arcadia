@@ -45,6 +45,7 @@ import {
   resetProductionRepairBudget,
   listRecentBaseBranchAdvances,
   listLaunchBlockers,
+  recordSpendLaunchBlocker,
   listOperatorEscalations,
   listProductionAttemptTokens,
   BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS
@@ -1994,6 +1995,22 @@ describe("runManagedProductionTick", () => {
     }
     expect(tmux.launches).toHaveLength(0);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  });
+
+  it("records a spend refusal as a launch blocker without a repair attempt or a ping, and only for spend codes (review-repair catch)", () => {
+    const fixture = preparedFixture();
+    const at = fixture.now;
+    withDatabase(fixture.workspace, (db) => {
+      ensureProductionTickTables(db);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "capacity_refused", reason: "x", actionKey: "test-project/a", at })).toBe(false);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: null, reason: "x", actionKey: null, at })).toBe(false);
+      expect(listLaunchBlockers(db)).toEqual([]);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "spend_risk", reason: "risk (api_key_helper)", actionKey: "test-project/a", at })).toBe(true);
+      expect(listLaunchBlockers(db)[0]).toMatchObject({ projectSlug: "test-project", code: "spend_risk" });
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "spend_unknown", reason: "unknown", actionKey: "test-project/a", at })).toBe(true);
+      expect(listLaunchBlockers(db)[0]).toMatchObject({ code: "spend_unknown" });
+      expect(db.prepare("SELECT COUNT(*) AS n FROM operator_pings").get()).toEqual({ n: 0 });
+    });
   });
 
   it("names a stale Claude reading whose read-only refresh was rejected (Decision 0130): durable blocker, one deduped sign-in ping", () => {

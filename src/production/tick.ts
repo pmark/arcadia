@@ -1,3 +1,4 @@
+import type { LaunchSpendDeps } from "../spend/spendGuard.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -124,6 +125,8 @@ export interface ManagedProductionTickOptions {
   agentWorktreeRoot?: string;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
+  /** Seams for the launch spend check (a fixed report in replays and tests); omitted, the real host probes run and only clear launches. */
+  spendCheck?: LaunchSpendDeps;
   /**
    * Pre-launch Session capability preflight (workspace write, host validation,
    * preservation). Any wall refuses the launch before a Session is prepared, so
@@ -2614,6 +2617,7 @@ function attemptReviewRepairLaunch(
           capacityObservation: input.options.capacityObservation,
           agentWorktreeRoot: input.options.agentWorktreeRoot,
           providerSignIn: input.options.providerSignIn,
+          spendCheck: input.options.spendCheck,
           workerCapability: ownWorkerCapability(input.options),
           onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
         });
@@ -2635,6 +2639,9 @@ function attemptReviewRepairLaunch(
     const code = error instanceof ArcadiaError && typeof error.details?.code === "string" ? error.details.code : null;
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof ArcadiaError && error.details?.conflict) {
+      // A spend refusal (risk or unknown) is durable like any launch blocker: record it, exactly as the ordinary launch
+      // path does. It is not a failed repair attempt, and liveness owns paging, so no ping here.
+      recordSpendLaunchBlocker(db, { projectSlug: input.projectSlug, code, reason: message, actionKey, at: input.now });
       const line = `Review repair launch refused for ${actionKey}${code ? ` [${code}]` : ""}: ${message}`;
       if (recordLaunchRefusalIfNew(db, actionKey, `review-repair:${code ?? message}`, line, input.now)) input.log(line);
       return { attempted: true, outcome: "refused", reason: message, actionKey };
@@ -2942,6 +2949,7 @@ function attemptProjectLaunch(
       capacityObservation: input.options.capacityObservation,
       agentWorktreeRoot: input.options.agentWorktreeRoot,
       providerSignIn: input.options.providerSignIn,
+          spendCheck: input.options.spendCheck,
       // The launch re-runs the same preflight with the selected profile's
       // sandbox, which this tick's profile-less preflight cannot see.
       workerCapability: ownWorkerCapability(input.options),
@@ -2986,7 +2994,8 @@ function attemptProjectLaunch(
       const claudeUsageRemedy = claudeUsageUnreadable
         ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) The worker asks the Claude CLI to refresh its own sign-in at most every 30 minutes; if that keeps failing, sign in to Claude Code again on this host.`
         : null;
-      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing") {
+      // A spend refusal (risk or unknown) is durable for the same reason: only a fix on the host clears it.
+      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing" || rawCode === "spend_risk" || rawCode === "spend_unknown") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
       } else if (claudeUsageRemedy) {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode!, reason: `${error.message} ${claudeUsageRemedy}`, actionKey, at: input.now });
@@ -3016,6 +3025,8 @@ function attemptProjectLaunch(
         // A signed-out or expired provider login is the operator's to fix on the
         // host: ping once per refusal episode (the refusal log dedupes the episode,
         // the ping queue dedupes the message), naming the provider and remedy.
+        // Spend risk records the durable blocker above but never pings here: the liveness
+        // timer owns spend paging (one page per verified episode), so one episode pages once.
         if (rawCode === "provider_not_signed_in" || claudeUsageRemedy) {
           try {
             queueOperatorPing(db, {
@@ -3708,6 +3719,16 @@ export interface LaunchBlockerRecord {
  * existing only as a line in the worker log. Overwrites any prior blocker for
  * the same Project: only the current reason is durable, not a history.
  */
+/** Records a launch blocker for a spend refusal (`spend_risk` or `spend_unknown`) only; no repair attempt and no ping. Returns whether it recorded. */
+export function recordSpendLaunchBlocker(
+  db: Database.Database,
+  input: { projectSlug: string; code: string | null; reason: string; actionKey: string | null; at: Date }
+): boolean {
+  if (input.code !== "spend_risk" && input.code !== "spend_unknown") return false;
+  recordLaunchBlocker(db, { ...input, code: input.code });
+  return true;
+}
+
 function recordLaunchBlocker(
   db: Database.Database,
   input: { projectSlug: string; code: string; reason: string; actionKey: string | null; at: Date }
