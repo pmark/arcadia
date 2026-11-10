@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: "Carry out Decision 0214 answer A: unattended production's worker may merge src/** candidate changes that touch no authority boundary, after an audit proves the authority classifier covers every gate-enforcing source module."
 active_plan: carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src
 updated: 2026-11-10
-current_action: implement-a-classifier-coverage-audit
+current_action: implement-decision-0214-a-in-src
 ---
 
 # Arcadia

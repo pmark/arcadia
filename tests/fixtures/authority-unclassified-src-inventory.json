@@ -1,0 +1,575 @@
+{
+  "comment": "Default-deny inventory: every src module classifyAuthorityPaths leaves unclassified, each with a reason. Regenerate with node scripts/discover-gate-modules.mjs --inventory. tests/authority-classifier-coverage.test.ts fails on a missing, stale or newly classified entry.",
+  "entries": {
+    "src/activity/blocks.ts": {
+      "reason": "Activity feed projection; read-only.",
+      "gateScanPatterns": []
+    },
+    "src/activity/encouragement.ts": {
+      "reason": "Activity feed projection; read-only.",
+      "gateScanPatterns": []
+    },
+    "src/activity/errorCodes.ts": {
+      "reason": "Activity feed projection; read-only.",
+      "gateScanPatterns": []
+    },
+    "src/activity/recorder.ts": {
+      "reason": "Activity feed projection; read-only.",
+      "gateScanPatterns": []
+    },
+    "src/activity/report.ts": {
+      "reason": "Activity feed projection; read-only.",
+      "gateScanPatterns": []
+    },
+    "src/activity/repository.ts": {
+      "reason": "Activity feed projection; read-only.",
+      "gateScanPatterns": []
+    },
+    "src/activity/types.ts": {
+      "reason": "Activity feed projection; read-only.",
+      "gateScanPatterns": []
+    },
+    "src/agentRoles/brief.ts": {
+      "reason": "Prompt text only: tells helpers to submit propose-only Agent Asks; enforces nothing.",
+      "gateScanPatterns": [
+        "authority"
+      ]
+    },
+    "src/clarify/handoff.ts": {
+      "reason": "Builds a propose-only Agent Ask payload (requested_authority: propose); grants and enforces nothing.",
+      "gateScanPatterns": [
+        "authority"
+      ]
+    },
+    "src/clarify/lint.ts": {
+      "reason": "Clarification linting and types; no gate decisions (grader, contract and engine are classified).",
+      "gateScanPatterns": []
+    },
+    "src/clarify/types.ts": {
+      "reason": "Clarification linting and types; no gate decisions (grader, contract and engine are classified).",
+      "gateScanPatterns": []
+    },
+    "src/commands/activity.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/artifact.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/askCoverage.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/askReport.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/askTrail.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/auditPreview.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/capture.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/dashboard.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/design.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/digest.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/directions.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/docket.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/feedback.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/inbox.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/journey.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/learn.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/log.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/memory.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/missionControl.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/narrate.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/next.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/now.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/orientation.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/path.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/portfolio.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/proofTargets.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/report.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/status.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/timeline.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/way.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/commands/wayLookup.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
+    "src/dashboard/dailyAdvantage.ts": {
+      "reason": "Dashboard display helpers; mutating routes are classified under apps/dashboard.",
+      "gateScanPatterns": []
+    },
+    "src/dashboard/missionControl.ts": {
+      "reason": "Dashboard display helpers; mutating routes are classified under apps/dashboard.",
+      "gateScanPatterns": []
+    },
+    "src/dashboard/sessionObservation.ts": {
+      "reason": "Dashboard display helpers; mutating routes are classified under apps/dashboard.",
+      "gateScanPatterns": []
+    },
+    "src/dashboard/snapshot.ts": {
+      "reason": "Dashboard display helpers; mutating routes are classified under apps/dashboard.",
+      "gateScanPatterns": []
+    },
+    "src/db/connection.ts": {
+      "reason": "Database connection plumbing; schema.ts and repositories.ts are classified.",
+      "gateScanPatterns": []
+    },
+    "src/db/lockRetry.ts": {
+      "reason": "Database connection plumbing; schema.ts and repositories.ts are classified.",
+      "gateScanPatterns": []
+    },
+    "src/db/nativeAddon.ts": {
+      "reason": "Database connection plumbing; schema.ts and repositories.ts are classified.",
+      "gateScanPatterns": []
+    },
+    "src/design/common.ts": {
+      "reason": "Design record helpers; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/design/fieldGuide.ts": {
+      "reason": "Design record helpers; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/design/record.ts": {
+      "reason": "Design record helpers; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/digests/composer.ts": {
+      "reason": "Digest composition and rendering; read-only until a classified messaging path sends it.",
+      "gateScanPatterns": []
+    },
+    "src/digests/contract.ts": {
+      "reason": "Digest composition and rendering; read-only until a classified messaging path sends it.",
+      "gateScanPatterns": []
+    },
+    "src/digests/operatorInteractions.ts": {
+      "reason": "Digest composition and rendering; read-only until a classified messaging path sends it.",
+      "gateScanPatterns": []
+    },
+    "src/digests/report.ts": {
+      "reason": "Digest composition and rendering; read-only until a classified messaging path sends it.",
+      "gateScanPatterns": []
+    },
+    "src/digests/schedule.ts": {
+      "reason": "Digest composition and rendering; read-only until a classified messaging path sends it.",
+      "gateScanPatterns": []
+    },
+    "src/digests/types.ts": {
+      "reason": "Digest composition and rendering; read-only until a classified messaging path sends it.",
+      "gateScanPatterns": []
+    },
+    "src/fixtures/zeroPromptRehearsal.ts": {
+      "reason": "Rehearsal fixture builder; not on a production code path.",
+      "gateScanPatterns": []
+    },
+    "src/intake/index.ts": {
+      "reason": "Intake normalization to propose-only Ask payloads; grants nothing.",
+      "gateScanPatterns": []
+    },
+    "src/intake/normalization.ts": {
+      "reason": "Intake normalization to propose-only Ask payloads; grants nothing.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/artifacts/imageMeta.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/artifacts/store.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/comfyui/imageExecutor.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/db/repository.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/db/sqliteRepository.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/index.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/speech/client.ts": {
+      "reason": "Speech and audio helpers behind the Intelligence service; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/speech/httpClient.ts": {
+      "reason": "Speech and audio helpers behind the Intelligence service; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/speech/input.ts": {
+      "reason": "Speech and audio helpers behind the Intelligence service; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/speech/mp3Encoder.ts": {
+      "reason": "Speech and audio helpers behind the Intelligence service; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/speech/narration.ts": {
+      "reason": "Speech and audio helpers behind the Intelligence service; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/speech/voices.ts": {
+      "reason": "Speech and audio helpers behind the Intelligence service; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/speech/wavMeta.ts": {
+      "reason": "Speech and audio helpers behind the Intelligence service; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/text/markdown.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/types.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/validation/validateOutput.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/validation/validateRequirements.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/journey/classify.ts": {
+      "reason": "Read-only journey derivation for display.",
+      "gateScanPatterns": []
+    },
+    "src/journey/derive.ts": {
+      "reason": "Read-only journey derivation for display.",
+      "gateScanPatterns": []
+    },
+    "src/journey/progress.ts": {
+      "reason": "Read-only journey derivation for display.",
+      "gateScanPatterns": []
+    },
+    "src/journey/schema.ts": {
+      "reason": "Read-only journey derivation for display.",
+      "gateScanPatterns": []
+    },
+    "src/livingSystem/contract.ts": {
+      "reason": "Derived living-system projection; project.ts and sync.ts are classified.",
+      "gateScanPatterns": []
+    },
+    "src/livingSystem/derive.ts": {
+      "reason": "Derived living-system projection; project.ts and sync.ts are classified.",
+      "gateScanPatterns": []
+    },
+    "src/livingSystem/types.ts": {
+      "reason": "Derived living-system projection; project.ts and sync.ts are classified.",
+      "gateScanPatterns": []
+    },
+    "src/markdown/executionArtifacts.ts": {
+      "reason": "Markdown rendering of existing records; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/markdown/experimentBrief.ts": {
+      "reason": "Markdown rendering of existing records; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/markdown/missionLog.ts": {
+      "reason": "Markdown rendering of existing records; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/markdown/statusReport.ts": {
+      "reason": "Markdown rendering of existing records; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/markdown/weeklyReview.ts": {
+      "reason": "Markdown rendering of existing records; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/memory/obsidian.ts": {
+      "reason": "Obsidian memory export; no gate logic.",
+      "gateScanPatterns": []
+    },
+    "src/northStar/attention.ts": {
+      "reason": "North Star computation and narrative; read-only (document.ts is classified).",
+      "gateScanPatterns": []
+    },
+    "src/northStar/compute.ts": {
+      "reason": "North Star computation and narrative; read-only (document.ts is classified).",
+      "gateScanPatterns": []
+    },
+    "src/northStar/narrative.ts": {
+      "reason": "North Star computation and narrative; read-only (document.ts is classified).",
+      "gateScanPatterns": []
+    },
+    "src/northStar/path.ts": {
+      "reason": "North Star computation and narrative; read-only (document.ts is classified).",
+      "gateScanPatterns": []
+    },
+    "src/northStar/stepReason.ts": {
+      "reason": "North Star computation and narrative; read-only (document.ts is classified).",
+      "gateScanPatterns": []
+    },
+    "src/northStar/types.ts": {
+      "reason": "North Star computation and narrative; read-only (document.ts is classified).",
+      "gateScanPatterns": []
+    },
+    "src/orientation/composer.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/effort.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/fit.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/interpreter.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/morningAiSummary.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/morningNarrative.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/operatorTodoLines.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/repository.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/staleness.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/timeline.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/types.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/orientation/urgency.ts": {
+      "reason": "Read-only orientation and status text.",
+      "gateScanPatterns": []
+    },
+    "src/prompts/index.ts": {
+      "reason": "Prompt text; enforces nothing.",
+      "gateScanPatterns": []
+    },
+    "src/proofTargets/check.ts": {
+      "reason": "Read-only proof-target checks and display.",
+      "gateScanPatterns": []
+    },
+    "src/proofTargets/hero.ts": {
+      "reason": "Read-only proof-target checks and display.",
+      "gateScanPatterns": []
+    },
+    "src/proofTargets/targets.ts": {
+      "reason": "Read-only proof-target checks and display.",
+      "gateScanPatterns": []
+    },
+    "src/reports/frozenRecords.ts": {
+      "reason": "Read-only reports and ledgers.",
+      "gateScanPatterns": []
+    },
+    "src/reports/modelEffectiveness.ts": {
+      "reason": "Read-only reports and ledgers.",
+      "gateScanPatterns": []
+    },
+    "src/reports/sessionLedger.ts": {
+      "reason": "Read-only reports and ledgers.",
+      "gateScanPatterns": []
+    },
+    "src/reports/sessionLedgerSource.ts": {
+      "reason": "Read-only reports and ledgers.",
+      "gateScanPatterns": []
+    },
+    "src/soak/rehearsalSoak.ts": {
+      "reason": "Rehearsal soak harness; not a production gate.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/classify.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/asks.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/context.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/decisions.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/events.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/git.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/governed.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/operatorScripts.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/pings.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/production.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/pullRequests.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/collectors/sessions.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/follow.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/identity.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/index.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/merge.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/render.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/rewind.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/schema.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/timeline/time.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
+    "src/utils/id.ts": {
+      "reason": "Generic id generator whose type union names approvalGate; no gate logic.",
+      "gateScanPatterns": [
+        "approval"
+      ]
+    },
+    "src/utils/slug.ts": {
+      "reason": "Generic helpers.",
+      "gateScanPatterns": []
+    },
+    "src/utils/time.ts": {
+      "reason": "Generic helpers.",
+      "gateScanPatterns": []
+    }
+  }
+}
