@@ -280,15 +280,16 @@ export function detectProviderSignInFailure(session: AgentSession, workspace: st
   if (!workspace || session.provider !== "claude-code-cli") return null;
   const text = readLogTail(sessionLogPath(workspace, session.id));
   if (text === null) return null;
+  // The LAST result event decides: an earlier recovered 401 followed by a different failing result is not a sign-in exit (Issue #1249).
+  let last: string | null = null;
   for (const line of text.split(/\r?\n/)) {
     if (!line.startsWith("{") || !line.includes('"result"')) continue;
     try {
       const event = JSON.parse(line) as { type?: unknown; is_error?: unknown; result?: unknown };
-      if (event.type === "result" && event.is_error === true && typeof event.result === "string"
-        && CLAUDE_SIGN_IN_FAILURE.test(event.result)) return event.result.trim();
+      if (event.type === "result") last = event.is_error === true && typeof event.result === "string" && CLAUDE_SIGN_IN_FAILURE.test(event.result) ? event.result.trim() : null;
     } catch { /* not a JSON event line */ }
   }
-  return null;
+  return last;
 }
 
 export function classifyExitOutcome(session: AgentSession, evidence: ExitEvidenceProbe, signInFailure: string | null = null): { outcome: SessionExitOutcome; reason: string } {

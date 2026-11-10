@@ -24,7 +24,7 @@ import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
 import { latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
-import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
+import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_ESCALATION_EXITS, SIGN_IN_ESCALATION_MS, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
   ensureRedAlertTables,
@@ -1213,7 +1213,10 @@ function announceScopeComplete(
 
 /** Clear a previously recorded escalation once its Action launches or its refusal stops being non-self-resolving. */
 function clearOperatorEscalation(db: Database.Database, actionKey: string): void {
-  db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(actionKey);
+  // Issue #1249: a relaunch that merely starts is not proof the login works (the Session may die on it again), so only
+  // a Session exiting for another reason clears the dead-login escalation (`clearSignInStreak`); a stale row for a
+  // finished Action is pruned with the other Projects' non-current rows.
+  db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ? AND kind != ?").run(actionKey, PROVIDER_SIGN_IN_DEAD_ESCALATION);
 }
 
 /** Clear this Action's terminal-candidate escalation, if that is the kind on its row; reads first so an idle tick writes nothing. */
@@ -2359,9 +2362,13 @@ export function runManagedProductionTick(
             at: now
           });
           log(`Provider sign-in failure for ${project.slug} (Session ${lease.id}, ${lease.provider}); not counted against the failed-Run budget. Launches held until ${holdEnd.toISOString()}.`);
+          observeSignInExit(db, { projectSlug: project.slug, actionKey: `${project.slug}/${lease.action_id}`, provider: lease.provider, now, log });
         } else if (result.receipt.outcome === "failed_execution" || result.receipt.outcome === "missing_evidence") {
           const budget = recordFailedRun(db, project.slug, { reason: `Session ${lease.id}: ${result.receipt.reason}`, actionKey: `${project.slug}/${lease.action_id}` });
           if (budget.paused) log(`Paused ${project.slug}: failed-Run budget exceeded (${budget.failedRuns}); Decision ${budget.decisionId} opened.`);
+          clearSignInStreak(db, project.slug);
+        } else {
+          clearSignInStreak(db, project.slug);
         }
       } else if (!lease) {
         safelyRaiseRedAlerts(log, "stall clear", () => {
@@ -3727,6 +3734,71 @@ function providerSignInFailureBlockerReason(input: { sessionId: string; provider
     : ` Sign in to ${input.provider} again on this worker host${input.provider.startsWith("codex") ? ' (run "codex login")' : ""}, then retry.`;
   return `Session ${input.sessionId} (${input.provider}) exited on a sign-in failure at ${input.at.toISOString()}. ${input.receiptReason}${remedy} `
     + `Launches for this Project are held until ${input.holdEnd.toISOString()}, then retried once; a further sign-in failure renews the hold.`;
+}
+
+/** Escalation kind for a provider login that keeps killing launched Sessions (Issue #1249). */
+export const PROVIDER_SIGN_IN_DEAD_ESCALATION = "provider_sign_in_dead";
+
+function ensureSignInStreakTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS production_sign_in_streaks (
+      project_slug TEXT PRIMARY KEY,
+      action_key TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      exits INTEGER NOT NULL,
+      first_at TEXT NOT NULL,
+      last_at TEXT NOT NULL
+    );
+  `);
+}
+
+/**
+ * Issue #1249: a sign-in exit spends no failed-Run budget and no attempt, so only time bounds the relaunches and
+ * nothing reached the operator queue. Count consecutive sign-in exits per Project; at SIGN_IN_ESCALATION_EXITS exits or
+ * SIGN_IN_ESCALATION_MS since the first, open one `provider_sign_in_dead` escalation on the Action (refreshed in place,
+ * logged and pinged once). It touches no repair attempt, budget or hold.
+ */
+function observeSignInExit(
+  db: Database.Database,
+  input: { projectSlug: string; actionKey: string; provider: string; now: Date; log: (message: string) => void }
+): void {
+  ensureSignInStreakTable(db);
+  const at = input.now.toISOString();
+  const prior = db.prepare("SELECT action_key, provider, exits, first_at FROM production_sign_in_streaks WHERE project_slug = ?").get(input.projectSlug) as
+    | { action_key: string; provider: string; exits: number; first_at: string }
+    | undefined;
+  const continues = prior !== undefined && prior.action_key === input.actionKey && prior.provider === input.provider;
+  const exits = continues ? prior.exits + 1 : 1;
+  const firstAt = continues ? prior.first_at : at;
+  db.prepare(
+    `INSERT INTO production_sign_in_streaks (project_slug, action_key, provider, exits, first_at, last_at)
+       VALUES (@p, @a, @v, @e, @f, @l)
+     ON CONFLICT(project_slug) DO UPDATE SET action_key = @a, provider = @v, exits = @e, first_at = @f, last_at = @l`
+  ).run({ p: input.projectSlug, a: input.actionKey, v: input.provider, e: exits, f: firstAt, l: at });
+  const spanMs = input.now.getTime() - Date.parse(firstAt);
+  if (exits < SIGN_IN_ESCALATION_EXITS && !(spanMs >= SIGN_IN_ESCALATION_MS)) return;
+  const remedy = `Sign in to ${input.provider} again on this worker host${input.provider.startsWith("codex") ? ' (run "codex login")' : ' (run "claude auth login", or "claude setup-token" for the workspace token file)'}. `
+    + "This entry clears when a Session next exits for any other reason.";
+  const message = `${input.provider} has died on a provider sign-in failure ${exits} times in a row for ${input.actionKey} `
+    + `(first ${firstAt}, last ${at}); launches are held and retried every ${SIGN_IN_FAILURE_HOLD_MS / 60_000} minutes, spending no attempt or failed-Run budget, so nothing else will surface it.`;
+  const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as { kind: string } | undefined;
+  const newlyDetected = recordOperatorEscalation(db, { actionKey: input.actionKey, kind: PROVIDER_SIGN_IN_DEAD_ESCALATION, message, remedy, now: input.now });
+  if (!newlyDetected && previous?.kind === PROVIDER_SIGN_IN_DEAD_ESCALATION) return;
+  input.log(`Escalated ${input.actionKey} to the operator (${PROVIDER_SIGN_IN_DEAD_ESCALATION}): ${message}`);
+  try {
+    queueOperatorPing(db, { message: `Production is stuck on a dead ${input.provider} login for ${input.actionKey}. ${remedy}`, kind: "attention", agent: "production-tick", now: input.now });
+  } catch (error) {
+    input.log(`Could not queue the sign-in escalation ping for ${input.actionKey}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/** A Session that exited for any other reason proves the login works: end the streak and drop its escalation. */
+function clearSignInStreak(db: Database.Database, projectSlug: string): void {
+  ensureSignInStreakTable(db);
+  const row = db.prepare("SELECT action_key FROM production_sign_in_streaks WHERE project_slug = ?").get(projectSlug) as { action_key: string } | undefined;
+  if (!row) return;
+  db.prepare("DELETE FROM production_sign_in_streaks WHERE project_slug = ?").run(projectSlug);
+  db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ? AND kind = ?").run(row.action_key, PROVIDER_SIGN_IN_DEAD_ESCALATION);
 }
 
 /** The Project's sign-in failure hold if it is still running at `now`; null when none or lapsed. */

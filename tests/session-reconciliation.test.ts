@@ -276,6 +276,27 @@ describe("reconcileSessionExit", () => {
     expect(JSON.parse(result.receipt.evidence_json!).providerFailure).toMatchObject({ kind: "sign_in", provider: "claude-code-cli" });
   });
 
+  it("reads the LAST result event: an earlier recovered 401 followed by a different failing result is not a sign-in exit (Issue #1249)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const sessionId = launch(fixture, tmux).data.session!.id;
+    tmux.live = false;
+    withDatabase(fixture.workspace, (db) => {
+      db.prepare("UPDATE agent_sessions SET exit_status = 1 WHERE id = ?").run(sessionId);
+    });
+    const logFile = sessionLogPath(fixture.workspace, sessionId);
+    mkdirSync(path.dirname(logFile), { recursive: true });
+    writeFileSync(logFile, [
+      JSON.stringify({ type: "result", is_error: true, result: "Failed to authenticate: OAuth session expired and could not be refreshed" }),
+      JSON.stringify({ type: "result", is_error: true, result: "Prompt is too long" })
+    ].join("\n") + "\n");
+    const result = withDatabase(fixture.workspace, (db) =>
+      reconcileSessionExit({ db, sessionId, requestId: "reconcile-1249", repoRoot: fixture.repo, workspace: fixture.workspace })
+    );
+    expect(result.receipt.outcome).toBe("failed_execution");
+    expect(result.receipt.reason).not.toContain("Provider sign-in failure");
+  });
+
   it.each([
     ["a provider sign-in failure leaves the live development attempt live, so a relaunch resumes it (Issue #1243)",
       "Failed to authenticate: OAuth session expired and could not be refreshed", "running"],
