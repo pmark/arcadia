@@ -348,10 +348,15 @@ function drawSky(colors) {
   let rideAudioLoading;
   let rideSoundEnabled = false;
 
-  async function startRideLoop(context) {
-    const response = await fetch(new URL('./ride-d-minor-swells.wav', import.meta.url));
+  async function decodeRideSoundtrack(context, extension) {
+    const response = await fetch(new URL(`./ride-d-minor-ambient-ding.${extension}`, import.meta.url));
     if (!response.ok) throw new Error('Ride soundtrack unavailable');
-    const buffer = await context.decodeAudioData(await response.arrayBuffer());
+    return context.decodeAudioData(await response.arrayBuffer());
+  }
+
+  async function startRideLoop(context) {
+    const buffer = await decodeRideSoundtrack(context, 'flac')
+      .catch(() => decodeRideSoundtrack(context, 'wav'));
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
