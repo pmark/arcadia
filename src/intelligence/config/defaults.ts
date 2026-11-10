@@ -24,6 +24,14 @@ const LOCAL_CODEX_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const LOCAL_COMFYUI_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const CLOUD_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const AUDIO_SPEECH_PROFILES: IntelligenceProfile[] = ["standard"];
+/**
+ * Decision ids approved to permit paid routes. Decision 0126 permits paid
+ * Fast Text Cloud generation only for explicit PR TLDRs. Approval is this
+ * allowlist plus a route's `paidUsageDecision`; Decision documents are not
+ * read at runtime. Adding an id is a governed change that cites the Decision.
+ */
+export const APPROVED_PAID_USAGE_DECISION_IDS: string[] = ["0126"];
+const PR_TLDR_PAID_USAGE_DECISION = "0126";
 const DEFAULT_CODEX_CLI = {
   command: "codex",
   args: [
@@ -256,7 +264,12 @@ export function buildDefaultRoutes(options: {
     ...textRouteEntries("local", options.localTextRoute, LOCAL_TEXT_PROFILES, false),
     ...(options.codexTextRoute ? codexTextRouteEntries(options.codexTextRoute) : []),
     ...(options.claudeCodeTextRoute ? claudeCodeTextRouteEntries(options.claudeCodeTextRoute) : []),
-    ...textRouteEntries("cloud", options.cloudTextRoute, CLOUD_TEXT_PROFILES, true),
+    ...textRouteEntries("cloud", options.cloudTextRoute, CLOUD_TEXT_PROFILES, true).map(
+      (entry) =>
+        entry.profile === "fast"
+          ? { ...entry, paidUsageDecision: PR_TLDR_PAID_USAGE_DECISION }
+          : entry,
+    ),
     ...comfyUiImageRouteEntries(options.comfyUiImageRoute),
     ...codexImageRouteEntries(options.codexImageRoute),
     ...imageRouteEntries(options.cloudImageRoute),
@@ -267,6 +280,7 @@ export function buildDefaultRoutes(options: {
 
 export const intelligenceV01Defaults: IntelligenceV01Config = {
   routes: buildDefaultRoutes({ localTextRoute: "arcadia-default" }),
+  approvedPaidUsageDecisionIds: [...APPROVED_PAID_USAGE_DECISION_IDS],
   liteLlmBaseUrl: "http://127.0.0.1:4000",
   maxRetries: 1,
   workerPollIntervalMs: 500,
@@ -312,6 +326,7 @@ export function loadIntelligenceConfig(
       localSpeechRoute,
       cloudSpeechRoute,
     }),
+    approvedPaidUsageDecisionIds: [...APPROVED_PAID_USAGE_DECISION_IDS],
     liteLlmBaseUrl:
       env.ARCADIA_LITELLM_BASE_URL?.trim() || intelligenceV01Defaults.liteLlmBaseUrl,
     liteLlmApiKey: env.ARCADIA_LITELLM_API_KEY?.trim() || undefined,

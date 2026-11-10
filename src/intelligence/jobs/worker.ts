@@ -134,7 +134,10 @@ export class IntelligenceWorker {
         executionTarget: job.request.executionTarget,
       },
       this._config.routes,
-      { allowPaidUsage: job.request.executionPolicy.allowPaidUsage },
+      {
+        allowPaidUsage: job.request.executionPolicy.allowPaidUsage,
+        approvedPaidUsageDecisions: this._config.approvedPaidUsageDecisionIds,
+      },
     );
   }
 

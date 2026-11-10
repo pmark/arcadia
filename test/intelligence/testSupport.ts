@@ -62,7 +62,7 @@ export function testIntelligenceConfig(
   liteLlmBaseUrl: string,
   overrides: Partial<IntelligenceV01Config> = {},
 ): IntelligenceV01Config {
-  return {
+  const config: IntelligenceV01Config = {
     routes: buildDefaultRoutes({ localTextRoute: "arcadia-default" }),
     liteLlmBaseUrl,
     maxRetries: 1,
@@ -70,7 +70,21 @@ export function testIntelligenceConfig(
     leaseDurationMs: 30_000,
     ...overrides,
   };
+  // Paid routes are refused unless bound to an approved Decision. Fixture
+  // routes that need to resolve bind a fixture Decision and approve it here;
+  // pass `approvedPaidUsageDecisionIds` in overrides to control it directly.
+  if (overrides.approvedPaidUsageDecisionIds === undefined) {
+    config.routes = config.routes.map((route) =>
+      route.requiresPaidUsage && route.paidUsageDecision === undefined
+        ? { ...route, paidUsageDecision: FIXTURE_PAID_USAGE_DECISION }
+        : route,
+    );
+    config.approvedPaidUsageDecisionIds = [FIXTURE_PAID_USAGE_DECISION];
+  }
+  return config;
 }
+
+export const FIXTURE_PAID_USAGE_DECISION = "fixture-0000";
 
 /** Fake LiteLLM proxy returning a single chat-completion response. */
 export function startFakeLiteLlm(options: {
