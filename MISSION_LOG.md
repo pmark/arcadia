@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-09
+updated: 2026-11-10
 ---
 
 # Mission Log: Arcadia
@@ -3271,3 +3271,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-inline-text-escaping.test.ts is a new test file that imports inlineText from ../src/sessions/operatorQaPlan.js and asserts inlineText applied to the text of one, two and three separated by a newline, a tab, runs of spaces and a BEL control character (code point 7), with leading and trailing spaces, returns "one two three"."; "The same test file asserts inlineText inserts a backslash before each of the characters * _ ` [ ] < > | ~ and the backslash itself, using the single input a*b_c`d[e]<f>|g~h\i whose expected output is a\*b\_c\`d\[e\]\<f\>\|g\~h\\i."; "The same test file asserts inlineText("&amp; &#38; AT&T") returns "\&amp; \&#38; AT&T" (only an ampersand that starts an entity is escaped) and that inlineText("@octocat") returns "@" followed by a zero-width space (code point U+200B) and "octocat"."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-inline-text-escaping.test.ts, a new test file that imports only vitest and src/sessions/operatorQaPlan.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Plan complete; every Action is done.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-inline-text-escaping-98b4bce3754c).
+
+## 2026-11-10 — Completed arcadia/pin-opencode-to-go-models
+
+- **Did:** Completed Action arcadia/pin-opencode-to-go-models from accepted evidence (Candidate 50d7f1084e5d3f13e8db903a21366c6a9b24c7c8).
+- **Result:** Every declared acceptance criterion was accepted as met: "The binding validator refuses opencode/ and huggingface/ model ids and accepts opencode-go/ ids, with a test for each."; "Helper brief guidance names opencode-go/ as the only allowed OpenCode prefix.".
+- **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-pin-opencode-to-go-models-2026-11-10-r2).
