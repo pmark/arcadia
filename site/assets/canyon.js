@@ -31,6 +31,7 @@ import { createCanyonStars, createCanyonSun } from './canyon-sky.js';
   const SCROLL_RETENTION = .9;
   const SCROLL_SETTLE_PX = .5;
   const AUTOPLAY_PX_PER_MS = .062;
+  const RIDE_SPEEDS = [{ name:'Normal', factor:1 }, { name:'Fast', factor:2 }, { name:'Slow', factor:.5 }];
   const STAR_FRAME_MS = 1000 / 30;
   const STATE_KEY = 'field-notes-camera-v1';
   const FRAME_KEY = STATE_KEY + '-frame-v4';
@@ -43,6 +44,7 @@ import { createCanyonStars, createCanyonSun } from './canyon-sky.js';
   let cameraScroll = restoreNumber(saved?.cameraScroll ?? feedScroll);
   let autoplayDistance = restoreNumber(saved?.autoplayDistance);
   let autoplay = false;
+  let rideSpeed = 0;
   if (!samePath && !initialArticle) {
     feedScroll = 0;
     cameraScroll = 0;
@@ -202,7 +204,7 @@ function drawSky(colors) {
     const p = phase();
     const night = nightAt(p);
     const elapsed = previousScrollFrame === undefined ? SCROLL_FRAME_MS : now - previousScrollFrame;
-    if (autoplay) autoplayDistance += Math.min(elapsed, 80) * AUTOPLAY_PX_PER_MS;
+    if (autoplay) autoplayDistance += Math.min(elapsed, 80) * AUTOPLAY_PX_PER_MS * (root.dataset.canyonAutoplay === 'manual' ? RIDE_SPEEDS[rideSpeed].factor : 1);
     const target = feedScroll + autoplayDistance;
     const distance = target - cameraScroll;
     // Draw the restored position first, then ease at the same rate across refresh rates.
@@ -289,13 +291,22 @@ function drawSky(colors) {
     autoplay = Boolean(mode);
     if (mode) root.dataset.canyonAutoplay = mode;
     else delete root.dataset.canyonAutoplay;
-    playButton.setAttribute('aria-pressed', String(autoplay));
-    playButton.title = autoplay ? 'Pause canyon ride' : 'Play canyon ride';
     if (autoplay) schedule();
   }
 
   function stopAutoplay() {
+    const wasImmersive = root.dataset.canyonAutoplay === 'manual';
     if (autoplay) setAutoplay();
+    if (wasImmersive) {
+      rideRequest++;
+      clearTimeout(rideControlsTimer);
+      rideSurface.hidden = true;
+      closeButton.hidden = true;
+      delete root.dataset.rideControls;
+      speedIndicator.textContent = '';
+      if (document.fullscreenElement === document.documentElement) void document.exitFullscreen().catch(() => {});
+      playButton.focus({ preventScroll:true });
+    }
   }
 
   function showStill() {
@@ -324,6 +335,11 @@ function drawSky(colors) {
   const menuButton = menu.querySelector('summary');
   const menuPanel = menu.querySelector('.explore-panel');
   const playButton = root.querySelector('.canyon-play');
+  const closeButton = root.querySelector('.canyon-close');
+  const rideSurface = root.querySelector('.canyon-ride-surface');
+  const speedIndicator = root.querySelector('.canyon-speed');
+  let rideControlsTimer;
+  let rideRequest = 0;
   const home = root.querySelector('.site-title');
   const homeURL = new URL(home.href);
   const main = root.querySelector('main');
@@ -384,12 +400,39 @@ function drawSky(colors) {
   function updatePlayButton() {
     playButton.hidden = !isFeed() || root.dataset.terrain !== 'live' || isStill();
   }
+  function revealRideControls() {
+    if (root.dataset.canyonAutoplay !== 'manual') return;
+    root.dataset.rideControls = 'visible';
+    clearTimeout(rideControlsTimer);
+    rideControlsTimer = setTimeout(() => { delete root.dataset.rideControls; }, 3000);
+  }
   playButton.addEventListener('click', () => {
-    if (autoplay) stopAutoplay();
-    else if (!playButton.hidden) {
-      if (menu.open && !menuClosing) setMenuOpen(false);
-      setAutoplay('manual');
+    if (playButton.hidden) return;
+    if (menu.open && !menuClosing) setMenuOpen(false);
+    rideSpeed = 0;
+    const request = ++rideRequest;
+    setAutoplay('manual');
+    rideSurface.hidden = false;
+    closeButton.hidden = false;
+    revealRideControls();
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().then(() => {
+        if (request !== rideRequest && document.fullscreenElement === document.documentElement) {
+          void document.exitFullscreen().catch(() => {});
+        }
+      }).catch(() => {}); // The viewport-sized ride remains available when fullscreen is denied.
     }
+  });
+  closeButton.addEventListener('click', event => { event.stopPropagation(); stopAutoplay(); });
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement && root.dataset.canyonAutoplay === 'manual') stopAutoplay();
+  });
+  document.addEventListener('pointermove', revealRideControls);
+  rideSurface.addEventListener('click', () => {
+    if (root.dataset.canyonAutoplay !== 'manual') return;
+    rideSpeed = (rideSpeed + 1) % RIDE_SPEEDS.length;
+    speedIndicator.textContent = `${RIDE_SPEEDS[rideSpeed].name} speed`;
+    revealRideControls();
   });
 
   root.addEventListener('keydown', event => {
@@ -513,7 +556,8 @@ function drawSky(colors) {
     if (event.deltaY < 0) stopAutoplay();
   }, { passive:true });
   root.addEventListener('focusin', event => {
-    if (event.target !== playButton || root.dataset.canyonAutoplay !== 'manual') stopAutoplay();
+    if (root.dataset.canyonAutoplay === 'manual' && (event.target === playButton || event.target === closeButton)) return;
+    stopAutoplay();
   });
   window.addEventListener('keydown', event => {
     if (event.key === 'Escape') stopAutoplay();
