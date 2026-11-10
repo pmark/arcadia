@@ -64,7 +64,7 @@ import BetterSqlite3 from "better-sqlite3";
 import { sessionLogPath } from "../src/sessions/sessionRecording.js";
 import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
 import { resolveSessionTimeLimitMs } from "../src/production/sessionLifetime.js";
-import { getRepositoryLease, systemTmux, type TmuxAdapter } from "../src/sessions/index.js";
+import { getRepositoryLease, reserveAgentWorktree, systemTmux, type TmuxAdapter } from "../src/sessions/index.js";
 import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -1673,6 +1673,44 @@ describe("runManagedProductionTick", () => {
     withDatabase(fixture.workspace, (db) => resetProductionRepairBudget(db, "test-project/define-contract"));
     expect(tick(60_000).projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
     expect(tmux.launches).toHaveLength(1);
+  });
+
+  it.each(["self_settled_completion_refused", "completion_settlement_not_in_candidate"])("holds launch quietly, keeps its %s escalation and burns no repair attempts while the settled candidate's claim is live (Issue #1670)", (kind) => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const actionKey = "test-project/define-contract";
+    const tick = (offsetMs: number) => withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs),
+        capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    const candidate = mkdtempSync(path.join(tmpdir(), "arcadia-refused-candidate-"));
+    try {
+      withDatabase(fixture.workspace, (db) => {
+        db.prepare("INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at) VALUES (?, ?, 'refused candidate', 'land or discard it', ?, ?)")
+          .run(actionKey, kind, fixture.now.toISOString(), fixture.now.toISOString());
+        reserveAgentWorktree(db, { repositoryPath: fixture.repo, worktreePath: candidate, branch: "agent/refused-candidate", now: fixture.now, project: "test-project", actionId: "define-contract" });
+      });
+      // Past the repair budget's worth of ticks: each used to be a failed launch against the live claim.
+      for (let index = 0; index < 5; index += 1) {
+        const launch = tick(index * 60_000).projects.find((entry) => entry.projectSlug === "test-project")?.launch;
+        expect(launch).toMatchObject({ attempted: false, outcome: "skipped", actionKey });
+        expect(launch?.reason).toContain(kind);
+      }
+      expect(tmux.launches).toHaveLength(0);
+      withDatabase(fixture.workspace, (db) => {
+        expect(db.prepare("SELECT COUNT(*) AS count FROM production_repair_attempts WHERE action_key = ? AND attempts > 0").get(actionKey)).toEqual({ count: 0 });
+        expect(listOperatorEscalations(db)).toEqual([expect.objectContaining({ actionKey, kind })]);
+      });
+
+      // Retiring the candidate's worktree drops the claim and lifts the hold.
+      rmSync(candidate, { recursive: true, force: true });
+      expect(tick(10 * 60_000).projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    } finally {
+      rmSync(candidate, { recursive: true, force: true });
+    }
   });
 
   it("escalates a depends_on id that stays unresolved for more than one worker tick, instead of waiting silently", () => {
