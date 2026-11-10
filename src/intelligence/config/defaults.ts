@@ -25,12 +25,14 @@ const LOCAL_COMFYUI_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const CLOUD_IMAGE_PROFILES: IntelligenceProfile[] = ["quality"];
 const AUDIO_SPEECH_PROFILES: IntelligenceProfile[] = ["standard"];
 /**
- * Decision ids approved to permit paid routes. Decision 0126 permits paid
- * Fast Text Cloud generation only for explicit PR TLDRs. Approval is this
- * allowlist plus a route's `paidUsageDecision`; Decision documents are not
- * read at runtime. Adding an id is a governed change that cites the Decision.
+ * Decision ids approved to permit paid routes. Approval is this allowlist
+ * plus a route's `paidUsageDecision`; Decision documents are not read at
+ * runtime. Decision 0213 (A: standing no-spend, superseding 0126) leaves it
+ * empty, so every paid route is refused. Adding an id is a governed change
+ * that cites a new Decision naming amount, route and expiry.
  */
-export const APPROVED_PAID_USAGE_DECISION_IDS: string[] = ["0126"];
+export const APPROVED_PAID_USAGE_DECISION_IDS: string[] = [];
+/** Withdrawn by Decision 0213; kept bound so the route stays refused and auditable. */
 const PR_TLDR_PAID_USAGE_DECISION = "0126";
 const DEFAULT_CODEX_CLI = {
   command: "codex",

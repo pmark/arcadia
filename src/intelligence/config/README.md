@@ -23,8 +23,10 @@ This stays:
   an automatic fallback, and refused by default: a `requiresPaidUsage` route
   also needs a `paidUsageDecision` id that appears in
   `approvedPaidUsageDecisionIds` (checked-in allowlist; Decision documents are
-  not read at runtime). Only cloud text `fast` is bound, to Decision 0126
-  (explicit PR TLDRs); anything else fails `paid_usage_not_allowed`
+  not read at runtime). The allowlist is empty under Decision 0213 (standing
+  no-spend, superseding 0126), so every paid route, including cloud text
+  `fast` (still bound to the withdrawn 0126 for PR TLDRs), fails
+  `paid_usage_not_allowed`
 - one retry maximum
 - SQLite-backed durable jobs
 - independent bounded execution pools, with conservative local concurrency
