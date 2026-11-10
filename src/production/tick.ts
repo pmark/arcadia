@@ -1301,6 +1301,39 @@ export const SELF_SETTLED_COMPLETION_REFUSED_ESCALATION = "self_settled_completi
 export const COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION = "completion_settlement_not_in_candidate";
 
 /**
+ * Issue #1646: a settled completion whose candidate does not carry the settlement (or whose self-settled
+ * completion the host refuses) is escalated by name. Shared by the tick and `arcadia session reconcile`, so a
+ * reconciliation through either path leaves the row and the Action is not relaunched after the claim expires.
+ * True when the receipt carries the evidence.
+ */
+export function recordSettlementNotInCandidateEscalation(
+  db: Database.Database,
+  input: { session: AgentSession; receipt: { evidence_json: string | null }; now: Date; log?: (message: string) => void }
+): boolean {
+  const { session, receipt } = input;
+  const notInCandidate = (JSON.parse(receipt.evidence_json ?? "{}") as { completionSettlementNotInCandidate?: { settlementId: string; reason: string; cause?: string } })
+    .completionSettlementNotInCandidate;
+  if (!notInCandidate) return false;
+  ensureProductionTickTables(db);
+  const actionKey = `${session.project_slug}/${session.action_id}`;
+  const selfSettled = notInCandidate.cause === "self_settled_refused";
+  recordOperatorEscalation(db, {
+    actionKey,
+    kind: selfSettled ? SELF_SETTLED_COMPLETION_REFUSED_ESCALATION : COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
+    message: notInCandidate.reason,
+    remedy: selfSettled
+      ? `Inspect ${session.worktree_path} on ${session.branch}: the Session settled its own completion (settlement ${notInCandidate.settlementId}) and the candidate carries it, but the host's scope or validation check fails. `
+        + "The candidate is not resumed or integrated automatically. Either review the named failure and land the pull request yourself if the change is acceptable, or discard the candidate and redo the Action."
+      : `Inspect ${session.worktree_path} on ${session.branch}: settlement ${notInCandidate.settlementId} is recorded, but the candidate does not carry its commit. `
+      + "Commit the settled Plan, PROJECT.md, MISSION_LOG.md and archived Ask there (or redo the completion), push the branch to its pull request, and land it through that pull request; "
+      + "do not merge a pull request whose diff lacks the Plan status change.",
+    now: input.now
+  });
+  input.log?.(`Escalated ${actionKey} to the operator (${selfSettled ? SELF_SETTLED_COMPLETION_REFUSED_ESCALATION : COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION}): ${notInCandidate.reason}`);
+  return true;
+}
+
+/**
  * Issue #1518: a Session that cannot commit leaves its work and its drafted
  * `complete` Ask uncommitted; exit preservation commits that tree and pushes
  * it (opening the draft PR), and only then does reconciliation settle the
@@ -1326,25 +1359,7 @@ function publishSettledCandidateHead(
   const { session, preservation, receipt, log } = input;
   const actionKey = `${session.project_slug}/${session.action_id}`;
   try {
-    const notInCandidate = (JSON.parse(receipt.evidence_json ?? "{}") as { completionSettlementNotInCandidate?: { settlementId: string; reason: string; cause?: string } })
-      .completionSettlementNotInCandidate;
-    if (notInCandidate) {
-      const selfSettled = notInCandidate.cause === "self_settled_refused";
-      recordOperatorEscalation(db, {
-        actionKey,
-        kind: selfSettled ? SELF_SETTLED_COMPLETION_REFUSED_ESCALATION : COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
-        message: notInCandidate.reason,
-        remedy: selfSettled
-          ? `Inspect ${session.worktree_path} on ${session.branch}: the Session settled its own completion (settlement ${notInCandidate.settlementId}) and the candidate carries it, but the host's scope or validation check fails. `
-            + "The candidate is not resumed or integrated automatically. Either review the named failure and land the pull request yourself if the change is acceptable, or discard the candidate and redo the Action."
-          : `Inspect ${session.worktree_path} on ${session.branch}: settlement ${notInCandidate.settlementId} is recorded, but the candidate does not carry its commit. `
-          + "Commit the settled Plan, PROJECT.md, MISSION_LOG.md and archived Ask there (or redo the completion), push the branch to its pull request, and land it through that pull request; "
-          + "do not merge a pull request whose diff lacks the Plan status change.",
-        now: input.now
-      });
-      log(`Escalated ${actionKey} to the operator (${selfSettled ? SELF_SETTLED_COMPLETION_REFUSED_ESCALATION : COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION}): ${notInCandidate.reason}`);
-      return;
-    }
+    if (recordSettlementNotInCandidateEscalation(db, { session, receipt, now: input.now, log })) return;
     if (recordCompletionHoldEscalation(db, { session, receipt, now: input.now, log })) return;
     if (receipt.outcome !== "accepted_completion" || input.operatorLaunch || preservation.kind !== "preserved"
       || preservation.state === "LOCAL ONLY") return;

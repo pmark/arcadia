@@ -1332,6 +1332,39 @@ it("asserts the contract", () => {
       expect(result.receipt.evidence_json).toContain("self_settled_refused");
     });
 
+    // Issue #1646: `arcadia session reconcile` (not the tick) records the settled-candidate escalation too.
+    it("(#1646) session reconcile of a refused settled candidate leaves an escalation, an accepted one none", () => {
+      const escalationFor = (workspace: string) => withReadOnlyDatabase(workspace, (db) =>
+        db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = 'test-project/define-contract'").get()) as { kind: string } | undefined;
+      const prepare = (files: Record<string, string>, id: string) => {
+        const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+        const tmux = new FakeTmux();
+        const launched = launchCompletionFixture(fixture, tmux);
+        const worktreePath = launched.data.session.worktree_path;
+        tmux.live = false;
+        writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+        for (const [file, content] of Object.entries(files)) {
+          mkdirSync(path.dirname(path.join(worktreePath, file)), { recursive: true });
+          writeFileSync(path.join(worktreePath, file), content);
+        }
+        git(worktreePath, ["add", "."]);
+        git(worktreePath, ["commit", "-m", "define the contract"]);
+        settleCompleteFromWorktree(fixture, worktreePath, id, criterion);
+        recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, launched.data.session.id)!));
+        return { fixture, sessionId: launched.data.session.id, worktreePath };
+      };
+
+      const refused = prepare({ "src/product.ts": "export const changed = true;\n" }, "self-settle-1646-refused");
+      const refusedResult = runSessionReconcileCommand({ workspace: refused.fixture.workspace, repo: refused.fixture.repo, session: refused.sessionId, requestId: "reconcile-1646-refused" }).data;
+      expect(refusedResult.receipt.evidence_json).toContain("completionSettlementNotInCandidate");
+      expect(escalationFor(refused.fixture.workspace)).toEqual({ kind: "self_settled_completion_refused" });
+
+      const accepted = prepare({}, "self-settle-1646-accepted");
+      const acceptedResult = runSessionReconcileCommand({ workspace: accepted.fixture.workspace, repo: accepted.fixture.repo, session: accepted.sessionId, requestId: "reconcile-1646-accepted" }).data;
+      expect(acceptedResult.receipt.outcome).toBe("accepted_completion");
+      expect(escalationFor(accepted.fixture.workspace)).toBeUndefined();
+    });
+
     it("(#1615) accepts a self-settled completion that stays in scope, the settlement's own records excused", () => {
       const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
       const tmux = new FakeTmux();
