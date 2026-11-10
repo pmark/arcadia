@@ -18,6 +18,7 @@ import { readDayGrantEvidence } from "../production/policy.js";
 import { namedTestFiles } from "../sessions/completionValidation.js";
 import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
 import { runProductionStatusCommand } from "./production.js";
+import { resolveOperatorGate } from "../ask/operatorGate.js";
 
 /**
  * `arcadia start-run pins`: compute the pins of one per-run START card from live, read-only state and print them.
@@ -421,6 +422,29 @@ export function runStartRunDayPinsCommand(options: StartRunDayPinsOptions, deps:
 export function runStartRunDayEvidenceCommand(options: { workspace?: string }): CommandSuccess<DayEvidence> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   return createSuccess({ command: "start-run.day-evidence", workspace: workspacePath, data: withReadOnlyDatabase(workspacePath, (db) => readDayGrantEvidence(db, ATTEMPT_COUNT_EARLIEST)) });
+}
+
+export interface StartRunGateCheckOptions { project: string; actions: string[]; repository?: string; workspace?: string }
+export interface StartRunGateCheckData {
+  project: string;
+  actions: string[];
+  /** Every pending Agent Ask or open Decision that names a pinned Action: each one idles the run with `operator_gate_pending` (Issue #2038). */
+  blocking: Array<{ action: string; kind: string; id: string; title: string; settleCommand: string }>;
+}
+
+/**
+ * `arcadia start-run gate-check`: the START executor's read-only check that no pending operator item names a pinned
+ * Action. It resolves the same `resolveOperatorGate` that holds a launch, per pinned Action, because `production preview`
+ * and `advance queue` do not read it (Issue #2038).
+ */
+export function runStartRunGateCheckCommand(options: StartRunGateCheckOptions): CommandSuccess<StartRunGateCheckData> {
+  if (options.actions.length === 0) throw validationError("start-run gate-check needs at least one --action");
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const repoRoot = path.resolve(options.repository ?? process.cwd());
+  const blocking = withReadOnlyDatabase(workspacePath, (db) => options.actions.flatMap((action) =>
+    resolveOperatorGate({ db, repoRoot, projectSlug: options.project, selectedActionId: action }).blocking
+      .map((item) => ({ action, kind: item.kind, id: item.id, title: item.title, settleCommand: item.settleCommand }))));
+  return createSuccess({ command: "start-run.gate-check", workspace: workspacePath, data: { project: options.project, actions: options.actions, blocking } });
 }
 
 export function renderStartRunPinsSuccess(response: CommandSuccess<StartRunPinsData>): string[] {

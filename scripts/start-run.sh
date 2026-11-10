@@ -321,6 +321,16 @@ check_queue() {  # REF:L286-L289, L359-L360. $1 = "before" or "after" the option
   fi
   rec queueRevisionObserved "$QUEUE_REVISION_OBSERVED"
 }
+check_operator_gate() {  # Issue #2038: `advance queue` and `production preview` never read the operator gate that holds a launch
+  local gate args=() id
+  while IFS= read -r id; do args+=(--action "$id"); done <<<"$(jq -r '.[]' <<<"$ACTION_IDS_JSON")"
+  gate="$(arcadia start-run gate-check --project "$PROJECT" "${args[@]}" --repository "$ARCADIA_REPO" --workspace "$WORKSPACE" --json)" || refuse "the operator gate could not be read for the pinned Actions (arcadia start-run gate-check failed)"
+  printf '%s\n' "$gate" > "$RUN_DIR/operator-gate-$PHASE.json"
+  jq -e '.ok == true and (.data.blocking | type == "array")' <<<"$gate" >/dev/null || refuse "the operator gate read is not a valid answer"
+  rec operatorGateBlocking "$(jq -c '.data.blocking | length' <<<"$gate")"
+  jq -e '.data.blocking | length == 0' <<<"$gate" >/dev/null \
+    || refuse "a pending operator item names a pinned Action, so the run would idle with operator_gate_pending: $(jq -r '[.data.blocking[] | "\(.kind) \(.id) names \(.action) (\(.settleCommand))"] | join("; ")' <<<"$gate"); settle or reject it first"
+}
 read_worker_binding() {  # REF:L236-L250, but every value is read live, never pinned
   node -e '
 const fs=require("fs"),p=require("path"),c=require("crypto"),ws=process.argv[1];
@@ -876,6 +886,7 @@ phase_p2() {
     || refuse "the sign-in sequence preconditions fail: $(cli_failure "$RUN_DIR/sign-in-check.stderr")"
   check_capacity
   check_queue before
+  check_operator_gate
   # Decision 0156: ensure refuses during a rehearsal freeze; ask first (read-only).
   freeze="$(arcadia production freeze-check go-broker.ensure --json)" || refuse "the rehearsal freeze window refuses go-broker ensure (or the freeze check could not run)"
   jq -e '.ok == true and .data.decision == "allowed"' <<<"$freeze" >/dev/null || refuse "the rehearsal freeze check did not allow go-broker ensure"
