@@ -1,5 +1,7 @@
 # Articles for Arcadia Mission Control
 
+- [What’s an eval? Start with a lesson you should have found](2026-11-09-whats-an-eval.md) — a beginner-friendly draft on repeatable checks, with a proposed lesson-search example.
+
 `docs/articles/` captures topics and detailed source material primarily for AI
 agents to find, understand and reuse. Clara — Technical Writer owns the editorial
 lifecycle: topic selection, audience/search intent, research and fact-checking,
