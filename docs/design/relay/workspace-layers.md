@@ -1,6 +1,6 @@
 # Relay: the three Workspace layers
 
-Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). The "Revised after the phone test" section below is proposed, not approved. Items 1 and 2 of its build order have merged. Each build step is its
+Status: approved by the operator on 2026-11-04, with 1A and 2A ([S029](sources/S029-layer-design-approval.md)). The "Revised after the phone test" section below is proposed, not approved. Items 1 and 2 of its build order have merged. Items 3, 4 and 5 are built and reviewed, and the operator said to merge them ([S032](sources/S032-start-weather-rhythm.md), [S033](sources/S033-overnight-progress.md)). Each build step is its
 own PR under the usual gates. Unattended production stays first, and production stays Off. Built through [Arcadia Design](../../../.agents/skills/arcadia-design/SKILL.md)
 as part of [the Relay brief](brief.md). Recorded as source S025.
 
@@ -78,6 +78,42 @@ Measured on 2026-11-04 with WebKit at iPhone 15 Pro size, against the live dashb
 6. **One question at a time,** once a Decision allows answers in Relay.
 
 The earlier steps 3 to 5 follow, unchanged.
+
+### Weather rhythm, as built
+
+[Probe weather-1](probes/weather-1.md) measured it. `lib/weather-rhythm.ts` holds the timing, and `SKIES` in `lib/system-sky.ts` holds the amounts.
+
+- **A landing** peaks in 0.4 s and fades by 5 s. It belongs to the sky that landed, so a sky flipping back during it doesn't inherit it. A sky that's leaving fades what it had.
+- **A settled sky** breathes over 17 s. A swell of about 8 s comes every 28 s to 2 minutes, irregularly, and rises only part of the way to a landing.
+- **Reopening on the sky you last saw stays calm.** This browser remembers it. A different sky lands, even if it changed while you were away.
+- **The same sky landing again within 5 minutes only crossfades,** so a flapping status can't keep flashing. A different sky still lands.
+- **Reduced motion** shows the settled sky, with no landing, breath, swell or motion.
+- **A new blocker in a sky that's already Blocked doesn't land,** because only a change of state does. With real data almost always Blocked, this may matter, and it needs its own decision.
+
+Two of these are mine rather than the operator's: staying calm on reopening, and the 5-minute limit.
+
+### Built overnight, not yet judged by the operator
+
+None of these has been tried on a real phone. Each choice below was made without the operator, so each is theirs to overrule.
+
+**Item 4, the overlay ([PR 2101](https://github.com/pmark/arcadia/pull/2101)).**
+- **Send gates stay, against build step 2.** That step says ordinary Ask loses its availability gates. The brief said to keep every gate, so this part isn't built. Typing never waits, though: the field stays enabled on a loading or unverifiable view, and Send stays refused.
+- **One new explicit tap:** "Ask the whole portfolio instead", when the view can't be verified. Directions and Retry stay refused there.
+- **The view recedes with scale, fade and scrim.** Blur and saturation wait for a measurement on a phone.
+- **Pulling up from the capsule isn't built.** At rest, the chevron reaches the thread.
+
+**Item 5, routes ([PR 2107](https://github.com/pmark/arcadia/pull/2107)).**
+- **A route's status comes from the record alone,** so a route can read "Open" while the Journey says "Stopped: QA fail". Real data shows this today. A cheap read of it would be the biggest next gain.
+- **Stale summaries name nothing on the route.** A name is the record's own text, cut short and marked with an ellipsis, so it can drop a qualifier.
+- **Next move opens by itself** only on the recorded current Action, and only when Go says it's ready.
+- **A Project shows no "needs you" count,** because the only source is the 1 MB To-do read.
+- **A Plan or Action view verifies itself from its own read,** and reads the portfolio only to explain a refusal.
+
+**Lightening the Decision page ([PR 2109](https://github.com/pmark/arcadia/pull/2109)).** This isn't item 6: answers stay on `/todo`, and moving them into Relay still needs a Decision.
+- **One screen first.** A Decision sends about 5 KB, where it sent 1.27 MB. An `answer` link lands on one screen, where it landed on 344.
+- **Two taps to answer.** The first view clamps long text, so choosing an option shows every option's full text before Answer appears, because what the operator reads is what the pin binds.
+- **Rule 3's "consequence on one line" isn't met.** Real consequences run to 412 characters and are pinned, so they're clamped to 2 to 4 lines.
+- **The page now uses the pinned press** where it used the unpinned one, which is stricter. A failed read never falls back to the unpinned control.
 
 ## The operator's direction
 

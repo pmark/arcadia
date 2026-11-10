@@ -204,6 +204,7 @@ export const WORKER_MERGE_EXCLUDED_DOCUMENTS: ReadonlySet<string> = new Set([
   "docs/working-copy-safety.md",
   "docs/planning-process.md",
   "docs/managed-documents.md",
+  "docs/relay-driven-operations.md",
   "start_here.md",
   "install_with_a_coding_agent.md"
 ]);
@@ -359,6 +360,27 @@ function recordWorkerMerge(db: Database.Database, row: Omit<WorkerMergeRecord, "
     ON CONFLICT(request_id) DO UPDATE SET pull_request_url = @pull_request_url, outcome = @outcome, code = @code, reason = @reason,
       boundaries_json = @boundaries_json, updated_at = @updated_at`)
     .run({ ...row, request_id: requestId });
+}
+
+/**
+ * A merge GitHub completed whose local base sync was refused (`base_not_synced`)
+ * is not final: a later tick's sync moves the base. Once the local base contains
+ * the merged head, rewrite that Session-and-head row (the same row a replay of
+ * the merge would upsert) to `merged`. Returns the rows it updated.
+ */
+export function markCaughtUpWorkerMerges(db: Database.Database, input: { repoRoot: string; baseBranch: string; now: Date }): WorkerMergeRecord[] {
+  const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_worker_merges'").get();
+  if (!exists) return [];
+  const pending = db.prepare("SELECT * FROM production_worker_merges WHERE outcome = 'refused' AND code = 'base_not_synced' ORDER BY updated_at DESC LIMIT 50").all() as WorkerMergeRecord[];
+  const updated: WorkerMergeRecord[] = [];
+  for (const row of pending) {
+    if (tryGit(input.repoRoot, ["merge-base", "--is-ancestor", row.head, `refs/heads/${input.baseBranch}`]) === null) continue;
+    const reason = `Merged ${row.pull_request_url ?? "the pull request"} at ${short(row.head)} through GitHub; the local ${input.baseBranch} caught up on a later sync; first refused: ${row.reason.length > 300 ? `${row.reason.slice(0, 300)}...` : row.reason}`;
+    const at = input.now.toISOString();
+    db.prepare("UPDATE production_worker_merges SET outcome = 'merged', code = NULL, reason = ?, updated_at = ? WHERE request_id = ?").run(reason, at, row.request_id);
+    updated.push({ ...row, outcome: "merged", code: null, reason, updated_at: at });
+  }
+  return updated;
 }
 
 /** Read-only: every recorded worker merge outcome, newest first. A database without the table has none. */

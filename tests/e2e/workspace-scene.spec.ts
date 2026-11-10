@@ -75,7 +75,7 @@ test("every Workspace view shows system status, and a status change moves nothin
 
     // Status follows every route, with one weather canvas that navigation doesn't restart.
     await page.locator(".workspace-weather").evaluate(node => { (node as HTMLElement).dataset.kept = "yes"; });
-    await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
+    await page.getByRole("link", { name: /Moon garden: Project/ }).click();
     await expect(page.getByRole("heading", { name: "Moon garden" })).toBeVisible();
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);
     await expect(summary).toBeVisible();
@@ -104,6 +104,7 @@ test("every Workspace view shows system status, and a status change moves nothin
     await expect(pill).not.toHaveAttribute("open");
 
     // Reasons link to where the operator can act.
+    await page.getByRole("button", { name: "Put down", exact: true }).click();
     await summary.click();
     await expect(pill.getByRole("link", { name: "1 blocking item for you" })).toHaveAttribute("href", "/workspace/feed");
     await page.keyboard.press("Escape");
@@ -143,7 +144,7 @@ test("every Workspace view shows system status, and a status change moves nothin
     await expect(summary).toContainText("Nothing waiting");
     await page.waitForLoadState("networkidle");
     const before = { ...counts };
-    await page.getByRole("link", { name: /Project · active Moon garden/ }).click();
+    await page.getByRole("link", { name: /Moon garden: Project/ }).click();
     await expect(page).toHaveURL(/\/projects\/moon-garden$/);
     // The regular poll could land in this window, but navigating itself doesn't ask again.
     expect(counts["/api/workspace/status"]).toBeLessThanOrEqual(before["/api/workspace/status"] + 1);

@@ -74,6 +74,7 @@ import {
 import { recoverLegacyAgentAskDrift, type AskRecoveryTestHooks, type LegacyAskRecovery } from "../sessions/legacyAskRecovery.js";
 import { getResumableLeaseHandoff } from "../sessions/reconciliation.js";
 import { checkLaunchPrerequisites, refuseUnlessSignedIn } from "../sessions/launchPreflight.js";
+import { evaluateLaunchSpend, refuseUnlessSpendClear, type LaunchSpendDeps } from "../spend/spendGuard.js";
 import { checkProviderSignIn } from "../codingAgents/signIn.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "../sessions/worktreePreparation.js";
 import {
@@ -130,6 +131,12 @@ export interface GoCommandOptions {
   interactive?: boolean;
   /** Test-only: the environment (a stubbed PATH) the launch preflight runs against; skipped under Vitest when omitted. */
   preflightEnv?: NodeJS.ProcessEnv;
+  /**
+   * Seams for the spend check `--launch` always runs (assessSpendRisk on the
+   * stripped environment, refusing risk and unknown). Needed under Vitest, where
+   * the real host probes never run.
+   */
+  spendCheck?: LaunchSpendDeps;
   /** Host enrollment must never walk away from the exact requested Action. */
   strictAction?: boolean;
   /**
@@ -706,7 +713,11 @@ export function runGoCommand(options: GoCommandOptions): CommandSuccess<GoComman
       const headless = !options.interactive;
       const provider = providerForSessionAgent(options.agent);
       checkLaunchPrerequisites({ provider, headless, env: options.preflightEnv });
-      if (headless) refuseUnlessSignedIn(provider, checkProviderSignIn(provider, workspacePath, options.preflightEnv));
+      if (headless) refuseUnlessSignedIn(provider, checkProviderSignIn(provider, workspacePath, options.preflightEnv, { skipSpend: true }));
+      // Headless or interactive, a launch that could spend money never starts: risk and unknown both refuse.
+      if (!process.env.VITEST || options.spendCheck) {
+        refuseUnlessSpendClear(evaluateLaunchSpend(provider, model, { env: options.preflightEnv, ...options.spendCheck }), "go --launch");
+      }
       // The same Session capability preflight the guarded launch runs: a wall
       // (workspace write, host validation, preservation) refuses here, before
       // any worktree, claim or process, so no tokens are spent against it.

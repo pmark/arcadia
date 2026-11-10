@@ -1,0 +1,31 @@
+{
+  "session_id": "session_08ad9d32863b497281",
+  "role": "driver",
+  "model": "haiku",
+  "effort": "e1_brief",
+  "effort_source": "agent_sessions.effort",
+  "action_id": "pin-reconcile-refuses-activation-commit",
+  "pr": 2125,
+  "tokens_in_uncached": 28,
+  "tokens_in_cached": 601563,
+  "tokens_out": 5551,
+  "wall_min": 2.01,
+  "attempts": 1,
+  "review_rounds": 1,
+  "blocking_findings": [],
+  "operator_touches": 0,
+  "host_touches": 0,
+  "frictions": [
+    {
+      "id": "worker-merge-row-refused-after-transient-fetch-failure",
+      "cost_min": null,
+      "fix_ref": "https://github.com/pmark/arcadia/issues/2127"
+    }
+  ],
+  "outcome": "complete",
+  "notes": "Attempt 3 Action 2. GitHub merged #2125 at 22:30:42Z; merge row says base_not_synced (could not fetch origin/main); next tick fast-forwarded 22:31:05Z, no touch.",
+  "candidate_head": "c6f1fe8bd235a0c955a24fbba831694677ba9881",
+  "evidence_source": "live workspace DB read-only 2026-11-06: agent_sessions, production_attempt_tokens, session_role_attempts, production_worker_merges; worker.log",
+  "task_class": "test-only",
+  "difficulty": null
+}

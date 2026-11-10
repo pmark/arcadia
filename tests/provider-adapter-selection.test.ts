@@ -233,6 +233,60 @@ describe("provider-adapter selection", () => {
   });
 });
 
+describe("OpenCode model pinning (opencode-go/ only)", () => {
+  const registry = adapters as unknown as ProviderAdapterRegistry;
+  const withModel = (model: string, args: string[] = ["--model", model]) => ({
+    ...registry,
+    bindings: registry.bindings.map((b) =>
+      b.provider === "opencode-cli" ? { ...b, model, modelArgs: args } : b
+    )
+  });
+
+  it("accepts opencode-go/ ids", () => {
+    expect(() => validateProviderAdapterRegistry(withModel("opencode-go/glm-5.3-flash") as never, profiles)).not.toThrow();
+  });
+
+  it.each([
+    "opencode/gpt-5",
+    "huggingface/meta-llama/x",
+    "OPENCODE-GO/x",
+    "Opencode/x",
+    "gpt-5",
+    "opencode-go",
+    "opencode-go/",
+    "opencode-go/../opencode/x",
+    " opencode-go/x",
+    "opencode-go/x ",
+    "x",
+    "  "
+  ])("refuses %j", (model) => {
+    expect(() => validateProviderAdapterRegistry(withModel(model) as never, profiles)).toThrow();
+  });
+
+  it("refuses an empty model string", () => {
+    expect(() => validateProviderAdapterRegistry(withModel("") as never, profiles)).toThrow();
+  });
+
+  it("refuses a paid id smuggled through modelArgs", () => {
+    expect(() =>
+      validateProviderAdapterRegistry(
+        withModel("opencode-go/x", ["--model", "opencode/gpt-5"]) as never,
+        profiles
+      )
+    ).toThrow("opencode-go/");
+  });
+
+  it("refuses opencode/ and huggingface/ ids on any provider", () => {
+    for (const model of ["opencode/x", "huggingface/y"]) {
+      const bad = {
+        ...registry,
+        bindings: registry.bindings.map((b, i) => (i === 0 ? { ...b, model, modelArgs: ["--model", model] } : b))
+      };
+      expect(() => validateProviderAdapterRegistry(bad as never, profiles)).toThrow("refused");
+    }
+  });
+});
+
 describe("a review-only binding", () => {
   const registry = adapters as unknown as ProviderAdapterRegistry;
   const claude = registry.bindings.find((binding) => binding.provider === "claude-code-cli")!;

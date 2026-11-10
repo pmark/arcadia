@@ -53,40 +53,46 @@ exercise recipient consume/ack, correlated completion and independent QA; a
 self-report, altered report, negative check, wrong managed Action or mismatched
 revision must never produce verified. Existing ordinary Asks remain ordinary.
 
-The workspace has three areas:
-- **Context** lists what is in the selected scope.
-- **Work** shows the selected record.
-- **Direction** holds the **Next move** and the Ask.
+Each piece of work is shown as a route: where it's been, where it is, and what's ahead.
+- **A portfolio** is a few routes, one for each active Project, with the ones needing a look first. Every other Project is under **All other Projects**.
+- **A Project** leads with one Plan's route. Other Plans wait behind counts.
+- **A Plan** is one route with named stops: how many are done, the current Action, the next two, and how many more are ahead.
+- **An Action** is one sentence and its place on the route.
 
-Select a Project and **Next move** shows Go's own resolution for it:
+A tap changes the address and the screen at once, and a line says what's being read. Slow reads are allowed, and after a few seconds the line says your tap was received.
+
+The words on a route are never more than the record says. A name comes from a current plain-language summary, or it's the record's own text cut short and marked with an ellipsis. Status comes from the record, and a route only shows movement when an Action is recorded as in progress.
+
+**Read the full record** draws and reads the rest only when you ask: the agents' own text, every Action, what Go has for this Action, and the Journey. **Direction** holds the **Next move** and the Ask.
+
+**Next move** is one line until you open it, because Go's read is the slowest thing on the page. On the Action the record says is current, Go is read at once, and **Next move** opens by itself when Go says it's ready. Open it and it shows Go's own resolution for the Project:
 - **Ready to continue** with Go's current Action and its next step;
 - **Waiting** with Go's question and every blocker, each with its own remedy;
 - **Not an agent's to take** with Go's authorization text, when nothing blocks the Action but it is the operator's or an outside party's;
 - or **No current Action**.
 
-It says whether the selected Plan or Action is Go's current work, and links to it when it is not. A Project's Plan list leads with **Go's current Plan**, taken from Go's last good read and labelled so after a failed one. Before Go has been read, or when Go names a Plan the list doesn't include yet, the recorded active Plan leads under its own label. Other Plans still marked active follow. Plans that aren't active yet, and finished Plans, sit behind collapsed sections with their counts. The Context list marks **Go's current Action**, and Work shows Go's next step, expected result, needed Decisions and acceptance criteria for it.
+It says whether the selected Plan or Action is Go's current work, and links to it when it is not. A Project's Plan list leads with **Go's current Plan**, taken from Go's last good read and labelled so after a failed one. Before Go has been read, or when Go names a Plan the list doesn't include yet, the recorded active Plan leads under its own label. Other Plans still marked active follow. Plans that aren't active yet, and finished Plans, sit behind collapsed sections with their counts. The route marks **Go's current Action**, and its full record shows Go's next step, expected result, needed Decisions and acceptance criteria.
 
 Each read uses the journal-free `go-context` observer over Go's existing resolver. The workspace never polls. Go is read:
-- the first time a page loads for a Project;
-- on the next workspace navigation more than five minutes after the last attempt, including a failed one;
+- when you open **Next move**, or arrive on the Action the record says is current;
+- when you move to another view with **Next move** asked for, more than five minutes after the last attempt, including a failed one;
 - on **Read again**.
 
 Only one read per Project runs at a time. A reload or new tab starts fresh and reads again.
 
-A failed read keeps the last good one, labelled with its time in Direction and Work. The Context marker and **Continue** are withheld until Go reads cleanly again.
+A failed read keeps the last good one, labelled with its time in Direction and the full record. The route's marker and **Continue** are withheld until Go reads cleanly again.
 
 For a dispatchable Action, **Continue** shows **Reading preview…** immediately, then focuses a bordered protected preview of its target, owner, configured provider/model/effort and limits. It does not start work. The preview keeps the existing planning, packet approval, credential and launch gates; a gated preview cannot be confirmed. **Confirm Continue for this Action** uses the same protected Session launch as the Project page and the same explicit browser confirmation under Decision 0096. It covers one Action and at most one Session, never an automatic next Action, merge or Production start. The preview states the existing exit-time validation, commit, push and draft-PR authorization and its 24-hour/first-exit expiry. There is no per-launch time-limit override; the existing Session/provider limits and recorded Plan budget apply.
 
 Repeated presses and tabs use the same request identity for the same governed resolution. Changed Go facts or a changed launch preview refuse with the current facts; choose **Read Go again** and inspect a fresh preview. A successful confirmation keeps a **Session launched** or **Reused existing Session** receipt visible, with the actual Session identity, its log and a **View Session** link opening that exact Session at `/sessions/<id>` with its details and log expanded. Returning to, reloading, or refocusing the workspace on an Action reads its recorded Session from Arcadia and makes **View Session** the primary control; an active Session hides Continue. A finished Session keeps further Continue options collapsed. Missing or unreadable Session evidence is shown explicitly, never treated as proof that a fresh launch is safe. The selected Action retains its Session link even after Go selects another Action. An uncertain network or server outcome keeps the request identity visible and disables further launch attempts in this control; use **Check Sessions and runs** to reconcile it through the existing Session receipts before trying again. Source tests, installed adoption and a real operator-assisted delivery are separate evidence stages; a source change alone proves no live delivery. After a successful required environment probe, a Session continues the same authorized Action. An exit without current Session evidence remains missing evidence; earlier Runs for the Action are not proof of that Session. This does not authorize an automatic retry or relax any launch gate.
 
-On a phone, Work comes first, then Direction, then Context, and **Go's next move and your Ask ↓** jumps to Direction.
+On a phone, the route comes first, then Direction.
 
 Where a Plan has a plain-language summary in `docs/generated/plan-summaries/`, the workspace uses it:
 - Plans and Actions show their plain title and a one-line why.
-- The Plan and Action views show why each exists, what it serves and what "done" looks like.
-- The recorded milestone and title stay alongside.
+- The full record shows why each exists, what it serves and what "done" looks like, with the recorded milestone and title.
 
-Every summary is labelled as a reading aid, because the record governs. One written before its record changed is labelled as such, and a Plan without a summary shows its record as before. `pnpm -s check:plan-summaries` reports which summaries are missing or stale, without changing anything.
+Every summary is labelled as a reading aid, because the record governs. One written before its record changed names nothing on the route, and waits in the full record, labelled as such. A Plan without a summary shows its record, cut short and marked. `pnpm -s check:plan-summaries` reports which summaries are missing or stale, without changing anything.
 
 See [the Ask-loop guide and QA](docs/design/workspace-ask-receipt-loop.md) and
 [the shell routes](docs/design/conversational-ui-shell.md), and
@@ -1435,8 +1441,8 @@ To activate an existing draft Plan, preview a `plan` Ask targeting
 `--action <id>`, `--model <model-id>`, optional `--effort high`, and
 `--top` (or `--before`/`--after`). Apply requires the same options and
 exact preview fingerprint. The writer changes the Project milestone and both
-pointers, returns the previous Plan to draft without claiming completion, and
-replaces only that Project's queue segment. An ineligible first Action or
+pointers, returns an unfinished previous Plan to draft without claiming completion
+(a previous Plan already marked complete stays complete), and replaces only that Project's queue segment. An ineligible first Action or
 unreconciled Project Session refuses activation. Activation starts no process
 and grants no merge, deployment, spending or unattended-production authority.
 Select a model supported by the agent that will launch the next session.
@@ -1573,6 +1579,11 @@ trigger, first-seen time, and an evidence file under
 `artifacts/generated/red-alerts/`); a repeat updates it, it clears when the
 failure resolves, and each new alert posts once to Discord. Alerts only
 report: they never change admission, approvals, or credentials.
+
+Beside each evidence file, `<alert id>-e<episode>/bundle.json` lists what was
+saved for that episode: the verdict report and prompt for a review stop, the
+worker log tail, and a process tree with `lsof` and `sample` for a stalled
+Session. Anything it could not capture is stated there, not left out.
 
 **Red alert diagnosis is off by default and costs nothing until you turn it
 on.** It calls a model, so it is behind an explicit flag in the workspace
@@ -2091,7 +2102,11 @@ whose earliest eligible Action is highest in the explicit Action queue, makes
 that Action current, and continues in the same invocation — seeding a
 one-time, reversible FIFO order first when approved legacy Actions have never
 been ordered. A genuine queue tie, an inactive Project, or a document defect
-still refuses. See Decision 0048. If the checked-out base itself is ahead and behind its
+still refuses. See Decision 0048. When an Active production scope covers the
+finished Plan, that activation is held until production is Off: press "Turn
+production Off" on /production, then run `arcadia go --apply --agent <agent>`
+(omit `--apply` to preview) to activate the successor Plan; it is one explicit
+step, and the scope-drift refusals and alerts name it. If the checked-out base itself is ahead and behind its
 remote, the host controller admits only recognized Arcadia-generated
 governance commits, one complete merge base, and a conflict-free result. It
 fetches that one upstream into an isolated controller ref, writes one
@@ -2906,8 +2921,29 @@ Every cadence narrates the period that has **finished**, not the one in
 progress — that is the only rule under which each recorded fact lands in
 exactly one digest of each cadence. A digest fires at most once per subject
 per period, and a bot that was down at the target time composes the same
-window on its first tick after restart. One Project's narration failing costs
-that Project's digest and nothing else.
+window on its first tick after restart.
+
+Each digest is a short overview, in this order:
+
+1. **Summary**: one to three sentences on progress toward goals. The local
+   model writes it from the computed facts below it, and it is labelled
+   "AI-written". When the model is unavailable, or states a number the facts
+   do not contain, a computed summary replaces it, labelled as such.
+2. **Progress by goal**: each Milestone that moved, with Actions done of
+   total, what finished and merged in the window, and a rough pace when at
+   least two recent completions support one.
+3. **Needs you**: blocking to-do items, stopped production first, each with
+   its dashboard link (from `ARCADIA_DASHBOARD_URL`) and what waiting costs.
+4. **Operator interactions**: how many times you had to act, which were
+   required and which avoidable, per merged Action, and how long work waited
+   on you. A low number is the goal.
+5. **Where activity happened**: relative shares by Project (or by goal).
+6. **Risks and stalls**, only when there are any.
+
+Every fact behind the page stays out of the message:
+`pnpm arcadia digest show <digest-id> --detail` prints it, and
+`pnpm arcadia digest preview [--project <slug>] [--ai] [--detail]` prints a
+digest for any window without storing anything.
 
 Run the same thing by hand at any time:
 
@@ -3656,6 +3692,15 @@ The default view hides stale items (on `/todo`, in a collapsed **Done elsewhere*
 `--stale` lists only them, each with a `stale:` reason; `--all` shows every
 item, stale last.
 
+A Decision's own page, `/todo/decision/<project>/<id>`, is short: the question,
+each option with its consequence, compact enough for one phone screen. Tap an
+option to open the whole text of every option and get its **Answer** button, then
+tap that to answer. A `#card-…` link to a Decision opens the same page.
+**Read the full record** loads the document only when you ask. A Decision with no
+options, or no pinned card, shows what its record has and says why it can't be
+pressed here. If the record changes while you're reading, the answer is refused,
+nothing is written, and you read it again.
+
 Projects whose slug contains `rehearsal`, or whose `repo_path` is under the OS
 temp directory or `~/tmp`, are fixtures: their non-blocking items appear only as
 one `Fixture Projects collapsed` line (`counts.fixture`). A Project with no
@@ -3733,6 +3778,14 @@ for the full control record.
 
 The optional iCloud file-ingress job also starts automatically and checks its drop folder once a minute. It is not required for the Today page.
 
+A **liveness check** also runs once a minute, outside all of the above. While production is Active, it sends one Discord ping if the worker stops making progress for 5 minutes, naming how long, the worker's pid and any long-lived child, with a link to `/production`. It sends one more line when the worker recovers. If the worker is in a code review, it waits until the reviewer's own 15-minute timeout plus those 5 minutes. It only alerts: it restarts nothing, and recovery stays with you. `ARCADIA_LIVENESS_STALE_SECONDS` at restart changes the 5 minutes. `pnpm logs liveness` shows its runs, and `scripts/services.sh status` shows whether it is installed.
+
+The same timer run then checks **momentum** (Decision 0188; it calls no model and starts nothing). While a run window is open (production Active, or Off with a scope Action not yet merged), it sends one loud ping when the critical path has been idle 20 minutes, starting `🚨🚨🚨 MOMENTUM: critical path idle 25 min — cause: …` with the remedy, and one `✅ MOMENTUM` line when it moves again or the window closes. In the same window it sends one `🚨🚨🚨 MOMENTUM KEEPER NOT ACTIVE — last heartbeat …` ping when no Momentum Keeper heartbeat is live (a keeper runs `arcadia production keeper-heartbeat` at every wake; its heartbeat lapses 10 minutes after the time it gave), and one `✅ MOMENTUM KEEPER` line when a keeper is back or the window closes. If the momentum check itself cannot read for 3 minutes it sends one `🚨🚨🚨 MOMENTUM CHECK FAILING` ping. The alarm never starts a keeper: ask Rowan to start one, or start one yourself. `--idle-minutes` and `--keeper-grace-minutes` on `production liveness-check` change the thresholds for a manual run; the timer uses the defaults.
+
+Once the installed release includes it (a services restart in a production gap), the same run also watches each **coordinator's context budget** (⭐ Signal and 🚦 Rowan sessions; it starts nothing). It sends one ping per line per session: `👆 HANDOFF PREPARE … at 51% context` (no action yet), `👆👆 HANDOFF DUE: ⭐ Signal 3 at 61% context — start its successor: …` (ask that session for its paste-ready handoff prompt and paste it into a new session), and `👆👆👆 HANDOFF OVERDUE` past 75%. When it cannot read a session's context it says `context unmeasured` and treats the handoff as due. `arcadia coordinator budget` shows the same readings.
+
+When `scripts/services.sh status` shows `worker: stopped` and the worker's pidfile belongs to a live process that is not the managed worker, such as a stale `com.arcadia.worker` launchd job, status names the holder and prints the command that retires it (`launchctl bootout gui/<uid>/<label>`). It only reports: you run the command. Likewise `arcadia worker install` refuses, and the protected replacement warns, naming that command instead of silently leaving the stray agent.
+
 Do not start separate legacy processes manually. Anything outside this list is not part of the normal local service set.
 
 Intelligence defaults to independent cloud, Codex CLI, Claude Code CLI, and local
@@ -3769,7 +3822,7 @@ pnpm logs errors     # every service's stderr
 pnpm logs session    # watch the newest live coding-agent Session, read-only
 ```
 
-`dashboard`, `intelligence`, and `discord` select one service. `session` attaches
+`dashboard`, `intelligence`, `discord`, and `liveness` select one service. `session` attaches
 read-only to the agent's tmux pane, so you see exactly what the agent sees
 without being able to type into it (detach with Ctrl-b d); `pnpm logs session
 <name>` picks a specific one. `LOG_LINES=100 pnpm logs` shows more history first.
@@ -3962,6 +4015,15 @@ Passing means every piece traces to a source and the mission, and that critics
 couldn't break it or you accepted the risk. It doesn't prove the design is right.
 The method is in the [arcadia-design skill](.agents/skills/arcadia-design/SKILL.md).
 
+### Start Signal
+
+Signal is your supervising session over Rowan. It watches production and pull requests,
+wakes Rowan when to act, checks that merges and presses really happened, and starts every
+message with a loud banner for anything urgent you must do (🚨🚨🚨 plus 🔀 merge, 🗳️ decide,
+👆 press). Say "Signal" or "be Signal" to a coding agent in this checkout, or start one from
+a Signal handoff in the shared notes folder. See the
+[arcadia-signal skill](.agents/skills/arcadia-signal/SKILL.md). It grants no authority.
+
 ### Try Relay mode
 
 Relay will be Arcadia's one conversational interface, and it isn't built yet. Until then,
@@ -3979,7 +4041,7 @@ Without `--refresh` it makes no provider request and labels Claude's cached
 windows as credential-context-unverified. `--refresh` makes one bounded usage
 read each for Claude and Codex without writing the shared production telemetry
 or inheriting its cooldown. It reports actual request attempts, timestamps,
-HTTP/transport/parse outcomes and allowance windows. OpenCode account allowance stays unknown. Its optional local session usage is
+HTTP/transport/parse outcomes and allowance windows. OpenCode is a plan with a weekly token allocation, like Codex and Claude Code (see `docs/model-selection.md`), but Arcadia can't read how much remains, so its account allowance stays unknown. Its optional local session usage is
 reported separately and never supplies production allowance windows.
 
 Claude normally selects environment, file, then Keychain. Use
@@ -4060,3 +4122,5 @@ Ask unsettled. This source repair does not install or adopt itself: independent
 current-head review, required CI and separately receipted adoption remain before
 any new guarded R465 delivery. Production stays Off; no R465 live success is
 claimed.
+
+When the managed worker loses the pidfile to another launchd label (Issue #2179, a legacy `com.arcadia.worker` that wins after a reboot), it still exits 0 so launchd does not crash-loop it, but it now writes an `ERROR: ... lost the worker lock to PID N, launchd job <label>` line to `worker.log`, leaves `.arcadia/worker-lock-lost.json`, and `arcadia worker status` reports it until a worker next starts. `arcadia work monitor` says a waiting START card is "not pressable: worker <label> has no running PID" instead of "ready to press" when preflight P2 would refuse. Nothing here retires the legacy agent: you run the printed `launchctl bootout` and move its plist aside.

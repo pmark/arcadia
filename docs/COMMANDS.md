@@ -447,9 +447,14 @@ schedule ledger to disagree with it. Each returned entry carries a `status`:
 | `failed` | This subject failed; every other subject and cadence still ran. |
 
 A failure is reported as an entry and a warning, never thrown, so one
-Project's unreachable local model cannot cost any other Project or cadence its
-digest. A failed vault export is likewise a warning on an otherwise good entry
-— the digest still composed and can still be posted.
+Project's failure cannot cost any other Project or cadence its digest. An
+unreachable local model is not a failure at all: the headline falls back to a
+computed summary, labelled as such, and the reason is kept in the Artifact's
+`summary_fallback_reason`. A failed vault export is likewise a warning on an
+otherwise good entry — the digest still composed and can still be posted.
+
+The model sees only `DigestSummaryFacts`, the numbers and names the page
+already shows, never raw Log or Decision text.
 
 ```sh
 pnpm arcadia digest mark-posted digest_example --message-id 123 --workspace "$WORKSPACE" --json
@@ -458,6 +463,36 @@ pnpm arcadia digest mark-posted digest_example --message-id 123 --workspace "$WO
 Records that a composed digest reached its delivery surface. Until it is
 recorded, the digest comes back as `pending-delivery` on the next run rather
 than being lost behind the once-per-period guard.
+
+## Preview Or Show A Digest
+
+```sh
+pnpm arcadia digest preview --workspace "$WORKSPACE" [--project arcadia] [--period day] [--from <iso> --to <iso>] [--ai] [--detail]
+pnpm arcadia digest show digest_example --workspace "$WORKSPACE" [--detail]
+```
+
+`preview` computes and prints a digest without storing it: no Artifact, no
+row, no vault write. Without `--ai` the headline is computed; with it, one
+local Intelligence job writes the headline. `show` prints a stored digest as
+delivered; `--detail` adds every recorded fact behind it.
+
+## Record An Operator Interaction
+
+```sh
+pnpm arcadia operator-interaction record --workspace "$WORKSPACE" \
+  --words "Yes merge them" --unlocked "merge of PR #2184" --required \
+  --ref "#2184" --project arcadia --waiting-since 2026-11-07T07:21:48Z
+pnpm arcadia operator-interaction list --workspace "$WORKSPACE" [--since <iso>]
+```
+
+When an agent acts on the operator's words in chat, it records one
+append-only row: when, the exact words, what it unlocked, and whether only
+the operator could have done it (`--required`) or it could have been avoided
+(`--avoidable`). Replaying the same `--at` and words returns the existing row.
+The digest counts these together with what records already prove: operator
+card presses (run receipts without a delegation) and Offs switched from the
+dashboard. GitHub merges are never counted from GitHub, because every merge
+uses the operator's token. Recording authorizes nothing.
 
 ## Manage Artifacts And Expected Outcomes
 
@@ -1709,6 +1744,156 @@ the runtime is stale, naming the installed revision, `HEAD` and the reasons. A
 replay of an already-settled `--request-id` still replays. Without the flag,
 activation is unchanged. `--repository` defaults to the git toplevel of the
 current directory.
+
+## Measure Critical-Path Idle Time (Momentum Keeper Layer 1)
+
+```bash
+pnpm arcadia production idle-front [--workspace <path>] [--wakes-dir <path>] [--expect-wake <session-or-role>]... [--tap-ready-at <time>] [--route-at <time>] [--json]
+```
+
+Read-only, while production is Active or Inactive. Line 1 is one JSON row
+(`arcadia-idle-front-row-v1`): `ts`, `critical_path` (`moving`, `blocked`,
+`inactive` or `unreadable`), `blocker_class`, `blocked_since`, `detected_at`,
+`route_at`, `tap_ready`, `idle_minutes` and `idle_minutes_by_cause`
+(`detection_lag`, `no_route`, `waiting_on_operator`, `no_ready_work`, always
+summing to the idle time), plus `armed_wakes`, `no_armed_wake` and
+`missing_wakes`. Each further line is a timeline event
+(`momentum.idle_front.check`, and `momentum.no_armed_wake` when no wake is
+armed or the armed state is unknown) in the `arcadia-timeline-event-v1` shape.
+
+- Only the production scope is the critical path. Side work never offsets idle
+  time. One operator-bound blocker on any scope Action marks the whole path
+  blocked, even while another scope Action is admitted, because production
+  runs its scope serially.
+- Detection lag ends at the first record strictly after `blocked_since` that
+  shows someone learned of the block: an operator-granted policy receipt, or a
+  ping naming a scope Action or production. An activation's own receipt, an
+  automated Terminal Off and unrelated pings do not count.
+- Never a false zero. An unreadable state, an unreadable blocker time or no
+  movement record gives `null` minutes. An unknown scope gives
+  `blocker_class: unknown` and a `null` split. An unreadable `ps` gives
+  `no_armed_wake: null`. Parts are whole tenths and sum exactly to
+  `idle_minutes`.
+- `--tap-ready-at` and `--route-at` must not be later than now.
+
+It reads production status, the last 200 worker merges, the timeline's
+production and ping records, waiter processes (`ps`, anchored on an interpreter
+running `wait-for-event.sh`, `quiet-watch.sh` or `comms-watch-issue.mjs`, or the
+CLI running `timeline --wait` on this workspace) and armed-until files
+(`{"schema":"arcadia-armed-wake-v1","session","role","armedAt","armedUntil"}`
+under `<workspace>/.arcadia/armed-wakes/`, deferral D2 of
+`docs/design/session-notifications.md`; only `production keeper-heartbeat`
+writes one today; an `armedUntil` more than 6 hours ahead is ignored). It pings
+nobody and writes nothing; the events are printed, not stored.
+
+## Momentum Alarm And Keeper Heartbeat (Decision 0188)
+
+```bash
+pnpm arcadia production liveness-check [--idle-minutes <n>] [--keeper-grace-minutes <n>] ...
+pnpm arcadia production keeper-heartbeat [--minutes <n>] [--session <name>] [--workspace <path>]
+```
+
+`production liveness-check` is the existing once-a-minute launchd timer. After
+its worker check, unchanged, it computes the idle-front row above and runs two
+alarms, each paging once through `arcadia ping` (agent `Momentum watch`, kind
+`attention`) when its episode opens and once when it closes:
+
+- **Run window.** Open while production is Active, and while it is Off with at
+  least one scope Action (active or retained) not merged. Closed when Off with
+  nothing waiting, so a finished run or a quiet night pages nobody. Unknown
+  while production is unreadable: an open alarm holds and nothing new opens;
+  the worker check already pages an unreadable policy.
+- **Idle.** `idle_minutes` at or above `--idle-minutes` (default 20, minimum
+  5) in an open window pages `🚨🚨🚨 MOMENTUM: critical path idle <n> min —
+  cause: <waiting on operator | no route | no ready work | unknown> — <remedy>`,
+  linking `/todo` when a tap waits there, else `/production`. It closes with
+  `✅ MOMENTUM: critical path moving again` or `run window closed`. `null`
+  minutes hold, never page.
+- **Keeper.** No live keeper heartbeat in an open window pages `🚨🚨🚨 MOMENTUM
+  KEEPER NOT ACTIVE — last heartbeat <age | never> — start a keeper: …`. A
+  heartbeat is live until its `armedUntil` plus `--keeper-grace-minutes`
+  (default 10). It closes with `✅ MOMENTUM KEEPER active again` or `alarm
+  closed` when the window closes. It never starts a helper: Rowan or the
+  operator does, under Decisions 0188 and 0114.
+
+- **Blind check.** When the momentum step cannot read the critical path for 3
+  unbroken minutes, it pages `🚨🚨🚨 MOMENTUM CHECK FAILING for <n> min — the
+  idle and keeper alarms are blind …` and closes with `✅ MOMENTUM check
+  reading again`. The other alarms hold meanwhile. When the cause is the ping
+  database itself, the page cannot be queued and shows only in `pnpm logs
+  liveness` and the exit code, as with the worker alarm.
+
+State lives in `<workspace>/.arcadia/momentum-watch.json`; an unreadable file
+restarts both episodes, and the ping outbox's episode key stops a retry from
+paging twice. A failure in either check never stops the other; the run exits
+non-zero after both, carrying any page the other queued.
+
+`production keeper-heartbeat` is the keeper's side: it writes
+`<workspace>/.arcadia/armed-wakes/momentum-keeper.json`
+(`arcadia-armed-wake-v1`, role `momentum-keeper`, `armedUntil` = now plus
+`--minutes`, default 60, at most 360); besides the CLI's usual activity row it writes nothing else. A keeper runs it at
+every wake with `--minutes` covering its next fallback wake.
+
+## Coordinator Context Budget (#2242)
+
+```bash
+pnpm arcadia coordinator budget [--session <id>] [--workspace <path>] [--json]
+```
+
+Change (1) of the coordinator handoff design (PR #2223). After the momentum
+alarm, the same `production liveness-check` timer run measures each live
+coordinator's context occupancy from the host's own files and pages once per
+threshold per session through `arcadia ping` (agent `Coordinator budget`, kind
+`attention`). It calls no model and starts, stops or messages no session.
+
+- **Coordinators** are sessions whose title starts with ⭐ (Signal) or 🚦
+  (Rowan) and whose file was written in the last 120 minutes. Helpers (↳) and
+  untitled sessions are ignored. Claude: the last `custom-title` line of
+  `~/.claude/projects/*/<session>.jsonl`. Codex: `thread_name` in
+  `~/.codex/session_index.jsonl`, with its `sessions/**/rollout-*-<id>.jsonl`.
+- **Occupancy.** Claude: the last main-chain (not `isSidechain`) assistant
+  `message.usage`, `input_tokens + cache_creation_input_tokens +
+  cache_read_input_tokens`; after a `compact_boundary` with no turn yet, its
+  `compactMetadata.postTokens`. The window comes from the status-line capture
+  when its `session_id` is this session, else from a hand-registered table in
+  `src/coordinators/budget.ts` with each model's evidence. Codex: the last
+  `token_count` event's `info.last_token_usage.input_tokens` over
+  `info.model_context_window`.
+- **Thresholds** (the design's starting values): prepare 50%, due 60%, forced
+  75%. `👆 HANDOFF PREPARE: <title> at 51% context — …`, `👆👆 HANDOFF DUE:
+  <title> at 61% context — start its successor: …`, `👆👆👆 HANDOFF OVERDUE: …`.
+  A jump past several lines pages only the highest. Each line pages at most
+  once per episode; a compaction starts a new episode.
+- **Unmeasured.** No usage line, no registered window, a window below an
+  observed compaction, tokens above the window, or a session file that cannot
+  be read: `👆👆 HANDOFF DUE: <title> context unmeasured — treat it as due: …`,
+  with the reason and the main-chain turn count as a labelled coarse proxy,
+  never a percentage. A session with no usage at all is held for its first 60
+  minutes, and one just compacted with no new count for 10 minutes.
+- **Marker.** Each coordinator past prepare, or unmeasured, has
+  `<workspace>/.arcadia/coordinator-budget/<agent>-<session>.json` (level,
+  `handoff_due`, tokens, window, next step, pings sent), removed when it is
+  back under prepare. State is in `state.json` beside it; the outbox's episode
+  key (`budget <level> <agent>:<session>`) stops a repeat after a lost state.
+
+`coordinator budget` is the read-only view a coordinator runs at each wake:
+it measures every live coordinator now, shows the pages the timer already
+sent, and leads with this session's banner (`--session`, default
+`CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`). It writes and records nothing.
+
+## Coordinator Relay Sessions (#2286)
+
+```bash
+pnpm arcadia coordinator relay-sessions --project <slug> [--workspace <path>] [--json]
+```
+
+Read-only. Lists the exact tmux names of registered, relay-launched, current
+coordinator custodians that `scripts/start-run.sh`'s no-competing-Session check
+tolerates, with a reason for each name it holds back (a handoff in flight, not
+relay-launched). It starts, stops and records nothing and grants no authority.
+See `docs/agent-guidance/coordinator-handoff-design.md`, "START and the relay's
+tmux sessions". A live session is tolerated only if it also runs the row's
+recorded `--session-id`, which START checks itself.
 
 ## Check A Design Record Or Field Guide
 

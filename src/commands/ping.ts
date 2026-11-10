@@ -1,6 +1,7 @@
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { assertCoordinatorCustody } from "../coordinator/generations.js";
 import { withDatabase } from "../db/connection.js";
 import {
   listPendingOperatorPings,
@@ -18,11 +19,25 @@ export interface PingSendOptions {
   link?: string;
   todo?: string;
   agent?: string;
+  episodeKey?: string;
+  episodeAfter?: string | null;
+  now?: Date;
+  /**
+   * The caller's environment, passed by `arcadia ping send` itself: when it sets
+   * ARCADIA_COORDINATOR_ROLE the send is custody-guarded. Internal callers (the
+   * liveness and momentum timers) pass none and are not coordinator commands.
+   */
+  env?: NodeJS.ProcessEnv;
 }
 
 export function runPingSendCommand(options: PingSendOptions): CommandSuccess<QueuedOperatorPing> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  const queued = withDatabase(workspacePath, (db) => queueOperatorPing(db, options));
+  const queued = withDatabase(workspacePath, (db) => {
+    // Only the current custodian of a relay-launched coordinator role may ping
+    // (coordinator handoff design, section c step 5); others are unfenced.
+    if (options.env) assertCoordinatorCustody(db, { command: "ping", env: options.env, now: options.now });
+    return queueOperatorPing(db, options);
+  });
   return createSuccess({ command: "ping.send", workspace: workspacePath, data: queued });
 }
 

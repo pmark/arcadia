@@ -3,13 +3,13 @@ arcadia: v1
 type: plan
 slug: portfolio-docs-protocol
 project: arcadia
-status: active
+status: draft
 milestone: docs sync ingests a real project's markdown
 token_impact: xlarge
 token_budget: "The historical protocol program required several agentic implementation sessions; parsing, sync, dependency resolution, and validation are deterministic, and deferred narrative summarization is the only routine model-bearing path."
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: high
-updated: 2026-10-12
+updated: 2026-11-07
 actions:
   - id: build-parser
     title: Build the frontmatter parser and vocabulary validator
@@ -248,13 +248,17 @@ actions:
     depends_on: [build-upsert]
   - id: narrative-summarization
     title: Queue an Intelligence summarization job for narrative docs
+    next_action: Queue one Intelligence summarization job per narrative document from docs sync, and store its summary as an Artifact, leaving the source document unchanged.
     status: open
     responsibility: agent
+    execution: build
     effort: short
     acceptance_criteria:
       - A narrative doc produces an Artifact holding its summary.
       - The summary is never written back into the source document.
-    clarification: unclarified
+      - With the summarizer stubbed to never resolve, a docs sync run completes and records one queued summarization job per narrative document.
+    clarification: clarified
+    source: Agent Ask replan-narrative-summarization-async-20261107b
     decisions: ["0004"]
     depends_on: [wire-docs-sync-command]
 questions:

@@ -2,12 +2,17 @@
 title: "The single-Action path runs itself"
 date: 2026-10-10
 author: "Arcadia (drafted by Claudia Atlas)"
+status: draft
 summary: "On 2026-10-09 and 10-10, in a disposable fixture, Arcadia took nine governed Actions from approval to reviewed, merged pull requests, the last five with no operator action at all. Here is what ran, what broke, and what is still not done."
+tags: [automation, testing, reliability]
+canonical: "https://pmark.github.io/arcadia/posts/the-single-action-path-runs-itself/"
 ---
 
 # The single-Action path runs itself
 
 Arcadia exists to keep momentum across projects with as little operator attention as possible. The quest behind that is autonomous production: governed work goes from an approved Action to a reviewed pull request without the operator babysitting it. Authority stays with the human: merges that change authority, Decisions, credentials and spend.
+
+**November 9 update.** This is the October fixture record. The fixture grants expired on October 18. On November 5 the worker merged three test-only changes in one serial run on Arcadia's own repository with main frozen. A later run merged 20 test-only changes across five separately started batches under the same constraints. [Readiness and run evidence](../managed-production-readiness.md#operator-view-the-rovers-route-from-here)
 
 ## What happened
 
@@ -35,18 +40,12 @@ Two narrow grants made this possible, each by an explicit operator Decision and 
 
 ## What is not done
 
-- OpenCode's local install needs repair.
-- Claude sign-in expiry still needs the operator at the Mac.
-- Arcadia's own repository has not yet run this path end to end. Everything above happened in a fixture.
+- The October fixture evidence covers the nine Actions and the launch-to-draft timings above. The November runs establish the separate, narrower real-repository proof described in the update. Source edits, concurrent execution, and a moving main remain outside that proof.
 
 ## What it gives the operator
 
 Work keeps moving while you are away. You are interrupted only for genuine decisions. Small models do the routine work cheaply and call in help when they need it. Every change arrives reviewed, with evidence. That is the design goal; the fixture shows the path works, not that it is finished.
 
-## In progress
+## What was in progress that October
 
 The next piece is operating from a phone alone. A `/todo` page on the dashboard is merged ([#1196](https://github.com/pmark/arcadia/pull/1196)). Discord pings that deep-link straight to the exact decision or action are merged ([#1195](https://github.com/pmark/arcadia/pull/1195)). Decision answers recorded from Discord or the review page now commit themselves ([#1194](https://github.com/pmark/arcadia/pull/1194)). These landed in the last day and have not yet had a long run of real use.
-
-## What is next
-
-Once production and Ask (Arcadia's governed intake and proposal channel) work hand in hand on Arcadia's own code, the next goal is to make Arcadia easy for other people to install and set up, so they can benefit too. That is a goal, not something you can do today.

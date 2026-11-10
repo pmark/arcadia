@@ -1,8 +1,10 @@
 ---
 layout: default
 ---
-<article>
+<article class="post-body">
+  <a class="back-article" href="{{ '/' | relative_url }}">← All Field Notes</a>
   <h1>{{ page.title | escape }}</h1>
+  {% include topic-links.html tags=page.tags %}
   <p class="meta"><time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%-d %B %Y" }}</time>{% if page.author %} &middot; {{ page.author | escape }}{% endif %}{% if page.status == "draft" %} &middot; <span class="badge">draft source article</span>{% endif %}</p>
   {{ content }}
 </article>

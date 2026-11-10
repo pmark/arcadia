@@ -3,12 +3,19 @@ import { readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { readClaudeCodeTokenFile } from "./claudeCodeToken.js";
+import { evaluateLaunchSpend, type LaunchSpendDeps, type LaunchSpendResult } from "../spend/spendGuard.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 
 export interface ProviderSignInStatus {
   signedIn: boolean;
   /** What the operator or worker owner must do to restore sign-in, in one sentence. */
   remedy: string;
+  /**
+   * The spend check's verdict for this launch (assessSpendRisk on the stripped
+   * environment). Set only when it is not clear, or when no sign-in probe exists
+   * for the provider; `refuseUnlessSignedIn` refuses on it.
+   */
+  spend?: LaunchSpendResult;
 }
 
 const SIGN_IN_CHECK_TIMEOUT_MS = 5_000;
@@ -37,9 +44,16 @@ const SIGN_IN_CHECK_TIMEOUT_MS = 5_000;
  * for free instead of spending the Action's repair budget on it.
  */
 export function checkProviderSignIn(provider: string, workspace?: string, env?: NodeJS.ProcessEnv, deps: SignInDeps = {}): ProviderSignInStatus | null {
-  if (provider === "claude-code-cli") return checkClaudeCodeSignIn(workspace, env, deps);
-  if (provider === "codex-cli") return checkCodexSignIn(env);
-  return null;
+  const status = provider === "claude-code-cli" ? checkClaudeCodeSignIn(workspace, env, deps)
+    : provider === "codex-cli" ? checkCodexSignIn(env)
+      : null;
+  if (status && !status.signedIn) return status;
+  if (deps.skipSpend) return status;
+  // The real host spend probes never run under Vitest (they read this host's account files); a test opts in with `deps.spend`.
+  if (process.env.VITEST && !deps.spend) return status;
+  const spend = evaluateLaunchSpend(provider, deps.model, { env, ...deps.spend });
+  if (spend.verdict === "clear") return status;
+  return { ...(status ?? { signedIn: true, remedy: "" }), spend };
 }
 
 /**
@@ -70,6 +84,12 @@ function checkCodexSignIn(env?: NodeJS.ProcessEnv): ProviderSignInStatus | null 
 
 /** Test seam for the read-only stored-credential check. */
 export interface SignInDeps {
+  /** Seams for the spend check (probe runner, file reads, a fixed report); never the host's real state in tests. */
+  spend?: LaunchSpendDeps;
+  /** The OpenCode model this launch will use; only its `opencode-go/` prefix is tested and it is never echoed. */
+  model?: string;
+  /** The caller runs the spend check itself, so this preflight leaves it out. */
+  skipSpend?: boolean;
   /** Reads whether the stored Claude Code OAuth credential holds a refresh token, without refreshing anything; defaults to the keychain/credentials file. */
   readCredentialState?: () => ClaudeCredentialState;
 }

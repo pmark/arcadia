@@ -1,0 +1,117 @@
+/*
+ * Relay: one surface at three heights. Only transform and opacity animate, so the compositor can run every move without
+ * layout, whatever the page or the sky canvases behind it are doing. Layout changes happen once, instantly, at the change
+ * of height, inside this fixed box. No blur: the design holds it back until it's measured on a phone.
+ */
+.relay-root {
+  display: contents;
+  --relay-ease: cubic-bezier(.2, .7, .2, 1);
+  --relay-time: .24s;
+  --relay-strip-now: var(--relay-strip, 76px);
+}
+
+/* The View recedes. A transform or filter on a parent would capture the Feed's fixed Journey button, so that page only fades. */
+.relay-view { padding-bottom: calc(84px + env(safe-area-inset-bottom, 0px)); transition: opacity var(--relay-time) ease; }
+.relay-view > main { transition: transform var(--relay-time) var(--relay-ease); transform-origin: 50% var(--relay-origin-y, 50vh); }
+.relay-view[data-receded] { opacity: .62; }
+.relay-view[data-receded] > main:not(:has(.feed-fab)) { transform: scale(.985); }
+
+/* The scrim leaves the strip clear so the status stays readable, and catches every tap, including on the strip. */
+.relay-scrim {
+  position: fixed; inset: 0; z-index: 14; opacity: 0; pointer-events: none; cursor: pointer; touch-action: none;
+  background: linear-gradient(transparent, transparent var(--relay-strip-now), rgb(6 9 20 / .62) calc(var(--relay-strip-now) + 40px));
+  transition: opacity var(--relay-time) ease; will-change: opacity;
+}
+.relay-scrim[data-open] { opacity: 1; pointer-events: auto; }
+
+/* Shown only when the page has scrolled the strip away. */
+.workspace-shell .relay-status {
+  position: fixed; z-index: 15; top: 8px; left: 16px; margin: 0; display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
+  padding: 6px 12px; font-size: 13px; line-height: 1.3; border-radius: 999px; background: rgb(10 15 30 / .95); border: 1px solid rgb(236 226 211 / .22);
+}
+
+/*
+ * Anchored to the bottom so a phone's collapsing toolbar carries the capsule natively. The box is always the small
+ * viewport's height, and only moves: no change of height re-lays it out, the strip's measured size never shifts it, and
+ * scrolling never starts a transition. The tail is how far an open sheet's box runs past what's visible.
+ */
+.relay {
+  --head: 50px;
+  --capsule: 50px;
+  --gap: max(10px, env(safe-area-inset-bottom, 0px));
+  --open-h: calc(var(--relay-vvh, 100dvh) - var(--relay-strip-now));
+  --lift: max(0px, min(calc(var(--open-h) * .2), calc(var(--open-h) - 300px)));
+  --tail-thread: calc(100svh - var(--relay-vvh, 100dvh) + var(--relay-strip-now));
+  position: fixed; z-index: 15; left: 0; right: 0; bottom: 0;
+  height: 100svh;
+  pointer-events: none; outline: none; color: #f5f2ed;
+  transform: translate3d(0, calc(100svh - var(--head) - var(--capsule) - var(--gap) + var(--relay-pull, 0px)), 0);
+  transition: transform var(--relay-time) var(--relay-ease);
+  will-change: transform;
+}
+.relay[data-height="answer"], .relay[data-height="thread"] { pointer-events: auto; }
+.relay[data-height="answer"] { transform: translate3d(0, calc(var(--tail-thread) + var(--lift) - var(--relay-kb, 0px) + var(--relay-pull, 0px)), 0); }
+.relay[data-height="thread"] { transform: translate3d(0, calc(var(--tail-thread) - var(--relay-kb, 0px) + var(--relay-pull, 0px)), 0); }
+.relay[data-pulling] { transition: none; user-select: none; }
+
+/* The surface reaches past the bottom, so a move or a pull never shows a gap under the sheet. */
+.relay-surface {
+  position: absolute; left: 0; right: 0; top: 0; height: calc(100% + 100vh); opacity: 0; pointer-events: none;
+  background: #0f1529; border: 1px solid rgb(236 226 211 / .34); border-radius: 22px 22px 0 0; box-shadow: 0 -10px 48px rgb(0 0 0 / .55);
+  transition: opacity var(--relay-time) ease;
+}
+.relay:not([data-height="rest"]) .relay-surface { opacity: 1; }
+
+/* The contents stop where the sheet stops being visible, so scrolling and focus never land below the fold. */
+.relay-body { position: relative; height: calc(100% - var(--tail-thread) - var(--lift)); display: flex; flex-direction: column; min-height: 0; }
+.relay[data-height="thread"] .relay-body { height: calc(100% - var(--tail-thread)); }
+.relay-head { height: var(--head); flex: none; display: flex; align-items: center; gap: 8px; padding: 8px 12px 2px 16px; position: relative; touch-action: none; opacity: 0; transition: opacity var(--relay-time) ease; }
+.relay:not([data-height="rest"]) .relay-head { opacity: 1; }
+.relay-grip { position: absolute; left: 50%; top: 5px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: rgb(236 226 211 / .45); }
+.workspace-shell .relay-chip { flex: 1; min-width: 0; margin: 0; font-size: 12px; line-height: 1.3; color: #e4c8a9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.relay-chip b { font-weight: 500; color: #f5f2ed; }
+.relay-head-actions { display: flex; gap: 6px; flex: none; }
+.workspace-ask.relay-body .relay-head-actions button { min-height: 32px; padding: 4px 10px; font-size: 12px; border-radius: 10px; background: transparent; border-color: rgb(236 226 211 / .35); }
+
+.workspace-ask.relay-body form { flex: none; display: block; margin: 0; padding: 0 12px; }
+/* On a very short screen, like a landscape phone with its keyboard up, the composer scrolls so Send stays reachable. */
+.relay:not([data-height="rest"]) .workspace-ask.relay-body form { flex: 0 1 auto; min-height: 0; overflow: auto; margin-top: -6px; padding: 6px 12px; }
+.relay-field { position: relative; pointer-events: auto; }
+/* Sixteen pixels keeps iOS from zooming the page when the field takes focus. */
+.workspace-ask.relay-body textarea { display: block; height: var(--capsule); padding: 13px 52px 13px 18px; font-size: 16px; line-height: 1.4; resize: none; border-radius: 25px; background: #101d35; box-shadow: 0 10px 34px rgb(0 0 0 / .38); }
+.workspace-ask.relay-body textarea::placeholder { color: #c6cbd9; opacity: 1; }
+.relay:not([data-height="rest"]) .relay-body textarea { height: 76px; padding-right: 18px; border-radius: 14px; box-shadow: none; }
+.workspace-ask.relay-body .relay-chevron { position: absolute; right: 4px; top: 4px; width: 42px; height: 42px; min-height: 0; padding: 0; display: grid; place-items: center; font-size: 18px; line-height: 1; border-radius: 50%; background: #273d61; transition: opacity var(--relay-time) ease; }
+.relay:not([data-height="rest"]) .relay-chevron { opacity: 0; pointer-events: none; }
+/* A send in flight or of unknown outcome stays in reach at rest. It changes colour and nothing else: Relay never opens itself. */
+.workspace-ask.relay-body .relay-chevron[data-phase="sending"] { background: #3c5f94; }
+.workspace-ask.relay-body .relay-chevron[data-phase="uncertain"] { background: #7a4a12; }
+
+.relay-send { padding-top: 10px; opacity: 0; transition: opacity var(--relay-time) ease; }
+.relay:not([data-height="rest"]) .relay-send { opacity: 1; }
+.relay-send-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
+.relay-send-row label { display: flex; align-items: center; gap: 8px; font-size: 13px; min-height: 44px; }
+.relay-send-row input { width: 20px; height: 20px; flex: none; margin: 0; }
+.workspace-shell .relay-why { margin: 0 0 8px; font-size: 13px; line-height: 1.45; }
+.workspace-ask.relay-body .relay-why button { display: block; margin-top: 6px; }
+
+.relay-scroll { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 16px calc(16px + env(safe-area-inset-bottom, 0px)); opacity: 0; transition: opacity var(--relay-time) ease; }
+.relay:not([data-height="rest"]) .relay-scroll { opacity: 1; }
+.workspace-ask.relay-body .workspace-ask-receipt { margin-top: 8px; padding-top: 10px; }
+.workspace-ask.relay-body .workspace-ask-receipt > button { margin: 4px 8px 4px 0; }
+.workspace-ask.relay-body .workspace-history { margin-top: 12px; padding: 12px 0; }
+
+/* Clear of the capsule at rest. */
+.workspace-shell .relay-view .feed-fab { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+.workspace-shell .workspace-activity { bottom: calc(72px + env(safe-area-inset-bottom, 0px)); }
+
+/* Wide screens: Relay floats at the side. It's still modal. */
+@media (min-width: 761px) {
+  .relay { left: auto; right: 24px; width: min(520px, calc(100vw - 48px)); }
+  .workspace-shell .workspace-activity { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .relay, .relay-scrim, .relay-view, .relay-view > main, .relay-surface, .relay-head, .relay-send, .relay-scroll, .workspace-ask.relay-body .relay-chevron { transition: none; }
+  .relay-view[data-receded] > main:not(:has(.feed-fab)) { transform: none; }
+}

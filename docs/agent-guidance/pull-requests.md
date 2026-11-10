@@ -27,6 +27,12 @@ review service.
   Requests for those roles follow Decision 0114: separate independent Sessions,
   never native children. The native role brief validator refuses those targets;
   the required independent PR review above remains mandatory.
+- **Real-reviewer replay (proposed procedure; no gate until a Decision adds one).**
+  A change to a reviewer prompt, the QA plan renderer, verdict parsing or a
+  classifier runs `pnpm reviewer-replay` (unsandboxed; see `--help`) on a saved
+  attempt it should affect, with and without the change, three runs each, and the
+  PR carries both tables. It records no verdict and holds no authority; a stop is
+  reported, never worked around with paid API or another provider.
 - **Rounds.** At most three per pull request. A later round reviews only what
   changed since the previous one. Go past three only when the latest round
   still found a *significant* defect, and never beyond five rounds in total: a
@@ -238,6 +244,13 @@ merge it anyway, so asking spends attention and protects nothing.
   error).
   Merge one only when the operator explicitly instructs it in chat, and quote
   that instruction in the PR comment.
+- **Count the operator's touch.** Whenever you act on the operator's words in
+  chat (a merge, an answer, a go-ahead), record it once:
+  `arcadia operator-interaction record --words "<exact words>" --unlocked
+  "<what it unlocked>" --required|--avoidable --ref <PR, card or Decision>`.
+  `--avoidable` means the work could have proceeded without asking. The digest
+  counts these; GitHub cannot tell an operator merge from an agent merge. The
+  record authorizes nothing.
 - **This is a merge authorization only.** It does not authorize deployment,
   spend, credentials, production access, messaging, or any other approval
   boundary in `CONSTITUTION.md`.

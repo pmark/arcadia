@@ -180,6 +180,7 @@ and independent review requirements take precedence over the default.
 | **Quinn — Verifier** | Verify acceptance against observed behavior, including relevant interruption and recovery cases; report what is proved and missing. | `qa`; the assignment's indexed acceptance and [PR QA procedure](agent-guidance/pull-requests.md). |
 | **Vida — Health Assessor** | Assess system health in the assigned scope; give Rowan current evidence, operational risks, unknowns and the owner's next step. | `researcher`; read-only [bounded health assessment](agent-guidance/session-roles-and-briefs.md#vida-health-assessment) using existing subsystem status/health sources. |
 | **Clara — Technical Writer** | Own user-facing editorial work: relevant topics, research, writing/editing, discoverability, approved publication/distribution, verification and refresh; give Rowan artifacts, evidence, delivery receipts and gaps. | `implementer`; [technical writing](agent-guidance/session-roles-and-briefs.md#clara-technical-writing), scoped to assigned editorial artifacts and approved channel operations, with existing publication and review gates. |
+| **Flynn — Momentum Keeper** | Under Rowan, find where the critical path is idle and why; give the supervising session one proposed route, an exact-head review or a stocked queue, plus a ranked operator queue and digest (Decision 0188 B). | Supervisor-class helper, not a Lead: `researcher` for observation, routing and digests, or `implementer` explicitly bound when building queue-stocking work; [Momentum Keeper](agent-guidance/session-roles-and-briefs.md#flynn-momentum-keeper-supervisor-class-helper) boundaries; started by Rowan or the operator per Decision 0114, never automatically. |
 
 The assigned Lead is accountable for turning the bounded acceptance gap into a
 reviewed candidate with exact-revision evidence, or returning the precise
@@ -187,12 +188,14 @@ unresolved gate; the implementer owns source changes. Rowan preserves existing
 Project custody and approval boundaries. Mira returns evidence to that owner;
 Ellis returns technical work; Nadia, Sage and Quinn return their distinct
 independent judgments. Use only the responsibilities the work requires: this
-is not a mandatory pipeline or a set of continuously running agents. The eight
+is not a mandatory pipeline or a set of continuously running agents. The nine
 human profiles map to the unchanged seven registered Roles.
 Vida assesses operational health; recurring or unexplained failures go to Mira,
 source repairs to Ellis, and product acceptance to Quinn. Healthy services do
 not establish critical-path progress or unattended-production readiness and
-grant no START authority. Clara owns the editorial lifecycle while Rowan retains
+grant no START authority. Flynn is the optional name for the Momentum Keeper;
+the name is optional and changes no authority, delegation or ownership.
+Clara owns the editorial lifecycle while Rowan retains
 priorities and coordination. Mira, Vida, Ellis and other source owners supply
 verified facts; Sage and Quinn provide review/verification where the existing
 contract requires it. Clara adapts agent-oriented repository sources into public
@@ -254,6 +257,13 @@ same failure updates the alert instead of creating another, and an alert
 clears when the failure resolves. Each new alert posts once to the configured
 notification channel, and `arcadia production status` lists open Red Alerts
 before every other section.
+
+Each alert episode also gets an evidence bundle, a directory beside the
+evidence file that a replay fixture can be cut from: the verdict, its report and
+saved prompt for a review stop, the worker log tail, and for a stalled Session a
+process tree plus `lsof` and `sample` of any child older than 5 seconds. Capture
+only reads, is scrubbed of secret shapes, is bounded in time and size, runs
+outside any database transaction, and writes down what it could not capture.
 
 Detection makes no model call. An optional, workspace-flagged diagnosis
 (`redAlertDiagnosis.enabled`, off by default) runs at most once per alert

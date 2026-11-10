@@ -1,0 +1,29 @@
+{
+ "agent_ask": "v1",
+ "request_id": "decision-arcadia-bug-first-slice-v2-20261109",
+ "project": "arcadia",
+ "intent": "decision",
+ "requested_authority": "propose",
+ "gate_question": "reasonable_disagreement",
+ "desired_result": "Choose the first slice of arcadia bug: dedupe-only intake (A), intake plus automatic promotion of recurring arcadia learn lessons (B), or nothing now (C).",
+ "rationale": "Issue #2379 lists A and B as the operator's choice. A reasonable person could pick B to close the gap that made the record run's lessons depend on memory. Recommendation A: promotion is an unattended writer over noisy input and should wait until the matcher is calibrated on real traffic; B's two Actions are drafted and reuse A's key and matcher unchanged. Revival trigger for B under A: after one weekly triage cycle with arcadia bug live, at least 3 recurring lessons without an Issue and no more than 1 false merge in A's receipts. Companion plan Ask: plan-arcadia-bug-intake-slice-a-v2-20261109. Memo: docs/reports/arcadia-bug-intake-plan-20261109/memo.md Supersedes preview decision-arcadia-bug-first-slice-20261109 (receipt agentask_eb791d9b6b481f1080); answer only this v2. Under A or B, a recurrence of a completed Issue is filed as a new Issue naming the closed one; reopening waits until the operator states reopen is routine intake.",
+ "references": [
+  "https://github.com/pmark/arcadia/issues/2379",
+  "docs/reports/arcadia-bug-intake-plan-20261109/memo.md"
+ ],
+ "options": [
+  {
+   "label": "A. Dedupe-only intake first (6 Actions, zero model calls)",
+   "recommended": true,
+   "consequence": "Agents stop hand-searching Issues once the guidance Action merges; about 1.5 to 2 sessions of build. A recurring lesson still becomes an Issue only when an agent files it. B revives on its named trigger and reuses A unchanged."
+  },
+  {
+   "label": "B. A plus automatic promotion of recurring lessons (8 Actions)",
+   "consequence": "Recurring lessons become Issues without anyone remembering to file them, for roughly a third more build. Adds a writer with no caller in the loop over inferences and low-confidence observations before the matcher is calibrated; a false merge or Issue flood lands on a 357-Issue backlog that triage is still shrinking."
+  },
+  {
+   "label": "C. Do nothing now",
+   "consequence": "No build cost. Hand searching and duplicates continue at about 30 bug-shaped Issues a week; Decision 0121's utility stays unbuilt and the operator's 2026-11-09 request stays open."
+  }
+ ]
+}

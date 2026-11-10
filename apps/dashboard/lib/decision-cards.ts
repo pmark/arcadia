@@ -199,6 +199,27 @@ export function encodeIdPart(value: string): string {
   return out;
 }
 
+/** The inverse of {@link encodeIdPart}; null for anything that function could not have produced. */
+export function decodeIdPart(part: string): string | null {
+  const bytes: number[] = [];
+  for (let index = 0; index < part.length; index += 1) {
+    if (part[index] === "_") {
+      const hex = part.slice(index + 1, index + 3);
+      if (!/^[0-9a-f]{2}$/.test(hex)) return null;
+      bytes.push(Number.parseInt(hex, 16));
+      index += 2;
+    } else {
+      bytes.push(part.charCodeAt(index));
+    }
+  }
+  try {
+    const decoded = new TextDecoder("utf-8", { fatal: true }).decode(new Uint8Array(bytes));
+    return decoded !== "" && encodeIdPart(decoded) === part ? decoded : null;
+  } catch {
+    return null;
+  }
+}
+
 export function decisionCardKey(projectSlug: string, decisionId: string): string {
   // The literal "k" component keeps the key starting with a letter (the card-id grammar) without breaking injectivity.
   return `k.${encodeIdPart(projectSlug)}.${encodeIdPart(decisionId)}`;

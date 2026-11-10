@@ -1,3 +1,4 @@
+import type { LaunchSpendDeps } from "../spend/spendGuard.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -18,6 +19,7 @@ import { listProjectsInSchedulingOrder, recordFailedRun, runSchedulingPass, type
 import { getSchedulingProject } from "../scheduling/store.js";
 import { git, isAncestor, projectCheckoutFor, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { syncBaseWithOwnPointerCommits } from "../git/pointerReconcile.js";
+import { markCaughtUpWorkerMerges } from "./workerMerge.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
@@ -123,6 +125,8 @@ export interface ManagedProductionTickOptions {
   agentWorktreeRoot?: string;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
+  /** Seams for the launch spend check (a fixed report in replays and tests); omitted, the real host probes run and only clear launches. */
+  spendCheck?: LaunchSpendDeps;
   /**
    * Pre-launch Session capability preflight (workspace write, host validation,
    * preservation). Any wall refuses the launch before a Session is prepared, so
@@ -793,8 +797,25 @@ function attemptAutomaticPlanningResolution(
   input: { workspace: string; profiles: CodingAgentProfile[] },
   transition: ProjectTransition,
   actionKey: string,
-  log: (message: string) => void
+  log: (message: string) => void,
+  /**
+   * Set when the refused packet is bound to a provider the Active policy does
+   * not permit (Issue #2217): its replacement is prepared only under a
+   * policy-permitted profile, and the old packet's still-open approval
+   * Decision (if any) is rejected as superseded, never approved.
+   */
+  providerMismatch?: { decisionId: string | null }
 ): string | null {
+  // Issue #2217: with production Off (including an Off committed while this
+  // tick was already running) no policy names the permitted providers, so the
+  // selector below would fall back to the registry default and bind an
+  // immutable packet the next grant may refuse forever. Preparation waits for
+  // the Active tick, whose policy chooses the provider.
+  const policyNow = readProductionPolicySafely(db);
+  if (policyNow.status !== "ok" || policyNow.policy.desiredState !== "active") {
+    log(`Production is Off; not preparing a build packet for ${actionKey} until an Active policy names its permitted providers.`);
+    return PREPARATION_DEFERRED_WHILE_OFF;
+  }
   const context = transition.dispatch.context;
   if (!context) {
     return null;
@@ -812,6 +833,11 @@ function attemptAutomaticPlanningResolution(
   const requestedProfile = predictedPurpose
     ? selectPolicyPermittedProfileName(db, input.profiles, predictedPurpose, resolveWorkItemPolicyIdentity(db, workItem)) ?? undefined
     : undefined;
+  if (providerMismatch && (predictedPurpose !== "build" || !requestedProfile)) {
+    // Nothing the Active policy permits can carry this build: re-planning
+    // would only bind the same refused default again.
+    return null;
+  }
   // The planner is a separately identified, read-only helper attempt (it
   // writes packet records, never the candidate), reached only after the
   // deterministic launch preview reported `planning_required`. Being called
@@ -824,7 +850,12 @@ function attemptAutomaticPlanningResolution(
   const now = new Date();
   try {
     const planned = runHelperAttempt(db, { role: "planner", requirement, actorId: "host-planner:work-plan", retryAuthorized: true, rerunPassed: true, now }, () => {
-      const prepared = runWorkPlanCommand({ workspace: input.workspace, workId: workItem.id, agentProfile: requestedProfile });
+      const prepared = runWorkPlanCommand({
+        workspace: input.workspace,
+        workId: workItem.id,
+        agentProfile: requestedProfile,
+        ...(providerMismatch ? { replaceProfileMismatchedPacket: true } : {})
+      });
       const invocation = prepared.data.buildInvocation ?? prepared.data.codexInvocation;
       const kind = prepared.data.buildInvocation ? "build_packet_ready" : prepared.data.planningDecision ? "planning_approval_pending" : null;
       return { outcome: kind !== null ? "passed" as const : "inconclusive" as const, receipt: { kind, invocationId: invocation?.id ?? null, promptPath: invocation?.prompt_path ?? null } };
@@ -840,6 +871,12 @@ function attemptAutomaticPlanningResolution(
     if (planned.replayed) {
       log(`The planner attempt for ${actionKey} already finished for this exact Action input (${planned.attempt.status}); not re-running it.`);
       return null;
+    }
+    if (planned.receipt.kind === "build_packet_ready" && providerMismatch) {
+      supersedeProviderMismatchedPacketApproval(db, providerMismatch.decisionId, planned.receipt.invocationId, requestedProfile!, log);
+      log(`Replaced the build packet for ${actionKey}, which was bound to a provider the active production policy does not permit, `
+        + `with one bound to ${requestedProfile}; it still needs its own build-packet approval.`);
+      return "build_packet_ready";
     }
     if (planned.receipt.kind === "build_packet_ready") {
       log(`Automatically prepared a build packet for ${actionKey} (was planning_required); it still needs its own build-packet approval.`);
@@ -857,6 +894,51 @@ function attemptAutomaticPlanningResolution(
     }
     log(`Automatic planning_required resolution failed for ${actionKey}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
+  }
+}
+
+/**
+ * Returned by planning resolution when production is Off: nothing was
+ * prepared, and nothing is escalated, because the next Active tick prepares
+ * it under the policy that will admit it (Issue #2217).
+ */
+const PREPARATION_DEFERRED_WHILE_OFF = "preparation_deferred_while_off";
+
+/**
+ * Escalation kind for a packet bound to a provider the Active policy does not
+ * permit when no permitted replacement could be prepared (Issue #2217). Its
+ * remedy is the policy/provider mismatch itself, never an approval tap.
+ */
+const PROVIDER_NOT_PERMITTED_ESCALATION = "provider_not_permitted";
+
+/**
+ * Rejects the still-open approval Decision of a build packet that was just
+ * replaced because its provider is not permitted (Issue #2217), so Review
+ * never offers an approval that could not launch. An approved, rejected or
+ * missing Decision, or one that belongs to the replacement packet, is left
+ * exactly as it is.
+ */
+function supersedeProviderMismatchedPacketApproval(
+  db: Database.Database,
+  decisionId: string | null,
+  replacementInvocationId: string | null,
+  replacementProfile: string,
+  log: (message: string) => void
+): void {
+  if (!decisionId) return;
+  try {
+    const item = getReviewItem(db, decisionId);
+    if (!item || item.resolved_intent !== "CodexBuildPacketApproval" || (item.status !== "open" && item.status !== "deferred")) return;
+    if (!item.codex_invocation_id || item.codex_invocation_id === replacementInvocationId) return;
+    updateReviewItemStatus(db, item.id, {
+      status: "rejected",
+      decisionNote: `Superseded by the managed-production tick: this build packet is bound to a provider the active production policy does not permit, `
+        + `so it could never launch. Replaced by build packet ${replacementInvocationId ?? "(new)"} bound to ${replacementProfile}, which needs its own approval.`
+    });
+    log(`Rejected superseded build packet Decision ${item.id} (its packet's provider is not permitted by the active production policy).`);
+  } catch (error) {
+    // Advisory cleanup: the replacement packet is already the one the launch preview uses.
+    log(`Could not reject superseded build packet Decision ${decisionId}: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -1070,6 +1152,10 @@ function outOfScopePointerHold(
  * done and the pointer has moved out of scope, so the worker will never
  * launch again under this policy. One attention ping per policy revision (an
  * event row is the dedup record) tells the operator to turn production Off.
+ *
+ * A Plan whose last Action just merged has no `current_action` at all (Issue
+ * #2273), so there is no pointer to read: a null `planSlug` names the Project's
+ * checked-in `active_plan`, and the same every-in-scope-Action-done test decides.
  */
 function announceScopeComplete(
   db: Database.Database,
@@ -1077,10 +1163,14 @@ function announceScopeComplete(
 ): void {
   try {
     const read = readProductionPolicySafely(db);
-    if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope || input.planSlug === null) return;
+    if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return;
     const scopeKeys = read.policy.scope.actions.filter((key) => key.startsWith(`${input.projectSlug}/`));
     if (scopeKeys.length === 0) return;
-    const plan = discoverDocs(input.repoRoot).docs.find((doc) => doc.type === "plan" && doc.project === input.projectSlug && doc.slug === input.planSlug);
+    const docs = discoverDocs(input.repoRoot).docs;
+    const projectDoc = docs.find((doc) => doc.type === "project" && doc.slug === input.projectSlug);
+    const planSlug = input.planSlug ?? (projectDoc?.type === "project" ? projectDoc.activePlan : null) ?? null;
+    if (planSlug === null) return;
+    const plan = docs.find((doc) => doc.type === "plan" && doc.project === input.projectSlug && doc.slug === planSlug);
     if (plan?.type !== "plan") return;
     const done = new Set(plan.actions.filter((action) => action.status === "done").map((action) => `${input.projectSlug}/${action.id}`));
     if (!scopeKeys.every((key) => done.has(key))) return;
@@ -2527,6 +2617,7 @@ function attemptReviewRepairLaunch(
           capacityObservation: input.options.capacityObservation,
           agentWorktreeRoot: input.options.agentWorktreeRoot,
           providerSignIn: input.options.providerSignIn,
+          spendCheck: input.options.spendCheck,
           workerCapability: ownWorkerCapability(input.options),
           onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
         });
@@ -2548,6 +2639,9 @@ function attemptReviewRepairLaunch(
     const code = error instanceof ArcadiaError && typeof error.details?.code === "string" ? error.details.code : null;
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof ArcadiaError && error.details?.conflict) {
+      // A spend refusal (risk or unknown) is durable like any launch blocker: record it, exactly as the ordinary launch
+      // path does. It is not a failed repair attempt, and liveness owns paging, so no ping here.
+      recordSpendLaunchBlocker(db, { projectSlug: input.projectSlug, code, reason: message, actionKey, at: input.now });
       const line = `Review repair launch refused for ${actionKey}${code ? ` [${code}]` : ""}: ${message}`;
       if (recordLaunchRefusalIfNew(db, actionKey, `review-repair:${code ?? message}`, line, input.now)) input.log(line);
       return { attempted: true, outcome: "refused", reason: message, actionKey };
@@ -2591,6 +2685,12 @@ function attemptProjectLaunch(
   }
 
   let transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux, supersededCompletionAskIds: resumedSessionSupersededAskIds(db, input.repoRoot, input.projectSlug, input.tmux) });
+  // Issue #2273: a Plan whose last Action merged names no Action, so neither the
+  // out-of-scope-pointer branch below nor any later one is reached. Announce before
+  // the successor-activation attempt, which an Active scope over this Plan holds.
+  if (!transition.dispatch.context) {
+    announceScopeComplete(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, planSlug: null, now: input.now, log: input.log });
+  }
   if (transition.kind === "activate" && transition.activation?.candidate) {
     // Decision 0048: the active Plan cannot continue, but the explicit queue
     // names exactly one approved Plan and Action. Activate it in this same tick
@@ -2849,6 +2949,7 @@ function attemptProjectLaunch(
       capacityObservation: input.options.capacityObservation,
       agentWorktreeRoot: input.options.agentWorktreeRoot,
       providerSignIn: input.options.providerSignIn,
+          spendCheck: input.options.spendCheck,
       // The launch re-runs the same preflight with the selected profile's
       // sandbox, which this tick's profile-less preflight cannot see.
       workerCapability: ownWorkerCapability(input.options),
@@ -2893,7 +2994,8 @@ function attemptProjectLaunch(
       const claudeUsageRemedy = claudeUsageUnreadable
         ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) The worker asks the Claude CLI to refresh its own sign-in at most every 30 minutes; if that keeps failing, sign in to Claude Code again on this host.`
         : null;
-      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing") {
+      // A spend refusal (risk or unknown) is durable for the same reason: only a fix on the host clears it.
+      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing" || rawCode === "spend_risk" || rawCode === "spend_unknown") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
       } else if (claudeUsageRemedy) {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode!, reason: `${error.message} ${claudeUsageRemedy}`, actionKey, at: input.now });
@@ -2923,6 +3025,8 @@ function attemptProjectLaunch(
         // A signed-out or expired provider login is the operator's to fix on the
         // host: ping once per refusal episode (the refusal log dedupes the episode,
         // the ping queue dedupes the message), naming the provider and remedy.
+        // Spend risk records the durable blocker above but never pings here: the liveness
+        // timer owns spend paging (one page per verified episode), so one episode pages once.
         if (rawCode === "provider_not_signed_in" || claudeUsageRemedy) {
           try {
             queueOperatorPing(db, {
@@ -2941,7 +3045,11 @@ function attemptProjectLaunch(
         }
       }
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
-      if (packetLifecycleKind === "build_packet_approval_pending") {
+      // Issue #2217: the existing packet is bound to a provider the Active
+      // policy does not permit. Its provider is immutable, so approving it can
+      // never launch; it is replaced instead (below), never approved here.
+      const providerMismatchedPacket = rawCode === "provider_not_permitted" && error.details?.packetProviderNotPermitted === true;
+      if (packetLifecycleKind === "build_packet_approval_pending" && !providerMismatchedPacket) {
         const approved = attemptDelegatedPacketApproval(db, {
           actionKey,
           projectSlug: input.projectSlug,
@@ -2973,6 +3081,18 @@ function attemptProjectLaunch(
       const supersededPacket = packetLifecycleKind === "stale_packet" && error.details?.packetLifecycleSupersededInput === true;
       const resolvedLifecycleKind = rawCode === "no_validation_commands"
         ? null
+        : providerMismatchedPacket
+          ? attemptAutomaticPlanningResolution(
+              db,
+              { workspace: input.workspace, profiles: input.options.profiles },
+              transition,
+              actionKey,
+              input.log,
+              { decisionId: typeof error.details?.packetLifecycleDecisionId === "string" ? error.details.packetLifecycleDecisionId : null }
+            )
+              // No permitted replacement could be prepared: the refusal is the
+              // provider mismatch itself, never a packet approval to tap.
+              ?? (packetLifecycleKind === "build_packet_approval_pending" ? PROVIDER_NOT_PERMITTED_ESCALATION : packetLifecycleKind)
         : packetLifecycleKind === "planning_required" || supersededPacket
           ? attemptAutomaticPlanningResolution(
               db,
@@ -3000,8 +3120,8 @@ function attemptProjectLaunch(
         ? ENVIRONMENT_WALL_ESCALATION_KIND
         : rawCode === "no_validation_commands" || (rawCode !== null && ATTEMPT_LINEAGE_ESCALATIONS.has(rawCode))
         ? rawCode
-        : resolvedLifecycleKind === PLANNER_ATTEMPTS_EXHAUSTED
-          ? PLANNER_ATTEMPTS_EXHAUSTED
+        : resolvedLifecycleKind === PLANNER_ATTEMPTS_EXHAUSTED || resolvedLifecycleKind === PROVIDER_NOT_PERMITTED_ESCALATION
+          ? resolvedLifecycleKind
           : resolvedLifecycleKind && (NON_SELF_RESOLVING_PACKET_LIFECYCLE_KINDS.has(resolvedLifecycleKind)
               || (supersededPacket && resolvedLifecycleKind === "stale_packet"))
             ? resolvedLifecycleKind
@@ -3013,6 +3133,8 @@ function attemptProjectLaunch(
           ? developmentLineageRemedy(rawCode, error.details)
           : escalationKind === PLANNER_ATTEMPTS_EXHAUSTED
           ? PLANNER_ATTEMPTS_EXHAUSTED_REMEDY
+          : escalationKind === PROVIDER_NOT_PERMITTED_ESCALATION
+          ? prerequisites?.find((entry) => entry.startsWith("provider not permitted")) ?? null
           : rawCode === "no_validation_commands"
           ? prerequisites?.find((entry) => entry.startsWith("no validation commands")) ?? null
           : typeof error.details?.packetLifecycleRemedy === "string"
@@ -3030,9 +3152,10 @@ function attemptProjectLaunch(
         if (newlyDetected) {
           input.log(`Escalated ${actionKey} to the operator (${escalationKind}): ${shownRemedy ?? error.message}`);
         }
-      } else if (rawCode === ENVIRONMENT_WALL_TRANSIENT_CODE) {
+      } else if (rawCode === ENVIRONMENT_WALL_TRANSIENT_CODE || resolvedLifecycleKind === PREPARATION_DEFERRED_WHILE_OFF) {
         // Still refused, only rechecking: keep any recorded escalation, exactly
-        // as the tick-side transient branch does; a launch clears it.
+        // as the tick-side transient branch does; a launch clears it. An Off
+        // committed mid-tick is the same kind of wait (Issue #2217).
       } else if (!escalateStalledPlanningGate(db, {
         actionKey,
         projectSlug: input.projectSlug,
@@ -3457,6 +3580,13 @@ export function detectBaseBranchAdvance(
       input.log(`Fast-forwarded ${input.projectSlug}'s checkout ${input.repoRoot} onto origin/${baseBranch}: ${headBefore} -> ${headAfter} (managed production keeps an in-scope checkout on its remote; pause the Project or narrow the policy scope to hold a local reset).`);
     }
   }
+  try {
+    for (const row of markCaughtUpWorkerMerges(db, { repoRoot: input.repoRoot, baseBranch, now: input.now })) {
+      input.log(`Worker merge of ${row.pull_request_url ?? row.head} now landed: ${baseBranch} contains ${row.head.slice(0, 12)} (was refused base_not_synced).`);
+    }
+  } catch (error) {
+    input.log(`Could not catch up refused worker merge rows: ${error instanceof Error ? error.message : String(error)}`);
+  }
   const newSha = git(input.repoRoot, ["rev-parse", baseBranch]).trim();
   const at = input.now.toISOString();
 
@@ -3589,6 +3719,16 @@ export interface LaunchBlockerRecord {
  * existing only as a line in the worker log. Overwrites any prior blocker for
  * the same Project: only the current reason is durable, not a history.
  */
+/** Records a launch blocker for a spend refusal (`spend_risk` or `spend_unknown`) only; no repair attempt and no ping. Returns whether it recorded. */
+export function recordSpendLaunchBlocker(
+  db: Database.Database,
+  input: { projectSlug: string; code: string | null; reason: string; actionKey: string | null; at: Date }
+): boolean {
+  if (input.code !== "spend_risk" && input.code !== "spend_unknown") return false;
+  recordLaunchBlocker(db, { ...input, code: input.code });
+  return true;
+}
+
 function recordLaunchBlocker(
   db: Database.Database,
   input: { projectSlug: string; code: string; reason: string; actionKey: string | null; at: Date }

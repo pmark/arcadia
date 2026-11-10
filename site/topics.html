@@ -1,0 +1,75 @@
+---
+layout: default
+title: Topic Atlas
+summary: Explore the themes running through the Arcadia Field Notes.
+permalink: /tags/
+---
+{% assign topics = site.tags | sort %}
+<div class="topic-atlas">
+  <section class="atlas-plate" id="topic-cloud" aria-labelledby="atlas-title">
+    <svg class="atlas-contours" viewBox="0 0 600 400" fill="none" aria-hidden="true">
+      <g class="atlas-contour-lines">
+        <path d="M632 5C530-38 418-13 378 54s-13 119-82 153-122 21-169 66-29 95-76 142"/>
+        <path d="M636 26C550-13 447 8 408 66s-20 119-88 157-120 28-160 70-22 84-67 127"/>
+        <path d="M634 49C559 15 479 31 439 82s-28 114-93 155-114 33-154 73-21 73-59 111"/>
+        <path d="M636 72C573 45 509 54 467 99s-34 113-94 152-113 38-149 75-21 64-53 95"/>
+        <path d="M631 98c-52-24-101-16-137 22s-39 104-96 145-104 41-138 74-22 58-49 85"/>
+        <path d="M636 126c-48-21-79-16-112 17s-42 99-98 138-102 46-132 78-14 39-42 64"/>
+        <path d="M637 155c-34-19-62-7-84 16s-47 94-97 127-99 51-119 79-21 35-40 51"/>
+        <path d="M639 184c-31-16-52-4-67 14s-48 83-88 112-92 48-110 70-24 36-38 47"/>
+      </g>
+      <path class="atlas-route" d="M285 367c44-13 51-61 99-65s86-41 109-82 43-65 96-85"/>
+      <path class="atlas-point" d="m384 294 8 8-8 8-8-8zm109-82 8 8-8 8-8-8zm96-85 8 8-8 8-8-8z"/>
+    </svg>
+    <header class="atlas-heading">
+      <p class="field-label"><span class="field-seal" aria-hidden="true"></span> Field Notes / Topic index</p>
+      <h1 id="atlas-title">Topic Atlas</h1>
+      <p>Follow a thread through the dispatches from Arcadia.</p>
+    </header>
+    {% if topics.size > 0 %}
+    <nav class="atlas-navigation" aria-label="Browse by topic">
+      <ul class="topic-cloud">
+        {% for topic in topics %}
+          {% assign label = topic[0] | replace: '-', ' ' | capitalize %}
+          {% assign count = topic[1] | size %}
+          <li style="--topic-weight: {{ count | at_most: 6 }}">
+            <a href="#tag-{{ topic[0] | escape }}" aria-label="{{ label | escape }}, {{ count }} {% if count == 1 %}dispatch{% else %}dispatches{% endif %}">
+              {{ label | escape }} <span class="topic-count">{{ count }}</span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="atlas-legend">{{ topics.size }} topics across {{ site.posts.size }} dispatches. Bigger labels mark busier topics.</p>
+    </nav>
+    {% else %}
+    <p class="atlas-legend">Topics will appear as dispatches are published.</p>
+    {% endif %}
+  </section>
+
+  {% if topics.size > 0 %}
+  <section class="topic-archive" aria-labelledby="topic-archive-title">
+    <div class="topic-archive-heading">
+      <h2 id="topic-archive-title">Dispatches by topic</h2>
+      <a href="#topic-cloud">Back to the cloud ↑</a>
+    </div>
+    <div class="topic-groups">
+      {% for topic in topics %}
+        {% assign label = topic[0] | replace: '-', ' ' | capitalize %}
+        {% assign count = topic[1] | size %}
+        <section class="topic-group" id="tag-{{ topic[0] | escape }}" tabindex="-1" aria-labelledby="topic-title-{{ topic[0] | escape }}">
+          <p class="eyebrow">{{ count }} {% if count == 1 %}dispatch{% else %}dispatches{% endif %}</p>
+          <h3 id="topic-title-{{ topic[0] | escape }}">{{ label | escape }}</h3>
+          <ul>
+            {% for post in topic[1] %}
+            <li>
+              <a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+              <time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %b %Y" }}</time>
+            </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</div>

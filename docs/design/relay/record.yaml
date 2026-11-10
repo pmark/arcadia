@@ -136,6 +136,21 @@ frame:
         - M1
         - M3
       proof: Playwright at phone, keyboard-height and desktop sizes, the operator using it on their phone, and a schema test that answers, blocks and cues carry no layout, markup or URL fields.
+    - id: REQ-019
+      status: proposed
+      statement: While production is Active, the operator can find and press Off from any Workspace view in one step, and asking Relay how to stop answers with that same control. Afterwards the view shows production Off with its revision, and the operator never needs to ask anyone how.
+      mission:
+        - M3
+        - M4
+        - M5
+      proof: A Playwright test from every Workspace route, while production is Active, shows the Off control, presses it once, and sees Inactive with the new revision; the same test with the status read failing still shows the control and lets it be pressed, and the new revision shows once the read is restored; a Relay test where "how do I stop this?" returns the control rather than instructions or an action Relay takes itself; and the operator finding it unaided on their phone.
+    - id: REQ-020
+      status: proposed
+      statement: An operator's approval is given once, on a surface that records its exact scope (the PRs, cards or steps it names) and its end (expiry, or what voids it), and any session or Relay view inside that scope can read the record. A sentence relayed from another session never counts as approval, and no one relies on an approval whose record they cannot see.
+      mission:
+        - M3
+        - M4
+      proof: A test where a successor session, given only the record, finds an approval for each PR it names and none for a PR it does not; a relayed message that quotes an approval is not counted, and neither is a record in which a session copied a relayed approval, which the successor rejects; an expired or voided approval is shown as ended before it is relied on; and the operator, over a night with two session handoffs, never repeating a word they already gave.
   non_goals:
     - Replacing governance. Decisions, Agent Asks and approval gates remain the only path to changing state.
     - Speaking in a group or to a client before a Decision allows it.
@@ -323,7 +338,7 @@ sources:
     added: 2026-11-03
     retention: repo
     path: workspace-layers.md
-    sha256: 44f610b8680982bb03fe0b36fb730a1ac6662f9715f9a4a946fe99dd8f479ef4
+    sha256: c0edc212c6c4a1796dbfe671ba0b31ddb68a0c614bfc7b17ebf8a38a6410207c
   - id: S029
     title: Operator's approval of the layer design
     kind: operator
@@ -345,6 +360,34 @@ sources:
     retention: repo
     path: sources/S031-responsive-symbolic-default.md
     sha256: 8664ef94879f8dde09126e261b35d68cd9ace5590085877f207dbc29cebc443d
+  - id: S032
+    title: Operator's phone test of item 2, and the go-ahead for item 3
+    kind: operator
+    added: 2026-11-05
+    retention: repo
+    path: sources/S032-start-weather-rhythm.md
+    sha256: 6eb0aaddc946328e2bf662955ac44a52ffcaacd8ab7ebba5f6c569dd6d983c7b
+  - id: S033
+    title: Operator's direction for overnight progress
+    kind: operator
+    added: 2026-11-05
+    retention: repo
+    path: sources/S033-overnight-progress.md
+    sha256: 850244ab7fd4f6e164e16703b6f0efb10f1ed68b28ab6d4ed877f8109cbde714
+  - id: S034
+    title: Operator on finding the production Off control
+    kind: operator
+    added: 2026-11-07
+    retention: repo
+    path: sources/S034-where-is-the-off-button.md
+    sha256: 98cf7aea5b0a9c06a7e857081f70b37841927e0d1db86542c0f2c60e757d279c
+  - id: S035
+    title: Operator approvals during the record run, and why they did not carry
+    kind: operator
+    added: 2026-11-08
+    retention: repo
+    path: sources/S035-approvals-do-not-carry.md
+    sha256: 58cb209afe151d2a6c32dcbcf343834ebe44d74352edb2ad8660dfb23e80bd29
   - id: S026
     title: Arcadia conversational workspace UX design specification
     kind: agent
@@ -3114,14 +3157,14 @@ concepts:
       - source: S030
         locator: activity indication
     fit:
-      status: missing
+      status: partial
       evidence:
-        - apps/dashboard/components/workspace/workspace-view.tsx
+        - apps/dashboard/components/workspace/workspace-activity.tsx
     position: leaning
     serves:
       - REQ-010
       - REQ-017
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Tap feedback is merged, and routes extend it in PR 2107. Awaits the operator approving the revision.
   - id: C-078
     title: "Routes as the symbolic context layer"
     kind: interface
@@ -3139,7 +3182,7 @@ concepts:
     serves:
       - REQ-015
       - REQ-016
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Built in PR 2107 because the operator asked for overnight progress (S033), and not yet judged on a phone. Awaits the operator approving the revision.
   - id: C-079
     title: "Weather with rhythm"
     kind: interface
@@ -3147,15 +3190,19 @@ concepts:
     origins:
       - source: S030
         locator: dust storm
+      - source: S032
+        locator: Start item 3
     fit:
-      status: conflicts
+      status: exists
       evidence:
+        - apps/dashboard/lib/weather-rhythm.ts
         - apps/dashboard/lib/system-sky.ts
         - apps/dashboard/components/workspace/sky/weather.ts
+        - docs/design/relay/probes/weather-1.md
     position: leaning
     serves:
       - REQ-015
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Built because the operator started item 3 (S032). The operator hasn't yet judged it on a phone, and the rest of the revision still awaits approval.
   - id: C-080
     title: "One question at a time, answered in place"
     kind: interface
@@ -3170,7 +3217,7 @@ concepts:
     position: leaning
     serves:
       - REQ-004
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Not built. PR 2109 lightens the Decision page, and answers stay on the To-do page. Moving them into Relay needs a Decision.
   - id: C-081
     title: "Open Relay is modal"
     kind: interface
@@ -3185,7 +3232,7 @@ concepts:
     position: leaning
     serves:
       - REQ-017
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Built in PR 2101 because the operator asked for overnight progress (S033), and not yet judged on a phone. Awaits the operator approving the revision.
   - id: C-082
     title: "A light status read"
     kind: interface
@@ -3194,14 +3241,14 @@ concepts:
       - source: S030
         locator: slow, dense, unresponsive
     fit:
-      status: conflicts
+      status: exists
       evidence:
-        - apps/dashboard/components/workspace/sky/system-status.tsx
+        - apps/dashboard/lib/workspace-status.ts
     position: leaning
     serves:
       - REQ-015
       - REQ-010
-    reason: Awaits the operator approving the revision after the phone test.
+    reason: Merged in PR 2077. Awaits the operator approving the revision.
 choices:
   - id: CH-01
     question: One conversation record, or one per Project?

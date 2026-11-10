@@ -18,6 +18,17 @@
  *   the pull request declares is in it, below the GitHub CLI's 100-file and
  *   100-commit caps.
  *
+ * What this text parser cannot do alone: format-patch writes a commit message
+ * verbatim, so a message can hold `---`, a diffstat and a whole `diff --git`
+ * entry with a self-computed blob id, indistinguishable from a real one. A
+ * forged entry only ever adds to the commit's real ones, so
+ * {@link checkGovernedRecords}, whose Verified facts a reviewer relies on,
+ * also requires each commit's entries to be exactly the files its Git object
+ * changes ({@link CommitObjectFiles}). The not-applicable classifier does not
+ * (it has no such evidence): a forged entry cannot hide a real code file from
+ * it, but could excuse a real shape-limited change, which the same reviewer
+ * backstops named below still judge.
+ *
  * Anything else (code, scripts, workflows, configuration, manifests,
  * authority-bearing or agent-instruction documents, any dot directory, an
  * executable or symlink mode, binaries, an unparseable header or hunk, a
@@ -30,6 +41,20 @@
  * on such a docs-only patch, a review summary that does). That naming rule is
  * verdict-level and only anchors the claims to this patch: the per-file
  * classification above alone decides whether any claim can be accepted.
+ *
+ * The Plan-completing settlement (#2270) is a verified shape only with the
+ * commit's parent revision of PROJECT.md and the Plan (`parentDocuments`):
+ * one Plan, the active one, completed at its current Action with every other
+ * Action already done or deferred. The commit's hunks are applied to the
+ * parent's text (they must apply exactly), both sides are read with the
+ * repository's own YAML front-matter parser, and the parsed change must be
+ * exactly that: no body change, no other key, Action or PROJECT.md change. A
+ * second Plan with the same slug and project is not visible from one Plan's
+ * evidence, and the `updated:` date is not compared. Residual there: the
+ * evidence is the commit's parent, not the merge result, so an Action added to
+ * the Plan on the base branch after the branch point is not seen; and a Plan
+ * whose other Actions are deferred only by a Decision, or that has a queued
+ * successor, stays refused.
  *
  * Residual: a forged attestation can still make shape-limited governed edits
  * pass this check (add Agent Ask data files or archive them, by rename or as a
@@ -54,6 +79,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { parse as parseYaml } from "yaml";
 import { autoSettleRequestId } from "../ask/autoSettleRequestId.js";
 
 export type PatchFileClass =
@@ -87,7 +113,35 @@ export interface PatchEvidence {
    * only by callers that classify a patch without pull-request evidence.
    */
   declaredCommits?: readonly string[] | null;
+  /**
+   * What each commit's own Git object changes, by full commit id; null or
+   * omitted when it could not be read. {@link checkGovernedRecords} verifies
+   * nothing without it.
+   */
+  commitFiles?: CommitObjectFiles | null;
+  /**
+   * Governed documents (`PROJECT.md`, `docs/plans/*.md`) as they stood at each
+   * commit's first parent, by full commit id then path, read from the Git
+   * object. A Plan-completing settlement (the last Action done, the Plan
+   * `complete`, `current_action` removed) is a verified shape only with it:
+   * the patch cannot show that every other Action was already done. Null,
+   * omitted or missing an entry leaves that shape refused (fail closed).
+   */
+  parentDocuments?: ParentDocuments | null;
 }
+
+export type ParentDocuments = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
+/** One file a commit changes, read from the commit's Git object rather than from patch text, so no commit message reaches it. */
+export interface CommitObjectFile {
+  path: string;
+  /** The path it was renamed or copied from, when the object read reports one. */
+  previousPath: string | null;
+  /** The file's full blob id: the new one, or the old one for a deletion. */
+  blob: string | null;
+}
+
+export type CommitObjectFiles = Readonly<Record<string, readonly CommitObjectFile[]>>;
 
 export interface NotApplicableClaim {
   criterion: string;
@@ -175,6 +229,178 @@ function boundaryProblems(commits: ParsedCommit[]): string[] {
 }
 
 export function classifyPatchApplicability(patch: string, evidence: PatchEvidence = {}): PatchApplicability {
+  return analyzePatch(patch, evidence).applicability;
+}
+
+/** One governed-record fact as Arcadia's check found it, on this exact patch. */
+export interface GovernedRecordFact {
+  verified: boolean;
+  /** Which thing the fact is about: a request id or a path. Untrusted patch text; encode it when shown. */
+  subject: string;
+  /** What was or was not established. Host wording around untrusted text. */
+  detail: string;
+}
+
+/** What the deterministic check establishes about a patch's governed records, for a reviewer who cannot recompute it. */
+export interface GovernedRecordCheck {
+  /** Patch-level reasons nothing here can be verified (the facts then all read not verified). */
+  problems: string[];
+  /** The Agent Ask ids the Plan's completed next_action and the Mission Log cite. */
+  citations: GovernedRecordFact[];
+  /** Each Ask file under `.arcadia/asks/archive/` the patch adds. */
+  archives: GovernedRecordFact[];
+  /** Each commit presenting itself as a review repair's retirement of a completion draft. */
+  retirements: GovernedRecordFact[];
+  /** Each governed-record path the patch touches, against its allowed shape. */
+  shapes: GovernedRecordFact[];
+}
+
+const AUTO_SETTLE_CITATION = /\bauto-settle-[A-Za-z0-9][\w.-]*[\w-]/g;
+
+/**
+ * Runs the classifier's own checks and reports them per fact, so a review that
+ * makes no not-applicable claim is told what was actually established instead
+ * of being told it is. Nothing here is a second derivation: citations use the
+ * same carried Asks and `autoSettleRequestId`, archives the same split-archive
+ * recognition, retirements the same commit recognition, shapes the same
+ * per-path classification. Fails closed: any patch-level problem (a merge
+ * commit GitHub's patch omits, an unreadable commit list, a truncated list, a
+ * commit's entries differing from its Git object) leaves every fact not
+ * verified. A verified fact is about files the commit objects really change,
+ * and never that a real settlement wrote them: a governed marker, a retirement
+ * trailer and the `From:` header are still text a Session can write, so a
+ * forged commit of the same shape verifies too, as the module header says. It
+ * also holds at the head, since a reviewer reads it as a statement about the
+ * candidate: any later commit touching the record it is about leaves it not
+ * verified, naming that commit, whether or not that commit is itself in shape.
+ */
+export function checkGovernedRecords(patch: string, evidence: PatchEvidence = {}): GovernedRecordCheck {
+  const { commits, files, applicability, shapes, retired, splitArchives } = analyzePatch(patch, evidence);
+  const problems = [...applicability.problems, ...commitObjectProblems(commits, files, evidence.commitFiles)];
+  const clean = problems.length === 0;
+  const fact = (verified: boolean, subject: string, detail: string): GovernedRecordFact => ({ verified: clean && verified, subject, detail });
+  /** The first commit after `after` (other than `except`) touching any of these paths, by id; null when none does. */
+  const laterTouch = (paths: readonly string[], after: number, except?: number): string | null => {
+    const found = files.find((file) => file.commit > after && file.commit !== except && file.paths.some((filePath) => paths.includes(filePath)));
+    return found ? commits[found.commit]?.sha ?? "(no commit id)" : null;
+  };
+  /** A fact established at one commit, kept only when no later commit touched its record. */
+  const heldAtHead = (subject: string, detail: string, toucher: string | null): GovernedRecordFact => toucher
+    ? fact(false, subject, `${detail}, but commit ${toucher} touches this record afterwards, so that is not known to hold at the head`)
+    : fact(true, subject, detail);
+  const { carriedAsks } = shapes;
+  const archivedNames = new Set(files.flatMap((file) => file.newPath?.startsWith(".arcadia/asks/archive/") ? [basename(file.newPath)] : []));
+  const actionOf = (ask: CarriedAsk) => ask.targetRef.startsWith("action/") ? ask.targetRef.slice("action/".length) : ask.targetRef.split("#")[1] ?? null;
+
+  /** The Ask this patch carries and archives that an id names: as its own request_id, or as the id derived from its content. */
+  const namedAsk = (requestId: string, actionId: string | null) => carriedAsks.find((ask) => {
+    const action = actionOf(ask);
+    return action !== null && (actionId === null || action === actionId) && archivedNames.has(basename(ask.path))
+      && (ask.requestId === requestId || autoSettleRequestId(ask.project, action, ask.content) === requestId);
+  });
+  /** A later touch of the citation's own line, or of the Ask's draft or archive beyond the one commit archiving it. */
+  const citationToucher = (ask: CarriedAsk, source: string, citedAt: number): string | null => {
+    const name = basename(ask.path);
+    const archivePath = `.arcadia/asks/archive/${name}`;
+    const archivedAt = files.find((file) => file.newPath === archivePath && (file.created || file.renamed))?.commit ?? ask.commit;
+    return laterTouch([source], citedAt) ?? laterTouch([ask.path, archivePath, `.arcadia/asks/${name}`], Math.min(ask.commit, archivedAt), archivedAt);
+  };
+  const citation = (source: string, requestId: string, actionId: string | null, citedAt: number): GovernedRecordFact => {
+    const ask = namedAsk(requestId, actionId);
+    return ask
+      ? heldAtHead(requestId, `cited in ${JSON.stringify(source)}: names the Agent Ask ${JSON.stringify(ask.path)} (request_id ${JSON.stringify(ask.requestId)}) that this patch carries whole and archives, ${ask.requestId === requestId ? "by its own request_id" : "as the auto-settle id derived from its content"}, whose target_ref is ${JSON.stringify(ask.targetRef)}`, citationToucher(ask, source, citedAt))
+      : fact(false, requestId, `cited in ${JSON.stringify(source)}: names no Agent Ask this patch carries whole and archives for ${actionId ? `this Action, ${JSON.stringify(actionId)}` : "any Action"}, by its request_id or by the id derived from its content`);
+  };
+  const citations = [...shapes.nextActionRewrites].flatMap(([plan, rewrites]) => rewrites.map((entry) => citation(plan, entry.requestId, entry.id, entry.commit)));
+  const cited = new Set(citations.map((entry) => entry.subject));
+  for (const file of files) {
+    if (file.newPath !== "MISSION_LOG.md") continue;
+    const added = file.hunks.flatMap((lines) => lines.filter((line) => line.startsWith("+")));
+    for (const id of new Set(added.flatMap((line) => line.match(AUTO_SETTLE_CITATION) ?? []))) {
+      if (!cited.has(id)) citations.push(citation("MISSION_LOG.md", id, null, file.commit));
+    }
+  }
+
+  // Per commit, not per path: the comparison was of that commit's copy, and a later commit can change the path.
+  const splitTargets = new Set([...splitArchives].map((file) => `${file.commit}:.arcadia/asks/archive/${basename(file.oldPath!)}`));
+  const archives = files.flatMap((file): GovernedRecordFact[] => {
+    const target = file.newPath;
+    if (!target?.startsWith(".arcadia/asks/archive/") || file.deleted || !(file.created || file.renamed)) return [];
+    if (splitTargets.has(`${file.commit}:${target}`)) {
+      return [heldAtHead(target, "differs from the draft this patch deletes only in candidate_revision", laterTouch([target, `.arcadia/asks/${basename(target)}`], file.commit))];
+    }
+    return [fact(false, target, file.renamed
+      ? "archived by a rename, whose changed lines this check does not compare"
+      : "added with no deleted draft this check could show it matches apart from candidate_revision")];
+  });
+
+  const retirements = commits.flatMap((commit, index): GovernedRecordFact[] => {
+    if ((commit.retiredDraftIds ?? []).length === 0) return [];
+    const entries = files.filter((file) => file.commit === index);
+    const paths = entries.flatMap((file) => file.oldPath ? [file.oldPath] : []);
+    const recognized = entries.length > 0 && entries.every((file) => retired.has(file) && !shapes.violations.has(file.oldPath!));
+    if (!recognized) return [fact(false, commit.sha ?? "(no commit id)", "carries a retirement trailer but is not a retirement this check recognizes by its From: header, trailers and content")];
+    return [heldAtHead(commit.sha ?? "(no commit id)", `only deletes ${JSON.stringify(paths)}, each a whole complete-intent draft an earlier commit in this series created under a governed marker, named by its trailers, for the Action this patch marks done. Its From: header names the Arcadia Controller, which a Session can set, so this says nothing about who wrote it`, laterTouch(paths, index))];
+  });
+
+  /** A touch that ends a draft's life here (its archive or retirement) is that draft's expected second commit, when nothing follows it. */
+  const endsDraft = (file: ParsedFile, draft: string) => file.oldPath === draft
+    && (retired.has(file) || splitArchives.has(file) || (file.renamed && file.newPath === `.arcadia/asks/archive/${basename(draft)}`));
+  /** The first commit touching this path after the one that wrote it, apart from a draft's last touch ending it. */
+  const shapeToucher = (filePath: string): string | null => {
+    const touching = files.filter((file) => file.paths.includes(filePath));
+    const ended = touching.length > 0 && endsDraft(touching[touching.length - 1], filePath);
+    const second = ended ? touching.slice(0, -1)[1] : touching[1];
+    return second ? commits[second.commit]?.sha ?? "(no commit id)" : null;
+  };
+  const shapeFact = (file: PatchFileClassification): GovernedRecordFact => {
+    const toucher = shapeToucher(file.path);
+    if (file.class === "governed-record") return heldAtHead(file.path, "stays within its allowed shape, in commits whose message carries a governed marker, which is text a Session can write", toucher);
+    return fact(false, file.path, `${JSON.stringify(file.reason)}${toucher ? `; commit ${toucher} touches it after the commit that first did` : ""}`);
+  };
+  const governed = applicability.files.filter((file) => isGovernedRecordPath(file.path));
+  return {
+    problems,
+    citations,
+    archives,
+    retirements,
+    shapes: governed.map(shapeFact)
+  };
+}
+
+/** Whether the patch shows a governed record, so the check has anything to report. */
+export function patchTouchesGovernedRecord(patch: string): boolean {
+  return parsePatch(patch).files.some((file) => file.paths.some(isGovernedRecordPath));
+}
+
+/**
+ * Why a commit's entries in the patch cannot be trusted as its real files. A
+ * message can add entries but never remove a real one, so an exact match of
+ * paths, counted (a forged entry for a really changed path shows it twice), rules
+ * forgery out; rename detection may differ between GitHub's two reads, so a
+ * rename and a delete-plus-add count the same. The blob ids then tie each
+ * entry's content, which the facts hash against them, to the object.
+ */
+function commitObjectProblems(commits: ParsedCommit[], files: ParsedFile[], objects: CommitObjectFiles | null | undefined): string[] {
+  if (!objects) return ["the commits' Git objects could not be read, so a diff entry written inside a commit message cannot be told from a real one"];
+  return commits.flatMap((commit, index) => {
+    const label = commit.sha ?? "(no commit id)";
+    const real = commit.sha !== null && Object.hasOwn(objects, commit.sha) ? objects[commit.sha] : null;
+    if (!real) return [`no Git object was read for commit ${label}`];
+    const shown = files.filter((file) => file.commit === index);
+    const sorted = (paths: string[]) => paths.sort().join("\0");
+    if (sorted(shown.flatMap((file) => file.paths)) !== sorted(real.flatMap((file) => file.previousPath && file.previousPath !== file.path ? [file.previousPath, file.path] : [file.path]))) {
+      return [`commit ${label}'s entries in the patch are not exactly the files its Git object changes, as when its message carries a forged diff entry`];
+    }
+    const blobsMatch = shown.every((file) => {
+      const [filePath, blob] = file.deleted ? [file.oldPath, file.oldBlob] : [file.newPath, file.newBlob];
+      return !blob || real.some((entry) => entry.path === filePath && entry.blob?.startsWith(blob));
+    });
+    return blobsMatch ? [] : [`a blob id in commit ${label}'s entries in the patch is not the one its Git object records`];
+  });
+}
+
+function analyzePatch(patch: string, evidence: PatchEvidence) {
   const { commits, files, formatPatch } = parsePatch(patch);
   const problems: string[] = [];
   if (!formatPatch) problems.push("the patch is not a git format-patch series, so its commits cannot be checked");
@@ -201,7 +427,8 @@ export function classifyPatchApplicability(patch: string, evidence: PatchEvidenc
     files.filter((file) => file.commit === index).every((file) => !file.special && !file.executableMode && file.paths.every(isGovernedRecordPath)));
   const retired = retiredCompletionDrafts(files, commits);
   const splitArchives = splitArchiveMoves(files, governedCommit);
-  const shapeViolations = governedShapeViolations(files, retired, splitArchives);
+  const shapes = governedShapeViolations(files, retired, splitArchives, commits, evidence.parentDocuments);
+  const shapeViolations = shapes.violations;
   const consumed = consumedCompletionDraftCreations(files, commits, governedCommit, retired, splitArchives);
   const byPath = new Map<string, PathEntry>();
   for (const file of files) {
@@ -221,12 +448,13 @@ export function classifyPatchApplicability(patch: string, evidence: PatchEvidenc
     }
   }
   const classified = [...byPath.entries()].map(([filePath, entry]) => classifyPath(filePath, entry));
-  return {
+  const applicability: PatchApplicability = {
     inert: problems.length === 0 && classified.length > 0 &&
       classified.every((file) => file.class === "inert-document" || file.class === "governed-record"),
     files: classified,
     problems
   };
+  return { commits, files, applicability, shapes, retired, splitArchives };
 }
 
 export interface NotApplicableContext {
@@ -375,6 +603,11 @@ function parsePatch(patch: string): { commits: ParsedCommit[]; files: ParsedFile
         continue;
       }
       endHunk();
+    }
+    // The marker follows a hunk's last counted line, so that hunk has already closed.
+    if (current && line.startsWith("\\ ") && current.hunks.length > 0) {
+      current.hunks[current.hunks.length - 1].push(line);
+      continue;
     }
     if (line.startsWith("diff --git ")) {
       const match = SIMPLE_DIFF_HEADER.exec(line);
@@ -670,6 +903,8 @@ function askScalar(content: string, key: string): string | null {
 const PLAN_POINTER = /^current_action: ([A-Za-z0-9][\w.-]*)$/;
 const UPDATED = /^updated: \d{4}-\d{2}-\d{2}$/;
 const ACTION_STATUS = /^ {4}status: (\S+)$/;
+/** The Plan's own front-matter status, never an Action's (those are indented). */
+const PLAN_STATUS = /^status: (\S+)$/;
 const ACTION_ID = /^ {2}- id: (\S+)$/;
 /** Any single-line `next_action` value, old or new — recognized generically; {@link NEXT_ACTION_CANONICAL_COMPLETED} gates what a new one may say. */
 const NEXT_ACTION_FIELD = /^ {4}next_action:.*$/;
@@ -693,14 +928,20 @@ const NEXT_ACTION_CANONICAL_COMPLETED = /^ {4}next_action: Completed via Agent A
  * (the pointer leaves only the Action marked done) is checked here too.
  */
 function governedShapeViolations(
-  files: ParsedFile[], retired: Map<ParsedFile, string> = new Map(), splitArchives: Set<ParsedFile> = new Set()
-): Map<string, string> {
+  files: ParsedFile[], retired: Map<ParsedFile, string> = new Map(), splitArchives: Set<ParsedFile> = new Set(),
+  commits: ParsedCommit[] = [], parentDocuments: ParentDocuments | null | undefined = undefined
+): { violations: Map<string, string>; carriedAsks: CarriedAsk[]; nextActionRewrites: Map<string, Array<{ id: string; requestId: string; commit: number }>> } {
   const violations = new Map<string, string>();
   const violate = (filePath: string, reason: string) => { if (!violations.has(filePath)) violations.set(filePath, reason); };
   const done = new Map<string, string[]>();
-  const nextActionRewrites = new Map<string, Array<{ id: string; requestId: string }>>();
+  const nextActionRewrites = new Map<string, Array<{ id: string; requestId: string; commit: number }>>();
   const planMoves = new Map<string, string[]>();
   const projectMoves: string[] = [];
+  // A Plan-completing settlement removes current_action outright and sets the
+  // Plan `complete`; each half is only collected here and verified together,
+  // against the parent revision, after every file is read.
+  const planCompletions: Array<{ file: ParsedFile; plan: string; id: string }> = [];
+  const projectRemovals: Array<{ file: ParsedFile; id: string }> = [];
   // Every Agent Ask id this same patch series makes available: drafted
   // (added, anywhere under .arcadia/asks/, not yet archived), archived by a
   // same-name rename, or archived directly (added straight into
@@ -709,7 +950,7 @@ function governedShapeViolations(
   // these are the only shapes an id can actually appear under).
   const availableAskIds = new Set<string>();
   /** Agent Asks this patch carries whose whole content it proves (see verifiedNewContent). */
-  const carriedAsks: Array<{ content: string; project: string; targetRef: string }> = [];
+  const carriedAsks: CarriedAsk[] = [];
   /**
    * An auto-settle names its content-addressed proposal id, not the draft's
    * file name (src/ask/autoSettleBeforeDispatch.ts): accepted only when it is
@@ -745,7 +986,7 @@ function governedShapeViolations(
         const targetRef = content === null ? null : askScalar(content, "target_ref");
         const requestId = content === null ? null : askScalar(content, "request_id");
         if (requestId) availableAskIds.add(requestId);
-        if (content !== null && project && targetRef) carriedAsks.push({ content, project, targetRef });
+        if (content !== null && project && targetRef) carriedAsks.push({ path: target, content, project, targetRef, requestId, commit: file.commit });
       }
       continue;
     }
@@ -779,6 +1020,7 @@ function governedShapeViolations(
     // status-done tie enforced in the hunk pass below are what actually gate
     // what a *new* next_action line may say and which Action it may belong to.
     const keyOf = (line: string): string | null => PLAN_POINTER.test(line) ? "current_action" : UPDATED.test(line) ? "updated"
+      : target !== "PROJECT.md" && PLAN_STATUS.test(line) ? "planStatus"
       : target !== "PROJECT.md" && ACTION_STATUS.test(line) ? "status"
       : target !== "PROJECT.md" && NEXT_ACTION_FIELD.test(line) ? "next_action" : null;
     const bad = [...removed, ...added].find((line) => keyOf(line) === null);
@@ -796,19 +1038,34 @@ function governedShapeViolations(
     // below still separately requires the single matched pair to sit next to
     // each other and match the canonical form, so a same-count but
     // non-adjacent or non-canonical pair still refuses there.
+    const moves = removed.flatMap((line) => PLAN_POINTER.exec(line)?.[1] ?? []);
+    const destinations = added.flatMap((line) => PLAN_POINTER.exec(line)?.[1] ?? []);
+    // The one non-replacement shape: the pointer removed outright. In a Plan
+    // it is allowed only beside `status: active` -> `status: complete`, and the
+    // two stand or fall together; PROJECT.md's removal is tied to a verified
+    // completion of its own active Plan below.
+    const removedOnly = moves.length === 1 && destinations.length === 0;
+    const statusFrom = removed.flatMap((line) => PLAN_STATUS.exec(line)?.[1] ?? []);
+    const statusTo = added.flatMap((line) => PLAN_STATUS.exec(line)?.[1] ?? []);
+    const completes = target !== "PROJECT.md" && statusFrom.length === 1 && statusTo.length === 1 && statusFrom[0] === "active" && statusTo[0] === "complete";
+    if (statusFrom.length + statusTo.length > 0 && !(completes && removedOnly)) {
+      violateFile("a Plan's status may only change from active to complete together with its current_action being removed, as the settlement completing its last Action");
+    }
+    const completion = removedOnly && (target === "PROJECT.md" || completes);
     for (const key of ["current_action", "updated", "status", "next_action"]) {
+      if (key === "current_action" && completion) continue;
       if (removed.filter((line) => keyOf(line) === key).length !== added.filter((line) => keyOf(line) === key).length) {
         violateFile(`${key} must be replaced line for line`);
       }
     }
-    const moves = removed.flatMap((line) => PLAN_POINTER.exec(line)?.[1] ?? []);
-    const destinations = added.flatMap((line) => PLAN_POINTER.exec(line)?.[1] ?? []);
     if (moves.some((from, index) => from === destinations[index])) violateFile("current_action must move to a different Action");
     if (target === "PROJECT.md") {
       projectMoves.push(...moves);
+      if (completion) projectRemovals.push({ file, id: moves[0] });
       continue;
     }
     planMoves.set(target, [...(planMoves.get(target) ?? []), ...moves]);
+    if (completion) planCompletions.push({ file, plan: target, id: moves[0] });
     for (const lines of file.hunks) {
       lines.forEach((line, index) => {
         if (!line.startsWith("-")) return;
@@ -838,9 +1095,20 @@ function governedShapeViolations(
         const owner = lines.slice(0, index).reverse().find((candidate) => ACTION_ID.test(candidate.slice(1)));
         const id = owner?.startsWith(" ") ? ACTION_ID.exec(owner.slice(1))?.[1] : undefined;
         if (!id) violateFile("the Action whose next_action changes is not shown in the hunk's context");
-        else nextActionRewrites.set(target, [...(nextActionRewrites.get(target) ?? []), { id, requestId: match[1] }]);
+        else nextActionRewrites.set(target, [...(nextActionRewrites.get(target) ?? []), { id, requestId: match[1], commit: file.commit }]);
       });
     }
+  }
+  // Plan-completing settlements: verified against the parent revision, or refused.
+  const verifiedCompletions = new Set<ParsedFile>();
+  for (const completion of planCompletions) {
+    const refusal = planCompletionRefusal(completion, commits, parentDocuments, planCompletions, projectRemovals);
+    if (refusal) violate(completion.plan, refusal);
+    else verifiedCompletions.add(completion.file);
+  }
+  for (const removal of projectRemovals) {
+    const completion = planCompletions.find((entry) => entry.file.commit === removal.file.commit && entry.id === removal.id && verifiedCompletions.has(entry.file));
+    if (!completion) violate("PROJECT.md", "PROJECT.md's current_action may be removed only by the same commit's verified completion of the active Plan at that Action");
   }
   // The pointer may only leave an Action this patch marks done, and every
   // Action marked done must be the one the pointer left.
@@ -890,7 +1158,177 @@ function governedShapeViolations(
       }
     }
   }
-  return violations;
+  return { violations, carriedAsks, nextActionRewrites };
+}
+
+/** The same fence `src/docs/parse.ts` uses for a managed document's front matter. */
+const FRONT_MATTER_FENCE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/;
+/** A parent document above this is refused before any YAML parse (the largest Plan is about 0.5 MB), so a huge one cannot stall a review. */
+const MAX_PARENT_DOCUMENT_CHARS = 1024 * 1024;
+
+interface FrontMatterDocument {
+  data: Record<string, unknown>;
+  /** Everything after the closing fence, byte for byte. */
+  body: string;
+}
+
+/**
+ * A document's front matter as the repository's own parser reads it (the same
+ * fence and the `yaml` package, whose default refuses duplicate keys), and its
+ * body. Null on a document over the size bound, a missing fence, any parse
+ * error, or a front matter that is not a mapping: the evidence is then
+ * unusable and the completion stays refused.
+ */
+function parseFrontMatter(text: string): FrontMatterDocument | null {
+  if (text.length > MAX_PARENT_DOCUMENT_CHARS) return null;
+  const match = FRONT_MATTER_FENCE.exec(text);
+  if (!match) return null;
+  try {
+    const data = parseYaml(match[1]) as unknown;
+    if (data === null || typeof data !== "object" || Array.isArray(data)) return null;
+    return { data: data as Record<string, unknown>, body: match[2] };
+  } catch {
+    return null;
+  }
+}
+
+/** Structural equality of parsed YAML values. A cycle, which a YAML alias can form, is never equal. */
+function sameValue(left: unknown, right: unknown, path: Set<object> = new Set()): boolean {
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== "object" || typeof right !== "object") return false;
+  if (path.has(left)) return false;
+  path.add(left);
+  const same = Array.isArray(left) || Array.isArray(right)
+    ? Array.isArray(left) && Array.isArray(right) && left.length === right.length && left.every((value, index) => sameValue(value, right[index], path))
+    : Object.keys(left).length === Object.keys(right).length && Object.keys(left).every((key) => Object.hasOwn(right, key)
+      && sameValue((left as Record<string, unknown>)[key], (right as Record<string, unknown>)[key], path));
+  path.delete(left);
+  return same;
+}
+
+/** The mapping without the named keys. */
+function without(data: Record<string, unknown>, keys: readonly string[]): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(data).filter(([key]) => !keys.includes(key)));
+}
+
+/**
+ * The file's hunks applied to the parent's text: every context and removed
+ * line must match the parent at its stated old line exactly (a CR before the
+ * newline aside), or null. A hunk with a no-newline marker is not applied.
+ */
+function applyHunks(base: string, file: ParsedFile): string | null {
+  const baseLines = base.split("\n");
+  const out: string[] = [];
+  let position = 0;
+  for (let hunk = 0; hunk < file.hunks.length; hunk++) {
+    const lines = file.hunks[hunk];
+    const start = file.hunkStarts[hunk];
+    // An insertion-only hunk (`-N,0`) names the line after which it applies.
+    const oldCount = lines.filter((line) => line.startsWith(" ") || line.startsWith("-")).length;
+    const copyTo = oldCount === 0 ? start : start - 1;
+    if (!Number.isInteger(start) || start < 0 || copyTo < position || copyTo > baseLines.length) return null;
+    while (position < copyTo) out.push(baseLines[position++]);
+    for (const line of lines) {
+      const kind = line[0];
+      const text = line.slice(1);
+      if (kind === "+") { out.push(text); continue; }
+      if (kind !== " " && kind !== "-") return null;
+      const original = baseLines[position];
+      if (original === undefined || original.replace(/\r$/, "") !== text) return null;
+      if (kind === " ") out.push(original);
+      position += 1;
+    }
+  }
+  while (position < baseLines.length) out.push(baseLines[position++]);
+  return out.join("\n");
+}
+
+/**
+ * Why a Plan-completing commit is not a verified completion; null when it is.
+ * The judgement is made on parsed documents, never on the patch's lines: the
+ * commit's hunks are applied to the parent revision of PROJECT.md and the Plan
+ * (which must apply exactly), both sides are parsed, and the change must be
+ * exactly this and nothing else:
+ * - the parent Plan is `active`, belongs to PROJECT.md's project, is the one
+ *   whose slug is PROJECT.md's `active_plan` (the resolver's case-insensitive
+ *   rule, src/docs/dispatch.ts), and PROJECT.md and the Plan both have
+ *   `current_action` at the Action being completed;
+ * - the result Plan is `complete` with no `current_action`, that Action is now
+ *   `done` (its `next_action` may change) and was not before, every other
+ *   Action is identical and already `done` or `deferred` (what
+ *   `resolveFinishedActivePlan` counts as finished, from the Action itself),
+ *   the Actions keep their ids and order, no other key changes but `updated`,
+ *   and the body is byte for byte the parent's;
+ * - the result PROJECT.md differs only by losing `current_action` (and
+ *   `updated`), with its body unchanged.
+ * It must also be the commit's only completion, with the removal in the same
+ * commit. A Decision-based deferral is not evidence here and stays refused.
+ */
+function planCompletionRefusal(
+  completion: { file: ParsedFile; plan: string; id: string },
+  commits: ParsedCommit[], parentDocuments: ParentDocuments | null | undefined,
+  allCompletions: ReadonlyArray<{ file: ParsedFile }>, allRemovals: ReadonlyArray<{ file: ParsedFile; id: string }>
+): string | null {
+  const { file, plan, id } = completion;
+  const unverifiable = (why: string) => `the Plan is completed here (current_action removed, status complete), but ${why}`;
+  const sha = commits[file.commit]?.sha;
+  const documents = parentDocuments && sha ? parentDocuments[sha] : undefined;
+  const base = documents?.[plan];
+  const projectBase = documents?.["PROJECT.md"];
+  if (base === undefined || projectBase === undefined) return unverifiable("the Plan and PROJECT.md at the commit's parent revision were not both read, so it cannot be shown that every other Action was already done");
+  if (allCompletions.filter((entry) => entry.file.commit === file.commit).length !== 1) return unverifiable("the commit completes more than one Plan");
+  const removals = allRemovals.filter((entry) => entry.file.commit === file.commit);
+  if (removals.length !== 1 || removals[0].id !== id) return unverifiable("the same commit does not remove PROJECT.md's current_action at that Action");
+
+  const planResultText = applyHunks(base, file);
+  const projectResultText = applyHunks(projectBase, removals[0].file);
+  if (planResultText === null || projectResultText === null) return unverifiable("a hunk does not apply exactly to the parent revision's document");
+  const parentPlan = parseFrontMatter(base);
+  const parentProject = parseFrontMatter(projectBase);
+  const resultPlan = parseFrontMatter(planResultText);
+  const resultProject = parseFrontMatter(projectResultText);
+  if (!parentPlan || !parentProject || !resultPlan || !resultProject) return unverifiable("a document's front matter could not be parsed (or is over the size bound)");
+
+  const lower = (value: unknown) => typeof value === "string" ? value.toLowerCase() : null;
+  if (lower(parentPlan.data.slug) === null || lower(parentPlan.data.slug) !== lower(parentProject.data.active_plan)
+    || lower(parentPlan.data.project) === null || lower(parentPlan.data.project) !== lower(parentProject.data.slug)) {
+    return unverifiable("the parent revision's PROJECT.md does not name this Plan (by slug and project) as its active_plan");
+  }
+  if (parentProject.data.current_action !== id || parentPlan.data.current_action !== id || parentPlan.data.status !== "active") {
+    return unverifiable("the parent revision's Plan is not active with PROJECT.md and the Plan both at that Action");
+  }
+
+  if (!sameValue(without(parentProject.data, ["current_action", "updated"]), without(resultProject.data, ["current_action", "updated"]))
+    || Object.hasOwn(resultProject.data, "current_action") || parentProject.body !== resultProject.body) {
+    return unverifiable("PROJECT.md changes by more than losing current_action");
+  }
+  if (resultPlan.data.status !== "complete" || Object.hasOwn(resultPlan.data, "current_action")
+    || !sameValue(without(parentPlan.data, ["status", "current_action", "updated", "actions"]), without(resultPlan.data, ["status", "current_action", "updated", "actions"]))) {
+    return unverifiable("the Plan changes by more than becoming complete and losing current_action");
+  }
+  if (parentPlan.body !== resultPlan.body) return unverifiable("the Plan's body changes");
+
+  const before = parentPlan.data.actions;
+  const after = resultPlan.data.actions;
+  if (!Array.isArray(before) || !Array.isArray(after) || before.length === 0 || before.length !== after.length) return unverifiable("the Plan's Actions are not the same list before and after");
+  const record = (value: unknown): Record<string, unknown> | null => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  const seen = new Set<string>();
+  let completed = false;
+  for (let index = 0; index < before.length; index++) {
+    const was = record(before[index]);
+    const now = record(after[index]);
+    if (!was || !now || typeof was.id !== "string" || now.id !== was.id || seen.has(was.id)) return unverifiable("the Plan's Actions do not keep unique ids in the same order");
+    seen.add(was.id);
+    if (was.id === id) {
+      completed = true;
+      if (was.status === "done" || now.status !== "done" || !sameValue(without(was, ["status", "next_action"]), without(now, ["status", "next_action"]))) {
+        return unverifiable(`Action ${id} does not change from not-done to done with nothing else but its next_action`);
+      }
+    } else if (!sameValue(was, now) || (was.status !== "done" && was.status !== "deferred")) {
+      return unverifiable(`Action ${String(was.id)} is not unchanged and already done or deferred at the parent revision`);
+    }
+  }
+  return completed ? null : unverifiable(`Action ${id} is not in the Plan`);
 }
 
 const DATED_UPDATED = /^updated: (\d{4}-\d{2}-\d{2})$/;
@@ -921,6 +1359,17 @@ function frontMatterUpdatedBump(lines: string[], oldStart: number | undefined): 
 
 function sameMembers(left: string[], right: string[]): boolean {
   return left.length === right.length && left.every((value) => right.includes(value));
+}
+
+/** An Agent Ask this patch shows whole (see verifiedNewContent). */
+interface CarriedAsk {
+  path: string;
+  content: string;
+  project: string;
+  targetRef: string;
+  requestId: string | null;
+  /** The commit whose copy this is. */
+  commit: number;
 }
 
 interface PathEntry {

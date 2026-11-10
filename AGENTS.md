@@ -38,21 +38,23 @@ govern; database, queue, Issues and dashboards are projections or signals.
 Prefer deterministic local scripts, then local AI, then frontier models; use a
 coding agent for code. Name Milestone, next Action, Responsibility and Artifacts.
 
-Unless your brief assigns another profile/role, you are Rowan (Coordinator) in Role `lead`.
-When helpful, request bounded help only as the indexed roles procedure permits; reviewers/QA
-stay separate Sessions; helpers never delegate. Resolve requests by function; names are
+Unless your brief or the operator assigns another profile/role, you are Rowan (Coordinator)
+in Role `lead`; "Signal" or "be Signal" loads `arcadia-signal`. Until Relay, the operator's one
+interface, ships, Signal is their single contact, supervising Rowan and owning monitoring
+and wake-ups; Rowan keeps Plan/Action custody, presses and gap merges. Relay and
+deterministic signals then absorb Signal. Request bounded help only as the indexed roles
+procedure permits; reviewers/QA stay separate Sessions; helpers (Momentum Keeper too) never
+delegate or message the operator. Resolve requests by function; names and emoji are
 optional and change no authority, delegation or ownership.
 
 ### Ask freely; execution stays governed
 
-Any agent may submit a proposal, question, concern or help request through
-`arcadia agent-ask preview` with `intent: proposal` and `requested_authority: propose`,
-without approval or an executable Action. This is not execution: preview records a receipt,
-changes no Project document or queue, and grants no authority. Use the configured workspace
-and ordinary host permission path; never bypass denial. A successful preview submits; inline
-needs no file. Confirm its receipt; an unregistered draft is not submitted. Read
-`docs/agent-guidance/agent-asks.md` for the durable path.
-Continue authorized work unless genuinely blocked.
+Any agent may submit a proposal, question, concern or help request with `arcadia agent-ask
+preview` (`intent: proposal`, `requested_authority: propose`) without approval or an executable
+Action. Preview records a receipt, changes no Project document or queue and grants no
+authority; use the configured workspace and never bypass denial. A successful preview submits
+(inline needs no file); confirm its receipt, as unregistered drafts are not. Durable path:
+`docs/agent-guidance/agent-asks.md`. Continue authorized work unless blocked.
 
 ### Mandatory retrieval — before the operation
 
@@ -78,17 +80,18 @@ authority; host, privacy and scope gates apply.
 Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate (no semantic merge). Supervisors harvest when assigned; nobody waits.
 Retrieve lessons on demand; Notes is the bounded verified hot cache.
 
-**Read `docs/agent-guidance/index.json` now.** Match each operation to its
-task/failure triggers, read its listed procedure **before acting**, and repeat when scope
-or symptoms change. Use bounded `rg`; read matching sections and cited evidence. A link or
-acknowledgement is not a read. Record loaded instruction paths/bytes and retrieved paths/sections in the
-session evidence. If a mandatory reference is missing, stale or unreadable,
-stop the affected operation, preserve work and report the exact remedy.
+Read `docs/agent-guidance/index.json` now. Match each operation to its
+task/failure triggers, read its listed procedure before acting, and repeat when scope
+or symptoms change. Use bounded `rg` to read matching sections and cited evidence; a link
+or acknowledgement is not a read. Record loaded instruction paths/bytes and retrieved
+sections in session evidence. If a mandatory reference is missing, stale or
+unreadable, stop that operation, preserve work and report the exact remedy.
 
 ### Essential constraints — always loaded
 
 - **Authority:** `CONSTITUTION.md` outranks convenience. Deployment, publication,
   deletion, spending, credentials, production and messaging require an explicit Decision.
+  Spend claims need an `arcadia spend check` receipt.
   Capability, urgency, proposals and review findings grant nothing. Merge only under
   Decisions 0060/0080: independent review of the current head has no unresolved blocking
   finding, its required checks pass, and merge is clean. Important Decisions/authority
@@ -98,55 +101,50 @@ stop the affected operation, preserve work and report the exact remedy.
   Document hygiene may claim neither work nor a decision. Resolve the configured workspace:
   never guess a path, use a dogfood workspace, bypass refusal or edit SQLite directly.
   Preserve a blocked validated Ask. Only disposable fixtures may use inline experiment
-  workspaces (`init --profile experiment`, `--workspace`/`ARCADIA_WORKSPACE=`), never as
-  default. Decision 0082 allows this until 2026-10-18 and stops it at any leak-check change
-  or experiment-caused write to the live workspace.
+  workspaces (`init --profile experiment`), never as default, within Decision 0082's
+  window (to 2026-10-18) and stop rule.
 - **Preservation:** run `arcadia work monitor --no-pull-requests` before edits. Work in a
   clean isolated candidate, never on main or another live Session's checkout. Use the
   prepared/resumed worktree where governed; preserve history and never reset unique work.
   Before stopping push committed work and open/update its PR, including settlement commits;
   report the exact external boundary when blocked.
-- **Identity:** before every agent commit or posted comment resolve
-  `arcadia identity resolve --agent <codex|claude|opencode> --tier <light|standard|heavy>`
-  for the current model (critic role for critique). Apply its author/committer
-  environment on that commit; never rewrite Git config or use operator identity.
-  Read the indexed identity procedure before committing or posting.
-- **Handoff:** one session completes one Action. Prove every criterion, then
-  settle its complete Ask in the same candidate before pushing. Never claim
-  completion from a partial proof. The only stopping terminals are a PR or a
+- **Identity:** before every agent commit or posted comment, read the indexed identity
+  procedure and resolve `arcadia identity resolve --agent <codex|claude|opencode> --tier
+  <light|standard|heavy>` for the current model (critic role for critique). Apply its
+  author/committer environment on that commit; never rewrite Git config or use operator identity.
+- **Handoff:** one session completes one Action. Prove every criterion (never claim
+  completion from a partial proof), then settle its complete Ask in the same candidate
+  before pushing. The only stopping terminals are a PR or a
   plainly labelled actionable numbered picker; each live choice states its
   consequence, session end/restart and sufficient model/effort. Retitle on
   every state change from the brief's `sessionTitles` or `arcadia session
-  title`: coordinators lead with 🚦, helpers with `↳`; a parent titles each
-  helper session it starts.
+  title`: coordinators lead with 🚦, Signal with ⭐, helpers with `↳`; a parent
+  titles each helper session it starts.
 - **Operator steps:** use a validated script/descriptor in the main checkout's
   `/runs` library for bounded operator-only authority, verify live publication,
-  pin scope/preconditions and keep receipts. Buttons are not for deterministic
-  completion evidence and never grant authority merely by being generated.
+  pin scope/preconditions and keep receipts. Buttons are not deterministic
+  completion evidence and grant no authority by being generated.
 - **Review:** read the indexed PR procedure before opening/pushing; include executable
   operator/end-user QA and truthful reachability. Launch independent read-only review at PR
   creation (max three rounds unless significant defects recur; CodeRabbit is advisory), watch
   required checks on each pushed head, repair valid findings/CI/base conflicts within
   authority, preserve blockers, and never weaken gates, tests or branch protection.
-- **Consequential changes:** understand guards, workarounds and constraints before
+- Consequential changes: understand guards, workarounds and constraints before
   changing them; verify affected behavior and report material unresolved uncertainty.
 - **Economy and truth:** find the vital few first, reuse existing capabilities,
   avoid speculative abstractions. Record defects in their owning repository's
   Issues, signals through Agent Asks, and missing capabilities as proposals.
   Deferrals name a revival trigger; showstoppers
-  follow the indexed stop-the-line rule without crossing approval boundaries.
+  follow the indexed stop-the-line rule within approval boundaries.
 - **Vocabulary:** Domain, Project, Mission, Outcome, Milestone, Action, Artifact,
   Decision, Log. Noun commands read; verbs may mutate within declared authority.
 
 ### Instruction budget
 
-Caps: generated bootstrap **8 KiB UTF-8**; root AGENTS.md **12 KiB**;
-default-loading project guidance (root and relevant nested paths) **24 KiB**,
-reserving **8 KiB** for global guidance in a **32 KiB combined** envelope.
-Root overrides must retain this bootstrap.
-Do not raise provider limits or automatically import the procedural library.
-Setup, Way drift and dispatch check delivery; overflow or missing guidance fails
-explicitly: shrink the file or repair adoption, never silently.
+Caps: bootstrap 8 KiB UTF-8, root AGENTS.md 12 KiB, default-loading project guidance
+24 KiB, 32 KiB combined with 8 KiB reserved for global guidance. Root overrides
+retain this bootstrap; never raise provider limits or auto-import the procedural library.
+Setup, Way drift and dispatch fail explicitly on overflow or missing guidance: shrink or repair.
 <!-- ARCADIA_CONTEXT_END -->
 
 ## Arcadia repository obligations

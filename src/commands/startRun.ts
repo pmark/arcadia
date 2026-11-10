@@ -11,10 +11,11 @@ import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
 import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
-import { ATTEMPT_COUNT_EARLIEST, DAY_GRANT_EXECUTOR_PATH, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
+import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, DAY_GRANT_EXECUTOR_PATH, findContinueDecision, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { readDayGrantEvidence } from "../production/policy.js";
+import { namedTestFiles } from "../sessions/completionValidation.js";
 import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
 import { runProductionStatusCommand } from "./production.js";
 
@@ -51,6 +52,8 @@ export interface StartRunPinsOptions {
   fixPullRequest?: string;
   fixCommit?: string;
   reproduction?: string;
+  /** Decision 0187: the cause the merged fix addresses; required, and equal to --previous-cause, after a failed batch. */
+  fixCause?: string;
   observedCleared?: string;
   repository?: string;
   workspace?: string;
@@ -104,12 +107,61 @@ const isDayGrantAnswered = (content: string): boolean => {
   const fields = frontmatter(content, "Decision 0173");
   return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith("A. Daily grant");
 };
+/** Decision 0181's option A, from its frontmatter: the re-decision that replaced Decision 0170's three-attempt limit. */
+const isSerialRunsAnswered = (content: string): boolean => {
+  const fields = frontmatter(content, "Decision 0181");
+  return fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith("A. Continued serial runs");
+};
+/**
+ * The continue-after-fix Decision's option A (Decision 0187 when written, found by its slug), from its frontmatter: a failed
+ * batch is continued past only once this answer is on main. `id` is the number in the record's file name.
+ */
+const isContinueAnswered = (content: string, id: string): boolean => {
+  const fields = frontmatter(content, `Decision ${id}`);
+  return String(fields.id) === id && fields.status === "approved" && typeof fields.answer === "string" && fields.answer.startsWith(CONTINUE_ANSWER);
+};
 const text = (buffer: Buffer): string => buffer.toString("utf8");
 const sha256 = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
 function frontmatter(content: string, label: string): Record<string, unknown> {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
   if (!match) throw validationError(`${label} has no frontmatter.`);
   return parseYaml(match[1]) as Record<string, unknown>;
+}
+
+interface StartRunPlanAction {
+  id?: string;
+  status?: string;
+  next_action?: string;
+  acceptance_criteria?: unknown[];
+}
+
+/** Check the text the pinned Action will hand to completion validation. */
+export function startRunCriteriaFindings(action: StartRunPlanAction): { errors: string[]; warnings: string[] } {
+  const criteria = Array.isArray(action.acceptance_criteria) ? action.acceptance_criteria : [];
+  const errors: string[] = [];
+  const checkText = (label: string, value: unknown): void => {
+    if (typeof value !== "string") return;
+    const invisible = value.match(/[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/gu) ?? [];
+    const codes = [...new Set(invisible)].map((char) => `U+${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
+    if (codes.length) errors.push(`${label} contains invisible characters (${codes.join(", ")}); spell out the escape.`);
+  };
+  checkText("next_action", action.next_action);
+  const textCriteria = criteria.filter((criterion): criterion is string => typeof criterion === "string");
+  const required = namedTestFiles(textCriteria);
+  criteria.forEach((criterion, index) => checkText(`acceptance_criteria[${index + 1}]`, criterion));
+  const withoutExamples = namedTestFiles(textCriteria.map((criterion) => {
+    // Mask quoted arguments in direct assertions and explicitly labelled data.
+    // Keep command text intact, even when a command contains function calls.
+    return criterion
+      .replace(/(\b(?:asserts?|expects?)\s+(?:that\s+)?`?[\w$.]+\()([^()\r\n]*)(\))/gi,
+        (_match, start: string, args: string, end: string) => start + args.replace(/(^\s*|,\s*)(["'`])([^\s"'`]+)\2(?=\s*(?:,|$))/g, "$1example-value") + end)
+      .replace(/(\b(?:asserts?|expects?)\s+[^"'`\r\n]*?\breturns?\s+|\bexample\s+(?:path|input|value|string)\s*:\s*)(["'`])([^\s"'`]+)\2/gi, "$1example-value");
+  }));
+  // An assertion can intentionally refer to a real file. Let the operator
+  // clarify ambiguous paths without blocking an otherwise valid card.
+  const warnings = required.filter((file) => !withoutExamples.includes(file))
+    .map((file) => `acceptance_criteria would require ${file} as a test file; clarify if it is example data.`);
+  return { errors, warnings };
 }
 
 /** The main checkout of the repository (ignored host files such as consumed markers live there, not in a worktree). */
@@ -150,12 +202,19 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   if (!slug.test(project)) throw validationError(`Plan ${plan} does not name its Project.`);
   const planStatus = String(planFrontmatter.status ?? "");
   if (planStatus !== "active" && planStatus !== "draft") throw validationError(`Plan ${plan} is ${planStatus || "of unknown status"}; a START card needs an active Plan or a draft with a pinned activation.`);
-  const planActions = (Array.isArray(planFrontmatter.actions) ? planFrontmatter.actions : []) as Array<{ id?: string; status?: string }>;
+  const planActions = (Array.isArray(planFrontmatter.actions) ? planFrontmatter.actions : []) as StartRunPlanAction[];
+  const criteriaErrors: string[] = [];
+  const criteriaWarnings: string[] = [];
   for (const action of actions) {
     const found = planActions.find((entry) => entry.id === action);
     if (!found) throw validationError(`Action ${action} is not in Plan ${plan} at origin main.`);
     if (found.status === "done") throw validationError(`Action ${action} is already done; a START card pins only open Actions.`);
+    const { errors, warnings } = startRunCriteriaFindings(found);
+    criteriaErrors.push(...errors.map((finding) => `${action}: ${finding}`));
+    criteriaWarnings.push(...warnings.map((finding) => `${action}: ${finding}`));
   }
+  if (criteriaErrors.length) throw validationError(`START criteria preflight failed:\n${[...criteriaErrors, ...criteriaWarnings].join("\n")}`);
+  notes.push(...criteriaWarnings);
   if (planStatus === "draft") notes.push("The Plan is a draft: embed its pinned planActivation block in the descriptor (Decision 0157) before review.");
 
   let delegatedFrom: { card: string; run: string } | null = null;
@@ -175,7 +234,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     const pointer = frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan;
     if (pointer !== plan) throw validationError(`Plan ${plan} is not the Project's active Plan (${String(pointer)}); a Decision 0173 card needs the active Plan.`);
   }
-  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(delegatedFrom ? ["0163"] : []), ...(dayGrantFrom ? ["0163", "0170", "0173"] : [])];
+  const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(delegatedFrom ? ["0163"] : []), ...(dayGrantFrom ? ["0163", "0170", "0173", "0181"] : [])];
   const decisionFiles = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n");
   for (const decision of requiredDecisions) {
     const file = decisionFiles.find((entry) => new RegExp(`^docs/decisions/${decision}-.*\\.md$`).test(entry));
@@ -183,6 +242,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     const content = text(show(file));
     if (!/^status: approved$/m.test(content) || !/^answer: .+/m.test(content)) throw validationError(`Decision ${decision} is not approved with a recorded answer at origin main.`);
     if (decision === "0173" && !isDayGrantAnswered(content)) throw validationError("Decision 0173 is not answered with option A at origin main.");
+    if (decision === "0181" && !isSerialRunsAnswered(content)) throw validationError("Decision 0181 is not answered with option A at origin main; the day-grant gate implements only that answer.");
   }
   for (const file of START_RUN_DEFAULTS.requiredFiles) show(file);
 
@@ -229,11 +289,26 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
       if (named && !latest) throw validationError("A cause was named, but no START press has happened since Decision 0170.");
       const previous: DayGrantPrevious | null = named && latest ? validateDayGrantPrevious({ ...latest, ...named }) : null;
       const chain = inspectDayGrantChain({ ...input, previous });
+      // The continue-after-fix Decision: going on past a failed batch needs its answer on main, and each fix merged after its
+      // batch ended. Found by its slug alone: numbers are minted by every START sign-in and raced for twice.
+      if (chain.clearedFailures.length > 0) {
+        const found = findContinueDecision(decisionFiles);
+        if ("problem" in found) throw validationError(`FAILED_BATCH: the continue-after-fix Decision cannot be read at origin main: ${found.problem}; a failed batch still stops for the operator (Decision 0181).`);
+        if (!isContinueAnswered(text(show(found.file)), found.id)) throw validationError(`FAILED_BATCH: Decision ${found.id} (${found.file}) is not answered with option A at origin main, so a failed batch still stops for the operator (Decision 0181).`);
+        for (const cleared of chain.clearedFailures) {
+          try { deps.git(toplevel, ["merge-base", "--is-ancestor", cleared.commit, originMain]); }
+          catch { throw validationError(`FAILED_BATCH: the fix commit ${cleared.commit} named for the failed batch ${cleared.batch} is not on origin main ${originMain}.`); }
+          show(cleared.reproduction);
+          const committedAt = Number(text(deps.git(toplevel, ["show", "-s", "--format=%ct", cleared.commit])).trim()) * 1000;
+          if (!Number.isFinite(committedAt) || committedAt <= Date.parse(cleared.endedAt)) throw validationError(`FAILED_BATCH: the fix commit ${cleared.commit} is dated before the failed batch ${cleared.batch} ended at ${cleared.endedAt}; the continue-after-fix Decision goes on only after a fix merged after the failure.`);
+        }
+        notes.push(`Continue-after-fix Decision: this card goes on past ${chain.clearedFailures.length} failed batch${chain.clearedFailures.length === 1 ? "" : "es"} in this day, each cleared by a fix merged after it: ${chain.clearedFailures.map((c) => `${c.batch} (${c.cause}, ${c.commit.slice(0, 12)})`).join(", ")}. The fix's review and checks are Rowan's recorded judgement, not machine-proved.`);
+      }
       delegation = {
         decision: "0173", approvalCard: dayGrantFrom.card, approvalRun: dayGrantFrom.run, approvalReceiptSha256: chain.window.receiptSha256, approvalPressSha256: chain.window.pressSha256,
         attempt: chain.attemptsSoFar + 1, previous
       };
-      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} of at most 3 under Decision 0170 if it admits a Session; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
+      notes.push(`Decision 0173 card: the day approved at ${chain.window.opensAt} ends at ${chain.window.closesAt}; attempt ${delegation.attempt} (numbered since Decision 0170, no longer capped) if it admits a Session; ${chain.failedBatchesToday} failed batches in this day, each one cleared by a merged fix for its cause (Decision 0187) or the card is refused; ${chain.rePressesToday} of at most 2 refused re-presses used in this day. Rowan's named cause is recorded, not machine-proved.`);
     } catch (error) {
       throw validationError(`No Decision 0173 card may be pinned: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -287,14 +362,15 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
 /** Rowan's named cause, from the flags; null when none was named (the chain refuses when one is needed). */
 function namedDayGrantCause(options: StartRunPinsOptions): Pick<DayGrantPrevious, "cause" | "evidence" | "clearance"> | null {
   const fix = [options.fixPullRequest, options.fixCommit, options.reproduction];
-  if (![options.previousCause, options.previousEvidence, options.observedCleared, ...fix].some((value) => value !== undefined)) return null;
+  if (![options.previousCause, options.previousEvidence, options.observedCleared, options.fixCause, ...fix].some((value) => value !== undefined)) return null;
+  if (options.fixCause !== undefined && fix.some((value) => value === undefined)) throw validationError("--fix-cause names the cause of a merged fix: it needs --fix-pull-request, --fix-commit and --reproduction.");
   if (fix.some((value) => value !== undefined) && options.observedCleared !== undefined) throw validationError("Name a merged fix or an observed clearance, not both.");
   if (options.previousCause === undefined || options.previousEvidence === undefined) throw validationError("A named cause needs both --previous-cause and --previous-evidence.");
   if (fix.some((value) => value !== undefined) && fix.some((value) => value === undefined)) throw validationError("A merged fix needs --fix-pull-request, --fix-commit and --reproduction together.");
   if (options.observedCleared === undefined && fix.every((value) => value === undefined)) throw validationError("A named cause needs how it was cleared: --observed-cleared, or --fix-pull-request, --fix-commit and --reproduction.");
   const clearance: DayGrantClearance = options.observedCleared !== undefined
     ? { kind: "observed-cleared", observation: options.observedCleared }
-    : { kind: "merged-fix", pullRequest: String(options.fixPullRequest), commit: String(options.fixCommit), reproduction: String(options.reproduction) };
+    : { kind: "merged-fix", pullRequest: String(options.fixPullRequest), commit: String(options.fixCommit), reproduction: String(options.reproduction), ...(options.fixCause !== undefined ? { cause: options.fixCause } : {}) };
   return { cause: options.previousCause, evidence: options.previousEvidence, clearance };
 }
 

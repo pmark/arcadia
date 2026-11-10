@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider
 project: arcadia
-status: active
+status: complete
 milestone: "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-05
+updated: 2026-11-06
 actions:
   - id: launch-failure-keeps-cause
     title: Make a Session launch failure keep its underlying cause in the red-alert evidence and in production status.
@@ -139,20 +139,20 @@ actions:
     references: []
   - id: first-unattended-run
     title: Evidence a multi-Action unattended production run on Arcadia's own repository whose only operator touches are activation and merges of authority-adjacent PRs.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Evidence a multi-Action unattended production run on Arcadia's own repository whose only operator touches are activation and merges of authority-adjacent PRs.
+    next_action: Completed via Agent Ask complete-first-unattended-run-20261105; no further action.
     expected_artifact: Evidence satisfying Agent Ask first-unattended-run
     clarification: clarified
     confidence: high
-    source: Agent Ask seed-serial-run-test-only-actions-20261104-r2
+    source: Agent Ask seed-third-serial-action-20261105-r3
     why: "This run is the milestone's proof that Arcadia maintains momentum on its own repository without supervision."
     acceptance_criteria:
       - A production preview for at least three ready Actions on claude-code is published and its activation presented as one card; agents do not activate.
       - The run's ledger rows show every Action reaching a merged PR, with each operator touch listed and none other than activation and authority-adjacent merges.
       - docs/managed-production-readiness.md is re-derived from the run, stating the new verdict and every failure observed.
-    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns, pin-work-monitor-malformed-record, pin-recovery-unparseable-time-order, pin-reconcile-refuses-activation-commit]
+    depends_on: [worker-review-and-merge, production-spend-budget, credential-preflight, test-transient-review-retry-after-exhaustion, refresh-decision-0130-status-and-1559-fake, guard-repair-gate-upsert-role, bound-guidance-test-teardown-retries, assert-tmux-temp-launcher-removed, cover-retired-descriptor-byte-change, pin-worker-merge-allowlist-carve-outs, pin-blast-radius-safety-patterns, pin-work-monitor-malformed-record, pin-recovery-unparseable-time-order, pin-reconcile-refuses-activation-commit, pin-qa-plan-status-must-be-fail]
     decisions: []
     references: []
   - id: implement-a-hermetic-test-that-an
@@ -577,20 +577,20 @@ actions:
     references: ["docs/decisions/0169-choose-how-the-next-unattended-production-run-recovers-and-gets-noticed.md"]
   - id: pin-work-monitor-malformed-record
     title: "Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin the work monitor's fallback for a malformed batched branch record with a test, covering the untested parse fallback in Issue #2015."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-work-monitor-malformed-record-4c9917b223cc; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-work-monitor-malformed-record
     clarification: clarified
     confidence: high
-    source: Agent Ask tighten-work-monitor-malformed-record-criteria-20261104
+    source: Agent Ask amend-pin-work-monitor-criteria-20261105
     why: "Removing the field-count check currently passes every test, so a malformed record could reach the monitor's safety report unnoticed."
     acceptance_criteria:
       - tests/work-monitor-failures.test.ts gains a test in which the stdout of the batched branch listing is altered so one record keeps only its branch name and object id and loses every other field, the test asserts that the alteration was applied at least once, and the scan result equals the scan of the same repository without the alteration.
       - The alteration applies only to the batched branch listing and is cleared after each test, and every other test in that file passes unchanged.
-      - The change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+      - Apart from the settlement records Arcadia writes, the change touches only tests/work-monitor-failures.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/2015"]
@@ -616,11 +616,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2004"]
   - id: pin-reconcile-refuses-activation-commit
     title: "Pin that the worker's base sync refuses a local plan-activation commit with a test, recording today's behaviour named in Issue #2018."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Pin that the worker's base sync refuses a local plan-activation commit with a test, recording today's behaviour named in Issue #2018."
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-reconcile-refuses-activation-commit-cb47d0d0f3ae; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-reconcile-refuses-activation-commit
     clarification: clarified
     confidence: high
@@ -634,11 +634,30 @@ actions:
     depends_on: []
     decisions: []
     references: ["https://github.com/pmark/arcadia/issues/2018"]
+  - id: pin-qa-plan-status-must-be-fail
+    title: "Pin that a QA repair row whose operator-qa-plan check did not fail raises no recovery signal, with a test covering the status check named in Issue #2004."
+    status: done
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-qa-plan-status-must-be-fail-75fe27966b22; no further action.
+    expected_artifact: Evidence satisfying Agent Ask pin-qa-plan-status-must-be-fail
+    clarification: clarified
+    confidence: high
+    source: Agent Ask seed-third-serial-action-20261105-r3
+    why: "Dropping the fail-status check in classifyRecoverySignals passes every test today, so a not-checked QA plan could raise a stop signal unnoticed."
+    acceptance_criteria:
+      - tests/recovery-replay.test.ts gains a test in which classifyRecoverySignals receives a qa review repair row whose only failed check is operator-qa-plan with status not-checked, and one with status inherited, and one with status not-applicable, and returns no signal for each.
+      - The same test gives each of those three statuses on operator-qa-plan beside a second check, tests-and-evidence with status fail, and asserts no signal is returned for each.
+      - Every other test in that file passes unchanged.
+      - Apart from the settlement records Arcadia writes, the change touches only tests/recovery-replay.test.ts. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
+    depends_on: []
+    decisions: []
+    references: ["https://github.com/pmark/arcadia/issues/2004"]
 questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-work-monitor-malformed-record
 ---
 
 # Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.

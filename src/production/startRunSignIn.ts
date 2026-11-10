@@ -106,7 +106,7 @@ export interface WorkerUsageReceipt {
   schema?: string; nonce?: string; repository?: string; workspace?: string; pid?: number; release?: string | null; handlerHash?: string | null;
   approval?: { decision?: string; digest?: string } | null; startedAt?: string; finishedAt?: string; credentialExpiresAt?: string | null;
   requestAttempted?: boolean | null; httpStatus?: number | null; outcome?: string; success?: boolean;
-  windows?: Array<{ label?: string; usedPercentage?: number; resetsAt?: string }>;
+  windows?: Array<{ label?: string; usedPercentage?: number; resetsAt?: string | null }>;
 }
 
 const sha256 = (bytes: Buffer | string) => createHash("sha256").update(bytes).digest("hex");
@@ -235,7 +235,8 @@ export function sequenceRecordName(date: string, cardId: string, runId: string):
 /**
  * The START gate on one worker usage receipt: why it does not allow START, or null when it does. The receipt must be the
  * bound worker's own (release and handler), a successful authorized live request, with the credential expiring more than
- * 5 minutes after `now` and both the 5-hour and 7-day windows below 100%.
+ * 5 minutes after `now` and every reported usage window below 100%: the 7-day window is required, and an absent 5-hour
+ * window is no limit (operator ruling A, 2026-11-05, reading Decision 0161's "both usage windows below 100%").
  */
 export function signInReceiptRefusal(receipt: WorkerUsageReceipt, binding: Pick<DiagnosticWorkerBinding, "release" | "handlerHash">, now: Date): string | null {
   if (receipt.schema !== RECEIPT_SCHEMA) return "not a worker usage receipt";
@@ -249,6 +250,9 @@ export function signInReceiptRefusal(receipt: WorkerUsageReceipt, binding: Pick<
   const windows = Array.isArray(receipt.windows) ? receipt.windows : [];
   for (const label of ["5h", "7d"]) {
     const window = windows.filter((w) => w.label === label);
+    // Ruling A: an absent 5-hour window is no limit; the weekly window is required. Whether a reported window was
+    // readable (a usable reset time when above 0%) is settled by the bound worker's `success`, checked above.
+    if (label === "5h" && window.length === 0) continue;
     if (window.length !== 1 || !Number.isFinite(window[0].usedPercentage) || (window[0].usedPercentage as number) < 0) return `usage window ${label} unknown`;
     if ((window[0].usedPercentage as number) >= 100) return `usage window ${label} at 100%`;
   }

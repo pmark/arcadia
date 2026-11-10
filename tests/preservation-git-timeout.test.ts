@@ -17,7 +17,7 @@ import {
   MAX_IDENTICAL_PRESERVATION_INDEX_LOCKS, MAX_IDENTICAL_PRESERVATION_REFUSALS, MAX_IDENTICAL_PRESERVATION_TIMEOUTS
 } from "../src/sessions/preservationRefusalBudget.js";
 import {
-  PRESERVATION_GIT_TIMEOUT_MAX_MS, PRESERVATION_GIT_TIMEOUT_MS, PRESERVATION_STAGE_TIMEOUT_MS, preservationGitTimeoutMs,
+  LONG_GIT_CALL_TIMEOUT_MS, PRESERVATION_GIT_TIMEOUT_MAX_MS, PRESERVATION_GIT_TIMEOUT_MS, PRESERVATION_STAGE_TIMEOUT_MS, preservationGitTimeoutMs,
   preservationIndexLocked, preservationIndexLockMalformed, preservationProcessLimits, preservationStage, withPreservationProgress
 } from "../src/sessions/preservationStages.js";
 import {
@@ -50,7 +50,14 @@ describe("preservation git timeout bounds", () => {
     expect(withPreservationProgress(() => undefined, limits)).toEqual({ timeout: 45_000, killSignal: "SIGKILL" });
     expect(withPreservationProgress(() => undefined, limits, { gitTimeoutMs: 999_999 }))
       .toEqual({ timeout: PRESERVATION_GIT_TIMEOUT_MAX_MS, killSignal: "SIGKILL" });
-    expect(limits()).toEqual({});
+    // No progress store still means a bound: this is the worker tick's path (#2084).
+    expect(limits()).toEqual({ timeout: 45_000, killSignal: "SIGKILL" });
+    for (const long of [["fetch", "origin"], ["push", "origin", "b"], ["-c", "core.hooksPath=/dev/null", "merge", "--ff-only", "x"], ["commit", "-m", "x"], ["worktree", "add", "p"], ["-c", "a=b", "worktree", "remove", "p"]]) {
+      expect(preservationProcessLimits("git", long)).toEqual({ timeout: LONG_GIT_CALL_TIMEOUT_MS, killSignal: "SIGKILL" });
+      expect(withPreservationProgress(() => undefined, () => preservationProcessLimits("git", long)).timeout).toBe(45_000);
+    }
+    expect(preservationProcessLimits("git", ["worktree", "list", "--porcelain"]).timeout).toBe(45_000);
+    expect(preservationProcessLimits("/usr/bin/python3", ["-I", "-c", "x", "fetch"]).timeout).toBe(45_000);
   });
 
   it("restarts the stage idle clock at the start of every bounded call, so slow successful calls never trip the watchdog", () => {

@@ -1,6 +1,7 @@
 import { sessionProbeNoncePath } from "../src/sessions/sessionProbeCommand.js";
 import { execFileSync } from "node:child_process";
 import { runReviewRequiredCommand } from "../src/commands/review.js";
+import { runWorkPlanCommand } from "../src/commands/work.js";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -33,15 +34,18 @@ import {
   MECHANICAL_TRANSITIONS,
   normalizeProductionScope,
   PRODUCTION_CONTROL_DEADLINES,
+  readDayGrantEvidence,
   SIGN_IN_FAILURE_HOLD_MS,
   type ProductionScope
 } from "../src/production/policy.js";
+import { isFailedBatch } from "../src/operatorActions/startRunDayGrant.js";
 import {
   ensureProductionTickTables,
   runManagedProductionTick,
   resetProductionRepairBudget,
   listRecentBaseBranchAdvances,
   listLaunchBlockers,
+  recordSpendLaunchBlocker,
   listOperatorEscalations,
   listProductionAttemptTokens,
   BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS
@@ -308,6 +312,51 @@ describe("runManagedProductionTick", () => {
       expect(pings()).toHaveLength(1);
       expect(pings()[0].kind).toBe("attention");
       expect(pings()[0].message).toContain("1 merged");
+    });
+
+    it("announces scope complete once when the Plan's last in-scope Action merged and the Plan has no current_action (Issue #2273)", () => {
+      const fixture = preparedFixture({ secondAction: true, skipPacket: true });
+      const tmux = new FakeTmux();
+      // The finished-Plan shape: every Action done, the Plan complete, no pointer in PROJECT.md or the Plan.
+      const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replaceAll("status: open", "status: done")
+        .replace("status: active", "status: complete").replace("current_action: define-contract\n", ""));
+      const projectPath = path.join(fixture.repo, "PROJECT.md");
+      writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace("current_action: define-contract\n", ""));
+      activateActions(fixture, ["test-project/define-contract", "test-project/second-action"]);
+      const events = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+        db.prepare("SELECT payload_json FROM events WHERE event_type = 'managed_production.scope_complete'").all()) as Array<{ payload_json: string }>;
+      const pings = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+        db.prepare("SELECT message, kind FROM operator_pings WHERE message LIKE 'Production scope complete%'").all()) as Array<{ message: string; kind: string }>;
+
+      tickOnce(fixture, tmux);
+      tickOnce(fixture, tmux);
+
+      expect(tmux.launches).toHaveLength(0);
+      expect(events()).toHaveLength(1);
+      expect(JSON.parse(events()[0].payload_json)).toMatchObject({ projectSlug: "test-project", merged: 2, escalated: 0 });
+      expect(pings()).toHaveLength(1);
+      expect(pings()[0].message).toContain("2 merged");
+      // The day-grant evidence reads that event as the batch's scope-complete record (a clean batch, not a failed one).
+      const evidence = withReadOnlyDatabase(fixture.workspace, (db) => readDayGrantEvidence(db, "1970-01-01T00:00:00.000Z"));
+      const scoped = evidence.activations.at(-1)!;
+      expect(scoped.scopeComplete).toEqual({ merged: 2, escalated: 0 });
+      expect(isFailedBatch({ admitted: 1, scopeComplete: scoped.scopeComplete })).toBe(false);
+    });
+
+    it("announces nothing for a finished Plan while an in-scope Action is still open (Issue #2273)", () => {
+      const fixture = preparedFixture({ secondAction: true, skipPacket: true });
+      const tmux = new FakeTmux();
+      const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace("current_action: define-contract\n", ""));
+      const projectPath = path.join(fixture.repo, "PROJECT.md");
+      writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace("current_action: define-contract\n", ""));
+      activateActions(fixture, ["test-project/define-contract", "test-project/second-action"]);
+
+      tickOnce(fixture, tmux);
+
+      expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+        db.prepare("SELECT COUNT(*) AS n FROM events WHERE event_type = 'managed_production.scope_complete'").get())).toEqual({ n: 0 });
     });
 
     it.each(["repair_budget_exhausted", "operator_gate_pending", "environment_wall"])(
@@ -1767,6 +1816,150 @@ describe("runManagedProductionTick", () => {
     expect(tmux.launches).toHaveLength(1);
   });
 
+  // Issue #2217, 2026-11-07: an Off committed while a tick was already running
+  // let the planner prepare the next Action's packet with no policy naming the
+  // permitted providers, so it bound the registry default (codex_build) and
+  // every later Active tick refused it forever.
+  it("never pre-plans a build packet once production went Off mid-tick, and plans it under the next Active policy instead (Issue #2217)", () => {
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const log = vi.fn();
+    let turnedOff = false;
+
+    const result = withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        log,
+        // The Off lands after the tick read the policy as Active.
+        heartbeat: () => {
+          if (turnedOff) return;
+          turnedOff = true;
+          deactivateProduction(db, { requestId: "off-mid-tick-2217", now: fixture.now });
+        },
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    expect(turnedOff).toBe(true);
+    expect(tmux.launches).toHaveLength(0);
+    expect(result.projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("refused");
+    const buildPackets = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT agent_profile FROM codex_invocations WHERE purpose = 'build' ORDER BY created_at").all() as Array<{ agent_profile: string }>);
+    expect(buildPackets()).toEqual([]);
+    expect(log).not.toHaveBeenCalledWith(expect.stringMatching(/Automatically prepared a build packet/));
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/Production is Off; not preparing a build packet for test-project\/define-contract/));
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
+
+    // The next START: the Active tick prepares it on the permitted provider.
+    activatePolicy(fixture, "policy-grant-after-off-2217");
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + 60_000),
+        log,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+    expect(buildPackets()).toEqual([{ agent_profile: "claude_build" }]);
+  });
+
+  it("replaces a build packet bound to a non-permitted provider instead of escalating its approval, and rejects the old approval (Issue #2217)", () => {
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    // Prepared while Off, bound to the registry default provider.
+    runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id, agentProfile: "codex_build" });
+    const stale = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT r.id AS decisionId, c.id AS invocationId FROM review_items r JOIN codex_invocations c ON c.id = r.codex_invocation_id WHERE r.resolved_intent = 'CodexBuildPacketApproval' AND c.agent_profile = 'codex_build'").get()) as
+      { decisionId: string; invocationId: string };
+    expect(stale).toBeDefined();
+    activatePolicy(fixture);
+    const log = vi.fn();
+    const tick = (minutes: number) => withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: new Date(fixture.now.getTime() + minutes * 60_000),
+        log,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    tick(0);
+
+    expect(tmux.launches).toHaveLength(0);
+    expect(log).toHaveBeenCalledWith(expect.stringMatching(/Replaced the build packet for test-project\/define-contract.*bound to claude_build/));
+    const packets = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT id, agent_profile FROM codex_invocations WHERE purpose = 'build' ORDER BY created_at").all() as Array<{ id: string; agent_profile: string }>);
+    expect(packets.map((entry) => entry.agent_profile)).toEqual(["codex_build", "claude_build"]);
+    const statusOf = (decisionId: string) => withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT status FROM review_items WHERE id = ?").get(decisionId) as { status: string }).status);
+    // The wrong-provider packet is never approved: its Decision is rejected as superseded.
+    expect(statusOf(stale.decisionId)).toBe("rejected");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db)).map((entry) => entry.kind)).not.toContain("build_packet_approval_pending");
+    expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+      resolvePacketLifecycle(db, getWorkItemByDocRef(db, "plan/copy-proof#define-contract")!, { workspace: fixture.workspace })))
+      .toMatchObject({ kind: "build_packet_ready", invocationId: packets[1].id });
+
+    // Later ticks wait on the replacement's own approval, never re-plan it,
+    // and never refuse on the provider again.
+    tick(1);
+    tick(2);
+    expect(log.mock.calls.filter(([message]) => /Replaced the build packet/.test(String(message)))).toHaveLength(1);
+    const refusalsAfterReplacement = log.mock.calls.map(([message]) => String(message))
+      .filter((message) => message.includes("Launch refused") && message.includes("provider not permitted"));
+    expect(refusalsAfterReplacement).toHaveLength(1);
+
+    // Approving the replacement launches it on the permitted provider.
+    withDatabase(fixture.workspace, (db) => {
+      const approval = db.prepare("SELECT id FROM review_items WHERE codex_invocation_id = ? AND resolved_intent = 'CodexBuildPacketApproval' AND status = 'open'")
+        .get(packets[1].id) as { id: string };
+      updateReviewItemStatus(db, approval.id, { status: "approved", decisionNote: "Fixture approval." });
+    });
+    expect(tick(3).projects.find((entry) => entry.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(tmux.launches).toHaveLength(1);
+  });
+
+  it("escalates a wrong-provider packet as the provider mismatch, never as an approval tap, when nothing permitted can replace it (Issue #2217)", () => {
+    const fixture = preparedFixture({ skipPacket: true, buildAction: true });
+    const tmux = new FakeTmux();
+    const workItem = withReadOnlyDatabase(fixture.workspace, (db) => getWorkItemByDocRef(db, "plan/copy-proof#define-contract"))!;
+    runWorkPlanCommand({ workspace: fixture.workspace, workId: workItem.id, agentProfile: "codex_build" });
+    // The policy permits a provider no available profile serves.
+    const opencodeScope = normalizeProductionScope({ ...productionScope, providers: ["opencode"] });
+    withDatabase(fixture.workspace, (db) =>
+      activateProduction(db, { requestId: "policy-grant-opencode-2217", scope: opencodeScope, scopeFingerprint: fingerprintProductionScope(opencodeScope), grantedBy: "operator" }));
+
+    withDatabase(fixture.workspace, (db) =>
+      runManagedProductionTick(db, fixture.workspace, {
+        profiles,
+        adapters,
+        tmux,
+        now: fixture.now,
+        capacityObservation: fixtureCapacityObservation(),
+        agentWorktreeRoot: fixture.agentWorktreeRoot
+      })
+    );
+
+    expect(tmux.launches).toHaveLength(0);
+    const escalations = withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db));
+    expect(escalations.map((entry) => entry.kind)).toEqual(["provider_not_permitted"]);
+    expect(escalations[0].remedy).toMatch(/provider not permitted: "codex-cli"/);
+    const decisions = withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT status FROM review_items WHERE resolved_intent = 'CodexBuildPacketApproval'").all() as Array<{ status: string }>);
+    expect(decisions).toEqual([{ status: "open" }]);
+  });
+
   it("reports no escalations, rather than throwing, against a database created before this table existed", () => {
     const fixture = preparedFixture();
     withDatabase(fixture.workspace, (db) => db.exec("DROP TABLE production_operator_escalations"));
@@ -1802,6 +1995,22 @@ describe("runManagedProductionTick", () => {
     }
     expect(tmux.launches).toHaveLength(0);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  });
+
+  it("records a spend refusal as a launch blocker without a repair attempt or a ping, and only for spend codes (review-repair catch)", () => {
+    const fixture = preparedFixture();
+    const at = fixture.now;
+    withDatabase(fixture.workspace, (db) => {
+      ensureProductionTickTables(db);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "capacity_refused", reason: "x", actionKey: "test-project/a", at })).toBe(false);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: null, reason: "x", actionKey: null, at })).toBe(false);
+      expect(listLaunchBlockers(db)).toEqual([]);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "spend_risk", reason: "risk (api_key_helper)", actionKey: "test-project/a", at })).toBe(true);
+      expect(listLaunchBlockers(db)[0]).toMatchObject({ projectSlug: "test-project", code: "spend_risk" });
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "spend_unknown", reason: "unknown", actionKey: "test-project/a", at })).toBe(true);
+      expect(listLaunchBlockers(db)[0]).toMatchObject({ code: "spend_unknown" });
+      expect(db.prepare("SELECT COUNT(*) AS n FROM operator_pings").get()).toEqual({ n: 0 });
+    });
   });
 
   it("names a stale Claude reading whose read-only refresh was rejected (Decision 0130): durable blocker, one deduped sign-in ping", () => {

@@ -1,4 +1,5 @@
 import { assertLocalBrowserAuditReady } from "./localBrowserAuditReadiness.js";
+import { preservationProcessLimits } from "./preservationStages.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
@@ -41,6 +42,7 @@ import { formatLaunchFailure } from "./launchFailure.js";
 import { tmuxNewSessionArgs, writeSessionLauncher } from "./tmuxLauncher.js";
 import { miseNodeDirectory } from "../runtime/mise.js";
 import { resolveHostArcadiaDirectory } from "../runtime/hostArcadiaCli.js";
+import { billingUnsetArgs } from "../spend/spendGuard.js";
 
 export { tmuxNewSessionArgs } from "./tmuxLauncher.js";
 
@@ -283,6 +285,12 @@ export interface TmuxAdapter {
    * `capturePane`: test doubles predate it.
    */
   killSession?(name: string): void;
+  /**
+   * The pid of the session's pane process, or null. Used only to walk a stalled
+   * Session's process tree for its evidence (`src/production/evidenceBundle.ts`).
+   * Optional for the same reason as `capturePane`.
+   */
+  panePid?(name: string): number | null;
 }
 
 /**
@@ -314,12 +322,27 @@ export function tmuxQueryEnv(): NodeJS.ProcessEnv {
   return env;
 }
 
+/** A wedged tmux server must not stop the worker's only thread (Issue #2084). */
+const TMUX_QUERY_LIMITS = { timeout: 15_000, killSignal: "SIGKILL" } as const;
+
+/** Whether a tmux query exits zero. A timeout is not an answer: "no such
+ * session" would read as a dead Session, so it throws for the tick to log. */
+function tmuxQuerySucceeds(args: string[]): boolean {
+  try {
+    execFileSync("tmux", args, { ...TMUX_QUERY_LIMITS, stdio: "ignore", env: tmuxQueryEnv() });
+    return true;
+  } catch (error) {
+    if ((error as { code?: unknown }).code === "ETIMEDOUT") throw error;
+    return false;
+  }
+}
+
 export const systemTmux: TmuxAdapter = {
   available() {
-    try { execFileSync("tmux", ["-V"], { stdio: "ignore", env: tmuxQueryEnv() }); return true; } catch { return false; }
+    return tmuxQuerySucceeds(["-V"]);
   },
   hasSession(name) {
-    try { execFileSync("tmux", ["has-session", "-t", `=${name}`], { stdio: "ignore", env: tmuxQueryEnv() }); return true; } catch { return false; }
+    return tmuxQuerySucceeds(["has-session", "-t", `=${name}`]);
   },
   launch(input) {
     const run = input.record ? wrapRecordedLaunch(input, input.record) : input;
@@ -350,7 +373,7 @@ export const systemTmux: TmuxAdapter = {
     // `kill-session` only; never the worktree or branch. A session that is
     // already gone is the goal state, so a failure is swallowed -- the caller
     // re-checks `hasSession`.
-    try { execFileSync("tmux", ["kill-session", "-t", `=${name}`], { stdio: "ignore", env: tmuxQueryEnv() }); } catch { /* already gone */ }
+    try { execFileSync("tmux", ["kill-session", "-t", `=${name}`], { ...TMUX_QUERY_LIMITS, stdio: "ignore", env: tmuxQueryEnv() }); } catch { /* already gone */ }
   },
   capturePane(name) {
     // The trailing colon matters: `capture-pane` takes a *pane* target, and
@@ -368,10 +391,27 @@ export const systemTmux: TmuxAdapter = {
     // past the default 1 MiB as a second margin against the same failure.
     try {
       return execFileSync("tmux", ["capture-pane", "-t", `=${name}:`, "-p", "-S", "-2000"], {
+        ...TMUX_QUERY_LIMITS,
         encoding: "utf8",
         maxBuffer: 8 * 1024 * 1024,
         env: tmuxQueryEnv()
       });
+    } catch {
+      return null;
+    }
+  },
+  panePid(name) {
+    // Same exact-match pane target as `capturePane`. Read once when a stall alert opens, so it is bounded.
+    try {
+      const output = execFileSync("tmux", ["list-panes", "-t", `=${name}:`, "-F", "#{pane_pid}"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 2_000,
+        killSignal: "SIGKILL",
+        env: tmuxQueryEnv()
+      });
+      const pid = Number(output.split("\n")[0]);
+      return Number.isInteger(pid) && pid > 1 ? pid : null;
     } catch {
       return null;
     }
@@ -825,6 +865,7 @@ export function launchPreparedSession(
   let observedRevision: string;
   try {
     observedRevision = execFileSync("git", ["rev-parse", "HEAD"], {
+      ...preservationProcessLimits("git", ["rev-parse", "HEAD"]),
       cwd: session.worktree_path,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"]
@@ -1229,7 +1270,8 @@ export function expiredClaimStillHeld(claim: Pick<AgentWorktreeReservation, "rep
  * ref, so any other outcome is "unknown" and must never release a claim.
  */
 function localBranchState(repo: string, branch: string): "present" | "absent" | "unknown" {
-  const result = spawnSync("git", ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`], { cwd: repo, stdio: "ignore" });
+  const args = ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`];
+  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd: repo, stdio: "ignore" });
   if (result.status === 0) return "present";
   if (result.status === 1) return "absent";
   return "unknown";
@@ -1448,7 +1490,9 @@ function buildSessionLaunch(db: Database.Database, session: AgentSession, regist
   // settlements must not inherit the operator action that dispatched it;
   // ordinary script helpers retain that context and remain fenced. Use env -u
   // at the child boundary even if a long-lived tmux server retained the vars.
-  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...agentIdentityEnvironmentArgs(identity), `${SESSION_ENV_MARKER}=${session.id}`, inner.command, ...inner.args] };
+  // Billing variables are stripped by construction, so the Session's real
+  // environment is the one the spend check judged (src/spend/spendGuard.ts).
+  return { command: "env", args: [...SESSION_OPERATOR_CONTEXT_RESET, ...billingUnsetArgs(), ...agentIdentityEnvironmentArgs(identity), `${SESSION_ENV_MARKER}=${session.id}`, inner.command, ...inner.args] };
 }
 
 function buildProviderLaunch(

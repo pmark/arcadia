@@ -63,6 +63,38 @@ describe("shared provider usage diagnostics", () => {
     expect((await readProviderUsage({ now, refresh: true }, d)).providers[1]).toMatchObject({ outcome: "not_reported", windows: [] });
   });
 
+  // Operator ruling A (2026-11-05): an unreported window is skipped (no limit); a reported window that cannot be read
+  // makes the response unreadable instead of being dropped silently.
+  it.each<[string, Record<string, unknown>]>([
+    ["absent", {}],
+    ["null", { five_hour: null }],
+    ["reported with neither utilization nor reset", { five_hour: { utilization: null, resets_at: null } }],
+  ])("skips a five_hour window that is %s and reads the weekly window live", async (_label, fiveHour) => {
+    const d = deps();
+    d.requestClaude = vi.fn(async () => ({ status: 200, body: { ...fiveHour, seven_day: { utilization: 40, resets_at: "2026-10-29T04:00:00Z" } } }));
+    expect((await readProviderUsage({ now, refresh: true }, d)).providers[1]).toMatchObject({
+      observation: "live", outcome: "ok", windows: [{ label: "7d", usedPercentage: 40, resetsAt: "2026-10-29T04:00:00Z" }],
+    });
+  });
+
+  it("keeps an idle five_hour window at 0% with no reset time as reported", async () => {
+    const d = deps();
+    d.requestClaude = vi.fn(async () => ({ status: 200, body: { five_hour: { utilization: 0, resets_at: null }, seven_day: { utilization: 40, resets_at: "2026-10-29T04:00:00Z" } } }));
+    expect((await readProviderUsage({ now, refresh: true }, d)).providers[1].windows).toEqual([
+      { label: "5h", usedPercentage: 0, resetsAt: null }, { label: "7d", usedPercentage: 40, resetsAt: "2026-10-29T04:00:00Z" },
+    ]);
+  });
+
+  it.each<[string, unknown]>([
+    ["above 100%", { utilization: 101, resets_at: "2026-10-22T20:00:00Z" }],
+    ["a reset with no utilization", { utilization: null, resets_at: "2026-10-22T20:00:00Z" }],
+    ["not an object", "full"],
+  ])("does not read a response whose reported five_hour window is %s, even with a valid weekly window", async (_label, fiveHour) => {
+    const d = deps();
+    d.requestClaude = vi.fn(async () => ({ status: 200, body: { five_hour: fiveHour, seven_day: { utilization: 40, resets_at: "2026-10-29T04:00:00Z" } } } as never));
+    expect((await readProviderUsage({ now, refresh: true }, d)).providers[1]).toMatchObject({ observation: "unavailable", outcome: "not_reported", windows: [] });
+  });
+
   it("distinguishes received malformed JSON from transport failure without leaking exceptions", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 200, json: async () => { throw new Error("private"); } })));
     try {

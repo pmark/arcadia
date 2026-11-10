@@ -30,8 +30,8 @@ routing scores a lot, ahead of a proper bake-off. Way lookup is built as evidenc
 - **Routing direction (S017):** the local model routes and uses tools, Ask comes first, engines are
   pluggable with none added now, and supervisors supply rich context ([probe 3](probes/routing-3.md),
   [ladder](decision-interface.md)).
-- **Being worked on:** items 1 and 2 of the revised build order have merged. Item 3, weather rhythm, waits for the operator. Production
-  work goes first whenever they compete.
+- **Being worked on:** items 1 and 2 of the revised build order have merged. Items 3, 4 and 5 and a lighter Decision page are built and reviewed, and the operator said to merge them
+  (S032, S033). The operator hasn't judged them on a phone yet. Production work goes first whenever they compete.
 - **Riskiest assumption about the layers, probed once:** that one sky can carry status behind a view and an overlay. Text
   held and the sky stayed visible ([probe](probes/layers-1.md)). The operator's phone test found the weather too noisy (S030), which the
   revision addresses.
@@ -67,6 +67,8 @@ The frame is a proposal, so this separates the operator's statements from mine.
 | REQ-016 The view defines context | S023 | Mine: it moves only as CH-05 decides, each answer names its scope, and the proof |
 | REQ-017 Relay always available | S023 | Mine: including a failed view, an uncertain send and an open Artifact, and the proof |
 | REQ-018 Mobile-first, XR as the horizon | S022 | Mine: the proof |
+| REQ-019 Off is one obvious step (proposed, not yet confirmed) | S034 | Mine: from every view, Relay answering with the control instead of acting, and the proof |
+| REQ-020 Approvals carry across sessions (proposed, not yet confirmed) | S035 | Mine: a recorded scope and end, a relayed sentence never counting, and the proof |
 
 The non-goals are also my proposals. S001 asks for "something similar" to Dot and its "own
 implementation" of DeepSeek's benefits; "no OpenAI integration" is my reading of that.

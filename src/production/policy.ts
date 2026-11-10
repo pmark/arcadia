@@ -892,7 +892,7 @@ export function readProductionPolicySafely(db: Database.Database): ProductionPol
 
 /** The one-click remedy named by every scope-drift refusal and alert. */
 export const SCOPE_DRIFT_REMEDY =
-  "On /production press \"Turn production Off\" (one click), then apply the Plan change; the current Plan stays active and queued behind until then.";
+  "On /production press \"Turn production Off\" (one click), then apply the Plan change: `arcadia go --apply --agent <codex|claude|opencode>` activates the successor (Decision 0048). The current Plan stays active and queued behind until then.";
 
 /**
  * Whether `currentPlanSlug`, the Project's current Plan, is inside an Active
@@ -1837,30 +1837,58 @@ export function assertReceiptTransition(
 /**
  * Decision 0173's read-only production record: every policy transition since `since`, and each activation with how many
  * Sessions it admitted. Decision 0170 counts a START that admits at least one Session; an admission that was committed is
- * a launched Session, whereas one fenced or released before commit never launched.
+ * a launched Session, whereas one fenced or released before commit never launched. Decision 0181 stops after a batch that
+ * fails, so each activation also carries when production next went Off and the tick's scope-complete record inside that run
+ * (`managed_production.scope_complete`, which the tick writes once per policy revision); a run with none reads as failed.
  */
 export function readDayGrantEvidence(db: Database.Database, since: string): {
   transitions: Array<{ requestId: string; transition: "activate" | "deactivate"; revisionBefore: number; revisionAfter: number; at: string }>;
-  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number }>;
+  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number; endedAt: string | null; scopeComplete: { merged: number; escalated: number } | null }>;
 } {
   const earliest = Date.parse(since);
   const rows = db.prepare(
-    `SELECT request_id, transition, revision_before, revision_after, created_at FROM production_policy_receipts ORDER BY revision_before`
-  ).all() as Array<{ request_id: string; transition: "activate" | "deactivate"; revision_before: number; revision_after: number; created_at: string }>;
+    `SELECT request_id, transition, revision_before, revision_after, created_at, receipt_json FROM production_policy_receipts ORDER BY revision_before`
+  ).all() as Array<{ request_id: string; transition: "activate" | "deactivate"; revision_before: number; revision_after: number; created_at: string; receipt_json: string }>;
   // One scan, not one per activation: the table gains one row per admission, so no index is needed for this.
   const committed = db.prepare(
     `SELECT policy_revision, COUNT(*) AS admitted FROM production_admissions WHERE committed_at IS NOT NULL GROUP BY policy_revision`
   ).all() as Array<{ policy_revision: number; admitted: number }>;
   const recent = rows.filter((row) => Date.parse(row.created_at) >= earliest);
+  // A workspace without the events table has no scope-complete record, which reads as a failed batch (fail closed).
+  const hasEvents = !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'events'").get();
+  const scopeEvents = hasEvents
+    ? (db.prepare(
+      `SELECT json_extract(payload_json, '$.projectSlug') AS project, json_extract(payload_json, '$.policyRevision') AS revision, json_extract(payload_json, '$.merged') AS merged, json_extract(payload_json, '$.escalated') AS escalated
+         FROM events WHERE event_type = 'managed_production.scope_complete' AND created_at >= ?`
+    ).all(since) as Array<{ project: unknown; revision: unknown; merged: unknown; escalated: unknown }>)
+    : [];
   return {
     transitions: recent.map((row) => ({ requestId: row.request_id, transition: row.transition, revisionBefore: row.revision_before, revisionAfter: row.revision_after, at: row.created_at })),
     activations: recent.filter((row) => row.transition === "activate").map((row) => {
       const off = rows.find((other) => other.revision_before >= row.revision_after && other.transition === "deactivate");
       const end = off ? off.revision_after : Number.MAX_SAFE_INTEGER;
       const admitted = committed.filter((group) => group.policy_revision >= row.revision_after && group.policy_revision < end).reduce((sum, group) => sum + group.admitted, 0);
-      return { requestId: row.request_id, revisionAfter: row.revision_after, at: row.created_at, admitted };
+      // The tick announces scope complete once per Project, so every Project in this activation's scope must have announced it
+      // inside this run: from its activation up to the revision its Off moved from. An unreadable scope, a Project with no
+      // announcement, or a count that is not a whole number of at least zero leaves the run unproved, and it reads as failed.
+      const projects = scopeProjects(row.receipt_json);
+      const done = scopeEvents.filter((event) => typeof event.revision === "number" && event.revision >= row.revision_after && event.revision <= (off ? off.revision_before : Number.MAX_SAFE_INTEGER)
+        && typeof event.project === "string" && projects.includes(event.project));
+      const count = (values: unknown[]): number => values.every((value) => Number.isInteger(value) && (value as number) >= 0) ? values.reduce<number>((sum, value) => sum + (value as number), 0) : Number.NaN;
+      const proved = projects.length > 0 && projects.every((project) => done.some((event) => event.project === project));
+      const scopeComplete = proved ? { merged: count(done.map((event) => event.merged)), escalated: count(done.map((event) => event.escalated)) } : null;
+      return { requestId: row.request_id, revisionAfter: row.revision_after, at: row.created_at, admitted, endedAt: off ? off.created_at : null, scopeComplete };
     })
   };
+}
+
+/** The Projects an activation's receipt scopes (`scope.actions` keys are `<project>/<action>`); empty when unreadable. */
+function scopeProjects(receiptJson: string): string[] {
+  try {
+    const actions = (JSON.parse(receiptJson) as { scope?: { actions?: unknown } } | null)?.scope?.actions;
+    if (!Array.isArray(actions) || !actions.length || !actions.every((key) => typeof key === "string" && /^[^/]+\/[^/]+$/.test(key))) return [];
+    return [...new Set((actions as string[]).map((key) => key.split("/")[0]))];
+  } catch { return []; }
 }
 
 function recordTransitionReceipt(

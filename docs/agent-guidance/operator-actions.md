@@ -255,7 +255,10 @@ pinned descriptor, so per-card review is small.
   still a draft embeds its `planActivation` block beside it (the only runner that
   may). Get the pins from live state with
   `arcadia start-run pins --plan <slug> --actions a,b,c --provider claude-code-cli --expires-hours <n>`;
-  it writes nothing and emits no script.
+  it writes nothing and emits no script. Criteria containing invisible characters
+  refuse pinning. Spell out the characters as escapes in the governed Plan.
+  Review any test-path warnings before preparing the descriptor and clarify
+  which paths are examples and which the Action must deliver.
 - **What one press may do:** fast-forward the clean main checkout to the pinned sha
   only, `go-broker ensure`, then reinstall the pinned worker label from that
   compiled release (`worker install --replace-label`, run by the release itself,
@@ -312,6 +315,10 @@ pinned descriptor, so per-card review is small.
   press opens exactly 24 hours from itself, never renews, and starts nothing. If a
   press consumes its card but cannot write the approved receipt, it fails loudly and
   no day is open; the operator presses a new day-grant card, as nothing else changed.
+  Under Decision 0200 option A a pressed day approval covers any Rowan taking over
+  that day, so a successor presses once without new words. If the host refuses that
+  press, Decisions 0163 and 0173 end the day's delegation: the successor does not
+  retry or route around it, and the operator approves a new day.
   Only a press counts. Nothing can verify a chat message, and a record Rowan wrote
   about one would be self-attesting. The runner refuses a day-grant press unless its
   `Origin` matches its `Host` at a non-loopback address, with no delegated marker,
@@ -323,6 +330,16 @@ pinned descriptor, so per-card review is small.
   `arcadia start-run pins … --day-grant-from <card>/<run>`, naming the latest START
   press's cause: `--previous-cause <stable slug> --previous-evidence <pointer>`, and
   either `--fix-pull-request --fix-commit --reproduction` or `--observed-cleared`.
+  After a failed batch that Rowan pressed (Decisions 0181 and 0187), the card goes on
+  only with `--fix-pull-request --fix-commit --reproduction --fix-cause <the same slug>`:
+  a fix for that cause, merged to main after the batch ended, with independent review of
+  its head and green checks (recorded, not machine-proved). The card checks at its pin
+  that the commit is on the reviewed revision, dated after the batch ended, with its
+  reproduction present, and that the Decision with the slug
+  `decide-what-unattended-production-does-after-a-delegated-batch-fails-under-the`
+  (found by slug, whatever its number) is answered with option A there; otherwise the
+  failed batch stops for the operator. A batch the operator pressed, or an observed
+  clearance, never passes a failed batch.
   Run the fresh pre-mortem, put its pointer in `reviewed/<id>.json` as `premortem`,
   preflight the card, then press it with
   `POST /api/operator-script {"id": "<card>", "delegation": {"decision": "0173", "agent": "rowan"}}`.
@@ -334,7 +351,8 @@ pinned descriptor, so per-card review is small.
   (request id `rowan-off-<slug>`; any other Off ends the day, so use that id or lose
   the day); no press of the card's `offId` or any `restore-off-production-*` STOP card
   since the approval, because a STOP while Off writes no policy receipt (a later
-  approval opens a new day); fewer than 3 activations since Decision 0170 admitted a Session; fewer
+  approval opens a new day); every failed batch in the day cleared by a merged fix for
+  its cause, as above (Decision 0181, re-decided by 0187); fewer
   than 2 re-presses after a refusal ran this day and the same refusal has not
   recurred; no two attempts share a named cause. P1 and P2 prove the Plan is active
   and its governed queue holds the pinned Actions. The window, the latest approval

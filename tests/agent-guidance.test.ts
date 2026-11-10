@@ -113,6 +113,18 @@ describe("compact Way instruction delivery", () => {
     expect(computeWayPropagationPlan(root).changes).toEqual([]);
   });
 
+  it("reports an oversized nested Project instruction set without a root or combined problem", () => {
+    const root = adopted(); put(root, "apps/mobile/AGENTS.md", "Nested project rule.\n".repeat(975));
+    const nested = audit(root, path.join(root, "apps/mobile"), "");
+    expect(nested.problems).toContainEqual(expect.stringContaining("Project instructions exceed"));
+    expect(nested.problems).not.toContainEqual(expect.stringContaining("Combined guidance exceeds"));
+    expect(nested.problems).not.toContainEqual(expect.stringContaining("Root instructions exceed"));
+    const rootAudit = audit(root, root, "");
+    expect(rootAudit.problems).not.toContainEqual(expect.stringContaining("Project instructions exceed"));
+    expect(rootAudit.problems).not.toContainEqual(expect.stringContaining("Combined guidance exceeds"));
+    expect(rootAudit.problems).not.toContainEqual(expect.stringContaining("Root instructions exceed"));
+  });
+
   it("fails a regression that buries the late identity rule beyond the provider limit", () => {
     const root = adopted(); const bootstrap = file(root, "AGENTS.md");
     put(root, "AGENTS.md", bootstrap.replace("- **Identity:**", "- Identity:") + "x".repeat(32768) + "\n- **Identity:** use semantic identity");
@@ -129,6 +141,13 @@ describe("compact Way instruction delivery", () => {
     expect(file(root, "AGENTS.md")).toBe(previous);
     put(root, "AGENTS.override.md", file(root, "AGENTS.md"));
     expect(audit(root).problems).toEqual([]);
+  });
+
+  it("skips a whitespace-only AGENTS.override.md and audits AGENTS.md instead", () => {
+    const root = adopted(); put(root, "AGENTS.override.md", " \n\t\n");
+    const delivery = audit(root);
+    expect(delivery.sources.at(-1)?.path).toBe(path.join(root, "AGENTS.md"));
+    expect(delivery.problems).toEqual([]);
   });
 
   it("preserves adopter-owned instruction/procedure regions across repeated setup and propagation", () => {

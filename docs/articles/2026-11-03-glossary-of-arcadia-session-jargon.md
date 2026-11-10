@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/glossary-of-arcadia-session-jargon.md"
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/glossary-of-arcadia-session-jargon/"
 channels: [site, rss]
+tags: [agent-workflows, governance]
 ---
 
 # A glossary of Arcadia session jargon, and whose word each one is
@@ -111,12 +112,9 @@ next unattended run recovers and gets noticed. "Decision 0060" and "Decision
 
 **Pointer** — Arcadia. `PROJECT.md` names the `active_plan`, and that Plan
 names its `current_action`. Together they say what the Project works on next.
-Only one Action is current across a Project. A "pointer commit" is the local
-commit (titled "point at ...") that moves them.
+An active Plan has at most one current Action. A completed Plan can still be the Project's `active_plan` while it waits for a successor. [Completed Plan example](../plans/record-run-unattended-test-pins-20261107-part-2.md)
 
-**`current_action`** — Arcadia. The field in the active Plan that names the one
-Action to work on now. Agents continue it; they do not pick work from a
-backlog.
+**`current_action`** — Arcadia. The field in the active Plan that names the Action selected for work when the field is present. A Plan's final settlement clears it. Continuing a Project starts with its recorded pointer.
 
 **Governed** — Arcadia. Changed only through Arcadia's own checked, recorded
 path (an Agent Ask), never by hand-editing. Pointers, Action status, Decision
@@ -166,8 +164,7 @@ does routine work and may request bounded help. Seven roles are registered:
 **Other named profiles** — Arcadia. Optional handles over the same seven roles:
 Mira (Investigator), Ellis (Engineer, planner or implementer by assignment),
 Nadia (Critic), Sage (Reviewer), Quinn (Verifier), Vida (Health Assessor) and
-Clara (Technical Writer, which is who drafted this). A name changes no
-authority.
+Clara (Technical Writer, which is who drafted this) and Flynn (Momentum Keeper, a bounded supervisor-class helper). The [canonical profiles](../arcadia-semantics.md#roles-specializations-and-optional-names) specify the assignments and their limits.
 
 **Implementer** — Arcadia. The role that makes the assigned bounded change as
 the sole writer. A **helper** is a role Rowan requests at depth one; helpers
@@ -402,8 +399,4 @@ triggers. They are listed in the receipt rather than guessed.
 
 ## What is not done
 
-This is a draft. An independent fact-check for accuracy was done on 2026-11-03.
-Publication approval has not been given, and nothing has been published. Some
-documents it relies on are older than the code, so the claims receipt names the
-revision each statement was checked against. Re-check dated claims before
-publishing.
+This is a reference draft. The November 3 fact-check applies to the earlier text. The November 9 refresh adds the completed-Plan case and Flynn; those edits await independent review. The [claims receipt](receipts/glossary-of-arcadia-session-jargon.md) records the review scope.

@@ -6,7 +6,7 @@ import path from "node:path";
 
 import { validationError } from "../cli/errors.js";
 import { isolatedGitEnvironment } from "./isolatedGitEnvironment.js";
-import { PRESERVATION_REQUEST_FILE } from "../sessions/candidateSnapshot.js";
+import { PRESERVATION_REQUEST_FILE, withRegularFileStdin } from "../sessions/candidateSnapshot.js";
 import { GO_REQUEST_FILE } from "../sessions/goRequestProtocol.js";
 
 /**
@@ -140,9 +140,20 @@ export function isAncestor(cwd: string, ancestor: string, descendant: string): b
  * no individual patch matches.
  *
  * Returns false rather than throwing when git cannot answer, so an
- * indeterminate result never reads as "safe to delete".
+ * indeterminate result never reads as "safe to delete". A call that hit its
+ * bound is one such answer: false here means "not proven equivalent", which
+ * every caller already treats as still needing integration, or a refusal, and
+ * the next tick asks again. It must not throw into the tick (Issue #2084).
  */
 export function isPatchEquivalent(cwd: string, base: string, branch: string): boolean {
+  try {
+    return patchEquivalenceProven(cwd, base, branch);
+  } catch {
+    return false;
+  }
+}
+
+function patchEquivalenceProven(cwd: string, base: string, branch: string): boolean {
   const output = tryGit(cwd, ["cherry", base, branch]);
   if (output === null) return false;
 
@@ -161,7 +172,9 @@ export function isPatchEquivalent(cwd: string, base: string, branch: string): bo
   // proves the net effect still exists without touching either worktree.
   const mergeBase = tryGit(cwd, ["merge-base", base, branch]);
   if (!mergeBase) return false;
-  const patch = spawnSync("git", ["diff", "--binary", `${mergeBase.trim()}..${branch}`], {
+  const diffArgs = ["diff", "--binary", `${mergeBase.trim()}..${branch}`];
+  const patch = spawnSync("git", diffArgs, {
+    ...preservationProcessLimits("git", diffArgs),
     cwd,
     stdio: ["ignore", "pipe", "pipe"]
   });
@@ -170,14 +183,17 @@ export function isPatchEquivalent(cwd: string, base: string, branch: string): bo
   const scratch = mkdtempSync(path.join(tmpdir(), "arcadia-patch-proof-"));
   try {
     const env = { ...process.env, GIT_INDEX_FILE: path.join(scratch, "index") };
-    const loaded = spawnSync("git", ["read-tree", base], { cwd, env, stdio: "ignore" });
+    const readArgs = ["read-tree", base];
+    const loaded = spawnSync("git", readArgs, { ...preservationProcessLimits("git", readArgs), cwd, env, stdio: "ignore" });
     if (loaded.status !== 0) return false;
-    return spawnSync("git", ["apply", "--cached", "--reverse", "--check", "--whitespace=nowarn", "-"], {
+    // Regular-file stdin has no writer to withhold EOF; a killed call has a null status.
+    const applyArgs = ["apply", "--cached", "--reverse", "--check", "--whitespace=nowarn", "-"];
+    return withRegularFileStdin(patch.stdout, scratch, stdin => spawnSync("git", applyArgs, {
+      ...preservationProcessLimits("git", applyArgs),
       cwd,
       env,
-      input: patch.stdout,
-      stdio: ["pipe", "ignore", "ignore"]
-    }).status === 0;
+      stdio: [stdin, "ignore", "ignore"]
+    })).status === 0;
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -245,6 +261,20 @@ export function git(cwd: string, args: string[]): string {
 function gitFailureCause(error: unknown): string {
   const detail = error as { stderr?: Buffer | string; message?: string };
   return (String(detail.stderr ?? "").trim() || String(detail.message ?? error)).trim();
+}
+
+/**
+ * Like `tryGit`, but keeps a bounded, single-line copy of git's stderr on a
+ * non-zero exit so a caller can say why. `clean` (e.g. a secret redactor) runs
+ * before the collapse and truncation so a cut cannot leave half a secret. A timeout still throws its typed error.
+ */
+export function tryGitWithStderr(cwd: string, args: string[], env: NodeJS.ProcessEnv = process.env, maxChars = 500, clean: (text: string) => string = (text) => text): { stdout: string | null; stderr: string } {
+  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const timeout = preservationTimeout(result.error, "git", args, cwd);
+  if (timeout) throw timeout;
+  if (result.status === 0) return { stdout: result.stdout.trim(), stderr: "" };
+  const line = clean(String(result.stderr ?? "")).replace(/\s+/g, " ").trim();
+  return { stdout: null, stderr: line.length > maxChars ? `${line.slice(0, maxChars)}...` : line };
 }
 
 /** Null only for a genuine non-zero exit; a timeout throws its typed error. */

@@ -496,7 +496,7 @@ function renderNarrativeDigestRecord(
     "",
     "## Provenance",
     "",
-    "- AI-narrated from the digest's bounded Arcadia fact snapshot, using the local-preferred Intelligence route.",
+    "- The headline is AI-written by the local-preferred Intelligence route from the digest's computed facts when the page labels it so; it falls back to a computed summary otherwise. Every other section is computed from Arcadia records.",
     `- Digest: ${input.digest.id}`,
     `- Artifact: ${input.artifact.id} (${input.artifact.path})`,
     "- SQLite and the source Artifact remain operational truth; this Record is a projection and is safe to delete.",

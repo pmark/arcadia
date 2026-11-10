@@ -7,7 +7,8 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
 import { startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import type { StartRunPins } from "../src/operatorActions/startRunPins.js";
-import { DAY_CARD, DAY_RUN, dayScenarios, STOP_ID, writeDayScenario, type DayScenario } from "./helpers/dayGrantFixture.js";
+import { CONTINUE_ANSWER, CONTINUE_SLUG } from "../src/operatorActions/startRunDayGrant.js";
+import { DAY_CARD, DAY_RUN, dayScenarios, fixed, mergedFix, OLD_FIX_COMMIT, pressKey, STOP_ID, writeDayScenario, type DayScenario } from "./helpers/dayGrantFixture.js";
 
 /**
  * Hermetic cases for scripts/start-run.sh, the shared executor of every per-run START card. Each case copies the real
@@ -39,6 +40,8 @@ const clockEnv = (now: string): NodeJS.ProcessEnv => ({
 });
 const LABEL = "com.arcadia.local.1.worker";
 const PIN_COMMIT = "0".repeat(40);
+/** The number the continue-after-fix Decision landed on when written; the executor finds it by its slug alone. */
+const CONTINUE_ID = "0187";
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 
 const directories: string[] = [];
@@ -64,7 +67,8 @@ const planDocument = (status: "active" | "draft", done: string[] = [], actions: 
 ].join("\n");
 const projectDocument = (activePlan: string) => `---\nslug: arcadia\nactive_plan: ${activePlan}\n---\n`;
 const decisionDocument = (id: string, status = "approved", answer = "Yes") => `---\nid: "${id}"\nstatus: ${status}\n${answer ? `answer: ${answer}\n` : ""}---\n`;
-const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170", "0173"];
+const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163", "0170", "0173", "0181"];
+const DECISION_ANSWERS: Record<string, string> = { "0173": '"A. Daily grant: START and routine run operations"', "0181": "A. Continued serial runs" };
 
 type Scenario = "same" | "behind" | "pin-unfetched" | "origin-moved" | "diverged" | "ahead";
 interface BoxOptions {
@@ -75,6 +79,10 @@ interface BoxOptions {
   projectPointer?: string;
   done?: string[];
   decisions?: Record<string, string | null>;
+  /** Decision 0187's record at its real slug path (found by slug, not number): null leaves it out; default approved with A. */
+  continueDecision?: string | null;
+  /** More Decision records by path, such as another record sharing 0187's number or its slug. */
+  extraDecisions?: Record<string, string>;
   withoutFile?: string;
   expiresAt?: string;
   executorPin?: string;
@@ -102,6 +110,16 @@ interface BoxOptions {
   dayUsed?: boolean;
   plist?: boolean;
   tmuxSessions?: boolean;
+  /** Exact live tmux session names (`tmux ls -F '#{session_name}'`); the registry's allowed names go in state.relaySessions. */
+  tmuxLive?: string[];
+  /** How `tmux ls` fails: tmux's own "no server" answer is the default; others must refuse (fail closed). */
+  tmuxError?: "denied" | "other" | "mise-shim" | "not-found" | "timeout";
+  /** A warning line on stderr beside a successful `tmux ls` (a shim's notice): it must never become a session name. */
+  tmuxWarning?: boolean;
+  /** How many panes the relay session has (default 1). */
+  relayPanes?: number;
+  /** Whether a process of the registry's native session id (--session-id) runs under the relay pane (default true). */
+  relayProcess?: boolean;
   config?: unknown;
   state?: (state: Record<string, any>) => void;
 }
@@ -120,7 +138,12 @@ function box(options: BoxOptions = {}) {
   git(repo, "init", "-b", "main");
   git(repo, "remote", "add", "origin", origin);
   writeFileSync(path.join(repo, ".gitignore"), "artifacts/generated/\nnode_modules\n");
-  const installed = commitFile(repo, "README.md", "base\n", "base");
+  // The base commit is dated before every scenario's failure, so Decision 0187 cases can name a fix merged too early (OLD_FIX_COMMIT).
+  writeFileSync(path.join(repo, "README.md"), "base\n");
+  git(repo, "add", "-A");
+  const based = spawnSync("git", ["commit", "-m", "base"], { cwd: repo, encoding: "utf8", env: { ...process.env, ...GIT_ENV, GIT_AUTHOR_DATE: "2026-11-01T00:00:00Z", GIT_COMMITTER_DATE: "2026-11-01T00:00:00Z" } });
+  if (based.status !== 0) throw new Error(`git commit base: ${based.stderr}`);
+  const installed = git(repo, "rev-parse", "HEAD");
 
   const planStatus = options.planStatus ?? "active";
   const files: Record<string, string> = {
@@ -134,8 +157,10 @@ function box(options: BoxOptions = {}) {
   for (const id of DECISIONS) {
     const body = options.decisions?.[id];
     if (body === null) continue;
-    files[`docs/decisions/${id}-fixture.md`] = body ?? decisionDocument(id, "approved", id === "0173" ? '"A. Daily grant: START and routine run operations"' : "Yes");
+    files[`docs/decisions/${id}-fixture.md`] = body ?? decisionDocument(id, "approved", DECISION_ANSWERS[id] ?? "Yes");
   }
+  if (options.continueDecision !== null) files[`docs/decisions/${CONTINUE_ID}-${CONTINUE_SLUG}.md`] = options.continueDecision ?? decisionDocument(CONTINUE_ID, "approved", CONTINUE_ANSWER);
+  Object.assign(files, options.extraDecisions ?? {});
   if (options.withoutFile) delete files[options.withoutFile];
   for (const [file, content] of Object.entries(files)) {
     mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
@@ -234,15 +259,17 @@ function box(options: BoxOptions = {}) {
   if (options.dayGrant) {
     const scenario = options.dayGrant;
     const now = Date.now();
-    const written = writeDayScenario(library, scenario, now);
+    // A merged fix's commit is only known here: PIN_COMMIT (FIX_COMMIT) stands for the reviewed revision, dated after every
+    // scenario's failure, and OLD_FIX_COMMIT for the base commit, dated before them (Decision 0187).
+    const commits: Record<string, string> = { [PIN_COMMIT]: pin, [OLD_FIX_COMMIT]: installed };
+    const written = writeDayScenario(library, scenario, now, commits);
     dayPolicyRevision = written.policyRevision;
     dayEvidence = written.evidence;
     pins.requiredDecisions = [...pins.requiredDecisions, "0163", "0170", "0173"];
     pins.production = { ...pins.production, revision: written.policyRevision };
     pins.grantedBy = `Rowan, pressing this START card from /actions under Decision 0173, within the operator's day approval ${written.approval.card}/${written.approval.run}`;
-    // A merged fix's commit is only known here: PIN_COMMIT stands for the reviewed revision.
-    const previous = scenario.previous?.clearance.kind === "merged-fix" && scenario.previous.clearance.commit === PIN_COMMIT
-      ? { ...scenario.previous, clearance: { ...scenario.previous.clearance, commit: pin } } : scenario.previous ?? null;
+    const previous = scenario.previous?.clearance.kind === "merged-fix" && commits[scenario.previous.clearance.commit]
+      ? { ...scenario.previous, clearance: { ...scenario.previous.clearance, commit: commits[scenario.previous.clearance.commit] } } : scenario.previous ?? null;
     pins.delegation = { decision: "0173", approvalCard: written.approval.card, approvalRun: written.approval.run, approvalReceiptSha256: written.approval.receiptSha256, approvalPressSha256: written.approval.pressSha256, attempt: scenario.attempt ?? 1, previous };
   }
   const descriptor: OperatorScriptDescriptor = {
@@ -292,8 +319,28 @@ function box(options: BoxOptions = {}) {
   shim("timeout", 'shift; exec "$@"');
   shim("sleep", "exit 0");
   // `ps -o ppid= -p <pid>`: 3333 is the source-run worker the tsx CLI (launchd PID 1111) runs as its direct child.
-  shim("ps", 'case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac');
-  shim("tmux", options.tmuxSessions ? 'echo "0: 1 windows (created Sat Nov  1 00:00:00 2026)"' : "exit 1");
+  shim("ps", `if [ "$1" = "-axo" ]; then
+  echo "  4242     1 tmux: pane shell"
+  echo "  4243     1 bash stray-builder"
+  ${options.relayProcess === false ? 'echo "  5151  4242 claude --session-id 99999999-9999-4999-8999-999999999999 --name other"' : 'echo "  5151  4242 claude --remote-control rowan --session-id 22222222-2222-4222-8222-222222222222 --name rowan"'}
+  exit 0
+fi
+case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac`);
+  const liveNames = options.tmuxLive ?? (options.tmuxSessions ? ["0"] : []);
+  const tmuxFailure = {
+    denied: 'echo "error connecting to /private/tmp/tmux-501/default (Operation not permitted)" >&2; exit 1',
+    other: 'echo "protocol version mismatch (client 8, server 7)" >&2; exit 1',
+    "mise-shim": 'echo "mise ERROR error parsing config file: mise.toml" >&2; exit 1',
+    "not-found": 'echo "tmux: command not found" >&2; exit 127',
+    timeout: "exit 124"
+  };
+  // tmux's own answers: a server with sessions lists them (and a pane PID); no server says so on stderr. TMUX and TMUX_TMPDIR must be stripped by the caller.
+  shim("tmux", options.tmuxError ? tmuxFailure[options.tmuxError]
+    : `if [ -n "$TMUX" ] || [ -n "$TMUX_TMPDIR" ]; then echo "TMUX leaked into the query" >&2; exit 1; fi
+case "$1" in
+  ls) ${options.tmuxWarning ? 'echo "mise WARN a shim notice" >&2; ' : ""}${liveNames.length > 0 ? `printf '%s\\n' ${liveNames.map((name) => `'${name}'`).join(" ")}` : 'echo "no server running on /private/tmp/tmux-501/default" >&2; exit 1'} ;;
+  list-panes) if [ "$2" != "-s" ] || [ "$3 $4" != "-t =${liveNames[0] ?? "none"}:" ]; then echo "list-panes must use -s -t =name:" >&2; exit 1; fi; ${Array.from({ length: options.relayPanes ?? 1 }, (_, index) => `echo ${4242 + index}`).join("; ")} ;;
+esac`);
   writeFileSync(path.join(bin, "fake-arcadia.mjs"), readFileSync(path.join(fixtures, "fake-arcadia.mjs")));
   writeFileSync(path.join(bin, "fake-plan-runner.mjs"), readFileSync(path.join(fixtures, "fake-plan-runner.mjs")));
 
@@ -419,7 +466,9 @@ describe("start-run executor: P0 context refusals consume nothing", () => {
     ["an operator press record parented by another process", { press: "other-parent" }, {}, true, /not parented/],
     ["an already claimed operator press record", { press: "claimed" }, {}, true, /already claimed/],
     ["an agent sandbox", {}, { CODEX_SANDBOX: "seatbelt" }, true, /host-only/],
-    ["ANTHROPIC_API_KEY set", {}, { ANTHROPIC_API_KEY: "sk-fixture" }, true, /ANTHROPIC_API_KEY is set/],
+    ["a spend check that says risk", { state: (s) => { s.spend = "risk"; } }, {}, true, /spend check is risk, not clear/],
+    ["a spend check that says unknown", { state: (s) => { s.spend = "unknown"; } }, {}, true, /spend check is unknown, not clear/],
+    ["a spend check that cannot be read", { state: (s) => { s.spend = "garbled"; } }, {}, true, /spend check is unreadable, not clear/],
     ["ARCADIA_WORKSPACE set", {}, { ARCADIA_WORKSPACE: "/elsewhere" }, true, /ARCADIA_WORKSPACE is set/],
     ["a changed descriptor", { tamper: "descriptor" }, {}, true, /independently reviewed hashes/],
     ["a changed launcher", { tamper: "script" }, {}, true, /independently reviewed hashes/],
@@ -433,6 +482,16 @@ describe("start-run executor: P0 context refusals consume nothing", () => {
     const result = b.run("run", env, actions);
     // The not-from-/actions case runs without the operator context; the others carry it.
     expectRefusedClean(b, result, "P0", reason, headBefore);
+  });
+  it("runs the spend check with the stripped launch environment, so a set billing variable alone no longer refuses P0", () => {
+    const b = box();
+    const result = b.run("run", { ANTHROPIC_API_KEY: "sk-fixture" }, true);
+    const spend = b.calls().filter((call) => call.tool === "arcadia" && call.args.slice(0, 2).join(" ") === "spend check");
+    expect(spend.length).toBeGreaterThan(0);
+    expect(spend[0].args).toEqual(expect.arrayContaining(["--provider", "claude", "--launch-env", "stripped"]));
+    // Never refused at P0 for the variable; its value is in no output.
+    expect(result.receipt?.reason ?? "").not.toMatch(/ANTHROPIC_API_KEY|sk-fixture/);
+    expect(`${result.stdout}${result.stderr}`).not.toContain("sk-fixture");
   });
   it("refuses a pressed-twice card from its consumed marker", () => {
     const b = box();
@@ -499,6 +558,47 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     ["sign-in sequence preconditions that fail", { state: (s) => { s.signin = { check: "refuse" }; } }, /sign-in sequence preconditions fail: .*not a terminal request.*\[code REQUEST_SLOT_BUSY; sequenceClaimed false\]/]
   ])("refuses %s", (_label, options, reason) => {
     const b = box(options);
+    const headBefore = b.head();
+    const result = b.run("preflight");
+    expectRefusedClean(b, result, "P2", reason, headBefore);
+  });
+});
+
+describe("start-run executor: a registered relay coordinator under tmux is not a competing Session (#2286 item 7)", () => {
+  const RELAY = "arcadia-coord-rowan-g2";
+  it("tolerates exactly the registry's relay custodian, records it, and asks the registry about this Project", () => {
+    const b = box({ scenario: "behind", tmuxLive: [RELAY], state: (s) => { s.relaySessions = [RELAY]; } });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", phase: "P2", allowanceConsumed: false });
+    expect(result.receipt!.record.relayCoordinatorSessions).toEqual([RELAY]);
+    const asked = readFileSync(path.join(b.root, "calls.log"), "utf8").split("\n").filter(Boolean).map((line) => JSON.parse(line).args as string[])
+      .filter((args) => args.slice(0, 2).join(" ") === "coordinator relay-sessions");
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked[0]).toContain("--project");
+  });
+  it("a warning on stderr beside a successful tmux ls is not a session name", () => {
+    const b = box({ scenario: "behind", tmuxLive: [RELAY], tmuxWarning: true, state: (s) => { s.relaySessions = [RELAY]; } });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt!.record.relayCoordinatorSessions).toEqual([RELAY]);
+  });
+  it.each<[string, BoxOptions, RegExp]>([
+    ["a stray session next to the relay coordinator", { tmuxLive: [RELAY, "stray-builder"], state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator running its recorded session: stray-builder/],
+    ["a session that only shares the relay's prefix", { tmuxLive: [`${RELAY}-copy`], state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g2-copy/],
+    ["a relay-named session the registry does not allow (a handoff in flight, a hand-started or handed-off one)", { tmuxLive: [RELAY], state: (s) => { s.relaySessions = []; } }, /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g2/],
+    ["a registry that cannot be read", { tmuxLive: [RELAY], state: (s) => { s.relaySessions = "unreadable"; } }, /not a registered relay coordinator.*registry could not be read/],
+    // The name alone is not enough: the pane must run the row's recorded session id (a dead pane's row, or a process started under the name).
+    ["a session named like the registry's but running a different process", { tmuxLive: [RELAY], relayProcess: false, state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g2/],
+    // Reading tmux fails closed: only tmux's own "no server" answer means no sessions.
+    ["a tmux socket that is denied", { tmuxError: "denied" }, /tmux could not be read.*Operation not permitted/],
+    ["any other tmux error", { tmuxError: "other" }, /tmux could not be read.*protocol version mismatch/],
+    ["a mise shim that cannot run tmux", { tmuxError: "mise-shim" }, /tmux could not be read.*mise ERROR/],
+    ["a second pane in the relay session (a stranger could hide there)", { tmuxLive: [RELAY], relayPanes: 2, state: (s) => { s.relaySessions = [RELAY]; } }, /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g2/],
+    ["a tmux read that times out", { tmuxError: "timeout" }, /tmux could not be read \(exit 124, timed out\)/],
+    ["tmux that is not found", { tmuxError: "not-found" }, /tmux could not be read.*command not found/]
+  ])("still refuses %s", (_label, options, reason) => {
+    const b = box({ scenario: "behind", ...options });
     const headBefore = b.head();
     const result = b.run("preflight");
     expectRefusedClean(b, result, "P2", reason, headBefore);
@@ -656,6 +756,9 @@ describe("start-run executor: Decision 0173 presses within the operator's day ap
     const expectP1 = (b: Box, reason: RegExp) => expectRefusedClean(b, b.run("preflight"), "P1", reason, b.head());
     expectP1(box({ dayGrant: FIRST, projectPointer: "something-else" }), /does not point at it/);
     expectP1(box({ dayGrant: FIRST, decisions: { "0173": decisionDocument("0173", "approved", '"B. Daily grant: START and retries only"') } }), /not answered with option A/);
+    // Decision 0181: every day-grant card needs option A at the pin, even one whose requiredDecisions omit it.
+    expectP1(box({ dayGrant: FIRST, decisions: { "0181": decisionDocument("0181", "approved", "C. No production until concurrency is built") } }), /Decision 0181 is not answered with option A/);
+    expectP1(box({ dayGrant: FIRST, decisions: { "0181": null } }), /Decision 0181 is not in docs\/decisions/);
     expectP1(box({ dayGrant: FIRST, planStatus: "draft", activation: true }), /no planActivation|covers the active Plan/);
     const fix = { kind: "merged-fix" as const, pullRequest: "https://github.com/pmark/arcadia/pull/1", commit: "d".repeat(40), reproduction: "src/production/workerMerge.ts" };
     const refused = { label: "", code: "", attempt: 1, presses: [{ card: "start-a", at: Date.now() - 600_000, receipt: {} }] };
@@ -761,6 +864,41 @@ describe("start-run executor: Decision 0173 presses within the operator's day ap
     const present = box({ dayGrant: fix("src/production/workerMerge.ts") }).run("preflight");
     expect(present.status, present.stderr + present.stdout).toBe(0);
   });
+  it("Decision 0187: goes on past a failed batch only with option A at the pin and each fix on it, merged after the failure", () => {
+    const expectP1 = (b: Box, reason: RegExp) => expectRefusedClean(b, b.run("preflight"), "P1", reason, b.head());
+    const after = (previous: DayScenario["previous"]): DayScenario => ({ ...fresh("Decision 0187: a failed batch whose next card names a merged fix for its cause"), previous });
+    const passed = box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run")) }).run("preflight");
+    expect(passed.status, passed.stderr + passed.stdout).toBe(0);
+    expect(passed.receipt!.record.delegation.clearedFailures).toMatchObject([{ batch: "start-a", press: pressKey("start-a"), cause: "stuck-run" }]);
+    // The code takes effect only once Decision 0187 is answered with option A on main.
+    const cleared = () => after(fixed(pressKey("start-a"), "stuck-run"));
+    expectP1(box({ dayGrant: cleared(), continueDecision: null }), /FAILED_BATCH: no Decision record at .* has the slug/);
+    expectP1(box({ dayGrant: cleared(), continueDecision: decisionDocument("0187", "open", "") }), /FAILED_BATCH: Decision 0187 \(.*\) is not answered with option A/);
+    expectP1(box({ dayGrant: cleared(), continueDecision: decisionDocument("0187", "approved", "B. The first failed batch stops for the operator") }), /FAILED_BATCH: Decision 0187 \(.*\) is not answered with option A/);
+    expectP1(box({ dayGrant: cleared(), continueDecision: decisionDocument("0185", "approved", CONTINUE_ANSWER) }), /FAILED_BATCH: Decision 0187 \(.*\) is not answered with option A/);
+    // Found by its slug, never the first record with its number: two records share 0187 here, and the other sorts first.
+    const shared = box({ dayGrant: cleared(), continueDecision: decisionDocument("0187", "approved", "B. The first failed batch stops for the operator"), extraDecisions: { "docs/decisions/0187-aaa-authorize-one-start-card.md": decisionDocument("0187", "approved", CONTINUE_ANSWER) } });
+    expectP1(shared, /FAILED_BATCH: Decision 0187 \(.*\) is not answered with option A/);
+    const alongside = box({ dayGrant: cleared(), extraDecisions: { "docs/decisions/0187-aaa-authorize-one-start-card.md": decisionDocument("0187", "approved", "Yes") } }).run("preflight");
+    expect(alongside.status, alongside.stderr + alongside.stdout).toBe(0);
+    // A second record with its slug cannot be told apart from it.
+    expectP1(box({ dayGrant: cleared(), extraDecisions: { [`docs/decisions/0185-${CONTINUE_SLUG}.md`]: decisionDocument("0185", "approved", CONTINUE_ANSWER) } }), /FAILED_BATCH: more than one Decision record at .* has the slug/);
+    // Whatever number the record lands on, it is found by its slug, and its id is read from that record.
+    const renumbered = box({ dayGrant: cleared(), continueDecision: null, extraDecisions: { [`docs/decisions/0199-${CONTINUE_SLUG}.md`]: decisionDocument("0199", "approved", CONTINUE_ANSWER) } }).run("preflight");
+    expect(renumbered.status, renumbered.stderr + renumbered.stdout).toBe(0);
+    // A fix that is not on the reviewed revision, or that merged before the batch ended.
+    expectP1(box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run", "stuck-run", "d".repeat(40))) }), /fix commit d+ named for the previous attempt is not on the reviewed revision/);
+    expectP1(box({ dayGrant: after(fixed(pressKey("start-a"), "stuck-run", "stuck-run", OLD_FIX_COMMIT)) }), /FAILED_BATCH: the fix commit [0-9a-f]{40} is dated before the failed batch start-a ended/);
+    // An earlier failure's fix, which the card after it named, is checked again at this card's pin.
+    const earlier = (commit: string, reproduction?: string): DayScenario => {
+      const scenario = fresh("Decision 0187: a failed batch cleared by a merged fix, then a clean batch");
+      const clearance = { ...mergedFix("stuck-run", commit), ...(reproduction ? { reproduction } : {}) };
+      return { ...scenario, presses: [scenario.presses![0], { ...scenario.presses![1], previous: { press: pressKey("start-a"), cause: "stuck-run", kind: "failed-attempt", clearance } }] };
+    };
+    expectP1(box({ dayGrant: earlier("d".repeat(40)) }), /FAILED_BATCH: the fix commit d+ named for the failed batch start-a is not on the reviewed revision/);
+    expectP1(box({ dayGrant: earlier(OLD_FIX_COMMIT) }), /FAILED_BATCH: the fix commit [0-9a-f]{40} is dated before the failed batch start-a ended/);
+    expectP1(box({ dayGrant: earlier("0".repeat(40), "tests/absent-replay.test.ts") }), /FAILED_BATCH: the reproduction tests\/absent-replay\.test\.ts named for the failed batch start-a is missing/);
+  }, 120_000);
   it("claims only one card to follow a press", () => {
     const b = box({ dayGrant: FIRST });
     expect(b.run("preflight").status).toBe(0);
@@ -1014,7 +1152,9 @@ describe("start-run executor: failures after the first mutation", () => {
     ["the renewal fails", { mode: "renewal_failed" }, /sign-in sequence did not succeed, so there is no START: the Haiku sign-in renewal failed.*\[code RENEWAL_FAILED; sequenceClaimed true\]/],
     ["the worker usage check fails", { mode: "check_failed" }, /sign-in sequence did not succeed, so there is no START: the worker usage check does not allow START.*\[code CHECK_FAILED; sequenceClaimed true\]/],
     ["the check succeeds but the credential expires within 5 minutes", { expiresInMs: 120_000 }, /credential expiry: the sign-in has expired or expires within 5 minutes/],
-    ["a usage window is at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/]
+    ["a usage window is at 100%", { windowPercent: 100 }, /usage window unknown or at 100%/],
+    ["the weekly window is missing (ruling A keeps it required)", { omitWeekly: true }, /usage window unknown or at 100%/],
+    ["the weekly window is at 100% with no 5-hour window", { omitFiveHour: true, weeklyPercent: 100 }, /usage window unknown or at 100%/]
   ])("consumes the card and its sequence with no START or retry when %s", (_label, signin, reason) => {
     const b = box({ state: (s) => { s.signin = signin; } });
     const result = b.run();
@@ -1115,6 +1255,13 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(result.receipt!.runtimeUpgraded).toBe(true);
     expect(result.receipt!.record).toMatchObject({ preRestartBinding: null, postRestartHandlerHash: `handler-${process.pid}` });
     expect(result.receipt!.record.signInReceipt.windows).toHaveLength(2);
+  }, 120_000);
+
+  it("starts on a weekly-only usage receipt: an absent 5-hour window is no limit (operator ruling A)", () => {
+    const b = box({ state: (s) => { s.signin = { omitFiveHour: true }; } });
+    const result = b.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt!.record.signInReceipt.windows).toEqual([expect.objectContaining({ label: "7d", usedPercentage: 30 })]);
   }, 120_000);
 
   it("refuses the START when the retained usage receipt changes after the sequence", () => {

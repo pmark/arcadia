@@ -1193,6 +1193,37 @@ it("asserts the contract", () => {
       expect(last.lease_handoff).toBe(0);
       expect(JSON.parse(last.evidence_json ?? "{}").completionHold).toMatchObject({ kind: "completion_refused_repeatedly" });
     });
+
+    // The live shape of 2026-11-07 (pin-governed-record-path, 26 relaunches): every relaunch deleted the
+    // previous draft, drafted again under a new request id, and host preservation committed that, so the
+    // Ask path and the candidate revision changed while the refusal itself never did. Neither is new evidence.
+    it("holds at the identical-refusal limit when each relaunch redrafts under a new request id on a new preserve commit", () => {
+      const { fixture, sessionId, worktreePath } = namedTestCandidate(`it("asserts the contract", () => { expect(1 + 1).toBe(3); });`);
+      const receipts = [] as Array<{ lease_handoff: number; evidence_json: string | null; reason: string }>;
+      for (let attempt = 1; attempt <= MAX_IDENTICAL_PRESERVATION_REFUSALS; attempt += 1) {
+        if (attempt > 1) {
+          const asks = path.join(worktreePath, ".arcadia", "asks");
+          for (const name of readdirSync(asks)) if (name.startsWith("agent-ask-complete-define-contract")) rmSync(path.join(asks, name));
+          draftCompleteInWorktree(worktreePath, criterion, `complete-define-contract-relaunch-${attempt}`);
+          git(worktreePath, ["add", "-A"]);
+          git(worktreePath, ["commit", "-qm", "chore(candidate): preserve candidate for handoff"]);
+        }
+        withDatabase(fixture.workspace, (db) => {
+          db.prepare("DELETE FROM session_exit_receipts WHERE session_id = ?").run(sessionId);
+          db.prepare("UPDATE agent_sessions SET status = 'running', ended_at = NULL WHERE id = ?").run(sessionId);
+        });
+        const result = withDatabase(fixture.workspace, (db) =>
+          reconcileSessionExit({ db, sessionId, requestId: `reconcile-redraft-${attempt}`, repoRoot: fixture.repo, workspace: fixture.workspace, completionValidation })
+        );
+        receipts.push(result.receipt);
+      }
+      expect(receipts.map((receipt) => receipt.reason)).toEqual(receipts.map(() => expect.stringContaining("tests/contract.test.ts > asserts the contract")));
+      expect(new Set(receipts.map((receipt) => receipt.reason)).size).toBe(receipts.length);
+      expect(receipts.slice(0, -1).map((receipt) => receipt.lease_handoff)).toEqual(receipts.slice(0, -1).map(() => 1));
+      const last = receipts[receipts.length - 1];
+      expect(last.lease_handoff).toBe(0);
+      expect(JSON.parse(last.evidence_json ?? "{}").completionHold).toMatchObject({ kind: "completion_refused_repeatedly" });
+    });
   });
 
   // Issue #1608, the live shape of 2026-10-20: the drafted evidence marked
@@ -1361,6 +1392,79 @@ it("asserts the contract", () => {
 
       expect(result.receipt.outcome).toBe("accepted_completion");
       expect(result.receipt.reason).toMatch(/Settled the Session's drafted complete Ask on its candidate/);
+    });
+  });
+
+  // Issue #2261: a repair round's drafted completion said a test file was modified and settled, while its
+  // candidate changed only the Ask file. A claimed tests/ or src/ change must be in the candidate's diff.
+  describe("claimed file change check against the candidate's diff (#2261)", () => {
+    const criterion = "contract.md exists.";
+    const claim = "git status shows only tests/contract.test.ts modified.";
+
+    function claimingCandidate(note: string, extra: Record<string, string> = {}) {
+      const fixture = preparedFixture({ responsibility: "agent", acceptanceCriteria: [criterion] });
+      const tmux = new FakeTmux();
+      const launched = launchCompletionFixture(fixture, tmux);
+      const worktreePath = launched.data.session.worktree_path;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "The contract exists.\n");
+      for (const [file, body] of Object.entries(extra)) {
+        mkdirSync(path.dirname(path.join(worktreePath, file)), { recursive: true });
+        writeFileSync(path.join(worktreePath, file), body);
+      }
+      draftCompleteInWorktree(worktreePath, criterion, "complete-define-contract", note);
+      git(worktreePath, ["add", "."]);
+      git(worktreePath, ["commit", "-m", "preserve candidate"]);
+      recordClearProbeEvidence(fixture.workspace, withReadOnlyDatabase(fixture.workspace, (db) => getSession(db, launched.data.session.id)!));
+      return { fixture, sessionId: launched.data.session.id, worktreePath };
+    }
+    const reconcile = (fixture: ReturnType<typeof preparedFixture>, sessionId: string, requestId: string) =>
+      withDatabase(fixture.workspace, (db) => reconcileSessionExit({ db, sessionId, requestId, repoRoot: fixture.repo, workspace: fixture.workspace }));
+
+    it("(1) does not accept a drafted completion that claims a test file change the diff does not contain: resumable, naming the file", () => {
+      const { fixture, sessionId, worktreePath } = claimingCandidate(claim);
+      const result = reconcile(fixture, sessionId, "reconcile-claimed-change-missing");
+      expect(result.receipt.outcome).toBe("incomplete_resumable");
+      expect(result.receipt.lease_handoff).toBe(1);
+      expect(result.receipt.reason).toContain("Claimed-change check refused the completion");
+      expect(result.receipt.reason).toContain("tests/contract.test.ts");
+      expect(readFileSync(path.join(worktreePath, "docs", "plans", "copy-proof.md"), "utf8")).toMatch(/id: define-contract[\s\S]*?status: open/);
+    });
+
+    it("(2) accepts the same claim when the file is in the candidate's diff", () => {
+      const { fixture, sessionId } = claimingCandidate(claim, { "tests/contract.test.ts": "export {};\n" });
+      const result = reconcile(fixture, sessionId, "reconcile-claimed-change-present");
+      expect(result.receipt.outcome).toBe("accepted_completion");
+    });
+
+    it("(3) accepts a note that only mentions the file", () => {
+      const { fixture, sessionId } = claimingCandidate("Ran pnpm exec vitest run tests/contract.test.ts: 1 file, 1 test passed; a follow-up will update tests/contract.test.ts.");
+      const result = reconcile(fixture, sessionId, "reconcile-claimed-change-mention");
+      expect(result.receipt.outcome).toBe("accepted_completion");
+    });
+
+    it("(4) counts the refusal toward the identical-refusal hold across relaunches that redraft under a new request id", () => {
+      const { fixture, sessionId, worktreePath } = claimingCandidate(claim);
+      const receipts = [] as Array<{ lease_handoff: number; evidence_json: string | null; reason: string }>;
+      for (let attempt = 1; attempt <= MAX_IDENTICAL_PRESERVATION_REFUSALS; attempt += 1) {
+        if (attempt > 1) {
+          const asks = path.join(worktreePath, ".arcadia", "asks");
+          for (const name of readdirSync(asks)) if (name.startsWith("agent-ask-complete-define-contract")) rmSync(path.join(asks, name));
+          draftCompleteInWorktree(worktreePath, criterion, `complete-define-contract-relaunch-${attempt}`, `Round ${attempt}: ${claim}`);
+          git(worktreePath, ["add", "-A"]);
+          git(worktreePath, ["commit", "-qm", "chore(candidate): preserve candidate for handoff"]);
+        }
+        withDatabase(fixture.workspace, (db) => {
+          db.prepare("DELETE FROM session_exit_receipts WHERE session_id = ?").run(sessionId);
+          db.prepare("UPDATE agent_sessions SET status = 'running', ended_at = NULL WHERE id = ?").run(sessionId);
+        });
+        receipts.push(reconcile(fixture, sessionId, `reconcile-claimed-repeat-${attempt}`).receipt);
+      }
+      expect(receipts.every((receipt) => receipt.reason.includes("Claimed-change check refused the completion"))).toBe(true);
+      expect(receipts.slice(0, -1).map((receipt) => receipt.lease_handoff)).toEqual(receipts.slice(0, -1).map(() => 1));
+      const last = receipts[receipts.length - 1];
+      expect(last.lease_handoff).toBe(0);
+      expect(JSON.parse(last.evidence_json ?? "{}").completionHold).toMatchObject({ kind: "completion_refused_repeatedly" });
     });
   });
 
@@ -1953,13 +2057,13 @@ function git(cwd: string, args: string[]): string {
 }
 
 /** All a sandboxed agent can do: draft its `complete` Ask as compact JSON in the worktree, uncommitted. */
-function draftCompleteInWorktree(worktreePath: string, criterion: string): void {
+function draftCompleteInWorktree(worktreePath: string, criterion: string, requestId = "complete-define-contract", note = "contract.md"): void {
   mkdirSync(path.join(worktreePath, ".arcadia", "asks"), { recursive: true });
-  writeFileSync(path.join(worktreePath, ".arcadia", "asks", "agent-ask-complete-define-contract.yaml"), `${JSON.stringify({
-    agent_ask: "v1", request_id: "complete-define-contract", project: "test-project", intent: "complete",
+  writeFileSync(path.join(worktreePath, ".arcadia", "asks", `agent-ask-${requestId}.yaml`), `${JSON.stringify({
+    agent_ask: "v1", request_id: requestId, project: "test-project", intent: "complete",
     target_ref: "action/define-contract", desired_result: "Record define-contract complete.",
     candidate_revision: git(worktreePath, ["rev-parse", "HEAD"]).trim(),
-    evidence: [{ criterion, status: "met", note: "contract.md" }],
+    evidence: [{ criterion, status: "met", note }],
     requested_authority: "apply_if_approved"
   })}\n`);
 }

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import agentRoles from "../config/defaults/agent-roles.json" with { type: "json" };
 import { validateSessionLedger, validateSessionLedgerRow } from "../src/reports/sessionLedger.js";
 
 const ledger = readFileSync(path.resolve(import.meta.dirname, "../docs/reports/session-ledger.jsonl"), "utf8");
@@ -98,5 +99,17 @@ describe("session ledger validator", () => {
   it("rejects stopped without a stop_reason", () => {
     expect(validateSessionLedgerRow({ ...row(), outcome: "stopped" })).toContain("outcome stopped requires a stop_reason");
     expect(validateSessionLedgerRow({ ...row(), outcome: "stopped", stop_reason: "token ceiling" })).toEqual([]);
+  });
+  describe("role validation", () => {
+    const withRole = (role: string) => validateSessionLedgerRow({ ...row(), role });
+    it.each(agentRoles.roles.map(role => role.id))("accepts registered role %s", role => {
+      expect(withRole(role)).toEqual([]);
+    });
+    it.each(["lead", "driver", "reviewer", "replayer", "opus-planner"])("still accepts legacy role %s", role => {
+      expect(withRole(role)).toEqual([]);
+    });
+    it("rejects the unknown role wizard with a field role error", () => {
+      expect(withRole("wizard").join()).toContain("field role must be one of");
+    });
   });
 });

@@ -664,11 +664,15 @@ export function settleAgentAsk(db: Database.Database, input: {
             const projectBefore = readFileSync(projectPath, "utf8");
             const previousBefore = readFileSync(activePlanPath, "utf8");
             const updated = today();
+            const previousPlanFinished = plan.status === "complete";
             fileMutations.push(
               { path: projectPath, before: projectBefore, after: setTopLevelFields(projectBefore, {
                 active_plan: target.slug, current_action: selected.id, milestone: target.milestone ?? proposal.normalized.desiredResult, updated
               }) },
-              { path: activePlanPath, before: previousBefore, after: setTopLevelFields(previousBefore, { status: "draft", current_action: null, updated }) },
+              // A finished Plan keeps `status: complete` (Issue #2278); only an unfinished one returns to draft.
+              { path: activePlanPath, before: previousBefore, after: setTopLevelFields(previousBefore, {
+                status: previousPlanFinished ? "complete" : "draft", current_action: null, updated
+              }) },
               { path: targetPath, before, after: setTopLevelFields(before, {
                 status: "active", current_action: selected.id, recommended_model: input.model,
                 recommended_reasoning_effort: input.effort ?? null, updated
@@ -683,7 +687,9 @@ export function settleAgentAsk(db: Database.Database, input: {
             arrangeQueue = true;
             actionIdsToValidate.push(selected.id);
             effects.push(`Activated Plan ${target.slug}; selected ${queueActionKey} with ${input.model}${input.effort ? ` / ${input.effort}` : ""}.`);
-            effects.push(`Returned Plan ${plan.slug} to draft without changing any Action completion state.`);
+            effects.push(previousPlanFinished
+              ? `Kept finished Plan ${plan.slug} at status complete without changing any Action completion state.`
+              : `Returned Plan ${plan.slug} to draft without changing any Action completion state.`);
             effects.push("Replaced this Project's queue segment; preserved every other Project's relative order. Started no process.");
             const log = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
             const logPath = path.join(repoRoot, log?.relativePath ?? "MISSION_LOG.md");
@@ -691,7 +697,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             const appendActivation = (current: string | null): string => appendLog(current, project.slug, {
               ...proposal.normalized,
               desiredResult: `Activated ${target.slug} at ${selected.id}.`,
-              rationale: `Operator-settled Plan transition. Previous Plan ${plan.slug} remains draft with completion state preserved. ${proposal.normalized.rationale ?? ""}`
+              rationale: `Operator-settled Plan transition. Previous Plan ${plan.slug} ${previousPlanFinished ? "keeps status complete" : "remains draft"} with completion state preserved. ${proposal.normalized.rationale ?? ""}`
             });
             fileMutations.push({ path: logPath, before: logBefore, after: appendActivation(logBefore), reappend: appendActivation });
             break;
@@ -2522,6 +2528,12 @@ function replaceYamlField(content: string, indent: number, field: string, value:
   return content.replace(pattern, () => `${" ".repeat(indent)}${field}:${value.startsWith("\n") ? "" : " "}${value}`);
 }
 
+/** Remove one YAML field at `indent` together with its continuation lines. */
+function removeYamlField(content: string, indent: number, field: string): string {
+  const pattern = new RegExp(`^ {${indent}}${escapeRegex(field)}[ \t]*:.*(?:(?:\\r?\\n[ \\t]*(?=\\r?\\n))*\\r?\\n {${indent + 1},}\\S.*)*(?:\\r?\\n|$)`, "m");
+  return content.replace(pattern, "");
+}
+
 /** Keep multiline prose on one YAML line without altering its parsed text. */
 function amendmentScalar(value: string): string {
   return /[\r\n]/.test(value) ? JSON.stringify(value) : yamlScalar(value);
@@ -2721,6 +2733,7 @@ function newDraftPlan(
     `    title: ${yamlScalar(action.desiredResult)}`,
     "    status: open",
     `    responsibility: ${responsibility}`,
+    ...(action.execution ? [`    execution: ${action.execution}`] : []),
     "    effort: session",
     `    next_action: ${yamlScalar(action.desiredResult)}`,
     `    expected_artifact: ${yamlScalar(`Evidence satisfying Agent Ask ${action.id}`)}`,
@@ -2837,10 +2850,34 @@ function amendAction(
   if (!match) throw validationError("Managed Plan Action block was not found.", { actionId });
   let block = match[1];
   if (!criteriaOnly) {
-    if (!/^ {4}next_action:/m.test(block)) {
+    let addedNextAction = false;
+    if (/^ {4}next_action:/m.test(block)) {
+      block = replaceYamlField(block, 4, "next_action", amendmentScalar(nextAction));
+    } else if (nextAction.trim() && /^ {4}title:/m.test(block)) {
+      // A block-scalar title (`title: |` or `title: >`) continues on indented
+      // lines, so a key inserted after it would break the YAML. Refuse instead.
+      if (/^ {4}title:[ \t]*[|>]/m.test(block)) {
+        throw validationError("Managed Plan Action title is a block scalar; the amendment cannot insert next_action after it.", { actionId });
+      }
+      // Plan Actions may omit next_action; the amendment's desired result
+      // supplies it (Issue #2154). Placed right after the title.
+      block = block.replace(/^ {4}title:.*$/m, (line) => `${line}\n    next_action: ${amendmentScalar(nextAction)}`);
+      addedNextAction = true;
+    } else {
       throw validationError("Managed Plan Action has no next_action field to amend.", { actionId });
     }
-    block = replaceYamlField(block, 4, "next_action", amendmentScalar(nextAction));
+    // Only an Action that lacked next_action is made clarified, and only by a
+    // child with both a desired result and acceptance. Other amendments, and
+    // the split narrowing path, leave clarification alone.
+    if (addedNextAction && acceptance.length > 0) {
+      // A question_open Action carries question and gap_type; a clarified one
+      // must not. Remove them so the parser rule holds (review on #2155).
+      block = removeYamlField(block, 4, "question");
+      block = removeYamlField(block, 4, "gap_type");
+      block = /^ {4}clarification:/m.test(block)
+        ? replaceYamlField(block, 4, "clarification", "clarified")
+        : block.replace(/^ {4}title:.*$/m, (line) => `${line}\n    clarification: clarified`);
+    }
   }
   // Criteria-only changes preserve the original scalar bytes, including an
   // absent instruction on an unresolved question; they do not answer it.

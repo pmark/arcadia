@@ -15,17 +15,26 @@ import {
   composeProjectDigest,
   createIntelligenceDigestNarrator,
   NarrativeDigestInvalidResultError,
-  NarrativeDigestUnavailableError
+  NarrativeDigestUnavailableError,
+  portfolioDigestSubject,
+  previewDigest,
+  projectDigestSubject
 } from "../digests/composer.js";
-import { describeWindow, dueDigestWindows } from "../digests/schedule.js";
+import { DIGEST_DETAIL_MARKER, needsYouFromTodo, needsYouUnavailable, renderDigestDetail } from "../digests/report.js";
+import { completedWindow, describeWindow, dueDigestWindows } from "../digests/schedule.js";
+import { runTodoCommand } from "./todo.js";
 import { exportNarrativeDigest, safeWorkspaceFile, type MemorySyncEntry } from "../memory/obsidian.js";
 import {
   DIGEST_PERIODS,
   PORTFOLIO_SCOPE_KEY,
   type ComposedProjectDigest,
+  type DigestFact,
   type DigestNarrator,
+  type DigestNeedsYou,
   type DigestPeriod,
+  type DigestReport,
   type DigestScope,
+  type DigestSummary,
   type DigestWindow,
   type NarrativeDigestRecord
 } from "../digests/types.js";
@@ -38,6 +47,8 @@ export interface DigestComposeOptions {
   from: string;
   to: string;
   narrator?: DigestNarrator;
+  /** Test seam: the operator items, instead of reading `arcadia todo`. */
+  needsYou?: DigestNeedsYou;
 }
 
 export interface DigestExportOptions {
@@ -73,7 +84,8 @@ export async function runDigestComposeCommand(
         workspacePath,
         project,
         window: { period, start, end },
-        narrator: options.narrator ?? createIntelligenceDigestNarrator(db, workspacePath)
+        narrator: options.narrator ?? createIntelligenceDigestNarrator(db, workspacePath),
+        needsYou: readNeedsYou(workspacePath, options.needsYou, project.slug)
       });
     } catch (error) {
       if (error instanceof NarrativeDigestUnavailableError) throw narrativeDigestUnavailable(error.message);
@@ -94,11 +106,12 @@ export async function runDigestComposeCommand(
 export function renderDigestComposeSuccess(
   response: CommandSuccess<ComposedProjectDigest>
 ): string[] {
-  const { digest, artifact, facts, created } = response.data;
+  const { digest, artifact, facts, created, summary } = response.data;
   return [
     `${created ? "Created" : "Updated"} ${artifact.title}.`,
     `Window: ${digest.window_start} ≤ activity < ${digest.window_end}`,
     `Facts: ${facts.length}`,
+    `Summary: ${summary.source === "ai" ? "AI-written" : `computed${summary.fallbackReason ? ` (AI unavailable: ${summary.fallbackReason})` : ""}`}`,
     `Artifact: ${artifact.id}${artifact.path ? ` (${artifact.path})` : ""}`
   ];
 }
@@ -191,6 +204,8 @@ export interface DigestRunOptions {
   workspace: string;
   narrator?: DigestNarrator;
   now?: Date;
+  /** Test seam: the operator items, instead of reading `arcadia todo`. */
+  needsYou?: DigestNeedsYou;
 }
 
 /** One due (scope, period, window) the run produced, or failed to produce. */
@@ -251,6 +266,12 @@ export async function runDigestRunCommand(options: DigestRunOptions): Promise<Co
     const projects = listProjects(db).filter((project) => project.status === "active");
     const narrator = options.narrator ?? createIntelligenceDigestNarrator(db, workspacePath);
     const entries: DigestRunEntry[] = [];
+    // One read of the operator to-do serves every subject and cadence in this run.
+    const allNeeds = readNeedsYou(workspacePath, options.needsYou, undefined, now);
+    const needsFor = (slug: string): DigestNeedsYou => ({
+      ...allNeeds,
+      items: allNeeds.items.filter((item) => item.project.toLowerCase() === slug.toLowerCase())
+    });
 
     for (const window of windows) {
       for (const project of projects) {
@@ -258,14 +279,14 @@ export async function runDigestRunCommand(options: DigestRunOptions): Promise<Co
           scope: "project",
           scopeKey: project.id,
           subject: project.name,
-          compose: () => composeProjectDigest({ db, workspacePath, project, window, narrator })
+          compose: () => composeProjectDigest({ db, workspacePath, project, window, narrator, now, needsYou: needsFor(project.slug) })
         }));
       }
       entries.push(await runOneDigest(db, workspacePath, window, {
         scope: "portfolio",
         scopeKey: PORTFOLIO_SCOPE_KEY,
         subject: "Portfolio",
-        compose: () => composePortfolioDigest({ db, workspacePath, projects, window, narrator })
+        compose: () => composePortfolioDigest({ db, workspacePath, projects, window, narrator, now, needsYou: allNeeds })
       }));
     }
 
@@ -331,7 +352,7 @@ async function runOneDigest(
         artifactId: existing.artifact_id,
         factCount: (JSON.parse(existing.facts_json) as unknown[]).length,
         status: "pending-delivery",
-        body: renderDigestBody(base.subject, window, readDigestNarrative(db, workspacePath, existing)),
+        body: renderDigestBody(base.subject, window, readDigestNarrative(db, workspacePath, existing), existing.id),
         memoryRecordPath: null,
         error: null
       };
@@ -354,7 +375,7 @@ async function runOneDigest(
       artifactId: composed.artifact.id,
       factCount: composed.facts.length,
       status: "composed",
-      body: renderDigestBody(base.subject, window, composed.narrative),
+      body: renderDigestBody(base.subject, window, composed.narrative, composed.digest.id),
       memoryRecordPath,
       error: exportError
     };
@@ -417,8 +438,166 @@ export function renderDigestMarkPostedSuccess(response: CommandSuccess<DigestMar
   return [`Recorded delivery of ${response.data.digest.id} as message ${response.data.digest.posted_message_id}.`];
 }
 
-function renderDigestBody(subject: string, window: DigestWindow, narrative: string): string {
-  return `**${subject} — ${window.period} digest (${describeWindow(window)})**\n\n${narrative}`;
+const CADENCE_LABEL: Record<DigestPeriod, string> = { day: "daily", week: "weekly", month: "monthly" };
+
+/**
+ * The delivered page: a one-line header, the computed sections, and where the
+ * detail lives. Detail is never inline; the page stays an overview.
+ */
+export function renderDigestBody(subject: string, window: DigestWindow, narrative: string, digestId: string | null): string {
+  const footer = digestId
+    ? `Detail: \`arcadia digest show ${digestId} --detail\``
+    : "Detail: rerun with `--detail`";
+  return [`**${subject} · ${CADENCE_LABEL[window.period]} digest · ${describeWindow(window)}**`, narrative, footer].join("\n\n");
+}
+
+/**
+ * Operator items from the same read-only builder `arcadia todo` uses. A
+ * failure to read it degrades the one section, never the digest, exactly as
+ * the morning orientation packet does.
+ */
+function readNeedsYou(
+  workspacePath: string,
+  injected: DigestNeedsYou | undefined,
+  projectSlug?: string,
+  now?: Date
+): DigestNeedsYou {
+  if (injected) {
+    return projectSlug
+      ? { ...injected, items: injected.items.filter((item) => item.project.toLowerCase() === projectSlug.toLowerCase()) }
+      : injected;
+  }
+  try {
+    const todo = runTodoCommand({ workspace: workspacePath, ...(now ? { now } : {}) }).data;
+    return needsYouFromTodo(todo, { dashboardUrl: process.env["ARCADIA_DASHBOARD_URL"] ?? null, ...(projectSlug ? { projectSlug } : {}) });
+  } catch (error) {
+    return needsYouUnavailable(describeError(error));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Read-only views
+// ---------------------------------------------------------------------------
+
+export interface DigestPreviewOptions {
+  workspace: string;
+  /** Project id or slug; omitted means the portfolio roll-up. */
+  project?: string;
+  period?: string;
+  from?: string;
+  to?: string;
+  /** Ask the local model for the headline. Submits one Intelligence job; stores no digest. */
+  ai?: boolean;
+  detail?: boolean;
+  narrator?: DigestNarrator;
+  needsYou?: DigestNeedsYou;
+  now?: Date;
+}
+
+export interface DigestPreviewData {
+  window: DigestWindow;
+  report: DigestReport;
+  summary: DigestSummary;
+  facts: DigestFact[];
+  body: string;
+  detail: string | null;
+}
+
+/**
+ * Compute and print a digest without storing it: no Artifact, no
+ * narrative_digests row, no vault write. With `--ai` it submits one local
+ * Intelligence job for the headline, and nothing else.
+ */
+export async function runDigestPreviewCommand(options: DigestPreviewOptions): Promise<CommandSuccess<DigestPreviewData>> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  const period = normalizePeriod(options.period ?? "day");
+  let window: DigestWindow = completedWindow(period, now);
+  if (options.from || options.to) {
+    if (!options.from || !options.to) throw validationError("Digest preview needs both --from and --to, or neither.", {});
+    window = { period, start: normalizeInstant(options.from, "from"), end: normalizeInstant(options.to, "to") };
+    if (window.start >= window.end) throw validationError("Digest --from must be before --to.", { from: options.from, to: options.to });
+  }
+
+  const db = openDatabase(workspacePath);
+  try {
+    let projects;
+    let subject;
+    if (options.project) {
+      const project = getProject(db, options.project) ?? getProjectBySlug(db, options.project);
+      if (!project) throw projectNotFound(options.project);
+      projects = [project];
+      subject = projectDigestSubject(project);
+    } else {
+      projects = listProjects(db).filter((project) => project.status === "active");
+      subject = portfolioDigestSubject();
+    }
+    const needsYou = readNeedsYou(workspacePath, options.needsYou, options.project ? projects[0].slug : undefined, now);
+    const narrator = options.narrator ?? (options.ai ? createIntelligenceDigestNarrator(db, workspacePath) : undefined);
+    const preview = await previewDigest({ db, subject, projects, window, now, needsYou, ...(narrator ? { narrator } : {}) });
+    return createSuccess({
+      command: "digest.preview",
+      workspace: workspacePath,
+      data: {
+        window,
+        report: preview.report,
+        summary: preview.summary,
+        facts: preview.facts,
+        body: renderDigestBody(subject.name, window, preview.narrative, null),
+        detail: options.detail ? renderDigestDetail(preview.facts, preview.report.operatorInteractions) : null
+      }
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export function renderDigestPreviewSuccess(response: CommandSuccess<DigestPreviewData>): string[] {
+  const { body, detail } = response.data;
+  return [...body.split("\n"), ...(detail ? ["", ...detail.split("\n")] : [])];
+}
+
+export interface DigestShowOptions {
+  workspace: string;
+  digestId: string;
+  detail?: boolean;
+}
+
+export interface DigestShowData {
+  digest: NarrativeDigestRecord;
+  body: string;
+  detail: string | null;
+}
+
+/** Print one stored digest as delivered, and its detail on request. Reads only. */
+export function runDigestShowCommand(options: DigestShowOptions): CommandSuccess<DigestShowData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openDatabase(workspacePath);
+  try {
+    const digest = (db.prepare("SELECT * FROM narrative_digests WHERE id = ?").get(options.digestId) as NarrativeDigestRecord | undefined) ?? null;
+    if (!digest) throw validationError("Narrative digest was not found.", { digestId: options.digestId });
+    const subject = digest.scope === "portfolio" ? "Portfolio" : digestProjectSubject(db, digest).name;
+    const window: DigestWindow = { period: digest.period, start: digest.window_start, end: digest.window_end };
+    const source = readDigestSource(db, workspacePath, digest);
+    return createSuccess({
+      command: "digest.show",
+      workspace: workspacePath,
+      data: {
+        digest,
+        body: renderDigestBody(subject, window, source.page, digest.id),
+        detail: options.detail
+          ? source.detail ?? renderDigestDetail(JSON.parse(digest.facts_json) as DigestFact[])
+          : null
+      }
+    });
+  } finally {
+    db.close();
+  }
+}
+
+export function renderDigestShowSuccess(response: CommandSuccess<DigestShowData>): string[] {
+  const { body, detail } = response.data;
+  return [...body.split("\n"), ...(detail ? ["", ...detail.split("\n")] : [])];
 }
 
 /**
@@ -433,12 +612,25 @@ function readDigestNarrative(
   workspacePath: string,
   digest: NarrativeDigestRecord
 ): string {
+  return readDigestSource(db, workspacePath, digest).page;
+}
+
+/** The stored page, and its detail when the Artifact has one (digests composed before the detail section have none). */
+function readDigestSource(
+  db: ReturnType<typeof openDatabase>,
+  workspacePath: string,
+  digest: NarrativeDigestRecord
+): { page: string; detail: string | null } {
   const artifact = getArtifact(db, digest.artifact_id);
   if (!artifact?.path) {
     throw validationError("Narrative digest Artifact has no stored path.", { digestId: digest.id });
   }
   const source = readFileSync(safeWorkspaceFile(workspacePath, artifact.path, "narrative digest Artifact"), "utf8");
-  return source.replace(/^---\n[\s\S]*?\n---\n/, "").replace(/^#[^\n]*\n/, "").trim();
+  const body = source.replace(/^---\n[\s\S]*?\n---\n/, "").trimStart().replace(/^#[^\n]*\n/, "");
+  const marker = body.indexOf(DIGEST_DETAIL_MARKER);
+  return marker < 0
+    ? { page: body.trim(), detail: null }
+    : { page: body.slice(0, marker).trim(), detail: body.slice(marker + DIGEST_DETAIL_MARKER.length).trim() || null };
 }
 
 function describeError(error: unknown): string {

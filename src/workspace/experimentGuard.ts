@@ -110,6 +110,7 @@ const LESSON_CACHE_APPLY = guarded(
  */
 export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassification>> = {
   "provider-usage": exempt("Reads host provider telemetry only; no workspace database, credential mutation, model call or activity record."),
+  "spend check": exempt("Reads the process environment, local settings files and two sign-in status commands only; no workspace database, model call or activity record."),
   "audit host-preview": exempt("Serves a named static directory on loopback; reads no workspace."),
   init: exempt("Creates the named workspace; `--profile experiment` carries its own refusals."),
   "config set defaultWorkspace": guarded(
@@ -148,8 +149,21 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "agent-ask notification-sent": DELIVERY_RECEIPT,
   "operator-action settle-ask": ALLOWED,
   // Queueing is an outbox write, like `agent-ask settle`; only the live bot ever delivers.
+  "operator-interaction record": ALLOWED,
+  "operator-interaction list": ALLOWED,
   "ping send": ALLOWED,
   "ping pending": ALLOWED,
+  // Coordinator handoff state lives under the resolved workspace's own coordinators/ directory.
+  "coordinator capsule": ALLOWED,
+  "coordinator note": ALLOWED,
+  "coordinator subscribe": ALLOWED,
+  "coordinator verify": ALLOWED,
+  "coordinator relay-sessions": ALLOWED,
+  "coordinator accept": ALLOWED,
+  "coordinator renew": guarded(
+    "Launches a real coordinator session in tmux; an experiment workspace never launches a live successor.",
+    "Run it from the live workspace once the relay Decision is on main."
+  ),
   "ping sent": DELIVERY_RECEIPT,
   "action settle": ALLOWED,
   "native-mail send": NATIVE_MAIL_WRITE,
@@ -201,6 +215,11 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   ),
   "production status": ALLOWED,
   "production freeze-check": ALLOWED,
+  "production liveness-check": exempt("A launchd timer reads the named workspace read-only each minute; a row a minute would be noise, and only a page writes, through the ping outbox, besides its own .arcadia state files."),
+  // Writes one armed-until file in the resolved workspace's .arcadia/armed-wakes; no database, ping or Project state.
+  "production keeper-heartbeat": ALLOWED,
+  "coordinator budget": exempt("A coordinator runs it at every wake: it reads the host's own session transcripts and the timer's budget markers, prints, and records nothing; a row a wake would be noise."),
+  "production idle-front": exempt("A repeated read-only check: reads the named workspace read-only, the process list and armed-until files, prints a row and records nothing."),
   "production runtime-check": exempt("Compares the installed broker release with a named repository's HEAD; reads no workspace and records nothing."),
   "production preview": ALLOWED,
   "production activate": guarded("Grants the standing production authorization and its Grants.", PRODUCTION_ALTERNATIVE),
@@ -309,6 +328,8 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "digest compose": ALLOWED,
   "digest export": ALLOWED,
   "digest run": ALLOWED,
+  "digest preview": ALLOWED,
+  "digest show": ALLOWED,
   "digest mark-posted": DELIVERY_RECEIPT,
   "artifact create": ALLOWED,
   "artifact list": ALLOWED,

@@ -2,6 +2,137 @@
 
 This is the **single canonical checklist** for the remaining unattended-production acceptance gap. It is derived evidence, not an authority store: the [unattended-production acceptance Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md), the [current coordination Plan](plans/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions.md), Decisions and canonical runtime receipts govern. Handoffs and coordinator wakeups point here rather than maintaining another checklist. Rowan is the sole release-manager contact; helper assignments do not transfer that custody.
 
+## Operator view: the rover's route from here
+
+**Update, 2026-11-09: Plan `record-run-unattended-test-pins-20261107-part-2` is complete, 20 of 20, within the same narrow envelope.** The sections below keep the 2026-11-05 proof as written; this update adds to it and does not widen it. Derived 2026-11-09 from read-only evidence: [Issue1929 comments 6734093798 (batch 5 START) and 6734550957 (final accounting)](https://github.com/pmark/arcadia/issues/1929), `arcadia production status --json` (observed 07:51Z), `arcadia start-run day-evidence`, GitHub PRs #2308 to #2351, and the code-review verdict under `workspaces/martianrover/artifacts/code-review/pull-requests/pmark-arcadia/2351/`.
+
+- **Delivered:** 20 worker merges in five batches of 5, 3, 5, 5 and 2, from 2026-11-08T19:41Z to 2026-11-09T07:20Z. Rowan landed none; the worker merged each PR at its reviewed head. Batch 2 stopped at three on [#2324](https://github.com/pmark/arcadia/issues/2324) (a QA plan read a quoted test path as a changed file; fixed by #2325, closed); the batch resumed in batch 3.
+- **Still the same envelope:** test-only Actions, concurrency one, a merge freeze on main for each batch, and Rowan issued every Off. No source Action, no concurrent run and no moving main was proved.
+- **Production is Off:** revision 123, epoch 66, zero live admissions (Off `rowan-off-part2-batch5-complete-20261109`, 07:20:36Z).
+- **First real Plan-completing settlement:** Action 20, `pin-inline-text-escaping` ([#2351](https://github.com/pmark/arcadia/pull/2351), merged 07:19:46Z), passed the worker's code review at head `a366185ca`: verdict pass with one low finding, the first live run of the #2279/#2282 check. The finding is a QA-plan grep that prints nothing on a correct test. On main the Plan is `status: complete` with no `current_action`; `active_plan` still names it until the operator chooses a successor.
+- **Corrected prediction:** a card holding a Plan's last Action no longer fails the pre-mortem for #2147 or #2270; both are closed, and #2270 is proved live by Action 20.
+- **Reads wrong, still open:** [#2273](https://github.com/pmark/arcadia/issues/2273). The final batch has `scopeComplete: null` in `start-run day-evidence`, so the day chain reads it as a failed batch although both merges landed. Done at a Plan's last Action is the last merge plus no `current_action` on main. A later delegated card needs #2273 fixed or a new day.
+- **Handoff, not yet automatic:** Rowan 2 to Rowan 3 needed the operator's approval retyped in Rowan 3's own chat. [#2338](https://github.com/pmark/arcadia/pull/2338) is open and delivers no automatic handoff; gate 9, P1, P2 and the proof remain.
+
+**Verdict, 2026-11-05: the first unattended run is proven once, within a narrow envelope.** On 2026-11-05 one serial production run on Arcadia's own repository, provider claude-code, concurrency one, delivered three Actions. Each one reached a PR that the worker merged through GitHub after independent code review and QA passed on the first round. The only operator touch was the activation press. `first-unattended-run`'s three criteria are met, and this candidate settles it.
+
+This is **not** general unattended production. The proof covers:
+
+- one run, at concurrency one;
+- three **test-only** Actions, each touching one test file, with 23 to 46 changed lines including settlement records;
+- a merge freeze on main for the whole run;
+- the third of the three attempts Decision 0170 allowed, after two failed attempts and a refused card.
+
+Substantive source changes, concurrent Actions, a main that moves mid-run, a lost CI event and a repair loop on a live candidate have not been proved unattended.
+
+Derived 2026-11-06 from read-only evidence:
+
+- the card receipts under `artifacts/generated/operator-scripts/runs/start-run-unattended-20261105{b,c,d}/` (main checkout, ignored, host-local);
+- `arcadia production status --json`, observed 2026-11-06T00:19:10Z;
+- `arcadia start-run day-evidence`;
+- the live workspace database, read with `sqlite3 -readonly`: `agent_sessions`, `production_admissions`, `production_attempt_tokens`, `session_role_attempts`, `production_worker_merges`, `production_policy_receipts`, `operator_pings`, `production_red_alerts`;
+- the worker log `.arcadia/worker.log`, 21:51Z to 22:47Z;
+- `b69a86f16..64bf041a1` on main;
+- PRs #2124 to #2126;
+- Rowan's record on [Issue1929](https://github.com/pmark/arcadia/issues/1929).
+
+Production is **Off**: revision 97, epoch 53, zero live admissions. This refresh performed no runtime operation.
+
+### Run record: attempt 3 (card `start-run-unattended-20261105d`)
+
+The operator pressed the card from `/actions` at 21:48:06Z (operator run `20261105214805947-5746fa3a…`). The card ran P0 to P6 and finished at 21:53:46Z. On the way it:
+
+- installed release `b69a86f16` and restarted the worker (pid 79967 to 19479);
+- ran Decision 0161's sign-in sequence: one Haiku renewal, diagnostic Decision 0178 published to main at `a6d210e25`, one bound-worker usage check. The check read only a 7-day window, at 18%, the shape #2122 accepts;
+- previewed the scope twice (fingerprint `8672c23249dc15734d205f07b8a7fc33`);
+- activated production, revision 95 to 96, epoch 53.
+
+The scope was the three pinned Actions in queue order: claude-code-cli, concurrency 1, remote preservation, packet approval delegated, and a Decision 0058/0097 worker-merge grant until 2026-11-06T21:53Z.
+
+| Action | Session (model) | Session start to end | Tokens in / cached / out | Code review | QA | Worker merge |
+| --- | --- | --- | --- | --- | --- | --- |
+| `pin-work-monitor-malformed-record` | `session_f475e3b33ec44ce38a` (haiku) | 21:55:51 to 21:57:23Z | 34 / 889,530 / 10,120 | round 1 passed, 22:12:17Z | round 1 passed, 22:13:33Z | [#2124](https://github.com/pmark/arcadia/pull/2124) at `80d6435a6831`, 22:13:40Z |
+| `pin-reconcile-refuses-activation-commit` | `session_08ad9d32863b497281` (haiku) | 22:15:11 to 22:17:12Z | 28 / 601,563 / 5,551 | round 1 passed, 22:29:16Z | round 1 passed, 22:30:37Z | [#2125](https://github.com/pmark/arcadia/pull/2125) at `c6f1fe8bd235`, 22:30:42Z (row says refused; see failure 9) |
+| `pin-qa-plan-status-must-be-fail` | `session_4d475ca87bce4805b2` (haiku) | 22:32:05 to 22:32:40Z | 22 / 479,438 / 5,289 | round 1 passed, 22:44:14Z | round 1 passed, 22:45:49Z | [#2126](https://github.com/pmark/arcadia/pull/2126) at `b672cb15fdb9`, 22:45:55Z |
+
+Each Action took the same deterministic route. The first launch was refused for a stale or missing packet; the worker prepared a fresh build packet, approved it under the policy's delegation, and launched. The Session exited 0. The host settled the Session's complete Ask on the candidate, pushed the settled head, and marked the PR ready. Claude code review, then Claude QA, passed on that exact head, and the worker merged with `gh pr merge` at that head. The worker reported "Production scope complete for arcadia: 3 merged, 0 escalated" at 22:46:03Z. Rowan's Off (`rowan-off-attempt-3-scope-complete-20261105`, revision 96 to 97, under Decision 0171) followed at 22:46:47Z with no fenced admissions.
+
+Activation to scope complete took 52 minutes. Review and QA took 11 to 15 minutes per Action, the longest stage. Reviewer tokens and wall time are not recorded per verdict and are not measured here. One ledger row per Session is under `docs/reports/session-ledger/20261105T2155Z-session_f475e3b33ec44ce38a.json`, `20261105T2215Z-session_08ad9d32863b497281.json` and `20261105T2232Z-session_4d475ca87bce4805b2.json`.
+
+`b69a86f16..64bf041a1` holds only:
+
+- the card's two sign-in records (`aadbae4ad`, `a6d210e25`);
+- for each Action, the worker's preserve, settle and merge commits.
+
+No other merge or push landed during the run.
+
+### Operator and coordinator touches
+
+| When | Who | Touch | Allowed by criterion 2? |
+| --- | --- | --- | --- |
+| 21:48:06Z | operator | Pressed START card `start-run-unattended-20261105d` (activation) | Yes: activation |
+| 22:46:47Z | Rowan (agent) | Off at scope complete, Decision 0171 | Not an operator touch; a coordinator action after the last merge |
+
+No authority-adjacent PR arose, so no merge by the operator was needed. Nobody restarted, re-ran, repaired, killed a process, reset a budget or answered a question during the run. Five operator pings were sent while the run was Active. Four concerned other work (Rebuster #45, a design brief #534); the fifth was the worker's own scope-complete notice. The merge commits name `pmark` because the worker merges with that token; they are worker merges, not operator touches.
+
+Touches **before** the run, recorded as friction on Issue1929 rather than counted as run touches:
+
+- the operator merged #2122 (usage gate, ruling A);
+- the operator's earlier press of card `20261105c`, refused at P4;
+- Rowan rejected the two superseded seed Asks (`agentask_2d75ef6221a2173046`, `agentask_015590d16eb6fedb55`).
+
+### Acceptance criteria of `first-unattended-run`
+
+1. **Met.** A production preview of three ready Actions on claude-code was published twice with fingerprint `8672c232…` (`preview.json`, `preview-recheck.json`). Activation was presented as one card, `start-run-unattended-20261105d`. The operator pressed it; no agent activated. The `production_policy_receipts` row `pprec_50b0082d63d54a6ea4` records "granted by P. Mark Anderson, by pressing this per-run START card".
+2. **Met.** The ledger rows show each of the three Actions reaching a PR merged through GitHub: `production_worker_merges`, `session_role_attempts` with one passed code review and one passed QA per head, and the three session-ledger rows. The only operator touch was activation. The #2125 merge row reads `refused/base_not_synced` although GitHub merged it (failure 9); its reason text says so, and the next tick reconciled.
+3. **Met** by this section, which states the verdict and every failure observed below.
+
+### Failures observed, in order (attempts 1 to 3, 2026-11-04 to 05)
+
+1. **Attempt 1** (card `start-run-unattended-20261104b`, operator press; Active 08:49Z on 11-04, revision 92, epoch 51; 4 admissions; Off `off-attempt-1-20261104` at 16:55Z).
+   - The Claude reviewer failed #2058, #2059 and #2061 on host-written settlement records that no repair Session can change; it was fixed in the code-review prompt by #2060.
+   - A GitHub pull-request outage lost the CI event for #2062's head. The worker escalated `required_checks_timeout`, and the 3-round repair budget was spent.
+   - No merge.
+2. **Attempt 2** (card `start-run-unattended-20261105a`, Rowan's delegated press under day grant `day-grant-20261105a`; Active 01:59:54Z, revision 94, epoch 52; 7 admissions; Rowan's Off `rowan-off-attempt2-qa-plan-findings-20261105` at 04:29Z). No merge.
+   - QA repeated the settlement false positive, because #2060's rule had reached only the code-review prompt (fixed by #2091).
+   - Decision 0169's QA-plan carve-out did not fire: repair rounds launched on `operator-qa-plan`-only failures. **Still unexplained and unfixed**; no attempt-3 verdict failed, so it was not exercised.
+   - The worker hung silently for 63 minutes on an unbounded preservation capture reader (#2084; fixes #2090, #2094). No alert fired because the worker raises alerts. The child was killed with the operator's yes.
+3. **Card `start-run-unattended-20261105b` went stale before any press.** The operator merged #2095, #2101, #2107, #2109 and #2112 after it was minted, so main passed its pin. Its only run was a preflight, which passed at 16:03Z.
+4. **Preflight heartbeat refusals.** Card `20261105c`'s preflight refused three times at P2 with "stale or mismatched pre-restart worker heartbeat" (18:15:50Z, 18:16:15Z, 18:17:34Z), just after main moved. It then passed at 18:22:30Z. Nothing was consumed.
+5. **Card `start-run-unattended-20261105c` refused at P4 sign-in** (20:03Z, operator press). The renewal succeeded and Decision 0177 was published. The bound worker's usage reply was HTTP 200 but had no usable 5-hour window, which the gate then required. The card and its sign-in sequence were consumed; there was no activation and no admission, so it was not an attempt. #2122 fixed it, merged on the operator's ruling.
+6. **Usage 401 before the run.** The merge probe's `capacity --refresh` at 14:34Z recorded `unauthorized` (HTTP 401), leaving capacity `capacity_stale` until the card's P4 renewal. The P2 capacity reads in card d still show that stale reading. The card accepts stale by design.
+7. **Superseded Ask drafts held a pinned Action.** The attempt-3 pre-mortem found that two unsettled drafts of the seed Ask would have held the third Action at launch, as replay showed. Rowan rejected both before minting. This class has recurred three times (#2102).
+8. **Leftover admissions.** Two `zero-prompt-rehearsal` admissions from 2026-09-23 and 2026-09-24 (epochs 9 and 12) are still `committed` in `production_admissions`, and the Off reported them as still committed. They predate #610's release fix. They do not count toward attempt 3's three admissions, but nothing governed has released them.
+9. **Attempt 3: a worker-merge row misreports a landed merge.** After GitHub merged #2125, the base sync refused with "could not fetch origin/main". The row stays `refused/base_not_synced`, and `production status` still lists it as refused. The next tick fast-forwarded local main at 22:31:05Z with no touch. The fetch error is discarded (`src/git/pointerReconcile.ts:76-77`), so its cause is unknown. Filed as [Issue2127](https://github.com/pmark/arcadia/issues/2127). Rowan's 22:46Z "clean" record omitted it; it adds no touch and changes no criterion.
+
+Observed in attempt 3 but not counted as failures, because none stopped or slowed delivery and none is investigated here:
+
+- Every build packet's deterministic critique attempt is recorded `failed`; the `execution: build` route does not gate on it.
+- Each Session logged "Did not record pending completion Agent Ask … its files differ from the settlement derived at the Candidate revision" before the host settled the Ask anyway.
+- The normal review waits are logged as "Escalated … to the operator (awaiting_independent_verdicts)", although no ping was sent and no operator action was needed.
+- The worker's own merges of #2124 and #2125 are logged as "a merge landed independent of this worker's own admission pipeline".
+
+Earlier November runs (the 11-01 Decision 0163 START and runs h and i on 11-02) are recorded on Issue1929 and in Decision 0169. They are not re-derived here; this document had not been refreshed since 2026-10-31.
+
+No hermetic replay scenario is added by this refresh. Failure 9 was not predictable by the replay, which stubs fetch; Issue2127 asks for its test. Failures 1, 2 and 5 already have fixture or test coverage in their fixing PRs.
+
+### Plan scoreboard and next gate
+
+Every Action of the [acceptance Plan](plans/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider.md) is done: `first-unattended-run` was settled in this candidate (`asksettle_9d1df209fedb455c90` preview, applied at `5c7e14d09`), which completed the Plan's milestone as worded, within the envelope above. That settlement activated the next queued Plan, `idea-to-managed-build`, at `launch-tmux-backed-session`; its open Actions look superseded, and a new overnight Plan of test-only Actions is to be activated next. The current Action is therefore a pointer to replace, not a production-run gate. Decision 0170 hands the next step to the operator.
+
+In the first post-run menu on 2026-11-05, the operator's answer "1A" orders the work: the once-per-head CI re-trigger, in parallel with this evidence, and then the concurrency proofs. In the same menu, "2A" deferred three items, each revived on the next repair loop that stops a run:
+
+- round-1 gating of host-written findings;
+- incident diagnosis;
+- the model residual.
+
+**The next production-run gate:** later on 2026-11-05 the operator answered a second menu, the 24/7 menu on Issue1929, "1A 2A 3A". There, 1A is continued serial runs at concurrency one on queued Actions, Rowan pressing each card after a fresh pre-mortem under Decision 0173's daily approval; 2A is that day's approval; and 3A, which the operator widened in the same message into a standing order to settle and merge obvious-judgement work, excluding any PR that opens or carries an important Decision or changes what agents are authorized to do, and spend, credentials, deletion and publication. The re-decision of Decision 0170 and the standing order are still to be recorded as Decisions. The worker merges only paths `isWorkerMergeSafePath` (`src/production/workerMerge.ts`) allows, tests and ordinary docs, so unattended Actions stay test or doc work. Each batch still needs its own START card. Concurrency above one, substantive non-test Actions and a run without a merge freeze remain unproved and unauthorized here. Production stays Off until the next START.
+
+Evidence custody: the receipts named above, the live database, Issue1929, Issue2127 and the PR records. Rowan retains sole coordination.
+
+<details>
+<summary>Superseded October31 operator view: the route to closing <code>first-unattended-run</code></summary>
+
 **2026-10-31 adjacent Go delivery probe (parked):** [PR #1921](https://github.com/pmark/arcadia/pull/1921) and [PR #1926](https://github.com/pmark/arcadia/pull/1926) are source-merged; the guarded Off adoption (receipt `runs/20261031T181357Z-67869`) installed broker/worker at `24c4ee0`, and the failed-before-start successor was disposed append-only (receipt `runs/20261031T182448Z-92315`). The probe is parked per operator direction; its handoff is [PR #1927](https://github.com/pmark/arcadia/pull/1927); the earlier [Go 1921 continuation report](reports/go-1921-claude-continuation-2026-10-31.md) is historical evidence. It is not evidence for the acceptance record below.
 
 ## Operator view: the rover's route from here
@@ -41,6 +172,8 @@ Derived **2026-10-31** from fresh read-only observation and exact merged source.
 Every press and host step on this route is recorded as friction toward one-click whole-Plan continuation ([Issue1929](https://github.com/pmark/arcadia/issues/1929)); the cheapest, checklist drift, is fixed by this refresh.
 
 Evidence custody: the `runs/` receipts named above (main checkout, ignored, host-local), GitHub PR records and canonical Decisions. Rowan retains sole coordination.
+
+</details>
 
 <details>
 <summary>Superseded October26 operator view — PR1783/PR1787 described as held</summary>

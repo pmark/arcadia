@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { lstatSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { isolatedGitEnvironment } from "../git/isolatedGitEnvironment.js";
-import { preservationProcessLimits, PRESERVATION_GIT_TIMEOUT_MS } from "./preservationStages.js";
+import { preservationProcessLimits } from "./preservationStages.js";
 import { parseDoc } from "../docs/parse.js";
 import { validationError } from "../cli/errors.js";
 import { commitTreeAt } from "./candidateSnapshot.js";
@@ -11,7 +11,7 @@ import { commitTreeAt } from "./candidateSnapshot.js";
 const marker = "<!-- arcadia-promotion-assignment-v1:";
 interface Assignment { base: string; project: string; plan: string; projectText: string; planText: string; }
 const hash = (text: string) => createHash("sha256").update(text).digest("hex");
-const git = (cwd: string, args: string[]) => execFileSync("git", args, { timeout: PRESERVATION_GIT_TIMEOUT_MS, ...preservationProcessLimits("git", args), env: isolatedGitEnvironment(), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+const git = (cwd: string, args: string[]) => execFileSync("git", args, { ...preservationProcessLimits("git", args), env: isolatedGitEnvironment(), cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 
 function regular(root: string, relative: string): string {
   if (path.isAbsolute(relative) || relative.split("/").some(part => !part || part === "." || part === "..")) throw validationError("Invalid promotion assignment path.");

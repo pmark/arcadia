@@ -9,7 +9,7 @@ import { inspectGovernedBaseDivergence, isRecognizedGovernanceCommit } from "../
 import { baseReconciliationCommitMessage, createBaseReconciliationCommit, writeCleanBaseMergeTree } from "../src/git/baseReconcile.js";
 import { planReconcile, syncBaseWithOwnPointerCommits } from "../src/git/pointerReconcile.js";
 import { detectBaseBranchAdvance, ensureProductionTickTables, listOperatorEscalations } from "../src/production/tick.js";
-import { mergeCandidatePullRequest } from "../src/production/workerMerge.js";
+import { listWorkerMerges, mergeCandidatePullRequest } from "../src/production/workerMerge.js";
 import type { VerdictGate } from "../src/sessions/roleLineage.js";
 import { FakeGitHub } from "./helpers/rehearsalHarness.js";
 
@@ -152,6 +152,48 @@ describe("a local base ahead only by its own pointer commits", () => {
     expect(originMain()).not.toBe(head());
   });
 
+  /** The unpushed commit `arcadia go --apply` writes when it activates `other-plan` (src/dispatch/planActivationApply.ts). */
+  function activate(cwd: string, options: { trailer?: boolean; project?: string; plan?: string } = {}): string {
+    writeDoc(cwd, "PROJECT.md", options.project ?? projectDoc("b1", "2026-11-01", "other-plan"));
+    writeDoc(cwd, OTHER_PLAN, options.plan ?? otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: active\n---\n"));
+    const trailer = options.trailer === false ? "" : "\n\n- PROJECT.md: active_plan plan-x → other-plan\n\nWritten by the total Arcadia Go transition resolver (planact_fixture).";
+    return commitAll(cwd, `chore(arcadia): activate other-plan at fixture/b1${trailer}`);
+  }
+
+  it("reconciles over its own Plan-activation commit (Issue #2018)", () => {
+    const activation = activate(repo);
+    const remoteTip = remoteAdvances();
+    const result = sync();
+    expect(result).toMatchObject({ outcome: "reconciled", reason: null, pointerCommits: [activation] });
+    expect(git(repo, ["rev-parse", `${head()}^2`]).trim()).toBe(remoteTip);
+    expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("active_plan: other-plan");
+    expect(git(repo, ["status", "--porcelain"])).toBe("");
+  });
+
+  it.each([
+    ["no trailer", { trailer: false }],
+    ["an extra PROJECT.md line", { project: projectDoc("b1", "2026-11-02", "other-plan") }],
+    ["an extra Plan line", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: active\nowner: someone\n---\n") }],
+    ["a draft activated Plan", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: draft\n---\n") }],
+    ["a complete activated Plan", { plan: otherPlanDoc("b1").replace(/\n---\n$/, "\nstatus: complete\n---\n") }],
+    ["a pointer that is not the subject's Action", { project: projectDoc("a1", "2026-11-01", "other-plan") }],
+    ["a Project that does not name the subject's Plan", { project: projectDoc("b1", "2026-11-01", "plan-x") }]
+  ] as Array<[string, Parameters<typeof activate>[1]]>)("refuses an activation-shaped commit with %s", (_name, options) => {
+    activate(repo, options);
+    remoteAdvances();
+    expect(sync()).toMatchObject({ outcome: "refused" });
+  });
+
+  it("reconciles over a same-Plan activation commit whose parent already named the Plan", () => {
+    writeDoc(repo, "PROJECT.md", projectDoc("b0", "2026-11-01", "other-plan"));
+    commitAll(repo, "point the Project at other-plan on the remote");
+    git(repo, ["push", "-q", "origin", "main"]);
+    git(other, ["pull", "-q", "--ff-only"]);
+    activate(repo);
+    remoteAdvances();
+    expect(sync()).toMatchObject({ outcome: "reconciled" });
+  });
+
   it("still fast-forwards a base that is only behind", () => {
     const tip = remoteAdvances();
     expect(sync()).toMatchObject({ outcome: "fast-forwarded", resultHead: tip });
@@ -180,6 +222,13 @@ describe("a local base ahead only by its own pointer commits", () => {
       commitAll(repo, "chore(arcadia): settle something");
       remoteAdvances();
       expectRefused(/not pointer commits/);
+    });
+
+    it("a local plan-activation commit that changes PROJECT.md, since only a pointer commit is reconcilable", () => {
+      writeDoc(repo, "PROJECT.md", projectDoc("a1", "2026-11-02", "plan-y"));
+      commitAll(repo, "chore(arcadia): activate plan-y");
+      remoteAdvances();
+      expectRefused(/local-only commits that are not pointer commits/);
     });
 
     it("a dirty checkout", () => {
@@ -680,6 +729,62 @@ describe("a local base ahead only by its own pointer commits", () => {
 
       expect(merge(db, github, sha)).toMatchObject({ kind: "refused", code: "base_not_synced", operatorMergeCommand: null });
       expect(head()).toBe(before);
+      db.close();
+    });
+
+    it("keeps git's stderr in a fetch refusal, and marks the merge landed once a later tick's sync moves main", () => {
+      const github = new FakeGitHub(origin);
+      const db = new Database(":memory:");
+      applyInitialSchema(db);
+      ensureProductionTickTables(db);
+      const sha = openPullRequest(github);
+      // The first fetch fails: the remote is unreachable (a known, local-only stderr).
+      const missing = path.join(root, "gone.git");
+      git(repo, ["remote", "set-url", "origin", missing]);
+      const failed = syncBaseWithOwnPointerCommits({ repoRoot: repo, baseBranch: "main" });
+      expect(failed.outcome).toBe("refused");
+      expect(failed.reason).toMatch(/^could not fetch origin\/main: .*gone\.git/);
+      expect(failed.reason).not.toContain("\n");
+      expect(failed.reason!.length).toBeLessThan(700);
+
+      const outcome = merge(db, github, sha);
+      expect(outcome).toMatchObject({ kind: "refused", code: "base_not_synced" });
+      expect(outcome.kind === "refused" && outcome.reason).toContain("gone.git");
+      expect(listWorkerMerges(db)[0]).toMatchObject({ outcome: "refused", code: "base_not_synced", head: sha });
+
+      // The next tick can reach the remote again and fast-forwards main.
+      git(repo, ["remote", "set-url", "origin", origin]);
+      tick(db);
+      expect(() => git(repo, ["merge-base", "--is-ancestor", sha, "refs/heads/main"])).not.toThrow();
+      const rows = listWorkerMerges(db);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({ outcome: "merged", code: null, head: sha });
+      expect(rows[0].reason).toContain("caught up on a later sync; first refused: GitHub merged");
+      logged.length = 0; // the shared log is asserted on by later tests
+      db.close();
+    });
+
+    it("redacts a token-bearing URL in git's fetch stderr", () => {
+      git(repo, ["remote", "set-url", "origin", "https://user:ghp_abcdefghijklmnopqrstuvwxyz0123456789@127.0.0.1:1/none.git"]);
+      const failed = syncBaseWithOwnPointerCommits({ repoRoot: repo, baseBranch: "main" });
+      expect(failed.outcome).toBe("refused");
+      expect(failed.reason).toMatch(/^could not fetch origin\/main: /);
+      expect(failed.reason).not.toContain("ghp_");
+      expect(failed.reason).not.toContain("user:");
+      git(repo, ["remote", "set-url", "origin", origin]);
+    });
+
+    it("leaves a refused base_not_synced row alone while main still lacks the head", () => {
+      const github = new FakeGitHub(origin);
+      const db = new Database(":memory:");
+      applyInitialSchema(db);
+      ensureProductionTickTables(db);
+      const sha = openPullRequest(github);
+      writeDoc(repo, "local.txt", "local\n");
+      commitAll(repo, "local work");
+      expect(merge(db, github, sha)).toMatchObject({ kind: "refused", code: "base_not_synced" });
+      tick(db);
+      expect(listWorkerMerges(db)[0]).toMatchObject({ outcome: "refused", code: "base_not_synced" });
       db.close();
     });
 

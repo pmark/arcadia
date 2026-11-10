@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
@@ -440,7 +440,7 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
       const result = spawnSync("claude", launch, { cwd: root, env: bare, encoding: "utf8", input });
       expect(result.status, result.stderr).toBe(0);
       const events = result.stdout.split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
-      expect(events[0]).toEqual({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [] });
+      expect(events[0]).toEqual({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [], apiKeySource: "none" });
       return events[1] as { type: string; is_error: boolean; structured_output: { verdict: string; summary: string } };
     };
     const first = review(`## Exact-Head Code Review\n## Candidate\n${JSON.stringify({ repository: "fixture/repo", headSha: "a".repeat(40) })}\n## Pull-request body`);
@@ -730,6 +730,8 @@ describe("production replay past launch (--executor, --reviewers)", () => {
     const patch = run(["api", "--method", "GET", `repos/acme/widgets/compare/${base}...${head}`, "-H", "Accept: application/vnd.github.patch"]);
     expect(patch.status).toBe(0);
     expect(patch.stdout).toContain(`From ${head}`);
+    const commitObject = run(["api", "--method", "GET", `repos/acme/widgets/commits/${head}`, "--jq", "{files: [.files[] | {filename, previous_filename, sha}]}"]);
+    expect(JSON.parse(commitObject.stdout).files).toEqual([{ filename: "b.txt", previous_filename: null, sha: expect.stringMatching(/^[0-9a-f]{40}$/) }]);
     expect(run(["pr", "edit", url, "--body", "B2"]).status).toBe(0);
     expect(run(["pr", "ready", url]).status).toBe(0);
     expect(JSON.parse(run(["pr", "view", url, "--json", "isDraft,body"]).stdout)).toEqual({ isDraft: false, body: "B2" });
@@ -914,5 +916,19 @@ describe.each([{ vitest: false, repair: false }, { vitest: true, repair: false }
 
   it("writes nothing to the source", () => {
     expect(fingerprint(source)).toEqual(before);
+  });
+});
+
+describe("the replay's spend seam applies only to simulated executors", () => {
+  const now = new Date("2026-11-10T00:00:00Z");
+  it("keeps a fixed clear fixture for a prediction-only, scripted or candidate run", () => {
+    for (const executor of [undefined, "scripted", "candidate:abc123"] as const) {
+      const seam = replaySpendCheck(executor, now);
+      expect(seam, String(executor)).toBeDefined();
+      expect(seam!.report("claude")).toMatchObject({ verdict: "clear", providers: [{ id: "claude", verdict: "clear" }] });
+    }
+  });
+  it("passes no stub with --executor real, so the tick's real spend check refuses a non-clear verdict before a real CLI starts", () => {
+    expect(replaySpendCheck("real", now)).toBeUndefined();
   });
 });

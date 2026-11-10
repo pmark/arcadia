@@ -884,6 +884,21 @@ if (simPrs && args[0] === "api") {
       if (patch) { writeOut(patch); process.exit(0); }
     }
   }
+  // GitHub's read of one commit object, for the governed-record check: the filtered shape its --jq asks for.
+  const commitRead = args.map((value) => /\/commits\/([0-9a-f]{40})$/.exec(value)).find(Boolean);
+  if (commitRead) {
+    for (const entry of Object.values(readPrs())) {
+      const raw = gitOut(entry.bare, "diff-tree", "-r", "-M", "--root", "--no-commit-id", "--raw", "--no-abbrev", commitRead[1]);
+      if (raw === null) continue;
+      const files = raw.split("\n").filter(Boolean).map((line) => {
+        const [meta, ...paths] = line.split("\t");
+        const [, , oldBlob, newBlob, status] = meta.split(" ");
+        return { filename: paths[paths.length - 1], previous_filename: paths.length > 1 ? paths[0] : null, sha: status === "D" ? oldBlob : newBlob };
+      });
+      writeOut(JSON.stringify({ files }) + "\n");
+      process.exit(0);
+    }
+  }
 }
 const SIMULATED_PR_WRITES = ["ready", "comment", "close", "edit", "merge"];
 if (!isRead() && env.REPLAY_SIMULATE_GH_WRITES === "1" && args[0] === "pr" && SIMULATED_PR_WRITES.includes(args[1]) && args[2]) {
@@ -999,7 +1014,8 @@ const verdict = {
 appendFileSync(effectsLog, JSON.stringify({ kind: "simulated:reviewer", detail: role + " " + verdict.verdict }) + "\n");
 if (flavor === "claude") {
   // The stream-json lines recordClaudeReviewerVerdict reads: no tools but StructuredOutput, no MCP servers, a structured verdict.
-  process.stdout.write(JSON.stringify({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [] }) + "\n");
+  // It never reads apiKeySource: that field is here only for the sign-in check in src/qa/reviewerReplay.ts, which stops a run that omits it.
+  process.stdout.write(JSON.stringify({ type: "system", subtype: "init", tools: ["StructuredOutput"], mcp_servers: [], apiKeySource: "none" }) + "\n");
   process.stdout.write(JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: verdict }) + "\n");
 } else {
   writeFileSync(args[args.indexOf("--output-last-message") + 1], JSON.stringify(verdict) + "\n");
@@ -1124,6 +1140,16 @@ export function scriptedReplayFiles(input: {
     try { return readFileSync(path.join(cwd, file), "utf8") !== content; } catch { return true; }
   })) throw new Error(`Scripted repair of ${action} changes no work; supply different --executor-repair-files.`);
   return files;
+}
+
+/**
+ * The spend seam the replayed tick gets. A simulated run (no executor, scripted or candidate) never starts a real
+ * provider, and its fixture models no spend, so its verdict is a fixed clear. With `--executor real` a real CLI Session
+ * starts, so no stub is passed: the tick runs the real spend check and refuses a non-clear verdict before it starts.
+ */
+export function replaySpendCheck(executor: ReplayOptions["executor"], now: Date): { report: (id: "claude" | "codex" | "opencode") => never } | undefined {
+  if (executor === "real") return undefined;
+  return { report: (id) => ({ verdict: "clear", providers: [{ id, verdict: "clear", codes: [], probes: [] }], warnings: [], checkedAt: now.toISOString() }) as never };
 }
 
 /** Phase 1: build the replay root from the source, then run phase 2 in an isolated child. */
@@ -1626,6 +1652,7 @@ child.on("exit", (code, signal) => { clearTimeout(timer); kill(); process.exit(c
           clock: () => now,
           capacityObservation: capacityObservation(scope.providers[0] ?? "claude-code-cli") as never,
           providerSignIn: () => ({ signedIn: true, remedy: "" }),
+          spendCheck: replaySpendCheck(manifest.executor, now),
           workerCapability: () => [],
           agentWorktreeRoot: path.join(manifest.root, "agent-worktrees", "new"),
           log: (message) => lines.push(message)

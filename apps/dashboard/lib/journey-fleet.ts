@@ -14,6 +14,10 @@ const GROUP_OF: Record<JourneyPhase, FleetGroup> = {
   blocked: "blocked", repairing: "moving", "in-review": "moving", driving: "moving", launching: "moving", waiting: "waiting", parked: "waiting", arrived: "arrived"
 };
 
+export const PHASE_LABEL: Record<JourneyPhase, string> = {
+  parked: "Parked", waiting: "Waiting", launching: "Launching", driving: "Driving", repairing: "Repairing", "in-review": "In review", blocked: "Blocked", arrived: "Arrived"
+};
+
 export interface Rover {
   id: string;
   journey: PlanJourney;

@@ -238,7 +238,8 @@ check_reviewed_hashes() {  # REF:L161: the card pair and this executor against t
 # The only ledger refusal is an overlapping in-flight sequence, checked by `start-run sign-in` (read-only in P2).
 # REF:L245-L248 and L364 as replaced by Decision 0161: START needs the bound worker's own usage receipt from this card's sequence (or a
 # fresh reused one of the same bound worker): its bytes unchanged, a successful approved live check, the credential expiring more than
-# 5 minutes from now and both usage windows below 100%. Read-only; never a new probe.
+# 5 minutes from now and every reported usage window below 100% (operator ruling A, 2026-11-05: the 7d window is required;
+# an absent 5h window is no limit; a reported 5h window must still be below 100%). Read-only; never a new probe.
 check_signin_receipt() {
   local out
   out="$(node -e '
@@ -255,7 +256,7 @@ try{
   need(r.success===true&&r.httpStatus===200&&r.outcome==="ok"&&r.requestAttempted===true,"the worker usage check did not succeed");
   need(Date.parse(r.credentialExpiresAt)>Date.now()+5*60000,"credential expiry: the sign-in has expired or expires within 5 minutes");
   const w=l=>(Array.isArray(r.windows)?r.windows:[]).filter(x=>x.label===l);
-  need(["5h","7d"].every(l=>w(l).length===1&&Number.isFinite(w(l)[0].usedPercentage)&&w(l)[0].usedPercentage>=0&&w(l)[0].usedPercentage<100),"usage window unknown or at 100%");
+  need(["5h","7d"].every(l=>(l==="5h"&&w(l).length===0)||w(l).length===1&&Number.isFinite(w(l)[0].usedPercentage)&&w(l)[0].usedPercentage>=0&&w(l)[0].usedPercentage<100),"usage window unknown or at 100%");
   process.stdout.write(JSON.stringify({path:s.path,sha256:s.sha256,credentialExpiresAt:r.credentialExpiresAt,windows:r.windows,release:r.release,handlerHash:r.handlerHash,finishedAt:r.finishedAt??null}));
 }catch(e){process.stdout.write("REFUSED: "+e.message);process.exit(1)}
 ' "$SIGN_IN_RECEIPT" "$PIN" "$BOUND_HANDLER")" || refuse "sign-in and credential-expiry gate: ${out#REFUSED: }"
@@ -446,9 +447,14 @@ process.stdout.write(JSON.stringify({originatingRun:d.originatingCard+"/"+d.orig
 #   - this card's Plan, provider, concurrency and spend Decision are the approved ones (P1 and P2 check the Plan is active and its
 #     governed queue holds the pinned Actions);
 #   - every policy move since the approval is this chain's or Rowan's own Off (fail-closed: any other Off ends the day);
-#   - Decision 0170: fewer than 3 activations since it admitted a Session, counted across days;
+#   - Decision 0181 (which re-decided Decision 0170's three attempts): no failed batch in this day. A batch is an activation that
+#     admitted a Session; it is clean only when the tick recorded scope complete inside that run with no escalation, and any
+#     other end fails it (fail closed). A failed batch counts unless it was over before the operator's press opened the day;
+#     Decision 0187 (which re-decided that stop): a counted failed batch is passed only when the card after its press called it
+#     a failed attempt and named a merged fix whose cause is the named cause; P1 checks each fix is on the reviewed revision,
+#     dated after its batch ended, and that Decision 0187 is answered with option A there. Otherwise it stops for the operator;
 #   - fewer than 2 re-presses after a refusal in this day, however the card is re-prepared, and the same refusal does not recur;
-#   - the card names the latest press with its cause, evidence and clearance, and no two attempts share a named cause.
+#   - the card names the latest press with its cause, evidence and clearance, and no two failed attempts share a named cause.
 # The cause is Rowan's judgement: it is recorded and compared here, not proved.
 # Shared by the P0 check and the later checks: fail-closed listing and reading, and the operator's latest approval.
 DAY_PRESS_SCAN_JS='
@@ -482,12 +488,14 @@ check_day_grant() {
 const c=require("crypto");
 const [lib,id,dj,descriptorPath,evidenceJson,currentPress,mode,maxPreflightAge]=process.argv.slice(1);
 const d=JSON.parse(dj),me=JSON.parse(fs.readFileSync(descriptorPath,"utf8")).startRun,ev=JSON.parse(evidenceJson).data;
-const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_ATTEMPTS=3,MAX_REPRESSES=2,ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SLUG=/^[a-z0-9]+(?:-[a-z0-9]+)*$/,RUN=/^[0-9]{8}T[0-9]{6}Z-[0-9]+$/,WINDOW=24*3600e3,MAX_REPRESSES=2,ROWAN_OFF=/^rowan-off-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+// Decision 0181: a batch (an activation that admitted a Session) is clean only with a scope-complete record and no escalation.
+const failedBatch=(x)=>{if(!(x.admitted>=1))return false;const s=x.scopeComplete;return !(s&&Number.isInteger(s.merged)&&s.merged>=1&&s.escalated===0)};
 const sha=(b)=>c.createHash("sha256").update(b).digest("hex");
 const keys=(o)=>o&&typeof o==="object"&&!Array.isArray(o)?Object.keys(o).sort().join():"";
 const SHA=/^[0-9a-f]{64}$/,word=(v)=>v==="undefined"||v==="null";
 const pointer=(v)=>typeof v==="string"&&v.length>0&&v.length<=500&&!v.includes("\n")&&!word(v)&&(/^https:\/\/\S+$/.test(v)||(!p.isAbsolute(v)&&!v.split("/").includes("..")));
-if(keys(d)!=="approvalCard,approvalPressSha256,approvalReceiptSha256,approvalRun,attempt,decision,previous"||d.decision!=="0173"||typeof d.approvalCard!=="string"||!SLUG.test(d.approvalCard)||typeof d.approvalRun!=="string"||!RUN.test(d.approvalRun)||!SHA.test(d.approvalReceiptSha256)||!SHA.test(d.approvalPressSha256)||!Number.isInteger(d.attempt)||d.attempt<1||d.attempt>3)fail("INVALID_DELEGATION: the card names a malformed day approval");
+if(keys(d)!=="approvalCard,approvalPressSha256,approvalReceiptSha256,approvalRun,attempt,decision,previous"||d.decision!=="0173"||typeof d.approvalCard!=="string"||!SLUG.test(d.approvalCard)||typeof d.approvalRun!=="string"||!RUN.test(d.approvalRun)||!SHA.test(d.approvalReceiptSha256)||!SHA.test(d.approvalPressSha256)||!Number.isInteger(d.attempt)||d.attempt<1)fail("INVALID_DELEGATION: the card names a malformed day approval");
 // The approval.
 const rp=p.join(lib,"runs",d.approvalCard,d.approvalRun,"receipt.json");
 if(!fs.existsSync(rp))fail("APPROVAL_MISSING: the approval receipt "+rp+" does not exist");
@@ -535,26 +543,45 @@ for(const t of [...ev.transitions].filter((x)=>x.revisionBefore>=baseline).sort(
   else if(!ROWAN_OFF.test(t.requestId)&&!executorOff(t.requestId))fail("DAY_ENDED_BY_OPERATOR: production was turned Off by "+t.requestId+", not by this chain or Rowan: an operator STOP or operator-issued Off ends the day");
   revision=t.revisionAfter;}
 if(((me.production)||{}).revision!==revision)fail("PRODUCTION_CHANGED: this card pins policy revision "+((me.production)||{}).revision+", but the chain since the approval reaches "+revision);
-// Decision 0170: a START that admitted at least one Session, across days. Every such activation counts, a dashboard
-// reactivation included: an overcount stops Rowan early and the operator decides, an undercount spends past the limit.
+// Attempts are still numbered as Decision 0170 counted them (every activation that admitted a Session, a dashboard reactivation
+// included); Decision 0181 lifted the cap, and the number only pins the card to its record.
 const attempts=ev.activations.filter((x)=>Date.parse(x.at)>=EARLIEST&&x.admitted>=1).length;
-if(attempts>=MAX_ATTEMPTS)fail("ATTEMPTS_EXHAUSTED: "+attempts+" attempts already admitted a Session under Decision 0170; at 3 Rowan stops and the operator decides");
+// Decision 0181: a batch that fails stops for the operator. Any failed batch not over before the press that opened this day counts.
+const failed=ev.activations.filter((x)=>failedBatch(x)&&!(typeof x.endedAt==="string"&&Date.parse(x.endedAt)<opens));
 // Every /actions press of a START card since Decision 0170, except the one running now.
 const presses=[];
 for(const card of ls(ops)){if(!SLUG.test(card))continue;
   const receipts=ls(p.join(lib,"runs",card)).map((run)=>rj(p.join(lib,"runs",card,run,"receipt.json")));
   // A card is one-shot: its activation belongs to the one press that consumed its allowance, not a later refused press.
-  const consumedPath=p.join(lib,card+".consumed.json"),consumedRun=(rj(consumedPath)||{}).runId,activation=ev.activations.some((x)=>x.requestId===card&&x.admitted>=1),before=presses.length;
+  const consumedPath=p.join(lib,card+".consumed.json"),consumedRun=(rj(consumedPath)||{}).runId,activation=ev.activations.some((x)=>x.requestId===card&&x.admitted>=1),batchFailed=ev.activations.some((x)=>x.requestId===card&&failedBatch(x)),before=presses.length;
   for(const pr2 of ls(p.join(ops,card))){if(pr2===currentPress)continue;
     const dir=p.join(ops,card,pr2),run=rj(p.join(dir,"run.json")),sr=(rj(p.join(dir,"descriptor.json"))||{}).startRun;
     if(!run||!sr||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==pr2)continue;
     const t=Date.parse(run.startedAt);if(!Number.isFinite(t)||t<EARLIEST)continue;
     const r=receipts.find((x)=>x&&x.mode==="run"&&(x.record||{}).operatorRunId===pr2)||null;
     if(r&&r.outcome==="succeeded"&&!ev.activations.some((x)=>x.requestId===card))fail("EVIDENCE_MISMATCH: "+card+" recorded a successful START but production has no activation under its request id");
-    presses.push({card,pr:pr2,key:card+"/"+pr2,t,status:String(run.status),del:sr.delegation||null,mark:run.press||null,r,admitted:activation&&((r&&r.allowanceConsumed===true)||(!!r&&!!consumedRun&&r.runId===consumedRun)||(!r&&fs.existsSync(p.join(dir,"start-run.claimed"))&&fs.existsSync(consumedPath)))});}
+    const admitted=activation&&((r&&r.allowanceConsumed===true)||(!!r&&!!consumedRun&&r.runId===consumedRun)||(!r&&fs.existsSync(p.join(dir,"start-run.claimed"))&&fs.existsSync(consumedPath)));
+    presses.push({card,pr:pr2,key:card+"/"+pr2,t,status:String(run.status),del:sr.delegation||null,mark:run.press||null,r,admitted,failed:admitted&&batchFailed});}
   if(activation&&presses.length>before&&!presses.slice(before).some((x)=>x.admitted))fail("EVIDENCE_MISMATCH: production records a Session admitted under "+card+", but no press of that card consumed its allowance");}
 presses.sort((x,y)=>x.t-y.t);
 const latest=presses.at(-1)||null;
+// Decision 0187: the card after a failed press may go on when it names a fix merged for the cause of that batch. For the latest press
+// that card is this one; for an earlier failure it is the press that followed it, whose fix P1 checks again at the pin of this card.
+// Anything else (no owning press, a batch the operator pressed, a follower the operator pressed, a clearance by observation,
+// another cause) stops for the operator. Decision 0187 covers a failed delegated batch only, so the owner must be Rowan press.
+// A named cause in full: a stable slug, an evidence pointer and a well-formed clearance (this card, and each earlier follower).
+const prevValid=(prev)=>{if(!prev||typeof prev!=="object")return false;const cl=prev.clearance||{};
+  const clearOk=cl.kind==="merged-fix"?(keys(cl)==="commit,kind,pullRequest,reproduction"||(keys(cl)==="cause,commit,kind,pullRequest,reproduction"&&typeof cl.cause==="string"&&SLUG.test(cl.cause)&&!word(cl.cause)))&&/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(cl.pullRequest)&&/^[0-9a-f]{40}$/.test(cl.commit)&&typeof cl.reproduction==="string"&&cl.reproduction.length>0&&cl.reproduction.length<=300&&!cl.reproduction.includes("\n")&&!p.isAbsolute(cl.reproduction)&&!cl.reproduction.split("/").some((x)=>x===".."||x==="."||x===""):cl.kind==="observed-cleared"&&keys(cl)==="kind,observation"&&pointer(cl.observation);
+  return keys(prev)==="cause,clearance,evidence,kind,press"&&typeof prev.press==="string"&&prev.press.includes("/")&&(prev.kind==="failed-attempt"||prev.kind==="clean-batch"||prev.kind==="no-session")&&typeof prev.cause==="string"&&SLUG.test(prev.cause)&&!word(prev.cause)&&pointer(prev.evidence)&&clearOk};
+const mergedFix=(b,o,n)=>{if(!(o.mark&&o.mark.decision==="0173")||!prevValid(n))return null;const cl=n.clearance;
+  if(n.press!==o.key||n.kind!=="failed-attempt"||cl.kind!=="merged-fix"||cl.cause!==n.cause)return null;
+  if(typeof b.endedAt!=="string"||!Number.isFinite(Date.parse(b.endedAt)))return null;
+  return {batch:b.requestId,press:o.key,endedAt:b.endedAt,commit:cl.commit,reproduction:cl.reproduction,cause:n.cause}};
+const cleared=[];
+for(const b of failed){const o=presses.find((x)=>x.card===b.requestId&&x.admitted),nx=o?presses[presses.indexOf(o)+1]:undefined;
+  const n=!o?null:o===latest?d.previous:(nx&&nx.mark&&nx.mark.decision==="0173"&&nx.del&&nx.del.decision==="0173"?nx.del.previous:null),f=o?mergedFix(b,o,n):null;
+  if(!f)fail("FAILED_BATCH: the batch "+b.requestId+" (activated "+b.at+") failed under the day approved at "+pr.startedAt+": it admitted a Session and did not reach scope complete without an escalation; Decision 0181 stops for the operator unless the card after it names a merged fix for that cause (Decision 0187: previous.kind failed-attempt, a merged-fix clearance whose cause is the named cause, merged after the batch ended)");
+  cleared.push(f);}
 if(latest&&(latest.status==="running"||(latest.r&&latest.r.outcome==="in_progress")))fail("PREVIOUS_UNSETTLED: the latest START press "+latest.key+" has not finished; read its receipt before any other press");
 let rePresses=0;
 presses.forEach((x,i)=>{if(x.t>=opens&&x.mark&&x.mark.decision==="0173"&&i>0&&!presses[i-1].admitted)rePresses+=1;});
@@ -567,14 +594,13 @@ const prev=d.previous;
 if(!latest){if(prev!==null)fail("PREVIOUS_MISMATCH: this card names "+((prev||{}).press)+", but no START press has happened since Decision 0170");}
 else{
   if(prev===null||prev===undefined)fail("PREVIOUS_CAUSE_REQUIRED: the latest START press "+latest.key+" needs its cause named on this card, with an evidence pointer and how it was cleared");
-  const cl=prev.clearance||{};
-  const clearOk=cl.kind==="merged-fix"?keys(cl)==="commit,kind,pullRequest,reproduction"&&/^https:\/\/github\.com\/[^/]+\/[^/]+\/pull\/[1-9][0-9]*$/.test(cl.pullRequest)&&/^[0-9a-f]{40}$/.test(cl.commit)&&typeof cl.reproduction==="string"&&cl.reproduction.length>0&&cl.reproduction.length<=300&&!cl.reproduction.includes("\n")&&!p.isAbsolute(cl.reproduction)&&!cl.reproduction.split("/").some((x)=>x===".."||x==="."||x===""):cl.kind==="observed-cleared"&&keys(cl)==="kind,observation"&&pointer(cl.observation);
-  if(keys(prev)!=="cause,clearance,evidence,kind,press"||typeof prev.press!=="string"||!prev.press.includes("/")||(prev.kind!=="failed-attempt"&&prev.kind!=="no-session")||typeof prev.cause!=="string"||!SLUG.test(prev.cause)||word(prev.cause)||!pointer(prev.evidence)||!clearOk)fail("INVALID_DELEGATION: the cause on this card needs a stable slug, an evidence pointer and how it was cleared");
+  if(!prevValid(prev))fail("INVALID_DELEGATION: the cause on this card needs a stable slug, an evidence pointer and how it was cleared");
   if(prev.press!==latest.key)fail("PREVIOUS_MISMATCH: this card names "+prev.press+", but the latest START press is "+latest.key);
-  const kind=latest.admitted?"failed-attempt":"no-session";
+  const kind=!latest.admitted?"no-session":latest.failed?"failed-attempt":"clean-batch";
   if(prev.kind!==kind)fail("PREVIOUS_MISMATCH: this card calls "+latest.key+" a "+prev.kind+", but production record makes it a "+kind);
   const namedFor=(x)=>presses.filter((y)=>y.del&&y.del.decision==="0173"&&y.del.previous&&y.del.previous.press===x.key).map((y)=>y.del.previous.cause);
-  if(latest.admitted&&presses.some((x)=>x!==latest&&x.admitted&&namedFor(x).includes(prev.cause)))fail("SAME_CAUSE: two attempts failed on the cause "+prev.cause+"; Decision 0173 stops here for the operator");
+  // Decision 0173 stops if two attempts fail on the same cause; a clean batch failed on nothing.
+  if(latest.failed&&presses.some((x)=>x!==latest&&x.admitted&&namedFor(x).includes(prev.cause)))fail("SAME_CAUSE: two attempts failed on the cause "+prev.cause+"; Decision 0173 stops here for the operator");
   if(!latest.admitted&&presses.some((x)=>x!==latest&&!x.admitted&&x.t>=opens&&namedFor(x).includes(prev.cause)))fail("SAME_REFUSAL: the refusal named "+prev.cause+" recurred in this day; Decision 0173 stops here for the operator");
 }
 if(d.attempt!==attempts+1)fail("ATTEMPT_MISMATCH: this card is pinned as attempt "+d.attempt+", but "+attempts+" attempts already admitted a Session");
@@ -583,12 +609,13 @@ const m=rj(p.join(lib,"reviewed",id+".json"))||{};
 if(typeof m.premortem!=="string"||!m.premortem.trim())fail("PREMORTEM_REQUIRED: the reviewed manifest of this card names no fresh pre-mortem");
 if(mode==="run"){const fresh=ls(p.join(lib,"runs",id)).map((run)=>rj(p.join(lib,"runs",id,run,"receipt.json"))).some((x)=>x&&x.mode==="preflight"&&x.outcome==="preflight_ok"&&(x.record||{}).reviewedRevision===me.reviewedRevision&&now-Date.parse(x.updatedAt)<=Number(maxPreflightAge));
   if(!fresh)fail("PREFLIGHT_REQUIRED: this card has no passing preflight at its revision from the last 2 hours");}
-process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"+d.approvalRun,approvalPressAt:pr.startedAt,windowClosesAt:new Date(closes).toISOString(),attempt:d.attempt,attemptsBefore:attempts,rePressesToday:rePresses,previous:prev||null,chainKey:latest?latest.card+"--"+latest.pr:"first",premortem:m.premortem,baselineRevision:baseline}));
+process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"+d.approvalRun,approvalPressAt:pr.startedAt,windowClosesAt:new Date(closes).toISOString(),attempt:d.attempt,attemptsBefore:attempts,failedBatchesToday:failed.length,clearedFailures:cleared,rePressesToday:rePresses,previous:prev||null,chainKey:latest?latest.card+"--"+latest.pr:"first",premortem:m.premortem,baselineRevision:baseline}));
 ' "$LIBRARY_DIR" "$ID" "$DELEGATION" "$DESCRIPTOR" "$evidence" "${OPERATOR_RUN_ID:-}" "$MODE" "$DAY_GRANT_PREFLIGHT_MAX_AGE_MS")" || refuse "Decision 0173: $out"
   rec delegation "$out"
   DAY_WINDOW_CLOSES="$(jq -r '.windowClosesAt' <<<"$out")"
   DAY_CHAIN_KEY="$(jq -r '.chainKey' <<<"$out")"
   DAY_APPROVAL_OPENS="$(jq -r '.approvalPressAt' <<<"$out")"
+  DAY_CLEARED_FAILURES="$(jq -c '.clearedFailures' <<<"$out")"
 }
 # Decision 0173: every power ends at hour 24, only the operator's latest approval opens the day, and an operator STOP ends it.
 # A press that began inside the window still may not take its allowance or activate after any of those.
@@ -612,10 +639,8 @@ phase_p0() {
     [[ -z "${CODEX_SANDBOX:-}" ]] || refuse "host-only Grant: an agent sandbox may not run it"
     check_operator_press_record
   fi
-  # A set API key can bill paid API usage instead of the Claude subscription; its value is never read.  REF:L155
-  [[ -z "${ANTHROPIC_API_KEY:-}" ]] || refuse "ANTHROPIC_API_KEY is set in this host environment, which can bill paid API usage; unset it (its value was not read)"
   [[ -z "${ARCADIA_WORKSPACE:-}" ]] || refuse "ARCADIA_WORKSPACE is set; the configured workspace must resolve on its own"  # ADOPT:L72
-  for tool in git jq mise timeout node launchctl ps; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done  # REF:L159
+  for tool in git jq mise timeout node launchctl ps tmux; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done  # REF:L159
   [[ "$(cd "$LIBRARY_DIR/../../.." && pwd -P)" == "$ARCADIA_REPO" ]] || refuse "this card does not live in the library of the checkout that holds this executor"
   jq -e '.schema == "arcadia-operator-script-v1" and .kind == "grant" and (.startRun.schema == "arcadia-start-run-v1")' "$DESCRIPTOR" >/dev/null || refuse "the descriptor is not a START grant with a startRun block"
   check_preserved_history
@@ -627,7 +652,7 @@ phase_p0() {
   rec_str cardExpiresAt "$CARD_EXPIRES_AT"
   check_delegation
   if [[ "$MODE" == run && "$DELEGATION_DECISION" == 0173 ]]; then
-    rec_str authority "Rowan's delegated press of this START card from /actions under Decision 0173, within the operator's day approval $(jq -r '.approvalCard + "/" + .approvalRun' <<<"$DELEGATION") (the run's activation touch), open until $DAY_WINDOW_CLOSES; attempt $(jq -r '.attempt' <<<"$DELEGATION") of at most 3 under Decision 0170 if it admits a Session; never recorded as the operator's press"
+    rec_str authority "Rowan's delegated press of this START card from /actions under Decision 0173, within the operator's day approval $(jq -r '.approvalCard + "/" + .approvalRun' <<<"$DELEGATION") (the run's activation touch), open until $DAY_WINDOW_CLOSES; attempt $(jq -r '.attempt' <<<"$DELEGATION") (numbered since Decision 0170) if it admits a Session, under Decision 0181, which stops for the operator after a failed batch; never recorded as the operator's press"
   elif [[ "$MODE" == run && "$DELEGATION" != null ]]; then
     rec_str authority "Rowan's delegated press of this successor START card from /actions under Decision 0163, delegated from the operator's originating press $(jq -r '.originatingCard + "/" + .originatingRun' <<<"$DELEGATION") (the one activation touch); attempt $(jq -r '.attempt' <<<"$DELEGATION") of at most 5; Decisions 0156, 0157, 0161, 0162 and 0163 are verified at the reviewed revision in P1"
   elif [[ "$MODE" == run ]]; then
@@ -635,6 +660,11 @@ phase_p0() {
   fi
   rec_str reviewedRevision "$PIN"
   rec_str executorSha256 "$EXECUTOR_SHA"
+  # The spend check (arcadia spend check, assessSpendRisk) on the launch environment as the Sessions get it (billing variables stripped by
+  # env -u): only clear proceeds; risk and unknown both refuse. Only the verdict enum is read back, never a value.  REF:L155
+  SPEND_CHECK="$(arcadia spend check --provider claude --launch-env stripped --json || true)"
+  SPEND_VERDICT="$(jq -r '.data.verdict | select(. == "clear" or . == "risk" or . == "unknown")' <<<"$SPEND_CHECK" 2>/dev/null || true)"
+  [[ "$SPEND_VERDICT" == clear ]] || refuse "the spend check is ${SPEND_VERDICT:-unreadable}, not clear; run arcadia spend check --launch-env stripped and fix what it names: risk, unknown and an unreadable result all refuse"
   claim_operator_press_record
 }
 
@@ -644,18 +674,44 @@ phase_p0() {
 # Decision 0173 at the reviewed revision: its option A is the recorded answer, and a named merged fix is really on main with
 # its fixture or replay present. Whether the fixture truly reproduces the cause, or the fix's review happened, is recorded only.
 check_day_grant_at_pin() {
-  local file content kind commit reproduction
+  local file content kind commit reproduction ended batch
   file="$(grep -E -m1 '^docs/decisions/0173-.*\.md$' <<<"$1" || true)"
   [[ -n "$file" ]] || refuse "Decision 0173 is not in docs/decisions at $PIN"
   # The frontmatter only: the Decision's body quotes every option.
   content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision 0173's frontmatter could not be read at $PIN"
   jq -e '.status == "approved" and ((.answer // "") | tostring | startswith("A. Daily grant"))' <<<"$content" >/dev/null || refuse "Decision 0173 is not answered with option A at $PIN"
+  # Decision 0181 option A replaced Decision 0170's three attempts with the failed-batch stop P0 checked; every day-grant card
+  # needs it on the reviewed revision, whatever the card's requiredDecisions list.
+  file="$(grep -E -m1 '^docs/decisions/0181-.*\.md$' <<<"$1" || true)"
+  [[ -n "$file" ]] || refuse "Decision 0181 is not in docs/decisions at $PIN; a Decision 0173 card's failed-batch gate implements it"
+  content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision 0181's frontmatter could not be read at $PIN"
+  jq -e '.status == "approved" and ((.answer // "") | tostring | startswith("A. Continued serial runs"))' <<<"$content" >/dev/null || refuse "Decision 0181 is not answered with option A at $PIN"
   [[ "$(jq -r '.startRun.planActivation // .planActivation // null | type' "$DESCRIPTOR")" == null ]] || refuse "a Decision 0173 card runs on the active Plan and carries no planActivation"
   kind="$(jq -r '.previous.clearance.kind // ""' <<<"$DELEGATION")"
   if [[ "$kind" == merged-fix ]]; then
     commit="$(jq -r '.previous.clearance.commit' <<<"$DELEGATION")"; reproduction="$(jq -r '.previous.clearance.reproduction' <<<"$DELEGATION")"
     git_repo merge-base --is-ancestor "$commit" "$PIN" 2>/dev/null || refuse "Decision 0173: the fix commit $commit named for the previous attempt is not on the reviewed revision $PIN"
     git_repo cat-file -e "$PIN:$reproduction" 2>/dev/null || refuse "Decision 0173: the reproduction $reproduction named for the previous attempt is missing at $PIN"
+  fi
+  # The continue-after-fix Decision (0187 when written): a card going on past a failed batch needs its option A on the reviewed
+  # revision, and each fix P0 passed (this card's, or the one the card after an earlier failure named) on the reviewed revision
+  # and merged after its batch ended. Until the answer is on main, a failed batch stops for the operator as Decision 0181 had it.
+  if [[ "$(jq 'length' <<<"${DAY_CLEARED_FAILURES:-[]}")" != 0 ]]; then
+    # By its slug alone, never a number: every START sign-in mints the next number, and this one was raced for twice on
+    # 2026-11-07. Exactly one record may carry the slug; its id comes from that file name and must match its frontmatter.
+    local slug=decide-what-unattended-production-does-after-a-delegated-batch-fails-under-the matches id
+    matches="$(grep -E "^docs/decisions/[0-9]{4}-$slug\.md\$" <<<"$1" || true)"
+    [[ -n "$matches" ]] || refuse "Decision 0173: FAILED_BATCH: no Decision record at $PIN has the slug $slug, so a failed batch still stops for the operator (Decision 0181)"
+    [[ "$(wc -l <<<"$matches" | tr -d ' ')" == 1 ]] || refuse "Decision 0173: FAILED_BATCH: more than one Decision record at $PIN has the slug $slug, so the continue-after-fix Decision cannot be told apart and a failed batch still stops for the operator"
+    file="$matches"; id="${file#docs/decisions/}"; id="${id:0:4}"
+    content="$(git_repo show "$PIN:$file" | frontmatter_json)" || refuse "Decision $id frontmatter could not be read at $PIN"
+    jq -e --arg id "$id" '(.id | tostring) == $id and .status == "approved" and ((.answer // "") | tostring | startswith("A. Continue after a reviewed fix merges"))' <<<"$content" >/dev/null || refuse "Decision 0173: FAILED_BATCH: Decision $id ($file) is not answered with option A at $PIN, so a failed batch still stops for the operator (Decision 0181)"
+    while IFS=$'\t' read -r commit ended batch reproduction; do
+      git_repo merge-base --is-ancestor "$commit" "$PIN" 2>/dev/null || refuse "Decision 0173: FAILED_BATCH: the fix commit $commit named for the failed batch $batch is not on the reviewed revision $PIN"
+      git_repo cat-file -e "$PIN:$reproduction" 2>/dev/null || refuse "Decision 0173: FAILED_BATCH: the reproduction $reproduction named for the failed batch $batch is missing at $PIN"
+      node -e 'process.exit(Number(process.argv[1])*1000>Date.parse(process.argv[2])?0:1)' "$(git_repo show -s --format=%ct "$commit" 2>/dev/null || true)" "$ended" \
+        || refuse "Decision 0173: FAILED_BATCH: the fix commit $commit is dated before the failed batch $batch ended at $ended; the continue-after-fix Decision goes on only after a fix merged after the failure"
+    done < <(jq -r '.[] | [.commit, .endedAt, .batch, .reproduction] | @tsv' <<<"$DAY_CLEARED_FAILURES")
   fi
 }
 phase_p1() {
@@ -722,16 +778,79 @@ phase_p1() {
 }
 
 # ---------------------------------------------------------------------------------------------------------------
+# No competing Session (P2 and, again, P4).
+#
+# Decision 0156 retains "zero live admissions and no live Sessions" as a START gate (Decision 0143's no-Session guard). This
+# check RELAXES that gate for one case, as Decision 0201 option A approves. Background: Decision 0191 launches successor coordinators
+# under tmux, so a bare "no tmux session at all" refuses every START while a relay coordinator runs.
+#
+# The one tolerated case: a live tmux session that (1) has the EXACT name `arcadia coordinator relay-sessions` returns for a
+# registered, relay-launched, current custodian of this Project (none while a handoff is in flight), AND (2) is running the
+# very process that row was launched as: a descendant of that pane's PID whose arguments carry `--session-id <the row's
+# native_session_id>`. A row whose pane died, or a different process started under the same name, is a competing Session.
+#
+# Reading tmux fails closed: only tmux's own "no server" answers mean "no sessions". A denied socket, any other tmux error, a
+# mise shim failure, or a missing tmux refuses. TMUX and TMUX_TMPDIR (which choose the server socket) are stripped, as the
+# launcher's tmuxQueryEnv does, so this reads the socket the relay launched on, not one the caller's shell points at. `tmux`
+# here may be a mise shim; a shim that cannot run (for example an untrusted mise.toml in the working directory) prints a
+# `mise ERROR` and is therefore refused, never read as "no sessions".
+# ---------------------------------------------------------------------------------------------------------------
+# Bounded (a wedged tmux server must not hang the card: Issue #2084); `timeout` is a P0 tool and exits 124 when it fires.
+tmux_q() { env -u TMUX -u TMUX_TMPDIR timeout 15 tmux "$@"; }
+# Whether a descendant of pane `$1`'s process runs `--session-id $2`. Any failure to read the process table is "no".
+pane_runs_session() {
+  local panes procs
+  # Every pane of every window of exactly this session (`-s`, and `=name:` as the repo's panePid does), and exactly one: the
+  # relay creates one pane, so a second pane or window (where a stranger could hide) is a competing Session.
+  panes="$(tmux_q list-panes -s -t "=$1:" -F '#{pane_pid}' 2>/dev/null)" || return 1
+  [[ "$(grep -c . <<<"$panes")" == 1 && "$panes" =~ ^[0-9]+$ ]] || return 1
+  procs="$(ps -axo pid=,ppid=,command= 2>/dev/null)" || return 1
+  node -e 'const [uuid,...panes]=process.argv.slice(1);const kids=new Map(),cmd=new Map();
+for(const l of require("fs").readFileSync(0,"utf8").split("\n")){const m=/^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l);if(!m)continue;cmd.set(m[1],m[3]);(kids.get(m[2])??kids.set(m[2],[]).get(m[2])).push(m[1])}
+const seen=new Set(),todo=panes.filter(Boolean);
+while(todo.length){const pid=todo.pop();if(seen.has(pid))continue;seen.add(pid);
+if(new RegExp("(^|\\s)--session-id "+uuid+"(\\s|$)").test(cmd.get(pid)??""))process.exit(0);todo.push(...(kids.get(pid)??[]))}
+process.exit(1)' "$2" $panes <<<"$procs"
+}
+check_no_competing_session() {
+  local when="$1" live="" out err why rc=0 name uuid stray="" registry note="" pairs="" tolerated=""
+  # stdout alone is the session list; stderr (a shim's warning, say) is kept apart for the message and never becomes a name.
+  out="$(tmux_q ls -F '#{session_name}' 2> "$RUN_DIR/tmux-ls.stderr")" || rc=$?
+  err="$(head -c 400 "$RUN_DIR/tmux-ls.stderr" 2>/dev/null)"
+  if (( rc != 0 )); then
+    # Only tmux's own "no server" answers (the patterns of isNoTmuxServerError in src/commands/worker.ts) mean "no sessions".
+    why="exit $rc"; (( rc != 124 )) || why+=", timed out"
+    (( rc != 124 )) && grep -Eqi 'no server running on|error connecting to .*\(no such file or directory\)' <<<"$err" \
+      || refuse "tmux could not be read ($why), so START cannot show that no competing Session runs${when:+ $when}: ${err%%$'\n'*}${out:+ $out}"
+  else
+    live="$out"
+  fi
+  if [[ -z "$live" ]]; then rec relayCoordinatorSessions '[]'; return 0; fi
+  if registry="$(arcadia coordinator relay-sessions --project "$PROJECT" --json 2> "$RUN_DIR/relay-sessions.stderr")" \
+    && jq -e '.ok == true and (.data.sessions | type == "array")' <<<"$registry" >/dev/null 2>&1; then
+    pairs="$(jq -r '.data.sessions[] | select(.allowed == true) | [.tmuxName, .nativeSessionId] | @tsv' <<<"$registry")"
+  else
+    note="; the relay registry could not be read: $(cli_failure "$RUN_DIR/relay-sessions.stderr")"
+  fi
+  while IFS= read -r name; do
+    [[ -n "$name" ]] || continue
+    uuid="$(awk -F'\t' -v n="$name" '$1 == n { print $2; exit }' <<<"$pairs")"
+    if [[ -n "$uuid" ]] && pane_runs_session "$name" "$uuid"; then tolerated+="$name"$'\n'; else stray+="$name "; fi
+  done <<<"$live"
+  [[ -z "$stray" ]] || refuse "a tmux server with live sessions exists; no competing Session may run${when:+ $when} (not a registered relay coordinator running its recorded session: ${stray% }${note})"
+  rec relayCoordinatorSessions "$(jq -Rn '[inputs | select(length > 0)]' <<<"$tolerated")"
+}
+
+# ---------------------------------------------------------------------------------------------------------------
 # P2 state
 # ---------------------------------------------------------------------------------------------------------------
 phase_p2() {
-  local tmux_sessions freeze
+  local freeze
   phase P2 state
   check_production_off
   rec policyRevisionBefore "$PROD_REVISION"
   # ADOPT:L99-L102 (no competing Session) and the plist/PID facts the restart needs.
-  tmux_sessions="$(tmux ls 2>/dev/null || true)"
-  [[ -z "$tmux_sessions" ]] || refuse "a tmux server with live sessions exists; no competing Session may run"
+  check_no_competing_session ""
   [[ -f "$HOME/Library/LaunchAgents/$WORKER_LABEL.plist" ]] || refuse "worker launch agent $HOME/Library/LaunchAgents/$WORKER_LABEL.plist is missing"  # ADOPT:L96
   OLD_PID="$(worker_pid)"
   [[ -n "$OLD_PID" ]] || refuse "worker job $WORKER_LABEL has no running PID"  # ADOPT:L98
@@ -887,7 +1006,7 @@ phase_p4_sign_in() {
   BOUND_HANDLER="$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
   # Decision 0143's Off / zero-admission / no-Session guards, fresh, before the day can be claimed.
   check_production_off
-  [[ -z "$(tmux ls 2>/dev/null || true)" ]] || refuse "a tmux server with live sessions exists; no competing Session may run before the sign-in sequence"
+  check_no_competing_session "before the sign-in sequence"
   check_capacity
   SIGN_IN_ATTEMPTED=true
   mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims this press's own sequence record before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes this press's sequence, with no retry"

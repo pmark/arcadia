@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/agent-identities-roles-and-behaviors.md"
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/agent-identities-roles-and-behaviors/"
 channels: [site, rss]
+tags: [agent-workflows, governance]
 ---
 
 # Arcadia agent identities: who does what, and why
@@ -66,6 +67,9 @@ expected result and stopping point.
 | **Quinn — Verifier** | Evidence that acceptance criteria are actually met. |
 | **Vida — Health Assessor** | Operational health, freshness, risks and unknowns. |
 | **Clara — Technical Writer** | Useful writing, discoverability and approved editorial delivery. |
+| **Flynn — Momentum Keeper** | Find where the critical path is idle and bring the coordinator a concrete next move. |
+
+[The registered roles and current profiles](../arcadia-semantics.md#roles-specializations-and-optional-names) define the scope for each name.
 
 You can address “Coordinator” instead of “Rowan.” Rowan is the normal contact when
 you want an outcome without deciding who should handle every part. The primary
@@ -93,7 +97,7 @@ ask for the missing proof rather than another reassuring status summary.
 someone new to Arcadia.” Clara can use Ellis's technical evidence and Mira's
 findings, shape a practical explanation, and preserve uncertainty. Agent-oriented
 topics and deep sources belong in `docs/articles/`; polished reader-facing pieces
-belong in Arcadia Mission Control. Preparing a guide or social copy does not
+belong in Arcadia Mission Control, while short project updates appear on [Field Notes](https://pmark.github.io/arcadia/). Preparing a guide or social copy does not
 establish that it has been published.
 
 ## What is not done
@@ -103,8 +107,4 @@ model selection. Several sessions can use one profile; task and session
 references distinguish them, while receipts retain the actual provider/tier
 identity. Continuity comes from evidence.
 
-This is a source draft for later AMC adaptation, not a hosted guide or evidence
-that unattended production has succeeded. The frontmatter URL is intended,
-unverified and not a publication receipt. No eight-agent pipeline is required.
-Start with the outcome and the colleague's name; let the bounded assignment make
-the work precise.
+This source draft is a companion to the [short piece on independent review and QA](2026-10-12-why-agent-roles-make-collaborative-work-easier.md). A single assignment can use the subset of roles it needs.

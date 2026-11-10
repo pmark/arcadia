@@ -11,16 +11,28 @@
  * changed files, which named paths exist at the commit). No model writes any of
  * it, and the same inputs always render the same bytes.
  *
- * Nothing runnable is ever derived from criterion text: a criterion may say
- * "never run `git push --force`", and lifting that span into a "run" step would
- * invert it. The only commands the plan tells the operator to run are Git's own
- * fetch and detached-worktree checkout (local Git bookkeeping and a throwaway
- * directory), Git's read-only inspection commands and the Project's declared
- * validation commands. Each criterion gets read-only inspection steps, and its
- * expected result is the criterion text itself, quoted. A criterion that a
- * command must pass is the exception: inspection cannot show a pass, so its
- * expected result is limited to what inspection shows and points the proof of
- * passing at the declared-validation step's exit-zero result.
+ * No command is ever derived from criterion text: a criterion may say "never
+ * run `git push --force`", and lifting that span into a "run" step would invert
+ * it. The only commands the plan tells the operator to run are Git's own fetch
+ * and detached-worktree checkout (local Git bookkeeping and a throwaway
+ * directory), Git's read-only inspection commands, the Project's declared
+ * validation commands, and two the host chooses when a criterion calls for them:
+ * this repository's test runner on the candidate's changed test files and any
+ * test file the Action names (the only thing criterion text contributes is that
+ * path, which must exist at the commit), and a read of the pull request's
+ * required checks.
+ *
+ * Each step's expected result is only what its command can show (2026-11-05: QA
+ * failed every candidate on a `git diff` that "showed" tests pass and a
+ * `git show` of one file that "showed" the changed-file set and CI results). A
+ * criterion gets read-only inspection steps, with its text quoted to compare
+ * against; no step says its output shows a criterion holds, since wording cannot
+ * tell which criteria an output can show. The parts the plan can recognize are
+ * pointed at the step that shows them: a changed-file limit at Step 2's list, a
+ * required-CI claim at the required-checks step (a criterion made only of those
+ * two inspects no file), and a test passing at a run. A run is called proof only
+ * when it covers what the criterion names; otherwise the step says a person judges
+ * that from the run.
  *
  * Refusal, not a placeholder: when the Action declares no acceptance criteria
  * (or the source is missing, or the plan cannot fit a pull-request body), the
@@ -61,6 +73,18 @@ export interface OperatorQaPlanFacts {
    * to "changed and not deleted"; the host passes a `git cat-file -e` probe.
    */
   pathExists?: (path: string) => boolean;
+  /**
+   * How this repository runs one test file at the candidate commit
+   * ({@link detectTestRun}). Absent: no named-test run, and the plan says so.
+   */
+  testRun?: OperatorQaTestRun | null;
+}
+
+/** Host-chosen commands that run a test file; nothing here comes from criterion text. */
+export interface OperatorQaTestRun {
+  /** How the throwaway worktree gets its dependencies. */
+  setup: "bridge" | "install";
+  runner: string;
 }
 
 export type OperatorQaPlanResult =
@@ -76,6 +100,28 @@ const MAX_LITERAL_CHARS = 200;
 const MAX_COMMAND_CHARS = 200;
 
 const HEADING = "## Operator QA plan";
+const BRIDGE_SCRIPT = "scripts/bridge-worktree-deps.mjs";
+/** What a test runner takes as a file; `tests/fixtures/x.json` is under `tests/` but is not one. */
+const RUNNABLE_TEST = /\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+const GOVERNED_RECORDS = "Arcadia's governed records (this Action's Agent Ask under `.arcadia/asks/` and, on a settled head, `MISSION_LOG.md`, `PROJECT.md` and the Plan)";
+
+/**
+ * The test run a repository's own manifest at the candidate commit supports, or
+ * null when it does not show one: this plan names a runner only when it knows it.
+ */
+export function detectTestRun(packageJson: string | null, exists: (path: string) => boolean): OperatorQaTestRun | null {
+  if (packageJson === null) return null;
+  let manifest: { dependencies?: Record<string, unknown>; devDependencies?: Record<string, unknown>; packageManager?: unknown } | null;
+  try {
+    manifest = JSON.parse(packageJson) as typeof manifest;
+  } catch {
+    return null;
+  }
+  const vitest = manifest?.dependencies?.vitest ?? manifest?.devDependencies?.vitest;
+  const pnpm = (typeof manifest?.packageManager === "string" && manifest.packageManager.startsWith("pnpm@")) || exists("pnpm-lock.yaml");
+  if (!vitest || !pnpm) return null;
+  return { setup: exists(BRIDGE_SCRIPT) ? "bridge" : "install", runner: "pnpm exec vitest run" };
+}
 
 /** Build the plan source from an Action definition as the validation binding carries it. */
 export function operatorQaPlanSource(input: {
@@ -145,10 +191,20 @@ function renderPlan(
   const validation = source.validationCommands.map((command) => command.trim()).filter(Boolean);
   const pathExists = facts.pathExists
     ?? ((candidate: string) => facts.changedFiles.some((file) => file.path === candidate && !file.status.startsWith("D")));
+  const judged = criteria.map((criterion) => {
+    const named = criterionPaths(maskDataLiterals(criterion), facts.changedFiles);
+    const passing = passingCommands(criterion, named, validation);
+    const claims = criterionClaims(criterion);
+    return { criterion, named, passing, claims, testsPass: passing === null && claims.testsPass !== null };
+  });
+  const validationStep = criteria.length + 3;
+  const runTargets = testRunTargets(judged, facts.changedFiles, pathExists, facts.testRun);
+  const runStep = runTargets.length > 0 ? validationStep + 1 : null;
+  const checksStep = judged.some((entry) => entry.claims.requiredChecks) ? validationStep + (runStep === null ? 1 : 2) : null;
   const lines: string[] = [
     HEADING,
     "",
-    `Rendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Step 1 fetches the candidate branch and adds a detached local worktree at the exact commit: it changes only local Git bookkeeping and creates a throwaway directory you can remove afterwards with ${code(`git worktree remove ${checkout}`)}. Every later step except the declared validation only reads Git data, and only the declared validation runs candidate code.`,
+    `Rendered by Arcadia host preservation from the Action's declared acceptance criteria and Git facts; no model wrote it. Step 1 fetches the candidate branch and adds a detached local worktree at the exact commit: it changes only local Git bookkeeping and creates a throwaway directory you can remove afterwards with ${code(`git worktree remove ${checkout}`)}. Every later step except ${runStep === null ? "the declared validation" : "the test-file run and the declared validation"} only reads Git data${checksStep === null ? "" : ` or, in Step ${checksStep}, the pull request's checks on GitHub`}, and only ${runStep === null ? "the declared validation runs" : "those run"} candidate code.`,
     "",
     `- **Action:** ${code(source.actionKey)}${source.actionTitle ? ` — ${inlineText(source.actionTitle)}` : ""}`,
     `- **Candidate:** branch ${code(facts.branch)} at commit ${code(facts.commitSha)}`,
@@ -176,13 +232,35 @@ function renderPlan(
 
   criteria.forEach((criterion, index) => {
     lines.push("", `### Step ${index + 3} — Acceptance criterion ${index + 1} of ${criteria.length}`, "");
-    const named = criterionPaths(criterion, facts.changedFiles);
-    const passing = passingCommands(criterion, named, validation);
-    const absent = named.filter((candidate) => !pathExists(candidate));
+    const { named, passing, claims, testsPass } = judged[index];
+    const quoted = `“${inlineText(truncate(criterion, MAX_CRITERION_CHARS))}”`;
+    if (passing === null && claims.provenElsewhereOnly) {
+      lines.push(`- **Do:** ${[
+        ...(claims.scope ? ["compare Step 2's changed-file list with this criterion"] : []),
+        ...(claims.requiredChecks ? [`read the required checks in Step ${checksStep}`] : [])
+      ].join("; then ")}.`);
+      lines.push(`- **Expected:** ${[
+        ...(claims.scope ? [`Step 2's list shows every file the candidate changes: apart from ${GOVERNED_RECORDS}, it names only the files this criterion allows.`] : []),
+        ...(claims.requiredChecks ? [`Step ${checksStep}'s output shows each required check passing on the pull request's head.`] : [])
+      ].join(" ")} This step inspects no file: one file's content cannot show that. The criterion, exactly as worded: ${quoted}`);
+      return;
+    }
+    // A path the patch does not change cannot be diffed: a diff scoped to it prints nothing.
+    const absent = named.filter((candidate) => !pathExists(candidate) && facts.changedFiles.some((file) => file.path === candidate));
     const existing = named.filter((candidate) => pathExists(candidate));
-    const present = inspectedPaths(existing, named, facts.changedFiles, passing !== null, criterion);
+    const provenElsewhere = passing !== null || testsPass || claims.scope || claims.requiredChecks;
+    const present = inspectedPaths(existing, named, facts.changedFiles, provenElsewhere, criterion);
     const substituted = present.length > 0 && existing.length > 0 && !present.every((candidate) => existing.includes(candidate)) ? existing : [];
     const literals = present.length > 0 ? criterionLiterals(criterion) : [];
+    // Quoted test input (after "asserts"/"expects"/"returns") is data, never a file. It is looked for in the criterion's
+    // test file: one this criterion names, or for "the same test file" the nearest earlier criterion's.
+    const data = dataLiterals(criterion);
+    const presentTests = present.filter((candidate) => TEST_PATH.test(candidate));
+    const dataFiles = data.length === 0 ? [] : presentTests.length > 0
+      ? presentTests
+      : present.length === 0 && SAME_FILE.test(criterion)
+        ? earlierTestFile(judged.slice(0, index), pathExists)
+        : [];
     const bytes = /newline|byte|whitespace|exactly|empty/i.test(criterion);
     const actions: string[] = [];
     for (const target of present) {
@@ -190,7 +268,12 @@ function renderPlan(
       actions.push(`inspect ${code(target)} with ${code(bytes ? `${show} | od -c` : show)}`);
       for (const literal of literals) actions.push(`run ${code(`${show} | grep -Fxn -- ${shellQuote(literal)}`)}`);
     }
-    if (present.length === 0) {
+    for (const target of dataFiles) {
+      const show = `git show ${facts.commitSha}:${shellWord(target)}`;
+      if (!present.includes(target)) actions.push(`inspect ${code(target)} with ${code(bytes ? `${show} | od -c` : show)}`);
+      for (const literal of data) actions.push(`run ${code(`${show} | grep -Fn -- ${shellQuote(literal)}`)}`);
+    }
+    if (present.length === 0 && dataFiles.length === 0) {
       const scope = absent.length > 0 ? ` -- ${absent.map(shellWord).join(" ")}` : "";
       actions.push(`read the change with ${code(`git diff ${facts.baseRevision} ${facts.commitSha}${scope}`)}`);
     }
@@ -199,16 +282,46 @@ function renderPlan(
       lines.push(`- **Substitution:** the existing ${substituted.length === 1 ? "path" : "paths"} the criterion names, ${substituted.map((candidate) => code(candidate)).join(", ")}, ${substituted.length === 1 ? "was" : "were"} not changed by this candidate, so this step does not inspect ${substituted.length === 1 ? "it" : "them"} and inspects the candidate's changed test ${present.length === 1 ? "file" : "files"} instead.`);
     }
     const outputs = [
-      ...(present.length > 0 ? [bytes ? `${code("od -c")} shows every byte (a newline as ${code("\\n")})` : "the file content is shown"] : []),
+      ...((present.length > 0 || dataFiles.length > 0) ? [bytes ? `${code("od -c")} shows every byte (a newline as ${code("\\n")})` : "the file content is shown"] : []),
       ...(literals.length > 0 ? [`${code("grep -Fxn")} prints each quoted text that is a whole line with its line number, and nothing when no line matches`] : []),
-      ...(present.length === 0 ? ["the diff shows what changed"] : [])
+      ...(dataFiles.length > 0 ? [`${code("grep -Fn")} prints each line of the file that contains a quoted value, with its line number, and nothing when no line contains it`] : []),
+      ...(data.length > 0 && dataFiles.length === 0 ? [`the values the criterion words as test input (${data.map((value) => code(value)).join(", ")}) are not files and no test file is named to search for them, so this step does not search for them and what they assert stays unproven by this step`] : []),
+      ...(present.length === 0 && dataFiles.length === 0 ? ["the diff shows what changed"] : [])
     ];
-    const quoted = `“${inlineText(truncate(criterion, MAX_CRITERION_CHARS))}”`;
-    if (passing) {
-      // Inspection cannot show that a command passes (Issue #986): bound the
-      // Expected line to what inspection shows and point the proof of passing
-      // at the declared-validation step and its exit-zero result.
-      lines.push(`- **Expected:** ${outputs.join("; ")}. ${inspectionScope(present)} ${passProof(passing, validation, criteria.length + 3)} The criterion, exactly as worded: ${quoted}`);
+    if (provenElsewhere) {
+      // Inspection cannot show that a command or test passes (Issue #986), which
+      // files changed or a CI result: bound the Expected line to what inspection
+      // shows and point each of those at the step whose output does show it.
+      const limits = [
+        ...(passing ? ["that a command passes"] : []),
+        ...(testsPass ? ["that a test passes"] : []),
+        ...(claims.requiredChecks ? ["that a required check passes"] : []),
+        ...(claims.scope && present.length > 0 ? ["which files changed"] : [])
+      ];
+      // A command the criterion assigns to required CI has that proof, not "no direct proof".
+      const check = passing && claims.requiredChecks ? { ...passing, undeclared: false } : passing;
+      // A run is proof only of what it covers: every test file this criterion names, or the one file it means.
+      const namedTests = named.filter((candidate) => TEST_PATH.test(candidate));
+      const runsNamed = namedTests.length > 0 && namedTests.every((candidate) => runTargets.includes(candidate));
+      const changedPaths = facts.changedFiles.filter((file) => !file.status.startsWith("D")).map((file) => file.path);
+      // "That file" means a test file the Action names, here or in an earlier criterion. The only check on that
+      // is wording, so the one run must cover every one it names: if a named file is gone, the run is some other file.
+      const actionTests = judged.flatMap((entry) => entry.named).filter((candidate) => TEST_PATH.test(candidate));
+      const runCoversNames = actionTests.every((candidate) => runTargets.includes(candidate));
+      const runTied = runTargets.length === 1 && runCoversNames
+        && (claims.testsPass === "one-file" ? actionTests.length > 0 : claims.testsPass === "changed-file" && changedPaths.includes(runTargets[0]));
+      const ran = runTargets.map((target) => code(target)).join(", ");
+      const proofs = [
+        ...(check ? passProof(check, validation, validationStep, runsNamed ? runStep : null) : []),
+        ...(testsPass ? [runStep === null
+          ? "No step in this plan runs those tests, so it offers no direct proof that they pass."
+          : runTied
+            ? `Whether those tests pass is shown only by Step ${runStep}, which runs ${ran}: its exit-zero result is that proof.`
+            : `Step ${runStep} runs ${ran}. This plan cannot tell whether that covers what this criterion means, so it claims no proof: judge that from the run.`] : []),
+        ...(claims.scope ? [`The changed-file limit is judged on Step 2's list: apart from ${GOVERNED_RECORDS}, it names only the files this criterion allows.`] : []),
+        ...(claims.requiredChecks ? [`Whether required CI passes is shown only by Step ${checksStep}'s read of the pull request's required checks.`] : [])
+      ];
+      lines.push(`- **Expected:** ${outputs.join("; ")}. ${inspectionScope(present, limits.join(" or "))} ${[...proofs, unprovenParts(check)].join(" ")} The criterion, exactly as worded: ${quoted}`);
       return;
     }
     if (substituted.length > 0) {
@@ -216,17 +329,29 @@ function renderPlan(
       lines.push(`- **Expected:** ${outputs.join("; ")}. That is all this inspection shows: what the changed test ${present.length === 1 ? "file asserts" : "files assert"}, not the content of ${substituted.map((candidate) => code(candidate)).join(", ")}. The criterion, exactly as worded: ${quoted}`);
       return;
     }
-    lines.push(`- **Expected:** ${outputs.join("; ")}; and that output shows this criterion holds, exactly as worded: ${quoted}`);
+    lines.push(`- **Expected:** ${outputs.join("; ")}. Compare that output with this criterion; any part it cannot show, such as a run's result, stays unproven by this step. The criterion, exactly as worded: ${quoted}`);
   });
 
-  const finalStep = criteria.length + 3;
-  lines.push("", `### Step ${finalStep} — Run the Project's declared validation`, "");
+  lines.push("", `### Step ${validationStep} — Run the Project's declared validation`, "");
   if (validation.length === 0) {
     lines.push("- **Do:** nothing further: the Project declares no validation commands.",
       "- **Expected:** no further output; the inspection steps above are the whole check.");
   } else {
     lines.push(`- **Do:** run ${validation.map((command) => code(truncate(command, MAX_COMMAND_CHARS))).join("; then ")}.`,
       `- **Expected:** ${code("echo $?")} immediately after ${validation.length === 1 ? "it" : "each"} prints ${code("0")}, as host validation recorded before preservation.`);
+  }
+  if (runStep !== null && facts.testRun) {
+    const run = `${facts.testRun.runner} ${runTargets.map(shellWord).join(" ")}`;
+    lines.push("", `### Step ${runStep} — Run the candidate's test ${runTargets.length === 1 ? "file" : "files"}`, "",
+      `- **Do:** ${facts.testRun.setup === "bridge"
+        ? `run ${code(`node ${BRIDGE_SCRIPT}`)} to link the clone's installed dependencies into this throwaway worktree (a clone with none needs ${code("pnpm install")} first)`
+        : `run ${code("pnpm install --frozen-lockfile")} to install dependencies in this throwaway worktree`}; then run ${code(run)}.`,
+      `- **Expected:** the run's summary reports every test passed and none failed, and ${code("echo $?")} immediately after it prints ${code("0")}. This runs ${runTargets.length === 1 ? "that file" : "those files"} at this commit and nothing else in the suite.`);
+  }
+  if (checksStep !== null) {
+    lines.push("", `### Step ${checksStep} — Read the required checks on the pull request's head`, "",
+      `- **Do:** run ${code(`gh pr checks ${shellWord(facts.branch)} --required`)}.`,
+      `- **Expected:** every listed check reads ${code("pass")} and ${code("echo $?")} immediately after it prints ${code("0")}; ${code("8")} means a check is still pending and ${code("1")} that one failed. It reads the pull request for this branch at its current head: this commit, or this commit with a governed settlement commit on top. It shows each job's result, not what the job ran.`);
   }
   lines.push("", "Merge, deployment and publication remain separate operator gates.");
   return lines.join("\n");
@@ -315,17 +440,84 @@ function commandOccurrences(criterion: string, command: string): number[] {
   return ends;
 }
 
-/** What an inspection step can show, and no more. */
-function inspectionScope(present: readonly string[]): string {
-  if (present.length === 0) return "That is all this inspection shows: a diff never shows that a command passes.";
-  const files = present.map((target) => code(target)).join(", ");
-  return present.length === 1
-    ? `That is all this inspection shows: that ${files} exists at the candidate commit and what it contains. Showing a file's source never shows that a command passes.`
-    : `That is all this inspection shows: that ${files} exist at the candidate commit and what they contain. Showing a file's source never shows that a command passes.`;
+/**
+ * The parts of a criterion that inspecting a file or diff cannot show: which
+ * files changed, what required CI reported, and that a test passes without the
+ * criterion naming the file ("every other test in that file passes unchanged").
+ * Read per sentence, with code spans left out, so a backticked command stays
+ * {@link passingCommands}'s and a negated or failing clause claims nothing.
+ */
+function criterionClaims(criterion: string): { scope: boolean; requiredChecks: boolean; testsPass: TestsPassScope | null; provenElsewhereOnly: boolean } {
+  const sentences = criterion.split(/(?<=[.;!?])\s+/);
+  const requiredChecks = sentences.some((sentence) => REQUIRED_CI.test(sentence) && CI_PROOF_WORD.test(sentence)
+    && !CLAUSE_VETO.test(sentence) && !NEGATED_CI_PROOF.test(sentence));
+  return {
+    scope: sentences.some((sentence) => SCOPE_CLAIM.test(sentence)),
+    requiredChecks,
+    testsPass: sentences.map(claimsTestsPass).find((scope) => scope !== null) ?? null,
+    provenElsewhereOnly: sentences.every((sentence) => SCOPE_ONLY.test(sentence) || (requiredChecks && CI_PROOF_ONLY.test(sentence)))
+  };
 }
 
-/** Where the proof of passing is: the declared-validation step's exit-zero result, never inspection. */
-function passProof(passing: PassingCheck, validation: readonly string[], validationStep: number): string {
+/** What a test-passing claim covers: one file it points at, the candidate's changed file, or something the plan cannot tell. */
+type TestsPassScope = "one-file" | "changed-file" | "unscoped";
+
+function claimsTestsPass(sentence: string): TestsPassScope | null {
+  for (const clause of sentence.replace(/`[^`\n]*`/g, " ").split(/,\s+and\s+/i)) {
+    const found = TESTS_PASS.exec(clause);
+    if (found === null || CLAUSE_VETO.test(clause) || GOVERNING_NEGATION.test(`${clause.slice(0, found.index)}${found[1]}`)) continue;
+    const file = ONE_TEST_FILE.exec(clause);
+    return !file ? "unscoped" : file[1] ? "changed-file" : "one-file";
+  }
+  return null;
+}
+
+/** "The change touches only x", beside other wording in its sentence. */
+const SCOPE_CLAIM = /\btouch(?:es|ed)?\s+only\b|\b(?:change|patch|diff|candidate|pull request)\s+(?:changes|modifies|edits)\s+only\b|\bno other files?\b/i;
+/** A whole sentence that is only a changed-file limit, with nothing else to inspect. */
+const SCOPE_ONLY = /^(?:the\s+)?(?:change|patch|diff|candidate|pull request)\s+(?:touches|changes|modifies|edits)\s+only\s+[^\s,]+(?:(?:,\s+(?:and\s+)?|\s+and\s+)[^\s,]+)*[.;]?$/i;
+/** `CI` is case-sensitive, so prose using "ci" as another abbreviation claims nothing. */
+const REQUIRED_CI = /\bCI\b|\b[Rr]equired\s+(?:\w+\s+)?(?:checks?|jobs?)\b/;
+const CI_PROOF_WORD = /\b(?:pass(?:es|ed)?|green|succeed(?:s|ed)?|proof|proves?|proven)\b/i;
+const NEGATED_CI_PROOF = /(?:\b(?:not|never)|n't)\b[^.;]*\b(?:pass(?:es|ed)?|green|succeed(?:s|ed)?)\b/i;
+/** A whole sentence that only assigns its proof to CI: "Proof that x passes comes from the required CI jobs ...". */
+const CI_PROOF_ONLY = /^(?:proof|evidence)\b[^.;]*\bcomes?\s+from\s+(?:the\s+)?(?:required\s+)?(?:CI|checks?|jobs?)\b/i;
+/** A test passing as a result, not passing something along: "The test passes a stub" claims nothing. */
+const TESTS_PASS = /(\b(?:tests?|suite)\b[^.;]{0,60}?)\bpass(?:es|ed)?\b(?=\s*(?:$|[.,;:)])|\s+(?:unchanged|under|on|in|with|and|after|against|locally)\b)/i;
+
+/** "in that file", "in the changed file": a claim about one file, with `changed` captured when it says which. */
+const ONE_TEST_FILE = /\b(?:in|of|from)\s+(?:that|the|this)\s+(?:same\s+|named\s+|new\s+|(changed)\s+)?(?:test\s+)?file\b/i;
+
+/**
+ * The files the test-file step runs: every test file the Action names and every
+ * one the candidate changed, whenever a criterion names one or claims tests pass,
+ * never a silently chosen subset.
+ */
+function testRunTargets(
+  judged: ReadonlyArray<{ named: readonly string[]; testsPass: boolean }>,
+  changedFiles: readonly ChangedFile[],
+  pathExists: (candidate: string) => boolean,
+  testRun: OperatorQaTestRun | null | undefined
+): string[] {
+  if (!testRun) return [];
+  const runnable = (candidate: string) => RUNNABLE_TEST.test(candidate) && !candidate.startsWith("-") && pathExists(candidate);
+  const named = judged.flatMap((entry) => entry.named).filter(runnable);
+  if (named.length === 0 && !judged.some((entry) => entry.testsPass)) return [];
+  const changed = changedFiles.filter((file) => !file.status.startsWith("D")).map((file) => file.path).filter(runnable);
+  return [...new Set([...named, ...changed])];
+}
+
+/** What an inspection step can show, and no more. */
+function inspectionScope(present: readonly string[], limit: string): string {
+  if (present.length === 0) return `That is all this inspection shows: a diff never shows ${limit}.`;
+  const files = present.map((target) => code(target)).join(", ");
+  return present.length === 1
+    ? `That is all this inspection shows: that ${files} exists at the candidate commit and what it contains. Showing a file's source never shows ${limit}.`
+    : `That is all this inspection shows: that ${files} exist at the candidate commit and what they contain. Showing a file's source never shows ${limit}.`;
+}
+
+/** Where the proof of passing is: a run's exit-zero result, never inspection. */
+function passProof(passing: PassingCheck, validation: readonly string[], validationStep: number, namedTestStep: number | null): string[] {
   const sentences: string[] = [];
   const matched = passing.declared;
   if (matched.length > 0) {
@@ -341,17 +533,22 @@ function passProof(passing: PassingCheck, validation: readonly string[], validat
       ? `This plan runs no command taken from criterion text, and none of the Project's declared validation commands in Step ${validationStep} is the command this criterion names: Step ${validationStep}'s exit-zero result proves only that those declared commands pass, so this plan offers no direct proof that this criterion's command passes.`
       : "This plan runs no command taken from criterion text and the Project declares no validation commands, so this plan offers no proof that the named command passes.");
   }
-  if (passing.testFile) {
+  if (passing.testFile && namedTestStep !== null) {
+    sentences.push(`A named test file passing is shown only by a run, never by its source; Step ${namedTestStep} runs it, and its exit-zero result is that proof.`);
+  } else if (passing.testFile) {
     sentences.push(validation.length > 0
       ? `A named test file passing is shown only by a run, never by its source; the run this plan offers is Step ${validationStep}, the Project's declared validation, exiting ${code("0")}.`
       : "A named test file passing is shown only by a run, never by its source, and the Project declares no validation commands, so this plan offers no run that shows it.");
   }
-  sentences.push(passing.testFile
-    ? "Any part of this criterion that is not a command or test file passing must show in this step's output."
-    : passing.undeclared && matched.length > 0
-      ? "Any part of this criterion that is not a command passing must show in this step's output."
-      : "Any other part of this criterion must show in this step's output.");
-  return sentences.join(" ");
+  return sentences;
+}
+
+/** What is left for the inspection itself to show. */
+function unprovenParts(passing: PassingCheck | null): string {
+  if (passing?.testFile) return "Any part of this criterion that is not a command or test file passing must show in this step's output.";
+  return passing?.undeclared && passing.declared.length > 0
+    ? "Any part of this criterion that is not a command passing must show in this step's output."
+    : "Any other part of this criterion must show in this step's output.";
 }
 
 /**
@@ -362,17 +559,17 @@ function passProof(passing: PassingCheck, validation: readonly string[], validat
  * path is one the candidate changed, none is a test file or source code (a
  * named test or source file is always inspected itself) and the candidate did
  * change test files, the step inspects those changed test files instead, and
- * says so. A criterion that a command must pass keeps the named paths (its
- * proof is the declared validation).
+ * says so. A criterion with a part another step proves keeps the named paths
+ * (a command passing, proved by a run; a changed-file limit; required CI).
  */
 function inspectedPaths(
   existing: readonly string[],
   named: readonly string[],
   changedFiles: readonly ChangedFile[],
-  mustPass: boolean,
+  provenElsewhere: boolean,
   criterion: string
 ): string[] {
-  if (mustPass || existing.length === 0) return [...existing];
+  if (provenElsewhere || existing.length === 0) return [...existing];
   // A criterion about what a named file says (a quoted line, "contains", "exactly") is about that file itself,
   // never a sample: grepping a test file cannot show it.
   if (criterionLiterals(criterion).length > 0 || /\b(?:contains?|exactly|content|lines?|reads?|says?|states?|includes?|mentions?|documents?|describes?)\b/i.test(criterion)) return [...existing];
@@ -392,13 +589,78 @@ function isDocumentPath(filePath: string): boolean {
   return /\.(?:md|markdown|rst|adoc|asciidoc|txt)$/.test(lowered) && !/(^|\/)(src|scripts|tests?|templates|fixtures)\//.test(lowered);
 }
 
-/** Quoted text in the criterion: candidate whole lines to look for, read-only. */
+/** Wording that says a criterion's quoted text is what a test asserts: input and expected values, not content. */
+const ASSERTION_WORD = /\b(?:asserts?|expects?|returns?)\b|\bexample\s+(?:path|input|value|string)s?\s*:/i;
+/** "The same test file" and its kin: the file an earlier criterion named. */
+const SAME_FILE = /\bsame\s+(?:test\s+)?file\b|\bthat\s+test\s+file\b/i;
+
+/** A cue that the text after it quotes what a file holds, which wins over an assertion word before it. */
+const FILE_CONTENT_CUE = /\b(?:contains?|includes?|says?|reads?|states?|mentions?|has the line)\b/i;
+
+/**
+ * Whether a quote that follows `before` is what a test asserts: an assertion word
+ * earlier in the same sentence, with no file-content cue between that word and the quote.
+ */
+function assertedBefore(before: string): boolean {
+  const sentence = before.slice(Math.max(0, ...[...before.matchAll(/[.;!?](?=\s)/g)].map((boundary) => (boundary.index ?? 0) + 1)));
+  const words = [...sentence.matchAll(new RegExp(ASSERTION_WORD.source, "gi"))];
+  const last = words[words.length - 1];
+  return last !== undefined && !FILE_CONTENT_CUE.test(sentence.slice((last.index ?? 0) + last[0].length));
+}
+
+/** Every quoted span in the criterion, with whether the criterion's wording makes it test data. */
+function quotedSpans(criterion: string): { start: number; end: number; literal: string; data: boolean }[] {
+  const spans: { start: number; end: number; literal: string; data: boolean }[] = [];
+  for (const match of criterion.matchAll(/["“]([^"“”]+)["”]/g)) {
+    const start = match.index ?? 0;
+    const end = start + match[0].length;
+    // A quoted command that "passes" is what the criterion is about, not an input to it.
+    const command = /^\s*(?:passes|pass|fails|exits|runs|succeeds)\b/i.test(criterion.slice(end));
+    spans.push({ start, end, literal: match[1], data: !command && assertedBefore(criterion.slice(0, start)) });
+  }
+  return spans;
+}
+
+/** The criterion with its test-data quotes emptied, so a quoted example path is never read as a path it names. */
+function maskDataLiterals(criterion: string): string {
+  let masked = "";
+  let from = 0;
+  for (const span of quotedSpans(criterion)) {
+    if (!span.data) continue;
+    masked += `${criterion.slice(from, span.start)}""`;
+    from = span.end;
+  }
+  return masked + criterion.slice(from);
+}
+
+function usableLiteral(literal: string): boolean {
+  return Boolean(literal) && literal.trim() === literal && literal.length <= MAX_LITERAL_CHARS && !/\p{Cc}/u.test(literal);
+}
+
+/** Quoted test data the criterion says a test asserts: looked for (as a substring) in the test file, never a file. */
+function dataLiterals(criterion: string): string[] {
+  const found: string[] = [];
+  for (const span of quotedSpans(criterion)) {
+    if (span.data && usableLiteral(span.literal) && !found.includes(span.literal)) found.push(span.literal);
+  }
+  return found.slice(0, MAX_PATHS_PER_CRITERION);
+}
+
+/** The test file a nearest earlier criterion names, when it exists at the candidate commit. */
+function earlierTestFile(earlier: readonly { named: readonly string[] }[], pathExists: (path: string) => boolean): string[] {
+  for (let index = earlier.length - 1; index >= 0; index -= 1) {
+    const tests = earlier[index].named.filter((candidate) => TEST_PATH.test(candidate) && pathExists(candidate));
+    if (tests.length > 0) return tests;
+  }
+  return [];
+}
+
+/** Quoted text in the criterion that is not test data: candidate whole lines to look for, read-only. */
 function criterionLiterals(criterion: string): string[] {
   const found: string[] = [];
-  for (const match of criterion.matchAll(/["“]([^"“”]+)["”]/g)) {
-    const literal = match[1];
-    if (!literal || literal.trim() !== literal || literal.length > MAX_LITERAL_CHARS || /\p{Cc}/u.test(literal)) continue;
-    if (!found.includes(literal)) found.push(literal);
+  for (const span of quotedSpans(criterion)) {
+    if (span.data || !usableLiteral(span.literal)) continue;
+    if (!found.includes(span.literal)) found.push(span.literal);
   }
   return found.slice(0, MAX_PATHS_PER_CRITERION);
 }

@@ -79,6 +79,13 @@ switch (key2) {
   case "workspace resolve":
     ok({ source: "user config", workspacePath: state.workspace });
     break;
+  case "spend check": {
+    // The real command exits 0 clear, 3 risk, 4 unknown, and prints its envelope either way.
+    const verdict = state.spend ?? "clear";
+    ok({ verdict, providers: [], warnings: [], checkedAt: new Date().toISOString() });
+    process.exitCode = verdict === "clear" ? 0 : verdict === "risk" ? 3 : 4;
+    break;
+  }
   case "production status":
     ok({ read: { status: "ok", policy: { desiredState: state.production.desiredState, revision: state.production.revision, epoch: state.production.epoch, authority: state.production.authority ?? null } }, liveAdmissions: state.production.liveAdmissions });
     break;
@@ -91,6 +98,11 @@ switch (key2) {
     break;
   case "advance queue":
     ok(state.queue);
+    break;
+  case "coordinator relay-sessions":
+    // state.relaySessions: the exact tmux names the registry allows, or "unreadable" for a registry that cannot be read.
+    if (state.relaySessions === "unreadable") { process.stderr.write("the workspace database could not be read\n"); process.exit(1); }
+    ok({ project: get("--project"), allowed: state.relaySessions ?? [], sessions: (state.relaySessions ?? []).map((tmuxName) => ({ project: get("--project"), role: "rowan", generation: 2, tmuxName, nativeSessionId: "22222222-2222-4222-8222-222222222222", allowed: true, reason: "fixture" })) });
     break;
   case "production freeze-check":
     if (state.freeze === "refuse") { process.stderr.write("rehearsal freeze window: production is Active\n"); process.exit(1); }
@@ -167,7 +179,10 @@ switch (key2) {
       schema: "arcadia-worker-claude-usage-receipt-v1", nonce, repository: state.repository, workspace, pid: binding.pid, release: binding.release, handlerHash: binding.handlerHash,
       approval: { decision, digest: "d".repeat(64) }, startedAt: new Date(now - 2000).toISOString(), finishedAt: new Date(now - 1000).toISOString(),
       credentialExpiresAt: new Date(now + (signin.expiresInMs ?? 3 * 3_600_000)).toISOString(), requestAttempted: true, httpStatus: 200, outcome: "ok", success: true,
-      windows: [{ label: "5h", usedPercentage: signin.windowPercent ?? 20, resetsAt: new Date(now + 3_600_000).toISOString() }, { label: "7d", usedPercentage: 30, resetsAt: new Date(now + 86_400_000).toISOString() }]
+      windows: [
+        ...(signin.omitFiveHour ? [] : [{ label: "5h", usedPercentage: signin.windowPercent ?? 20, resetsAt: new Date(now + 3_600_000).toISOString() }]),
+        ...(signin.omitWeekly ? [] : [{ label: "7d", usedPercentage: signin.weeklyPercent ?? 30, resetsAt: new Date(now + 86_400_000).toISOString() }])
+      ]
     }), { mode: 0o600 });
     const sha256 = createHash("sha256").update(readFileSync(receiptPath)).digest("hex");
     ok({ mode: "run", outcome: mode === "reused" ? "reused" : "checked", date, sequenceClaimed: mode !== "reused", receipt: { path: receiptPath, sha256 }, binding, ...(decision ? { decision, digest: "d".repeat(64), nonce, publicationHead } : {}) });

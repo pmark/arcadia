@@ -1,5 +1,7 @@
 # Articles for Arcadia Mission Control
 
+- [What’s an eval? Start with a lesson you should have found](2026-11-09-whats-an-eval.md) — a beginner-friendly draft on repeatable checks, with a proposed lesson-search example.
+
 `docs/articles/` captures topics and detailed source material primarily for AI
 agents to find, understand and reuse. Clara — Technical Writer owns the editorial
 lifecycle: topic selection, audience/search intent, research and fact-checking,
@@ -30,6 +32,8 @@ for evidence, discoverability and channel boundaries.
 - [Way lookup finds words, not answers](2026-11-03-way-lookup-finds-words-not-answers.md) — Field Notes essay draft: what `arcadia way lookup` does, and development-data measurements showing a match means words were found, not that the answer is right. Unreviewed.
 - [Relay mode labels what the agent made up](2026-11-03-relay-mode-labelled-simulation.md) — Field Notes essay draft: the labelled simulation of Relay, which does not exist yet, and how its three labels separate receipts from improvisation. Unreviewed.
 - [Arcadia Design checks the trail, not the truth](2026-11-03-arcadia-design-checked-archive.md) — Field Notes essay draft: what `arcadia design check` proves and does not, using the Relay design's first review. Unreviewed.
+- [What Arcadia checks before an agent starts](2026-11-09-what-arcadia-checks-before-an-agent-starts.md) — how GitHub’s agentic engineering guide led to a narrow check for confusing Action criteria.
+
 - [A glossary of Arcadia session jargon, and whose word each one is](2026-11-03-glossary-of-arcadia-session-jargon.md) — about seventy-five entries from coordinator sessions, each labelled Arcadia, Claude Code, Git/GitHub, an outside tool or general engineering; opens with "classifier".
 
 - [One press](2026-11-01-one-press.md) — Field Notes ship note: how a START card that could not be made on 31 October started the unattended run on 1 November, and the four-hour admission gap after it.

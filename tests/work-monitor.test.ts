@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { scopeToRepository } from "../src/commands/workMonitor.js";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import type { WorkMonitorScanOptions } from "../src/workMonitoring/scanner.js";
+import type { DeliveryState, PreservationState, RepositoryWorkingCopyAssessment, WorkMonitorSnapshot, WorkingCopyAssessment } from "../src/workMonitoring/types.js";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -128,6 +129,78 @@ describe("working-copy safety monitor", () => {
       summary: "Merged PR #12: Show merged work in the Morning Packet"
     });
   });
+
+  it("orders attention lines by risk then Project name, drops landed and unblocked in-PR copies, puts errors first, and honours the limit", () => {
+    // Beta is listed first so the Project-name tie-break, not insertion order, decides Alpha before Beta.
+    const beta = handBuiltRepository("beta", "Beta", [
+      handBuiltCopy("beta", "Beta", "beta-dirty", "unsaved", "working"),
+      handBuiltCopy("beta", "Beta", "beta-local", "local_only", "needs_preservation"),
+      handBuiltCopy("beta", "Beta", "beta-pushed", "pushed", "needs_pr"),
+      handBuiltCopy("beta", "Beta", "beta-pr", "in_pr", "reviewable"),
+      handBuiltCopy("beta", "Beta", "beta-landed", "landed", "landed")
+    ]);
+    const alpha = handBuiltRepository("alpha", "Alpha", [
+      handBuiltCopy("alpha", "Alpha", "alpha-dirty", "unsaved", "working"),
+      handBuiltCopy("alpha", "Alpha", "alpha-local", "local_only", "needs_preservation"),
+      handBuiltCopy("alpha", "Alpha", "alpha-pushed", "pushed", "needs_pr"),
+      handBuiltCopy("alpha", "Alpha", "alpha-landed", "landed", "landed")
+    ]);
+    const snapshot = handBuiltSnapshot([beta, alpha]);
+
+    // A high limit makes a leaked landed or in-PR line visible instead of hiding it behind the cut.
+    expect(formatWorkingCopySafetyLines(snapshot, 20)).toEqual([
+      "Alpha / alpha-dirty — summary for alpha-dirty Preservation: UNSAVED; delivery: WORKING.",
+      "Beta / beta-dirty — summary for beta-dirty Preservation: UNSAVED; delivery: WORKING.",
+      "Alpha / alpha-local — summary for alpha-local Preservation: LOCAL ONLY; delivery: NEEDS PRESERVATION.",
+      "Beta / beta-local — summary for beta-local Preservation: LOCAL ONLY; delivery: NEEDS PRESERVATION.",
+      "Alpha / alpha-pushed — summary for alpha-pushed Preservation: PUSHED, NO PR; delivery: NEEDS PR.",
+      "Beta / beta-pushed — summary for beta-pushed Preservation: PUSHED, NO PR; delivery: NEEDS PR."
+    ]);
+
+    const broken = handBuiltSnapshot([
+      ...snapshot.repositories,
+      { projectId: "broken", projectName: "Broken", repositoryPath: "/fixture/broken", baseRef: null, workingCopies: [], error: "Repository path is missing: /fixture/broken" }
+    ]);
+    const lines = formatWorkingCopySafetyLines(broken, 20);
+    expect(lines[0]).toBe("Broken: Repository path is missing: /fixture/broken");
+    expect(lines.slice(1)).toHaveLength(6);
+    expect(lines.join("\n")).not.toContain("beta-landed");
+    expect(lines.join("\n")).not.toContain("beta-pr");
+    expect(lines.join("\n")).not.toContain("alpha-landed");
+    expect(formatWorkingCopySafetyLines(broken, 2)).toEqual([
+      "Broken: Repository path is missing: /fixture/broken",
+      "Alpha / alpha-dirty — summary for alpha-dirty Preservation: UNSAVED; delivery: WORKING.",
+      "5 more not shown: Alpha 2, Beta 3."
+    ]);
+  });
+
+  it("says how many lines the limit cut and from which Projects, and adds nothing when none are cut", () => {
+    // Beta is listed first so Project-name order, not insertion order, orders the summary.
+    const beta = handBuiltRepository("beta", "Beta", [
+      handBuiltCopy("beta", "Beta", "beta-dirty", "unsaved", "working"),
+      handBuiltCopy("beta", "Beta", "beta-local", "local_only", "needs_preservation"),
+      handBuiltCopy("beta", "Beta", "beta-pushed", "pushed", "needs_pr")
+    ]);
+    const alpha = handBuiltRepository("alpha", "Alpha", [
+      handBuiltCopy("alpha", "Alpha", "alpha-dirty", "unsaved", "working"),
+      handBuiltCopy("alpha", "Alpha", "alpha-local", "local_only", "needs_preservation")
+    ]);
+    const broken = { projectId: "broken", projectName: "Broken", repositoryPath: "/fixture/broken", baseRef: null, workingCopies: [], error: "Repository path is missing: /fixture/broken" };
+    const snapshot = handBuiltSnapshot([beta, alpha, broken]);
+
+    // Order: Broken error, alpha-dirty, beta-dirty, alpha-local, beta-local, beta-pushed.
+    const full = formatWorkingCopySafetyLines(snapshot, 20);
+    expect(full).toHaveLength(6);
+    expect(full.join("\n")).not.toContain("more not shown");
+    const cut = formatWorkingCopySafetyLines(snapshot, 3);
+    expect(cut).toHaveLength(4);
+    expect(cut.slice(0, 3)).toEqual(full.slice(0, 3));
+    expect(cut[3]).toBe("3 more not shown: Alpha 1, Beta 2.");
+
+    // A cut repository error line counts under its own Project.
+    expect(formatWorkingCopySafetyLines(snapshot, 0)).toEqual(["6 more not shown: Alpha 2, Beta 3, Broken 1."]);
+    expect(formatWorkingCopySafetyLines(snapshot, 6)).toEqual(full);
+  });
 });
 
 function createRepository(): string {
@@ -225,6 +298,61 @@ function createDifferentialRepository(): string {
   const missing = worktree("wt-missing", "missing-worktree");
   rmSync(missing, { recursive: true, force: true });
   return repository;
+}
+
+function handBuiltSnapshot(repositories: RepositoryWorkingCopyAssessment[]): WorkMonitorSnapshot {
+  return {
+    scannedAt: "2026-11-06T00:00:00.000Z",
+    repositories,
+    totals: {
+      projects: repositories.length,
+      workingCopies: repositories.reduce((sum, repository) => sum + repository.workingCopies.length, 0),
+      unsaved: 0,
+      localOnly: 0,
+      pushedWithoutPr: 0,
+      pullRequestUnknown: 0,
+      inPr: 0,
+      landed: 0,
+      configurationErrors: 0
+    }
+  };
+}
+
+function handBuiltRepository(projectId: string, projectName: string, workingCopies: WorkingCopyAssessment[]): RepositoryWorkingCopyAssessment {
+  return { projectId, projectName, repositoryPath: `/fixture/${projectId}`, baseRef: "origin/main", workingCopies, error: null };
+}
+
+function handBuiltCopy(
+  projectId: string,
+  projectName: string,
+  branch: string,
+  preservation: PreservationState,
+  delivery: DeliveryState
+): WorkingCopyAssessment {
+  return {
+    projectId,
+    projectName,
+    repositoryPath: `/fixture/${projectId}`,
+    worktreePath: null,
+    branch,
+    detached: false,
+    head: "0".repeat(40),
+    baseRef: "origin/main",
+    upstream: null,
+    aheadOfUpstream: null,
+    behindUpstream: null,
+    commitsNotInBase: 1,
+    remoteBranchExists: false,
+    changes: { total: 0, staged: 0, unstaged: 0, untracked: 0, paths: [], areas: [] },
+    pullRequest: null,
+    pullRequestLookup: "queried",
+    preservation,
+    delivery,
+    summary: `summary for ${branch}`,
+    recommendedAction: null,
+    lastCommitSubject: null,
+    lastCommitAt: null
+  };
 }
 
 function git(cwd: string, args: string[]): string {

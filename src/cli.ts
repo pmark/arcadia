@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { runSpendCheckCommand } from "./commands/spend.js";
+import { spendExitCode } from "./spend/spendCheck.js";
 import { runProviderUsageCommand } from "./commands/providerUsage.js";
 import { runRunConsumeCommand } from "./commands/runConsume.js";
 import { runRolesCommand, renderRolesSuccess, runRoleBriefCommand, renderRoleBriefSuccess } from "./commands/roles.js";
@@ -79,6 +81,43 @@ import {
   runPingSendCommand,
   runPingSentCommand
 } from "./commands/ping.js";
+import {
+  renderCoordinatorAcceptSuccess,
+  renderCoordinatorCapsuleSuccess,
+  renderCoordinatorNoteSuccess,
+  renderCoordinatorRenewSuccess,
+  renderCoordinatorRelaySessionsSuccess,
+  runCoordinatorRelaySessionsCommand,
+  runCoordinatorRenewCommand,
+  renderCoordinatorSubscribeSuccess,
+  renderCoordinatorVerifySuccess,
+  runCoordinatorAcceptCommand,
+  runCoordinatorCapsuleCommand,
+  runCoordinatorNoteCommand,
+  runCoordinatorSubscribeCommand,
+  runCoordinatorVerifyCommand
+} from "./commands/coordinator.js";
+import {
+  renderOperatorInteractionListSuccess,
+  renderOperatorInteractionRecordSuccess,
+  runOperatorInteractionListCommand,
+  runOperatorInteractionRecordCommand
+} from "./commands/operatorInteraction.js";
+import { LIVENESS_DEFAULT_STALE_SECONDS } from "./commands/productionLiveness.js";
+import {
+  renderKeeperHeartbeatSuccess,
+  renderProductionLivenessTimerSuccess,
+  runKeeperHeartbeatCommand,
+  runProductionLivenessTimerCommand
+} from "./commands/productionMomentum.js";
+import {
+  KEEPER_DEFAULT_GRACE_MINUTES,
+  KEEPER_DEFAULT_HEARTBEAT_MINUTES,
+  KEEPER_MAX_HEARTBEAT_MINUTES,
+  MOMENTUM_DEFAULT_IDLE_MINUTES
+} from "./production/momentumWatch.js";
+import { renderProductionIdleFrontSuccess, runProductionIdleFrontCommand } from "./commands/productionIdleFront.js";
+import { renderCoordinatorBudgetSuccess, runCoordinatorBudgetCommand } from "./commands/coordinatorBudget.js";
 import {
   renderBackBurnerArchiveSuccess,
   renderBackBurnerListSuccess,
@@ -464,11 +503,15 @@ import {
   renderDigestComposeSuccess,
   renderDigestExportSuccess,
   renderDigestMarkPostedSuccess,
+  renderDigestPreviewSuccess,
   renderDigestRunSuccess,
+  renderDigestShowSuccess,
   runDigestComposeCommand,
   runDigestExportCommand,
   runDigestMarkPostedCommand,
-  runDigestRunCommand
+  runDigestPreviewCommand,
+  runDigestRunCommand,
+  runDigestShowCommand
 } from "./commands/digest.js";
 import { renderDocsSyncSuccess, runDocsSyncCommand } from "./commands/docs.js";
 import {
@@ -667,6 +710,23 @@ export function buildProgram(): Command {
     .action((options: { refresh?: boolean; claudeSource?: string; opencodeSession?: string; opencodeExport?: string; json?: boolean }) =>
       runCliAction("provider-usage", options, () => runProviderUsageCommand(options),
         (response) => [JSON.stringify(response.data, null, 2)]));
+
+  const spend = program.command("spend").description("Read-only checks that a launch cannot spend money");
+  addJsonOption(spend.command("check")
+    .description("Say clear (exit 0), risk (3) or unknown (4) for paid-usage mechanisms; prints names and codes only, never a secret")
+    .option("--provider <provider>", "claude, codex, opencode or all", "all")
+    .option("--launch-env <mode>", "current, or stripped to remove every billing variable before probing", "current")
+    .option("--model <id>", "OpenCode model id to route-check"))
+    .action((options: { provider?: string; launchEnv?: string; model?: string; json?: boolean }) =>
+      runCliAction("spend.check", options, () => {
+        const response = runSpendCheckCommand(options);
+        process.exitCode = spendExitCode(response.data.verdict);
+        return response;
+      }, (response) => [
+        `Spend check: ${response.data.verdict}`,
+        ...response.data.providers.map((provider) => `  ${provider.id}: ${provider.verdict}${provider.codes.length > 0 ? ` (${provider.codes.join(", ")})` : ""}`),
+        ...(response.data.warnings.length > 0 ? [`Warnings: ${response.data.warnings.join(", ")}`] : [])
+      ]));
 
 
   program
@@ -1171,9 +1231,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--fix-pull-request <url>", "Decision 0173: the merged pull request that fixed the cause")
     .option("--fix-commit <sha>", "Decision 0173: that fix's commit, which must be on origin main")
     .option("--reproduction <path>", "Decision 0173: the repository fixture or replay that reproduces the cause")
+    .option("--fix-cause <slug>", "Decision 0187: the cause that fix addresses; after a failed batch it must equal --previous-cause")
     .option("--observed-cleared <pointer>", "Decision 0173: for an outside cause with no code fix, where it was observed cleared")
-  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; observedCleared?: string; json?: boolean }) =>
-    runCliAction("start-run.pins", options, () => runStartRunPinsCommand(options), renderStartRunPinsSuccess));
+  ).action((options: { plan: string; actions: string; provider: string; expiresHours: string; repository?: string; workspace?: string; delegatedFrom?: string; dayGrantFrom?: string; previousCause?: string; previousEvidence?: string; fixPullRequest?: string; fixCommit?: string; reproduction?: string; fixCause?: string; observedCleared?: string; json?: boolean }) =>
+    runCliAction("start-run.pins", options, () => {
+      const response = runStartRunPinsCommand(options);
+      if (!options.json) for (const warning of response.warnings) process.stderr.write(`Warning: ${warning}\n`);
+      return response;
+    }, renderStartRunPinsSuccess));
   addJsonOption(startRun.command("day-pins")
     .description("Decision 0173: print the pins of one day-grant card for the operator to press; writes nothing and grants nothing")
     .requiredOption("--plan <slug>", "The active Plan the day would cover")
@@ -1201,6 +1266,32 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   ).action((options: { repository: string; workspace: string; project: string; card: string; runId: string; runDirectory: string; release: string; policyRevision: string; policyEpoch: string; checkOnly?: boolean; json?: boolean }) =>
     runCliAction("start-run.sign-in", options, () => runStartRunSignInCommand(options), renderStartRunSignInSuccess));
 
+  const operatorInteraction = program.command("operator-interaction")
+    .description("Record when an agent acted on the operator's words, so the digest can count operator touches; local and append-only");
+  addJsonOption(operatorInteraction.command("record")
+    .description("Append one interaction: the operator's exact words, what they unlocked, and whether only the operator could have done it. Records; authorizes nothing")
+    .requiredOption("--words <text>", "The operator's exact words, e.g. \"Yes merge them\"")
+    .requiredOption("--unlocked <text>", "What the interaction unlocked, e.g. \"merge of PR #2184\"")
+    .option("--required", "Only the operator's authority could do this")
+    .option("--avoidable", "The system could have proceeded without asking")
+    .option("--ref <ref>", "The PR, card or Decision it acted on")
+    .option("--project <slug>", "Project slug")
+    .option("--at <instant>", "When the operator said it (default now)")
+    .option("--waiting-since <instant>", "When the work started waiting for this answer")
+    .option("--agent <name>", "Who is recording it")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; words: string; unlocked: string; required?: boolean; avoidable?: boolean; ref?: string; project?: string; at?: string; waitingSince?: string; agent?: string; json?: boolean }) =>
+    runCliAction("operator-interaction.record", options, () => runOperatorInteractionRecordCommand(options), renderOperatorInteractionRecordSuccess)
+  );
+  addJsonOption(operatorInteraction.command("list")
+    .description("List recorded operator interactions (default: the last 7 days)")
+    .option("--since <instant>", "Inclusive start")
+    .option("--until <instant>", "Exclusive end")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; since?: string; until?: string; json?: boolean }) =>
+    runCliAction("operator-interaction.list", options, () => runOperatorInteractionListCommand(options), renderOperatorInteractionListSuccess)
+  );
+
   const ping = program.command("ping").description("Send the operator a short read-only Discord nudge (look at this, FYI)");
   addJsonOption(ping.command("send", { isDefault: true })
     .description("Queue one read-only ping. It approves nothing and answers nothing; use an Agent Ask for anything durable. A message starting with - or with the word pending/sent needs `--` before it")
@@ -1212,7 +1303,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--agent <name>", "Who is pinging, shown in the message")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; todo?: string; agent?: string; json?: boolean }) =>
-    runCliAction("ping.send", options, () => runPingSendCommand({ ...options, message: message.join(" ") }), renderPingSendSuccess)
+    runCliAction("ping.send", options, () => runPingSendCommand({ ...options, message: message.join(" "), env: process.env }), renderPingSendSuccess)
   );
   addJsonOption(ping.command("pending")
     .description("List operator pings pending Discord delivery")
@@ -1227,6 +1318,67 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; id: string; messageId: string; json?: boolean }) =>
     runCliAction("ping.sent", options, () => runPingSentCommand(options), renderPingSentSuccess)
+  );
+
+  const coordinator = program.command("coordinator").description("Coordinator sessions (⭐ Signal, 🚦 Rowan): context budget for handoff before compaction, and handoff state (the state capsule, its journal, watcher subscriptions, verify and accept)");
+  const coordinatorScope = (command: Command): Command => addJsonOption(command
+    .requiredOption("--project <slug>", "Project slug, e.g. arcadia")
+    .requiredOption("--role <role>", "Coordinator role, e.g. rowan or signal")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace()));
+  coordinatorScope(coordinator.command("capsule")
+    .description("Refresh and print the live capsule (<workspace>/coordinators/<project>/<role>/live.json) from canonical sources")
+    .option("--check", "Exit 1 when the journal is stale, no next move is recorded, or a chat-only approval would be lost")
+    .option("--markdown", "Print the handoff template rendering instead of a summary")
+    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
+  ).action((options: { workspace: string; project: string; role: string; check?: boolean; markdown?: boolean; repo?: string; json?: boolean }) =>
+    runCliAction("coordinator.capsule", options, () => runCoordinatorCapsuleCommand(options), renderCoordinatorCapsuleSuccess)
+  );
+  coordinatorScope(coordinator.command("note")
+    .description("Add one short judgement to the coordinator's journal (at most 20 kept). Advisory, never authority. Custody-guarded")
+    .argument("<text...>", "The note (500 characters at most)")
+    .option("--next-move", "Record this as the one exact next command instead of a journal entry")
+    .option("--chat-approval", "Record a chat-only approval that will not carry across a handoff")
+    .option("--pr <number>", "A PR this concerns; the capsule tracks its head, checks and verdict marker (repeatable)", collectRepeatable, [] as string[])
+  ).action((text: string[], options: { workspace: string; project: string; role: string; nextMove?: boolean; chatApproval?: boolean; pr: string[]; json?: boolean }) =>
+    runCliAction("coordinator.note", options, () => runCoordinatorNoteCommand({ ...options, text: text.join(" "), env: process.env }), renderCoordinatorNoteSuccess)
+  );
+  coordinatorScope(coordinator.command("subscribe")
+    .description("Register a checked-in watcher command line with its cursor, or record every watcher a pinned snapshot lists as inherited (not registered by you; run each yourself, then register it with a plain subscribe). Custody-guarded")
+    .argument("[command-line]", "The watcher's checked-in command line")
+    .option("--cursor <cursor>", "The watcher's last event cursor")
+    .option("--from-snapshot <sha>", "Record the watchers the snapshot with this sha lists as inherited, not yet registered (the incoming generation); starts no process")
+  ).action((commandLine: string | undefined, options: { workspace: string; project: string; role: string; cursor?: string; fromSnapshot?: string; json?: boolean }) =>
+    runCliAction("coordinator.subscribe", options, () => runCoordinatorSubscribeCommand({ ...options, commandLine, env: process.env }), renderCoordinatorSubscribeSuccess)
+  );
+  coordinatorScope(coordinator.command("verify")
+    .description("Prove a launching generation has the whole state: snapshot sha, drift since the snapshot, watchers registered by this generation, including any the predecessor registered after the snapshot (exit 1 unless these pass), then journal, lost approvals and next move as warnings")
+    .requiredOption("--generation <n>", "The launching generation", (value: string) => Number(value))
+    .option("--snapshot-sha <sha>", "The sha the launch prompt pinned")
+    .option("--repo <path>", "Repository checkout to read the Plan pointer and Decisions from (default: this checkout)", resolveInvocationPath)
+  ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha?: string; repo?: string; json?: boolean }) =>
+    runCliAction("coordinator.verify", options, () => runCoordinatorVerifyCommand(options), renderCoordinatorVerifySuccess)
+  );
+  coordinatorScope(coordinator.command("accept")
+    .description("Take custody as the incoming generation after a passing verify on the same sha within 10 minutes; the predecessor becomes handed_off. Custody-guarded")
+    .requiredOption("--generation <n>", "The incoming generation", (value: string) => Number(value))
+    .requiredOption("--snapshot-sha <sha>", "The sha the launch prompt pinned")
+  ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha: string; json?: boolean }) =>
+    runCliAction("coordinator.accept", options, () => runCoordinatorAcceptCommand({ ...options, env: process.env }), renderCoordinatorAcceptSuccess)
+  );
+  coordinatorScope(coordinator.command("renew")
+    .description("Launch one successor coordinator through the tmux launcher (same provider and model, Remote Control, verified prompt delivery, one retry, one attention ping on failure). Refuses until the standing relay Decision is on main. Custody-guarded")
+    .option("--effort <effort>", "Reasoning effort key or native value", "e3_deep")
+    .option("--repo <path>", "Repository the successor's worktree is cut from (default: the primary worktree of the repository you run it in; a tick or timer must pass it)", resolveInvocationPath)
+  ).action((options: { workspace: string; project: string; role: string; effort?: string; repo?: string; json?: boolean }) =>
+    runCliAction("coordinator.renew", options, () => runCoordinatorRenewCommand({ ...options, env: process.env }), renderCoordinatorRenewSuccess)
+  );
+
+  addJsonOption(coordinator.command("relay-sessions")
+    .description("Read-only: the exact tmux sessions of registered, relay-launched, current coordinator custodians that START's no-competing-Session check tolerates (none during a handoff)")
+    .requiredOption("--project <slug>", "Project slug, e.g. arcadia")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; project: string; json?: boolean }) =>
+    runCliAction("coordinator.relay-sessions", options, () => runCoordinatorRelaySessionsCommand(options), renderCoordinatorRelaySessionsSuccess)
   );
 
   const nativeMail = program.command("native-mail").description("Local addressed mail between native coding-agent sessions on this machine (relationship/provenance records only; grants no authority)");
@@ -1536,6 +1688,49 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path")
   ).action((operation: string, options: { workspace?: string; json?: boolean }) =>
     runCliAction("production.freeze-check", options, () => runProductionFreezeCheckCommand({ operation, workspace: options.workspace }), renderProductionFreezeCheckSuccess)
+  );
+  addJsonOption(
+    production
+      .command("liveness-check")
+      .description("One timer run: page once when the worker stops making progress while production is Active, and once when it recovers; then the momentum alarm: page once when the critical path idles past the threshold or no Momentum Keeper heartbeat is live while a run window is open, and once when each clears. Reads the database read-only; restarts and starts nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--stale-seconds <seconds>", `Silence that counts as stuck, outside a code review (default ${LIVENESS_DEFAULT_STALE_SECONDS})`)
+      .option("--idle-minutes <minutes>", `Critical-path idle that pages while a run window is open (default ${MOMENTUM_DEFAULT_IDLE_MINUTES})`)
+      .option("--keeper-grace-minutes <minutes>", `How long past its armed-until a keeper heartbeat may lapse before it pages (default ${KEEPER_DEFAULT_GRACE_MINUTES})`)
+      .option("--dashboard-url <url>", "Dashboard base for the /production link (default ARCADIA_DASHBOARD_URL)")
+  ).action((options: { workspace: string; staleSeconds?: string; idleMinutes?: string; keeperGraceMinutes?: string; dashboardUrl?: string; json?: boolean }) =>
+    runCliAction("production.liveness-check", options, () => runProductionLivenessTimerCommand(options), renderProductionLivenessTimerSuccess)
+  );
+  addJsonOption(
+    production
+      .command("keeper-heartbeat")
+      .description("The Momentum Keeper's heartbeat: write its armed-until file, saying it is live and will wake again within --minutes. Writes that one file (and the usual activity row); pings nobody, starts nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--minutes <minutes>", `Until the keeper's next wake, at most ${KEEPER_MAX_HEARTBEAT_MINUTES} (default ${KEEPER_DEFAULT_HEARTBEAT_MINUTES})`)
+      .option("--session <name>", "The keeper session's name, for the alarm's recovery line")
+  ).action((options: { workspace: string; minutes?: string; session?: string; json?: boolean }) =>
+    runCliAction("production.keeper-heartbeat", options, () => runKeeperHeartbeatCommand(options), renderKeeperHeartbeatSuccess)
+  );
+  addJsonOption(
+    production
+      .command("idle-front")
+      .description("Read-only: critical-path idle minutes by cause and whether any wake is armed; prints one JSON row then timeline events as NDJSON. Pings nobody, writes nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--wakes-dir <path>", "Armed-until heartbeat files (default <workspace>/.arcadia/armed-wakes)")
+      .option("--expect-wake <session-or-role>", "A session or role that should hold an armed wake (repeatable)", (value: string, previous: string[] = []) => [...previous, value])
+      .option("--tap-ready-at <time>", "When a one-tap operator item (e.g. a START card) became ready, if no reader here sees it")
+      .option("--route-at <time>", "When a route for the current block was recorded")
+  ).action((options: { workspace: string; wakesDir?: string; expectWake?: string[]; tapReadyAt?: string; routeAt?: string; json?: boolean }) =>
+    runCliAction("production.idle-front", options, () => runProductionIdleFrontCommand(options), renderProductionIdleFrontSuccess)
+  );
+  addJsonOption(
+    coordinator
+      .command("budget")
+      .description("Read-only: each live coordinator's context occupancy from its own transcript, its level (prepare 50%, due 60%, forced 75%, or unmeasured) and the pages the liveness timer already sent. Run it at each wake; writes, pings and starts nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--session <id>", "This session's id (default CLAUDE_CODE_SESSION_ID or CODEX_THREAD_ID)")
+  ).action((options: { workspace: string; session?: string; json?: boolean }) =>
+    runCliAction("coordinator.budget", options, () => runCoordinatorBudgetCommand(options), renderCoordinatorBudgetSuccess)
   );
   addJsonOption(
     production
@@ -3368,6 +3563,37 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; json?: boolean }) =>
     runCliAction("digest.run", options, () => runDigestRunCommand(options), renderDigestRunSuccess)
+  );
+  addJsonOption(
+    digest
+      .command("preview")
+      .description("Print a digest for a window without storing it: progress by goal, what needs you, where activity happened")
+      .option("--project <project>", "Project id or slug (default: the portfolio roll-up)")
+      .option("--period <period>", "day, week, or month (default day: the last completed local day)", "day")
+      .option("--from <instant>", "Inclusive ISO-8601 window start (with --to)")
+      .option("--to <instant>", "Exclusive ISO-8601 window end (with --from)")
+      .option("--ai", "Ask the local model for the headline (submits one Intelligence job; stores no digest)")
+      .option("--detail", "Also print every recorded fact behind the page")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: {
+    workspace: string;
+    project?: string;
+    period?: string;
+    from?: string;
+    to?: string;
+    ai?: boolean;
+    detail?: boolean;
+    json?: boolean;
+  }) => runCliAction("digest.preview", options, () => runDigestPreviewCommand(options), renderDigestPreviewSuccess));
+  addJsonOption(
+    digest
+      .command("show")
+      .description("Print one stored digest as delivered")
+      .argument("<digest-id>", "Narrative digest id")
+      .option("--detail", "Also print every recorded fact behind the page")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((digestId: string, options: { workspace: string; detail?: boolean; json?: boolean }) =>
+    runCliAction("digest.show", options, () => runDigestShowCommand({ ...options, digestId }), renderDigestShowSuccess)
   );
   addJsonOption(
     digest
@@ -6034,7 +6260,7 @@ function commandNameFromArgv(argv: string[]): string {
     return "ask";
   }
 
-  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check"].includes(second ?? "")) {
+  if (first === "production" && ["status", "preview", "activate", "reactivate-preview", "reactivate", "deactivate", "reset-repair-budget", "runtime-check", "liveness-check", "keeper-heartbeat"].includes(second ?? "")) {
     return `production.${second}`;
   }
 
