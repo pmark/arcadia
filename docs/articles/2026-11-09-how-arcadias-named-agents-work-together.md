@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/how-arcadias-named-agents-work-together.
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/how-arcadias-named-agents-work-together/"
 channels: [site, rss]
+tags: [agent-workflows]
 ---
 
 # How Arcadia’s named agents work together

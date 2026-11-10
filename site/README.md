@@ -35,6 +35,20 @@ GitHub Pages; AMC ([arcadiamissioncontrol.com](https://arcadiamissioncontrol.com
   interface theme independently of the sky clock.
   Three.js is loaded from a version-pinned CDN when motion is enabled.
 
+## Topics and canonical URLs
+
+Give each article one to three distinct lowercase topic slugs in its front
+matter, for example `tags: [agent-workflows, testing]`. Reuse existing slugs
+when they fit. The build rejects missing or malformed tags on otherwise
+approved posts. The Topic Atlas at `/tags/` groups published posts by their
+tags and sizes each label by the number of posts in that topic. The topic
+counts and links update on the next build when an article is added, retagged,
+or withdrawn.
+
+Keep the intended `canonical` URL in the source metadata. The Pages layout
+generates the HTML canonical link from the public page URL, including the
+`/arcadia` base path.
+
 ## One-time operator setup (not done by the build)
 
 Settings > Pages > Source = "GitHub Actions". Until then the deploy job is

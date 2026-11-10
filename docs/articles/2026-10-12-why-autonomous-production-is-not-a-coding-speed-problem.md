@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/why-autonomous-production-is-not-a-codin
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/why-autonomous-production-is-not-a-coding-speed-problem/"
 channels: [site, rss]
+tags: [automation, review, reliability]
 ---
 
 # Where unattended coding runs spend their time

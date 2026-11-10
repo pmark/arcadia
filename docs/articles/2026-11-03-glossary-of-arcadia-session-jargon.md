@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/glossary-of-arcadia-session-jargon.md"
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/glossary-of-arcadia-session-jargon/"
 channels: [site, rss]
+tags: [agent-workflows, governance]
 ---
 
 # A glossary of Arcadia session jargon, and whose word each one is

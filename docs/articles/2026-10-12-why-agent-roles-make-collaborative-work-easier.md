@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/why-agent-roles-make-collaborative-work-
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/why-agent-roles-make-collaborative-work-easier/"
 channels: [site, rss]
+tags: [agent-workflows, review]
 ---
 
 # Who writes the change, and who checks it?
