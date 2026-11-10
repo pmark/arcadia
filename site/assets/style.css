@@ -169,16 +169,30 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 .canyon-ride-surface { position:fixed; inset:0; z-index:5; width:100%; height:100%; padding:0; border:0; background:transparent; cursor:pointer; }
 .canyon-ride-surface:focus-visible { outline:2px solid white; outline-offset:-4px; }
 .canyon-ride-surface[hidden] { display:none; }
-.canyon-close {
+:is(.canyon-close, .canyon-mute) {
   position:fixed;
-  inset:calc(8px + env(safe-area-inset-top, 0px)) max(12px, 4vw, env(safe-area-inset-right, 0px)) auto auto;
   z-index:10; width:44px; height:44px; border:1px solid #ffffff80; border-radius:50%;
   display:grid; place-items:center; padding:0; color:#fff; background:#1b1620bf; cursor:pointer;
-  opacity:0; transition:opacity .35s ease;
 }
-.canyon-close[hidden] { display:none; }
-.canyon-close svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; }
-[data-ride-controls="visible"] .canyon-close, .canyon-close:focus-visible { opacity:1; }
+.canyon-close {
+  inset:max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) auto auto;
+}
+.canyon-mute {
+  inset:auto auto max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  z-index:11;
+}
+.canyon-mute > * { pointer-events:none; }
+:is(.canyon-close, .canyon-mute)[hidden] { display:none; }
+.canyon-sound-muted, .canyon-mute[aria-pressed="true"] .canyon-sound-waves { display:none; }
+.canyon-mute[aria-pressed="true"] .canyon-sound-muted { display:inline; }
+:is(.canyon-close, .canyon-mute) svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; }
+:is(.canyon-close, .canyon-mute) {
+  opacity:0; pointer-events:none; transition:opacity .35s ease;
+}
+[data-ride-controls="visible"] :is(.canyon-close, .canyon-mute),
+body:has(:is(.canyon-close, .canyon-mute):focus-visible) :is(.canyon-close, .canyon-mute) {
+  opacity:1; pointer-events:auto;
+}
 .canyon-speed { position:fixed; z-index:10; inset:auto 0 max(24px, env(safe-area-inset-bottom, 0px)); text-align:center; color:white; text-shadow:0 1px 5px #000; pointer-events:none; opacity:0; transition:opacity .35s ease; }
 [data-ride-controls="visible"] .canyon-speed { opacity:1; }
 .post-body {
