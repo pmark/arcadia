@@ -725,7 +725,7 @@ check_day_grant_at_pin() {
   fi
 }
 phase_p1() {
-  local decision file content tree head_now plan_fm project_fm previous
+  local decision file content tree head_now plan_fm project_fm previous expected_prev actual_prev
   phase P1 repo
   check_checkout_clean_on_main
   check_origin_is_pin
@@ -773,7 +773,11 @@ phase_p1() {
       jq -e '.planActivation != null' "$DESCRIPTOR" >/dev/null || refuse "the Plan $PLAN is not active and this card carries no planActivation block"
       previous="$(jq -r '.planActivation.envelope.previousPlan' "$DESCRIPTOR")"
       [[ "$(jq -r '.active_plan // ""' <<<"$project_fm")" == "$previous" ]] || refuse "the Plan is a draft but PROJECT.md does not point at the pinned previous Plan $previous"
-      git_repo show "$PIN:docs/plans/$previous.md" | frontmatter_json | jq -e '.status == "active"' >/dev/null || refuse "the pinned previous Plan $previous is not active"
+      # PR #2455: a previous Plan that was already finished stays `complete`; the card's before-image names which case this is.
+      expected_prev="$(jq -r '.planActivation.envelope.previousPlanBefore.status // ""' "$DESCRIPTOR")"
+      [[ "$expected_prev" == active || "$expected_prev" == complete ]] || refuse "the card's previousPlanBefore status is '$expected_prev', expected 'active' or 'complete'"
+      actual_prev="$(git_repo show "$PIN:docs/plans/$previous.md" | frontmatter_json | jq -r '.status // ""')"
+      [[ "$actual_prev" == "$expected_prev" ]] || refuse "the pinned previous Plan $previous is '$actual_prev' at the reviewed revision, but the card's previousPlanBefore expects '$expected_prev'"
       NEEDS_ACTIVATION=true
       ;;
     *) refuse "the Plan $PLAN is neither active nor a draft awaiting its pinned activation" ;;

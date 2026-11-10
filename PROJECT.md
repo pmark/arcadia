@@ -6,9 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: "Carry out Decision 0214 answer A: unattended production's worker may merge src/** candidate changes that touch no authority boundary, after an audit proves the authority classifier covers every gate-enforcing source module."
-active_plan: carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src
+milestone: Burn down three small verified bug Issues in unattended serial production.
+active_plan: burn-down-three-small-verified-bug-issues-in-unattended-serial-production
 updated: 2026-11-10
+current_action: read-zoneless-space-separated-time-as-utc
 ---
 
 # Arcadia
