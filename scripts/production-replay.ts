@@ -1642,6 +1642,8 @@ child.on("exit", (code, signal) => { clearTimeout(timer); kill(); process.exit(c
           clock: () => now,
           capacityObservation: capacityObservation(scope.providers[0] ?? "claude-code-cli") as never,
           providerSignIn: () => ({ signedIn: true, remedy: "" }),
+          // Like sign-in, the replay never runs this host's real spend probes; its fixture models no spend, so the verdict is clear.
+          spendCheck: { report: (id) => ({ verdict: "clear", providers: [{ id, verdict: "clear", codes: [], probes: [] }], warnings: [], checkedAt: now.toISOString() }) },
           workerCapability: () => [],
           agentWorktreeRoot: path.join(manifest.root, "agent-worktrees", "new"),
           log: (message) => lines.push(message)

@@ -1,3 +1,4 @@
+import type { LaunchSpendDeps } from "../spend/spendGuard.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -124,6 +125,8 @@ export interface ManagedProductionTickOptions {
   agentWorktreeRoot?: string;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
+  /** Seams for the launch spend check (a fixed report in replays and tests); omitted, the real host probes run and only clear launches. */
+  spendCheck?: LaunchSpendDeps;
   /**
    * Pre-launch Session capability preflight (workspace write, host validation,
    * preservation). Any wall refuses the launch before a Session is prepared, so
@@ -2614,6 +2617,7 @@ function attemptReviewRepairLaunch(
           capacityObservation: input.options.capacityObservation,
           agentWorktreeRoot: input.options.agentWorktreeRoot,
           providerSignIn: input.options.providerSignIn,
+          spendCheck: input.options.spendCheck,
           workerCapability: ownWorkerCapability(input.options),
           onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
         });
@@ -2942,6 +2946,7 @@ function attemptProjectLaunch(
       capacityObservation: input.options.capacityObservation,
       agentWorktreeRoot: input.options.agentWorktreeRoot,
       providerSignIn: input.options.providerSignIn,
+          spendCheck: input.options.spendCheck,
       // The launch re-runs the same preflight with the selected profile's
       // sandbox, which this tick's profile-less preflight cannot see.
       workerCapability: ownWorkerCapability(input.options),
