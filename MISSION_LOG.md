@@ -3326,3 +3326,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A test shows an unclassified src/** path is worker-merge-safe and a classified src path is still refused as authority_adjacent."; "Tests show the existing gates are unchanged: exact-head review and QA, green required checks, CLEAN merge state and the mergeThroughPullRequest grant still each refuse when missing.".
 - **Next:** Plan complete; every Action is done.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-implement-decision-0214-a-in-src-20261110).
+
+## 2026-11-10 — Completed arcadia/accept-canonical-roles-in-session-ledger
+
+- **Did:** Completed Action arcadia/accept-canonical-roles-in-session-ledger from accepted evidence (Candidate 48a62623eef812c36b7247dfe49b200ad9c508ae).
+- **Result:** Every declared acceptance criterion was accepted as met: "validateSessionLedgerRow in src/reports/sessionLedger.ts accepts a row whose role is any role id listed in config/defaults/agent-roles.json."; "A row with each legacy role lead, driver, reviewer, replayer and opus-planner still validates, and a row with the unknown role wizard still fails with a field role error."; "A regression test in tests/session-ledger.test.ts reads the role ids from config/defaults/agent-roles.json and covers those three cases; it fails before the fix and passes after."; "Every other test in tests/session-ledger.test.ts passes unchanged."; "Apart from the settlement records Arcadia writes, the change touches only src/reports/sessionLedger.ts and tests/session-ledger.test.ts. Proof that the tests, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Next ready Action in this inactive Plan: read-zoneless-space-separated-time-as-utc.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-accept-canonical-roles-in-session-ledger-2026-11-10).

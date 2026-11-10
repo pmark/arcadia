@@ -11,11 +11,11 @@ updated: 2026-11-10
 actions:
   - id: accept-canonical-roles-in-session-ledger
     title: "Make the Session ledger accept every role registered in config/defaults/agent-roles.json while keeping its legacy roles valid, fixing Issue #1366."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the Session ledger accept every role registered in config/defaults/agent-roles.json while keeping its legacy roles valid, fixing Issue #1366."
+    next_action: Completed via Agent Ask complete-accept-canonical-roles-in-session-ledger-2026-11-10; no further action.
     expected_artifact: Evidence satisfying Agent Ask accept-canonical-roles-in-session-ledger
     clarification: clarified
     confidence: high
