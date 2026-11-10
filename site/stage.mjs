@@ -15,6 +15,7 @@ const outDir = path.resolve(process.argv[2]);
 const REPO = "https://github.com/pmark/arcadia";
 const RAW = "https://raw.githubusercontent.com/pmark/arcadia/main";
 const POST = /^(\d{4}-\d{2}-\d{2})-(.+)\.md$/;
+const TAGS_LINE = /^(?:tags|"tags"|'tags')[ \t]*:[ \t]*(.*)$/gm;
 
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(path.join(outDir, "_posts"), { recursive: true });
@@ -113,14 +114,15 @@ for (const name of readdirSync(articlesDir).sort()) {
     skipped.push(`${name}: ${why}`);
     continue;
   }
-  const tagsField = /^\[([^\]]*)\]$/.exec(field(front, "tags"));
+  const tagsLines = [...front.matchAll(TAGS_LINE)];
+  const tagsField = tagsLines.length === 1 ? /^\[([^\]]*)\]$/.exec(tagsLines[0][1].trim()) : null;
   const tags = tagsField ? tagsField[1].split(",").map(tag => tag.trim()) : [];
   if (tags.length < 1 || tags.length > 3 || new Set(tags).size !== tags.length ||
       tags.some(tag => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tag))) {
-    throw new Error(`${name}: add one to three unique lowercase tags in brackets, such as [agent-workflows, testing]`);
+    throw new Error(`${name}: add one tags line with one to three unique lowercase tags, such as tags: [agent-workflows, testing]`);
   }
   // Quoting keeps topic slugs such as "on" from becoming YAML booleans.
-  front = front.replace(/^tags:.*$/m, `tags: ${JSON.stringify(tags)}`);
+  front = front.replace(TAGS_LINE, `tags: ${JSON.stringify(tags)}`);
   const h1 = /^# +(.+)$/m.exec(text);
   if (!/^title:/m.test(front)) {
     const title = (h1 ? h1[1] : name.replace(POST, "$2")).replace(/[\\"]/g, (c) => "\\" + c);
