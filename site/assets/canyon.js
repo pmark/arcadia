@@ -363,7 +363,9 @@ function drawStars(night) {
   let displayedEntry = history.state?.fieldEntry ?? newEntry();
   history.replaceState({ ...history.state, fieldEntry:displayedEntry }, '');
   const isFieldNotesURL = url => url.origin === homeURL.origin
-    && (url.pathname === homeURL.pathname || url.pathname.startsWith(homeURL.pathname + 'posts/'));
+    && (url.pathname === homeURL.pathname
+      || url.pathname === homeURL.pathname + 'tags/'
+      || url.pathname.startsWith(homeURL.pathname + 'posts/'));
 
   async function openPage(url, { push, offset }) {
     pendingPage?.abort();
