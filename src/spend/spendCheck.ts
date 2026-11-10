@@ -139,12 +139,12 @@ function anyPresent(env: NodeJS.ProcessEnv, names: readonly string[]): boolean {
 /** A copy of `env` without any billing variable, whatever the case of its name. */
 export function stripBillingEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const billing = new Set(BILLING_ENV_NAMES);
-  // A plain record, not `NodeJS.ProcessEnv`: Next's typings make NODE_ENV required, so `{}` would not type-check in the dashboard build.
-  const kept: Record<string, string | undefined> = {};
+  // Asserted, not annotated: Next's typings make NODE_ENV required, so an annotated `{}` fails the dashboard build.
+  const kept = {} as NodeJS.ProcessEnv;
   for (const [key, value] of Object.entries(env)) {
     if (!billing.has(key.toUpperCase())) kept[key] = value;
   }
-  return kept as NodeJS.ProcessEnv;
+  return kept;
 }
 
 function isOff(value: string): boolean {
