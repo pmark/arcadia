@@ -1,4 +1,4 @@
-body { margin:0; background:var(--bg); color:var(--fg); font:1.0625rem/1.65 Georgia, "Iowan Old Style", serif; }
+body { margin:0; background:var(--canyon-edge); color:var(--fg); font:1.0625rem/1.65 Georgia, "Iowan Old Style", serif; }
 main, footer.site { max-width:44rem; margin:0 auto; padding:0 1rem; }
 footer.site { margin-top:3rem; padding-bottom:2rem; color:var(--muted); font:.875rem system-ui,sans-serif; }
 a { color:var(--link); }
@@ -21,6 +21,8 @@ blockquote { margin-left:0; padding-left:1rem; border-left:3px solid var(--rule)
 :root {
   color-scheme: light dark;
   overscroll-behavior-y: none;
+  --canyon-edge:#2c232e;
+  background-color:var(--canyon-edge);
   --bg:light-dark(#fcfbf9,#100f1a);
   --fg:light-dark(#17130f,#f4efe9);
   --muted:light-dark(#4a423b,#dfd6cc);
@@ -123,6 +125,16 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 [data-field-view="article"] .canyon-still { visibility:hidden; }
 .canyon-frame, .canyon-poster, :is([data-terrain="live"], [data-terrain="cached"]) .canyon-still { visibility:hidden; }
 [data-terrain="live"] .canyon-frame, [data-terrain="cached"] .canyon-poster { visibility:visible; }
+/* Match the page color Safari can extend behind its bottom toolbar. */
+.canyon-page::after {
+  content:"";
+  position:fixed;
+  inset:auto 0 0;
+  height:calc(3rem + env(safe-area-inset-bottom, 0px));
+  z-index:-1;
+  pointer-events:none;
+  background:linear-gradient(transparent, var(--canyon-edge));
+}
 @media (prefers-reduced-motion: reduce) {
   [data-terrain] .canyon-frame, [data-terrain] .canyon-poster { visibility:hidden; }
   [data-field-view="feed"] .canyon-still { visibility:visible; }
@@ -183,9 +195,9 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 }
 .posts h2 a:hover { color: var(--link); }
 .posts p { max-width: 44ch; }
-.canyon-page footer.site { max-width: 35rem; width: calc(100% - 1.75rem); padding: .75rem 1rem; margin-bottom: 2rem; background: var(--bg); border-radius: .625rem; }
+.canyon-page footer.site { max-width: 35rem; width: calc(100% - 1.75rem); padding: .75rem 1rem; margin-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-radius: .625rem; }
 @media (forced-colors: active) {
-  .canyon-landscape { display:none !important; }
+  .canyon-landscape, .canyon-page::after { display:none !important; }
   .field-hero { color: CanvasText; text-shadow: none; }
   .brand-mark path { stroke: LinkText; }
   .brand-mark circle { fill: LinkText; }

@@ -26,7 +26,7 @@
   const UP_ANGLE = 24;
   const ASCENT_ANGLE = 44;
   const SCROLL_FRAME_MS = 1000 / 60;
-  const SCROLL_RETENTION = .975;
+  const SCROLL_RETENTION = .9;
   const SCROLL_SETTLE_PX = .5;
   const STATE_KEY = 'field-notes-camera-v1';
   const FRAME_KEY = STATE_KEY + '-frame';
