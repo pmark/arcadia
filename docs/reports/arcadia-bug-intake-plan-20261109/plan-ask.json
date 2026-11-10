@@ -1,0 +1,140 @@
+{
+ "agent_ask": "v1",
+ "request_id": "plan-arcadia-bug-intake-slice-b-v2-20261109",
+ "project": "arcadia",
+ "intent": "plan",
+ "requested_authority": "apply_if_approved",
+ "desired_result": "Build arcadia bug slice B (operator choice 2026-11-09): a zero-model, dedupe-first bug intake that extends the existing arcadia defect signal with GitHub reconciliation, so any agent files a bug in one command and gets exactly one outcome (CREATED, with regression_of when a completed Issue recurs; APPENDED with recurrence count; LINKED; or QUEUED when GitHub is unreachable), plus promotion of recurring defect-shaped arcadia learn lessons through the same intake from the weekly triage.",
+ "rationale": "Operator request 2026-11-09 (Issue #2379; proposal receipt agentask_df9fdc3ecaeb817fc2). The operator answered the first-slice question in chat on 2026-11-09 with B (verbatim: \"B: plus promotion\"); that answer still has to be recorded by settling decision Ask decision-arcadia-bug-first-slice-v2-20261109 (receipt agentask_7fa9afdefe782635e1). Decision 0121 chose arcadia bug and deferred the build; Decision 0049 approved the arcadia defect intake that already fingerprints, merges evidence and scores similarity but has zero live signals and never reaches GitHub; red-alert diagnosis already has a marker-search, comment-or-create GitHub filer behind an injectable GhRunner. Reuse both. Index is GitHub read per call through the listing API (940 Issues, about 7 s), no projection; unreachable GitHub yields QUEUED with no write. Never closes, reopens, relabels or retitles an Issue and never writes an Action, Decision, pointer, queue, Plan or PROJECT.md. Promotion risk controls: the promoter runs only after the matcher is proven on the live backlog, only from an explicit caller (the weekly triage), previews by default, and promotes only defect-shaped lessons (a code component or error signature plus a failure statement, not only a document path, and not low confidence) with recurrence of at least 3 distinct sources and at least one observation or operator_statement version. Token impact: small; zero runtime model calls; a light-model tie-break and a local projection are deferred with triggers in the memo. Creates an inactive draft Plan; the operator settles and activates. Supersedes slice A previews plan-arcadia-bug-intake-slice-a-20261109, -v2- and -v3- (latest receipt agentask_bb99d16cee9e1fcf55); also supersedes plan-arcadia-bug-intake-slice-b-20261109 (receipt agentask_3ffe439f3e7933eb80) after the scope-change review; settle only this v2. Memo: docs/reports/arcadia-bug-intake-plan-20261109/memo.md",
+ "references": [
+  "https://github.com/pmark/arcadia/issues/2379",
+  "docs/decisions/0121-decide-whether-and-how-arcadia-sessions-get-a-supervisor-that-watches-for.md",
+  "docs/decisions/0049-add-a-one-line-defect-intake-whose-periodically-token-budgeted-back-burner-proce.md",
+  "docs/reports/arcadia-bug-intake-plan-20261109/memo.md"
+ ],
+ "actions": [
+  {
+   "id": "bug-report-key-and-match",
+   "execution": "build",
+   "desired_result": "Write failing tests, then implement the pure normalizer and matcher for bug reports in src/bug/key.ts and src/bug/match.ts, reusing summaryTokens and summarySimilarity from src/defect/signal.ts. The fixture lives beside the Action's own test as a checked-in JSON file named for the Action.",
+   "why": "The key and matcher are the vital few: every outcome and the deferred slice B reuse them, so they are calibrated first on real reports.",
+   "acceptance": [
+    "tests/bug-report-key-and-match.test.ts extracts component, error signature and symptom tokens from reports and gives the same key for two paraphrases that name the same component and error code.",
+    "The checked-in fixture holds, for each of Issues 2367 to 2370, a calibration paraphrase and a separate held-out paraphrase written without copying the Issue text, plus at least 20 unrelated bug Issues; thresholds are pinned from the calibration paraphrases only.",
+    "The test proves every held-out paraphrase matches its own Issue and none of the unrelated Issues at the pinned thresholds.",
+    "The test proves the classification bands exact, similar, ambiguous and none, and that a shared key with token overlap below 0.3 is not a match.",
+    "No model, network or database call occurs in these functions, proven by the test running with no workspace and no gh."
+   ],
+   "dependencies": []
+  },
+  {
+   "id": "bug-github-issue-index",
+   "execution": "build",
+   "desired_result": "Write failing tests, then implement src/bug/githubIndex.ts: a bounded read of the owning repository's Issues through an injected GhRunner: one all-state Issue listing with stateReason (not the search index, which lags writes), an optional body-marker search as a shortcut, then bodies and comments for at most five candidates, and a live state re-read before any write.",
+   "why": "GitHub is the dedupe index; reading it safely and failing closed is what prevents a blind duplicate.",
+   "acceptance": [
+    "tests/bug-github-issue-index.test.ts drives a fake GhRunner and proves one read issues at most two list or search calls, one body-and-comments read per candidate for at most five candidates, and one live re-read, and returns open and closed candidates with stateReason.",
+    "The test proves Arcadia markers are found and counted in candidate comments as well as bodies, and that an Issue created moments earlier is found through the listing even when the marker search returns nothing.",
+    "Any gh failure, signed-out state, rate limit or partial page yields a typed unreachable result, never an empty candidate list, proven by the test.",
+    "The module performs no gh write, proven by the fake runner rejecting every create, comment, edit, close and reopen argument."
+   ],
+   "dependencies": []
+  },
+  {
+   "id": "bug-intake-outcomes",
+   "execution": "build",
+   "desired_result": "Write failing tests, then implement src/bug/intake.ts (including the syncQueued replay function) and a bug_receipts table in src/db/schema.ts: record the report as a defect signal with source cli.bug, match it, and return exactly one outcome with a receipt, writing only Issue create and comment in the owning repository.",
+   "why": "This is the operator's ask in one function: one outcome, no duplicate, nothing lost when GitHub is down.",
+   "acceptance": [
+    "tests/bug-intake-outcomes.test.ts proves a first report yields CREATED and the same defect reworded with new evidence yields APPENDED with recurrence count 2, counted from markers in the Issue body and comments.",
+    "The test proves a match closed as completed yields CREATED with regression_of naming the closed Issue and no reopen, a match closed as not planned or duplicate yields APPENDED with closed_not_planned true, and a match referenced by an unfinished Action in any Plan yields LINKED naming that Plan and Action.",
+    "The test proves that when an open Issue and a closed-completed Issue both match, the report is APPENDED to the open Issue and no further regression Issue is created.",
+    "The test proves an unreachable index yields QUEUED with a durable defect signal and zero GitHub writes, and that syncQueued runs the full match before any write and leaves a reachable-but-still-failing signal queued.",
+    "The test proves an exact replay returns the stored receipt with zero GitHub writes, and that with an empty receipt store the request fingerprint marker found in an earlier comment or body yields the same outcome without a new write.",
+    "A write spy in the test proves no path writes an Action, Decision, pointer, queue, Plan or PROJECT.md, and no path closes, reopens, relabels or retitles an Issue."
+   ],
+   "dependencies": [
+    "bug-report-key-and-match",
+    "bug-github-issue-index"
+   ]
+  },
+  {
+   "id": "bug-cli-command",
+   "execution": "build",
+   "desired_result": "Write failing tests, then register arcadia bug in src/cli.ts with src/commands/bug.ts: a report argument, --scope project:<slug>, repeatable --evidence, --dry-run, --json, plus a bug sync subcommand that only wires syncQueued from the intake Action and a bug list --since subcommand.",
+   "why": "One command is the whole interface the operator asked for; dry-run lets supervisors and triage preview without writing.",
+   "acceptance": [
+    "tests/bug-cli-command.test.ts runs the command against a fixture workspace with an injected fake GhRunner and proves each outcome renders as one line naming the outcome, the Issue number and the receipt id, and as JSON with the same fields.",
+    "The test proves --dry-run computes the outcome with zero GitHub writes and zero database writes.",
+    "The test proves bug sync replays only QUEUED signals and bug list --since returns receipts in time order."
+   ],
+   "dependencies": [
+    "bug-intake-outcomes"
+   ]
+  },
+  {
+   "id": "bug-stopgap-replay-proof",
+   "execution": "build",
+   "desired_result": "Prove the shipped command on the live repository and record it in a new evidence report named arcadia-bug-stopgap-replay-proof under the reports folder: dry-run the held-out paraphrases of the four stopgap reports, then prove idempotence with one real live comment, its replay, and a replay from an empty receipt store.",
+   "why": "Acceptance on the real backlog is the only proof that the matcher works where duplicates actually happen.",
+   "acceptance": [
+    "The evidence report shows each held-out paraphrase of the four stopgap reports, dry-run against the live repository, maps to its own Issue (2367, 2368, 2369, 2370) with APPENDED or LINKED and no CREATED.",
+    "The evidence report shows one live run against Issue 2370 adds exactly one real comment, an identical replay adds none, and a replay from a fresh empty receipt store adds none, with every receipt id and the comment URL.",
+    "The evidence report records the measured wall time and gh call count of each live call."
+   ],
+   "dependencies": [
+    "bug-cli-command"
+   ]
+  },
+  {
+   "id": "lesson-recurrence-count",
+   "execution": "build",
+   "desired_result": "Write failing tests, then implement src/learning/recurrence.ts: a read-only recurrence count per current lesson in one scope, equal to its distinct observation sources (by source reference, not by revision) plus other current lessons in that scope that the bug matcher classes as exact or similar.",
+   "why": "arcadia learn dedupes only exact replays, so a lesson that recurs in new words never looks recurring; promotion needs one honest count.",
+   "acceptance": [
+    "tests/lesson-recurrence-count.test.ts proves the count equals distinct observation sources plus similar current lessons in the same scope, that one source observed at several revisions counts once, and that lessons in other scopes never count.",
+    "The test proves retracted and superseded versions are excluded and that two lessons in the ambiguous band do not count toward each other.",
+    "The test proves the function performs no write to any lesson table and no model or network call."
+   ],
+   "dependencies": [
+    "bug-report-key-and-match"
+   ]
+  },
+  {
+   "id": "promote-recurring-lessons",
+   "execution": "build",
+   "desired_result": "Write failing tests, then implement src/bug/promote.ts and wire a bug promote subcommand into src/commands/bug.ts: list current lessons whose recurrence is at least a threshold (default 3) and whose text is defect-shaped (a code component or error signature together with a failure statement), preview the intake outcome for each by default, and with --apply file each through the same intake exactly once. Each promotion's evidence is the lesson id and current version id only, and every preview and apply run is written to a checked-in evidence report named arcadia-bug-promotion-preview under the reports folder.",
+   "why": "This closes the gap that made the record run's lessons depend on someone remembering to file them, while keeping process insights as lessons rather than bugs.",
+   "acceptance": [
+    "tests/promote-recurring-lessons.test.ts proves a defect-shaped lesson at the threshold yields one intake outcome on apply, and that a second apply in a later week with the lesson unchanged but its count higher yields zero new GitHub writes.",
+    "The test proves promotion evidence is exactly the lesson id and current version id, so the request fingerprint does not change when the recurrence count changes.",
+    "The test proves each of these is listed as not promoted with a reason: a lesson below the threshold; a lesson with neither a code component nor an error signature; a lesson whose only component is a document path; a lesson with no failure statement; a lesson whose current version has low confidence; and a lesson whose versions are all inference or imported provenance.",
+    "The test proves promote without --apply performs zero GitHub writes and zero database writes, and that an unreachable index leaves each candidate QUEUED.",
+    "A write spy in the test proves promotion never edits, retracts or corrects a lesson and never writes an Action, Decision, pointer, queue, Plan or PROJECT.md.",
+    "The arcadia-bug-promotion-preview evidence report records a preview run against the live workspace's Arcadia lessons with each candidate's count, reason and would-be outcome, and states that the run made no Issue write."
+   ],
+   "dependencies": [
+    "bug-cli-command",
+    "bug-stopgap-replay-proof",
+    "lesson-recurrence-count"
+   ]
+  },
+  {
+   "id": "bug-guidance-and-skills",
+   "execution": "build",
+   "desired_result": "Make arcadia bug the documented defect path: update the commands reference, the arcadia-supervisor and arcadia-github-issues shared skills, and the Log defects section of the principles guidance, keeping GitHub Issues as the home and the bootstrap unchanged. These skill paths are not worker-merge-safe, so the PR merges only through an interactive session under Decisions 0060 and 0080.",
+   "why": "Without the guidance change no agent's filing behavior changes, so the shipped command would sit unused like arcadia defect did. As the last Action it also carries the Plan's completion settlement.",
+   "acceptance": [
+    "The commands reference and the supervisor skill no longer call arcadia bug unavailable and each shows the one-line usage.",
+    "The GitHub-issues skill runs bug sync, a bug promote preview followed by bug promote --apply, and reads bug list --since as the weekly triage input.",
+    "The Log defects section of the principles guidance names arcadia bug as the search-first, file-once path and still names the owning repository's Issues as the home.",
+    "pnpm check:agent-guidance passes and node --import tsx scripts/check-agent-skills.ts passes on the candidate head.",
+    "Native skill discovery is reported separately for Codex, Claude Code and OpenCode, apart from the filesystem check that both skill directories resolve to the same sources.",
+    "A complete Ask for this final Action previews without refusal on the candidate head before push."
+   ],
+   "dependencies": [
+    "promote-recurring-lessons"
+   ]
+  }
+ ]
+}

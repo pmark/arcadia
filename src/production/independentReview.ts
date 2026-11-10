@@ -171,6 +171,10 @@ export interface ReviewStepRow {
   backoff_started_at: string | null;
   /** The last polled outcome, replayed between polls so the escalation stays stable. */
   last_outcome_json: string | null;
+  /** When the worker's one automatic re-trigger of this head's required checks began (recorded before its first GitHub call). */
+  checks_retrigger_at: string | null;
+  /** That re-trigger's {@link ChecksRetrigger} record. */
+  checks_retrigger_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -195,6 +199,8 @@ export function ensureProductionReviewStepTable(db: Database.Database): void {
       backoff_until TEXT,
       backoff_started_at TEXT,
       last_outcome_json TEXT,
+      checks_retrigger_at TEXT,
+      checks_retrigger_json TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -215,7 +221,9 @@ const REVIEW_STEP_ADDED_COLUMNS: ReadonlyArray<readonly [string, string]> = [
   ["total_failures", "INTEGER NOT NULL DEFAULT 0"],
   ["backoff_until", "TEXT"],
   ["backoff_started_at", "TEXT"],
-  ["last_outcome_json", "TEXT"]
+  ["last_outcome_json", "TEXT"],
+  ["checks_retrigger_at", "TEXT"],
+  ["checks_retrigger_json", "TEXT"]
 ];
 
 /** The step row's request id: one per Session and exact settled head, so a moved head starts fresh. */
@@ -313,6 +321,82 @@ function varianceFromReceipt(json: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/* ------------------------------------------------------------------------ */
+/* The worker's one automatic re-trigger of a head's required checks.         */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * The worker's one re-trigger of required checks that never started or are
+ * stuck on one exact head (Decision 0175: recovery that keeps a run clean;
+ * pmark/arcadia#2062 lost its CI event in a GitHub outage). Recorded before
+ * its first GitHub call, so a restart never re-triggers the same head twice.
+ *
+ * - `reopen`: no gating check ever reported on the head (the pull_request
+ *   event was lost). Closing and reopening the PR is GitHub's one supported way
+ *   to re-send that event for an unchanged head; nothing else about it changes.
+ * - `rerun`: every gating check still running after the whole checks window
+ *   is a GitHub Actions run of the PR's own repository, verified on this head.
+ *   Each run is cancelled, then, once GitHub reports it cancelled, re-run
+ *   (`gh run rerun`), so its new attempt replaces the stuck one in the rollup.
+ *
+ * A completed failure is never re-triggered: a failed check takes the
+ * `required_checks_failed` path before any timeout, and a check
+ * `judgeRequiredChecksFailure` attributed to the candidate stops it too.
+ */
+interface ChecksRetrigger {
+  route: "reopen" | "rerun";
+  /** For `rerun`: the stuck GitHub Actions run ids on the head. */
+  runIds: string[];
+  /** `rerun` passes through `cancelled`; `failed` is a GitHub error after the record (escalated as before). */
+  phase: "requested" | "cancelled" | "done" | "failed";
+  detail: string | null;
+}
+
+function parseChecksRetrigger(json: string | null): ChecksRetrigger | null {
+  if (!json) return null;
+  try {
+    const value = JSON.parse(json) as Partial<ChecksRetrigger>;
+    if ((value.route !== "reopen" && value.route !== "rerun") || !Array.isArray(value.runIds) || typeof value.phase !== "string") return null;
+    return { route: value.route, runIds: value.runIds.map(String), phase: value.phase, detail: typeof value.detail === "string" ? value.detail : null };
+  } catch {
+    return null;
+  }
+}
+
+/** `owner/name` of a github.com pull-request URL, or null. */
+function pullRequestRepository(url: string): string | null {
+  return /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/\d+(?:[/?#]|$)/.exec(url)?.[1] ?? null;
+}
+
+/** The GitHub Actions run id a check's details URL names, only for a run of `repository` itself. */
+function actionsRunId(url: string | null, repository: string): string | null {
+  const match = url ? /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/actions\/runs\/(\d+)(?:[/?#]|$)/.exec(url) : null;
+  return match && match[1].toLowerCase() === repository.toLowerCase() ? match[2] : null;
+}
+
+/** Conclusions a cancelled run leaves on its jobs: its own cancellation and the jobs that never ran after it. */
+const CANCELLED_CONCLUSIONS = new Set(["CANCELLED", "SKIPPED"]);
+
+/**
+ * Which re-trigger, if any, a timed-out rollup allows. `none` (no gating check
+ * ever reported) is checks that never started; `pending` is re-triggered only
+ * when every check still running is a GitHub Actions run of the PR's
+ * repository (a status context or another app's check has no supported re-run).
+ */
+function planChecksRetrigger(rollup: ReadonlyArray<PullRequestCheckRun>, state: "none" | "pending", repository: string | null):
+  { route: "reopen" } | { route: "rerun"; runIds: string[] } | { refused: string } {
+  if (!repository) return { refused: "the pull request URL does not name a github.com repository" };
+  if (state === "none") return { route: "reopen" };
+  const runIds = new Set<string>();
+  for (const check of readPullRequestChecks(rollup).gating) {
+    if (check.status?.toUpperCase() === "COMPLETED" && check.conclusion) continue;
+    const id = actionsRunId(check.url, repository);
+    if (!id) return { refused: `the stuck check ${check.name} is not a GitHub Actions run of ${repository}, so GitHub offers no re-run for it` };
+    runIds.add(id);
+  }
+  return runIds.size > 0 ? { route: "rerun", runIds: [...runIds] } : { refused: "no stuck check names a run" };
 }
 
 /**
@@ -931,6 +1015,59 @@ export function advanceIndependentReview(db: Database.Database, input: {
       step = read();
     }
 
+    // The worker's one re-trigger of this exact head's required checks (see
+    // ChecksRetrigger), read from any review row for the head, never another.
+    const retriggerOnHead = (): { requestId: string; at: string; record: ChecksRetrigger | null } | null => {
+      const row = db.prepare(`SELECT request_id, checks_retrigger_at, checks_retrigger_json FROM production_review_steps
+        WHERE target_head = ? AND checks_retrigger_at IS NOT NULL ORDER BY checks_retrigger_at, rowid LIMIT 1`).get(head) as
+        { request_id: string; checks_retrigger_at: string; checks_retrigger_json: string | null } | undefined;
+      return row ? { requestId: row.request_id, at: row.checks_retrigger_at, record: parseChecksRetrigger(row.checks_retrigger_json) } : null;
+    };
+    const setRetrigger = (requestId: string, record: ChecksRetrigger | null, startedAt: string | null = at): void => {
+      db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ?, updated_at = ? WHERE request_id = ?")
+        .run(record ? startedAt : null, record ? JSON.stringify(record) : null, at, requestId);
+    };
+    const describeRetrigger = (record: ChecksRetrigger | null): string => record?.route === "rerun"
+      ? `cancel and re-run of GitHub Actions run(s) ${record.runIds.join(", ")}`
+      : "close and reopen of the PR to re-send its pull_request event";
+    const repository = pullRequestRepository(url);
+    const ghFailure = (result: ReturnType<typeof runCommand>): string => result.error ?? (result.stderr.trim() || `exit ${String(result.status)}`);
+    /**
+     * Reopen the PR the worker closed: up to three attempts, stopping early on a
+     * rate limit (the caller backs off). Returns the last failure, or null.
+     */
+    const reopenPullRequest = (): string | null => {
+      let detail: string | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const reopened = runCommand({ command: "gh", args: ["pr", "reopen", url], cwd: repoRoot, timeoutMs: 30_000 });
+        if (reopened.status === 0) return null;
+        detail = `gh pr reopen failed: ${ghFailure(reopened)}`;
+        if (RATE_LIMITED.test(detail)) break;
+      }
+      return detail;
+    };
+
+    // Invariant: a PR the worker closed is reopened. A reopen-route re-trigger
+    // record on this head that is not done, with the PR CLOSED (never MERGED)
+    // on that same head, means a crash between close and reopen or a failed
+    // reopen: reopen it here, before any closed-PR handling, and retry every poll.
+    const closedByWorker = retriggerOnHead();
+    if (closedByWorker?.record?.route === "reopen" && closedByWorker.record.phase !== "done"
+      && pr.state.toUpperCase() === "CLOSED" && pr.headRefOid === head) {
+      const detail = reopenPullRequest();
+      if (detail === null) {
+        setRetrigger(closedByWorker.requestId, { ...closedByWorker.record, phase: "done" }, closedByWorker.at);
+        input.log?.(`Reopened ${url} for ${actionKey}: the worker had closed it for its one checks re-trigger.`);
+        return { kind: "waiting", reason: `Reopened ${url}, which the worker closed for its one checks re-trigger on ${head.slice(0, 12)}; waiting for its checks.` };
+      }
+      return rateLimited("checks-retrigger", detail) ?? {
+        kind: "blocked",
+        code: "review_pull_request_unavailable",
+        reason: `PR ${url} is CLOSED: the worker closed it for its one checks re-trigger and could not reopen it (${detail}); no verdict is requested.`,
+        remedy: `Reopen it with \`gh pr reopen ${url}\`; the tick also retries the reopen every poll.`
+      };
+    }
+
     // The worker returns a PR to draft itself when it records a real failed
     // verdict on it (src/production/reviewRepair.ts), so a draft whose exact
     // head carries one reports that verdict, never a person pausing the review;
@@ -1122,6 +1259,55 @@ export function advanceIndependentReview(db: Database.Database, input: {
       };
     }
     const checks = classifyPullRequestChecks(pr.statusCheckRollup);
+
+    /** Today's escalation, with what the automatic re-trigger did (or why it did not run) appended. */
+    const checksTimeout = (note: string, remedyNote = ""): ReviewStepOutcome => {
+      const waited = now.getTime() - Date.parse(step.checks_started_at!);
+      return {
+        kind: "blocked",
+        code: "required_checks_timeout",
+        reason: `Required checks on ${url} at ${head.slice(0, 12)} are still not green after ${Math.round(waited / 60_000)} minute(s): ${checks.blockers.join(" ")}${note}`,
+        remedy: `${remedyNote}Make the PR's checks run and finish (a required workflow must report on ${head.slice(0, 12)}); the tick reviews as soon as they are green, or run \`arcadia production reset-repair-budget ${actionKey}\` to restart the wait.`
+      };
+    };
+    const retriggerWindowOpen = (startedAt: string): boolean => now.getTime() - Date.parse(startedAt) < checksDeadlineMs;
+
+    // A `rerun` re-trigger cancelled its stuck runs: once GitHub reports every
+    // one cancelled, re-run them. Only the runs it cancelled itself, and only
+    // while nothing else is red: a real failure is never re-run.
+    const recorded = retriggerOnHead();
+    if (recorded?.record?.route === "rerun" && (recorded.record.phase === "cancelled" || recorded.record.phase === "failed")) {
+      const record = recorded.record;
+      const open = readPullRequestChecks(pr.statusCheckRollup).gating
+        .filter((check) => check.shape === "unknown" || check.status?.toUpperCase() !== "COMPLETED" || check.conclusion?.toUpperCase() !== "SUCCESS");
+      const ours = open.length > 0 && repository !== null && open.every((check) => {
+        const id = actionsRunId(check.url, repository);
+        const finished = check.status?.toUpperCase() === "COMPLETED" && check.conclusion;
+        return id !== null && record.runIds.includes(id) && (!finished || CANCELLED_CONCLUSIONS.has(check.conclusion!.toUpperCase()));
+      });
+      if (ours) {
+        const cancelling = open.some((check) => check.status?.toUpperCase() !== "COMPLETED" || !check.conclusion);
+        if (record.phase === "failed" || (cancelling && !retriggerWindowOpen(recorded.at))) {
+          return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) at ${recorded.at} ${record.phase === "failed" ? `failed: ${record.detail ?? "unknown"}` : "never saw the runs cancelled"}; a head is re-triggered once.`,
+            `Re-run GitHub Actions run(s) ${record.runIds.join(", ")} on GitHub. `);
+        }
+        if (cancelling) return { kind: "waiting", reason: `Waiting for GitHub to cancel the stuck run(s) ${record.runIds.join(", ")} on ${head.slice(0, 12)} before their one re-run.` };
+        const fenced = authorityChanged();
+        if (fenced) return { kind: "waiting", reason: `Withheld re-running the cancelled checks: ${fenced}.` };
+        for (const id of record.runIds) {
+          const rerun = runCommand({ command: "gh", args: ["run", "rerun", id, "--repo", repository], cwd: repoRoot, timeoutMs: 30_000 });
+          if (rerun.status !== 0) {
+            const detail = `gh run rerun ${id} failed: ${ghFailure(rerun)}`;
+            setRetrigger(recorded.requestId, { ...record, phase: "failed", detail }, recorded.at);
+            return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) at ${recorded.at} failed: ${detail}; a head is re-triggered once.`,
+              `Re-run GitHub Actions run(s) ${record.runIds.join(", ")} on GitHub. `);
+          }
+        }
+        setRetrigger(recorded.requestId, { ...record, phase: "done" }, recorded.at);
+        return { kind: "waiting", reason: `Re-ran the cancelled GitHub Actions run(s) ${record.runIds.join(", ")} on ${head.slice(0, 12)}; waiting for their checks.` };
+      }
+    }
+
     if (checks.state === "failed") {
       const unknown = checks.unknown.length > 0
         ? ` Unknown check entry shape(s) ${checks.unknown.join(", ")}: Arcadia cannot read their state; extend normalizeStatusCheck (src/workMonitoring/pullRequests.ts) for that shape or remove the reporter.`
@@ -1138,15 +1324,101 @@ export function advanceIndependentReview(db: Database.Database, input: {
       // Branch protection reports BLOCKED while required checks still run, so
       // BLOCKED only means something once they are all green.
       const waited = now.getTime() - Date.parse(step.checks_started_at!);
-      if (waited >= checksDeadlineMs) {
-        return {
-          kind: "blocked",
-          code: "required_checks_timeout",
-          reason: `Required checks on ${url} at ${head.slice(0, 12)} are still not green after ${Math.round(waited / 60_000)} minute(s): ${checks.blockers.join(" ")}`,
-          remedy: `Make the PR's checks run and finish (a required workflow must report on ${head.slice(0, 12)}); the tick reviews as soon as they are green, or run \`arcadia production reset-repair-budget ${actionKey}\` to restart the wait.`
-        };
+      if (waited < checksDeadlineMs) return { kind: "waiting", reason: `Waiting for required checks on ${url}: ${checks.blockers.join(" ")}` };
+      // Timed out on this unchanged head (a moved head returned above). The
+      // worker re-triggers checks that never started or are stuck once per
+      // head, waits one more window, then escalates exactly as before.
+      if (recorded) {
+        if (recorded.record?.phase !== "failed" && retriggerWindowOpen(recorded.at)) {
+          return { kind: "waiting", reason: `Waiting for the required checks the worker re-triggered once on ${head.slice(0, 12)} at ${recorded.at} (${describeRetrigger(recorded.record)}): ${checks.blockers.join(" ")}` };
+        }
+        const failed = recorded.record?.phase === "failed" ? ` failed: ${recorded.record.detail ?? "unknown"}` : " did not turn them green";
+        return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(recorded.record)}) at ${recorded.at}${failed}; a head is re-triggered once.`);
       }
-      return { kind: "waiting", reason: `Waiting for required checks on ${url}: ${checks.blockers.join(" ")}` };
+      // A red-checks failure the repair loop attributed to the candidate on this
+      // head is the candidate's own: it is never re-triggered.
+      ensureReviewRepairTable(db);
+      const attributed = getReviewRepair(db, requiredChecksRepairRequestId(session.id, head));
+      if (attributed && attributed.outcome !== "released") {
+        return checksTimeout(` No automatic re-trigger: a required-checks failure on this head was attributed to the candidate (${attributed.outcome}).`);
+      }
+      const plan = planChecksRetrigger(pr.statusCheckRollup, checks.state, repository);
+      if ("refused" in plan) return checksTimeout(` No automatic re-trigger: ${plan.refused}.`);
+      // Each stuck run must really be an unfinished run on exactly this head.
+      if (plan.route === "rerun") {
+        for (const id of plan.runIds) {
+          const viewed = runCommand({ command: "gh", args: ["run", "view", id, "--repo", repository!, "--json", "headSha,status"], cwd: repoRoot, timeoutMs: 30_000 });
+          if (viewed.status !== 0) {
+            const detail = ghFailure(viewed);
+            return rateLimited("checks-retrigger", detail) ?? checksTimeout(` The automatic re-trigger could not read GitHub Actions run ${id}: ${detail}.`);
+          }
+          let run: { headSha?: unknown; status?: unknown };
+          try { run = JSON.parse(viewed.stdout) as typeof run; } catch { run = {}; }
+          if (run.headSha !== head || typeof run.status !== "string" || run.status.toLowerCase() === "completed") {
+            return checksTimeout(` No automatic re-trigger: GitHub Actions run ${id} is not an unfinished run on ${head.slice(0, 12)} (head ${String(run.headSha ?? "unknown").slice(0, 12)}, ${String(run.status ?? "unknown")}).`);
+          }
+        }
+      }
+      const fenced = authorityChanged();
+      if (fenced) return { kind: "waiting", reason: `Withheld re-triggering the required checks: ${fenced}.` };
+      if (plan.route === "reopen") {
+        // Narrow the race with a push, merge or draft since the poll's read.
+        const again = runCommand({ command: "gh", args: ["pr", "view", url, "--json", "state,isDraft,headRefOid"], cwd: repoRoot, timeoutMs: 30_000 });
+        let fresh: { state?: unknown; isDraft?: unknown; headRefOid?: unknown } = {};
+        if (again.status === 0) { try { fresh = JSON.parse(again.stdout) as typeof fresh; } catch { fresh = {}; } }
+        if (again.status !== 0 || String(fresh.state).toUpperCase() !== "OPEN" || fresh.isDraft === true || fresh.headRefOid !== head) {
+          const why = again.status !== 0 ? ghFailure(again) : "the PR changed since the poll";
+          return (again.status !== 0 ? rateLimited("checks-retrigger", why) : null)
+            ?? { kind: "waiting", reason: `Withheld closing ${url} to re-trigger its checks: ${why}; the next poll decides.` };
+        }
+      }
+      const record: ChecksRetrigger = { route: plan.route, runIds: plan.route === "rerun" ? plan.runIds : [], phase: "requested", detail: null };
+      // Recorded before the first GitHub call: a crash after it never re-triggers this head again.
+      setRetrigger(requestId, record);
+      if (plan.route === "reopen") {
+        const closeResult = runCommand({ command: "gh", args: ["pr", "close", url], cwd: repoRoot, timeoutMs: 30_000 });
+        if (closeResult.status !== 0) {
+          const closeDetail = `gh pr close failed: ${ghFailure(closeResult)}`;
+          // A rate limit changed nothing on GitHub: forget the record and back off.
+          if (RATE_LIMITED.test(closeDetail)) {
+            setRetrigger(requestId, null);
+            return rateLimited("checks-retrigger", closeDetail)!;
+          }
+          // The close may have reached GitHub before it failed or timed out: look.
+          const after = runCommand({ command: "gh", args: ["pr", "view", url, "--json", "state"], cwd: repoRoot, timeoutMs: 30_000 });
+          let state = "";
+          if (after.status === 0) { try { state = String((JSON.parse(after.stdout) as { state?: unknown }).state).toUpperCase(); } catch { state = ""; } }
+          if (state === "OPEN") {
+            setRetrigger(requestId, { ...record, phase: "failed", detail: closeDetail });
+            return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) failed: ${closeDetail}.`);
+          }
+          // CLOSED, or unknown (the read failed): attempt the reopen either way.
+        }
+        const reopenDetail = reopenPullRequest();
+        if (reopenDetail !== null) {
+          // The reconcile at the top of every poll keeps retrying the reopen.
+          setRetrigger(requestId, { ...record, phase: "failed", detail: reopenDetail });
+          return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) failed: ${reopenDetail}.`,
+            `The PR is closed: reopen it with \`gh pr reopen ${url}\` (the tick also retries). `);
+        }
+      } else {
+        for (const [index, id] of plan.runIds.entries()) {
+          const result = runCommand({ command: "gh", args: ["run", "cancel", id, "--repo", repository!], cwd: repoRoot, timeoutMs: 30_000 });
+          if (result.status === 0) continue;
+          const detail = `gh run cancel ${id} failed: ${ghFailure(result)}`;
+          // A rate limit on the very first call changed nothing on GitHub: forget
+          // the record and back off, so the one re-trigger is still to come.
+          if (index === 0 && RATE_LIMITED.test(detail)) {
+            setRetrigger(requestId, null);
+            return rateLimited("checks-retrigger", detail)!;
+          }
+          setRetrigger(requestId, { ...record, phase: "failed", detail });
+          return checksTimeout(` The worker's one automatic re-trigger of this head (${describeRetrigger(record)}) failed: ${detail}.`);
+        }
+      }
+      setRetrigger(requestId, { ...record, phase: plan.route === "rerun" ? "cancelled" : "done" });
+      input.log?.(`Re-triggered the required checks of ${actionKey} at ${head.slice(0, 12)} once (${describeRetrigger(record)}) after ${Math.round(waited / 60_000)} minute(s): ${checks.blockers.join(" ")}`);
+      return { kind: "waiting", reason: `Re-triggered the required checks on ${head.slice(0, 12)} once (${describeRetrigger(record)}); waiting one more checks window.` };
     }
     if (mergeState === "BLOCKED") {
       return {

@@ -91,6 +91,21 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# .env files beside the compose file and in the LiteLLM directory; the same file reached by two paths counts once
+ENVFILES=()
+collect_envfiles() {
+  local f g dup
+  ENVFILES=()
+  for f in "$(dirname "${COMPOSE}")/.env" "$(dirname "${COMPOSE}")/.env.local" "${DIR}/.env" "${DIR}/.env.local"; do
+    [ -f "${f}" ] || continue
+    dup=false
+    for g in ${ENVFILES[@]+"${ENVFILES[@]}"}; do
+      if [ "${f}" -ef "${g}" ]; then dup=true; fi
+    done
+    if ! ${dup}; then ENVFILES+=("${f}"); fi
+  done
+}
+
 if ${DIAGNOSE}; then
   CONFIG="${CONFIG:-${DIR}/litellm_config.docker.yaml}"
   if [ -z "${COMPOSE}" ]; then
@@ -98,7 +113,8 @@ if ${DIAGNOSE}; then
     [ -f "${COMPOSE}" ] || COMPOSE="${DIR}/docker-compose.yaml"
   fi
   command -v python3 >/dev/null || die "python3 is required" 3
-  python3 -I "${HERE}/lib/harden_litellm_edit.py" diagnose "${CONFIG}" "${COMPOSE}" "${DIR}/.env" "${DIR}/.env.local"
+  collect_envfiles
+  python3 -I "${HERE}/lib/harden_litellm_edit.py" diagnose "${CONFIG}" "${COMPOSE}" ${ENVFILES[@]+"${ENVFILES[@]}"}
   exit 0
 fi
 [ -n "${BUDGET}" ] || die "--budget-usd is required: there is no default budget. Choose an amount and pass it."
@@ -139,8 +155,11 @@ CURRENT_LISTENERS="$(listeners)"
 say "  current listeners on :4000: ${CURRENT_LISTENERS:-none}"
 
 kc_has() { security find-generic-password "${KC_ARGS[@]}" >/dev/null 2>&1; }
+collect_envfiles
+find_key() { "${EDIT[@]}" key-find --env-var "${ENV_VAR}" "$@" "${CONFIG}" "${COMPOSE}" ${ENVFILES[@]+"${ENVFILES[@]}"}; }
 HAS_LITERAL=false
-if "${EDIT[@]}" config-key "${CONFIG}"; then HAS_LITERAL=true; else rc=$?; [ "${rc}" -eq 1 ] || exit "${rc}"; fi
+KEYSRC=""
+if KEYSRC="$(find_key)"; then HAS_LITERAL=true; else rc=$?; [ "${rc}" -eq 1 ] || exit "${rc}"; fi
 
 # ---- plan: stage every edited file, nothing touches the real ones -------------------------------
 CHANGES=()
@@ -177,6 +196,13 @@ consider config "${CONFIG}" "${STAGE}/config"
 consider compose "${COMPOSE}" "${STAGE}/compose"
 consider launcher "${LAUNCHER}" "${STAGE}/launcher"
 grep -q '^change:' "${STAGE}/plist.out" && consider plist "${PLIST}" "${STAGE}/plist"
+ENV_N=0
+for f in ${ENVFILES[@]+"${ENVFILES[@]}"}; do
+  ENV_N=$((ENV_N + 1))
+  "${EDIT[@]}" env-edit "${f}" "${STAGE}/env${ENV_N}" --env-var "${ENV_VAR}" >"${STAGE}/env${ENV_N}.out" || exit $?
+  cat "${STAGE}/env${ENV_N}.out" >>"${STAGE}/config.out"
+  consider "env${ENV_N}" "${f}" "${STAGE}/env${ENV_N}"
+done
 ADVISORIES=()
 while IFS= read -r line; do case "${line}" in change:*) note "${line#change: }" ;; advisory:*) ADVISORIES+=("${line}") ;; esac; done < <(cat "${STAGE}/config.out" "${STAGE}/compose.out" "${STAGE}/plist.out")
 
@@ -184,32 +210,23 @@ while IFS= read -r line; do case "${line}" in change:*) note "${line#change: }" 
 KC_ACTION="none"
 if ${HAS_LITERAL}; then
   if kc_has; then
-    KEY_IN_CONFIG="$("${EDIT[@]}" config-key "${CONFIG}" --print-key)"
+    KEY_IN_CONFIG="$(find_key --print-key)"
     KEY_IN_KC="$(security find-generic-password "${KC_ARGS[@]}" -w 2>/dev/null || true)"
-    [ "${KEY_IN_CONFIG}" = "${KEY_IN_KC}" ] || die "keychain item ${KC_SERVICE} exists but differs from the key in the config; refusing to overwrite it. Remove or rename one, then rerun." 3
+    [ "${KEY_IN_CONFIG}" = "${KEY_IN_KC}" ] || die "keychain item ${KC_SERVICE} exists but differs from the key in the files; refusing to overwrite it. Remove or rename one, then rerun." 3
     unset KEY_IN_CONFIG KEY_IN_KC
     KC_ACTION="present"
     note "keychain: item ${KC_SERVICE}/${KC_ACCOUNT} already holds this key (kept)"
   else
     KC_ACTION="add"
-    note "keychain: store the config's key as ${KC_SERVICE}/${KC_ACCOUNT} via 'security -i' on stdin (value not shown)"
+    note "keychain: store the key (${KEYSRC}) as ${KC_SERVICE}/${KC_ACCOUNT} via 'security -i' on stdin (value not shown)"
   fi
 elif ! kc_has; then
   say "Where key-like settings live (values hidden):"
-  "${EDIT[@]}" diagnose "${CONFIG}" "${COMPOSE}" "${DIR}/.env" "${DIR}/.env.local" | sed 's/^/  /'
-  say "refused: the config has no literal key and keychain item ${KC_SERVICE}/${KC_ACCOUNT} does not exist."
+  "${EDIT[@]}" diagnose "${CONFIG}" "${COMPOSE}" ${ENVFILES[@]+"${ENVFILES[@]}"} | sed 's/^/  /'
+  say "refused: no file holds a literal ${ENV_VAR}/api_key and keychain item ${KC_SERVICE}/${KC_ACCOUNT} does not exist."
   say "  Enter the key yourself (you are prompted; it never appears on a command line):"
   say "    security add-generic-password -U -s ${KC_SERVICE} -a ${KC_ACCOUNT} -w"
   exit 3
-fi
-
-# a key-shaped literal in a file this script does not rewrite would survive the hardening
-UNMANAGED=()
-for f in "${DIR}/.env" "${DIR}/.env.local"; do
-  [ -f "${f}" ] && grep -Eq '(API_KEY|api_key)["'\'']?[:=] *["'\'']?sk-[A-Za-z0-9_-]{20,}' "${f}" && UNMANAGED+=("${f}")
-done
-if [ "${#UNMANAGED[@]}" -gt 0 ]; then
-  die "key-shaped literal in ${UNMANAGED[*]}; this script does not rewrite those files. Move it by hand, then rerun." 3
 fi
 
 # ---- production window gate for the restart -----------------------------------------------------
@@ -249,7 +266,7 @@ if [ "${CHANGED_COUNT}" -gt 0 ] && ! ${NO_RESTART} && ! ${IGNORE_WINDOW}; then
 fi
 
 if [ "${KC_ACTION}" = "add" ]; then
-  KEY_VALUE="$("${EDIT[@]}" config-key "${CONFIG}" --print-key)"
+  KEY_VALUE="$(find_key --print-key)"
   [[ "${KEY_VALUE}" =~ ^[A-Za-z0-9_-]+$ ]] || die "the key has unexpected characters; enter it yourself: security add-generic-password -U -s ${KC_SERVICE} -a ${KC_ACCOUNT} -w" 3
   # builtin printf into a pipe: the value is on stdin only, never in any process's arguments
   printf 'add-generic-password -U -s "%s" -a "%s" -w "%s"\nquit\n' "${KC_SERVICE}" "${KC_ACCOUNT}" "${KEY_VALUE}" | security -i >/dev/null 2>&1 || true
@@ -341,7 +358,10 @@ fi
 for f in "${CONFIG}" "${COMPOSE}" "${LAUNCHER}" "${PLIST}"; do
   if grep -Eq '(API_KEY|api_key)["'\'']?[:=] *["'\'']?sk-[A-Za-z0-9_-]{20,}' "${f}"; then verify_fail "${f} still contains a key-shaped literal"; fi
 done
-[ "${FAIL}" -eq 0 ] && say "verify ok: no key-shaped literal in config, compose, launcher or plist"
+for f in ${ENVFILES[@]+"${ENVFILES[@]}"}; do
+  if grep -Eq "^[[:space:]]*(export[[:space:]]+)?[\"']?${ENV_VAR}[\"']?[:=] *[\"']?sk-[A-Za-z0-9_-]{20,}" "${f}"; then verify_fail "${f} still contains a literal ${ENV_VAR}"; fi
+done
+[ "${FAIL}" -eq 0 ] && say "verify ok: no key-shaped api_key literal in config, compose, .env files, launcher or plist"
 awk -v b="${BUDGET}" '/^litellm_settings:/ { f = 1; next } /^[^ #\t]/ { f = 0 } f && /^[ \t]+max_budget:/ { if ($2 + 0 == b + 0) ok = 1 } END { exit !ok }' "${CONFIG}" || verify_fail "max_budget is not ${BUDGET} under litellm_settings in the config"
 kc_has && say "verify ok: keychain item ${KC_SERVICE}/${KC_ACCOUNT} exists" || verify_fail "keychain item missing"
 

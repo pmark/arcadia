@@ -12,3 +12,8 @@ what the agent improvised and what Relay can't do yet.
 Relay mode changes how a session talks to the operator, not what it may do. The default
 session role stays as `AGENTS.md` states it until a Decision changes it. The design is in
 [docs/design/relay/](../design/relay/brief.md).
+
+When the operator works in Relay mode, their use of Relay also drives planned work:
+every gap leaves a signal, triage turns it into a queued Action, and production performs
+it. Read [Relay-driven operations](../relay-driven-operations.md) before triaging Relay or
+production signals into work.
