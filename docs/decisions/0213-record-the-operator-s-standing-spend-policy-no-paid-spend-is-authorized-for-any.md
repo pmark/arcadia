@@ -4,7 +4,7 @@ type: decision
 id: "0213"
 slug: record-the-operator-s-standing-spend-policy-no-paid-spend-is-authorized-for-any
 project: arcadia
-status: open
+status: approved
 question: "Record the operator's standing spend policy: no paid spend is authorized for any agent, script, service or launcher, indefinitely. Spend means money billed beyond a fixed subscription: API keys, Claude extra usage or usage credits, purchased Codex credits, pay-as-you-go gateways such as OpenCode Zen or Hugging Face, and paid cloud model routes. Drawing on subscription allocations (Claude, Codex, OpenCode Go) is usage, not spend."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
-updated: 2026-11-10
+updated: 2026-11-09
+answer: A. Standing no-spend policy, superseding 0126
+decided: 2026-11-09
 ---
 
 # Decision 0213: Record the operator's standing spend policy: no paid spend is authorized for any agent, script, service or launcher, indefinitely. Spend means money billed beyond a fixed subscription: API keys, Claude extra usage or usage credits, purchased Codex credits, pay-as-you-go gateways such as OpenCode Zen or Hugging Face, and paid cloud model routes. Drawing on subscription allocations (Claude, Codex, OpenCode Go) is usage, not spend.
