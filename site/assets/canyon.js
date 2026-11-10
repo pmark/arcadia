@@ -352,15 +352,14 @@ function drawSky(colors) {
   let rideMuted = false;
   let rideSoundEnabled = false;
 
-  async function decodeRideSoundtrack(context, extension) {
-    const response = await fetch(new URL(`./ride-bass-arpeggio.${extension}`, import.meta.url));
+  async function decodeRideSoundtrack(context) {
+    const response = await fetch(new URL('./ride-bass-arpeggio.flac', import.meta.url));
     if (!response.ok) throw new Error('Ride soundtrack unavailable');
     return context.decodeAudioData(await response.arrayBuffer());
   }
 
   async function startRideLoop(context) {
-    const buffer = await decodeRideSoundtrack(context, 'flac')
-      .catch(() => decodeRideSoundtrack(context, 'wav'));
+    const buffer = await decodeRideSoundtrack(context);
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
