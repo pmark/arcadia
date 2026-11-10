@@ -80,7 +80,7 @@ describe("arcadia keeper start", () => {
     const fake = fakeClaude();
     const result = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR, dryRun: true }, fake.deps).data;
     expect(result.argv.slice(0, 11)).toEqual([
-      "claude", "--bg", "--remote-control", "momentum-keeper", "-n", `↳ Momentum Keeper · under ${SUPERVISOR}`,
+      "claude", "--bg", "--remote-control", "momentum-keeper", "-n", "♾️ Flynn · keeper starting",
       "--model", "sonnet", "--permission-mode", "auto", "--session-id"
     ]);
     const prompt = result.argv.at(-1) as string;
@@ -231,7 +231,7 @@ describe("arcadia keeper start safety", () => {
     const root = workspace();
     const fake = fakeClaude();
     runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
-    fake.setAgents(JSON.stringify([{ id: "abcd12345", sessionId: "xx-abcd1234-yy", name: `copy of ↳ Momentum Keeper · under ${SUPERVISOR}` }]));
+    fake.setAgents(JSON.stringify([{ id: "abcd12345", sessionId: "xx-abcd1234-yy", name: "copy of ♾️ Flynn · keeper starting" }]));
     expect(runKeeperStatusCommand({ workspace: root }, fake.deps).data.listed).toBe(false);
     fake.setAgents(JSON.stringify([{ id: "abcd1234" }]));
     expect(runKeeperStatusCommand({ workspace: root }, fake.deps).data.listed).toBe(true);

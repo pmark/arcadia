@@ -218,7 +218,7 @@ export function runKeeperStartCommand(options: KeeperStartOptions, dependencies:
   if (!/^[A-Za-z0-9_.:[\]-]{1,80}$/.test(model)) throw validationError("--model must be a model alias or id.", { "--model": model });
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const prompt = briefFor(supervisor, dependencies);
-  const name = `↳ Momentum Keeper · under ${supervisor}`;
+  const name = "♾️ Flynn · keeper starting";
   const sessionId = (dependencies.newSessionId ?? randomUUID)();
   const argv = ["--bg", "--remote-control", KEEPER_REMOTE_CONTROL_NAME, "-n", name, "--model", model, "--permission-mode", "auto", "--session-id", sessionId, prompt];
   if (options.dryRun) {
