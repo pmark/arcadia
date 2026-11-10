@@ -23,17 +23,24 @@
   let W = 0;
   let H = 0;
   let displayedPath = location.pathname;
-  const UP_ANGLE = 24;
+  const FEED_ANGLE = 4;
   const ASCENT_ANGLE = 44;
+  const SCROLL_FRAME_MS = 1000 / 60;
+  const SCROLL_RETENTION = .9;
+  const SCROLL_SETTLE_PX = .5;
   const STATE_KEY = 'field-notes-camera-v1';
-  const FRAME_KEY = STATE_KEY + '-frame';
+  const FRAME_KEY = STATE_KEY + '-frame-v3';
   let saved;
   try { saved = JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null'); } catch {}
   const restoreNumber = value => Number.isFinite(value) ? Math.max(0, value) : 0;
   const initialArticle = root.dataset.fieldView === 'article';
   const samePath = saved?.pathname === location.pathname;
   let feedScroll = restoreNumber(saved?.feedScroll);
-  if (!samePath && !initialArticle) feedScroll = 0;
+  let cameraScroll = restoreNumber(saved?.cameraScroll ?? feedScroll);
+  if (!samePath && !initialArticle) {
+    feedScroll = 0;
+    cameraScroll = 0;
+  }
   let lift = samePath ? Math.min(1, restoreNumber(saved?.lift)) : Number(initialArticle);
   let previousLift;
   let travelAnimation;
@@ -50,7 +57,7 @@
   function savePosition() {
     try {
       sessionStorage.setItem(STATE_KEY, JSON.stringify({
-        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, lift
+        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, cameraScroll, lift
       }));
     } catch {}
   }
@@ -68,7 +75,7 @@
       thumbnail.height = Math.round(canvas.height * thumbnail.width / canvas.width);
       thumbnail.getContext('2d').drawImage(canvas, 0, 0, thumbnail.width, thumbnail.height);
       sessionStorage.setItem(FRAME_KEY, JSON.stringify({
-        image:thumbnail.toDataURL('image/webp', .83), width:W, height:H, pathname:location.pathname, lift, feedScroll
+        image:thumbnail.toDataURL('image/webp', .83), width:W, height:H, pathname:location.pathname, lift, cameraScroll
       }));
     } catch {}
   }
@@ -77,7 +84,8 @@
     if (!samePath || !ctx || isStill() || typeof createImageBitmap !== 'function') return;
     try {
       const cached = JSON.parse(sessionStorage.getItem(FRAME_KEY) || 'null');
-      if (!cached || cached.pathname !== saved.pathname || cached.lift !== saved.lift || cached.feedScroll !== saved.feedScroll) return;
+      if (!cached || cached.pathname !== saved.pathname || cached.lift !== saved.lift
+        || (cached.cameraScroll ?? cached.feedScroll) !== (saved.cameraScroll ?? saved.feedScroll)) return;
       if (cached.width !== landscape.clientWidth || cached.height !== landscape.clientHeight) return;
       const [header, encoded] = cached.image.split(',');
       const type = header.slice(5, header.indexOf(';'));
@@ -215,7 +223,7 @@ function drawStars(night) {
   let needsResize = true;
   let previousSkyPhase;
   let nextSkyUpdate = 0;
-  let previousTerrainScroll;
+  let previousScrollFrame;
   let previousPaletteBlend;
 
   function paint(now) {
@@ -227,7 +235,13 @@ function drawStars(night) {
     if (!renderTerrain || !W || !H || document.hidden) return;
     const p = phase();
     const night = nightAt(p);
-    const scroll = feedScroll;
+    const distance = feedScroll - cameraScroll;
+    const elapsed = previousScrollFrame === undefined ? SCROLL_FRAME_MS : now - previousScrollFrame;
+    // Draw the restored position first, then ease at the same rate across refresh rates.
+    const scroll = previousLift === undefined ? cameraScroll
+      : Math.abs(distance) <= SCROLL_SETTLE_PX ? feedScroll
+      : cameraScroll + distance * (1 - SCROLL_RETENTION ** (elapsed / SCROLL_FRAME_MS));
+    previousScrollFrame = scroll === feedScroll ? undefined : now;
     if (travelAnimation) {
       const move = travelAnimation;
       move.started ??= now;
@@ -260,19 +274,20 @@ function drawStars(night) {
       const colors = scenePalette(p);
       drawSky(colors, p);
       drawStars(night);
-      horizonColor = colors[2];
+      // At the feed camera's shallow pitch, distant terrain meets the middle sky.
+      horizonColor = colors[1];
       previousSkyPhase = skyPhase;
       nextSkyUpdate = now + 250;
       previousPaletteBlend = paletteBlend;
     }
-    if (skyChanged || scroll !== previousTerrainScroll || lift !== previousLift) {
+    if (skyChanged || scroll !== cameraScroll || lift !== previousLift) {
       renderTerrain(scroll, night, lift, horizonColor);
       previousLift = lift;
-      previousTerrainScroll = scroll;
+      cameraScroll = scroll;
       if (root.dataset.terrain !== 'live') root.dataset.terrain = 'live';
     }
 
-    if (travelAnimation || paletteChange) schedule();
+    if (previousScrollFrame !== undefined || travelAnimation || paletteChange) schedule();
   }
 
   function schedule() {
@@ -304,6 +319,7 @@ function drawStars(night) {
   function refreshMotion() {
     clearInterval(timer);
     timer = undefined;
+    previousScrollFrame = undefined;
     if (isStill()) {
       paletteBlend = Number(isDark());
       paletteChange = undefined;
@@ -381,7 +397,7 @@ function drawStars(night) {
       window.scrollTo(0, offset);
       entryScroll.set(displayedEntry, window.scrollY);
       main.focus({ preventScroll:true });
-      if (isFeed()) feedScroll = offset;
+      if (isFeed()) feedScroll = Math.max(0, window.scrollY);
       if (isFeed() !== wasFeed) startAscent(Number(!isFeed()));
       savePosition();
       schedule();
@@ -484,6 +500,8 @@ function drawStars(night) {
     const rockNight = new THREE.Color('#8b91ce');
     const horizonTint = new THREE.Color();
     const rock = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
+    const groundDay = new THREE.Color('#9b6452');
+    const groundNight = new THREE.Color('#59403f');
 
     const strata = [0, .19, .28, .45, .51, .64, .79, .89, 1, 1.02];
     const bands = strata.length - 1;
@@ -492,7 +510,83 @@ function drawStars(night) {
     const spacing = 2.45;
     const lookBehind = 5;
     const cellsPerUpdate = 10;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(36, segments * spacing), new THREE.MeshBasicMaterial());
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.z = (lookBehind - segments / 2) * spacing;
+    canyon.add(ground);
     const centerAt = distance => 1.65 * Math.sin(distance * .073) + .63 * Math.sin(distance * .031);
+    const trackGeometry = new THREE.BufferGeometry();
+    const trackPositions = new THREE.BufferAttribute(new Float32Array(2 * segments * 18), 3).setUsage(THREE.DynamicDrawUsage);
+    trackGeometry.setAttribute('position', trackPositions);
+    const tracks = new THREE.Mesh(trackGeometry, new THREE.MeshBasicMaterial({
+      polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1
+    }));
+    tracks.frustumCulled = false;
+    canyon.add(tracks);
+
+    const stoneGeometry = new THREE.IcosahedronGeometry(1, 0);
+    const normals = stoneGeometry.getAttribute('normal');
+    const facets = new Float32Array(normals.count * 3);
+    for (let vertex = 0; vertex < normals.count; vertex++) {
+      const shade = .83 + normals.getY(vertex) * .14 - normals.getX(vertex) * .08;
+      facets.fill(shade, vertex * 3, vertex * 3 + 3);
+    }
+    stoneGeometry.setAttribute('color', new THREE.BufferAttribute(facets, 3));
+    const stones = new THREE.InstancedMesh(stoneGeometry, new THREE.MeshBasicMaterial({ vertexColors:true }), segments);
+    stones.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    stones.frustumCulled = false;
+    canyon.add(stones);
+    const stonePose = new THREE.Object3D();
+    const detailNoise = (index, salt) => {
+      const value = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+      return value - Math.floor(value);
+    };
+
+    // Use world cells for the detail too, so it never shifts when the strip is recycled.
+    function updateFloorDetails(cell) {
+      const start = cell - lookBehind;
+      const trackEdges = (index, side) => {
+        const distance = index * spacing;
+        const center = centerAt(distance) + .18 * Math.sin(distance * .24) + side * .79;
+        const halfWidth = .095 + .035 * detailNoise(index, side);
+        return [center - halfWidth, center + halfWidth];
+      };
+      let vertex = 0;
+      for (const side of [-1, 1]) {
+        let [left, right] = trackEdges(start, side);
+        for (let local = 0; local < segments; local++) {
+          const z = (lookBehind - local) * spacing;
+          const [nextLeft, nextRight] = trackEdges(start + local + 1, side);
+          trackPositions.setXYZ(vertex++, left, 0, z);
+          trackPositions.setXYZ(vertex++, right, 0, z);
+          trackPositions.setXYZ(vertex++, nextLeft, 0, z - spacing);
+          trackPositions.setXYZ(vertex++, right, 0, z);
+          trackPositions.setXYZ(vertex++, nextRight, 0, z - spacing);
+          trackPositions.setXYZ(vertex++, nextLeft, 0, z - spacing);
+          left = nextLeft;
+          right = nextRight;
+        }
+      }
+      trackPositions.needsUpdate = true;
+
+      let count = 0;
+      for (let local = 0; local < segments; local++) {
+        const index = start + local;
+        if (detailNoise(index, 2) > .66) continue;
+        const offset = detailNoise(index, 3) * spacing;
+        const side = detailNoise(index, 4) < .5 ? -1 : 1;
+        const x = centerAt(index * spacing + offset) + side * (1.3 + detailNoise(index, 5) * 1.65);
+        const size = .10 + .45 * detailNoise(index, 6) ** 2;
+        stonePose.position.set(x, size * .24, (lookBehind - local) * spacing - offset);
+        stonePose.rotation.y = detailNoise(index, 7) * Math.PI * 2;
+        stonePose.scale.set(size, size * .52, size * (.65 + detailNoise(index, 8) * .6));
+        stonePose.updateMatrix();
+        stones.setMatrixAt(count++, stonePose.matrix);
+      }
+      stones.count = count;
+      stones.instanceMatrix.needsUpdate = true;
+    }
+
     const walls = [-1, 1].map(side => {
       const geometry = new THREE.BufferGeometry();
       for (const key of ['position','color']) {
@@ -511,6 +605,7 @@ function drawStars(night) {
     function updateWalls(cell) {
       if (cell === previousCell) return;
       previousCell = cell;
+      updateFloorDetails(cell);
       for (const { side, geometry } of walls) {
         const position = geometry.getAttribute('position');
         const color = geometry.getAttribute('color');
@@ -565,7 +660,7 @@ function drawStars(night) {
       ctx.setTransform(skyCanvas.width / W, 0, 0, skyCanvas.height / H, 0, 0);
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
-      canyon.scale.x = THREE.MathUtils.clamp(camera.aspect * .72, .39, 1);
+      canyon.scale.x = THREE.MathUtils.clamp(camera.aspect * .84, .55, 1.2);
     };
 
     const drawTerrain = (scroll, night, elevation, horizonColor) => {
@@ -575,7 +670,7 @@ function drawStars(night) {
       updateWalls(cell);
       const x = centerAt(travel) * canyon.scale.x;
       const height = 2.58 + elevation * 36;
-      const angle = THREE.MathUtils.lerp(UP_ANGLE, ASCENT_ANGLE, elevation);
+      const angle = THREE.MathUtils.lerp(FEED_ANGLE, ASCENT_ANGLE, elevation);
       camera.position.set(x, height, z);
       camera.lookAt(THREE.MathUtils.lerp(x, centerAt(travel + 14) * canyon.scale.x, .62), height + Math.tan(angle * Math.PI / 180) * 14, z - 14);
       if (horizonColor) {
@@ -583,6 +678,9 @@ function drawStars(night) {
         fog.color.setRGB(red / 255, green / 255, blue / 255, THREE.SRGBColorSpace);
         horizonTint.copy(fog.color);
         rock.color.copy(rockDay).lerp(rockNight, night).lerp(horizonTint, .25);
+        ground.material.color.copy(groundDay).lerp(groundNight, night).lerp(horizonTint, .25);
+        tracks.material.color.copy(ground.material.color).multiplyScalar(.72);
+        stones.material.color.copy(ground.material.color).lerp(rock.color, .09);
         skyTexture.needsUpdate = true;
       }
       renderer.render(scene, camera);
@@ -598,6 +696,7 @@ function drawStars(night) {
       renderTerrain = drawTerrain;
       captureFrame = () => renderer.render(scene, camera);
       needsResize = true;
+      previousScrollFrame = undefined;
       refreshTheme();
     }
     canvas.addEventListener('webglcontextrestored', activateRenderer);

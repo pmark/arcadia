@@ -1,5 +1,11 @@
 # Field Notes evidence: arcadia-studio-creative-work-integration-test
 
+## Editorial refresh, 2026-11-09
+
+Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The refreshed draft separates the original fixture from later merged changes [#1394](https://github.com/pmark/arcadia/pull/1394), [#1455](https://github.com/pmark/arcadia/pull/1455), and [#1457](https://github.com/pmark/arcadia/pull/1457). The [Scout continuation](../../scout/CONTINUE.md) parks the live trial. The [infrastructure Plan](../../plans/execute-one-approved-named-run-safely-with-production-off.md) has two completed source Actions and an open completion-proof Action.
+
+The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
+
 - Type: essay draft describing a proposal
 - Article: docs/articles/2026-10-12-arcadia-studio-creative-work-integration-test.md
 - Source repository and pinned revision: pmark/arcadia@586a5d96becb0f71b3674c9da09b52d1c09df99c (scout implementation)

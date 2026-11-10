@@ -92,11 +92,11 @@ actions:
     references: ["docs/reports/spend-safety-investigation-2026-11-09.md", "https://github.com/pmark/arcadia/issues/2377"]
   - id: refuse-paid-intelligence-routes-by-default
     title: "Make resolveRoute refuse every requiresPaidUsage route unless config names an approved Decision, and set action.advice to allowPaidUsage: false, following the operator's answer to the standing no-spend Decision."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make resolveRoute refuse every requiresPaidUsage route unless config names an approved Decision, and set action.advice to allowPaidUsage: false; the PR TLDR route under Decision 0126 is out of scope until the operator answers the standing no-spend Decision."
+    next_action: Completed via Agent Ask complete-refuse-paid-intelligence-routes-by-default-20261110; no further action.
     expected_artifact: Evidence satisfying Agent Ask refuse-paid-intelligence-routes-by-default
     clarification: clarified
     confidence: high

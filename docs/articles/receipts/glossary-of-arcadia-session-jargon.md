@@ -1,5 +1,11 @@
 # Evidence: glossary-of-arcadia-session-jargon
 
+## Editorial refresh, 2026-11-09
+
+Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The [completed November Plan](../../plans/record-run-unattended-test-pins-20261107-part-2.md) and [Project pointer](../../../PROJECT.md) show that a completed Plan can remain selected after its current Action is cleared. The [profile table](../../arcadia-semantics.md#roles-specializations-and-optional-names) includes Flynn.
+
+The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
+
 - Type: essay (draft; not published)
 - Article: docs/articles/2026-11-03-glossary-of-arcadia-session-jargon.md
 - Source repository and revision checked: pmark/arcadia@a4dd86dba (main, 2026-11-03)

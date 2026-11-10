@@ -143,14 +143,14 @@ describe("resolveIntelligenceRoute", () => {
     const resolution = resolveIntelligenceRoute(
       { capability: "image.generate", execution: "cloud-required", profile: "quality" },
       routes,
-      { allowPaidUsage: true },
+      { allowPaidUsage: true, approvedPaidUsageDecisions: ["0126"] },
     );
 
-    expect(resolution.ok).toBe(true);
-    if (resolution.ok) {
-      expect(resolution.route.liteLlmRoute).toBe("arcadia-image");
-      expect(resolution.route.location).toBe("cloud");
-      expect(resolution.route.requiresPaidUsage).toBe(true);
+    // No Decision is bound to the paid image route: refused even though the
+    // request allows paid usage and an unrelated Decision is approved.
+    expect(resolution.ok).toBe(false);
+    if (!resolution.ok) {
+      expect(resolution.code).toBe("paid_usage_not_allowed");
     }
   });
 
@@ -373,5 +373,129 @@ describe("resolveIntelligenceRoute", () => {
     if (!resolution.ok) {
       expect(resolution.message).not.toMatch(/arcadia-cloud|gpt|openai/i);
     }
+  });
+
+  describe("paid routes are refused unless an approved Decision is bound", () => {
+    const request = {
+      capability: "text.generate",
+      execution: "cloud-required",
+      profile: "fast",
+    } as const;
+    const paidRoute = (paidUsageDecision?: string) => [
+      {
+        id: "arcadia.text.generate.cloud.fast",
+        capability: "text.generate" as const,
+        location: "cloud" as const,
+        profile: "fast" as const,
+        liteLlmRoute: "cloud-text",
+        enabled: true,
+        requiresPaidUsage: true,
+        ...(paidUsageDecision === undefined ? {} : { paidUsageDecision }),
+      },
+    ];
+
+    it("gives paid_usage_not_allowed for allowPaidUsage true with no bound Decision", () => {
+      const resolution = resolveIntelligenceRoute(request, paidRoute(), {
+        allowPaidUsage: true,
+        approvedPaidUsageDecisions: ["0126"],
+      });
+      expect(resolution.ok).toBe(false);
+      if (!resolution.ok) {
+        expect(resolution.code).toBe("paid_usage_not_allowed");
+      }
+    });
+
+    it("refuses when no approved list is supplied at all", () => {
+      const resolution = resolveIntelligenceRoute(request, paidRoute("0126"), {
+        allowPaidUsage: true,
+      });
+      expect(resolution.ok).toBe(false);
+      if (!resolution.ok) expect(resolution.code).toBe("paid_usage_not_allowed");
+    });
+
+    it.each(["", "   ", "\t", "9999", " 0126", "0126 "])(
+      "refuses bound Decision id %j that is empty, whitespace or not approved",
+      (id) => {
+        const resolution = resolveIntelligenceRoute(request, paidRoute(id), {
+          allowPaidUsage: true,
+          approvedPaidUsageDecisions: ["0126", "", "   "],
+        });
+        expect(resolution.ok).toBe(false);
+        if (!resolution.ok) expect(resolution.code).toBe("paid_usage_not_allowed");
+      },
+    );
+
+    it("still refuses a bound approved Decision when allowPaidUsage is false", () => {
+      const resolution = resolveIntelligenceRoute(request, paidRoute("0126"), {
+        allowPaidUsage: false,
+        approvedPaidUsageDecisions: ["0126"],
+      });
+      expect(resolution.ok).toBe(false);
+      if (!resolution.ok) expect(resolution.code).toBe("paid_usage_not_allowed");
+    });
+
+    it("resolves a paid route bound to an approved Decision", () => {
+      const resolution = resolveIntelligenceRoute(request, paidRoute("0126"), {
+        allowPaidUsage: true,
+        approvedPaidUsageDecisions: ["0126"],
+      });
+      expect(resolution.ok).toBe(true);
+    });
+
+    it("leaves requiresPaidUsage false routes unaffected", () => {
+      const routes = buildDefaultRoutes({ localTextRoute: "arcadia-default" });
+      for (const options of [
+        { allowPaidUsage: false },
+        { allowPaidUsage: true },
+        { allowPaidUsage: false, approvedPaidUsageDecisions: [] },
+      ]) {
+        const resolution = resolveIntelligenceRoute(
+          { capability: "text.generate", execution: "local-required", profile: "fast" },
+          routes,
+          options,
+        );
+        expect(resolution.ok).toBe(true);
+      }
+    });
+
+    it("keeps the PR TLDR route (cloud fast, Decision 0126) resolving as before", () => {
+      const config = loadIntelligenceConfig({
+        ARCADIA_LITELLM_CLOUD_TEXT_ROUTE: "arcadia-cloud-text",
+      });
+      const fast = config.routes.find((r) => r.id === "arcadia.text.generate.cloud.fast");
+      expect(fast?.paidUsageDecision).toBe("0126");
+      const resolution = resolveIntelligenceRoute(
+        {
+          capability: "text.generate",
+          execution: "cloud-required",
+          profile: "fast",
+          executionTarget: "cloud",
+        },
+        config.routes,
+        {
+          allowPaidUsage: true,
+          approvedPaidUsageDecisions: config.approvedPaidUsageDecisionIds,
+        },
+      );
+      expect(resolution.ok).toBe(true);
+      if (resolution.ok) {
+        expect(resolution.route.routeId).toBe("arcadia.text.generate.cloud.fast");
+        expect(resolution.route.liteLlmRoute).toBe("arcadia-cloud-text");
+        expect(resolution.route.requiresPaidUsage).toBe(true);
+      }
+      // Only the fast route is bound; other cloud text profiles stay refused.
+      for (const profile of ["standard", "quality"] as const) {
+        const other = resolveIntelligenceRoute(
+          { capability: "text.generate", execution: "cloud-required", profile },
+          config.routes,
+          {
+            allowPaidUsage: true,
+            approvedPaidUsageDecisions: config.approvedPaidUsageDecisionIds,
+          },
+        );
+        expect(other.ok).toBe(false);
+        if (!other.ok) expect(other.code).toBe("paid_usage_not_allowed");
+      }
+    });
   });
 });
