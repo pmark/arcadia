@@ -73,6 +73,10 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 }
 .site-title:hover, .explore summary:hover { text-decoration:underline; text-underline-offset:4px; }
 .github-link svg { width:20px; height:20px; fill:currentColor; }
+.canyon-play { background:transparent; border:0; border-radius:8px; padding:0; cursor:pointer; }
+.canyon-play[hidden], .canyon-play .pause-mark, .canyon-play[aria-pressed="true"] .play-mark { display:none; }
+.canyon-play[aria-pressed="true"] .pause-mark { display:inline; }
+.canyon-play svg { width:20px; height:20px; fill:currentColor; }
 .explore summary { cursor:pointer; list-style:none; gap:6px; padding-inline:10px; border:1px solid var(--rule); border-radius:8px; }
 .explore summary::-webkit-details-marker { display:none; }
 .nav-chevron { width:6px; height:6px; border:solid currentColor; border-width:0 1.5px 1.5px 0; transform:rotate(45deg); margin:-3px 2px 0 0; }
@@ -120,34 +124,54 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
   pointer-events: none;
   background: linear-gradient(#27304f, #3d4a72 55%, #6c7496);
 }
+@media (pointer:coarse) {
+  :root { --canyon-edge:var(--canyon-live-edge, #2c232e); }
+  .mast {
+    --mast-safe-top:env(safe-area-inset-top, 0px);
+    background-image:linear-gradient(transparent var(--mast-safe-top), var(--bg) var(--mast-safe-top));
+    background-color:transparent;
+  }
+  /* Use a stable inset so toolbar animation cannot resize the drawing buffer. */
+  .canyon-landscape {
+    --canyon-top-bleed:env(safe-area-max-inset-top, 60px);
+    top:calc(-1 * var(--canyon-top-bleed));
+    height:calc(100vh + 96px + var(--canyon-top-bleed));
+    height:calc(100lvh + 96px + var(--canyon-top-bleed) + env(safe-area-max-inset-bottom, 34px));
+  }
+}
 .canyon-landscape > * { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.canyon-still { filter: brightness(.48); }
-[data-field-view="article"] .canyon-still { visibility:hidden; }
-.canyon-frame, .canyon-poster, :is([data-terrain="live"], [data-terrain="cached"]) .canyon-still { visibility:hidden; }
+.canyon-frame, .canyon-poster { visibility:hidden; }
 [data-terrain="live"] .canyon-frame, [data-terrain="cached"] .canyon-poster { visibility:visible; }
 [data-terrain="live"] .canyon-frame { animation:canyon-reveal .32s ease-out; }
-[data-terrain="live"][data-field-view="feed"] .canyon-still,
 [data-terrain="live"] .canyon-poster { transition:visibility 0s .32s; }
 @keyframes canyon-reveal {
   from { opacity:0; }
   to { opacity:1; }
 }
-/* Match the page color Safari can extend behind its bottom toolbar. */
-.canyon-page::after {
-  content:"";
-  position:fixed;
-  inset:auto 0 0;
-  height:calc(3rem + env(safe-area-inset-bottom, 0px));
-  z-index:-1;
-  pointer-events:none;
-  background:linear-gradient(transparent, var(--canyon-edge));
-}
 @media (prefers-reduced-motion: reduce) {
   [data-terrain] .canyon-frame, [data-terrain] .canyon-poster { visibility:hidden; animation:none; transition:none; }
-  .canyon-page[data-field-view="feed"] .canyon-still { visibility:visible; transition:none; }
 }
 
 .canyon-page main { max-width:none; padding:0; }
+@media (prefers-reduced-motion:no-preference) {
+  .canyon-page > :is(.mast, main, footer.site) { transition:opacity .3s ease; }
+  .canyon-page:not([data-canyon-autoplay]) > :is(.mast, main, footer.site):focus-within { transition:none; }
+}
+[data-canyon-autoplay] > :is(main, footer.site),
+[data-canyon-autoplay="scroll"] > .mast {
+  opacity:0;
+  pointer-events:none;
+}
+[data-canyon-autoplay="manual"] > .mast { background:none; border-color:transparent; pointer-events:none; }
+[data-canyon-autoplay="manual"] :is(.site-title, .github-link, .explore) { visibility:hidden; }
+[data-canyon-autoplay="manual"] .canyon-play {
+  position:fixed;
+  inset:calc(8px + env(safe-area-inset-top, 0px)) max(12px, 4vw, env(safe-area-inset-right, 0px)) auto auto;
+  color:var(--fg);
+  background:var(--bg);
+  border:1px solid var(--rule);
+  pointer-events:auto;
+}
 .post-body {
   max-width:43rem; width:calc(100% - 1.75rem); margin:clamp(3.5rem, 12vw, 9rem) auto 0;
   padding:clamp(1.25rem, 4.5vw, 3rem); background:var(--glass); color:var(--fg);
@@ -167,15 +191,15 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 .field-hero .start-link { display:inline-flex; align-items:center; gap:.3rem; min-height:44px; margin-top:.4rem; color:inherit; font-weight:600; }
 .posts .field-label { margin:0; }
 .field-label { font: 600 .75rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .09em; }
+.field-hero .field-label { display:flex; align-items:center; justify-content:center; gap:.65rem; }
 .field-seal {
-  display: inline-grid;
+  display: grid;
   place-items: center;
+  flex: none;
   width: .65rem;
   height: .65rem;
-  margin-right: .45rem;
   border: 1px solid currentColor;
   transform: rotate(45deg);
-  vertical-align: .02em;
 }
 .field-seal::after { content: ""; width: .2rem; height: .2rem; background: currentColor; }
 .canyon-page .posts, .posts-empty {
@@ -183,7 +207,11 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
   margin: 0 auto;
   width: calc(100% - 1.75rem);
 }
-.canyon-page .posts { display: grid; gap: clamp(4.625rem, 12vw, 8.625rem); }
+.canyon-page .posts {
+  display:grid;
+  gap:clamp(4.625rem, 12vw, 8.625rem);
+  padding-block-end:clamp(1rem, 4svh, 2rem);
+}
 .canyon-page .posts li, .posts-empty {
   padding: clamp(1.25rem, 4.3vw, 2.25rem);
   border: 1px solid var(--rule);
@@ -203,8 +231,14 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 .posts h2 a:hover { color: var(--link); }
 .posts p { max-width: 44ch; }
 .canyon-page footer.site { max-width: 35rem; width: calc(100% - 1.75rem); padding: .75rem 1rem; margin-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-radius: .625rem; }
+@media (pointer:coarse) {
+  .canyon-page footer.site {
+    margin-bottom:calc(200px + env(safe-area-inset-bottom, 0px));
+    margin-bottom:calc(max(200px, 45svh) + env(safe-area-inset-bottom, 0px));
+  }
+}
 @media (forced-colors: active) {
-  .canyon-landscape, .canyon-page::after { display:none !important; }
+  .canyon-landscape { display:none !important; }
   .field-hero { color: CanvasText; text-shadow: none; }
   .brand-mark path { stroke: LinkText; }
   .brand-mark circle { fill: LinkText; }

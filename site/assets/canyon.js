@@ -1,4 +1,6 @@
 // AMC sol palette adapted from Mission Control Site.
+import { createCanyonStars, createCanyonSun } from './canyon-sky.js';
+
   const root = document.body;
   const landscape = root.querySelector('.canyon-landscape');
   const canvas = root.querySelector('.canyon-frame');
@@ -28,8 +30,10 @@
   const SCROLL_FRAME_MS = 1000 / 60;
   const SCROLL_RETENTION = .9;
   const SCROLL_SETTLE_PX = .5;
+  const AUTOPLAY_PX_PER_MS = .062;
+  const STAR_FRAME_MS = 1000 / 30;
   const STATE_KEY = 'field-notes-camera-v1';
-  const FRAME_KEY = STATE_KEY + '-frame-v3';
+  const FRAME_KEY = STATE_KEY + '-frame-v4';
   let saved;
   try { saved = JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null'); } catch {}
   const restoreNumber = value => Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -37,9 +41,12 @@
   const samePath = saved?.pathname === location.pathname;
   let feedScroll = restoreNumber(saved?.feedScroll);
   let cameraScroll = restoreNumber(saved?.cameraScroll ?? feedScroll);
+  let autoplayDistance = restoreNumber(saved?.autoplayDistance);
+  let autoplay = false;
   if (!samePath && !initialArticle) {
     feedScroll = 0;
     cameraScroll = 0;
+    autoplayDistance = 0;
   }
   let lift = samePath ? Math.min(1, restoreNumber(saved?.lift)) : Number(initialArticle);
   let previousLift;
@@ -57,7 +64,7 @@
   function savePosition() {
     try {
       sessionStorage.setItem(STATE_KEY, JSON.stringify({
-        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, cameraScroll, lift
+        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, cameraScroll, lift, autoplayDistance
       }));
     } catch {}
   }
@@ -166,7 +173,7 @@ function scenePalette(p) {
     const dark = skyAt(p, true);
     return light.map((color, index) => mix(color, dark[index], paletteBlend));
 }
-function drawSky(colors, p) {
+function drawSky(colors) {
     const [zenith, midSky, horizon] = colors;
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, rgb(zenith));
@@ -174,55 +181,14 @@ function drawSky(colors, p) {
     g.addColorStop(1, rgb(horizon));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
-    const alt = altitude(p);
-    if (alt <= -0.18)
-        return;
-    const theta = 2 * Math.PI * (p - 0.5);
-    const sx = W / 2 + W * 0.46 * Math.sin(theta);
-    const sy = H * 0.97 - H * 0.81 * Math.max(alt, -0.1);
-    const R = Math.max(W, H) * (0.24 + 0.12 * (1 - Math.max(0, alt)));
-    const glow = mix([70, 150, 255], [255, 226, 190], smooth(0.08, 0.38, alt));
-    const strength = (0.6 - 0.05 * paletteBlend) * smooth(-0.18, 0.02, alt) * (1 - 0.5 * smooth(0.05, 0.4, alt));
-    const rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, R);
-    rg.addColorStop(0, rgb(glow, strength));
-    rg.addColorStop(0.3, rgb(glow, strength * 0.4));
-    rg.addColorStop(1, rgb(glow, 0));
-    ctx.fillStyle = rg;
-    ctx.fillRect(0, 0, W, H);
-    if (alt > -0.02) {
-        ctx.globalAlpha = 0.92 * smooth(-0.02, 0.04, alt);
-        ctx.fillStyle = '#fffaf0';
-        ctx.beginPath();
-        ctx.arc(sx, sy, Math.max(4, Math.min(W, H) * 0.009), 0, 7);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-    }
 }
-// These positions are fixed in viewport coordinates, with no scroll or time offset.
-let seed = 11;
-const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-const stars = Array.from({ length:105 }, () => ({
-    x:random(),
-    y:random() * .86,
-    size:.6 + random() * .65,
-    opacity:.20 + random() * .24,
-}));
-
-function drawStars(night) {
-    const texel = Math.max(W / skyCanvas.width, H / skyCanvas.height);
-    for (const star of stars) {
-        const size = Math.max(star.size, texel);
-        ctx.fillStyle = rgb([255, 246, 236], star.opacity * (.24 + .76 * night));
-        ctx.fillRect(star.x * W, star.y * H, size, size);
-    }
-}
-
   let renderTerrain;
   let resizeTerrain;
   let frame = 0;
   let needsResize = true;
   let previousSkyPhase;
   let nextSkyUpdate = 0;
+  let nextStarFrame = 0;
   let previousScrollFrame;
   let previousPaletteBlend;
 
@@ -235,13 +201,15 @@ function drawStars(night) {
     if (!renderTerrain || !W || !H || document.hidden) return;
     const p = phase();
     const night = nightAt(p);
-    const distance = feedScroll - cameraScroll;
     const elapsed = previousScrollFrame === undefined ? SCROLL_FRAME_MS : now - previousScrollFrame;
+    if (autoplay) autoplayDistance += Math.min(elapsed, 80) * AUTOPLAY_PX_PER_MS;
+    const target = feedScroll + autoplayDistance;
+    const distance = target - cameraScroll;
     // Draw the restored position first, then ease at the same rate across refresh rates.
     const scroll = previousLift === undefined ? cameraScroll
-      : Math.abs(distance) <= SCROLL_SETTLE_PX ? feedScroll
+      : Math.abs(distance) <= SCROLL_SETTLE_PX ? target
       : cameraScroll + distance * (1 - SCROLL_RETENTION ** (elapsed / SCROLL_FRAME_MS));
-    previousScrollFrame = scroll === feedScroll ? undefined : now;
+    previousScrollFrame = !autoplay && scroll === target ? undefined : now;
     if (travelAnimation) {
       const move = travelAnimation;
       move.started ??= now;
@@ -270,21 +238,26 @@ function drawStars(night) {
     const skyChanged = previousSkyPhase === undefined || paletteBlend !== previousPaletteBlend
       || (now >= nextSkyUpdate && skyPhase !== previousSkyPhase);
     let horizonColor;
+    let skyEdgeColor;
     if (skyChanged) {
       const colors = scenePalette(p);
-      drawSky(colors, p);
-      drawStars(night);
+      drawSky(colors);
       // At the feed camera's shallow pitch, distant terrain meets the middle sky.
       horizonColor = colors[1];
+      skyEdgeColor = colors[2];
       previousSkyPhase = skyPhase;
       nextSkyUpdate = now + 250;
       previousPaletteBlend = paletteBlend;
     }
-    if (skyChanged || scroll !== cameraScroll || lift !== previousLift) {
-      renderTerrain(scroll, night, lift, horizonColor);
+    if (skyChanged || scroll !== cameraScroll || lift !== previousLift || now >= nextStarFrame) {
+      renderTerrain(scroll, night, lift, horizonColor, skyEdgeColor, now, p);
+      nextStarFrame = now + STAR_FRAME_MS - 1;
       previousLift = lift;
       cameraScroll = scroll;
-      if (root.dataset.terrain !== 'live') root.dataset.terrain = 'live';
+      if (root.dataset.terrain !== 'live') {
+        root.dataset.terrain = 'live';
+        updatePlayButton();
+      }
     }
 
     if (previousScrollFrame !== undefined || travelAnimation || paletteChange) schedule();
@@ -312,8 +285,24 @@ function drawStars(night) {
   let timer;
   let loadingTerrain = false;
 
+  function setAutoplay(mode) {
+    autoplay = Boolean(mode);
+    if (mode) root.dataset.canyonAutoplay = mode;
+    else delete root.dataset.canyonAutoplay;
+    playButton.setAttribute('aria-pressed', String(autoplay));
+    playButton.title = autoplay ? 'Pause canyon ride' : 'Play canyon ride';
+    if (autoplay) schedule();
+  }
+
+  function stopAutoplay() {
+    if (autoplay) setAutoplay();
+  }
+
   function showStill() {
+    stopAutoplay();
     delete root.dataset.terrain;
+    updatePlayButton();
+    document.documentElement.style.removeProperty('--canyon-live-edge');
   }
 
   function refreshMotion() {
@@ -325,7 +314,7 @@ function drawStars(night) {
       paletteChange = undefined;
       showStill();
     } else {
-      if (!document.hidden) timer = setInterval(schedule, 250);
+      if (!document.hidden) timer = setInterval(schedule, STAR_FRAME_MS);
       enableTerrain();
     }
     refreshTheme();
@@ -333,27 +322,92 @@ function drawStars(night) {
 
   const menu = root.querySelector('.explore');
   const menuButton = menu.querySelector('summary');
+  const menuPanel = menu.querySelector('.explore-panel');
+  const playButton = root.querySelector('.canyon-play');
   const home = root.querySelector('.site-title');
   const homeURL = new URL(home.href);
   const main = root.querySelector('main');
   const isFeed = () => main.dataset.fieldView === 'feed';
+  let menuAnimation;
+  let menuClosing = false;
+
+  function syncMenu(open) {
+    menuPanel.inert = !open;
+    menuButton.setAttribute('aria-expanded', String(open));
+  }
+
+  function setMenuOpen(open) {
+    const current = menuAnimation && getComputedStyle(menuPanel);
+    const from = current ? { transform:current.transform, opacity:current.opacity }
+      : { transform:open ? 'translateY(-12px)' : 'translateY(0)', opacity:open ? 0 : 1 };
+    menuAnimation?.cancel();
+    menuAnimation = undefined;
+    menuClosing = !open;
+    syncMenu(open);
+    if (reduceMotion.matches || !menuPanel.animate) {
+      menu.open = open;
+      menuClosing = false;
+      return;
+    }
+
+    // Keep the native details open until the exit motion has finished.
+    if (open) menu.open = true;
+    const animation = menuPanel.animate([
+      from, { transform:open ? 'translateY(0)' : 'translateY(-12px)', opacity:open ? 1 : 0 }
+    ], {
+      duration:open ? 320 : 280,
+      easing:open ? 'cubic-bezier(.2,1.5,.42,1)' : 'cubic-bezier(.44,-.28,.68,1)',
+      fill:'both'
+    });
+    menuAnimation = animation;
+    animation.onfinish = () => {
+      if (menuAnimation !== animation) return;
+      menu.open = open;
+      menuClosing = false;
+      menuAnimation = undefined;
+      animation.cancel();
+    };
+  }
+
+  syncMenu(menu.open);
+  menuButton.addEventListener('click', event => {
+    event.preventDefault();
+    setMenuOpen(!menu.open || menuClosing);
+  });
+  menu.addEventListener('toggle', () => {
+    if (!menuAnimation) syncMenu(menu.open);
+  });
+  reduceMotion.addEventListener('change', () => {
+    if (reduceMotion.matches && menuAnimation) setMenuOpen(!menuClosing);
+  });
+
+  function updatePlayButton() {
+    playButton.hidden = !isFeed() || root.dataset.terrain !== 'live' || isStill();
+  }
+  playButton.addEventListener('click', () => {
+    if (autoplay) stopAutoplay();
+    else if (!playButton.hidden) {
+      if (menu.open && !menuClosing) setMenuOpen(false);
+      setAutoplay('manual');
+    }
+  });
 
   root.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && menu.open) {
+    if (event.key === 'Escape' && menu.open && !menuClosing) {
       event.preventDefault();
-      menu.open = false;
+      setMenuOpen(false);
       menuButton.focus();
     }
   });
   root.addEventListener('click', event => {
-    if (menu.open && (!menu.contains(event.target) || event.target.closest('.explore-panel a'))) {
+    if (menu.open && !menuClosing && (!menu.contains(event.target) || event.target.closest('.explore-panel a'))) {
       const returnFocus = menu.contains(document.activeElement);
-      menu.open = false;
+      setMenuOpen(false);
       if (returnFocus) menuButton.focus();
     }
   });
   menu.addEventListener('focusout', event => {
-    if (event.relatedTarget && !menu.contains(event.relatedTarget)) menu.open = false;
+    if (menu.open && !menuClosing && event.relatedTarget && !menu.contains(event.relatedTarget)) setMenuOpen(false);
   });
 
   let pendingPage;
@@ -368,6 +422,7 @@ function drawStars(night) {
       || url.pathname.startsWith(homeURL.pathname + 'posts/'));
 
   async function openPage(url, { push, offset }) {
+    stopAutoplay();
     pendingPage?.abort();
     const request = new AbortController();
     pendingPage = request;
@@ -396,6 +451,7 @@ function drawStars(night) {
         if (replacement) document.querySelector(selector)?.replaceWith(document.importNode(replacement, true));
       }
       root.dataset.fieldView = main.dataset.fieldView;
+      updatePlayButton();
       window.scrollTo(0, offset);
       entryScroll.set(displayedEntry, window.scrollY);
       main.focus({ preventScroll:true });
@@ -438,10 +494,30 @@ function drawStars(night) {
     if (location.pathname !== displayedPath) return;
     entryScroll.set(displayedEntry, window.scrollY);
     if (isFeed()) {
-      feedScroll = Math.max(0, window.scrollY);
+      const scroller = document.scrollingElement;
+      const end = scroller.scrollHeight - scroller.clientHeight;
+      // Clamp iOS rubber-banding so it cannot start or interrupt the ride.
+      const nextScroll = Math.min(end, Math.max(0, window.scrollY));
+      if (nextScroll < feedScroll) stopAutoplay();
+      const remaining = coarsePointer.matches ? 120 : 24;
+      if (!autoplay && end - nextScroll <= remaining && nextScroll > feedScroll
+        && root.dataset.terrain === 'live' && !isStill()
+        && !document.activeElement?.matches(':focus-visible')) {
+        setAutoplay('scroll');
+      }
+      feedScroll = nextScroll;
       schedule();
     }
   }, { passive:true });
+  window.addEventListener('wheel', event => {
+    if (event.deltaY < 0) stopAutoplay();
+  }, { passive:true });
+  root.addEventListener('focusin', event => {
+    if (event.target !== playButton || root.dataset.canyonAutoplay !== 'manual') stopAutoplay();
+  });
+  window.addEventListener('keydown', event => {
+    if (event.key === 'Escape') stopAutoplay();
+  });
   window.addEventListener('pagehide', () => {
     if (location.pathname !== displayedPath) return;
     saveVisibleFrame();
@@ -491,6 +567,14 @@ function drawStars(night) {
   function startTerrain(THREE) {
     const renderer = new THREE.WebGLRenderer({ canvas, antialias:!coarsePointer.matches });
     const scene = new THREE.Scene();
+    const sun = createCanyonSun(THREE);
+    const sunUniforms = sun.material.uniforms;
+    const starMesh = createCanyonStars(THREE, coarsePointer.matches ? 90 : 155);
+    const starUniforms = starMesh.material.uniforms;
+    scene.add(sun, starMesh);
+    let lastStarScroll = feedScroll;
+    let lastStarFrame;
+    let starSpeed = 0;
     let skyTexture;
     const fog = new THREE.FogExp2('#6c7496', .027);
     scene.fog = fog;
@@ -504,6 +588,8 @@ function drawStars(night) {
     const rock = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
     const groundDay = new THREE.Color('#9b6452');
     const groundNight = new THREE.Color('#59403f');
+    const skyEdge = new THREE.Color();
+    const edgeTint = new THREE.Color();
 
     const strata = [0, .19, .28, .45, .51, .64, .79, .89, 1, 1.02];
     const bands = strata.length - 1;
@@ -660,12 +746,15 @@ function drawStars(night) {
         scene.background = skyTexture;
       }
       ctx.setTransform(skyCanvas.width / W, 0, 0, skyCanvas.height / H, 0, 0);
+      starUniforms.viewport.value.set(W, H);
+      starUniforms.trailLimit.value = coarsePointer.matches ? 24 : 90;
+      sunUniforms.viewport.value.set(W, H);
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
       canyon.scale.x = THREE.MathUtils.clamp(camera.aspect * .84, .55, 1.2);
     };
 
-    const drawTerrain = (scroll, night, elevation, horizonColor) => {
+    const drawTerrain = (scroll, night, elevation, horizonColor, skyEdgeColor, now, p) => {
       const travel = Math.max(0, scroll) * .0355;
       const cell = Math.floor(travel / (spacing * cellsPerUpdate)) * cellsPerUpdate;
       const z = cell * spacing - travel;
@@ -683,7 +772,41 @@ function drawStars(night) {
         ground.material.color.copy(groundDay).lerp(groundNight, night).lerp(horizonTint, .25);
         tracks.material.color.copy(ground.material.color).multiplyScalar(.72);
         stones.material.color.copy(ground.material.color).lerp(rock.color, .09);
+        const [edgeRed, edgeGreen, edgeBlue] = skyEdgeColor;
+        skyEdge.setRGB(edgeRed / 255, edgeGreen / 255, edgeBlue / 255, THREE.SRGBColorSpace);
         skyTexture.needsUpdate = true;
+      }
+      // Safari can use the page color for the native scroll edge instead of the canvas.
+      if (coarsePointer.matches && (horizonColor || elevation !== previousLift)) {
+        edgeTint.copy(ground.material.color).lerp(skyEdge, elevation);
+        document.documentElement.style.setProperty('--canyon-live-edge', '#' + edgeTint.getHexString());
+      }
+      const frames = Math.max(1, now - (lastStarFrame ?? now - SCROLL_FRAME_MS)) / SCROLL_FRAME_MS;
+      const change = feedScroll - lastStarScroll;
+      starSpeed = change ? starSpeed + (change / frames - starSpeed) * .5 : starSpeed * .955 ** frames;
+      lastStarScroll = feedScroll;
+      lastStarFrame = now;
+      starUniforms.clock.value = (Date.now() - started) / 1000;
+      starUniforms.scroll.value = feedScroll;
+      starUniforms.speed.value = starSpeed;
+      starUniforms.night.value = night;
+
+      // The sun follows the unquantized sol phase on every rendered frame.
+      const alt = altitude(p);
+      sun.visible = alt > -.18;
+      if (sun.visible) {
+        const theta = 2 * Math.PI * (p - .5);
+        sunUniforms.center.value.set(W * (.5 + .46 * Math.sin(theta)), H * (.97 - .81 * Math.max(alt, -.1)));
+        sunUniforms.radii.value.set(
+          Math.max(W, H) * (.24 + .12 * (1 - Math.max(0, alt))),
+          Math.max(4, Math.min(W, H) * .009)
+        );
+        const glow = mix([70, 150, 255], [255, 226, 190], smooth(.08, .38, alt));
+        sunUniforms.glowColor.value.set(glow[0] / 255, glow[1] / 255, glow[2] / 255);
+        sunUniforms.strength.value.set(
+          (.6 - .05 * paletteBlend) * smooth(-.18, .02, alt) * (1 - .5 * smooth(.05, .4, alt)),
+          .92 * smooth(-.02, .04, alt)
+        );
       }
       renderer.render(scene, camera);
     };
@@ -712,7 +835,7 @@ function drawStars(night) {
       const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.min.js');
       startTerrain(THREE);
     } catch {
-      // The static canyon remains visible if WebGL or the module is unavailable.
+      // The CSS sky remains visible if WebGL or the module is unavailable.
     }
   }
 
