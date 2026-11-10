@@ -1,6 +1,40 @@
-# Field Notes evidence: making-every-run-teach-us-more
+# Field Notes evidence for making-every-run-teach-us-more
 
-## Editorial refresh, 2026-11-09
+- Article: 2026-10-21-making-every-run-teach-us-more.md
+- Type: essay.
+- Source revision: [88045ef97](https://github.com/pmark/arcadia/tree/88045ef9712fa0341bdc5be2df45eee2334e8eaa).
+- Destination: [Field Notes](https://pmark.github.io/arcadia/posts/making-every-run-teach-us-more/) and its [Atom feed](https://pmark.github.io/arcadia/feed.xml).
+- Release: operator-directed November 9, 2026 batch in America/Los_Angeles, scoped to the four shortlisted essays. The standing automatic cadence remains separate.
+- Previous feed check: November 9, 2026. The feed contained two ship notes, and this slug was absent.
+- Governing destination: [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). The one-time batch Decision is recorded alongside the final release candidate.
+
+## Claims
+
+The summary is covered by the claims below. Suggested developer practices and hypothetical examples are editorial advice.
+
+| ID | Claim | Pinned public evidence | Proof boundary |
+| --- | --- | --- | --- |
+| C1 | The disposable replay copies source and relevant state, exercises actual worker logic, and scripts execution and review outcomes. | [Replay source](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/scripts/production-replay.ts) · [Rehearsal notes](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/tests/fast-rehearsal/README.md) | The worker logic is real and the external effects are scripted. |
+| C2 | The fix preserves completion identity across a repair launch, requires explicit changed repair work and tests refusal of missing or unchanged repair fixtures. | [Merged PR #1684](https://github.com/pmark/arcadia/pull/1684) · [Merged patch](https://github.com/pmark/arcadia/commit/76209f55ea3c0dfbec326017a359c753e3548d6d) | Replay and regression tests demonstrate orchestration behavior under scripted verdicts. |
+| C3 | A later serial test-only Arcadia run froze main and completed without a live review repair. | [November 5 run record](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/managed-production-readiness.md#run-record-attempt-3-card-start-run-unattended-20261105d) | The actual run had three test-only Actions and first-round review and QA passes; the live repair case is outside its proof. |
+
+## Mechanical checks
+
+The candidate uses the Field Notes front matter, a public canonical URL, site and RSS channels, and a specific unfinished-work section. The article body is short-form.
+
+## Independent review
+
+- Verdict: HOLD pending the exact publication-package fact-check.
+
+## Delivery handoff
+
+Pending. The exact approved source, Pages run, canonical page, full-text Atom entry and link notification will be recorded on [release PR #2393](https://github.com/pmark/arcadia/pull/2393). To withdraw the article, set its source status to withdrawn in a reviewed PR and verify the next Pages build removes its page and feed entry.
+
+## Earlier draft record
+
+## Field Notes evidence: making-every-run-teach-us-more
+
+### Editorial refresh, 2026-11-09
 
 Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The shortened draft uses [merged PR #1684](https://github.com/pmark/arcadia/pull/1684) for the replay fix and test behavior. The [readiness record](../../managed-production-readiness.md) supports the later serial, test-only live result and preserves the unproved live repair boundary. The older claim table records the October draft, including its unverified partial run; the revision no longer relies on that run.
 
@@ -16,7 +50,7 @@ The claims and review below apply to the earlier draft. The refreshed version aw
 - Decision: [0120](../../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md).
 - Intended canonical URL is a future destination; no page, RSS entry or delivery is claimed.
 
-## Claims
+### Claims
 
 The summary and all passages using “want”, “hypothesis”, “could” or “would” describe
 intent or a proposed approach. The failure examples are hypothetical scenarios,
@@ -36,14 +70,14 @@ are intentionally excluded from this repository receipt. The Lead retains the
 underlying raw evidence. No real-provider replay, hostile-candidate isolation,
 automatic production restart or unbounded retry is claimed.
 
-## Mechanical checks
+### Mechanical checks
 
 Front matter, 450–650 body words, substantive unfinished-work section, exact
 channels, relative links, absent placeholders and absence of private paths are
 checked locally. Exact commands and exit codes are in the writer handback;
 these checks do not establish publication eligibility or factual acceptance.
 
-## Independent review
+### Independent review
 
 - Reviewer identity and independent lineage: pending Lead-assigned read-only review.
 - Reviewed article and receipt revision: pending committed draft.
@@ -52,7 +86,7 @@ these checks do not establish publication eligibility or factual acceptance.
 - Verdict: HOLD for publication; draft editorial review remains pending.
 - Findings and resolution: public acceptance receipts and refreshed current status are required before publication.
 
-## Delivery handoff
+### Delivery handoff
 
 Draft only, intended for eventual adaptation on Arcadia Mission Control. No site
 or RSS publication, deployment, notification or unpublish receipt exists for this

@@ -1,6 +1,6 @@
 ---
 title: "Give agents a way to suggest work without starting it"
-date: "2026-10-23"
+date: 2026-11-09
 type: essay
 slug: "how-an-idea-becomes-governed-work"
 summary: "A preview receipt, a separate activation, and revision-bound completion evidence give agents room to propose work while keeping the queue deliberate."

@@ -1,6 +1,40 @@
-# Field Notes evidence: how-an-idea-becomes-governed-work
+# Field Notes evidence for how-an-idea-becomes-governed-work
 
-## Editorial refresh, 2026-11-09
+- Article: 2026-10-23-how-an-idea-becomes-governed-work.md
+- Type: essay.
+- Source revision: [88045ef97](https://github.com/pmark/arcadia/tree/88045ef9712fa0341bdc5be2df45eee2334e8eaa).
+- Destination: [Field Notes](https://pmark.github.io/arcadia/posts/how-an-idea-becomes-governed-work/) and its [Atom feed](https://pmark.github.io/arcadia/feed.xml).
+- Release: operator-directed November 9, 2026 batch in America/Los_Angeles, scoped to the four shortlisted essays. The standing automatic cadence remains separate.
+- Previous feed check: November 9, 2026. The feed contained two ship notes, and this slug was absent.
+- Governing destination: [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). The one-time batch Decision is recorded alongside the final release candidate.
+
+## Claims
+
+The summary is covered by the claims below. Suggested developer practices and hypothetical examples are editorial advice.
+
+| ID | Claim | Pinned public evidence | Proof boundary |
+| --- | --- | --- | --- |
+| C1 | An Agent Ask preview registers a proposal and returns a receipt without writing Project documents or queue changes. | [Agent Ask contract](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/agent-guidance/agent-asks.md#ask-freely-without-interrupting-current-work) | Preview records capture, not activation. |
+| C2 | Draft Plans carry Actions and criteria. Separate activation selects current work. Completion binds evidence for every criterion to a candidate revision. | [Agent Ask settlement contract](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/agent-guidance/agent-asks.md#asking-arcadia-to-change-project-state) | Applies to governed work; completion and new START have distinct authority. |
+| C3 | After the final test Action merged, its Plan became complete and the current Action cleared while the Project still pointed at the completed Plan. | [Final PR #2351](https://github.com/pmark/arcadia/pull/2351) · [Pinned Plan](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/plans/record-run-unattended-test-pins-20261107-part-2.md) · [Pinned Project](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/PROJECT.md) | The example is the test-only November Plan; it does not establish a successor activation. |
+
+## Mechanical checks
+
+The candidate uses the Field Notes front matter, a public canonical URL, site and RSS channels, and a specific unfinished-work section. The article body is short-form.
+
+## Independent review
+
+- Verdict: HOLD pending the exact publication-package fact-check.
+
+## Delivery handoff
+
+Pending. The exact approved source, Pages run, canonical page, full-text Atom entry and link notification will be recorded on [release PR #2393](https://github.com/pmark/arcadia/pull/2393). To withdraw the article, set its source status to withdrawn in a reviewed PR and verify the next Pages build removes its page and feed entry.
+
+## Earlier draft record
+
+## Field Notes evidence: how-an-idea-becomes-governed-work
+
+### Editorial refresh, 2026-11-09
 
 Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The revised example uses the [Ask procedure](../../agent-guidance/agent-asks.md), [completed Plan](../../plans/record-run-unattended-test-pins-20261107-part-2.md), [Project pointer](../../../PROJECT.md), and [final PR #2351](https://github.com/pmark/arcadia/pull/2351). The earlier Private Practice Now example and its partial proof remain historical below.
 
@@ -16,7 +50,7 @@ The claims and review below apply to the earlier draft. The refreshed version aw
 - Decision: [0120](../../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)
 - The canonical URL is an intended destination; no page, RSS entry or delivery is claimed.
 
-## Claims
+### Claims
 
 | ID | Exact factual sentence, summary or number | Pinned public evidence | What it proves and its limits |
 | --- | --- | --- | --- |
@@ -41,12 +75,12 @@ The claims and review below apply to the earlier draft. The refreshed version aw
 | C20 | `requires_review` Actions must not be implemented by a coding agent; `complete` is refused while a required review Decision is unresolved. | [managed-documents.md, "The fields with teeth"](https://github.com/pmark/arcadia/blob/280b094f0e956f8d55d67b6ed1d646cd60b3886f/docs/managed-documents.md); [agent-asks.md intents table](https://github.com/pmark/arcadia/blob/280b094f0e956f8d55d67b6ed1d646cd60b3886f/docs/agent-guidance/agent-asks.md) | Documented rules. |
 | C21 | Publication requires Decision 0120's checks. | [docs/articles/README.md](https://github.com/pmark/arcadia/blob/280b094f0e956f8d55d67b6ed1d646cd60b3886f/docs/articles/README.md), [Decision 0120](../../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md) | Governs automatic Field Notes publication; this draft is unassessed. |
 
-## Mechanical checks
+### Mechanical checks
 
 Front matter present; about 860 words including the diagram and table; no em
 dashes; no placeholders; American spelling checked by grep; article contains no links; receipt links pinned.
 
-## Independent review
+### Independent review
 
 - Reviewer identity and independent lineage: pending; to be assigned by the Lead.
 - Reviewed article and receipt revision: round 1 at 35ef5d920; round 2 (delta) at 04c5dc4f8.
@@ -55,7 +89,7 @@ dashes; no placeholders; American spelling checked by grep; article contains no 
 - Verdict: round 1 BLOCKING; round 2 not blocking. Publication remains HOLD pending Decision 0120 checks.
 - Findings and resolution: round 1 independent review returned BLOCKING (unsettled example described as settled, summary overstating who settles, activation framing). Fixed in 04c5dc4f8. Round 2 at 04c5dc4f8 found no blocking issue and five non-blocking items (line wrap, "beside the lifecycle below", stale receipt rows C3/C8/C9 trimmed, mechanical-check wording, this review record), all applied in the following commit.
 
-## Delivery handoff
+### Delivery handoff
 
 Draft only. No site or RSS publication, deployment, notification or unpublish
 receipt exists. Committing, pushing or merging the draft does not publish it.

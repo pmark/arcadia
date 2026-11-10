@@ -1,6 +1,6 @@
 ---
 title: "Replaying an agent run without rerunning the agent"
-date: "2026-10-21"
+date: 2026-11-09
 type: essay
 slug: "making-every-run-teach-us-more"
 summary: "Arcadia used a disposable replay to exercise review failure, a changed repair, and continuation through the real worker logic with scripted external effects."

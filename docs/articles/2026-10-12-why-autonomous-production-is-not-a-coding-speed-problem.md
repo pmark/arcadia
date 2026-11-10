@@ -1,6 +1,6 @@
 ---
 title: "Where unattended coding runs spend their time"
-date: "2026-10-12"
+date: 2026-11-09
 type: essay
 slug: "why-autonomous-production-is-not-a-coding-speed-problem"
 summary: "A supervised build in October and two bounded November runs show why faster code generation addresses only one part of the delivery loop."

@@ -1,6 +1,40 @@
-# Agent roles explainer evidence
+# Field Notes evidence for why-agent-roles-make-collaborative-work-easier
 
-## Editorial refresh, 2026-11-09
+- Article: 2026-10-12-why-agent-roles-make-collaborative-work-easier.md
+- Type: essay.
+- Source revision: [88045ef97](https://github.com/pmark/arcadia/tree/88045ef9712fa0341bdc5be2df45eee2334e8eaa).
+- Destination: [Field Notes](https://pmark.github.io/arcadia/posts/why-agent-roles-make-collaborative-work-easier/) and its [Atom feed](https://pmark.github.io/arcadia/feed.xml).
+- Release: operator-directed November 9, 2026 batch in America/Los_Angeles, scoped to the four shortlisted essays. The standing automatic cadence remains separate.
+- Previous feed check: November 9, 2026. The feed contained two ship notes, and this slug was absent.
+- Governing destination: [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). The one-time batch Decision is recorded alongside the final release candidate.
+
+## Claims
+
+The summary is covered by the claims below. Suggested developer practices and hypothetical examples are editorial advice.
+
+| ID | Claim | Pinned public evidence | Proof boundary |
+| --- | --- | --- | --- |
+| C1 | Seven registered roles separate coordination, planning, critique, research, development, code review and QA. A candidate has one writer at a time, and an independent reviewer checks the exact revision. | [Registered roles](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/config/defaults/agent-roles.json) · [Role rules](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/agent-guidance/session-roles-and-briefs.md) · [Review rules](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/agent-guidance/pull-requests.md#independent-review-gate) | This describes the repo's contract. The CSV export is a hypothetical example. |
+| C2 | Ellis can be a planner or implementer by assignment; Clara is an implementer with a technical-writing specialization. | [Canonical role and profile definitions](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/arcadia-semantics.md#roles-specializations-and-optional-names) | Optional handles narrow a brief within the assigned role. |
+| C3 | The registry and brief commands define and validate roles. Automatic governed admission of native delegates remains future work. | [Role commands](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/src/commands/roles.ts) · [Native dispatch scope](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/agent-guidance/session-roles-and-briefs.md#native-dispatch-and-model-selection) | An eligible brief does not authorize or launch a session. |
+
+## Mechanical checks
+
+The candidate uses the Field Notes front matter, a public canonical URL, site and RSS channels, and a specific unfinished-work section. The article body is short-form.
+
+## Independent review
+
+- Verdict: HOLD pending the exact publication-package fact-check.
+
+## Delivery handoff
+
+Pending. The exact approved source, Pages run, canonical page, full-text Atom entry and link notification will be recorded on [release PR #2393](https://github.com/pmark/arcadia/pull/2393). To withdraw the article, set its source status to withdrawn in a reviewed PR and verify the next Pages build removes its page and feed entry.
+
+## Earlier draft record
+
+## Agent roles explainer evidence
+
+### Editorial refresh, 2026-11-09
 
 Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The shortened CSV example is illustrative. Current role, writer, and independence claims are sourced to the [role procedure](../../agent-guidance/session-roles-and-briefs.md), [identity profiles](../../arcadia-semantics.md#roles-specializations-and-optional-names), and [review procedure](../../agent-guidance/pull-requests.md#independent-review-gate).
 
@@ -18,7 +52,7 @@ claim. No governed Action exists for this writing request. Intake: #1351.
 - Intended canonical URL and channels are template metadata, not publication
   evidence. No site deployment or RSS publication is requested.
 
-## Claims and scope
+### Claims and scope
 
 | Article claim | Pinned evidence | Limit |
 | --- | --- | --- |
@@ -33,7 +67,7 @@ reasoned advice about the design, not measured productivity results. The article
 contains no claim of a working CSV export, benchmark or completed supervisor
 automation. Its advice preserves sole implementation ownership and independence.
 
-## Validation and review
+### Validation and review
 
 Frontmatter, word count, unique role coverage, receipt links and draft status are
 checked before commit. A fresh independent editorial review is launched at PR
@@ -46,7 +80,7 @@ identity procedures, article README/templates, the Pages write-page writing
 guidance and editorial checklist. Role evidence is from the canonical registry
 and shared skills. No Plan, Action, Decision, queue or publication state changes.
 
-## Delivery boundary
+### Delivery boundary
 
 The operator’s follow-up authorizes a repository PR. The draft is stored under
 `docs/articles/`; the separate external folder named Arcadia Articles has no
