@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -337,6 +337,19 @@ general_settings:
     const backups = f.backups().length;
     expect(f.run(["--budget-usd", "25", "--apply"]).out).toContain("no changes needed");
     expect(f.backups().length).toBe(backups);
+  });
+
+  it("reaching the same .env through a symlinked directory does not back it up twice over itself", () => {
+    const f = fixture();
+    threeLocations(f);
+    const link = path.join(f.root, "link");
+    symlinkSync(f.dir, link);
+    const result = f.run(["--litellm-dir", link, "--compose", f.files.compose, "--budget-usd", "25", "--apply"]);
+    expect(result.out).not.toContain("VERIFY FAIL");
+    expect(result.status).toBe(0);
+    const envBackups = f.backups().filter((n) => n.startsWith(".env.bak."));
+    expect(envBackups.length).toBe(1);
+    expect(f.read(path.join(f.dir, envBackups[0]))).toContain(FAKE_KEY);
   });
 
   it("refuses when two files hold different literal keys, changing nothing", () => {

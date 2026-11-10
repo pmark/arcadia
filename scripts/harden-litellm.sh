@@ -91,6 +91,21 @@ while [ $# -gt 0 ]; do
   shift
 done
 
+# .env files beside the compose file and in the LiteLLM directory; the same file reached by two paths counts once
+ENVFILES=()
+collect_envfiles() {
+  local f g dup
+  ENVFILES=()
+  for f in "$(dirname "${COMPOSE}")/.env" "$(dirname "${COMPOSE}")/.env.local" "${DIR}/.env" "${DIR}/.env.local"; do
+    [ -f "${f}" ] || continue
+    dup=false
+    for g in ${ENVFILES[@]+"${ENVFILES[@]}"}; do
+      if [ "${f}" -ef "${g}" ]; then dup=true; fi
+    done
+    if ! ${dup}; then ENVFILES+=("${f}"); fi
+  done
+}
+
 if ${DIAGNOSE}; then
   CONFIG="${CONFIG:-${DIR}/litellm_config.docker.yaml}"
   if [ -z "${COMPOSE}" ]; then
@@ -98,7 +113,8 @@ if ${DIAGNOSE}; then
     [ -f "${COMPOSE}" ] || COMPOSE="${DIR}/docker-compose.yaml"
   fi
   command -v python3 >/dev/null || die "python3 is required" 3
-  python3 -I "${HERE}/lib/harden_litellm_edit.py" diagnose "${CONFIG}" "${COMPOSE}" "${DIR}/.env" "${DIR}/.env.local"
+  collect_envfiles
+  python3 -I "${HERE}/lib/harden_litellm_edit.py" diagnose "${CONFIG}" "${COMPOSE}" ${ENVFILES[@]+"${ENVFILES[@]}"}
   exit 0
 fi
 [ -n "${BUDGET}" ] || die "--budget-usd is required: there is no default budget. Choose an amount and pass it."
@@ -139,13 +155,7 @@ CURRENT_LISTENERS="$(listeners)"
 say "  current listeners on :4000: ${CURRENT_LISTENERS:-none}"
 
 kc_has() { security find-generic-password "${KC_ARGS[@]}" >/dev/null 2>&1; }
-ENVFILES=()
-COMPOSE_DIR="$(dirname "${COMPOSE}")"
-for f in "${COMPOSE_DIR}/.env" "${COMPOSE_DIR}/.env.local" "${DIR}/.env" "${DIR}/.env.local"; do
-  [ -f "${f}" ] || continue
-  case " ${ENVFILES[*]-} " in *" ${f} "*) continue ;; esac
-  ENVFILES+=("${f}")
-done
+collect_envfiles
 find_key() { "${EDIT[@]}" key-find --env-var "${ENV_VAR}" "$@" "${CONFIG}" "${COMPOSE}" ${ENVFILES[@]+"${ENVFILES[@]}"}; }
 HAS_LITERAL=false
 KEYSRC=""
@@ -212,7 +222,7 @@ if ${HAS_LITERAL}; then
   fi
 elif ! kc_has; then
   say "Where key-like settings live (values hidden):"
-  "${EDIT[@]}" diagnose "${CONFIG}" "${COMPOSE}" "${DIR}/.env" "${DIR}/.env.local" | sed 's/^/  /'
+  "${EDIT[@]}" diagnose "${CONFIG}" "${COMPOSE}" ${ENVFILES[@]+"${ENVFILES[@]}"} | sed 's/^/  /'
   say "refused: no file holds a literal ${ENV_VAR}/api_key and keychain item ${KC_SERVICE}/${KC_ACCOUNT} does not exist."
   say "  Enter the key yourself (you are prompted; it never appears on a command line):"
   say "    security add-generic-password -U -s ${KC_SERVICE} -a ${KC_ACCOUNT} -w"
