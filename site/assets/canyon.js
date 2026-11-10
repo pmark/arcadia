@@ -290,7 +290,8 @@ function drawSky(colors) {
     if (mode) root.dataset.canyonAutoplay = mode;
     else delete root.dataset.canyonAutoplay;
     playButton.setAttribute('aria-pressed', String(autoplay));
-    playButton.title = autoplay ? 'Pause canyon ride' : 'Play canyon ride';
+    playButton.title = autoplay ? 'Pause canyon ride' : 'Play canyon ride with sound';
+    syncRideAudio();
     if (autoplay) schedule();
   }
 
@@ -324,6 +325,42 @@ function drawSky(colors) {
   const menuButton = menu.querySelector('summary');
   const menuPanel = menu.querySelector('.explore-panel');
   const playButton = root.querySelector('.canyon-play');
+  let rideAudioContext;
+  let rideAudioLoading;
+  let rideSoundEnabled = false;
+
+  async function startRideLoop(context) {
+    const response = await fetch(new URL('./ride-d-minor-swells.wav', import.meta.url));
+    if (!response.ok) throw new Error('Ride soundtrack unavailable');
+    const buffer = await context.decodeAudioData(await response.arrayBuffer());
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    source.loop = true;
+    source.connect(context.destination);
+    source.start();
+  }
+
+  function pauseRideAudio() {
+    rideAudioContext?.suspend().catch(() => {});
+  }
+
+  function syncRideAudio() {
+    if (!autoplay || !rideSoundEnabled || document.hidden) {
+      pauseRideAudio();
+      return;
+    }
+    if (!window.AudioContext) return;
+    rideAudioContext ??= new AudioContext({ sampleRate: 48000 });
+    void rideAudioContext.resume().catch(() => {});
+    rideAudioLoading ??= startRideLoop(rideAudioContext).catch(error => {
+      rideAudioLoading = undefined;
+      console.warn(error);
+    });
+  }
+
+  window.addEventListener('pagehide', pauseRideAudio);
+  window.addEventListener('pageshow', syncRideAudio);
+  document.addEventListener('visibilitychange', syncRideAudio);
   const home = root.querySelector('.site-title');
   const homeURL = new URL(home.href);
   const main = root.querySelector('main');
@@ -388,6 +425,7 @@ function drawSky(colors) {
     if (autoplay) stopAutoplay();
     else if (!playButton.hidden) {
       if (menu.open && !menuClosing) setMenuOpen(false);
+      rideSoundEnabled = true;
       setAutoplay('manual');
     }
   });
