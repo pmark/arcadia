@@ -14,12 +14,13 @@ Claude Code or OpenCode). Today Rebuster's spec generation fails.
 Rebuster's job `ijob_f16c09bd175b4e359a` (2026-11-10 17:14Z) asked for
 `execution: cloud-required`, `profile: quality`, `allowPaidUsage: true`.
 `resolveIntelligenceRoute` refused it: `PAID_USAGE_NOT_ALLOWED`, "no approved
-Decision is bound to it" (`src/intelligence/routing/resolveRoute.ts:132-141`).
+Decision is bound to it" (`src/intelligence/routing/resolveRoute.ts:131-142`).
 `APPROVED_PAID_USAGE_DECISION_IDS` is empty by Decision 0213
 (`src/intelligence/config/defaults.ts`), so every paid route is refused. Not an
 outage: `GET /api/intelligence/health` shows LiteLLM reachable with the proxy key
 accepted, and a free local test job completed. Rebuster showed "temporarily
-unavailable, retry" for a policy refusal; see finding 1.
+unavailable, retry" for a policy refusal (this report did not review Rebuster's
+own code, so that mapping is inferred); see finding 1.
 
 ## What works today with no Arcadia change
 
@@ -36,7 +37,7 @@ unavailable, retry" for a policy refusal; see finding 1.
 - Billing environment variables are already stripped from the agent children
   (`stripBillingEnv`, both text executors).
 - Live now: Codex available; Claude Code telemetry stale ("sign-in on the worker
-  host needs renewing"), so a Claude Code job may block until renewed; OpenCode
+  host needs renewing"), whether a Claude Code job would block on that is untested, because the executors gate on the spend verdict rather than the sign-in check; OpenCode
   unknown (`arcadia intelligence usage`).
 
 So Rebuster can be fixed today by requesting `local-required`, profile
@@ -49,7 +50,8 @@ agent's default model, because of finding 2.
    `code` and `message` only. The same status `blocked` covers a policy refusal
    (`PAID_USAGE_NOT_ALLOWED`, route not configured), a transient dependency
    (`LITELLM_UNAVAILABLE`), and an unavailable agent (`CODEX_CLI_UNAVAILABLE`,
-   `CLAUDE_CODE_CLI_UNAVAILABLE`) (`worker.ts` catch block). The retry endpoint
+   `CLAUDE_CODE_CLI_UNAVAILABLE`), and a spend-guard refusal (`SPEND_RISK`,
+   `SPEND_UNKNOWN`, from `executorSpendRefusal` in `src/spend/spendGuard.ts`) (`worker.ts` catch block). The retry endpoint
    resets any failed or blocked job (`db/repository.ts`) and spends the one
    allowed retry, so retrying a policy refusal cannot succeed. A client cannot
    tell them apart without string matching, which is how a refusal became
@@ -68,7 +70,8 @@ agent's default model, because of finding 2.
    `quality` coding-agent route gives Rebuster a real quality tier at no cash
    cost. `defaults.ts` says adding a profile is a deliberate decision. Size M.
    Risk: heavy models draw more of the weekly subscription allowance (see
-   decisions).
+   decisions). The executors pass no model to `evaluateLaunchSpend` today, so
+   adding model flags must also pass the model through to the spend guard.
 3. **No "any coding agent" target, and configuration is not availability.**
    `availableExecutions()` (`client/client.ts:293`) reads the static route
    registry from `/health`, not whether Codex is signed in, rate limited or
