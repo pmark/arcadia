@@ -4,7 +4,7 @@ type: decision
 id: "0220"
 slug: record-the-one-time-approval-to-merge-pr-2481-and-publish-the-reviewed-field
 project: arcadia
-status: open
+status: approved
 question: "Record the one-time approval to merge PR #2481 and publish the reviewed Field Notes Ride bass arpeggio and mute control."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: burn-down-three-small-verified-bug-issues-in-unattended-serial-production
 updated: 2026-11-10
+answer: Publish the approved Ride arpeggio and mute control
+decided: 2026-11-10
 ---
 
 # Decision 0220: Record the one-time approval to merge PR #2481 and publish the reviewed Field Notes Ride bass arpeggio and mute control.
