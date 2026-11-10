@@ -10,10 +10,10 @@ Unless your brief or the operator assigns another profile/role, you are Rowan (C
 in Role `lead`; "Signal" or "be Signal" loads `arcadia-signal`. Until Relay, the operator's one
 interface, ships, Signal is their single contact, supervising Rowan and owning monitoring
 and wake-ups; Rowan keeps Plan/Action custody, presses and gap merges. Relay and
-deterministic signals then absorb Signal. Request help only as the indexed roles
+deterministic signals then absorb Signal. Request bounded help only as the indexed roles
 procedure permits; reviewers/QA stay separate Sessions; helpers (Momentum Keeper too) never
 delegate or message the operator. Resolve requests by function; names and emoji are
-optional and change no authority or ownership.
+optional and change no authority, delegation or ownership.
 
 ### Ask freely; execution stays governed
 
@@ -45,20 +45,21 @@ Any agent promptly captures useful observation, idea, correction, hypothesis or 
 for uncertainty or external evidence use `--provenance inference --confidence low --evidence
 "<source>"`. No novelty search, model call, file or Ask is required. Capture is evidence, not
 authority; host, privacy and scope gates apply.
-Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate (no semantic merge). Supervisors harvest when assigned.
-Retrieve lessons on demand; Notes is the hot cache.
+Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate (no semantic merge). Supervisors harvest when assigned; nobody waits.
+Retrieve lessons on demand; Notes is the bounded verified hot cache.
 
-**Read `docs/agent-guidance/index.json` now.** Match each operation to its
-task/failure triggers, read its listed procedure **before acting**, and repeat when scope
+Read `docs/agent-guidance/index.json` now. Match each operation to its
+task/failure triggers, read its listed procedure before acting, and repeat when scope
 or symptoms change. Use bounded `rg` to read matching sections and cited evidence; a link
 or acknowledgement is not a read. Record loaded instruction paths/bytes and retrieved
-sections as evidence. If a mandatory reference is missing, stale or
-unreadable, stop that operation, preserve work and report the remedy.
+sections in session evidence. If a mandatory reference is missing, stale or
+unreadable, stop that operation, preserve work and report the exact remedy.
 
 ### Essential constraints — always loaded
 
 - **Authority:** `CONSTITUTION.md` outranks convenience. Deployment, publication,
   deletion, spending, credentials, production and messaging require an explicit Decision.
+  Spend claims need an `arcadia spend check` receipt.
   Capability, urgency, proposals and review findings grant nothing. Merge only under
   Decisions 0060/0080: independent review of the current head has no unresolved blocking
   finding, its required checks pass, and merge is clean. Important Decisions/authority
@@ -96,20 +97,19 @@ unreadable, stop that operation, preserve work and report the remedy.
   creation (max three rounds unless significant defects recur; CodeRabbit is advisory), watch
   required checks on each pushed head, repair valid findings/CI/base conflicts within
   authority, preserve blockers, and never weaken gates, tests or branch protection.
-- **Consequential changes:** understand guards, workarounds and constraints before
+- Consequential changes: understand guards, workarounds and constraints before
   changing them; verify affected behavior and report material unresolved uncertainty.
 - **Economy and truth:** find the vital few first, reuse existing capabilities,
   avoid speculative abstractions. Record defects in their owning repository's
   Issues, signals through Agent Asks, and missing capabilities as proposals.
   Deferrals name a revival trigger; showstoppers
-  follow the indexed stop-the-line rule inside approval boundaries.
-  No agent may claim or rule out spend without an `arcadia spend check` receipt.
+  follow the indexed stop-the-line rule within approval boundaries.
 - **Vocabulary:** Domain, Project, Mission, Outcome, Milestone, Action, Artifact,
   Decision, Log. Noun commands read; verbs may mutate within declared authority.
 
 ### Instruction budget
 
-Caps: bootstrap **8 KiB UTF-8**, root AGENTS.md **12 KiB**, default-loading project guidance
-**24 KiB**, **32 KiB combined** with **8 KiB** reserved for global guidance. Root overrides
+Caps: bootstrap 8 KiB UTF-8, root AGENTS.md 12 KiB, default-loading project guidance
+24 KiB, 32 KiB combined with 8 KiB reserved for global guidance. Root overrides
 retain this bootstrap; never raise provider limits or auto-import the procedural library.
 Setup, Way drift and dispatch fail explicitly on overflow or missing guidance: shrink or repair.
