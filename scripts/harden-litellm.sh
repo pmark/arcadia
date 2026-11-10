@@ -140,8 +140,11 @@ say "  current listeners on :4000: ${CURRENT_LISTENERS:-none}"
 
 kc_has() { security find-generic-password "${KC_ARGS[@]}" >/dev/null 2>&1; }
 ENVFILES=()
-for f in "${DIR}/.env" "${DIR}/.env.local"; do
-  if [ -f "${f}" ]; then ENVFILES+=("${f}"); fi
+COMPOSE_DIR="$(dirname "${COMPOSE}")"
+for f in "${COMPOSE_DIR}/.env" "${COMPOSE_DIR}/.env.local" "${DIR}/.env" "${DIR}/.env.local"; do
+  [ -f "${f}" ] || continue
+  case " ${ENVFILES[*]-} " in *" ${f} "*) continue ;; esac
+  ENVFILES+=("${f}")
 done
 find_key() { "${EDIT[@]}" key-find --env-var "${ENV_VAR}" "$@" "${CONFIG}" "${COMPOSE}" ${ENVFILES[@]+"${ENVFILES[@]}"}; }
 HAS_LITERAL=false
@@ -342,8 +345,11 @@ else
   fi
 fi
 
-for f in "${CONFIG}" "${COMPOSE}" "${LAUNCHER}" "${PLIST}" ${ENVFILES[@]+"${ENVFILES[@]}"}; do
+for f in "${CONFIG}" "${COMPOSE}" "${LAUNCHER}" "${PLIST}"; do
   if grep -Eq '(API_KEY|api_key)["'\'']?[:=] *["'\'']?sk-[A-Za-z0-9_-]{20,}' "${f}"; then verify_fail "${f} still contains a key-shaped literal"; fi
+done
+for f in ${ENVFILES[@]+"${ENVFILES[@]}"}; do
+  if grep -Eq "^[[:space:]]*(export[[:space:]]+)?[\"']?${ENV_VAR}[\"']?[:=] *[\"']?sk-[A-Za-z0-9_-]{20,}" "${f}"; then verify_fail "${f} still contains a literal ${ENV_VAR}"; fi
 done
 [ "${FAIL}" -eq 0 ] && say "verify ok: no key-shaped api_key literal in config, compose, .env files, launcher or plist"
 awk -v b="${BUDGET}" '/^litellm_settings:/ { f = 1; next } /^[^ #\t]/ { f = 0 } f && /^[ \t]+max_budget:/ { if ($2 + 0 == b + 0) ok = 1 } END { exit !ok }' "${CONFIG}" || verify_fail "max_budget is not ${BUDGET} under litellm_settings in the config"

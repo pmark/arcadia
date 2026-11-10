@@ -38,6 +38,17 @@ def write_lines(path, lines):
         handle.write(text)
 
 
+def write_or_copy(src, out, lines, changed):
+    """Write edited lines; if nothing changed, copy the original bytes so an unchanged file never looks changed."""
+    if changed:
+        write_lines(out, lines)
+        return
+    with open(src, "rb") as handle:
+        raw = handle.read()
+    with open(out, "wb") as handle:
+        handle.write(raw)
+
+
 def indent_of(line):
     return len(INDENT.match(line).group(1))
 
@@ -91,7 +102,7 @@ def cmd_env_edit(args):
     lines = read_lines(args.file)
     kept = [line for line in lines if not pattern.match(line)]
     removed = len(lines) - len(kept)
-    write_lines(args.out, kept)
+    write_or_copy(args.file, args.out, kept, removed > 0)
     if removed:
         print("change: %s: remove %d literal %s line(s) (value not shown)" % (args.file, removed, args.env_var))
 
@@ -200,7 +211,7 @@ def cmd_config_edit(args):
             if not same:
                 lines[found] = "%s%s: %s" % (pad, key, value)
                 changes.append("config: set litellm_settings %s: %s (was %s)" % (key, value, current))
-    write_lines(args.out, lines)
+    write_or_copy(args.file, args.out, lines, bool(changes))
     for change in changes:
         print("change: " + change)
 
@@ -294,7 +305,7 @@ def cmd_compose_edit(args):
             ipad = " " * indent_of(lines[run[0]])
             lines.insert(run[-1] + 1, ipad + ("- " + args.env_var if is_list else args.env_var + ":"))
             changes.append("compose: add environment pass-through %s (no value)" % args.env_var)
-    write_lines(args.out, lines)
+    write_or_copy(args.file, args.out, lines, bool(changes))
     for change in changes:
         print("change: " + change)
 

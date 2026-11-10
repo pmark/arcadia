@@ -325,6 +325,20 @@ general_settings:
     expect(f.run(["--budget-usd", "25", "--apply"]).out).toContain("no changes needed");
   });
 
+  it("does not flag other key-shaped variables in .env, and an unchanged .env without a final newline is not rewritten", () => {
+    const f = fixture();
+    threeLocations(f);
+    const other = "sk-ant-" + "OTHERPROVIDERKEY0123456789";
+    writeFileSync(path.join(f.dir, ".env.local"), `ANTHROPIC_API_KEY=${other}\nOPENAI_API_KEY_2=${other}`);
+    const first = f.run(["--budget-usd", "25", "--apply"]);
+    expect(first.out).not.toContain("VERIFY FAIL");
+    expect(first.status).toBe(0);
+    expect(f.read(path.join(f.dir, ".env.local"))).toBe(`ANTHROPIC_API_KEY=${other}\nOPENAI_API_KEY_2=${other}`);
+    const backups = f.backups().length;
+    expect(f.run(["--budget-usd", "25", "--apply"]).out).toContain("no changes needed");
+    expect(f.backups().length).toBe(backups);
+  });
+
   it("refuses when two files hold different literal keys, changing nothing", () => {
     const f = fixture();
     threeLocations(f, "sk-proj-" + "DIFFERENTDIFFERENT0123456789");
