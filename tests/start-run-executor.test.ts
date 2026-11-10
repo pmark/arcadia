@@ -551,6 +551,9 @@ describe("start-run executor: P2 state refusals consume nothing", () => {
     ["a moved queue revision", { state: (s) => { s.queue.revision = 291; } }, /queue revision changed/],
     ["pinned Actions out of order in the queue", { state: (s) => { s.queue.ordered.reverse(); } }, /pinned order/],
     ["an invalid queue", { state: (s) => { s.queue.orderValid = false; } }, /invalid/],
+    // Issue #2038: `advance queue` reports an Action ready while a pending Agent Ask that names it would idle the run.
+    ["a pending Agent Ask naming a pinned Action", { state: (s) => { s.pendingAsks = [{ id: "agentask_pending1", actionIds: [s.queue.ordered[0].orderKey.split("/")[1]] }]; } }, /pending operator item names a pinned Action.*agent_ask agentask_pending1 names /],
+    ["an operator gate that cannot be read", { state: (s) => { s.pendingAsks = "unreadable"; } }, /operator gate could not be read/],
     ["a rehearsal freeze", { state: (s) => { s.freeze = "refuse"; } }, /rehearsal freeze/],
     // Decision 0161: the pre-restart worker need only be live and fresh; the day must be unused; the sequence's slots must be free.
     ["a stale pre-restart worker heartbeat", { preWorker: "stale" }, /stale or mismatched pre-restart worker heartbeat/],
