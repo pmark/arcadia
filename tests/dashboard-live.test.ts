@@ -48,6 +48,12 @@ if (cmd === "build") {
 } else if (cmd === "start" && rest.includes("127.0.0.1")) {
   if (process.env.TEST_FAIL_START) process.exit(1);
   http.createServer((req, res) => { if (process.env.TEST_FAIL_ROUTE && req.url.startsWith("/api/")) res.statusCode = 500; res.end("ok"); }).listen(Number(rest[rest.indexOf("-p") + 1]), "127.0.0.1");
+  // A real server takes a while to stop under load, and keeps answering until it has.
+  // It lets go of the script's output pipes, which the caller would otherwise wait on until the server exits.
+  if (process.env.TEST_SLOW_STOP) {
+    fs.closeSync(1); fs.closeSync(2);
+    process.on("SIGTERM", () => setTimeout(() => process.exit(0), 4500));
+  }
 }
 `);
   const freeze = path.join(repo, "freeze.sh");
@@ -64,7 +70,8 @@ if (cmd === "build") {
     ARCADIA_DASHBOARD_FREEZE_CHECK: freeze,
     ARCADIA_DASHBOARD_BOUNCE: bounce,
     ARCADIA_DASHBOARD_SMOKE_PORT: String(40_000 + Math.floor(Math.random() * 20_000)),
-    ARCADIA_DASHBOARD_SMOKE_DEADLINE: "6",
+    // Room for a loaded runner to start the stand-in server. Only the test that expects the check to time out sets less.
+    ARCADIA_DASHBOARD_SMOKE_DEADLINE: "30",
     ARCADIA_DASHBOARD_MODE: "build",
     ARCADIA_DASHBOARD_JOB: "",
     XPC_SERVICE_NAME: ""
@@ -174,7 +181,7 @@ describe("live dashboard build", () => {
 
   it("builds into the other folder, so the one being served isn't touched", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     f.change("apps/dashboard/page.tsx");
     succeeded(f.build());
     expect(f.calls().slice(2)).toEqual(["build .live/b", "start .live/b"]);
@@ -182,9 +189,19 @@ describe("live dashboard build", () => {
     f.clean();
   });
 
+  // Issue #2284: stopping the check server without waiting for it left its port answering, so the next build refused it.
+  it("waits for the check server to stop, so the next build can use its port", () => {
+    const f = fixture();
+    succeeded(f.build({ TEST_SLOW_STOP: "1" }));
+    f.change("apps/dashboard/page.tsx");
+    succeeded(f.build());
+    expect(f.current()).toBe(`b ${f.head()}`);
+    f.clean();
+  });
+
   it("keeps the current build serving when a new build fails", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     const serving = f.current();
     rmSync(f.bounced);
     f.change("src/cli.ts");
@@ -198,7 +215,7 @@ describe("live dashboard build", () => {
 
   it("doesn't switch to a build that won't start", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     const serving = f.current();
     rmSync(f.bounced);
     f.change("apps/dashboard/page.tsx");
@@ -212,7 +229,7 @@ describe("live dashboard build", () => {
 
   it("skips the build when nothing for the dashboard changed", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     rmSync(f.bounced);
     f.change("README.md");
     succeeded(f.build());
@@ -223,7 +240,7 @@ describe("live dashboard build", () => {
 
   it("doesn't switch to a build whose server routes fail", () => {
     const f = fixture();
-    const result = f.build({ TEST_FAIL_ROUTE: "1" });
+    const result = f.build({ TEST_FAIL_ROUTE: "1", ARCADIA_DASHBOARD_SMOKE_DEADLINE: "6" });
     expect(result.status).toBe(1);
     expect(f.current()).toBeNull();
     f.clean();
@@ -261,7 +278,7 @@ describe("live dashboard build", () => {
 
   it("heals that checkout at start too, with no build needed", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     git(f.repo, "update-index", "--skip-worktree", "apps/dashboard/next-env.d.ts");
     writeFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "rewritten by a killed build\n");
     expect(f.serve().status).toBe(0);
@@ -270,7 +287,7 @@ describe("live dashboard build", () => {
 
   it("still starts the dashboard when git is too busy to heal, and heals on a later start", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     rmSync(path.join(f.repo, "next-calls"));
     git(f.repo, "update-index", "--skip-worktree", "apps/dashboard/next-env.d.ts");
     writeFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "rewritten by a killed build\n");
@@ -285,7 +302,7 @@ describe("live dashboard build", () => {
 
   it("leaves a running build's mark alone at start", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     const holderScript = path.join(f.repo, ".git", "dashboard-build.sh");
     writeFileSync(holderScript, "#!/usr/bin/env bash\nsleep 30\n");
     chmodSync(holderScript, 0o755);
@@ -322,7 +339,7 @@ describe("live dashboard build", () => {
 
   it("leaves an ordinary local edit alone", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     writeFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "edited by hand\n");
     expect(f.serve().status).toBe(0);
     expect(readFileSync(path.join(f.repo, "apps/dashboard/next-env.d.ts"), "utf8")).toBe("edited by hand\n");
@@ -360,7 +377,7 @@ describe("live dashboard build", () => {
 
   it("rebuilds when the recorded folder has lost its build", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     rmSync(path.join(f.live, "a", "BUILD_ID"));
     rmSync(path.join(f.repo, "next-calls"));
     succeeded(f.build());
@@ -411,7 +428,7 @@ describe("live dashboard start", () => {
 
   it("serves the current build", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     rmSync(path.join(f.repo, "next-calls"));
     expect(f.serve().status).toBe(0);
     expect(f.calls()).toEqual(["start .live/a"]);
@@ -419,7 +436,7 @@ describe("live dashboard start", () => {
 
   it("starts a build behind the running dashboard when the commit has moved", async () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     f.change("apps/dashboard/page.tsx");
     rmSync(path.join(f.repo, "next-calls"));
     expect(f.serve().status).toBe(0);
@@ -432,7 +449,7 @@ describe("live dashboard start", () => {
 
   it("always runs next dev when asked, in a way that reaches a launchd job", () => {
     const f = fixture();
-    f.build();
+    succeeded(f.build());
     rmSync(path.join(f.repo, "next-calls"));
     expect(f.serve({ ARCADIA_DASHBOARD_MODE: "dev" }).status).toBe(0);
     expect(f.calls()).toEqual(["dev -"]);
