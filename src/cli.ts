@@ -111,6 +111,15 @@ import {
   runProductionLivenessTimerCommand
 } from "./commands/productionMomentum.js";
 import {
+  KEEPER_DEFAULT_MODEL,
+  renderKeeperStartSuccess,
+  renderKeeperStatusSuccess,
+  renderKeeperStopSuccess,
+  runKeeperStartCommand,
+  runKeeperStatusCommand,
+  runKeeperStopCommand
+} from "./commands/keeper.js";
+import {
   KEEPER_DEFAULT_GRACE_MINUTES,
   KEEPER_DEFAULT_HEARTBEAT_MINUTES,
   KEEPER_MAX_HEARTBEAT_MINUTES,
@@ -1718,6 +1727,36 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--session <name>", "The keeper session's name, for the alarm's recovery line")
   ).action((options: { workspace: string; minutes?: string; session?: string; json?: boolean }) =>
     runCliAction("production.keeper-heartbeat", options, () => runKeeperHeartbeatCommand(options), renderKeeperHeartbeatSuccess)
+  );
+  const keeper = program.command("keeper").description("The Momentum Keeper as a background host session (Decision 0188 B): start, status, stop. Not wired to production activation");
+  addJsonOption(
+    keeper
+      .command("start")
+      .description("Launch ONE Momentum Keeper: `claude --bg --remote-control` with the checked-in brief (docs/agent-guidance/momentum-keeper-brief.md). Refuses while a keeper is live; records the launch; never uses tmux")
+      .requiredOption("--supervisor <session-id>", "The supervising session's id, substituted into the brief")
+      .option("--model <model>", `Model alias or id (default ${KEEPER_DEFAULT_MODEL})`)
+      .option("--dry-run", "Print the exact command and change nothing")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--wakes-dir <path>", "Armed-until heartbeat files (default <workspace>/.arcadia/armed-wakes)")
+  ).action((options: { workspace: string; supervisor: string; model?: string; dryRun?: boolean; wakesDir?: string; json?: boolean }) =>
+    runCliAction("keeper.start", options, () => runKeeperStartCommand(options), renderKeeperStartSuccess)
+  );
+  addJsonOption(
+    keeper
+      .command("status")
+      .description("Read-only: the launch record, whether `claude agents` lists the session, and the heartbeat's freshness")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .option("--wakes-dir <path>", "Armed-until heartbeat files (default <workspace>/.arcadia/armed-wakes)")
+  ).action((options: { workspace: string; wakesDir?: string; json?: boolean }) =>
+    runCliAction("keeper.status", options, () => runKeeperStatusCommand(options), renderKeeperStatusSuccess)
+  );
+  addJsonOption(
+    keeper
+      .command("stop")
+      .description("Stop the recorded keeper with `claude stop <id>` and mark the record stopped; its conversation is kept")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction("keeper.stop", options, () => runKeeperStopCommand(options), renderKeeperStopSuccess)
   );
   addJsonOption(
     production
