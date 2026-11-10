@@ -109,6 +109,10 @@
       "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
       "gateScanPatterns": []
     },
+    "src/commands/keeper.ts": {
+      "reason": "Launches, lists and stops one read-only Momentum Keeper background session from a checked-in brief; no gate, approval, spend, merge or production control, takes no credentials, and refuses while a keeper is live.",
+      "gateScanPatterns": []
+    },
     "src/commands/learn.ts": {
       "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
       "gateScanPatterns": []
