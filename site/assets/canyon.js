@@ -25,6 +25,9 @@
   let displayedPath = location.pathname;
   const UP_ANGLE = 24;
   const ASCENT_ANGLE = 44;
+  const SCROLL_FRAME_MS = 1000 / 60;
+  const SCROLL_RETENTION = .975;
+  const SCROLL_SETTLE_PX = .5;
   const STATE_KEY = 'field-notes-camera-v1';
   const FRAME_KEY = STATE_KEY + '-frame';
   let saved;
@@ -33,7 +36,11 @@
   const initialArticle = root.dataset.fieldView === 'article';
   const samePath = saved?.pathname === location.pathname;
   let feedScroll = restoreNumber(saved?.feedScroll);
-  if (!samePath && !initialArticle) feedScroll = 0;
+  let cameraScroll = restoreNumber(saved?.cameraScroll ?? feedScroll);
+  if (!samePath && !initialArticle) {
+    feedScroll = 0;
+    cameraScroll = 0;
+  }
   let lift = samePath ? Math.min(1, restoreNumber(saved?.lift)) : Number(initialArticle);
   let previousLift;
   let travelAnimation;
@@ -50,7 +57,7 @@
   function savePosition() {
     try {
       sessionStorage.setItem(STATE_KEY, JSON.stringify({
-        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, lift
+        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, cameraScroll, lift
       }));
     } catch {}
   }
@@ -68,7 +75,7 @@
       thumbnail.height = Math.round(canvas.height * thumbnail.width / canvas.width);
       thumbnail.getContext('2d').drawImage(canvas, 0, 0, thumbnail.width, thumbnail.height);
       sessionStorage.setItem(FRAME_KEY, JSON.stringify({
-        image:thumbnail.toDataURL('image/webp', .83), width:W, height:H, pathname:location.pathname, lift, feedScroll
+        image:thumbnail.toDataURL('image/webp', .83), width:W, height:H, pathname:location.pathname, lift, cameraScroll
       }));
     } catch {}
   }
@@ -77,7 +84,8 @@
     if (!samePath || !ctx || isStill() || typeof createImageBitmap !== 'function') return;
     try {
       const cached = JSON.parse(sessionStorage.getItem(FRAME_KEY) || 'null');
-      if (!cached || cached.pathname !== saved.pathname || cached.lift !== saved.lift || cached.feedScroll !== saved.feedScroll) return;
+      if (!cached || cached.pathname !== saved.pathname || cached.lift !== saved.lift
+        || (cached.cameraScroll ?? cached.feedScroll) !== (saved.cameraScroll ?? saved.feedScroll)) return;
       if (cached.width !== landscape.clientWidth || cached.height !== landscape.clientHeight) return;
       const [header, encoded] = cached.image.split(',');
       const type = header.slice(5, header.indexOf(';'));
@@ -215,7 +223,7 @@ function drawStars(night) {
   let needsResize = true;
   let previousSkyPhase;
   let nextSkyUpdate = 0;
-  let previousTerrainScroll;
+  let previousScrollFrame;
   let previousPaletteBlend;
 
   function paint(now) {
@@ -227,7 +235,13 @@ function drawStars(night) {
     if (!renderTerrain || !W || !H || document.hidden) return;
     const p = phase();
     const night = nightAt(p);
-    const scroll = feedScroll;
+    const distance = feedScroll - cameraScroll;
+    const elapsed = previousScrollFrame === undefined ? SCROLL_FRAME_MS : now - previousScrollFrame;
+    // Draw the restored position first, then ease at the same rate across refresh rates.
+    const scroll = previousLift === undefined ? cameraScroll
+      : Math.abs(distance) <= SCROLL_SETTLE_PX ? feedScroll
+      : cameraScroll + distance * (1 - SCROLL_RETENTION ** (elapsed / SCROLL_FRAME_MS));
+    previousScrollFrame = scroll === feedScroll ? undefined : now;
     if (travelAnimation) {
       const move = travelAnimation;
       move.started ??= now;
@@ -265,14 +279,14 @@ function drawStars(night) {
       nextSkyUpdate = now + 250;
       previousPaletteBlend = paletteBlend;
     }
-    if (skyChanged || scroll !== previousTerrainScroll || lift !== previousLift) {
+    if (skyChanged || scroll !== cameraScroll || lift !== previousLift) {
       renderTerrain(scroll, night, lift, horizonColor);
       previousLift = lift;
-      previousTerrainScroll = scroll;
+      cameraScroll = scroll;
       if (root.dataset.terrain !== 'live') root.dataset.terrain = 'live';
     }
 
-    if (travelAnimation || paletteChange) schedule();
+    if (previousScrollFrame !== undefined || travelAnimation || paletteChange) schedule();
   }
 
   function schedule() {
@@ -304,6 +318,7 @@ function drawStars(night) {
   function refreshMotion() {
     clearInterval(timer);
     timer = undefined;
+    previousScrollFrame = undefined;
     if (isStill()) {
       paletteBlend = Number(isDark());
       paletteChange = undefined;
@@ -381,7 +396,7 @@ function drawStars(night) {
       window.scrollTo(0, offset);
       entryScroll.set(displayedEntry, window.scrollY);
       main.focus({ preventScroll:true });
-      if (isFeed()) feedScroll = offset;
+      if (isFeed()) feedScroll = Math.max(0, window.scrollY);
       if (isFeed() !== wasFeed) startAscent(Number(!isFeed()));
       savePosition();
       schedule();
@@ -598,6 +613,7 @@ function drawStars(night) {
       renderTerrain = drawTerrain;
       captureFrame = () => renderer.render(scene, camera);
       needsResize = true;
+      previousScrollFrame = undefined;
       refreshTheme();
     }
     canvas.addEventListener('webglcontextrestored', activateRenderer);
