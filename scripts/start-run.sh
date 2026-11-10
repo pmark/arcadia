@@ -662,7 +662,7 @@ phase_p0() {
   rec_str executorSha256 "$EXECUTOR_SHA"
   # The spend check (arcadia spend check, assessSpendRisk) on the launch environment as the Sessions get it (billing variables stripped by
   # env -u): only clear proceeds; risk and unknown both refuse. Only the verdict enum is read back, never a value.  REF:L155
-  SPEND_CHECK="$(arcadia spend check --launch-env stripped --json || true)"
+  SPEND_CHECK="$(arcadia spend check --provider claude --launch-env stripped --json || true)"
   SPEND_VERDICT="$(jq -r '.data.verdict | select(. == "clear" or . == "risk" or . == "unknown")' <<<"$SPEND_CHECK" 2>/dev/null || true)"
   [[ "$SPEND_VERDICT" == clear ]] || refuse "the spend check is ${SPEND_VERDICT:-unreadable}, not clear; run arcadia spend check --launch-env stripped and fix what it names: risk, unknown and an unreadable result all refuse"
   claim_operator_press_record

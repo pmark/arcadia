@@ -3017,7 +3017,9 @@ function attemptProjectLaunch(
         // A signed-out or expired provider login is the operator's to fix on the
         // host: ping once per refusal episode (the refusal log dedupes the episode,
         // the ping queue dedupes the message), naming the provider and remedy.
-        if (rawCode === "provider_not_signed_in" || rawCode === "spend_risk" || claudeUsageRemedy) {
+        // Spend risk records the durable blocker above but never pings here: the liveness
+        // timer owns spend paging (one page per verified episode), so one episode pages once.
+        if (rawCode === "provider_not_signed_in" || claudeUsageRemedy) {
           try {
             queueOperatorPing(db, {
               // Issue #1616: the full capacity explanation runs past the ping

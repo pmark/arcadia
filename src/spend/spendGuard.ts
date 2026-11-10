@@ -59,6 +59,8 @@ export interface LaunchSpendResult {
 export function evaluateLaunchSpend(provider: string, model: string | undefined, deps: LaunchSpendDeps = {}): LaunchSpendResult {
   const id = spendProviderFor(provider);
   if (id === null) return { provider: null, verdict: "clear", codes: [], unknown: [] };
+  // An OpenCode launch must name its model: without one the prefix test cannot run, so it is unknown, never clear.
+  if (id === "opencode" && (model ?? "").trim() === "") return { provider: id, verdict: "unknown", codes: [], unknown: ["paid_model_route.model:model_missing"] };
   const env = stripBillingEnv(deps.env ?? process.env);
   const report = deps.report
     ? deps.report(id)

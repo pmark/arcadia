@@ -150,6 +150,15 @@ describe("strip by construction", () => {
     expect(JSON.stringify(result)).not.toContain(SECRET);
   });
 
+  it("an OpenCode launch with no model is unknown, never clear", () => {
+    for (const model of [undefined, "", "   "]) {
+      const result = evaluateLaunchSpend("opencode-cli", model, host({}));
+      expect(result.verdict).toBe("unknown");
+      expect(result.unknown).toContain("paid_model_route.model:model_missing");
+    }
+    expect(evaluateLaunchSpend("opencode-cli", "opencode-go/glm-5.3-flash", host({})).verdict).toBe("clear");
+  });
+
   it("a provider the check does not cover is clear (nothing documented to refuse on)", () => {
     expect(evaluateLaunchSpend("gemini-cli", undefined, host({})).verdict).toBe("clear");
     expect(spendRefusalMessage(evaluateLaunchSpend("gemini-cli", undefined, host({})))).toBeNull();

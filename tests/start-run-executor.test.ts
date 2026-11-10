@@ -488,7 +488,7 @@ describe("start-run executor: P0 context refusals consume nothing", () => {
     const result = b.run("run", { ANTHROPIC_API_KEY: "sk-fixture" }, true);
     const spend = b.calls().filter((call) => call.tool === "arcadia" && call.args.slice(0, 2).join(" ") === "spend check");
     expect(spend.length).toBeGreaterThan(0);
-    expect(spend[0].args).toEqual(expect.arrayContaining(["--launch-env", "stripped"]));
+    expect(spend[0].args).toEqual(expect.arrayContaining(["--provider", "claude", "--launch-env", "stripped"]));
     // Never refused at P0 for the variable; its value is in no output.
     expect(result.receipt?.reason ?? "").not.toMatch(/ANTHROPIC_API_KEY|sk-fixture/);
     expect(`${result.stdout}${result.stderr}`).not.toContain("sk-fixture");
