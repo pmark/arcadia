@@ -2639,6 +2639,9 @@ function attemptReviewRepairLaunch(
     const code = error instanceof ArcadiaError && typeof error.details?.code === "string" ? error.details.code : null;
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof ArcadiaError && error.details?.conflict) {
+      // A spend refusal (risk or unknown) is durable like any launch blocker: record it, exactly as the ordinary launch
+      // path does. It is not a failed repair attempt, and liveness owns paging, so no ping here.
+      recordSpendLaunchBlocker(db, { projectSlug: input.projectSlug, code, reason: message, actionKey, at: input.now });
       const line = `Review repair launch refused for ${actionKey}${code ? ` [${code}]` : ""}: ${message}`;
       if (recordLaunchRefusalIfNew(db, actionKey, `review-repair:${code ?? message}`, line, input.now)) input.log(line);
       return { attempted: true, outcome: "refused", reason: message, actionKey };
@@ -3716,6 +3719,16 @@ export interface LaunchBlockerRecord {
  * existing only as a line in the worker log. Overwrites any prior blocker for
  * the same Project: only the current reason is durable, not a history.
  */
+/** Records a launch blocker for a spend refusal (`spend_risk` or `spend_unknown`) only; no repair attempt and no ping. Returns whether it recorded. */
+export function recordSpendLaunchBlocker(
+  db: Database.Database,
+  input: { projectSlug: string; code: string | null; reason: string; actionKey: string | null; at: Date }
+): boolean {
+  if (input.code !== "spend_risk" && input.code !== "spend_unknown") return false;
+  recordLaunchBlocker(db, { ...input, code: input.code });
+  return true;
+}
+
 function recordLaunchBlocker(
   db: Database.Database,
   input: { projectSlug: string; code: string; reason: string; actionKey: string | null; at: Date }

@@ -6,7 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import { cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
@@ -916,5 +916,19 @@ describe.each([{ vitest: false, repair: false }, { vitest: true, repair: false }
 
   it("writes nothing to the source", () => {
     expect(fingerprint(source)).toEqual(before);
+  });
+});
+
+describe("the replay's spend seam applies only to simulated executors", () => {
+  const now = new Date("2026-11-10T00:00:00Z");
+  it("keeps a fixed clear fixture for a prediction-only, scripted or candidate run", () => {
+    for (const executor of [undefined, "scripted", "candidate:abc123"] as const) {
+      const seam = replaySpendCheck(executor, now);
+      expect(seam, String(executor)).toBeDefined();
+      expect(seam!.report("claude")).toMatchObject({ verdict: "clear", providers: [{ id: "claude", verdict: "clear" }] });
+    }
+  });
+  it("passes no stub with --executor real, so the tick's real spend check refuses a non-clear verdict before a real CLI starts", () => {
+    expect(replaySpendCheck("real", now)).toBeUndefined();
   });
 });
