@@ -1,5 +1,11 @@
 # Field Notes evidence: making-every-run-teach-us-more
 
+## Editorial refresh, 2026-11-09
+
+Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The shortened draft uses [merged PR #1684](https://github.com/pmark/arcadia/pull/1684) for the replay fix and test behavior. The [readiness record](../../managed-production-readiness.md) supports the later serial, test-only live result and preserves the unproved live repair boundary. The older claim table records the October draft, including its unverified partial run; the revision no longer relies on that run.
+
+The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
+
 - Type: essay; requested development update / blog article, not a guide.
 - Article: docs/articles/2026-10-21-making-every-run-teach-us-more.md
 - Source repository and pinned revision: pmark/arcadia@fdc6d0548b4b6d51c81d7a4ce59654da3b75f67d; recovery candidate pmark/arcadia@e7979f11cf7a3c8eb3b8b6d97c1004e7fbe93572.

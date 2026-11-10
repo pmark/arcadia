@@ -1,5 +1,11 @@
 # Field Notes evidence: how-an-idea-becomes-governed-work
 
+## Editorial refresh, 2026-11-09
+
+Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The revised example uses the [Ask procedure](../../agent-guidance/agent-asks.md), [completed Plan](../../plans/record-run-unattended-test-pins-20261107-part-2.md), [Project pointer](../../../PROJECT.md), and [final PR #2351](https://github.com/pmark/arcadia/pull/2351). The earlier Private Practice Now example and its partial proof remain historical below.
+
+The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
+
 - Type: essay; operator-requested explainer, intended to become a guide on Arcadia Mission Control later.
 - Article: docs/articles/2026-10-23-how-an-idea-becomes-governed-work.md
 - Source repository and pinned revision: pmark/arcadia@280b094f0e956f8d55d67b6ed1d646cd60b3886f

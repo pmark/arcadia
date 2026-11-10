@@ -1,5 +1,11 @@
 # Field Notes evidence: why-autonomous-production-is-not-a-coding-speed-problem
 
+## Editorial refresh, 2026-11-09
+
+Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The original claim table supplies the October validator example. The shortened draft uses the [readiness record](../../managed-production-readiness.md) for the November 5 timeline and November 8–9 batch count, and [PR #2325](https://github.com/pmark/arcadia/pull/2325) for the parser fix. It drops the provider-mode comparison and preserves the timing limitation.
+
+The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
+
 - Type: essay draft (operator-requested repository storage)
 - Article: docs/articles/2026-10-12-why-autonomous-production-is-not-a-coding-speed-problem.md
 - Source repository and pinned revision: pmark/arcadia@17f05f789 (merge of #1348)
