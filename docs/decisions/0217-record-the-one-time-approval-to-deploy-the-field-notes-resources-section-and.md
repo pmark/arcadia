@@ -4,7 +4,7 @@ type: decision
 id: "0217"
 slug: record-the-one-time-approval-to-deploy-the-field-notes-resources-section-and
 project: arcadia
-status: open
+status: approved
 question: Record the one-time approval to deploy the Field Notes Resources section and its navigation on the existing GitHub Pages blog.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src
 updated: 2026-11-10
+answer: Publish the Field Notes Resources section
+decided: 2026-11-10
 ---
 
 # Decision 0217: Record the one-time approval to deploy the Field Notes Resources section and its navigation on the existing GitHub Pages blog.
