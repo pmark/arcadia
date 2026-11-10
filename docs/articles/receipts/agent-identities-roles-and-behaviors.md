@@ -1,5 +1,11 @@
 # Article evidence: agent-identities-roles-and-behaviors
 
+## Editorial refresh, 2026-11-09
+
+Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The [canonical identity table](../../arcadia-semantics.md#roles-specializations-and-optional-names) now includes Flynn. [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md) records the Field Notes site as a separate publication destination.
+
+The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
+
 - Type: essay-format operator-requested source explainer; not an automatic Field Notes eligibility claim.
 - Article: docs/articles/2026-10-23-agent-identities-roles-and-behaviors.md
 - Source repository and pinned revision: pmark/arcadia@a5ff41566d6edbf9dc5be45c99bc2bf54e8b7cd7.

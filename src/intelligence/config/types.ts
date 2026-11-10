@@ -62,6 +62,12 @@ export type IntelligenceRouteEntry = {
   enabled: boolean;
   /** If true, this route cannot resolve unless executionPolicy.allowPaidUsage is true. */
   requiresPaidUsage: boolean;
+  /**
+   * Id of the approved Decision that permits this paid route (for example
+   * "0126"). A requiresPaidUsage route is refused unless this id is bound AND
+   * listed in IntelligenceV01Config.approvedPaidUsageDecisionIds.
+   */
+  paidUsageDecision?: string;
   metadata?: {
     supportsStructuredOutput?: boolean;
     supportsImageInput?: boolean;
@@ -80,6 +86,13 @@ export type IntelligenceV01Config = {
    * just a small explicit lookup table.
    */
   routes: IntelligenceRouteEntry[];
+
+  /**
+   * Decision ids the operator has approved for paid routes. Checked-in
+   * config only (never request input); omitted or empty refuses every paid
+   * route. A route's `paidUsageDecision` must match one of these exactly.
+   */
+  approvedPaidUsageDecisionIds?: string[];
 
   /**
    * LiteLLM proxy endpoint, usually localhost.

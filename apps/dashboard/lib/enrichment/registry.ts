@@ -152,7 +152,9 @@ const ACTION_ADVICE: EnrichmentDefinition = {
   operationId: "arcadia-admin.enrich.action-advice",
   profile: "standard",
   execution: "cloud",
-  allowPaidUsage: true,
+  // Paid usage is refused by default (guard-against-paid-usage); no
+  // enrichment is bound to an approved Decision.
+  allowPaidUsage: false,
   // Even a terse action title ("Ship the release notes") is a valid target for
   // advice, so only skip genuinely empty input.
   minInputChars: 8,

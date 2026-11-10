@@ -49,6 +49,17 @@ const EXECUTION_LOCATIONS: Record<ExecutionPreference, IntelligenceRouteLocation
   "cloud-required": ["cloud"],
 };
 
+function hasApprovedPaidUsageDecision(
+  entry: IntelligenceRouteEntry,
+  options: { approvedPaidUsageDecisions?: readonly string[] },
+): boolean {
+  const decision = entry.paidUsageDecision;
+  if (typeof decision !== "string" || decision.trim().length === 0) {
+    return false;
+  }
+  return (options.approvedPaidUsageDecisions ?? []).includes(decision);
+}
+
 /**
  * Deterministically resolves a companion-app request's capability/execution/
  * profile into exactly one configured execution route, or a typed failure.
@@ -62,7 +73,15 @@ const EXECUTION_LOCATIONS: Record<ExecutionPreference, IntelligenceRouteLocation
 export function resolveIntelligenceRoute(
   requested: IntelligenceRouteRequest,
   registry: IntelligenceRouteEntry[],
-  options: { allowPaidUsage: boolean },
+  options: {
+    allowPaidUsage: boolean;
+    /**
+     * Decision ids the operator has approved for paid usage (config, not
+     * request input). A paid route resolves only when its
+     * `paidUsageDecision` exactly matches one of these. Omitted = none.
+     */
+    approvedPaidUsageDecisions?: readonly string[];
+  },
 ): IntelligenceRouteResolution {
   const candidateLocations = EXECUTION_LOCATIONS[requested.execution];
   const targetExecutor = requested.executionTarget === "codex"
@@ -105,6 +124,19 @@ export function resolveIntelligenceRoute(
         message:
           `Route "${entry.id}" requires paid usage, but the request's ` +
           `executionPolicy.allowPaidUsage is false.`,
+        requested,
+      };
+    }
+
+    // Refuse by default: a paid route also needs a bound, approved Decision.
+    // allowPaidUsage alone never authorizes spend.
+    if (entry.requiresPaidUsage && !hasApprovedPaidUsageDecision(entry, options)) {
+      return {
+        ok: false,
+        code: "paid_usage_not_allowed",
+        message:
+          `Route "${entry.id}" requires paid usage, but no approved Decision ` +
+          `is bound to it. Paid routes are refused by default.`,
         requested,
       };
     }

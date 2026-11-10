@@ -55,10 +55,15 @@ describe("IntelligenceWorker bounded parallel scheduling", () => {
       },
     };
     const config = schedulerConfig({
+      // Paid routes are refused unless bound to an approved Decision; this
+      // test is about pool concurrency, so bind a fixture Decision.
       routes: buildDefaultRoutes({
         cloudTextRoute: "cloud-text",
         codexTextRoute: "codex-cli",
-      }),
+      }).map((route) =>
+        route.requiresPaidUsage ? { ...route, paidUsageDecision: "fixture-0000" } : route,
+      ),
+      approvedPaidUsageDecisionIds: ["fixture-0000"],
     });
 
     await submitIntelligenceRequest(repository, buildIntelligenceRequest({

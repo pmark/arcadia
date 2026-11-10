@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { getEnrichment, isEnrichmentKind } from "./registry";
+import { readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { ENRICHMENT_KINDS, getEnrichment, isEnrichmentKind } from "./registry";
 
 describe("action.advice enrichment", () => {
   it("is a registered enrichment kind", () => {
@@ -11,7 +13,7 @@ describe("action.advice enrichment", () => {
     const advice = getEnrichment("action.advice");
     // Advice uses cloud text AI for better quality.
     expect(advice.execution).toBe("cloud");
-    expect(advice.allowPaidUsage).toBe(true);
+    expect(advice.allowPaidUsage).toBe(false);
     // A terse action title should still qualify for advice.
     expect(advice.minInputChars).toBeLessThanOrEqual(8);
   });
@@ -51,5 +53,26 @@ describe("action.advice enrichment", () => {
     expect(advice.parse({ obstacles: ["Something"], recommendations: ["   "] })).toBeNull();
     expect(advice.parse("not an object")).toBeNull();
     expect(advice.parse(null)).toBeNull();
+  });
+});
+
+describe("paid usage guard", () => {
+  it("registers at least one enrichment and none sets allowPaidUsage", () => {
+    expect(ENRICHMENT_KINDS.length).toBeGreaterThan(0);
+    for (const kind of ENRICHMENT_KINDS) {
+      expect(getEnrichment(kind).allowPaidUsage, kind).not.toBe(true);
+    }
+  });
+
+  it("no enrichment source file sets allowPaidUsage true", () => {
+    const dir = __dirname;
+    const sources = readdirSync(dir).filter(
+      (f) => /\.tsx?$/.test(f) && !/\.test\.tsx?$/.test(f),
+    );
+    expect(sources.length).toBeGreaterThan(0);
+    for (const file of sources) {
+      const text = readFileSync(path.join(dir, file), "utf8");
+      expect(text, file).not.toMatch(/allowPaidUsage\s*:\s*true/);
+    }
   });
 });

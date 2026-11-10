@@ -3286,6 +3286,13 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Next:** Next ready Action in this inactive Plan: enforce-spend-check-at-launch-and-admission.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-build-arcadia-spend-check-2026-11-10c).
 
+## 2026-11-10 — Completed arcadia/refuse-paid-intelligence-routes-by-default
+
+- **Did:** Completed Action arcadia/refuse-paid-intelligence-routes-by-default from accepted evidence (Candidate 42c2c80728cd04e2d3c8a942f78bc20928aa1b1d).
+- **Result:** Every declared acceptance criterion was accepted as met: "A resolveRoute test shows a paid route with allowPaidUsage: true and no bound Decision gives paid_usage_not_allowed."; "A registry test shows no enrichment sets allowPaidUsage."; "The PR TLDR route bound to Decision 0126 still resolves as before, with a test, and the PR changes no Decision document.".
+- **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-paid-intelligence-routes-by-default-20261110).
+
 ## 2026-11-10 — Completed arcadia/alert-on-verified-spend-risk-and-require-receipts
 
 - **Did:** Completed Action arcadia/alert-on-verified-spend-risk-and-require-receipts from accepted evidence (Candidate f1c4ab6f52fca98a563c4da132d0612878aa9ec7).
