@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/how-to-replace-a-coordinator-without-los
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/how-to-replace-a-coordinator-without-losing-the-work/"
 channels: [site, rss]
+tags: [automation, agent-workflows, reliability]
 ---
 
 # How to replace a coordinator without losing the work
