@@ -207,7 +207,11 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
   margin: 0 auto;
   width: calc(100% - 1.75rem);
 }
-.canyon-page .posts { display: grid; gap: clamp(4.625rem, 12vw, 8.625rem); }
+.canyon-page .posts {
+  display:grid;
+  gap:clamp(4.625rem, 12vw, 8.625rem);
+  padding-block-end:clamp(1rem, 4svh, 2rem);
+}
 .canyon-page .posts li, .posts-empty {
   padding: clamp(1.25rem, 4.3vw, 2.25rem);
   border: 1px solid var(--rule);
