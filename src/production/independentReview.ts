@@ -1019,7 +1019,10 @@ export function advanceIndependentReview(db: Database.Database, input: {
   // `requested` or `close_failed` record never reopens anything: the worker did
   // not (provably) close the PR, so a later close is a person's. It runs before
   // the exhausted-budget, backoff and poll-interval returns, so a spent budget
-  // cannot strand a closed PR. Residual windows: a crash after the close but
+  // cannot strand a closed PR. Boundary: the tick calls this only behind its policy,
+  // scope, grant and fast-forward guards, so while production is Off or a grant
+  // has lapsed a PR stuck CLOSED waits for `gh pr reopen <url>` (the escalation
+  // raised at the failed reopen names it). Residual windows: a crash after the close but
   // before the `closed` write leaves a closed PR the reconcile cannot tell from
   // a person's close (nothing reopens it; `gh pr reopen` is the remedy); and a
   // crash after the reopen but before the `done` write could reopen a PR a

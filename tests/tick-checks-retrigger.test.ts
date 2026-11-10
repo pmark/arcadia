@@ -371,6 +371,14 @@ describe("the worker's once-per-head required-checks re-trigger", () => {
     rehearsal.github.prs[0].state = "CLOSED";
     ticks(rehearsal, 3);
     expect(ghCount(rehearsal, "gh pr reopen")).toBe(0);
+
+    // Control: the same closed record on the candidate's own head does reopen it, so the setup above is live.
+    withDatabase(rehearsal.workspace, (db) => {
+      db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ? WHERE target_head = ?")
+        .run(rehearsal.now.toISOString(), JSON.stringify({ route: "reopen", runIds: [], phase: "closed", detail: null }), head);
+    });
+    rehearsal.tick();
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(1);
   });
 
   it("backs off a rate limit on the first re-trigger call and re-triggers once afterwards", () => {
