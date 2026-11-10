@@ -76,6 +76,9 @@ interface BoxOptions {
   planStatus?: "active" | "draft";
   /** Embed the real pinned planActivation block (required for a draft Plan to be startable). */
   activation?: boolean;
+  /** The previous Plan's actual status at the pin, and the status the card's previousPlanBefore pins (default active/active). */
+  previousStatus?: string;
+  envelopePreviousStatus?: string;
   projectPointer?: string;
   done?: string[];
   decisions?: Record<string, string | null>;
@@ -152,7 +155,7 @@ function box(options: BoxOptions = {}) {
     "src/production/workerMerge.ts": "export {};\n",
     "PROJECT.md": projectDocument(options.projectPointer ?? (planStatus === "draft" ? PREVIOUS : PLAN)),
     [`docs/plans/${PLAN}.md`]: planDocument(planStatus, options.done, options.delegation ? DELEGATED_ACTIONS : ACTIONS),
-    [`docs/plans/${PREVIOUS}.md`]: `---\nslug: ${PREVIOUS}\nproject: arcadia\nstatus: ${planStatus === "draft" ? "active" : "draft"}\nactions: []\n---\n`
+    [`docs/plans/${PREVIOUS}.md`]: `---\nslug: ${PREVIOUS}\nproject: arcadia\nstatus: ${options.previousStatus ?? (planStatus === "draft" ? "active" : "draft")}\nactions: []\n---\n`
   };
   for (const id of DECISIONS) {
     const body = options.decisions?.[id];
@@ -276,7 +279,7 @@ function box(options: BoxOptions = {}) {
     schema: "arcadia-operator-script-v1", id: ID, kind: "grant", title: "START: fixture", script: `${ID}.sh`, repeatable: false,
     problem: "p", desired_effect: "e", authority: { does: ["d"], never_does: ["n"] }, success: { effect: "s", next: "n" }, failure: { effect: "f", next: "n" },
     expires_at: options.expiresAt ?? new Date(Date.now() + 6 * 3_600_000).toISOString().replace(/\.\d{3}Z$/, "Z"),
-    startRun: pins, ...(options.activation ? { planActivation: structuredClone(activationSource.planActivation!) } : {})
+    startRun: pins, ...(options.activation ? { planActivation: (() => { const a = structuredClone(activationSource.planActivation!) as any; if (options.envelopePreviousStatus === "complete") { a.envelope.previousPlanBefore = { ...a.envelope.previousPlanBefore, status: "complete", current_action: a.envelope.projectBefore.current_action }; a.envelope.previousPlanAfter = { status: "complete", current_action: null }; } return a; })() } : {})
   };
   const script = startRunLauncher(ID);
   // A hand-written card the /actions runner would refuse: the executor must refuse it as well.
@@ -518,6 +521,7 @@ describe("start-run executor: P1 repo refusals consume nothing", () => {
     ["a pinned Action that is already done", { done: [ACTIONS[1]] }, /still open/, () => undefined],
     ["a draft Plan with no embedded activation", { planStatus: "draft" }, /carries no planActivation/, () => undefined],
     ["a draft Plan whose Project pointer is not the previous Plan", { planStatus: "draft", activation: true, projectPointer: "something-else" }, /previous Plan/, () => undefined],
+    ["a draft Plan whose previous Plan status differs from the card's previousPlanBefore", { planStatus: "draft", activation: true, previousStatus: "complete" }, /is 'complete' at the reviewed revision, but the card's previousPlanBefore expects 'active'/, () => undefined],
     ["an active Plan the Project does not point at", { projectPointer: "something-else" }, /does not point at it/, () => undefined]
   ])("refuses %s", (_label, options, reason, setup) => {
     const b = box(options);
@@ -525,6 +529,12 @@ describe("start-run executor: P1 repo refusals consume nothing", () => {
     const headBefore = b.head();
     const result = b.run("preflight");
     expectRefusedClean(b, result, "P1", reason, headBefore);
+  });
+  it.each([["active"], ["complete"]])("passes P1 for a draft Plan whose previous Plan is %s and matches the card", (status) => {
+    const b = box({ planStatus: "draft", activation: true, previousStatus: status, envelopePreviousStatus: status });
+    const result = b.run("preflight");
+    expect(result.receipt!.outcome).not.toBe("refused");
+    expect(result.receipt!.reason ?? "").not.toMatch(/previous Plan/);
   });
   it("refuses a workspace that resolves to another directory name", () => {
     const b = box({ state: (s) => { s.workspace = s.workspace.replace("martianrover", "elsewhere"); } });
