@@ -122,11 +122,10 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 }
 @media (pointer:coarse) {
   :root { --canyon-edge:var(--canyon-live-edge, #2c232e); }
-  /* Keep a stable base height and cover any additional bottom safe area. */
+  /* Use a stable inset so toolbar animation cannot resize the drawing buffer. */
   .canyon-landscape {
     height:calc(100vh + 96px);
-    height:calc(100lvh + 96px);
-    min-height:calc(100dvh + env(safe-area-inset-bottom, 0px) + 96px);
+    height:calc(100lvh + 96px + env(safe-area-max-inset-bottom, 34px));
   }
 }
 .canyon-landscape > * { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
