@@ -1,6 +1,8 @@
 "use client";
 
 import type { IntelligenceArtifactRecord, IntelligenceJob } from "@pmark/arcadia/intelligence/contracts";
+import { CopyableCodeBlock } from "../copyable-code-block";
+import { copyText } from "../../lib/copy-text";
 import { categorizeFailure, failureCategoryLabel } from "../../lib/intelligence-failure";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -83,9 +85,10 @@ function FailurePanel({ job }: { job: IntelligenceJob }) {
       <p className="mt-1">{job.error?.message ?? "No error message recorded."}</p>
       <details className="mt-2">
         <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide opacity-80">Diagnostic details</summary>
-        <pre className="mt-2 overflow-auto rounded-md border border-clay/20 bg-canvas p-2 text-xs text-ink">
-          {JSON.stringify({ error: job.error, status: job.status }, null, 2)}
-        </pre>
+        <CopyableCodeBlock
+          text={JSON.stringify({ error: job.error, status: job.status }, null, 2)}
+          className="mt-2 overflow-auto rounded-md border border-clay/20 bg-canvas p-2 text-xs text-ink"
+        />
       </details>
     </div>
   );
@@ -113,7 +116,7 @@ function TextResult({ job }: { job: IntelligenceJob }) {
         </span>
         <button
           type="button"
-          onClick={() => void navigator.clipboard.writeText(text)}
+          onClick={() => void copyText(text)}
           className="rounded-md border border-steel/30 bg-steel/10 px-2 py-1 text-xs font-semibold text-steel"
         >
           Copy

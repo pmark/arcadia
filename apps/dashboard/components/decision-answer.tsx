@@ -11,6 +11,7 @@ import type { DecisionRecord } from "../lib/decision-record-server";
 import { optionClampLines, summarizeDecision, type DecisionSummaryOption } from "../lib/decision-summary";
 import type { Choice } from "../hooks/use-approvals";
 import type { CardOutcome } from "./decision-cards";
+import { CopyableCodeBlock } from "./copyable-code-block";
 import { TodoCard } from "./todo-card";
 
 // The document's renderer stays out of the first view's script: only someone who asks to read a record pays for it.
@@ -297,7 +298,7 @@ function FullRecord({ project, id, row, meta, hint }: { project: string; id: str
               {state.record.frontMatter ? (
                 <details>
                   <summary className="flex min-h-11 cursor-pointer items-center text-sm font-medium text-steel">Record fields</summary>
-                  <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-line bg-canvas p-2 text-xs text-ink">{state.record.frontMatter}</pre>
+                  <CopyableCodeBlock text={state.record.frontMatter} className="overflow-x-auto whitespace-pre-wrap break-words rounded-md border border-line bg-canvas p-2 text-xs text-ink" />
                 </details>
               ) : null}
               {state.record.truncated ? <p>This document is too long to show whole here. Read the rest in {state.record.relativePath}.</p> : null}

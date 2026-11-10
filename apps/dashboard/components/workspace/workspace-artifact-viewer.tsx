@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { CopyableCodeBlock } from "../copyable-code-block";
 
 export function WorkspaceArtifactViewer({ id, receipt, onClose }: { id: string; receipt: string; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -31,6 +32,6 @@ export function WorkspaceArtifactViewer({ id, receipt, onClose }: { id: string; 
       // SVG is always an image resource, never injected markup or an embedded document.
       // eslint-disable-next-line @next/next/no-img-element
       ? <img src={content.image} alt="Linked Artifact output" onError={() => setError("The Artifact image could not be displayed.")} />
-      : <pre>{content.text}</pre> : <p role="status">Opening Artifact…</p>}
+      : <CopyableCodeBlock text={content.text} /> : <p role="status">Opening Artifact…</p>}
   </dialog>;
 }

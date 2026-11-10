@@ -32,6 +32,7 @@ import {
 } from "../lib/production-console";
 import type { SessionLogTail } from "../lib/session-log";
 import type { DashboardAgentSession } from "../lib/types";
+import { CopyableCodeBlock } from "./copyable-code-block";
 import { SessionCard } from "./dashboard-ui";
 import { planHref } from "./plans-list";
 
@@ -599,8 +600,9 @@ export function SessionLog({ sessionId, live }: { sessionId: string; live: boole
         <span>{live ? "Live log · updates every 3 s" : "Log"}{truncated ? " · showing the end" : ""}</span>
         {error ? <span className="text-clay">Last poll failed: {error}</span> : null}
       </div>
-      <pre
-        ref={preRef}
+      <CopyableCodeBlock
+        preRef={preRef}
+        text={state === "loading" ? "" : state === "error" ? `Log unavailable: ${error ?? "unknown error"}` : text}
         tabIndex={0}
         aria-label={`Log for Session ${sessionId}`}
         onScroll={(event) => {
@@ -610,7 +612,7 @@ export function SessionLog({ sessionId, live }: { sessionId: string; live: boole
         className="h-64 max-w-full overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-canvas p-3 font-mono text-[11px] leading-4 text-ink"
       >
         {state === "loading" ? "Loading log…" : state === "error" ? `Log unavailable: ${error ?? "unknown error"}` : text || "(empty so far)"}
-      </pre>
+      </CopyableCodeBlock>
     </div>
   );
 }

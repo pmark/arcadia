@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { DashboardChrome } from "../../../../../components/chrome";
+import { CopyableCodeBlock } from "../../../../../components/copyable-code-block";
 
 type RunStatus = "running" | "succeeded" | "failed";
 interface Run {
@@ -110,7 +111,7 @@ function ResultView({ data }: { data: RunResponse }) {
   );
 }
 
-function OutputBlock({ label, value, error = false }: { label: string; value: string; error?: boolean }) { return <div className="mt-4"><h3 className={`text-xs font-semibold uppercase tracking-wide ${error ? "text-clay" : "text-muted"}`}>{label}</h3><pre className="mt-2 max-h-96 min-h-16 overflow-auto rounded-md bg-ink p-3 text-xs leading-5 text-white">{value || "(no output)"}</pre></div>; }
+function OutputBlock({ label, value, error = false }: { label: string; value: string; error?: boolean }) { return <div className="mt-4"><h3 className={`text-xs font-semibold uppercase tracking-wide ${error ? "text-clay" : "text-muted"}`}>{label}</h3><CopyableCodeBlock text={value} className="mt-2 max-h-96 min-h-16 overflow-auto rounded-md bg-ink p-3 text-xs leading-5 text-white">{value || "(no output)"}</CopyableCodeBlock></div>; }
 function AuthorityList({ title, items, tone }: { title: string; items: string[]; tone: string }) { return <div><h3 className={`text-xs font-semibold uppercase tracking-wide ${tone}`}>{title}</h3><ul className="mt-2 list-disc space-y-1 pl-4 text-sm text-muted">{items.map((item) => <li key={item}>{item}</li>)}</ul></div>; }
 function StatusPill({ status }: { status: RunStatus }) { const config = { running: ["Running", "bg-steel/10 text-steel", Loader2], succeeded: ["Completed", "bg-moss/10 text-moss", CheckCircle2], failed: ["Failed", "bg-clay/10 text-clay", AlertTriangle] }[status] as [string, string, typeof Loader2]; const Icon = config[2]; return <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${config[1]}`}><Icon className={`h-3.5 w-3.5 ${status === "running" ? "animate-spin" : ""}`} aria-hidden="true" />{config[0]}</span>; }
 function StatusIcon({ status }: { status: RunStatus }) { const Icon = status === "running" ? Loader2 : status === "succeeded" ? CheckCircle2 : AlertTriangle; return <Icon className={`mt-0.5 h-6 w-6 shrink-0 ${status === "running" ? "animate-spin text-steel" : status === "succeeded" ? "text-moss" : "text-clay"}`} aria-hidden="true" />; }

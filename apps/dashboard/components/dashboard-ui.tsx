@@ -16,6 +16,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { ActionAdvice } from "./action-advice";
+import { copyText } from "../lib/copy-text";
 import { useEnrichment } from "../hooks/use-enrichment";
 import type { EnrichmentKind } from "../lib/enrichment/registry";
 import type {
@@ -1241,9 +1242,10 @@ function CopyCommandButton({ label, command }: { label: string; command: string 
     <button
       type="button"
       onClick={() => {
-        void navigator.clipboard.writeText(command);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        void copyText(command).then((outcome) => {
+          setCopied(outcome === "copied");
+          setTimeout(() => setCopied(false), 1500);
+        });
       }}
       className="rounded-md border border-line px-2 py-1 text-xs font-medium text-ink transition hover:border-steel"
       title={command}
