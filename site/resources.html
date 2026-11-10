@@ -1,0 +1,31 @@
+---
+layout: default
+title: Resources
+summary: Research and practical guides behind Arcadia Field Notes, paired with examples from building Arcadia.
+permalink: /resources/
+---
+<section class="post-body" aria-labelledby="resources-title">
+  <a class="back-article" href="{{ '/' | relative_url }}">← All Field Notes</a>
+  <h1 id="resources-title">Resources</h1>
+  <p>Research and practical guides we’ve written about in Field Notes. Follow a source to the original, then see what we tried in Arcadia and what the evidence showed.</p>
+  {% for resource in site.data.resources %}
+    {% capture related_posts %}
+      {% for post in site.posts %}
+        {% if resource.posts contains post.slug %}
+          <li><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a></li>
+        {% endif %}
+      {% endfor %}
+    {% endcapture %}
+    {% assign related_posts = related_posts | strip %}
+    {% if related_posts != empty %}
+      <section>
+        <h2><a href="{{ resource.url | escape }}">{{ resource.title | escape }}</a></h2>
+        <p class="meta">{{ resource.publisher | escape }}</p>
+        <p>{{ resource.relevance | escape }}</p>
+        <ul aria-label="Related Field Notes">
+          {{ related_posts }}
+        </ul>
+      </section>
+    {% endif %}
+  {% endfor %}
+</section>
