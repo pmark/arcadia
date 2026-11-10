@@ -4,7 +4,7 @@ type: decision
 id: "0210"
 slug: record-the-one-time-merge-and-public-field-notes-deployment-of-pr-2422-adding
 project: arcadia
-status: open
+status: approved
 question: "Record the one-time merge and public Field Notes deployment of PR #2422, adding 100 CSS pixels below the footer."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
-updated: 2026-11-10
+updated: 2026-11-09
+answer: Publish the extra Field Notes bottom spacing
+decided: 2026-11-09
 ---
 
 # Decision 0210: Record the one-time merge and public Field Notes deployment of PR #2422, adding 100 CSS pixels below the footer.
