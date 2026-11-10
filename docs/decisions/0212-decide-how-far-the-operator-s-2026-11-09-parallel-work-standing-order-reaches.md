@@ -4,7 +4,7 @@ type: decision
 id: "0212"
 slug: decide-how-far-the-operator-s-2026-11-09-parallel-work-standing-order-reaches
 project: arcadia
-status: open
+status: approved
 question: "Decide how far the operator's 2026-11-09 parallel-work standing order reaches: whether to widen Decision 0066's one-Session-per-repository limit now, and whether more than one coordinator Lead may hold separate Actions at once."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
-updated: 2026-11-10
+updated: 2026-11-09
+answer: "A. Record the order now and keep the gates: parallel helpers inside each Lead today; widen 0066 and the cap only through the existing proof Plans"
+decided: 2026-11-09
 ---
 
 # Decision 0212: Decide how far the operator's 2026-11-09 parallel-work standing order reaches: whether to widen Decision 0066's one-Session-per-repository limit now, and whether more than one coordinator Lead may hold separate Actions at once.
