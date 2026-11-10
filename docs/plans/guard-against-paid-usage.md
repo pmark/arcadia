@@ -54,11 +54,11 @@ actions:
     references: ["docs/reports/spend-safety-investigation-2026-11-09.md", "https://github.com/pmark/arcadia/issues/2372", "https://github.com/pmark/arcadia/issues/2373", "https://github.com/pmark/arcadia/issues/2374"]
   - id: alert-on-verified-spend-risk-and-require-receipts
     title: Run the spend check on each liveness tick, page once per risk episode, send unknown to the digest only, and add the no-claims-without-a-receipt rule to shared guidance.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Run the spend check on each liveness tick, page once per risk episode, send unknown to the digest only, and add the no-claims-without-a-receipt rule to shared guidance and the Signal skill.
+    next_action: Completed via Agent Ask complete-alert-on-verified-spend-risk-2026-11-10; no further action.
     expected_artifact: Evidence satisfying Agent Ask alert-on-verified-spend-risk-and-require-receipts
     clarification: clarified
     confidence: high
