@@ -4,7 +4,7 @@ type: decision
 id: "0206"
 slug: record-the-one-time-public-field-notes-deployment-of-the-reviewed-rover-track
 project: arcadia
-status: open
+status: approved
 question: "Record the one-time public Field Notes deployment of the reviewed rover-track Canyon Pass preview through PR #2401 and the existing Blog GitHub Pages workflow."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
-updated: 2026-11-10
+updated: 2026-11-09
+answer: Publish the Canyon Pass rover-track preview
+decided: 2026-11-09
 ---
 
 # Decision 0206: Record the one-time public Field Notes deployment of the reviewed rover-track Canyon Pass preview through PR #2401 and the existing Blog GitHub Pages workflow.
