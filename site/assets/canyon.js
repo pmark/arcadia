@@ -29,7 +29,7 @@
   const SCROLL_RETENTION = .9;
   const SCROLL_SETTLE_PX = .5;
   const STATE_KEY = 'field-notes-camera-v1';
-  const FRAME_KEY = STATE_KEY + '-frame-v2';
+  const FRAME_KEY = STATE_KEY + '-frame-v3';
   let saved;
   try { saved = JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null'); } catch {}
   const restoreNumber = value => Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -515,6 +515,78 @@ function drawStars(night) {
     ground.position.z = (lookBehind - segments / 2) * spacing;
     canyon.add(ground);
     const centerAt = distance => 1.65 * Math.sin(distance * .073) + .63 * Math.sin(distance * .031);
+    const trackGeometry = new THREE.BufferGeometry();
+    const trackPositions = new THREE.BufferAttribute(new Float32Array(2 * segments * 18), 3).setUsage(THREE.DynamicDrawUsage);
+    trackGeometry.setAttribute('position', trackPositions);
+    const tracks = new THREE.Mesh(trackGeometry, new THREE.MeshBasicMaterial({
+      polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1
+    }));
+    tracks.frustumCulled = false;
+    canyon.add(tracks);
+
+    const stoneGeometry = new THREE.IcosahedronGeometry(1, 0);
+    const normals = stoneGeometry.getAttribute('normal');
+    const facets = new Float32Array(normals.count * 3);
+    for (let vertex = 0; vertex < normals.count; vertex++) {
+      const shade = .83 + normals.getY(vertex) * .14 - normals.getX(vertex) * .08;
+      facets.fill(shade, vertex * 3, vertex * 3 + 3);
+    }
+    stoneGeometry.setAttribute('color', new THREE.BufferAttribute(facets, 3));
+    const stones = new THREE.InstancedMesh(stoneGeometry, new THREE.MeshBasicMaterial({ vertexColors:true }), segments);
+    stones.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    stones.frustumCulled = false;
+    canyon.add(stones);
+    const stonePose = new THREE.Object3D();
+    const detailNoise = (index, salt) => {
+      const value = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+      return value - Math.floor(value);
+    };
+
+    // Use world cells for the detail too, so it never shifts when the strip is recycled.
+    function updateFloorDetails(cell) {
+      const start = cell - lookBehind;
+      const trackEdges = (index, side) => {
+        const distance = index * spacing;
+        const center = centerAt(distance) + .18 * Math.sin(distance * .24) + side * .79;
+        const halfWidth = .095 + .035 * detailNoise(index, side);
+        return [center - halfWidth, center + halfWidth];
+      };
+      let vertex = 0;
+      for (const side of [-1, 1]) {
+        let [left, right] = trackEdges(start, side);
+        for (let local = 0; local < segments; local++) {
+          const z = (lookBehind - local) * spacing;
+          const [nextLeft, nextRight] = trackEdges(start + local + 1, side);
+          trackPositions.setXYZ(vertex++, left, 0, z);
+          trackPositions.setXYZ(vertex++, right, 0, z);
+          trackPositions.setXYZ(vertex++, nextLeft, 0, z - spacing);
+          trackPositions.setXYZ(vertex++, right, 0, z);
+          trackPositions.setXYZ(vertex++, nextRight, 0, z - spacing);
+          trackPositions.setXYZ(vertex++, nextLeft, 0, z - spacing);
+          left = nextLeft;
+          right = nextRight;
+        }
+      }
+      trackPositions.needsUpdate = true;
+
+      let count = 0;
+      for (let local = 0; local < segments; local++) {
+        const index = start + local;
+        if (detailNoise(index, 2) > .66) continue;
+        const offset = detailNoise(index, 3) * spacing;
+        const side = detailNoise(index, 4) < .5 ? -1 : 1;
+        const x = centerAt(index * spacing + offset) + side * (1.3 + detailNoise(index, 5) * 1.65);
+        const size = .10 + .45 * detailNoise(index, 6) ** 2;
+        stonePose.position.set(x, size * .24, (lookBehind - local) * spacing - offset);
+        stonePose.rotation.y = detailNoise(index, 7) * Math.PI * 2;
+        stonePose.scale.set(size, size * .52, size * (.65 + detailNoise(index, 8) * .6));
+        stonePose.updateMatrix();
+        stones.setMatrixAt(count++, stonePose.matrix);
+      }
+      stones.count = count;
+      stones.instanceMatrix.needsUpdate = true;
+    }
+
     const walls = [-1, 1].map(side => {
       const geometry = new THREE.BufferGeometry();
       for (const key of ['position','color']) {
@@ -533,6 +605,7 @@ function drawStars(night) {
     function updateWalls(cell) {
       if (cell === previousCell) return;
       previousCell = cell;
+      updateFloorDetails(cell);
       for (const { side, geometry } of walls) {
         const position = geometry.getAttribute('position');
         const color = geometry.getAttribute('color');
@@ -606,6 +679,8 @@ function drawStars(night) {
         horizonTint.copy(fog.color);
         rock.color.copy(rockDay).lerp(rockNight, night).lerp(horizonTint, .25);
         ground.material.color.copy(groundDay).lerp(groundNight, night).lerp(horizonTint, .25);
+        tracks.material.color.copy(ground.material.color).multiplyScalar(.72);
+        stones.material.color.copy(ground.material.color).lerp(rock.color, .09);
         skyTexture.needsUpdate = true;
       }
       renderer.render(scene, camera);
