@@ -110,6 +110,7 @@ const LESSON_CACHE_APPLY = guarded(
  */
 export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassification>> = {
   "provider-usage": exempt("Reads host provider telemetry only; no workspace database, credential mutation, model call or activity record."),
+  "spend check": exempt("Reads the process environment, local settings files and two sign-in status commands only; no workspace database, model call or activity record."),
   "audit host-preview": exempt("Serves a named static directory on loopback; reads no workspace."),
   init: exempt("Creates the named workspace; `--profile experiment` carries its own refusals."),
   "config set defaultWorkspace": guarded(
