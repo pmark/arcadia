@@ -2272,7 +2272,7 @@ export interface UnsettledAgentAskProposal { id: string; requestId: string; prop
  * settlement row exists for them the moment `settleAgentAsk` applies.
  */
 export function listUnsettledAgentAskProposals(db: Database.Database): UnsettledAgentAskProposal[] {
-  return db.prepare(`SELECT p.id, p.request_id, p.proposal_json, p.created_at
+  const rows = db.prepare(`SELECT p.id, p.request_id, p.proposal_json, p.created_at
       FROM agent_ask_proposals p
       LEFT JOIN agent_ask_settlements s ON s.proposal_id = p.id
       WHERE s.id IS NULL
@@ -2287,6 +2287,38 @@ export function listUnsettledAgentAskProposals(db: Database.Database): Unsettled
         createdAt: value.created_at
       };
     });
+  if (!rows.some((row) => row.proposal.normalized.intent === "complete")) return rows;
+  const settledDerived = settledAutoSettleContentKeys(db);
+  if (settledDerived.size === 0) return rows;
+  return rows.filter((row) => !(
+    row.proposal.normalized.intent === "complete" && settledDerived.has(autoSettleContentKey(row.proposal.normalized))
+  ));
+}
+
+/**
+ * The content a derived auto-settle proposal shares with the drafted
+ * `complete` Ask it settles. Auto-settle (src/ask/autoSettleBeforeDispatch.ts)
+ * previews a copy of the draft under a new content-addressed `auto-settle-`
+ * request id, optionally refreshing `candidate_revision`, and settles that
+ * copy, so the draft's own earlier proposal row never gets a settlement. The
+ * two differ only in those two fields (Issue #2102).
+ */
+function autoSettleContentKey(normalized: NormalizedAgentAsk): string {
+  const { requestId: _requestId, candidateRevision: _candidateRevision, ...rest } = normalized;
+  return JSON.stringify(rest);
+}
+
+function settledAutoSettleContentKeys(db: Database.Database): Set<string> {
+  const keys = new Set<string>();
+  const settled = db.prepare(`SELECT p.proposal_json
+      FROM agent_ask_proposals p
+      JOIN agent_ask_settlements s ON s.proposal_id = p.id
+      WHERE p.request_id LIKE 'auto-settle-%'`).all() as Array<{ proposal_json: string }>;
+  for (const row of settled) {
+    const normalized = (JSON.parse(row.proposal_json) as AgentAskProposal).normalized;
+    if (normalized.intent === "complete" && normalized.requestId.startsWith("auto-settle-")) keys.add(autoSettleContentKey(normalized));
+  }
+  return keys;
 }
 
 export function markAgentAskNotificationSent(db: Database.Database, settlementId: string, messageId: string): void {

@@ -14,6 +14,9 @@ import {
 } from "../src/ask/autoSettleBeforeDispatch.js";
 import { EVIDENCE_PLACEHOLDER_MARKER } from "../src/ask/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
+import { previewAgentAskRequest } from "../src/ask/preview.js";
+import { resolveOperatorGate } from "../src/ask/operatorGate.js";
+import { listUnsettledAgentAskProposals } from "../src/ask/settlement.js";
 import { discoverDocs } from "../src/docs/discover.js";
 import { arrangeActionOrder } from "../src/dispatch/order.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
@@ -97,6 +100,43 @@ describe("attemptAutoSettlePendingCompletion", () => {
     // still pass against an archived copy, so assert the exact tracked path.
     const tracked = execFileSync("git", ["ls-files", ".arcadia/asks"], { cwd: repo, encoding: "utf8" }).split("\n");
     expect(tracked).toContain(".arcadia/asks/agent-ask-complete-aaa-ineligible-first.yaml");
+  });
+
+  it("does not leave the drafted Ask's own previewed proposal unsettled or gating once its derived auto-settle proposal is settled (Issue #2102)", () => {
+    const { repo, workspace } = fixture({ draftAsk: true });
+    const draftPath = path.join(repo, ".arcadia/asks/agent-ask-complete-first.yaml");
+
+    const result = withDatabase(workspace, (db) => {
+      // The session previewed its own draft under the draft's request id...
+      previewAgentAskRequest(db, { request: readFileSync(draftPath, "utf8"), sourcePath: draftPath });
+      expect(listUnsettledAgentAskProposals(db)).toHaveLength(1);
+      // ...then auto-settle settles a derived `auto-settle-` copy.
+      const settled = attemptAutoSettlePendingCompletion(db, { repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION });
+      expect(settled).toMatchObject({ settled: true, reason: AUTO_SETTLE_SETTLED });
+      return {
+        unsettled: listUnsettledAgentAskProposals(db),
+        gate: resolveOperatorGate({ db, repoRoot: repo, projectSlug: "demo", selectedActionId: "first" })
+      };
+    });
+
+    expect(result.unsettled).toEqual([]);
+    expect(result.gate.blocking).toEqual([]);
+  });
+
+  it("keeps a complete Ask pending when its content differs from the settled derived proposal (Issue #2102)", () => {
+    const { repo, workspace } = fixture({ draftAsk: true });
+    const draftPath = path.join(repo, ".arcadia/asks/agent-ask-complete-first.yaml");
+
+    const unsettled = withDatabase(workspace, (db) => {
+      const other = readFileSync(draftPath, "utf8")
+        .replace(/^request_id: .*$/m, "request_id: other-complete-first")
+        .replace("Every declared criterion is met.", "A different rationale.");
+      previewAgentAskRequest(db, { request: other, sourcePath: draftPath });
+      attemptAutoSettlePendingCompletion(db, { repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION });
+      return listUnsettledAgentAskProposals(db).map((row) => row.requestId);
+    });
+
+    expect(unsettled).toEqual(["other-complete-first"]);
   });
 
   it("is idempotent: calling it again once the Action is already done finds no drafted Ask left to settle", () => {
