@@ -162,7 +162,7 @@ describe("collectHostProbes and the command", () => {
   const home = "/home/fixture";
   const goodFiles = files({
     [`${home}/.claude.json`]: JSON.stringify({ oauthAccount: { hasExtraUsageEnabled: false, profileFetchedAt: "2026-11-09T00:00:00Z", emailAddress: SECRET } }),
-    [`${home}/.arcadia/telemetry/coding-agent-usage.json`]: JSON.stringify({ providers: { "codex-cli": { credits: { hasCredits: false } } } })
+    [`${home}/.arcadia/telemetry/coding-agent-usage.json`]: JSON.stringify({ providers: { "codex-cli": { capturedAt: "2026-11-09T07:00:00.000Z", credits: { hasCredits: false } } } })
   });
   const subscriptionRunner: SpendRunner = ({ command }) => command === "claude"
     ? ok(JSON.stringify({ loggedIn: true, authMethod: "claude.ai", apiProvider: "firstParty", email: SECRET }))
@@ -215,6 +215,50 @@ describe("collectHostProbes and the command", () => {
       expect(probeEnv.PATH).toBe("/bin");
     }
     expect(JSON.stringify(stripped)).not.toContain(SECRET);
+  });
+
+  const codexOnly = (runner: SpendRunner, readText = goodFiles) => runSpendCheckCommand({ provider: "codex" }, { ...deps, runner, readText, env: {} });
+  const codexLogin = (text: { stdout?: string; stderr?: string; status?: number | null; error?: string | null }): SpendRunner =>
+    () => ({ status: 0, stdout: "", stderr: "", error: null, ...text });
+  const loginEntry = (run: ReturnType<typeof codexOnly>) => run.data.providers[0].probes.find((p) => p.id === "not_subscription_auth")!;
+
+  it("codex login: empty output, a spawn error and a failure with garbage are unknown, never risk", () => {
+    expect(codexOnly(codexLogin({})).data.verdict).toBe("unknown");
+    expect(loginEntry(codexOnly(codexLogin({}))).status).toBe("unknown");
+    expect(loginEntry(codexOnly(codexLogin({ status: null, error: "ENOENT" }))).status).toBe("unknown");
+    expect(loginEntry(codexOnly(codexLogin({ status: 1, stderr: "sandbox: operation not permitted" }))).status).toBe("unknown");
+  });
+  it("codex login: an API-key or not-logged-in result is risk; ChatGPT on stderr only is clear", () => {
+    expect(codexOnly(codexLogin({ stderr: "Logged in using an API key - sk-xxx" })).data.providers[0].codes).toContain("not_subscription_auth");
+    expect(codexOnly(codexLogin({ status: 1, stderr: "Not logged in" })).data.providers[0].codes).toContain("not_subscription_auth");
+    const clear = codexOnly(codexLogin({ stderr: "Logged in using ChatGPT\n" }));
+    expect(clear.data.verdict).toBe("clear");
+  });
+  it("apiKeyHelper in a managed-settings.d drop-in is risk; an unreadable or malformed drop-in is unknown", () => {
+    const dir = "/Library/Application Support/ClaudeCode/managed-settings.d";
+    const base = { [`${home}/.claude.json`]: goodFiles(`${home}/.claude.json`)! };
+    const run = (map: Record<string, string>, throwing = false) => runSpendCheckCommand({ provider: "claude" }, {
+      ...deps, env: {}, listDir: (d) => (d === dir ? ["10-a.json", "notes.txt"] : null),
+      readText: throwing ? (f) => { if (f.startsWith(dir)) throw new Error("denied"); return files(base)(f); } : files({ ...base, ...map })
+    });
+    const found = run({ [`${dir}/10-a.json`]: JSON.stringify({ apiKeyHelper: `echo ${SECRET}` }) });
+    expect(found.data.providers[0].codes).toEqual(["api_key_helper"]);
+    expect(JSON.stringify(found)).not.toContain(SECRET);
+    expect(run({ [`${dir}/10-a.json`]: "{broken" }).data.verdict).toBe("unknown");
+    expect(run({}, true).data.verdict).toBe("unknown");
+    expect(run({ [`${dir}/10-a.json`]: "{}" }).data.verdict).toBe("clear");
+  });
+  it("codex credits: stale or undated telemetry is unknown, fresh is clear", () => {
+    const telemetry = (codex: object) => files({ [`${home}/.claude.json`]: goodFiles(`${home}/.claude.json`)!, [`${home}/.arcadia/telemetry/coding-agent-usage.json`]: JSON.stringify({ providers: { "codex-cli": codex } }) });
+    const creditsEntry = (run: ReturnType<typeof codexOnly>) => run.data.providers[0].probes.find((p) => p.id === "purchased_credits_available")!.status;
+    const login = codexLogin({ stderr: "Logged in using ChatGPT" });
+    expect(creditsEntry(codexOnly(login, telemetry({ capturedAt: "2026-11-08T00:00:00Z", credits: { hasCredits: false } })))).toBe("unknown");
+    expect(creditsEntry(codexOnly(login, telemetry({ credits: { hasCredits: false } })))).toBe("unknown");
+    expect(creditsEntry(codexOnly(login, telemetry({ capturedAt: "2026-11-09T12:00:00Z", credits: { hasCredits: false } })))).toBe("clear");
+  });
+  it("without --model the opencode model probe is reported as skipped in the JSON", () => {
+    const run = runSpendCheckCommand({ provider: "opencode" }, { ...deps, env: {} });
+    expect(run.data.providers[0].probes).toContainEqual({ id: "paid_model_route.model", status: "skipped" });
   });
 
   it("validates --provider and --launch-env", () => {

@@ -16,6 +16,12 @@
  *   or Windows host, so it is counted).
  * - An empty or whitespace-only value is absent: it cannot authenticate, and
  *   the CLIs treat it as unset.
+ * - Codex facts come from `codex login status` (read from stdout and stderr;
+ *   only a recognised login line counts, a failure or silence is unknown) and
+ *   from the usage telemetry's credits, trusted only when captured within 24
+ *   hours (CODEX_TELEMETRY_MAX_AGE_HOURS in hostProbes.ts); older or undated
+ *   telemetry is unknown. The managed-settings.d drop-ins are scanned for
+ *   apiKeyHelper too.
  * - `CLAUDE_CODE_USE_*` is on for any value except 0, false, no and off.
  * - `ANTHROPIC_BASE_URL` is first party only when it parses as https, host
  *   api.anthropic.com, default port, root path and no credentials, query or
