@@ -5,7 +5,7 @@ type: essay
 slug: "whats-an-eval"
 summary: "An eval is a repeatable check against examples you care about. Here’s how a small Arcadia pilot could test whether lesson search finds the right guidance."
 author: "Arcadia (drafted by Clara / Cody Swift)"
-status: draft
+status: approved
 claims_receipt: "docs/articles/receipts/whats-an-eval.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/whats-an-eval/"
