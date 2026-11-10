@@ -303,6 +303,7 @@ function drawSky(colors) {
       clearTimeout(rideControlsTimer);
       rideSurface.hidden = true;
       closeButton.hidden = true;
+      muteButton.hidden = true;
       for (const [element, wasInert] of rideInert) element.inert = wasInert;
       rideInert = [];
       delete root.dataset.rideControls;
@@ -339,6 +340,7 @@ function drawSky(colors) {
   const menuPanel = menu.querySelector('.explore-panel');
   const playButton = root.querySelector('.canyon-play');
   const closeButton = root.querySelector('.canyon-close');
+  const muteButton = root.querySelector('.canyon-mute');
   const rideSurface = root.querySelector('.canyon-ride-surface');
   const speedIndicator = root.querySelector('.canyon-speed');
   let rideControlsTimer;
@@ -346,10 +348,12 @@ function drawSky(colors) {
   let rideInert = [];
   let rideAudioContext;
   let rideAudioLoading;
+  let rideAudioGain;
+  let rideMuted = false;
   let rideSoundEnabled = false;
 
   async function decodeRideSoundtrack(context, extension) {
-    const response = await fetch(new URL(`./ride-d-minor-ambient-ding.${extension}`, import.meta.url));
+    const response = await fetch(new URL(`./ride-bass-arpeggio.${extension}`, import.meta.url));
     if (!response.ok) throw new Error('Ride soundtrack unavailable');
     return context.decodeAudioData(await response.arrayBuffer());
   }
@@ -360,7 +364,10 @@ function drawSky(colors) {
     const source = context.createBufferSource();
     source.buffer = buffer;
     source.loop = true;
-    source.connect(context.destination);
+    rideAudioGain = context.createGain();
+    rideAudioGain.gain.value = rideMuted ? 0 : 1;
+    source.connect(rideAudioGain);
+    rideAudioGain.connect(context.destination);
     source.start();
   }
 
@@ -461,6 +468,7 @@ function drawSky(colors) {
     setAutoplay('manual');
     rideSurface.hidden = false;
     closeButton.hidden = false;
+    muteButton.hidden = false;
     rideInert = [...root.querySelectorAll(':scope > .skip-link, :scope > .mast, :scope > main, :scope > footer.site')]
       .map(element => [element, element.inert]);
     for (const [element] of rideInert) element.inert = true;
@@ -475,6 +483,19 @@ function drawSky(colors) {
     }
   });
   closeButton.addEventListener('click', event => { event.stopPropagation(); stopAutoplay(); });
+  muteButton.addEventListener('click', () => {
+    rideMuted = !rideMuted;
+    muteButton.setAttribute('aria-pressed', String(rideMuted));
+    muteButton.title = rideMuted ? 'Unmute Ride audio' : 'Mute Ride audio';
+    if (rideAudioGain) {
+      const gain = rideAudioGain.gain;
+      const now = rideAudioContext.currentTime;
+      gain.cancelScheduledValues(now);
+      gain.setValueAtTime(gain.value, now);
+      gain.linearRampToValueAtTime(rideMuted ? 0 : 1, now + .06);
+    }
+    revealRideControls();
+  });
   document.addEventListener('fullscreenchange', () => {
     if (!document.fullscreenElement && root.dataset.canyonAutoplay === 'manual') stopAutoplay();
   });
@@ -607,7 +628,7 @@ function drawSky(colors) {
     if (event.deltaY < 0) stopAutoplay();
   }, { passive:true });
   root.addEventListener('focusin', event => {
-    if (root.dataset.canyonAutoplay === 'manual' && (event.target === playButton || event.target === closeButton || event.target === rideSurface)) return;
+    if (root.dataset.canyonAutoplay === 'manual' && (event.target === playButton || event.target === closeButton || event.target === muteButton || event.target === rideSurface)) return;
     stopAutoplay();
   });
   window.addEventListener('keydown', event => {

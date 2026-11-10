@@ -31,7 +31,7 @@
       if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
     } catch {}
   </script>
-  <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/style.css?v=ride-matched-margins' | relative_url }}">
   <link rel="stylesheet" href="{{ '/assets/topics.css' | relative_url }}">
 </head>
 <body class="canyon-page" data-field-view="{% if page.canyon %}feed{% else %}article{% endif %}">
@@ -102,12 +102,19 @@
   </nav>
 </header>
 <button class="canyon-ride-surface" type="button" aria-label="Change canyon ride speed" hidden></button>
+<button class="canyon-mute" type="button" aria-label="Mute Ride audio" aria-pressed="false" title="Mute Ride audio" hidden>
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 9v6h4l5 4V5L8 9H4z"/>
+    <path class="canyon-sound-waves" d="M16 9a4 4 0 0 1 0 6m2-8a7 7 0 0 1 0 10"/>
+    <path class="canyon-sound-muted" d="m16 10 4 4m0-4-4 4"/>
+  </svg>
+</button>
 <button class="canyon-close" type="button" aria-label="Close full-screen canyon ride" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5 19 19M19 5 5 19"/></svg></button>
 <div class="canyon-speed" role="status" aria-live="polite"></div>
 <main id="main" tabindex="-1" data-field-view="{% if page.canyon %}feed{% else %}article{% endif %}">
 {{ content }}
 </main>
 <footer class="site">Built from <a href="https://github.com/pmark/arcadia/tree/main/docs/articles"><code>docs/articles/</code></a> in pmark/arcadia.</footer>
-<script type="module" src="{{ '/assets/canyon.js?v=ride-flac' | relative_url }}"></script>
+<script type="module" src="{{ '/assets/canyon.js?v=ride-bass-arpeggio' | relative_url }}"></script>
 </body>
 </html>
