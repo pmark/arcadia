@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-burn-down-worker-mergeable-20261110
+project: arcadia
+intent: plan
+target_ref: plan/burn-down-three-small-verified-bug-issues-in-unattended-serial-production
+requested_authority: propose
+desired_result: Activate the draft Plan burn-down-three-small-verified-bug-issues-in-unattended-serial-production so one per-run START card runs its first four worker-mergeable Actions, starting at accept-canonical-roles-in-session-ledger.
+rationale: Decision 0157 and Decision 0214 A. The card embeds this accepted activation as its planActivation block. Activation sets the Plan active with current_action accept-canonical-roles-in-session-ledger; the previous Plan, carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src, is complete and stays complete. No Action content changes. The two operator_authority Actions are excluded from the card's scope.
