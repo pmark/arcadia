@@ -49,6 +49,8 @@ import { readTickStartedAt, readWorkerRecord } from "./worker.js";
 
 export const LIVENESS_DEFAULT_STALE_SECONDS = 300;
 export const LIVENESS_MIN_STALE_SECONDS = 30;
+/** The spend probe shells out to sign-in commands, so it runs this often, not each minute; an open risk episode checks every tick. */
+export const SPEND_CHECK_INTERVAL_MINUTES = 15;
 const STATE_FILE = "production-liveness.json";
 const STATE_SCHEMA = "arcadia-production-liveness-v1";
 const DEFAULT_DASHBOARD_URL = "http://127.0.0.1:3020";
@@ -69,6 +71,8 @@ export interface LivenessState {
   spend: SpendEpisode | null;
   /** When spend first read unknown, for the digest; cleared by any verified verdict. Never paged. */
   spendUnknownSince: string | null;
+  /** When the spend probe last ran (ISO), so quiet ticks can skip it; see SPEND_CHECK_INTERVAL_MINUTES. */
+  spendCheckedAt: string | null;
 }
 
 export interface SpendEpisode { alertedAt: string; pingId: string; codes: SpendRiskCode[] }
@@ -170,7 +174,7 @@ function defaultSpendCheck(now: number): SpendReport {
 }
 
 function emptyState(): LivenessState {
-  return { schema: STATE_SCHEMA, productionActive: null, openAlert: null, closedAt: null, spend: null, spendUnknownSince: null };
+  return { schema: STATE_SCHEMA, productionActive: null, openAlert: null, closedAt: null, spend: null, spendUnknownSince: null, spendCheckedAt: null };
 }
 
 function statePath(workspacePath: string): string {
@@ -193,7 +197,7 @@ function readState(workspacePath: string): { state: LivenessState; problem: stri
     if (openAlert !== null && !validOpenAlert(openAlert)) throw new Error("malformed open alert");
     const spend = validSpend(value.spend) ? value.spend : null;
     const spendUnknownSince = typeof value.spendUnknownSince === "string" ? value.spendUnknownSince : null;
-    return { state: { schema: STATE_SCHEMA, productionActive: value.productionActive ?? null, openAlert, closedAt: value.closedAt ?? null, spend, spendUnknownSince }, problem: null };
+    return { state: { schema: STATE_SCHEMA, productionActive: value.productionActive ?? null, openAlert, closedAt: value.closedAt ?? null, spend, spendUnknownSince, spendCheckedAt: typeof value.spendCheckedAt === "string" && Number.isFinite(Date.parse(value.spendCheckedAt)) ? value.spendCheckedAt : null }, problem: null };
   } catch (error) {
     return { state: emptyState(), problem: errorText(error) };
   }
@@ -409,7 +413,7 @@ export interface ProductionLivenessData {
   openAlert: LivenessAlertKind | null;
   /** Set only on the run that raised a stale alert. */
   hangEvidence: LivenessHangEvidence | null;
-  spend: { verdict: SpendVerdict; ping: "spend_risk" | "spend_recovered" | null; pingId: string | null; message: string | null; digestLine: string | null };
+  spend: { verdict: SpendVerdict | "skipped"; ping: "spend_risk" | "spend_recovered" | null; pingId: string | null; message: string | null; digestLine: string | null };
 }
 
 function readProductionActiveFromDatabase(workspacePath: string): boolean {
@@ -482,10 +486,22 @@ export function runProductionLivenessCheckCommand(
       ? state.openAlert
       : { kind: decision.openAlert, alertedAt: new Date(now).toISOString(), pingId: pingId ?? "" };
   const closedAt = decision.ping === "recovered" || decision.ping === "closed_by_off" ? new Date(now).toISOString() : state.closedAt;
-  // The spend check, on every tick whatever production's state. A page that
+  // Everything above is already queued, so record it before the slow probe: a
+  // kill mid-probe must not re-page an alert that is out. The spend fields stay as they were.
+  const settled: LivenessState = { ...state, productionActive: decision.productionActive, openAlert, closedAt };
+  if (stateProblem !== null || JSON.stringify(settled) !== JSON.stringify(state)) writeState(workspacePath, settled);
+
+  // The spend check, throttled; an open risk episode checks every tick so recovery is prompt.
+  // A skipped tick keeps the previous spend state and never pages. A page that
   // could not be queued leaves the episode as it was, so the next tick retries.
-  const spendObserved = observeSpend(dependencies.checkSpend ?? (() => defaultSpendCheck(now)));
-  const spendDecision = decideSpend(state, spendObserved.verdict);
+  const sinceCheck = state.spendCheckedAt === null ? null : now - Date.parse(state.spendCheckedAt);
+  const dueForSpend = state.spend !== null || sinceCheck === null || sinceCheck < 0 || sinceCheck >= SPEND_CHECK_INTERVAL_MINUTES * 60_000;
+  const spendObserved: { verdict: SpendVerdict | "skipped"; codes: SpendRiskCode[] } = dueForSpend
+    ? observeSpend(dependencies.checkSpend ?? (() => defaultSpendCheck(now)))
+    : { verdict: "skipped", codes: [] };
+  const spendDecision = spendObserved.verdict === "skipped"
+    ? { ping: null, episode: "keep" as const, digestUnknown: false }
+    : decideSpend(state, spendObserved.verdict);
   let spend = state.spend;
   let spendPingId: string | null = null;
   let spendMessage: string | null = null;
@@ -511,10 +527,13 @@ export function runProductionLivenessCheckCommand(
       spendMessage = null;
     }
   }
-  const spendUnknownSince = spendDecision.digestUnknown ? state.spendUnknownSince ?? new Date(now).toISOString() : null;
+  const spendUnknownSince = spendObserved.verdict === "skipped"
+    ? state.spendUnknownSince
+    : spendDecision.digestUnknown ? state.spendUnknownSince ?? new Date(now).toISOString() : null;
   const spendDigestLine = spendDecision.digestUnknown ? `Spend check unknown since ${spendUnknownSince}: no verified verdict, digest only.` : null;
-  const next: LivenessState = { schema: STATE_SCHEMA, productionActive: decision.productionActive, openAlert, closedAt, spend, spendUnknownSince };
-  if (stateProblem !== null || JSON.stringify(next) !== JSON.stringify(state)) writeState(workspacePath, next);
+  const spendCheckedAt = spendObserved.verdict === "skipped" ? state.spendCheckedAt : new Date(now).toISOString();
+  const next: LivenessState = { ...settled, spend, spendUnknownSince, spendCheckedAt };
+  if (JSON.stringify(next) !== JSON.stringify(settled)) writeState(workspacePath, next);
   // Last, so the page and the episode record are already out. It runs once per
   // episode (only the run that decided `stale_alert`), outside any transaction.
   // The root is the worker's pid from `worker.pid`, which names the main loop
@@ -524,8 +543,10 @@ export function runProductionLivenessCheckCommand(
     ? captureHangEvidence(workspacePath, observation, now, dependencies.collectHangEvidence ?? collectHangEvidence)
     : null;
   if (stateProblem !== null) throw validationError(`The liveness state file was unreadable and has been replaced: ${stateProblem}`);
-  if (spendQueueError !== null) throw validationError(`The spend alert was not queued and will be retried on the next run: ${errorText(spendQueueError)}`);
-  if (decision.logOnly !== null) throw validationError(decision.logOnly, { openAlert: decision.openAlert });
+  // The original error order is kept; a spend queue failure adds to it, never replaces it.
+  const spendFailure = spendQueueError === null ? "" : `The spend alert was not queued and will be retried on the next run: ${errorText(spendQueueError)}`;
+  if (decision.logOnly !== null) throw validationError(spendFailure ? `${decision.logOnly} | ${spendFailure}` : decision.logOnly, { openAlert: decision.openAlert });
+  if (spendFailure) throw validationError(spendFailure);
 
   return createSuccess({
     command: "production.liveness-check",
