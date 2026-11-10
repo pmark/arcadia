@@ -17,7 +17,8 @@ const sourceRoot = path.resolve(import.meta.dirname, "..");
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const action = (id: string, status: string, depends_on: string[] = []) => ({ id, title: `Do ${id}`, status, responsibility: "agent", effort: "session", next_action: `Do ${id}`, expected_artifact: `${id} evidence`, clarification: "clarified", confidence: "high", acceptance_criteria: [`The ${id} receipt records a real newline.`], depends_on, decisions: [], references: [] });
 
-function fixture() {
+function fixture(options: { previousFinished?: boolean } = {}) {
+  const finished = options.previousFinished === true;
   const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-plan-activation-"));
   roots.push(root);
   const repo = path.join(root, "repo");
@@ -35,8 +36,10 @@ function fixture() {
   git("config", "commit.gpgsign", "false");
   git("init", "--bare", "-q", origin);
   git("remote", "add", "origin", origin);
-  const project = { arcadia: "v1", type: "project", slug: "demo", name: "Demo", status: "active", goal: "Prove activation", outcome: "Safe activation", milestone: "Old milestone", active_plan: "old-plan", current_action: "old-first", updated: "2026-10-01" };
-  const oldPlan = { arcadia: "v1", type: "plan", slug: "old-plan", project: "demo", status: "active", milestone: "Old milestone", current_action: "old-first", token_impact: "none", token_budget: "No models", updated: "2026-10-01", actions: [action("old-first", "open")], questions: [], decisions: [], recommended_model: "sonnet", recommended_reasoning_effort: "medium" };
+  // A finished previous Plan is `complete` with every Action done, and neither it nor PROJECT.md names a current Action.
+  const oldCurrent = finished ? {} : { current_action: "old-first" };
+  const project = { arcadia: "v1", type: "project", slug: "demo", name: "Demo", status: "active", goal: "Prove activation", outcome: "Safe activation", milestone: "Old milestone", active_plan: "old-plan", ...oldCurrent, updated: "2026-10-01" };
+  const oldPlan = { arcadia: "v1", type: "plan", slug: "old-plan", project: "demo", status: finished ? "complete" : "active", milestone: "Old milestone", ...oldCurrent, token_impact: "none", token_budget: "No models", updated: "2026-10-01", actions: [action("old-first", finished ? "done" : "open")], questions: [], decisions: [], recommended_model: "sonnet", recommended_reasoning_effort: "medium" };
   const newPlan = { arcadia: "v1", type: "plan", slug: "new-plan", project: "demo", status: "draft", milestone: "New milestone: unattended", token_impact: "none", token_budget: "No models", updated: "2026-10-01", actions: [action("done-one", "done"), action("next-one", "open", ["done-one"]), action("later-one", "open", ["next-one"])], questions: [], decisions: [], recommended_model: "standard", recommended_reasoning_effort: "medium" };
   const writeDoc = (file: string, data: unknown) => writeFileSync(path.join(repo, file), `---\n${stringify(data)}---\n\n# Real document body\n`);
   writeDoc("PROJECT.md", project);
@@ -67,12 +70,12 @@ function fixture() {
     settlement: { requestId: "accept-activate-new", disposition: "accepted", operator: true, activate: true, action: "next-one", model: "standard", effort: "medium", placement: "top" },
     envelope: {
       project: "demo", plan: "new-plan", previousPlan: "old-plan", action: "next-one", log: "MISSION_LOG.md",
-      projectBefore: { slug: "demo", active_plan: "old-plan", current_action: "old-first", milestone: "Old milestone" },
+      projectBefore: { slug: "demo", active_plan: "old-plan", current_action: finished ? null : "old-first", milestone: "Old milestone" },
       projectAfter: { active_plan: "new-plan", current_action: "next-one", milestone: "New milestone: unattended" },
       planBefore: { slug: "new-plan", project: "demo", status: "draft", current_action: null, milestone: "New milestone: unattended" },
       planAfter: { status: "active", current_action: "next-one", recommended_model: "standard", recommended_reasoning_effort: "medium" },
-      previousPlanBefore: { slug: "old-plan", project: "demo", status: "active", current_action: "old-first" },
-      previousPlanAfter: { status: "draft", current_action: null },
+      previousPlanBefore: { slug: "old-plan", project: "demo", status: finished ? "complete" : "active", current_action: finished ? null : "old-first" },
+      previousPlanAfter: { status: finished ? "complete" : "draft", current_action: null },
       actionUnchanged: { id: "next-one", title: "Do next-one", status: "open", responsibility: "agent", clarification: "clarified" },
       queueSegment: ["demo/next-one", "demo/later-one"]
     },
@@ -141,6 +144,26 @@ describe("Plan-activation operator action through the shared runner", () => {
     ["first Action", (f: ReturnType<typeof fixture>) => f.writeDoc("docs/plans/new-plan.md", { ...f.newPlan, actions: f.newPlan.actions.map(a => a.id === "next-one" ? { ...a, status: "in_progress" } : a) })]
   ])("refuses %s drift before settlement", (_label, drift) => {
     const f = fixture(); drift(f); f.commit(); f.noMutation("TARGET_STATE_DRIFT");
+  });
+  it("activates after a finished previous Plan, which keeps status complete (Issue #2454)", () => {
+    const f = fixture({ previousFinished: true });
+    const d = JSON.parse(readFileSync(f.descriptor, "utf8"));
+    const script = planAmendmentLauncher(d.id);
+    for (const mutate of [
+      (i: PlanActivationInput) => { i.envelope.previousPlanAfter.status = "draft"; },
+      (i: PlanActivationInput) => { i.envelope.previousPlanBefore.status = "active"; }
+    ]) {
+      const changed = structuredClone(d); mutate(changed.planActivation);
+      expect(() => validateOperatorScriptContract(changed, d.id, script)).toThrow();
+    }
+    const result = f.run();
+    expect(result.reason, result.message).toBe("SETTLED_AND_PUBLISHED");
+    const fields = (file: string) => documentState(readFileSync(path.join(f.repo, file), "utf8")).fields;
+    expect(fields("PROJECT.md")).toMatchObject({ active_plan: "new-plan", current_action: "next-one", milestone: "New milestone: unattended" });
+    expect(fields("docs/plans/new-plan.md")).toMatchObject({ status: "active", current_action: "next-one" });
+    expect(fields("docs/plans/old-plan.md")).toMatchObject({ status: "complete", actions: f.oldPlan.actions });
+    expect(fields("docs/plans/old-plan.md")).not.toHaveProperty("current_action");
+    expect(f.git("rev-parse", "HEAD")).toBe(f.git("rev-parse", "origin/main"));
   });
   it("refuses a different Ask: one that also amends Actions", () => {
     const f = fixture();

@@ -93,7 +93,8 @@ after-images (`status`, `current_action`; the activated Plan also its
 identity, status, responsibility and clarification, the Mission Log path, and
 the Project queue segment in dependency order. In images, `null` means absent.
 The contract refuses after-images that do not follow from the before-images and
-flags. The only allowed effects are those images plus each document's update
+flags. The previous Plan is either `active`, which returns to `draft`, or finished
+(`complete`), which keeps `complete`, as canonical settlement does (Issue #2278). The only allowed effects are those images plus each document's update
 date, one appended Mission Log entry, the Ask archival, and this Project's queue
 segment at the top with every other Project's order preserved. The canonical
 settlement still refuses a running Session or Run and an Active production
