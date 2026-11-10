@@ -164,16 +164,23 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
   opacity:0;
   pointer-events:none;
 }
-[data-canyon-autoplay="manual"] > .mast { background:none; border-color:transparent; pointer-events:none; }
-[data-canyon-autoplay="manual"] :is(.site-title, .github-link, .explore) { visibility:hidden; }
-[data-canyon-autoplay="manual"] .canyon-play {
+[data-canyon-autoplay="manual"] > .mast { opacity:0; pointer-events:none; }
+[data-canyon-autoplay="manual"] .canyon-landscape { z-index:0; }
+.canyon-ride-surface { position:fixed; inset:0; z-index:5; width:100%; height:100%; padding:0; border:0; background:transparent; cursor:pointer; }
+.canyon-ride-surface:focus-visible { outline:2px solid white; outline-offset:-4px; }
+.canyon-ride-surface[hidden] { display:none; }
+.canyon-close {
   position:fixed;
   inset:calc(8px + env(safe-area-inset-top, 0px)) max(12px, 4vw, env(safe-area-inset-right, 0px)) auto auto;
-  color:var(--fg);
-  background:var(--bg);
-  border:1px solid var(--rule);
-  pointer-events:auto;
+  z-index:10; width:44px; height:44px; border:1px solid #ffffff80; border-radius:50%;
+  display:grid; place-items:center; padding:0; color:#fff; background:#1b1620bf; cursor:pointer;
+  opacity:0; transition:opacity .35s ease;
 }
+.canyon-close[hidden] { display:none; }
+.canyon-close svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; }
+[data-ride-controls="visible"] .canyon-close, .canyon-close:focus-visible { opacity:1; }
+.canyon-speed { position:fixed; z-index:10; inset:auto 0 max(24px, env(safe-area-inset-bottom, 0px)); text-align:center; color:white; text-shadow:0 1px 5px #000; pointer-events:none; opacity:0; transition:opacity .35s ease; }
+[data-ride-controls="visible"] .canyon-speed { opacity:1; }
 .post-body {
   max-width:43rem; width:calc(100% - 1.75rem); margin:clamp(3.5rem, 12vw, 9rem) auto 0;
   padding:clamp(1.25rem, 4.5vw, 3rem); background:var(--glass); color:var(--fg);
@@ -193,7 +200,8 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 .field-hero .start-link { display:inline-flex; align-items:center; gap:.3rem; min-height:44px; margin-top:.4rem; color:inherit; font-weight:600; }
 .posts .field-label { margin:0; }
 .field-label { font: 600 .75rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .09em; }
-.field-hero .field-label { display:flex; align-items:center; justify-content:center; gap:.65rem; }
+.field-label--sealed { display:flex; align-items:center; gap:.65rem; }
+.field-hero .field-label--sealed { justify-content:center; }
 .field-seal {
   display: grid;
   place-items: center;

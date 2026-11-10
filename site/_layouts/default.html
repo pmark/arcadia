@@ -7,6 +7,22 @@
   <title>{% if page.title and page.url != "/" %}{{ page.title | escape }} | {% endif %}{{ site.title | escape }}</title>
   <meta name="description" content="{{ page.summary | default: site.description | strip_html | escape }}">
   <link rel="canonical" href="{{ page.url | absolute_url }}">
+  {% capture seo_title %}{% if page.title and page.url != "/" %}{{ page.title }} | {% endif %}{{ site.title }}{% endcapture %}
+  {% assign seo_description = page.summary | default: site.description | strip_html | normalize_whitespace %}
+  <meta property="og:site_name" content="{{ site.title | escape }}">
+  <meta property="og:type" content="{% if page.layout == 'post' %}article{% else %}website{% endif %}">
+  <meta property="og:title" content="{{ seo_title | strip | escape }}">
+  <meta property="og:description" content="{{ seo_description | escape }}">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta property="og:image" content="{{ '/assets/field-notes-share.png' | absolute_url }}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Arcadia Field Notes: What shipped, what broke, what's next.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="{{ seo_title | strip | escape }}">
+  <meta name="twitter:description" content="{{ seo_description | escape }}">
+  <meta name="twitter:image" content="{{ '/assets/field-notes-share.png' | absolute_url }}">
+  <meta name="twitter:image:alt" content="Arcadia Field Notes: What shipped, what broke, what's next.">
   <link rel="alternate" type="application/atom+xml" title="{{ site.title }}" href="{{ '/feed.xml' | absolute_url }}">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;family=Public+Sans:wght@400;600&amp;display=swap">
   <script>
@@ -28,7 +44,7 @@
   <a class="site-title" href="{{ '/' | relative_url }}"><span class="edition-seal" aria-hidden="true"></span>Field Notes</a>
   <nav class="site-links" aria-label="Field Notes navigation">
     <a class="fn-nav-link github-link" href="https://github.com/pmark/arcadia" aria-label="Arcadia project on GitHub"><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16"><path d="M6.766 11.328c-2.063-.25-3.516-1.734-3.516-3.656 0-.781.281-1.625.75-2.188-.203-.515-.172-1.609.063-2.062.625-.078 1.468.25 1.968.703.594-.187 1.219-.281 1.985-.281.765 0 1.39.094 1.953.265.484-.437 1.344-.765 1.969-.687.218.422.25 1.515.046 2.047.5.593.766 1.39.766 2.203 0 1.922-1.453 3.375-3.547 3.64.531.344.89 1.094.89 1.954v1.625c0 .468.391.734.86.547C13.781 14.359 16 11.53 16 8.03 16 3.61 12.406 0 7.984 0 3.563 0 0 3.61 0 8.031a7.88 7.88 0 0 0 5.172 7.422c.422.156.828-.125.828-.547v-1.25c-.219.094-.5.156-.75.156-1.031 0-1.64-.562-2.078-1.609-.172-.422-.36-.672-.719-.719-.187-.015-.25-.093-.25-.187 0-.188.313-.328.625-.328.453 0 .844.281 1.25.86.313.452.64.655 1.031.655s.641-.14 1-.5c.266-.265.47-.5.657-.656"/></svg></a>
-    <button class="fn-nav-link canyon-play" type="button" aria-label="Canyon autoplay" aria-pressed="false" title="Play canyon ride with sound" hidden>
+    <button class="fn-nav-link canyon-play" type="button" aria-label="Play canyon ride full screen with sound" title="Play canyon ride full screen with sound" hidden>
       <svg viewBox="0 0 20 20" aria-hidden="true">
         <path class="play-mark" d="M6 4.5v11l9-5.5z"/>
         <path class="pause-mark" d="M6 5h3v10H6zm5 0h3v10h-3z"/>
@@ -84,6 +100,9 @@
     </details>
   </nav>
 </header>
+<button class="canyon-ride-surface" type="button" aria-label="Change canyon ride speed" hidden></button>
+<button class="canyon-close" type="button" aria-label="Close full-screen canyon ride" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5 19 19M19 5 5 19"/></svg></button>
+<div class="canyon-speed" role="status" aria-live="polite"></div>
 <main id="main" tabindex="-1" data-field-view="{% if page.canyon %}feed{% else %}article{% endif %}">
 {{ content }}
 </main>
