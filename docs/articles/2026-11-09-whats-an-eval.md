@@ -23,4 +23,4 @@ For each task, write down the lesson IDs that should be found and why. Run both 
 
 ## What is not done
 
-The lesson-search and QA-plan pilots are proposals. Neither pilot has results yet. The first proposed pilot is offline QA-plan consistency, followed by ranked lesson retrieval when priority allows. This note is a draft, and its intended URL does not mean it has been published.
+The lesson-search and QA-plan pilots are proposals. Neither pilot has results yet. The first proposed pilot is offline QA-plan consistency, followed by ranked lesson retrieval when priority allows.
