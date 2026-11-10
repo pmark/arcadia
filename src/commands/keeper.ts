@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { validationError } from "../cli/errors.js";
@@ -21,6 +21,8 @@ import { KEEPER_HEARTBEAT_FILE, KEEPER_ROLE } from "../production/momentumWatch.
 
 export const KEEPER_RECORD_SCHEMA = "arcadia-keeper-launch-v1" as const;
 export const KEEPER_RECORD_FILE = "momentum-keeper-launch.json" as const;
+export const KEEPER_LOCK_FILE = "momentum-keeper-launch.lock" as const;
+const LOCK_STALE_MS = 5 * 60_000;
 export const KEEPER_DEFAULT_MODEL = "sonnet";
 export const KEEPER_REMOTE_CONTROL_NAME = "momentum-keeper";
 export const KEEPER_BRIEF_RELATIVE = "docs/agent-guidance/momentum-keeper-brief.md";
@@ -45,19 +47,42 @@ export interface KeeperRecord {
 export interface KeeperDependencies {
   now?: () => number;
   env?: NodeJS.ProcessEnv;
+  /** Where the caller stands, used only to find the primary checkout; the spawn always runs in that checkout. */
   cwd?: string;
   briefPath?: string;
   newSessionId?: () => string;
 }
 
 export interface KeeperOptions { workspace?: string; wakesDir?: string }
+export interface KeeperStopOptions extends KeeperOptions { forget?: boolean }
 export interface KeeperStartOptions extends KeeperOptions { supervisor?: string; model?: string; dryRun?: boolean }
 
 interface ClaudeResult { ok: boolean; stdout: string; error: string }
 
-function claude(args: string[], dependencies: KeeperDependencies): ClaudeResult {
+function git(args: string[], cwd: string): string {
+  const result = spawnSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  if (result.error || result.status !== 0) throw validationError(`Could not locate the primary checkout (git ${args.join(" ")} in ${cwd}): ${(result.stderr ?? "").trim() || result.error?.message || `exit ${result.status}`}`);
+  return (result.stdout ?? "").trim();
+}
+
+/**
+ * The primary checkout, whatever directory the caller stands in. A keeper that
+ * lives in a task worktree dies when that worktree is retired, so the spawn
+ * never runs in a linked worktree: the main worktree is the parent of the
+ * common git dir, and a bare or otherwise unusual layout is refused.
+ */
+export function primaryCheckout(from: string): string {
+  const common = git(["rev-parse", "--path-format=absolute", "--git-common-dir"], from);
+  if (path.basename(common) !== ".git") throw validationError(`The git common dir ${common} is not a primary checkout's .git; refusing to run a keeper there.`);
+  const primary = path.dirname(common);
+  const own = git(["rev-parse", "--path-format=absolute", "--git-dir"], primary);
+  if (path.resolve(own) !== path.resolve(common)) throw validationError(`${primary} is a linked worktree, not the primary checkout; refusing to run a keeper there.`);
+  return primary;
+}
+
+function claude(args: string[], dependencies: KeeperDependencies, cwd: string = primaryCheckout(dependencies.cwd ?? invocationRoot())): ClaudeResult {
   const result = spawnSync("claude", args, {
-    cwd: dependencies.cwd ?? invocationRoot(),
+    cwd,
     env: dependencies.env ?? process.env,
     encoding: "utf8",
     timeout: CLAUDE_TIMEOUT_MS,
@@ -98,6 +123,29 @@ function writeKeeperRecord(workspacePath: string, record: KeeperRecord): void {
   try { renameSync(temporary, target); } finally { try { unlinkSync(temporary); } catch { /* renamed */ } }
 }
 
+function lockPath(workspacePath: string): string {
+  return path.join(workspacePath, ".arcadia", KEEPER_LOCK_FILE);
+}
+
+/** Exclusive-create, so two concurrent starts cannot both pass the guard. A lock older than five minutes is a crashed start and is replaced once. */
+function acquireLock(workspacePath: string, now: number): () => void {
+  const target = lockPath(workspacePath);
+  mkdirSync(path.dirname(target), { recursive: true });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      writeFileSync(target, `${JSON.stringify({ pid: process.pid, at: new Date(now).toISOString() })}\n`, { flag: "wx" });
+      return () => { try { unlinkSync(target); } catch { /* already gone */ } };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw validationError(`The keeper start lock could not be taken: ${(error as Error).message}`);
+      let age: number;
+      try { age = Date.now() - statSync(target).mtimeMs; } catch { continue; }
+      if (age < LOCK_STALE_MS) throw validationError(`Another \`arcadia keeper start\` is in progress (${target}); nothing was launched.`);
+      try { unlinkSync(target); } catch { /* raced with its owner */ }
+    }
+  }
+  throw validationError(`The keeper start lock ${target} could not be taken.`);
+}
+
 interface Heartbeat { session: string | null; armedUntil: string; live: boolean }
 
 function readHeartbeat(wakesDir: string, now: number): Heartbeat | null {
@@ -115,8 +163,13 @@ function listsSession(record: KeeperRecord, dependencies: KeeperDependencies): {
   let rows: unknown;
   try { rows = JSON.parse(result.stdout || "[]"); } catch { return { listed: null, error: "claude agents --json printed no JSON" }; }
   if (!Array.isArray(rows)) return { listed: null, error: "claude agents --json did not print an array" };
-  const needles = [record.sessionId, record.stopId, record.name];
-  return { listed: rows.some((row) => { const text = JSON.stringify(row); return needles.some((needle) => needle !== "" && text.includes(needle)); }), error: null };
+  // Exact field matches only: a substring would let an unrelated session's name or id keep a dead keeper "listed".
+  const matches = (row: unknown): boolean => {
+    if (!row || typeof row !== "object") return false;
+    const fields = row as Record<string, unknown>;
+    return fields.id === record.stopId || fields.sessionId === record.sessionId || fields.sessionId === record.stopId || fields.name === record.name;
+  };
+  return { listed: rows.some(matches), error: null };
 }
 
 function wakesDirOf(workspacePath: string, options: KeeperOptions): string {
@@ -168,13 +221,30 @@ export function runKeeperStartCommand(options: KeeperStartOptions, dependencies:
   const name = `↳ Momentum Keeper · under ${supervisor}`;
   const sessionId = (dependencies.newSessionId ?? randomUUID)();
   const argv = ["--bg", "--remote-control", KEEPER_REMOTE_CONTROL_NAME, "-n", name, "--model", model, "--permission-mode", "auto", "--session-id", sessionId, prompt];
-  const live = liveReason(workspacePath, options, dependencies);
   if (options.dryRun) {
+    const live = liveReason(workspacePath, options, dependencies);
     return createSuccess({ command: "keeper.start", workspace: workspacePath, data: { dryRun: true, argv: ["claude", ...argv], record: null, liveKeeper: live } });
   }
+  const checkout = primaryCheckout(dependencies.cwd ?? invocationRoot());
+  const release = acquireLock(workspacePath, (dependencies.now ?? Date.now)());
+  try {
+    return launchLocked(workspacePath, options, dependencies, { argv, name, sessionId, supervisor, model, checkout });
+  } finally {
+    release();
+  }
+}
+
+function launchLocked(
+  workspacePath: string,
+  options: KeeperStartOptions,
+  dependencies: KeeperDependencies,
+  launch: { argv: string[]; name: string; sessionId: string; supervisor: string; model: string; checkout: string }
+): CommandSuccess<KeeperStartData> {
+  const { argv, checkout, model, name, sessionId, supervisor } = launch;
+  const live = liveReason(workspacePath, options, dependencies);
   if (live !== null) throw validationError(`A Momentum Keeper is already live: ${live}. Run \`arcadia keeper status\`, or \`arcadia keeper stop\` first.`);
 
-  const launched = claude(argv, dependencies);
+  const launched = claude(argv, dependencies, checkout);
   if (!launched.ok) throw validationError(`The keeper did not start and no record was written: ${launched.error}`);
   const printed = launched.stdout.match(/\b[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?\b/i)?.[0];
   const record: KeeperRecord = {
@@ -232,21 +302,33 @@ export function renderKeeperStatusSuccess(response: CommandSuccess<KeeperStatusD
   return lines;
 }
 
-export interface KeeperStopData { record: KeeperRecord }
+export interface KeeperStopData { record: KeeperRecord; note: string | null }
 
-export function runKeeperStopCommand(options: KeeperOptions, dependencies: KeeperDependencies = {}): CommandSuccess<KeeperStopData> {
+export function runKeeperStopCommand(options: KeeperStopOptions, dependencies: KeeperDependencies = {}): CommandSuccess<KeeperStopData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const record = readKeeperRecord(workspacePath);
   if (!record) throw validationError("No keeper was launched by `arcadia keeper start` in this workspace; there is nothing to stop.");
   if (record.status === "stopped") throw validationError(`The recorded keeper ${record.stopId} is already stopped (${record.stoppedAt}).`);
-  const stopped = claude(["stop", record.stopId], dependencies);
-  if (!stopped.ok) throw validationError(`\`claude stop ${record.stopId}\` failed and the record is unchanged: ${stopped.error}`);
+  let note: string | null = null;
+  if (options.forget) {
+    note = "forgotten: marked stopped without calling claude";
+  } else {
+    const stopped = claude(["stop", record.stopId], dependencies);
+    if (!stopped.ok) {
+      // The session is already gone: the record is stale, so close it rather than wedge the single-keeper guard.
+      if (!/no such|not found|unknown session|no session/i.test(stopped.error)) {
+        throw validationError(`\`claude stop ${record.stopId}\` failed and the record is unchanged: ${stopped.error}. If the session is gone, run \`arcadia keeper stop --forget\`.`);
+      }
+      note = `claude no longer knows the session (${stopped.error.slice(0, 160)}); record closed`;
+    }
+  }
   const next: KeeperRecord = { ...record, status: "stopped", stoppedAt: new Date((dependencies.now ?? Date.now)()).toISOString() };
   writeKeeperRecord(workspacePath, next);
-  return createSuccess({ command: "keeper.stop", workspace: workspacePath, data: { record: next } });
+  return createSuccess({ command: "keeper.stop", workspace: workspacePath, data: { record: next, note } });
 }
 
 export function renderKeeperStopSuccess(response: CommandSuccess<KeeperStopData>): string[] {
-  const { record } = response.data;
+  const { note, record } = response.data;
+  if (note) return [`Marked ${record.name} (session ${record.stopId}) stopped: ${note}.`];
   return [`Stopped ${record.name} (session ${record.stopId}). Its conversation is kept; \`claude attach ${record.stopId}\` resumes it. A live run window pages "keeper not active" once the heartbeat lapses.`];
 }

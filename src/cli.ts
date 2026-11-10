@@ -1753,9 +1753,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   addJsonOption(
     keeper
       .command("stop")
-      .description("Stop the recorded keeper with `claude stop <id>` and mark the record stopped; its conversation is kept")
+      .description("Stop the recorded keeper with `claude stop <id>` and mark the record stopped; its conversation is kept. A session claude no longer knows is closed in the record too")
+      .option("--forget", "Mark the record stopped without calling claude (the session is already gone)")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
+  ).action((options: { workspace: string; forget?: boolean; json?: boolean }) =>
     runCliAction("keeper.stop", options, () => runKeeperStopCommand(options), renderKeeperStopSuccess)
   );
   addJsonOption(

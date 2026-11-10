@@ -193,12 +193,12 @@ finite allowance and the stop condition in the existing brief.
   command, `arcadia keeper status` is read-only, `arcadia keeper stop` stops the
   recorded session. It refuses while a keeper heartbeat is live or the recorded
   session is still listed by `claude agents`, never uses tmux, and records the
-  launch in `<workspace>/.arcadia/momentum-keeper-launch.json`. Any agent may
-  call it with its own session id. Authority is unchanged: under Decision 0188 B
-  Rowan or the operator starts a keeper, and Decision 0190 A covers automatic
-  start at Active. Letting any agent call it as a standing permission, and wiring
-  it to production Active or Off, wait for a Decision; it is not wired to
-  activation.
+  launch in `<workspace>/.arcadia/momentum-keeper-launch.json`; it runs the
+  keeper from the primary checkout, never a task worktree. Authority comes from
+  Decision 0188 B (Rowan or the operator starts a keeper) and Decision 0190 A
+  (automatic start at Active), not from the command's existence. A standing
+  permission for any agent to call it, and wiring it to production Active or
+  Off, wait for a Decision; it is not wired to activation.
 
 Outside this procedure, a multi-day standing grant, a `src/` allowlist for
 worker merge and a standing merge permission stay separate Decisions, not
