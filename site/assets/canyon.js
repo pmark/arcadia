@@ -28,6 +28,7 @@
   const SCROLL_FRAME_MS = 1000 / 60;
   const SCROLL_RETENTION = .9;
   const SCROLL_SETTLE_PX = .5;
+  const AUTOPLAY_PX_PER_MS = .062;
   const STATE_KEY = 'field-notes-camera-v1';
   const FRAME_KEY = STATE_KEY + '-frame-v3';
   let saved;
@@ -37,9 +38,12 @@
   const samePath = saved?.pathname === location.pathname;
   let feedScroll = restoreNumber(saved?.feedScroll);
   let cameraScroll = restoreNumber(saved?.cameraScroll ?? feedScroll);
+  let autoplayDistance = restoreNumber(saved?.autoplayDistance);
+  let autoplay = false;
   if (!samePath && !initialArticle) {
     feedScroll = 0;
     cameraScroll = 0;
+    autoplayDistance = 0;
   }
   let lift = samePath ? Math.min(1, restoreNumber(saved?.lift)) : Number(initialArticle);
   let previousLift;
@@ -57,7 +61,7 @@
   function savePosition() {
     try {
       sessionStorage.setItem(STATE_KEY, JSON.stringify({
-        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, cameraScroll, lift
+        pathname:location.pathname, scroll:Math.max(0, window.scrollY), feedScroll, cameraScroll, lift, autoplayDistance
       }));
     } catch {}
   }
@@ -235,13 +239,15 @@ function drawStars(night) {
     if (!renderTerrain || !W || !H || document.hidden) return;
     const p = phase();
     const night = nightAt(p);
-    const distance = feedScroll - cameraScroll;
     const elapsed = previousScrollFrame === undefined ? SCROLL_FRAME_MS : now - previousScrollFrame;
+    if (autoplay) autoplayDistance += Math.min(elapsed, 80) * AUTOPLAY_PX_PER_MS;
+    const target = feedScroll + autoplayDistance;
+    const distance = target - cameraScroll;
     // Draw the restored position first, then ease at the same rate across refresh rates.
     const scroll = previousLift === undefined ? cameraScroll
-      : Math.abs(distance) <= SCROLL_SETTLE_PX ? feedScroll
+      : Math.abs(distance) <= SCROLL_SETTLE_PX ? target
       : cameraScroll + distance * (1 - SCROLL_RETENTION ** (elapsed / SCROLL_FRAME_MS));
-    previousScrollFrame = scroll === feedScroll ? undefined : now;
+    previousScrollFrame = !autoplay && scroll === target ? undefined : now;
     if (travelAnimation) {
       const move = travelAnimation;
       move.started ??= now;
@@ -314,7 +320,14 @@ function drawStars(night) {
   let timer;
   let loadingTerrain = false;
 
+  function stopAutoplay() {
+    if (!autoplay) return;
+    autoplay = false;
+    delete root.dataset.canyonAutoplay;
+  }
+
   function showStill() {
+    stopAutoplay();
     delete root.dataset.terrain;
     document.documentElement.style.removeProperty('--canyon-live-edge');
   }
@@ -369,6 +382,7 @@ function drawStars(night) {
     && (url.pathname === homeURL.pathname || url.pathname.startsWith(homeURL.pathname + 'posts/'));
 
   async function openPage(url, { push, offset }) {
+    stopAutoplay();
     pendingPage?.abort();
     const request = new AbortController();
     pendingPage = request;
@@ -439,10 +453,27 @@ function drawStars(night) {
     if (location.pathname !== displayedPath) return;
     entryScroll.set(displayedEntry, window.scrollY);
     if (isFeed()) {
-      feedScroll = Math.max(0, window.scrollY);
+      const scroller = document.scrollingElement;
+      const end = scroller.scrollHeight - scroller.clientHeight;
+      // Clamp iOS rubber-banding so it cannot start or interrupt the ride.
+      const nextScroll = Math.min(end, Math.max(0, window.scrollY));
+      if (nextScroll < feedScroll) stopAutoplay();
+      if (!autoplay && end - nextScroll <= 1 && nextScroll > feedScroll
+        && root.dataset.terrain === 'live' && !isStill()) {
+        autoplay = true;
+        root.dataset.canyonAutoplay = '';
+      }
+      feedScroll = nextScroll;
       schedule();
     }
   }, { passive:true });
+  window.addEventListener('wheel', event => {
+    if (event.deltaY < 0) stopAutoplay();
+  }, { passive:true });
+  root.addEventListener('focusin', stopAutoplay);
+  window.addEventListener('keydown', event => {
+    if (event.key === 'Escape') stopAutoplay();
+  });
   window.addEventListener('pagehide', () => {
     if (location.pathname !== displayedPath) return;
     saveVisibleFrame();
@@ -722,7 +753,7 @@ function drawStars(night) {
       const THREE = await import('https://cdn.jsdelivr.net/npm/three@0.179.1/build/three.module.min.js');
       startTerrain(THREE);
     } catch {
-      // The static canyon remains visible if WebGL or the module is unavailable.
+      // The CSS sky remains visible if WebGL or the module is unavailable.
     }
   }
 

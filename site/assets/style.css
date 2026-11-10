@@ -122,19 +122,23 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 }
 @media (pointer:coarse) {
   :root { --canyon-edge:var(--canyon-live-edge, #2c232e); }
+  .mast {
+    --mast-safe-top:env(safe-area-inset-top, 0px);
+    background-image:linear-gradient(transparent var(--mast-safe-top), var(--bg) var(--mast-safe-top));
+    background-color:transparent;
+  }
   /* Use a stable inset so toolbar animation cannot resize the drawing buffer. */
   .canyon-landscape {
-    height:calc(100vh + 96px);
-    height:calc(100lvh + 96px + env(safe-area-max-inset-bottom, 34px));
+    --canyon-top-bleed:env(safe-area-max-inset-top, 60px);
+    top:calc(-1 * var(--canyon-top-bleed));
+    height:calc(100vh + 96px + var(--canyon-top-bleed));
+    height:calc(100lvh + 96px + var(--canyon-top-bleed) + env(safe-area-max-inset-bottom, 34px));
   }
 }
 .canyon-landscape > * { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.canyon-still { filter: brightness(.48); }
-[data-field-view="article"] .canyon-still { visibility:hidden; }
-.canyon-frame, .canyon-poster, :is([data-terrain="live"], [data-terrain="cached"]) .canyon-still { visibility:hidden; }
+.canyon-frame, .canyon-poster { visibility:hidden; }
 [data-terrain="live"] .canyon-frame, [data-terrain="cached"] .canyon-poster { visibility:visible; }
 [data-terrain="live"] .canyon-frame { animation:canyon-reveal .32s ease-out; }
-[data-terrain="live"][data-field-view="feed"] .canyon-still,
 [data-terrain="live"] .canyon-poster { transition:visibility 0s .32s; }
 @keyframes canyon-reveal {
   from { opacity:0; }
@@ -142,10 +146,16 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 }
 @media (prefers-reduced-motion: reduce) {
   [data-terrain] .canyon-frame, [data-terrain] .canyon-poster { visibility:hidden; animation:none; transition:none; }
-  .canyon-page[data-field-view="feed"] .canyon-still { visibility:visible; transition:none; }
 }
 
 .canyon-page main { max-width:none; padding:0; }
+@media (prefers-reduced-motion:no-preference) {
+  .canyon-page > :is(.mast, main, footer.site) { transition:opacity .3s ease; }
+}
+[data-canyon-autoplay] > :is(.mast, main, footer.site) {
+  opacity:0;
+  pointer-events:none;
+}
 .post-body {
   max-width:43rem; width:calc(100% - 1.75rem); margin:clamp(3.5rem, 12vw, 9rem) auto 0;
   padding:clamp(1.25rem, 4.5vw, 3rem); background:var(--glass); color:var(--fg);
