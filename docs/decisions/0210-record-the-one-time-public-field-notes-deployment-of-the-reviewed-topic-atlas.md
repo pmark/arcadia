@@ -4,7 +4,7 @@ type: decision
 id: "0210"
 slug: record-the-one-time-public-field-notes-deployment-of-the-reviewed-topic-atlas
 project: arcadia
-status: open
+status: approved
 question: "Record the one-time public Field Notes deployment of the reviewed Topic Atlas and clickable article tags through PR #2412 and the existing Blog GitHub Pages workflow."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
-updated: 2026-11-10
+updated: 2026-11-09
+answer: Publish the Topic Atlas
+decided: 2026-11-09
 ---
 
 # Decision 0210: Record the one-time public Field Notes deployment of the reviewed Topic Atlas and clickable article tags through PR #2412 and the existing Blog GitHub Pages workflow.
