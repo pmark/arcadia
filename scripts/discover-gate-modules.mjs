@@ -6,14 +6,22 @@
  *
  * Scans every non-test src/<any depth>/*.ts file (comments stripped) for the
  * gate symbols below. A module matching any pattern is a gate CANDIDATE: it
- * must be classified by classifyAuthorityPaths or carry a reasoned exclusion in
- * tests/fixtures/authority-classifier-exclusions.json. Patterns are
+ * must be classified by classifyAuthorityPaths or carry a reasoned entry in the
+ * unclassified-src inventory (below). Patterns are
  * deliberately broad: a false positive costs one operator merge, a false
  * negative lets gate code merge unattended.
  *
- * Usage: node scripts/discover-gate-modules.mjs [--json] [--root <repo>]
+ * Default-deny inventory (--inventory): every src module classifyAuthorityPaths
+ * leaves unclassified is listed in tests/fixtures/authority-unclassified-src-inventory.json
+ * with a reason; tests/authority-classifier-coverage.test.ts fails on any
+ * unclassified file missing from it, so a new file forces a decision.
+ * --inventory rewrites that file (keeping existing per-file reasons), --check
+ * prints drift without writing.
+ *
+ * Usage: node scripts/discover-gate-modules.mjs [--json] [--root <repo>] [--inventory [--check]]
  */
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -59,7 +67,89 @@ export function discoverGateModules(root = resolve(fileURLToPath(new URL("..", i
   return hits.sort((a, b) => (a.path < b.path ? -1 : 1));
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+export const INVENTORY_PATH = "tests/fixtures/authority-unclassified-src-inventory.json";
+
+/** Longest-prefix reason for an unclassified file that carries no per-file reason. */
+const GROUP_REASONS = [
+  ["src/commands/", "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend)."],
+  ["src/timeline/", "Read-only projection of existing records for display."],
+  ["src/orientation/", "Read-only orientation and status text."],
+  ["src/digests/", "Digest composition and rendering; read-only until a classified messaging path sends it."],
+  ["src/markdown/", "Markdown rendering of existing records; no gate logic."],
+  ["src/reports/", "Read-only reports and ledgers."],
+  ["src/journey/", "Read-only journey derivation for display."],
+  ["src/northStar/", "North Star computation and narrative; read-only (document.ts is classified)."],
+  ["src/activity/", "Activity feed projection; read-only."],
+  ["src/design/", "Design record helpers; no gate logic."],
+  ["src/intelligence/speech/", "Speech and audio helpers behind the Intelligence service; no gate logic."],
+  ["src/intelligence/", "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}."],
+  ["src/intake/", "Intake normalization to propose-only Ask payloads; grants nothing."],
+  ["src/proofTargets/", "Read-only proof-target checks and display."],
+  ["src/livingSystem/", "Derived living-system projection; project.ts and sync.ts are classified."],
+  ["src/clarify/", "Clarification linting and types; no gate decisions (grader, contract and engine are classified)."],
+  ["src/dashboard/", "Dashboard display helpers; mutating routes are classified under apps/dashboard."],
+  ["src/utils/", "Generic helpers."],
+  ["src/db/", "Database connection plumbing; schema.ts and repositories.ts are classified."],
+  ["src/memory/", "Obsidian memory export; no gate logic."],
+  ["src/prompts/", "Prompt text; enforces nothing."],
+  ["src/agentRoles/", "Brief text for roles; the registry is classified."],
+  ["src/agentWatch/", "Watch helpers; classify.ts and contract.ts are classified."],
+  ["src/fixtures/", "Rehearsal fixture builder; not on a production code path."],
+  ["src/soak/", "Rehearsal soak harness; not a production gate."],
+  ["src/codex/", "Provider-specific invocation helpers without gate logic."],
+  ["src/", "Unreviewed: needs an explicit classify or exclude decision."],
+];
+
+function reasonFor(path) {
+  let best = null;
+  for (const [prefix, reason] of GROUP_REASONS) if (path.startsWith(prefix) && (!best || prefix.length > best[0].length)) best = [prefix, reason];
+  return best ? best[1] : "Unreviewed.";
+}
+
+/** Every non-test src/**.ts path, repo-relative, sorted. */
+export function listSourceFiles(root = resolve(fileURLToPath(new URL("..", import.meta.url)))) {
+  return walk(join(root, "src"), []).map((f) => relative(root, f).split(sep).join("/")).sort();
+}
+
+/** Paths classifyAuthorityPaths leaves unclassified, via a tsx child so the TS classifier stays the single source. */
+export function listUnclassifiedSourceFiles(root) {
+  const code = `import { classifyAuthorityPaths } from "./src/decisions/batchMerge.ts"; const p = JSON.parse(process.argv[1]); console.log(JSON.stringify(p.filter((f) => classifyAuthorityPaths([f]).length === 0)));`;
+  const out = execFileSync("pnpm", ["exec", "tsx", "--eval", code, JSON.stringify(listSourceFiles(root))], { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  return JSON.parse(out.trim().split("\n").pop());
+}
+
+export function buildInventory(unclassified, existing = {}, scanHits = []) {
+  const hitMap = new Map(scanHits.map((h) => [h.path, h.patterns]));
+  const entries = {};
+  for (const path of unclassified) {
+    const prev = existing[path];
+    entries[path] = {
+      reason: prev?.reason ?? (reasonFor(path)),
+      gateScanPatterns: hitMap.get(path) ?? [],
+    };
+  }
+  return entries;
+}
+
+if (process.argv.includes("--inventory") && process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const rootIdx = process.argv.indexOf("--root");
+  const root = rootIdx > 0 ? resolve(process.argv[rootIdx + 1]) : resolve(fileURLToPath(new URL("..", import.meta.url)));
+  const file = join(root, INVENTORY_PATH);
+  const existing = existsSync(file) ? JSON.parse(readFileSync(file, "utf8")).entries ?? {} : {};
+  const unclassified = listUnclassifiedSourceFiles(root);
+  const entries = buildInventory(unclassified, existing, discoverGateModules(root));
+  const doc = {
+    comment: "Default-deny inventory: every src module classifyAuthorityPaths leaves unclassified, each with a reason. Regenerate with node scripts/discover-gate-modules.mjs --inventory. tests/authority-classifier-coverage.test.ts fails on a missing, stale or newly classified entry.",
+    entries,
+  };
+  if (process.argv.includes("--check")) {
+    const drift = JSON.stringify(Object.keys(existing)) !== JSON.stringify(Object.keys(entries));
+    console.log(drift ? "inventory drift" : "inventory current");
+    process.exit(drift ? 1 : 0);
+  }
+  writeFileSync(file, `${JSON.stringify(doc, null, 2)}\n`);
+  console.log(`wrote ${Object.keys(entries).length} entries to ${INVENTORY_PATH}`);
+} else if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const rootIdx = process.argv.indexOf("--root");
   const root = rootIdx > 0 ? resolve(process.argv[rootIdx + 1]) : undefined;
   const hits = discoverGateModules(root);
