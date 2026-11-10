@@ -48,8 +48,13 @@ describe("PR TLDR service", () => {
     expect(request).toMatchObject({ capability: "text.generate", execution: "cloud-required", executionTarget: "cloud", profile: "fast", executionPolicy: { allowPaidUsage: true, maxRetries: 1 } });
     expect(request).not.toHaveProperty("model");
     const config = loadIntelligenceConfig({ ARCADIA_LITELLM_LOCAL_TEXT_ROUTE: "local-fixture", ARCADIA_LITELLM_CLOUD_TEXT_ROUTE: "arcadia-cloud-text", ARCADIA_CODEX_TEXT_ROUTE: "codex-fixture" });
-    expect(resolveIntelligenceRoute(request, config.routes, request.executionPolicy)).toMatchObject({ ok: true, route: { profile: "fast", location: "cloud", executor: "litellm", liteLlmRoute: "arcadia-cloud-text", requiresPaidUsage: true } });
-    expect(resolveIntelligenceRoute(request, config.routes, { allowPaidUsage: false })).toMatchObject({ ok: false, code: "paid_usage_not_allowed" });
+    const approvedPaidUsageDecisions = config.approvedPaidUsageDecisionIds;
+    expect(approvedPaidUsageDecisions).toContain("0126");
+    expect(config.routes.find((route) => route.id === "arcadia.text.generate.cloud.fast")?.paidUsageDecision).toBe("0126");
+    expect(resolveIntelligenceRoute(request, config.routes, { ...request.executionPolicy, approvedPaidUsageDecisions })).toMatchObject({ ok: true, route: { profile: "fast", location: "cloud", executor: "litellm", liteLlmRoute: "arcadia-cloud-text", requiresPaidUsage: true } });
+    expect(resolveIntelligenceRoute(request, config.routes, { allowPaidUsage: false, approvedPaidUsageDecisions })).toMatchObject({ ok: false, code: "paid_usage_not_allowed" });
+    // Without the approved Decision allowlist the paid route is refused by default.
+    expect(resolveIntelligenceRoute(request, config.routes, request.executionPolicy)).toMatchObject({ ok: false, code: "paid_usage_not_allowed" });
     expect(resolveIntelligenceRoute(request, loadIntelligenceConfig({}).routes, request.executionPolicy)).toMatchObject({ ok: false });
   });
 
