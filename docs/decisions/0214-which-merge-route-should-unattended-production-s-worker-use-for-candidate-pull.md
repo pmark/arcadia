@@ -4,7 +4,7 @@ type: decision
 id: "0214"
 slug: which-merge-route-should-unattended-production-s-worker-use-for-candidate-pull
 project: arcadia
-status: open
+status: approved
 question: Which merge route should unattended production's worker use for candidate pull requests that change source code (src/**), which today can never merge without the operator?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-10
+answer: A. Worker merges src/** changes that touch no authority boundary, on the same proof gates as today (recommended)
+decided: 2026-11-10
 ---
 
 # Decision 0214: Which merge route should unattended production's worker use for candidate pull requests that change source code (src/**), which today can never merge without the operator?
