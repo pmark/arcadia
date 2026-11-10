@@ -19,10 +19,10 @@
 
 ## Mechanical checks
 
-- Front matter includes title, date, `essay` type, slug, summary, author, draft status, receipt path, `not_done: true`, intended GitHub Pages canonical, and exactly `channels: [site, rss]`.
-- The draft carries `evals` in its front matter. The current post layout does not render tags.
+- Front matter includes title, date, `essay` type, slug, summary, author, approved status, receipt path, `not_done: true`, intended GitHub Pages canonical, and exactly `channels: [site, rss]`.
+- The approved article carries `evals` in its front matter. The current post layout does not render tags.
 - The article has a substantive `## What is not done` section and no publication or result claim.
-- Public evidence links are pinned to the candidate base revision. The webhook scenario is identified as hypothetical.
+- Public evidence links are pinned to source revision `88045ef9712fa0341bdc5be2df45eee2334e8eaa`. The webhook scenario is identified as hypothetical.
 
 ## Independent review
 
