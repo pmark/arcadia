@@ -41,7 +41,7 @@ import {
   observeStall,
   safelyRaiseRedAlerts
 } from "./redAlerts.js";
-import { canonicalPath, getRepositoryLease, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
+import { canonicalPath, getActiveActionClaim, getRepositoryLease, resolveProjectTransition, systemTmux, type AgentSession, type ProjectTransition, type TmuxAdapter } from "../sessions/index.js";
 import { launchGuardedHostSession, resumedSessionSupersededAskIds } from "../sessions/launch.js";
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { clearPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
@@ -1051,6 +1051,20 @@ function lapsedPacketApprovalNote(db: Database.Database, now: Date): string | nu
   return `Blocked: the standing policy's packet_approval delegation expired at ${expiresAt}, so the tick no longer approves build packets.`
     + (grantLapsed ? ` The integration grant (Decision ${grant.decisionRef}) expired at ${grant.expiresAt} too, so an Action admitted now is built and preserved but not integrated unattended.` : "")
     + " Record a fresh activation to continue, or approve this one packet by hand.";
+}
+
+/**
+ * Issue #1670: the reason to hold launch while this Action carries a settled-candidate escalation
+ * (`self_settled_completion_refused` or `completion_settlement_not_in_candidate`, recorded by
+ * `recordSettlementNotInCandidateEscalation`) and its candidate still holds the live Action claim; otherwise null.
+ */
+function settledCandidateHold(db: Database.Database, repoRoot: string, projectSlug: string, actionKey: string, now: Date): string | null {
+  const row = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string } | undefined;
+  if (row?.kind !== SELF_SETTLED_COMPLETION_REFUSED_ESCALATION && row?.kind !== COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION) return null;
+  const claim = getActiveActionClaim(db, repoRoot, projectSlug, actionKey.slice(projectSlug.length + 1), now);
+  if (!claim) return null;
+  return `Awaiting operator: ${actionKey} is held (${row.kind}); its settled candidate ${claim.branch} at ${claim.worktree_path} is not landed, so no Session is relaunched. `
+    + "Land that candidate's pull request or retire its worktree; the escalation names the remedy.";
 }
 
 /**
@@ -2869,6 +2883,14 @@ function attemptProjectLaunch(
     input.log(`Auto-settled ${actionKey} from a drafted complete Ask (${autoSettle.askPath}); no Session launched.`);
     return { attempted: false, outcome: "auto_settled", reason: `Settled from a drafted complete Ask. Next: ${autoSettle.nextActionKey ?? "none"}.`, actionKey };
   }
+
+  // Issue #1670: a settled candidate the host refused (or whose settlement never reached its branch) is escalated
+  // by name and still holds this Action's live worktree claim, so a relaunch could only fail "already claimed" and
+  // spend a repair attempt each tick until `repair_budget_exhausted` replaced the real escalation. Hold quietly,
+  // before the budget check; the escalation row stays until the operator lands or retires the candidate (retiring
+  // its worktree drops the claim, which lifts this hold).
+  const settledCandidate = settledCandidateHold(db, input.repoRoot, input.projectSlug, actionKey, input.now);
+  if (settledCandidate) return { attempted: false, outcome: "skipped", reason: settledCandidate, actionKey };
 
   const attempts = getRepairAttempts(db, actionKey);
   if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
