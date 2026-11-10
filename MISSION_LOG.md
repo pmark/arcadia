@@ -3278,3 +3278,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "The binding validator refuses opencode/ and huggingface/ model ids and accepts opencode-go/ ids, with a test for each."; "Helper brief guidance names opencode-go/ as the only allowed OpenCode prefix.".
 - **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-pin-opencode-to-go-models-2026-11-10-r2).
+
+## 2026-11-10 — Completed arcadia/refuse-paid-intelligence-routes-by-default
+
+- **Did:** Completed Action arcadia/refuse-paid-intelligence-routes-by-default from accepted evidence (Candidate 42c2c80728cd04e2d3c8a942f78bc20928aa1b1d).
+- **Result:** Every declared acceptance criterion was accepted as met: "A resolveRoute test shows a paid route with allowPaidUsage: true and no bound Decision gives paid_usage_not_allowed."; "A registry test shows no enrichment sets allowPaidUsage."; "The PR TLDR route bound to Decision 0126 still resolves as before, with a test, and the PR changes no Decision document.".
+- **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-paid-intelligence-routes-by-default-20261110).
