@@ -164,7 +164,8 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 }
 [data-canyon-autoplay="manual"] > .mast { opacity:0; pointer-events:none; }
 [data-canyon-autoplay="manual"] .canyon-landscape { z-index:0; }
-.canyon-ride-surface { position:fixed; inset:0; z-index:5; cursor:pointer; }
+.canyon-ride-surface { position:fixed; inset:0; z-index:5; width:100%; height:100%; padding:0; border:0; background:transparent; cursor:pointer; }
+.canyon-ride-surface:focus-visible { outline:2px solid white; outline-offset:-4px; }
 .canyon-ride-surface[hidden] { display:none; }
 .canyon-close {
   position:fixed;

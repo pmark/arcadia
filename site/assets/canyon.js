@@ -302,6 +302,8 @@ function drawSky(colors) {
       clearTimeout(rideControlsTimer);
       rideSurface.hidden = true;
       closeButton.hidden = true;
+      for (const [element, wasInert] of rideInert) element.inert = wasInert;
+      rideInert = [];
       delete root.dataset.rideControls;
       speedIndicator.textContent = '';
       if (document.fullscreenElement === document.documentElement) void document.exitFullscreen().catch(() => {});
@@ -340,6 +342,7 @@ function drawSky(colors) {
   const speedIndicator = root.querySelector('.canyon-speed');
   let rideControlsTimer;
   let rideRequest = 0;
+  let rideInert = [];
   const home = root.querySelector('.site-title');
   const homeURL = new URL(home.href);
   const main = root.querySelector('main');
@@ -414,6 +417,10 @@ function drawSky(colors) {
     setAutoplay('manual');
     rideSurface.hidden = false;
     closeButton.hidden = false;
+    rideInert = [...root.querySelectorAll(':scope > .skip-link, :scope > .mast, :scope > main, :scope > footer.site')]
+      .map(element => [element, element.inert]);
+    for (const [element] of rideInert) element.inert = true;
+    rideSurface.focus({ preventScroll:true });
     revealRideControls();
     if (document.documentElement.requestFullscreen) {
       document.documentElement.requestFullscreen().then(() => {
@@ -556,7 +563,7 @@ function drawSky(colors) {
     if (event.deltaY < 0) stopAutoplay();
   }, { passive:true });
   root.addEventListener('focusin', event => {
-    if (root.dataset.canyonAutoplay === 'manual' && (event.target === playButton || event.target === closeButton)) return;
+    if (root.dataset.canyonAutoplay === 'manual' && (event.target === playButton || event.target === closeButton || event.target === rideSurface)) return;
     stopAutoplay();
   });
   window.addEventListener('keydown', event => {
