@@ -35,6 +35,8 @@ import {
   normalizeProductionScope,
   PRODUCTION_CONTROL_DEADLINES,
   readDayGrantEvidence,
+  SIGN_IN_ESCALATION_EXITS,
+  SIGN_IN_ESCALATION_MS,
   SIGN_IN_FAILURE_HOLD_MS,
   type ProductionScope
 } from "../src/production/policy.js";
@@ -3383,6 +3385,86 @@ describe("a Session that dies on a provider sign-in failure (Issue #1155)", () =
     expect(fifth.launch).toMatchObject({ attempted: true, outcome: "launched" });
     expect(tmux.launches).toHaveLength(5);
     expect(developmentAttempts()).toEqual(lineage);
+  });
+
+  it("escalates exactly once after SIGN_IN_ESCALATION_EXITS consecutive sign-in exits, spending no attempt, and clears when a Session next exits for another reason (Issue #1249)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const log = vi.fn();
+    const escalations = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT action_key, kind, message, remedy FROM production_operator_escalations WHERE kind = 'provider_sign_in_dead'").all() as Array<{ action_key: string; kind: string; message: string; remedy: string }>);
+    const HOLD = SIGN_IN_FAILURE_HOLD_MS;
+    const exitAt = (n: number) => n * (MIN + HOLD);
+    for (let n = 0; n < SIGN_IN_ESCALATION_EXITS; n += 1) {
+      expect(escalations()).toHaveLength(0);
+      launchThenExit(fixture, tmux, SIGNED_OUT, exitAt(n));
+      tickAt(fixture, tmux, exitAt(n) + MIN, log);
+    }
+    const rows = escalations();
+    expect(rows).toHaveLength(1);
+    expect(rows[0].action_key).toBe("test-project/define-contract");
+    expect(rows[0].message).toContain("claude-code-cli");
+    expect(rows[0].remedy).toContain("claude auth login");
+    expect(log.mock.calls.filter(([line]) => String(line).includes("provider_sign_in_dead"))).toHaveLength(1);
+    const signInPings = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT count(*) AS n FROM operator_pings WHERE message LIKE '%dead claude-code-cli login%'").get() as { n: number }).n);
+    expect(signInPings()).toBe(1);
+    // No attempt, failed-Run budget or pause is spent; the hold still applies.
+    expect(repairAttempts(fixture)).toEqual([]);
+    expect(scheduling(fixture)).toMatchObject({ failedRuns: 0, pausedReason: null });
+    expect(blockers(fixture)[0]).toMatchObject({ code: "provider_sign_in_failed" });
+    // A further sign-in exit refreshes the same row; it does not open or log a second.
+    launchThenExit(fixture, tmux, SIGNED_OUT, exitAt(SIGN_IN_ESCALATION_EXITS));
+    tickAt(fixture, tmux, exitAt(SIGN_IN_ESCALATION_EXITS) + MIN, log);
+    expect(escalations()).toHaveLength(1);
+    expect(log.mock.calls.filter(([line]) => String(line).includes("provider_sign_in_dead"))).toHaveLength(1);
+    expect(signInPings()).toBe(1);
+
+    // The next Session exits for another reason: the login works, so the escalation clears.
+    const next = exitAt(SIGN_IN_ESCALATION_EXITS + 1);
+    launchThenExit(fixture, tmux, "Prompt is too long", next);
+    tickAt(fixture, tmux, next + MIN, log);
+    expect(escalations()).toHaveLength(0);
+  });
+
+  it("never overwrites another kind's escalation on the Action: an operator gate survives repeated sign-in exits and no sign-in ping is queued (Issue #1249)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const HOLD = SIGN_IN_FAILURE_HOLD_MS;
+    // A launching tick clears a gate row nothing is holding, so seed it just before each reconciling (held) tick.
+    const seedGate = () => withDatabase(fixture.workspace, (db) =>
+      db.prepare("INSERT OR REPLACE INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at) VALUES (?, 'review_repair_gated', 'gate', 'press', ?, ?)")
+        .run("test-project/define-contract", fixture.now.toISOString(), fixture.now.toISOString()));
+    for (let n = 0; n <= SIGN_IN_ESCALATION_EXITS; n += 1) {
+      launchThenExit(fixture, tmux, SIGNED_OUT, n * (MIN + HOLD));
+      seedGate();
+      tickAt(fixture, tmux, n * (MIN + HOLD) + MIN);
+      // A held kind would block the next launch; drop it between exits so only the reconcile sees it.
+      if (n < SIGN_IN_ESCALATION_EXITS) withDatabase(fixture.workspace, (db) => db.prepare("DELETE FROM production_operator_escalations WHERE kind = 'review_repair_gated'").run());
+    }
+    const rows =withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT kind, message FROM production_operator_escalations WHERE action_key = 'test-project/define-contract'").all() as Array<{ kind: string; message: string }>);
+    expect(rows).toEqual([{ kind: "review_repair_gated", message: "gate" }]);
+    const pings = withReadOnlyDatabase(fixture.workspace, (db) =>
+      (db.prepare("SELECT count(*) AS n FROM operator_pings WHERE message LIKE '%login for%'").get() as { n: number }).n);
+    expect(pings).toBe(0);
+  });
+
+  it("escalates after the time bound even below the exit count, and never on a single sign-in exit (Issue #1249)", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    const escalated = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT 1 FROM production_operator_escalations WHERE kind = 'provider_sign_in_dead'").all().length);
+    launchThenExit(fixture, tmux, SIGNED_OUT);
+    tickAt(fixture, tmux, MIN);
+    expect(escalated()).toBe(0);
+    const later = SIGN_IN_ESCALATION_MS + 2 * MIN;
+    launchThenExit(fixture, tmux, SIGNED_OUT, later);
+    tickAt(fixture, tmux, later + MIN);
+    expect(escalated()).toBe(1);
   });
 
   it("still counts any other failed_execution against the failed-Run budget and records no sign-in blocker", () => {
