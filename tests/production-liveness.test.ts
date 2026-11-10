@@ -12,7 +12,6 @@ import {
   renderProductionLivenessCheckSuccess,
   SPEND_CHECK_INTERVAL_MINUTES,
   decideSpend,
-  defaultSpendCheck,
   runProductionLivenessCheckCommand,
   staleMessage,
   suspectChild,
@@ -872,7 +871,11 @@ describe("the spend check on each liveness tick", () => {
     )).toThrow(/Could not read the production policy[\s\S]*outbox down/);
   });
 
-  it("never runs the real probes in a test process: the default is a fixed clear report", () => {
-    expect(defaultSpendCheck(at4(0), { VITEST: "true" })).toMatchObject({ verdict: "clear", providers: [] });
+  it("never runs the real probes in a test process: without a stub the tick is skipped, never clear", () => {
+    const root = workspace();
+    const result = runProductionLivenessCheckCommand({ workspace: root }, { now: () => at4(0), readProductionActive: () => false }).data;
+    expect(result.spend).toEqual({ verdict: "skipped", ping: null, pingId: null, message: null, digestLine: null });
+    expect(pending(root)).toEqual([]);
+    expect(state(root)).toMatchObject({ spend: null, spendUnknownSince: null, spendCheckedAt: null });
   });
 });

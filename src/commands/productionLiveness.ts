@@ -169,13 +169,7 @@ function observeSpend(check: () => SpendReport): { verdict: SpendVerdict; codes:
   }
 }
 
-/**
- * A test process never runs the real `claude` or `codex` probes (the budget
- * source does the same for VITEST): suites that drive the timer without
- * injecting `checkSpend` get a fixed clear report. Production is unaffected.
- */
-export function defaultSpendCheck(now: number, env: NodeJS.ProcessEnv = process.env): SpendReport {
-  if (env["VITEST"]) return { verdict: "clear", providers: [], warnings: ["notional_cost_only"], checkedAt: new Date(now).toISOString() };
+export function defaultSpendCheck(now: number): SpendReport {
   return assessSpendRisk(process.env, collectHostProbes(process.env), { now: new Date(now) });
 }
 
@@ -501,7 +495,10 @@ export function runProductionLivenessCheckCommand(
   // A skipped tick keeps the previous spend state and never pages. A page that
   // could not be queued leaves the episode as it was, so the next tick retries.
   const sinceCheck = state.spendCheckedAt === null ? null : now - Date.parse(state.spendCheckedAt);
-  const dueForSpend = state.spend !== null || sinceCheck === null || sinceCheck < 0 || sinceCheck >= SPEND_CHECK_INTERVAL_MINUTES * 60_000;
+  // A test process that injects no `checkSpend` never runs the real probes: it
+  // takes the throttled-skip path, never a forced clear, which would fail open.
+  const probeForbidden = dependencies.checkSpend === undefined && !!process.env["VITEST"];
+  const dueForSpend = !probeForbidden && (state.spend !== null || sinceCheck === null || sinceCheck < 0 || sinceCheck >= SPEND_CHECK_INTERVAL_MINUTES * 60_000);
   const spendObserved: { verdict: SpendVerdict | "skipped"; codes: SpendRiskCode[] } = dueForSpend
     ? observeSpend(dependencies.checkSpend ?? (() => defaultSpendCheck(now)))
     : { verdict: "skipped", codes: [] };
