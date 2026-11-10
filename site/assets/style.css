@@ -200,6 +200,12 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 .posts h2 a:hover { color: var(--link); }
 .posts p { max-width: 44ch; }
 .canyon-page footer.site { max-width: 35rem; width: calc(100% - 1.75rem); padding: .75rem 1rem; margin-bottom: calc(2rem + env(safe-area-inset-bottom, 0px)); background: var(--bg); border-radius: .625rem; }
+@media (pointer:coarse) {
+  .canyon-page footer.site {
+    margin-bottom:calc(200px + env(safe-area-inset-bottom, 0px));
+    margin-bottom:calc(max(200px, 45svh) + env(safe-area-inset-bottom, 0px));
+  }
+}
 @media (forced-colors: active) {
   .canyon-landscape { display:none !important; }
   .field-hero { color: CanvasText; text-shadow: none; }
