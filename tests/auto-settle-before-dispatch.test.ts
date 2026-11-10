@@ -123,6 +123,31 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(result.gate.blocking).toEqual([]);
   });
 
+  it("keeps the draft's proposal pending and gating when the derived settlement's commit did not land (Issues #2102, #1518)", () => {
+    const { repo, workspace } = fixture({ draftAsk: true });
+    const draftPath = path.join(repo, ".arcadia/asks/agent-ask-complete-first.yaml");
+
+    const result = withDatabase(workspace, (db) => {
+      previewAgentAskRequest(db, { request: readFileSync(draftPath, "utf8"), sourcePath: draftPath });
+      attemptAutoSettlePendingCompletion(db, { repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION });
+      // Make the derived settlement look like one whose Git commit failed.
+      const rows = db.prepare("SELECT id, receipt_json FROM agent_ask_settlements").all() as Array<{ id: string; receipt_json: string }>;
+      for (const row of rows) {
+        const receipt = JSON.parse(row.receipt_json);
+        delete receipt.documentsCommit;
+        receipt.recovery = { documentsCommitted: false, operationalSync: "complete", reason: "injected", remedy: "commit by hand" };
+        db.prepare("UPDATE agent_ask_settlements SET receipt_json = ? WHERE id = ?").run(JSON.stringify(receipt), row.id);
+      }
+      return {
+        unsettled: listUnsettledAgentAskProposals(db).map((row) => row.requestId),
+        gate: resolveOperatorGate({ db, repoRoot: repo, projectSlug: "demo", selectedActionId: "first" })
+      };
+    });
+
+    expect(result.unsettled).toHaveLength(1);
+    expect(result.gate.blocking).toHaveLength(1);
+  });
+
   it("keeps a complete Ask pending when its content differs from the settled derived proposal (Issue #2102)", () => {
     const { repo, workspace } = fixture({ draftAsk: true });
     const draftPath = path.join(repo, ".arcadia/asks/agent-ask-complete-first.yaml");
