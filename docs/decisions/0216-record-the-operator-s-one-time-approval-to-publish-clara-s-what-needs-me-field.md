@@ -4,7 +4,7 @@ type: decision
 id: "0216"
 slug: record-the-operator-s-one-time-approval-to-publish-clara-s-what-needs-me-field
 project: arcadia
-status: open
+status: approved
 question: Record the operator’s one-time approval to publish Clara’s What needs me Field Notes essay to the existing GitHub Pages blog and its Atom feed.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src
 updated: 2026-11-10
+answer: Publish the What needs me Field Note
+decided: 2026-11-10
 ---
 
 # Decision 0216: Record the operator’s one-time approval to publish Clara’s What needs me Field Notes essay to the existing GitHub Pages blog and its Atom feed.
