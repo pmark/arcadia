@@ -19,11 +19,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask implement-a-classifier-coverage-audit
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-decision-0214a-worker-src-merge-20261110
+    source: Agent Ask amend-plan-0214a-order-and-discovery-20261110
     why: "Option A makes the path classifier the only source guard, so a gate-enforcing module outside it would merge unattended."
     acceptance_criteria:
       - tests/authority-classifier-coverage.test.ts exists and asserts classifyAuthorityPaths returns at least one boundary for each listed gate-enforcing src module, including src/intelligence/config/defaults.ts, src/execution/ and src/qa/ modules that enforce review proof.
       - Every module the audit lists is classified on the PR head, and the PR body names each module added to the classifier and why.
+      - The audit's module list comes from a repeatable discovery step over all of src/** (a committed scan for approval, spend, review and merge gate symbols) whose output is recorded in the PR body, with an exclusion reason for every unclassified src module it finds.
     depends_on: []
     decisions: []
     references: []
@@ -37,12 +38,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask implement-decision-0214-a-in-src
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-decision-0214a-worker-src-merge-20261110
+    source: Agent Ask amend-plan-0214a-order-and-discovery-20261110
     why: "This is the merge route the operator chose, so ordinary code Actions can merge unattended."
     acceptance_criteria:
       - A test shows an unclassified src/** path is worker-merge-safe and a classified src path is still refused as authority_adjacent.
       - "Tests show the existing gates are unchanged: exact-head review and QA, green required checks, CLEAN merge state and the mergeThroughPullRequest grant still each refuse when missing."
-    depends_on: []
+    depends_on: [implement-a-classifier-coverage-audit]
     decisions: []
     references: []
 questions: []
