@@ -29,12 +29,6 @@
       "reason": "Activity feed projection; read-only.",
       "gateScanPatterns": []
     },
-    "src/agentRoles/brief.ts": {
-      "reason": "Prompt text only: tells helpers to submit propose-only Agent Asks; enforces nothing.",
-      "gateScanPatterns": [
-        "authority"
-      ]
-    },
     "src/clarify/handoff.ts": {
       "reason": "Builds a propose-only Agent Ask payload (requested_authority: propose); grants and enforces nothing.",
       "gateScanPatterns": [
@@ -189,10 +183,6 @@
       "reason": "Dashboard display helpers; mutating routes are classified under apps/dashboard.",
       "gateScanPatterns": []
     },
-    "src/db/connection.ts": {
-      "reason": "Database connection plumbing; schema.ts and repositories.ts are classified.",
-      "gateScanPatterns": []
-    },
     "src/db/lockRetry.ts": {
       "reason": "Database connection plumbing; schema.ts and repositories.ts are classified.",
       "gateScanPatterns": []
@@ -258,6 +248,10 @@
       "gateScanPatterns": []
     },
     "src/intelligence/comfyui/imageExecutor.ts": {
+      "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
+      "gateScanPatterns": []
+    },
+    "src/intelligence/db/README.md": {
       "reason": "Intelligence plumbing (storage, validation, artifacts); routing, config and spend gates live in classified src/intelligence/{config,routing,...}.",
       "gateScanPatterns": []
     },
@@ -439,22 +433,6 @@
     },
     "src/orientation/urgency.ts": {
       "reason": "Read-only orientation and status text.",
-      "gateScanPatterns": []
-    },
-    "src/prompts/index.ts": {
-      "reason": "Prompt text; enforces nothing.",
-      "gateScanPatterns": []
-    },
-    "src/proofTargets/check.ts": {
-      "reason": "Read-only proof-target checks and display.",
-      "gateScanPatterns": []
-    },
-    "src/proofTargets/hero.ts": {
-      "reason": "Read-only proof-target checks and display.",
-      "gateScanPatterns": []
-    },
-    "src/proofTargets/targets.ts": {
-      "reason": "Read-only proof-target checks and display.",
       "gateScanPatterns": []
     },
     "src/reports/frozenRecords.ts": {
