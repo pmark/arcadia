@@ -233,7 +233,7 @@ describe("the worker's once-per-head required-checks re-trigger", () => {
     expect(ghCount(rehearsal, "gh pr close")).toBe(1);
   });
 
-  it("reopens a PR left CLOSED by a worker that crashed between the close and the reopen", () => {
+  it("reopens a PR left CLOSED by a worker that crashed after recording its close and before the reopen", () => {
     const { rehearsal, a } = finishedA();
     rehearsal.github.checks = () => rollup("codeRabbitOnly");
     const url = readied(rehearsal);
@@ -241,7 +241,7 @@ describe("the worker's once-per-head required-checks re-trigger", () => {
     ticks(rehearsal, 2);
     withDatabase(rehearsal.workspace, (db) => {
       db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ? WHERE target_head = ?")
-        .run(rehearsal.now.toISOString(), JSON.stringify({ route: "reopen", runIds: [], phase: "requested", detail: null }), head);
+        .run(rehearsal.now.toISOString(), JSON.stringify({ route: "reopen", runIds: [], phase: "closed", detail: null }), head);
     });
     rehearsal.github.prs[0].state = "CLOSED";
     rehearsal.tick();
@@ -273,6 +273,77 @@ describe("the worker's once-per-head required-checks re-trigger", () => {
     expect(escalation(second.rehearsal)).toMatchObject({ kind: "required_checks_timeout", remedy: expect.stringContaining(`The PR is closed: reopen it with \`gh pr reopen ${secondUrl}\``) });
   });
 
+  /** Seed this head's re-trigger record as a crash or a failure would have left it. */
+  function seedRecord(rehearsal: Rehearsal, head: string, phase: string): void {
+    withDatabase(rehearsal.workspace, (db) => {
+      db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ? WHERE target_head = ?")
+        .run(rehearsal.now.toISOString(), JSON.stringify({ route: "reopen", runIds: [], phase, detail: null }), head);
+    });
+  }
+
+  it("never reopens a PR a person closed while the record says the worker never closed it (requested, close_failed)", () => {
+    for (const phase of ["requested", "close_failed"]) {
+      const { rehearsal, a } = finishedA();
+      rehearsal.github.checks = () => rollup("codeRabbitOnly");
+      readied(rehearsal);
+      const head = headOf(rehearsal, a);
+      ticks(rehearsal, 2);
+      seedRecord(rehearsal, head, phase);
+      rehearsal.github.prs[0].state = "CLOSED"; // a person's close
+      ticks(rehearsal, 4);
+      expect(ghCount(rehearsal, "gh pr reopen"), phase).toBe(0);
+      expect(ghCount(rehearsal, "gh pr close"), phase).toBe(0);
+      expect(rehearsal.github.prs[0].state, phase).toBe("CLOSED");
+    }
+  });
+
+  it("a failed close that left the PR open records close_failed, so a person's later close is never undone", () => {
+    const { rehearsal } = finishedA();
+    rehearsal.github.checks = () => rollup("codeRabbitOnly");
+    rehearsal.github.ghFailures["pr close"] = "HTTP 502: Bad Gateway";
+    readied(rehearsal);
+    ticks(rehearsal, 3);
+    withDatabase(rehearsal.workspace, (db) => {
+      const [step] = listReviewSteps(db, rehearsal.actionA);
+      expect(JSON.parse(step.checks_retrigger_json!).phase).toBe("close_failed");
+    });
+    rehearsal.github.prs[0].state = "CLOSED"; // the operator closes it on the same head
+    ticks(rehearsal, 4);
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(0);
+    expect(rehearsal.github.prs[0].state).toBe("CLOSED");
+  });
+
+  it("does not guess when the re-read after a failed close fails: it keeps `requested`, reopens nothing and says the PR may be closed", () => {
+    const { rehearsal } = finishedA();
+    rehearsal.github.checks = () => rollup("codeRabbitOnly");
+    rehearsal.github.closeFailsAfterClosing = "context deadline exceeded";
+    rehearsal.github.viewFailsAfterClose = "HTTP 502: Bad Gateway";
+    const url = readied(rehearsal);
+    ticks(rehearsal, 3);
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(0);
+    expect(escalation(rehearsal)).toMatchObject({ kind: "required_checks_timeout", remedy: expect.stringContaining(`gh pr reopen ${url}`) });
+    expect(escalation(rehearsal)?.message).toContain("may be closed");
+    withDatabase(rehearsal.workspace, (db) => {
+      const [step] = listReviewSteps(db, rehearsal.actionA);
+      expect(JSON.parse(step.checks_retrigger_json!).phase).toBe("requested");
+    });
+  });
+
+  it("a stale closed record is retired once the PR is found open, so a person's later close is never undone", () => {
+    const { rehearsal, a } = finishedA();
+    rehearsal.github.checks = () => rollup("codeRabbitOnly");
+    readied(rehearsal);
+    const head = headOf(rehearsal, a);
+    ticks(rehearsal, 2);
+    seedRecord(rehearsal, head, "closed");
+    rehearsal.github.prs[0].state = "OPEN";
+    rehearsal.tick(); // PR open on the recorded head: the record is retired, nothing is reopened
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(0);
+    rehearsal.github.prs[0].state = "CLOSED"; // a person closes it later
+    ticks(rehearsal, 4);
+    expect(ghCount(rehearsal, "gh pr reopen")).toBe(0);
+  });
+
   it("never reopens a MERGED PR, or a PR for a head the stale record does not belong to", () => {
     const { rehearsal, a } = finishedA();
     rehearsal.github.checks = () => rollup("codeRabbitOnly");
@@ -281,7 +352,7 @@ describe("the worker's once-per-head required-checks re-trigger", () => {
     ticks(rehearsal, 2);
     withDatabase(rehearsal.workspace, (db) => {
       db.prepare("UPDATE production_review_steps SET checks_retrigger_at = ?, checks_retrigger_json = ? WHERE target_head = ?")
-        .run(rehearsal.now.toISOString(), JSON.stringify({ route: "reopen", runIds: [], phase: "requested", detail: null }), head);
+        .run(rehearsal.now.toISOString(), JSON.stringify({ route: "reopen", runIds: [], phase: "closed", detail: null }), head);
     });
     rehearsal.github.prs[0].state = "MERGED";
     ticks(rehearsal, 3);
@@ -295,7 +366,7 @@ describe("the worker's once-per-head required-checks re-trigger", () => {
       db.prepare(`INSERT INTO production_review_steps (request_id, session_id, action_key, target_head, pull_request_url, policy_epoch,
           checks_retrigger_at, checks_retrigger_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(`worker-tick-review-${a.id}-${earlier}`, a.id, rehearsal.actionA, earlier, url, step.policy_epoch, step.created_at,
-          JSON.stringify({ route: "reopen", runIds: [], phase: "requested", detail: null }), step.created_at, step.created_at);
+          JSON.stringify({ route: "reopen", runIds: [], phase: "closed", detail: null }), step.created_at, step.created_at);
     });
     rehearsal.github.prs[0].state = "CLOSED";
     ticks(rehearsal, 3);
