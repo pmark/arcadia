@@ -3279,6 +3279,13 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-pin-opencode-to-go-models-2026-11-10-r2).
 
+## 2026-11-10 — Completed arcadia/build-arcadia-spend-check
+
+- **Did:** Completed Action arcadia/build-arcadia-spend-check from accepted evidence (Candidate 0605bb8cf6a9d70eac2d6935f95bc9306d80342c).
+- **Result:** Every declared acceptance criterion was accepted as met: "arcadia spend check [--provider claude|codex|opencode|all] [--launch-env current|stripped] [--model <id>] --json prints verdict clear, risk or unknown with per-provider codes and exits 0, 3 or 4 respectively."; "Table-driven fixtures cover each risk code from the report (api_key_in_launch_env, third_party_provider, api_key_helper, not_subscription_auth, extra_usage_enabled, purchased_credits_available, paid_model_route) with a risk verdict."; "A fixture with claude.ai/firstParty auth, no billing variables, extra usage off and the banner text "Claude API" present gives clear (the false-alarm regression)."; "A missing claude binary gives unknown, and no output contains the fixture's secret sentinel value.".
+- **Next:** Next ready Action in this inactive Plan: enforce-spend-check-at-launch-and-admission.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-build-arcadia-spend-check-2026-11-10c).
+
 ## 2026-11-10 — Completed arcadia/refuse-paid-intelligence-routes-by-default
 
 - **Did:** Completed Action arcadia/refuse-paid-intelligence-routes-by-default from accepted evidence (Candidate 42c2c80728cd04e2d3c8a942f78bc20928aa1b1d).
