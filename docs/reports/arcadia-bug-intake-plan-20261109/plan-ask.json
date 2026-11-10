@@ -1,11 +1,11 @@
 {
  "agent_ask": "v1",
- "request_id": "plan-arcadia-bug-intake-slice-a-v3-20261109",
+ "request_id": "plan-arcadia-bug-intake-slice-b-20261109",
  "project": "arcadia",
  "intent": "plan",
  "requested_authority": "apply_if_approved",
- "desired_result": "Build arcadia bug slice A: a zero-model, dedupe-first bug intake that extends the existing arcadia defect signal with GitHub reconciliation, so any agent files a bug in one command and gets exactly one outcome (CREATED (with regression_of when a completed Issue recurs), APPENDED with recurrence count, LINKED, or QUEUED when GitHub is unreachable) without searching for duplicates by hand.",
- "rationale": "Operator request 2026-11-09 (Issue #2379; proposal receipt agentask_df9fdc3ecaeb817fc2). Decision 0121 chose arcadia bug and deferred the build; Decision 0049 approved the arcadia defect intake that already fingerprints, merges evidence and scores similarity but has zero live signals and never reaches GitHub; red-alert diagnosis already has a marker-search, comment-or-create GitHub filer behind an injectable GhRunner. Reuse both. Index is GitHub read per call (940 Issues, about 7 s), no projection; unreachable GitHub yields QUEUED with no write, so no blind duplicate. Never closes, relabels or retitles an Issue and never writes an Action, Decision, pointer, queue, Plan or PROJECT.md. Token impact: small; zero runtime model calls; a light-model tie-break, lesson promotion (slice B) and a local projection are deferred with triggers in the memo. Creates an inactive draft Plan; the operator settles and activates. Slice choice A vs B is the companion decision Ask decision-arcadia-bug-first-slice-v2-20261109; if B is chosen, its two drafted Actions are added by amendment. Memo: docs/reports/arcadia-bug-intake-plan-20261109/memo.md Supersedes preview plan-arcadia-bug-intake-slice-a-20261109 (receipt agentask_2552596036e2791080) after independent review round 1 on PR 2383; settle only v3 (plan-arcadia-bug-intake-slice-a-v3-20261109), which also repairs round-2 notes N1 and N3; v2 receipt agentask_9ce9aa1708b6456ced is superseded. Reopening a closed Issue is not in slice A: a recurrence of a completed Issue is filed as a new Issue that names the closed one, until the operator states reopen is routine intake.",
+ "desired_result": "Build arcadia bug slice B (operator choice 2026-11-09): a zero-model, dedupe-first bug intake that extends the existing arcadia defect signal with GitHub reconciliation, so any agent files a bug in one command and gets exactly one outcome (CREATED, with regression_of when a completed Issue recurs; APPENDED with recurrence count; LINKED; or QUEUED when GitHub is unreachable), plus promotion of recurring defect-shaped arcadia learn lessons through the same intake from the weekly triage.",
+ "rationale": "Operator request 2026-11-09 (Issue #2379; proposal receipt agentask_df9fdc3ecaeb817fc2). The operator answered the first-slice question in chat on 2026-11-09 with B (verbatim: \"B: plus promotion\"); that answer still has to be recorded by settling decision Ask decision-arcadia-bug-first-slice-v2-20261109 (receipt agentask_7fa9afdefe782635e1). Decision 0121 chose arcadia bug and deferred the build; Decision 0049 approved the arcadia defect intake that already fingerprints, merges evidence and scores similarity but has zero live signals and never reaches GitHub; red-alert diagnosis already has a marker-search, comment-or-create GitHub filer behind an injectable GhRunner. Reuse both. Index is GitHub read per call through the listing API (940 Issues, about 7 s), no projection; unreachable GitHub yields QUEUED with no write. Never closes, reopens, relabels or retitles an Issue and never writes an Action, Decision, pointer, queue, Plan or PROJECT.md. Promotion risk controls: the promoter runs only after the matcher is proven on the live backlog, only from an explicit caller (the weekly triage), previews by default, and promotes only defect-shaped lessons with recurrence of at least 3 and at least one observation-provenance version. Token impact: small; zero runtime model calls; a light-model tie-break and a local projection are deferred with triggers in the memo. Creates an inactive draft Plan; the operator settles and activates. Supersedes slice A previews plan-arcadia-bug-intake-slice-a-20261109, -v2- and -v3- (latest receipt agentask_bb99d16cee9e1fcf55); settle only this Ask. Memo: docs/reports/arcadia-bug-intake-plan-20261109/memo.md",
  "references": [
   "https://github.com/pmark/arcadia/issues/2379",
   "docs/decisions/0121-decide-whether-and-how-arcadia-sessions-get-a-supervisor-that-watches-for.md",
@@ -87,20 +87,52 @@
    ]
   },
   {
+   "id": "lesson-recurrence-count",
+   "execution": "build",
+   "desired_result": "Write failing tests, then implement src/learning/recurrence.ts: a read-only recurrence count per current lesson in one scope, equal to its exact observations plus other current lessons in that scope that the bug matcher classes as exact or similar.",
+   "why": "arcadia learn dedupes only exact replays, so a lesson that recurs in new words never looks recurring; promotion needs one honest count.",
+   "acceptance": [
+    "tests/lesson-recurrence-count.test.ts proves the count equals exact observations plus similar current lessons in the same scope, and that lessons in other scopes never count.",
+    "The test proves retracted and superseded versions are excluded and that two lessons in the ambiguous band do not count toward each other.",
+    "The test proves the function performs no write to any lesson table and no model or network call."
+   ],
+   "dependencies": [
+    "bug-report-key-and-match"
+   ]
+  },
+  {
+   "id": "promote-recurring-lessons",
+   "execution": "build",
+   "desired_result": "Write failing tests, then implement src/bug/promote.ts and wire a bug promote subcommand into src/commands/bug.ts: list current lessons whose recurrence is at least a threshold (default 3) and whose text is defect-shaped, preview the intake outcome for each by default, and with --apply file each through the same intake exactly once.",
+   "why": "This closes the gap that made the record run's lessons depend on someone remembering to file them, while keeping process insights as lessons rather than bugs.",
+   "acceptance": [
+    "tests/promote-recurring-lessons.test.ts proves a defect-shaped lesson at the threshold yields one intake outcome on apply and a replay of promote yields zero new GitHub writes.",
+    "The test proves a lesson below the threshold, a lesson without a component or error signature, and a lesson whose versions are all inference provenance are listed as not promoted with a reason.",
+    "The test proves promote without --apply performs zero GitHub writes and zero database writes, and that an unreachable index leaves each candidate QUEUED.",
+    "A write spy in the test proves promotion never edits, retracts or corrects a lesson and never writes an Action, Decision, pointer, queue, Plan or PROJECT.md.",
+    "A preview run against the live workspace's Arcadia lessons is recorded in the pull request with each candidate's count, reason and would-be outcome, and makes no Issue write."
+   ],
+   "dependencies": [
+    "bug-cli-command",
+    "bug-stopgap-replay-proof",
+    "lesson-recurrence-count"
+   ]
+  },
+  {
    "id": "bug-guidance-and-skills",
    "execution": "build",
    "desired_result": "Make arcadia bug the documented defect path: update the commands reference, the arcadia-supervisor and arcadia-github-issues shared skills, and the Log defects section of the principles guidance, keeping GitHub Issues as the home and the bootstrap unchanged. These skill paths are not worker-merge-safe, so the PR merges only through an interactive session under Decisions 0060 and 0080.",
    "why": "Without the guidance change no agent's filing behavior changes, so the shipped command would sit unused like arcadia defect did. As the last Action it also carries the Plan's completion settlement.",
    "acceptance": [
     "The commands reference and the supervisor skill no longer call arcadia bug unavailable and each shows the one-line usage.",
-    "The GitHub-issues skill runs bug sync and reads bug list --since as the weekly triage input.",
+    "The GitHub-issues skill runs bug sync, a bug promote preview followed by bug promote --apply, and reads bug list --since as the weekly triage input.",
     "The Log defects section of the principles guidance names arcadia bug as the search-first, file-once path and still names the owning repository's Issues as the home.",
     "pnpm check:agent-guidance passes and node --import tsx scripts/check-agent-skills.ts passes on the candidate head.",
     "Native skill discovery is reported separately for Codex, Claude Code and OpenCode, apart from the filesystem check that both skill directories resolve to the same sources.",
     "A complete Ask for this final Action previews without refusal on the candidate head before push."
    ],
    "dependencies": [
-    "bug-stopgap-replay-proof"
+    "promote-recurring-lessons"
    ]
   }
  ]
