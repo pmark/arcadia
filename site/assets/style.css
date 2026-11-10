@@ -121,10 +121,12 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
   background: linear-gradient(#27304f, #3d4a72 55%, #6c7496);
 }
 @media (pointer:coarse) {
-  /* Extend the scene under mobile browser controls without tracking toolbar height. */
+  :root { --canyon-edge:var(--canyon-live-edge, #2c232e); }
+  /* Keep a stable base height and cover any additional bottom safe area. */
   .canyon-landscape {
     height:calc(100vh + 96px);
     height:calc(100lvh + 96px);
+    min-height:calc(100dvh + env(safe-area-inset-bottom, 0px) + 96px);
   }
 }
 .canyon-landscape > * { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }

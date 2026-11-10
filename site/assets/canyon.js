@@ -270,18 +270,20 @@ function drawStars(night) {
     const skyChanged = previousSkyPhase === undefined || paletteBlend !== previousPaletteBlend
       || (now >= nextSkyUpdate && skyPhase !== previousSkyPhase);
     let horizonColor;
+    let skyEdgeColor;
     if (skyChanged) {
       const colors = scenePalette(p);
       drawSky(colors, p);
       drawStars(night);
       // At the feed camera's shallow pitch, distant terrain meets the middle sky.
       horizonColor = colors[1];
+      skyEdgeColor = colors[2];
       previousSkyPhase = skyPhase;
       nextSkyUpdate = now + 250;
       previousPaletteBlend = paletteBlend;
     }
     if (skyChanged || scroll !== cameraScroll || lift !== previousLift) {
-      renderTerrain(scroll, night, lift, horizonColor);
+      renderTerrain(scroll, night, lift, horizonColor, skyEdgeColor);
       previousLift = lift;
       cameraScroll = scroll;
       if (root.dataset.terrain !== 'live') root.dataset.terrain = 'live';
@@ -314,6 +316,7 @@ function drawStars(night) {
 
   function showStill() {
     delete root.dataset.terrain;
+    document.documentElement.style.removeProperty('--canyon-live-edge');
   }
 
   function refreshMotion() {
@@ -502,6 +505,8 @@ function drawStars(night) {
     const rock = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
     const groundDay = new THREE.Color('#9b6452');
     const groundNight = new THREE.Color('#59403f');
+    const skyEdge = new THREE.Color();
+    const edgeTint = new THREE.Color();
 
     const strata = [0, .19, .28, .45, .51, .64, .79, .89, 1, 1.02];
     const bands = strata.length - 1;
@@ -663,7 +668,7 @@ function drawStars(night) {
       canyon.scale.x = THREE.MathUtils.clamp(camera.aspect * .84, .55, 1.2);
     };
 
-    const drawTerrain = (scroll, night, elevation, horizonColor) => {
+    const drawTerrain = (scroll, night, elevation, horizonColor, skyEdgeColor) => {
       const travel = Math.max(0, scroll) * .0355;
       const cell = Math.floor(travel / (spacing * cellsPerUpdate)) * cellsPerUpdate;
       const z = cell * spacing - travel;
@@ -681,7 +686,14 @@ function drawStars(night) {
         ground.material.color.copy(groundDay).lerp(groundNight, night).lerp(horizonTint, .25);
         tracks.material.color.copy(ground.material.color).multiplyScalar(.72);
         stones.material.color.copy(ground.material.color).lerp(rock.color, .09);
+        const [edgeRed, edgeGreen, edgeBlue] = skyEdgeColor;
+        skyEdge.setRGB(edgeRed / 255, edgeGreen / 255, edgeBlue / 255, THREE.SRGBColorSpace);
         skyTexture.needsUpdate = true;
+      }
+      // Safari can use the page color for the native scroll edge instead of the canvas.
+      if (coarsePointer.matches && (horizonColor || elevation !== previousLift)) {
+        edgeTint.copy(ground.material.color).lerp(skyEdge, elevation);
+        document.documentElement.style.setProperty('--canyon-live-edge', '#' + edgeTint.getHexString());
       }
       renderer.render(scene, camera);
     };
