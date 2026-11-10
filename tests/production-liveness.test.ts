@@ -844,10 +844,13 @@ describe("the spend check on each liveness tick", () => {
     writeBeaconRecord(root, at("02:10:30"));
     writeTickMarker(root, at("02:05:30"));
     // The probe sees the alert already on disk, then dies; the next tick must find it open.
+    // observeSpend swallows probe throws, so the on-disk state is captured and asserted outside.
+    let seenDuringProbe: LivenessState | null = null;
     check(root, at("02:10:30"), true, undefined, () => {
-      expect(state(root).openAlert).toMatchObject({ kind: "stale" });
+      seenDuringProbe = state(root);
       throw new Error("killed mid-probe");
     });
+    expect(seenDuringProbe).toMatchObject({ openAlert: { kind: "stale" } });
     const again = check(root, at("02:11:30"));
     expect(again.ping).toBeNull();
     expect(pending(root).filter((ping) => ping.message.includes("Worker silent"))).toHaveLength(1);
@@ -869,6 +872,18 @@ describe("the spend check on each liveness tick", () => {
       { workspace: root },
       { now: () => at4(20), readProductionActive: () => { throw new Error("policy unreadable"); }, checkSpend: () => spendReport("risk", ["paid_model_route"]), queuePing: () => { throw new Error("outbox down"); } }
     )).toThrow(/Could not read the production policy[\s\S]*outbox down/);
+  });
+
+  it("retries a spend page that could not be queued on the very next tick", () => {
+    const root = workspace();
+    check(root, at4(0), false);
+    const failing = { now: () => at4(20), readProductionActive: () => false, checkSpend: () => spendReport("risk", ["paid_model_route"]), queuePing: () => { throw new Error("outbox down"); } };
+    expect(() => runProductionLivenessCheckCommand({ workspace: root }, failing)).toThrow(/outbox down/);
+    expect(state(root)).toMatchObject({ spend: null, spendCheckedAt: null });
+    const probe = vi.fn(() => spendReport("risk", ["paid_model_route"]));
+    const retried = runProductionLivenessCheckCommand({ workspace: root }, { now: () => at4(21), readProductionActive: () => false, checkSpend: probe }).data;
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(retried.spend.ping).toBe("spend_risk");
   });
 
   it("never runs the real probes in a test process: without a stub the tick is skipped, never clear", () => {

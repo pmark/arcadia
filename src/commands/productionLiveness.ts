@@ -534,7 +534,8 @@ export function runProductionLivenessCheckCommand(
     ? state.spendUnknownSince
     : spendDecision.digestUnknown ? state.spendUnknownSince ?? new Date(now).toISOString() : null;
   const spendDigestLine = spendDecision.digestUnknown ? `Spend check unknown since ${spendUnknownSince}: no verified verdict, digest only.` : null;
-  const spendCheckedAt = spendObserved.verdict === "skipped" ? state.spendCheckedAt : new Date(now).toISOString();
+  // A page that could not be queued clears the timestamp, so the very next tick probes and retries it.
+  const spendCheckedAt = spendObserved.verdict === "skipped" ? state.spendCheckedAt : spendQueueError !== null ? null : new Date(now).toISOString();
   const next: LivenessState = { ...settled, spend, spendUnknownSince, spendCheckedAt };
   if (JSON.stringify(next) !== JSON.stringify(settled)) writeState(workspacePath, next);
   // Last, so the page and the episode record are already out. It runs once per
