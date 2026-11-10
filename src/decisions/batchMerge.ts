@@ -93,6 +93,23 @@ const EXACT: Record<string, AuthorityBoundary> = {
   "src/commands/review.ts": "operator_authority",
   "src/commands/project.ts": "operator_authority",
   "src/docs/sync.ts": "operator_authority",
+  // Classifier-coverage audit (Decision 0214 A; tests/authority-classifier-coverage.test.ts):
+  // gate-enforcing modules outside the prefixes below.
+  "src/commands/decision.ts": "operator_authority",
+  "src/commands/actionsettle.ts": "operator_authority",
+  "src/commands/ask.ts": "operator_authority",
+  "src/commands/todo.ts": "operator_authority",
+  "src/commands/go.ts": "operator_authority",
+  "src/commands/spend.ts": "operator_authority",
+  "src/commands/production.ts": "production_policy",
+  "src/commands/productionidlefront.ts": "production_policy",
+  "src/commands/startrun.ts": "production_policy",
+  "src/dispatch/decisiondeferral.ts": "operator_authority",
+  "src/sessions/launch.ts": "operator_authority",
+  "src/sessions/fixturepacketapproval.ts": "operator_authority",
+  "src/sessions/fixturestandinglaunch.ts": "operator_authority",
+  "src/capabilities/blogging/actions.ts": "operator_authority",
+  "src/intelligence/jobs/worker.ts": "operator_authority",
 };
 /** Matched on the last path segment wherever the file sits. */
 const BASENAMES: Record<string, AuthorityBoundary> = {
@@ -134,6 +151,14 @@ const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["artifacts/generated/operator-scripts/", "operator_authority"],
   ["src/operatoractions/", "operator_authority"],
   ["src/decisions/", "operator_authority"],
+  // Classifier-coverage audit (Decision 0214 A): spend, paid-route and review-proof gates.
+  ["src/spend/", "operator_authority"],
+  ["src/intelligence/config/", "operator_authority"],
+  ["src/intelligence/routing/", "operator_authority"],
+  ["src/intelligence/claudecode/", "operator_authority"],
+  ["src/intelligence/codex/", "operator_authority"],
+  ["src/execution/", "ci_and_gates"],
+  ["src/qa/", "ci_and_gates"],
 ];
 const PERMISSION_NAME_RE = /(permission|allow[-_ .]?(list|rules?)|settings(\.local)?\.json)/;
 const DASHBOARD_ROUTE_RE = /^apps\/dashboard\/(?:.*\/)?(?:app\/(?:.*\/)?route|actions)\.(?:ts|tsx|js|jsx|mjs)$/;
