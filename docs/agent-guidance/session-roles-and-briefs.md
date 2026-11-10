@@ -241,7 +241,10 @@ authorized relaunch/installation, never a replacement runner.
 
 Under Decision 0202, using OpenCode for a helper or reviewer needs no cost
 approval: it draws on the operator's weekly allocation, as Codex and Claude do.
-That removes only the cost question. Every other launch rule here stays, and
+The only allowed OpenCode model prefix is `opencode-go/` (the subscription);
+`opencode/` (Zen) and `huggingface/` bill money, so a helper brief must name an
+`opencode-go/` model and the binding validator refuses any other prefix. That
+removes only the cost question. Every other launch rule here stays, and
 because the in-process route is unverified, run the helper as a separately
 launched top-level OpenCode Session in its own worktree. Its remaining allowance
 can't be read, so say so in the brief and fall back to another provider if it

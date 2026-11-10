@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { runSpendCheckCommand } from "./commands/spend.js";
+import { spendExitCode } from "./spend/spendCheck.js";
 import { runProviderUsageCommand } from "./commands/providerUsage.js";
 import { runRunConsumeCommand } from "./commands/runConsume.js";
 import { runRolesCommand, renderRolesSuccess, runRoleBriefCommand, renderRoleBriefSuccess } from "./commands/roles.js";
@@ -708,6 +710,23 @@ export function buildProgram(): Command {
     .action((options: { refresh?: boolean; claudeSource?: string; opencodeSession?: string; opencodeExport?: string; json?: boolean }) =>
       runCliAction("provider-usage", options, () => runProviderUsageCommand(options),
         (response) => [JSON.stringify(response.data, null, 2)]));
+
+  const spend = program.command("spend").description("Read-only checks that a launch cannot spend money");
+  addJsonOption(spend.command("check")
+    .description("Say clear (exit 0), risk (3) or unknown (4) for paid-usage mechanisms; prints names and codes only, never a secret")
+    .option("--provider <provider>", "claude, codex, opencode or all", "all")
+    .option("--launch-env <mode>", "current, or stripped to remove every billing variable before probing", "current")
+    .option("--model <id>", "OpenCode model id to route-check"))
+    .action((options: { provider?: string; launchEnv?: string; model?: string; json?: boolean }) =>
+      runCliAction("spend.check", options, () => {
+        const response = runSpendCheckCommand(options);
+        process.exitCode = spendExitCode(response.data.verdict);
+        return response;
+      }, (response) => [
+        `Spend check: ${response.data.verdict}`,
+        ...response.data.providers.map((provider) => `  ${provider.id}: ${provider.verdict}${provider.codes.length > 0 ? ` (${provider.codes.join(", ")})` : ""}`),
+        ...(response.data.warnings.length > 0 ? [`Warnings: ${response.data.warnings.join(", ")}`] : [])
+      ]));
 
 
   program
