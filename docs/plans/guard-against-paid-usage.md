@@ -71,11 +71,11 @@ actions:
     references: ["docs/reports/spend-safety-investigation-2026-11-09.md", "https://github.com/pmark/arcadia/issues/2375"]
   - id: pin-opencode-to-go-models
     title: Pin OpenCode to opencode-go/ models in the binding validator and helper briefs.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin OpenCode to opencode-go/ models in the binding validator and helper briefs.
+    next_action: Completed via Agent Ask complete-pin-opencode-to-go-models-2026-11-10-r2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-opencode-to-go-models
     clarification: clarified
     confidence: high
