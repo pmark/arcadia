@@ -53,6 +53,8 @@ body { font-family:var(--copy); isolation:isolate; }
 h1, h2, h3 { font-family:var(--display); }
 a { text-underline-offset:.18em; }
 a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid var(--focus); outline-offset:3px; }
+/* Navigation and the skip link focus the full-width landmark. */
+#main:focus { outline:none; }
 .skip-link { position:fixed; z-index:3; inset:.75rem auto auto 1rem; padding:.5rem 1rem; background:var(--bg); color:var(--link); }
 .skip-link:not(:focus) { clip-path:inset(50%); }
 
