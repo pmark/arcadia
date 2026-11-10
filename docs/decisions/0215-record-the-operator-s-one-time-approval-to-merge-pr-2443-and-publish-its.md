@@ -4,7 +4,7 @@ type: decision
 id: "0215"
 slug: record-the-operator-s-one-time-approval-to-merge-pr-2443-and-publish-its
 project: arcadia
-status: open
+status: approved
 question: "Record the operator’s one-time approval to merge PR #2443 and publish its reviewed Field Notes sharing, SEO, canyon ride and alignment changes through the existing GitHub Pages workflow after current-head independent review and required checks pass."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-10
+answer: Publish the reviewed Field Notes changes
+decided: 2026-11-10
 ---
 
 # Decision 0215: Record the operator’s one-time approval to merge PR #2443 and publish its reviewed Field Notes sharing, SEO, canyon ride and alignment changes through the existing GitHub Pages workflow after current-head independent review and required checks pass.
