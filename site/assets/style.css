@@ -191,15 +191,15 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 .field-hero .start-link { display:inline-flex; align-items:center; gap:.3rem; min-height:44px; margin-top:.4rem; color:inherit; font-weight:600; }
 .posts .field-label { margin:0; }
 .field-label { font: 600 .75rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .09em; }
+.field-hero .field-label { display:flex; align-items:center; justify-content:center; gap:.65rem; }
 .field-seal {
-  display: inline-grid;
+  display: grid;
   place-items: center;
+  flex: none;
   width: .65rem;
   height: .65rem;
-  margin-right: .45rem;
   border: 1px solid currentColor;
   transform: rotate(45deg);
-  vertical-align: .02em;
 }
 .field-seal::after { content: ""; width: .2rem; height: .2rem; background: currentColor; }
 .canyon-page .posts, .posts-empty {
