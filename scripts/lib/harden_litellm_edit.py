@@ -249,25 +249,27 @@ def cmd_plist_edit(args):
 
 INTEREST = re.compile(r"api_key|API_KEY|master_key|sk-|OPENAI", re.IGNORECASE)
 LINE = re.compile(r"""^\s*(?:-\s*)?["']?(?P<name>[A-Za-z_][A-Za-z0-9_.\-]*)["']?\s*[:=]\s*(?P<value>.*)$""")
-ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+ENV_NAME = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")  # SCREAMING_SNAKE with an underscore, so a bare token is never a "name"
+PLAIN_NAMES = {"api_key", "master_key", "api_base", "openai_api_key", "litellm_master_key", "litellm_api_key"}
+MAX_NAME = 40
 VAR_REF = re.compile(r"^\$\{?(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?P<rest>:?[-=?+].*)?\}?$")
 
 
 def describe(value):
     """Classify a value. Prints only a fixed phrase, a length, or a strict upper-case variable name; never the value."""
-    v = re.sub(r"\s+#.*$", "", value.strip()).strip().strip("\"'")
-    if v.startswith("os.environ/") and ENV_NAME.match(v[len("os.environ/"):]):
+    v = re.sub(r"\s+#.*$", "", value.replace("\r", "").strip()).strip().strip("\"'")
+    if v.startswith("os.environ/") and ENV_NAME.match(v[len("os.environ/"):]) and len(v) <= MAX_NAME + 11:
         return "<os.environ reference: %s>" % v[len("os.environ/"):]
     m = VAR_REF.match(v)
-    if m and ENV_NAME.match(m.group("name")):
+    if m and ENV_NAME.match(m.group("name")) and len(m.group("name")) <= MAX_NAME:
         if m.group("rest"):
             return "<variable reference %s with a default, default hidden>" % m.group("name")
         return "<variable reference: %s>" % m.group("name")
     if re.match(r"^sk-[A-Za-z0-9_\-]{20,}$", v):
-        return "<KEY-SHAPED LITERAL, %d chars, value hidden>" % len(v)
+        return "<KEY-SHAPED LITERAL, value hidden>"
     if "sk-" in v:
         return "<contains an sk- string, value hidden>"
-    return "<other value, %d chars, hidden>" % len(v)
+    return "<other value, hidden>"
 
 
 def cmd_diagnose(args):
@@ -285,8 +287,10 @@ def cmd_diagnose(args):
                 continue
             found = True
             m = LINE.match(line)
-            if m and "sk-" not in m.group("name") and len(m.group("name")) <= 60:
-                print("%s:%d: %s = %s" % (path, number, m.group("name"), describe(m.group("value"))))
+            name = m.group("name") if m else ""
+            known = name.lower() in PLAIN_NAMES or (ENV_NAME.match(name) is not None and len(name) <= MAX_NAME)
+            if m:
+                print("%s:%d: %s = %s" % (path, number, name if known else "<other key name>", describe(m.group("value"))))
             else:
                 print("%s:%d: (key-like line, shape not parsed; everything hidden)" % (path, number))
         if not found:

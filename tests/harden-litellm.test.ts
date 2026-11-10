@@ -240,12 +240,16 @@ describe("harden-litellm.sh against a fake installation", () => {
         `api_key: # see https://x/${secret}`,
         `- sk-abc.${secret}: tail`,
         `OPENAI_API_KEY=${secret}`,
+        `Zq9${secret}_api_key: x`,
+        `OPENAI_API_KEY=$ABC123${secret.toUpperCase()}`,
+        `OPENAI_API_KEY=os.environ/${secret.toUpperCase()}\r`,
       ].join("\n") + "\n",
     );
     writeFileSync(path.join(f.dir, ".env.local"), Buffer.from([0xff, 0xfe, 0x41, 0x50, 0x49, 0x5f, 0x4b, 0x45, 0x59, 0x3d, 0xff, 0x0a]));
     const result = f.run(["--diagnose"]);
     expect(result.status).toBe(0);
     expect(result.out).not.toContain(secret);
+    expect(result.out).not.toContain(secret.toUpperCase());
     expect(result.out).not.toContain("see https");
     expect(result.out).toContain("variable reference A_API_KEY with a default, default hidden");
   });
