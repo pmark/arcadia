@@ -248,29 +248,34 @@ def cmd_plist_edit(args):
 
 
 INTEREST = re.compile(r"api_key|API_KEY|master_key|sk-|OPENAI", re.IGNORECASE)
-VALUE = re.compile(r"""^(?P<head>.*?[:=]\s*)(?P<value>[^\s#].*?)\s*(?P<tail>#.*)?$""")
+LINE = re.compile(r"""^\s*(?:-\s*)?["']?(?P<name>[A-Za-z_][A-Za-z0-9_.\-]*)["']?\s*[:=]\s*(?P<value>.*)$""")
+ENV_NAME = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+VAR_REF = re.compile(r"^\$\{?(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?P<rest>:?[-=?+].*)?\}?$")
 
 
 def describe(value):
-    v = value.strip().strip("\"'")
-    if v.startswith("os.environ/"):
+    """Classify a value. Prints only a fixed phrase, a length, or a strict upper-case variable name; never the value."""
+    v = re.sub(r"\s+#.*$", "", value.strip()).strip().strip("\"'")
+    if v.startswith("os.environ/") and ENV_NAME.match(v[len("os.environ/"):]):
         return "<os.environ reference: %s>" % v[len("os.environ/"):]
-    if v.startswith("${") or v.startswith("$"):
-        return "<shell/compose variable reference: %s>" % v
+    m = VAR_REF.match(v)
+    if m and ENV_NAME.match(m.group("name")):
+        if m.group("rest"):
+            return "<variable reference %s with a default, default hidden>" % m.group("name")
+        return "<variable reference: %s>" % m.group("name")
     if re.match(r"^sk-[A-Za-z0-9_\-]{20,}$", v):
         return "<KEY-SHAPED LITERAL, %d chars, value hidden>" % len(v)
-    if v.startswith("sk-"):
-        return "<sk- literal, %d chars (too short to be a provider key), value hidden>" % len(v)
     if "sk-" in v:
-        return "<contains a key-shaped literal, value hidden>"
+        return "<contains an sk- string, value hidden>"
     return "<other value, %d chars, hidden>" % len(v)
 
 
 def cmd_diagnose(args):
-    """Print where key-like settings live, with every value hidden. Never prints a value."""
+    """Print where key-like settings live. Allowlist output: file, line, a plain key name, and a class. Never a value."""
     for path in args.files:
         try:
-            lines = read_lines(path)
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                lines = handle.read().split("\n")
         except OSError:
             print("%s: not readable or absent" % path)
             continue
@@ -279,13 +284,11 @@ def cmd_diagnose(args):
             if line.strip().startswith("#") or not INTEREST.search(line):
                 continue
             found = True
-            m = VALUE.match(line)
-            if m and ("sk-" in line or re.search(r"[:=]", line)):
-                shown = re.sub(r"\s+", " ", m.group("head")).rstrip()
-                shown = re.sub(r"sk-[A-Za-z0-9_\-]+", "sk-…", shown)
-                print("%s:%d: %s %s" % (path, number, shown, describe(m.group("value"))))
+            m = LINE.match(line)
+            if m and "sk-" not in m.group("name") and len(m.group("name")) <= 60:
+                print("%s:%d: %s = %s" % (path, number, m.group("name"), describe(m.group("value"))))
             else:
-                print("%s:%d: (key-like line, shape not parsed; value hidden)" % (path, number))
+                print("%s:%d: (key-like line, shape not parsed; everything hidden)" % (path, number))
         if not found:
             print("%s: no api_key / master_key / sk- / OPENAI lines" % path)
 
