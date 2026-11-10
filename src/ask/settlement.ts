@@ -2313,13 +2313,13 @@ function settledAutoSettleContentKeys(db: Database.Database): Set<string> {
   const settled = db.prepare(`SELECT p.proposal_json, s.receipt_json
       FROM agent_ask_proposals p
       JOIN agent_ask_settlements s ON s.proposal_id = p.id
-      WHERE p.request_id LIKE 'auto-settle-%'`).all() as Array<{ proposal_json: string; receipt_json: string }>;
+      WHERE p.request_id LIKE 'auto-settle-%' AND s.disposition = 'accepted'`).all() as Array<{ proposal_json: string; receipt_json: string }>;
   for (const row of settled) {
     // Only a settlement whose documents commit actually landed counts (Issue #1518):
     // a recorded settlement whose Git commit failed leaves the draft's proposal
     // pending, so the operator gate and the not-in-candidate escalation still see it.
     const receipt = JSON.parse(row.receipt_json) as AgentAskSettlementReceipt;
-    if (!receipt.documentsCommit || receipt.recovery?.documentsCommitted === false) continue;
+    if (!receipt.applied || !receipt.documentsCommit || receipt.recovery?.documentsCommitted === false) continue;
     const normalized = (JSON.parse(row.proposal_json) as AgentAskProposal).normalized;
     if (normalized.intent === "complete" && normalized.requestId.startsWith("auto-settle-")) keys.add(autoSettleContentKey(normalized));
   }
