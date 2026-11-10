@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src
 project: arcadia
-status: active
+status: complete
 milestone: "Carry out Decision 0214 answer A: unattended production's worker may merge src/** candidate changes that touch no authority boundary, after an audit proves the authority classifier covers every gate-enforcing source module."
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -30,11 +30,11 @@ actions:
     references: []
   - id: implement-decision-0214-a-in-src
     title: "Implement Decision 0214 A in src/production/workerMerge.ts: isWorkerMergeSafePath accepts a src/** path that classifyAuthorityPaths does not classify, keeping every existing proof gate."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Implement Decision 0214 A in src/production/workerMerge.ts: isWorkerMergeSafePath accepts a src/** path that classifyAuthorityPaths does not classify, keeping every existing proof gate."
+    next_action: Completed via Agent Ask complete-implement-decision-0214-a-in-src-20261110; no further action.
     expected_artifact: Evidence satisfying Agent Ask implement-decision-0214-a-in-src
     clarification: clarified
     confidence: high
@@ -48,7 +48,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: implement-decision-0214-a-in-src
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
