@@ -44,12 +44,13 @@ export function stripComments(text) {
   return text.replace(COMMENT_RE, (m, lead) => (lead === undefined ? " " : lead));
 }
 
-function walk(dir, out) {
+function walk(dir, out, includeData = false) {
   for (const name of readdirSync(dir).sort()) {
     const full = join(dir, name);
     const st = statSync(full);
-    if (st.isDirectory()) walk(full, out);
+    if (st.isDirectory()) walk(full, out, includeData);
     else if (name.endsWith(".ts") && !name.endsWith(".test.ts") && !name.endsWith(".d.ts")) out.push(full);
+    else if (includeData && (name.endsWith(".md") || name.endsWith(".json"))) out.push(full);
   }
   return out;
 }
@@ -106,9 +107,9 @@ function reasonFor(path) {
   return best ? best[1] : "Unreviewed.";
 }
 
-/** Every non-test src/**.ts path, repo-relative, sorted. */
+/** Every non-test src/**.ts path plus src .md and .json files (installed instructions, data), repo-relative, sorted. */
 export function listSourceFiles(root = resolve(fileURLToPath(new URL("..", import.meta.url)))) {
-  return walk(join(root, "src"), []).map((f) => relative(root, f).split(sep).join("/")).sort();
+  return walk(join(root, "src"), [], true).map((f) => relative(root, f).split(sep).join("/")).sort();
 }
 
 /** Paths classifyAuthorityPaths leaves unclassified, via a tsx child so the TS classifier stays the single source. */

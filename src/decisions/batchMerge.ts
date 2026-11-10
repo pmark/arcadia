@@ -123,6 +123,8 @@ const EXACT: Record<string, AuthorityBoundary> = {
   "src/nativemail/index.ts": "operator_authority",
   "src/operatorinteractions/store.ts": "operator_authority",
   "src/db/schema.ts": "operator_authority",
+  // Agent-behaviour and proof-checking follow-up (0214 A review of #2468).
+  "src/db/connection.ts": "operator_authority",
   "src/db/repositories.ts": "operator_authority",
   "src/northstar/document.ts": "project_governance",
   "src/dashboard/decisiondisplay.ts": "operator_authority",
@@ -277,6 +279,11 @@ const PREFIXES: ReadonlyArray<[string, AuthorityBoundary]> = [
   ["src/intent/", "operator_authority"],
   ["src/nativemail/", "operator_authority"],
   ["src/codex/", "operator_authority"],
+  // 0214 A follow-up: installed agent instructions (*.SKILL.md), prompt text, role briefs and proof checking.
+  ["src/agentsetup/", "agent_guidance"],
+  ["src/prompts/", "agent_guidance"],
+  ["src/agentroles/", "agent_guidance"],
+  ["src/prooftargets/", "ci_and_gates"],
 ];
 const PERMISSION_NAME_RE = /(permission|allow[-_ .]?(list|rules?)|settings(\.local)?\.json)/;
 const DASHBOARD_ROUTE_RE = /^apps\/dashboard\/(?:.*\/)?(?:app\/(?:.*\/)?route|actions)\.(?:ts|tsx|js|jsx|mjs)$/;
