@@ -187,6 +187,19 @@ finite allowance and the stop condition in the existing brief.
   the stocked queue keep non-operator critical-path idle near 0 for 7 days;
   revive above 30 minutes a day.
 
+- **Launcher:** `arcadia keeper start --supervisor <session id>` launches one
+  keeper as a background host session (`claude --bg --remote-control`) from the
+  checked-in brief `momentum-keeper-brief.md`; `--dry-run` prints the exact
+  command, `arcadia keeper status` is read-only, `arcadia keeper stop` stops the
+  recorded session. It refuses while a keeper heartbeat is live or the recorded
+  session is still listed by `claude agents`, never uses tmux, and records the
+  launch in `<workspace>/.arcadia/momentum-keeper-launch.json`; it runs the
+  keeper from the primary checkout, never a task worktree. Authority comes from
+  Decision 0188 B (Rowan or the operator starts a keeper) and Decision 0190 A
+  (automatic start at Active), not from the command's existence. A standing
+  permission for any agent to call it, and wiring it to production Active or
+  Off, wait for a Decision; it is not wired to activation.
+
 Outside this procedure, a multi-day standing grant, a `src/` allowlist for
 worker merge and a standing merge permission stay separate Decisions, not
 granted here. Operators may keep personal notes elsewhere; this section is
