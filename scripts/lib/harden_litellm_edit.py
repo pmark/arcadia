@@ -247,6 +247,56 @@ def cmd_plist_edit(args):
         print("change: " + change)
 
 
+INTEREST = re.compile(r"api_key|API_KEY|master_key|sk-|OPENAI", re.IGNORECASE)
+LINE = re.compile(r"""^\s*(?:-\s*)?["']?(?P<name>[A-Za-z_][A-Za-z0-9_.\-]*)["']?\s*[:=]\s*(?P<value>.*)$""")
+ENV_NAME = re.compile(r"^[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+$")  # SCREAMING_SNAKE with an underscore, so a bare token is never a "name"
+PLAIN_NAMES = {"api_key", "master_key", "api_base", "openai_api_key", "litellm_master_key", "litellm_api_key"}
+MAX_NAME = 40
+VAR_REF = re.compile(r"^\$\{?(?P<name>[A-Za-z_][A-Za-z0-9_]*)(?P<rest>:?[-=?+].*)?\}?$")
+
+
+def describe(value):
+    """Classify a value. Prints only a fixed phrase, a length, or a strict upper-case variable name; never the value."""
+    v = re.sub(r"\s+#.*$", "", value.replace("\r", "").strip()).strip().strip("\"'")
+    if v.startswith("os.environ/") and ENV_NAME.match(v[len("os.environ/"):]) and len(v) <= MAX_NAME + 11:
+        return "<os.environ reference: %s>" % v[len("os.environ/"):]
+    m = VAR_REF.match(v)
+    if m and ENV_NAME.match(m.group("name")) and len(m.group("name")) <= MAX_NAME:
+        if m.group("rest"):
+            return "<variable reference %s with a default, default hidden>" % m.group("name")
+        return "<variable reference: %s>" % m.group("name")
+    if re.match(r"^sk-[A-Za-z0-9_\-]{20,}$", v):
+        return "<KEY-SHAPED LITERAL, value hidden>"
+    if "sk-" in v:
+        return "<contains an sk- string, value hidden>"
+    return "<other value, hidden>"
+
+
+def cmd_diagnose(args):
+    """Print where key-like settings live. Allowlist output: file, line, a plain key name, and a class. Never a value."""
+    for path in args.files:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                lines = handle.read().split("\n")
+        except OSError:
+            print("%s: not readable or absent" % path)
+            continue
+        found = False
+        for number, line in enumerate(lines, 1):
+            if line.strip().startswith("#") or not INTEREST.search(line):
+                continue
+            found = True
+            m = LINE.match(line)
+            name = m.group("name") if m else ""
+            known = name.lower() in PLAIN_NAMES or (ENV_NAME.match(name) is not None and len(name) <= MAX_NAME)
+            if m:
+                print("%s:%d: %s = %s" % (path, number, name if known else "<other key name>", describe(m.group("value"))))
+            else:
+                print("%s:%d: (key-like line, shape not parsed; everything hidden)" % (path, number))
+        if not found:
+            print("%s: no api_key / master_key / sk- / OPENAI lines" % path)
+
+
 def main():
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -254,6 +304,9 @@ def main():
     p.add_argument("file")
     p.add_argument("--print-key", action="store_true")
     p.set_defaults(fn=cmd_config_key)
+    p = sub.add_parser("diagnose")
+    p.add_argument("files", nargs="+")
+    p.set_defaults(fn=cmd_diagnose)
     p = sub.add_parser("config-edit")
     p.add_argument("file")
     p.add_argument("out")

@@ -215,6 +215,67 @@ describe("harden-litellm.sh against a fake installation", () => {
     expect(result.out).not.toContain(FAKE_KEY);
   });
 
+  it("--diagnose shows where key-like settings live with every value hidden", () => {
+    const f = fixture();
+    const result = f.run(["--diagnose"]);
+    expect(result.status).toBe(0);
+    expect(result.out).toContain("KEY-SHAPED LITERAL");
+    expect(result.out).toContain("master_key");
+    expect(result.out).not.toContain(FAKE_KEY);
+    expect(result.out).not.toContain("FAKEFAKE");
+    expect(f.read(f.files.config)).toBe(CONFIG);
+  });
+
+  it("--diagnose never prints any part of a secret, whatever the line shape", () => {
+    const f = fixture();
+    const secret = "SUPERSECRETvalue12345";
+    writeFileSync(
+      path.join(f.dir, ".env"),
+      [
+        `A_API_KEY=\${A_API_KEY:-sk-${secret}}`,
+        `LITELLM_MASTER_KEY=$2b$12$${secret}`,
+        `master_key: $uper${secret}`,
+        `OPENAI_API_KEY: os.environ/sk-${secret}`,
+        `OPENAI_API_KEY=#abc:${secret}`,
+        `api_key: # see https://x/${secret}`,
+        `- sk-abc.${secret}: tail`,
+        `OPENAI_API_KEY=${secret}`,
+        `Zq9${secret}_api_key: x`,
+        `OPENAI_API_KEY=$ABC123${secret.toUpperCase()}`,
+        `OPENAI_API_KEY=os.environ/${secret.toUpperCase()}\r`,
+      ].join("\n") + "\n",
+    );
+    writeFileSync(path.join(f.dir, ".env.local"), Buffer.from([0xff, 0xfe, 0x41, 0x50, 0x49, 0x5f, 0x4b, 0x45, 0x59, 0x3d, 0xff, 0x0a]));
+    const result = f.run(["--diagnose"]);
+    expect(result.status).toBe(0);
+    expect(result.out).not.toContain(secret);
+    expect(result.out).not.toContain(secret.toUpperCase());
+    expect(result.out).not.toContain("see https");
+    expect(result.out).toContain("variable reference A_API_KEY with a default, default hidden");
+  });
+
+  it("when the key is not in the config it refuses and shows the hidden shape, not the value", () => {
+    const f = fixture();
+    writeFileSync(f.files.config, CONFIG.replace(`"${FAKE_KEY}"`, "os.environ/OPENAI_API_KEY"));
+    writeFileSync(path.join(f.dir, ".env"), `OPENAI_API_KEY=${FAKE_KEY}\n`);
+    const result = f.run(["--budget-usd", "25", "--apply"]);
+    expect(result.status).toBe(3);
+    expect(result.out).toContain("Where key-like settings live");
+    expect(result.out).toContain(".env:1: OPENAI_API_KEY = <KEY-SHAPED LITERAL");
+    expect(result.out).not.toContain(FAKE_KEY);
+    expect(f.backups()).toEqual([]);
+  });
+
+  it("finds docker-compose.yaml when docker-compose.yml is absent", () => {
+    const f = fixture();
+    const renamed = path.join(f.dir, "docker-compose.yaml");
+    writeFileSync(renamed, COMPOSE);
+    rmSync(f.files.compose);
+    const result = f.run(["--budget-usd", "25"]);
+    expect(result.status).toBe(0);
+    expect(result.out).toContain("docker-compose.yaml");
+  });
+
   it("refuses a compose file it cannot understand", () => {
     const f = fixture();
     writeFileSync(f.files.compose, "services:\n  other:\n    image: x\n");

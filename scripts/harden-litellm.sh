@@ -38,6 +38,7 @@ KC_SERVICE="arcadia-litellm-openai"
 KC_ACCOUNT="litellm-proxy"
 NO_RESTART=false
 IGNORE_WINDOW=false
+DIAGNOSE=false
 
 usage() {
   cat <<'EOF'
@@ -50,12 +51,14 @@ Dry run unless --apply is given. --budget-usd is required (no default); it is yo
   --apply                 make the changes, restart, verify
   --litellm-dir DIR       default ~/Dev/MR/Arcadia/litellm-database (or $LITELLM_DIR)
   --config FILE           default DIR/litellm_config.docker.yaml
-  --compose FILE          default DIR/docker-compose.yml
+  --compose FILE          default DIR/docker-compose.yml, else docker-compose.yaml
   --plist FILE            default ~/Library/LaunchAgents/com.litellm.proxy.plist
   --container NAME        default litellm-proxy
   --env-var NAME          default OPENAI_API_KEY
   --keychain-service S    default arcadia-litellm-openai (account litellm-proxy)
   --no-restart            apply the files but skip restart and verification
+  --diagnose              read-only: show where key-like settings live in the config, compose and .env files,
+                          with every value hidden, then exit (no budget needed)
   --ignore-production-window
                           restart even if managed production is Active or unobservable
   -h, --help              this text
@@ -81,12 +84,23 @@ while [ $# -gt 0 ]; do
     --keychain-service) [ $# -ge 2 ] || die "--keychain-service needs a value"; KC_SERVICE="$2"; shift ;;
     --no-restart) NO_RESTART=true ;;
     --ignore-production-window) IGNORE_WINDOW=true ;;
+    --diagnose) DIAGNOSE=true ;;
     -h|--help) usage; exit 0 ;;
     *) usage >&2; die "unknown argument: $1" ;;
   esac
   shift
 done
 
+if ${DIAGNOSE}; then
+  CONFIG="${CONFIG:-${DIR}/litellm_config.docker.yaml}"
+  if [ -z "${COMPOSE}" ]; then
+    COMPOSE="${DIR}/docker-compose.yml"
+    [ -f "${COMPOSE}" ] || COMPOSE="${DIR}/docker-compose.yaml"
+  fi
+  command -v python3 >/dev/null || die "python3 is required" 3
+  python3 -I "${HERE}/lib/harden_litellm_edit.py" diagnose "${CONFIG}" "${COMPOSE}" "${DIR}/.env" "${DIR}/.env.local"
+  exit 0
+fi
 [ -n "${BUDGET}" ] || die "--budget-usd is required: there is no default budget. Choose an amount and pass it."
 [[ "${BUDGET}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || die "--budget-usd must be a positive number, got: ${BUDGET}"
 awk -v b="${BUDGET}" 'BEGIN { exit !(b > 0) }' || die "--budget-usd must be greater than zero"
@@ -94,7 +108,10 @@ awk -v b="${BUDGET}" 'BEGIN { exit !(b > 0) }' || die "--budget-usd must be grea
 [[ "${ENV_VAR}" =~ ^[A-Z_][A-Z0-9_]*$ ]] || die "--env-var must be an upper-case variable name"
 [[ "${KC_SERVICE}${KC_ACCOUNT}${CONTAINER}" =~ ^[A-Za-z0-9._-]+$ ]] || die "keychain and container names may only contain letters, digits, . _ -"
 CONFIG="${CONFIG:-${DIR}/litellm_config.docker.yaml}"
-COMPOSE="${COMPOSE:-${DIR}/docker-compose.yml}"
+if [ -z "${COMPOSE}" ]; then
+  COMPOSE="${DIR}/docker-compose.yml"
+  [ -f "${COMPOSE}" ] || COMPOSE="${DIR}/docker-compose.yaml"
+fi
 LAUNCHER="$(dirname "${COMPOSE}")/start-litellm.sh"
 
 for f in "${CONFIG}" "${COMPOSE}" "${PLIST}"; do
@@ -178,6 +195,8 @@ if ${HAS_LITERAL}; then
     note "keychain: store the config's key as ${KC_SERVICE}/${KC_ACCOUNT} via 'security -i' on stdin (value not shown)"
   fi
 elif ! kc_has; then
+  say "Where key-like settings live (values hidden):"
+  "${EDIT[@]}" diagnose "${CONFIG}" "${COMPOSE}" "${DIR}/.env" "${DIR}/.env.local" | sed 's/^/  /'
   say "refused: the config has no literal key and keychain item ${KC_SERVICE}/${KC_ACCOUNT} does not exist."
   say "  Enter the key yourself (you are prompted; it never appears on a command line):"
   say "    security add-generic-password -U -s ${KC_SERVICE} -a ${KC_ACCOUNT} -w"
