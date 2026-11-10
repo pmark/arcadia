@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/how-arcadia-could-guide-design-brainstor
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/how-arcadia-could-guide-design-brainstorming/"
 channels: [site, rss]
+tags: [interface-design, agent-workflows, experiments]
 ---
 
 # How Arcadia could guide design brainstorming

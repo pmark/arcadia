@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/making-every-run-teach-us-more.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/making-every-run-teach-us-more/"
 channels: [site, rss]
+tags: [automation, testing, reliability]
 ---
 
 # Replaying an agent run without rerunning the agent

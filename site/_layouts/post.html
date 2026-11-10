@@ -4,6 +4,15 @@ layout: default
 <article class="post-body">
   <a class="back-article" href="{{ '/' | relative_url }}">← All Field Notes</a>
   <h1>{{ page.title | escape }}</h1>
+  {% if page.tags.size > 0 %}
+  <nav aria-label="Article topics">
+    <ul class="post-topics">
+      {% for tag in page.tags %}
+      <li><a href="{{ '/tags/' | relative_url }}#tag-{{ tag | escape }}">{{ tag | replace: '-', ' ' | capitalize | escape }}</a></li>
+      {% endfor %}
+    </ul>
+  </nav>
+  {% endif %}
   <p class="meta"><time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%-d %B %Y" }}</time>{% if page.author %} &middot; {{ page.author | escape }}{% endif %}{% if page.status == "draft" %} &middot; <span class="badge">draft source article</span>{% endif %}</p>
   {{ content }}
 </article>

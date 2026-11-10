@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/arcadia-spatial-background.md"
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/arcadia-spatial-background/"
 channels: [site, rss]
+tags: [interface-design]
 ---
 
 # Arcadia spatial background and conversational context

@@ -11,6 +11,7 @@ not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/arcadia-studio-creative-work-integration-test/"
 channels: [site, rss]
 publication_target: "ArcadiaMissionControl.com"
+tags: [agent-workflows, testing, experiments]
 ---
 
 # The hardest part of Hello World was proving it arrived

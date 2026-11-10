@@ -16,6 +16,7 @@
     } catch {}
   </script>
   <link rel="stylesheet" href="{{ '/assets/style.css' | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/topics.css' | relative_url }}">
 </head>
 <body class="canyon-page" data-field-view="{% if page.canyon %}feed{% else %}article{% endif %}">
 <a class="skip-link" href="#main">Skip to content</a>
@@ -43,6 +44,7 @@
           <ul>
             <li><a href="https://arcadiamissioncontrol.com/#workflow">How it works</a></li>
             <li><a href="https://arcadiamissioncontrol.com/guides/">Practical guides</a></li>
+            <li><a href="{{ '/tags/' | relative_url }}">Browse topics</a></li>
           </ul>
         </section>
         <section aria-labelledby="field-notes-follow">

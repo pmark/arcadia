@@ -1,0 +1,133 @@
+/* The atlas borrows the canyon palette and the Field Notes survey seal. */
+.topic-atlas {
+  width: min(calc(100% - 1.75rem), 62rem);
+  margin: clamp(1.5rem, 6vw, 4rem) auto 0;
+}
+.atlas-plate {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: clamp(1.3rem, 5vw, 3.75rem);
+  border: 1px solid var(--rule);
+  border-radius: .875rem;
+  background: var(--bg);
+  background: radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--brand) 17%, var(--bg)), var(--bg) 72%);
+  box-shadow: 0 18px 55px #0d0a1648;
+}
+.atlas-contours {
+  position: absolute;
+  z-index: -1;
+  inset: 0 0 auto auto;
+  width: min(100%, 37rem);
+  opacity: .52;
+  pointer-events: none;
+}
+.atlas-contour-lines { stroke: var(--rule); }
+.atlas-route { stroke: var(--brand); stroke-width: 1.5; stroke-dasharray: 3 7; }
+.atlas-point { fill: var(--brand); }
+.atlas-heading .field-label { color: var(--label); }
+.atlas-heading p { margin: 0; color: var(--muted); }
+.atlas-heading h1 {
+  margin: .35rem 0 .6rem;
+  font-size: clamp(2.8rem, 9vw, 6rem);
+  line-height: 1;
+  letter-spacing: -.075em;
+}
+.atlas-navigation { margin-top: clamp(1.5rem, 5vw, 3rem); }
+.topic-cloud, .post-topics, .topic-group ul { margin: 0; padding: 0; list-style: none; }
+.topic-cloud, .post-topics { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.topic-cloud li { max-width: 100%; }
+.topic-cloud a, .post-topics a {
+  display: inline-flex;
+  align-items: center;
+  gap: .55em;
+  min-height: 44px;
+  padding: .35em .78em;
+  border: 1px solid var(--rule);
+  border-radius: .45em;
+  background: var(--bg);
+  color: var(--fg);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+.topic-cloud a {
+  font: 700 clamp(1rem, calc(.9rem + .18rem * var(--topic-weight)), 2rem)/1.15 var(--display);
+  letter-spacing: -.035em;
+}
+.topic-cloud a::before {
+  content: "";
+  flex: none;
+  width: .3em;
+  height: .3em;
+  border: 1px solid var(--brand);
+  transform: rotate(45deg);
+}
+.topic-cloud a:hover, .post-topics a:hover {
+  color: var(--link);
+  border-color: currentColor;
+  text-decoration: underline;
+}
+.topic-count {
+  display: grid;
+  place-items: center;
+  min-width: 1.65rem;
+  height: 1.65rem;
+  padding-inline: .25rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--code);
+  color: var(--label);
+  font: 600 .75rem/1 var(--mono);
+  letter-spacing: 0;
+}
+.atlas-legend { margin: .9rem 0 0; color: var(--muted); font-size: .85rem; }
+.topic-archive { margin-top: clamp(1.75rem, 5vw, 3.5rem); }
+.topic-archive-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .25rem 1rem;
+  padding: .65rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: .625rem;
+  background: var(--bg);
+}
+.topic-archive-heading h2 { margin: 0; font-size: clamp(1.2rem, 4vw, 1.55rem); }
+.topic-archive-heading a { display: inline-flex; align-items: center; min-height: 44px; font-size: .875rem; }
+.topic-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 23rem), 1fr));
+  align-items: start;
+  gap: .85rem;
+  margin-top: .85rem;
+}
+.topic-group {
+  padding: clamp(1.1rem, 3vw, 1.6rem);
+  border: 1px solid var(--rule);
+  border-radius: .625rem;
+  background: var(--bg);
+  scroll-margin-top: 1rem;
+}
+.topic-group:target { border-color: var(--brand); outline: 2px solid var(--brand); outline-offset: 2px; }
+.topic-group .eyebrow { margin: 0; color: var(--label); }
+.topic-group h3 { margin: .2rem 0 .65rem; font-size: 1.55rem; letter-spacing: -.025em; }
+.topic-group li { padding-block: .55rem; border-top: 1px solid var(--rule); }
+.topic-group li a { display: block; padding-block: .25rem; font-weight: 600; }
+.topic-group time { color: var(--muted); font: .75rem/1.25 var(--mono); }
+.post-topics { gap: .4rem; margin: .75rem 0 0; }
+.post-topics a { font: 600 .82rem/1.25 var(--display); }
+.field-hero-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 1.25rem; }
+
+@media (max-width: 35rem) {
+  .topic-cloud { gap: .45rem; }
+  .topic-cloud a {
+    padding-inline: .58em;
+    font-size: clamp(1rem, calc(.87rem + .12rem * var(--topic-weight)), 1.5rem);
+  }
+}
+
+@media (forced-colors: active) {
+  .atlas-contours { display: none; }
+  .topic-group:target { outline-color: Highlight; }
+}

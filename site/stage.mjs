@@ -113,6 +113,14 @@ for (const name of readdirSync(articlesDir).sort()) {
     skipped.push(`${name}: ${why}`);
     continue;
   }
+  const tagsField = /^\[([^\]]*)\]$/.exec(field(front, "tags"));
+  const tags = tagsField ? tagsField[1].split(",").map(tag => tag.trim()) : [];
+  if (tags.length < 1 || tags.length > 3 || new Set(tags).size !== tags.length ||
+      tags.some(tag => !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tag))) {
+    throw new Error(`${name}: add one to three unique lowercase tags in brackets, such as [agent-workflows, testing]`);
+  }
+  // Quoting keeps topic slugs such as "on" from becoming YAML booleans.
+  front = front.replace(/^tags:.*$/m, `tags: ${JSON.stringify(tags)}`);
   const h1 = /^# +(.+)$/m.exec(text);
   if (!/^title:/m.test(front)) {
     const title = (h1 ? h1[1] : name.replace(POST, "$2")).replace(/[\\"]/g, (c) => "\\" + c);

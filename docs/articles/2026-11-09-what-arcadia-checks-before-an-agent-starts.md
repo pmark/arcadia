@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/what-arcadia-checks-before-an-agent-star
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/what-arcadia-checks-before-an-agent-starts/"
 channels: [site, rss]
+tags: [agent-workflows, testing, reliability]
 ---
 
 # What Arcadia checks before an agent starts
