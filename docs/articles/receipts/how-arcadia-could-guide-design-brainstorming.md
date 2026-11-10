@@ -1,5 +1,11 @@
 # Field Notes evidence: how-arcadia-could-guide-design-brainstorming
 
+## Editorial refresh, 2026-11-09
+
+Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). [PR #1869](https://github.com/pmark/arcadia/pull/1869) is now merged and pins the paper-rehearsal source. It supersedes the old receipt's statement that no PR pins that material. The [design skill](../../../.agents/skills/arcadia-design/SKILL.md) documents the current bounded practice. No real-operator milestone or public delivery is established.
+
+The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
+
 - Type: essay; operator-requested explainer of a proposal, intended to become a guide on Arcadia Mission Control later.
 - Article: docs/articles/2026-10-28-how-arcadia-could-guide-design-brainstorming.md
 - Source repository and pinned revision: pmark/arcadia@5f06107a5 (base revision; repository paths below are pinned to it). Primary evidence is workspace receipts and a proposal draft that are not in the repository.
