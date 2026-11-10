@@ -420,6 +420,8 @@ interface TerminalHandoffRecovery {
  * refusal visible in `arcadia production status` instead of the log alone.
  */
 const TERMINAL_CANDIDATE_ESCALATION = "terminal_candidate_not_integrable";
+/** Escalation kind for a provider login that keeps killing launched Sessions (Issue #1249). */
+export const PROVIDER_SIGN_IN_DEAD_ESCALATION = "provider_sign_in_dead";
 
 /** The verdict-wait kinds a terminal-guard escalation may replace: waits, not review findings. */
 const PLAIN_VERDICT_WAITS = new Set(["awaiting_independent_verdicts", "verdict_readiness_failed"]);
@@ -3428,6 +3430,7 @@ export const EMITTED_ESCALATION_KINDS: readonly string[] = [
   COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
   COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION,
   COMPLETION_REFUSED_REPEATEDLY_ESCALATION,
+  PROVIDER_SIGN_IN_DEAD_ESCALATION,
   SELF_SETTLED_COMPLETION_REFUSED_ESCALATION,
   PLANNER_ATTEMPTS_EXHAUSTED,
   ...ATTEMPT_LINEAGE_ESCALATIONS,
@@ -3736,9 +3739,6 @@ function providerSignInFailureBlockerReason(input: { sessionId: string; provider
     + `Launches for this Project are held until ${input.holdEnd.toISOString()}, then retried once; a further sign-in failure renews the hold.`;
 }
 
-/** Escalation kind for a provider login that keeps killing launched Sessions (Issue #1249). */
-export const PROVIDER_SIGN_IN_DEAD_ESCALATION = "provider_sign_in_dead";
-
 function ensureSignInStreakTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS production_sign_in_streaks (
@@ -3782,6 +3782,8 @@ function observeSignInExit(
   const message = `${input.provider} has died on a provider sign-in failure ${exits} times in a row for ${input.actionKey} `
     + `(first ${firstAt}, last ${at}); launches are held and retried every ${SIGN_IN_FAILURE_HOLD_MS / 60_000} minutes, spending no attempt or failed-Run budget, so nothing else will surface it.`;
   const previous = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as { kind: string } | undefined;
+  // One row per Action: never overwrite another kind's escalation (an operator gate, a budget stop); the streak keeps counting.
+  if (previous && previous.kind !== PROVIDER_SIGN_IN_DEAD_ESCALATION) return;
   const newlyDetected = recordOperatorEscalation(db, { actionKey: input.actionKey, kind: PROVIDER_SIGN_IN_DEAD_ESCALATION, message, remedy, now: input.now });
   if (!newlyDetected && previous?.kind === PROVIDER_SIGN_IN_DEAD_ESCALATION) return;
   input.log(`Escalated ${input.actionKey} to the operator (${PROVIDER_SIGN_IN_DEAD_ESCALATION}): ${message}`);
