@@ -11,11 +11,11 @@ updated: 2026-11-10
 actions:
   - id: build-arcadia-spend-check
     title: "Implement arcadia spend check: a pure assessSpendRisk(env, probes) library plus the CLI, reusing proveSubscriptionAuth, that never prints a secret value."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Implement arcadia spend check: a pure assessSpendRisk(env, probes) library plus the CLI, reusing proveSubscriptionAuth, that never prints a secret value."
+    next_action: Completed via Agent Ask complete-build-arcadia-spend-check-2026-11-10c; no further action.
     expected_artifact: Evidence satisfying Agent Ask build-arcadia-spend-check
     clarification: clarified
     confidence: high
