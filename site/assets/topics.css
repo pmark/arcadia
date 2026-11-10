@@ -117,6 +117,7 @@
 .topic-group time { color: var(--muted); font: .75rem/1.25 var(--mono); }
 .post-topics { gap: .4rem; margin: .75rem 0 0; }
 .post-topics a { font: 600 .82rem/1.25 var(--display); }
+.posts .post-topics li { padding: 0; border: 0; }
 .field-hero-links { display: flex; flex-wrap: wrap; justify-content: center; gap: 0 1.25rem; }
 
 @media (max-width: 35rem) {

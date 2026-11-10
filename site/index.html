@@ -20,6 +20,7 @@ canyon: true
       <p class="field-label">{% if forloop.first %}Latest dispatch · {% endif %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %B %Y" }}</time></p>
       <h2><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a></h2>
       {% if post.summary %}<p>{{ post.summary | escape }}</p>{% endif %}
+      {% include topic-links.html tags=post.tags %}
     </article>
   </li>
 {% endfor %}
