@@ -459,7 +459,8 @@ function drawStars(night) {
       const nextScroll = Math.min(end, Math.max(0, window.scrollY));
       if (nextScroll < feedScroll) stopAutoplay();
       if (!autoplay && end - nextScroll <= 1 && nextScroll > feedScroll
-        && root.dataset.terrain === 'live' && !isStill()) {
+        && root.dataset.terrain === 'live' && !isStill()
+        && !document.activeElement?.matches(':focus-visible')) {
         autoplay = true;
         root.dataset.canyonAutoplay = '';
       }

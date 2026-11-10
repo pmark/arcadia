@@ -151,6 +151,7 @@ a:focus-visible, button:focus-visible, summary:focus-visible { outline:2px solid
 .canyon-page main { max-width:none; padding:0; }
 @media (prefers-reduced-motion:no-preference) {
   .canyon-page > :is(.mast, main, footer.site) { transition:opacity .3s ease; }
+  .canyon-page:not([data-canyon-autoplay]) > :is(.mast, main, footer.site):focus-within { transition:none; }
 }
 [data-canyon-autoplay] > :is(.mast, main, footer.site) {
   opacity:0;
