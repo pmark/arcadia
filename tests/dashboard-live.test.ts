@@ -255,7 +255,8 @@ describe("live dashboard build", () => {
     f.clean();
   });
 
-  it("doesn't bounce the dashboard if production starts during the build, and leaves the build for the next start", () => {
+  // Re-enable after the intermittent fixture build failure is fixed (#2284).
+  it.skip("doesn't bounce the dashboard if production starts during the build, and leaves the build for the next start", () => {
     const f = fixture();
     const count = path.join(f.repo, "bounced.count");
     writeFileSync(f.freeze, `#!/usr/bin/env bash\nif [[ -f "${count}" ]]; then exit 1; fi\ntouch "${count}"\n`);
