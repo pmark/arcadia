@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import os from "node:os";
 import path from "node:path";
 import type { CodingAgentProfile } from "../intent/registries.js";
+import { hasBillingVariable } from "../spend/billingEnv.js";
 import { codingAgentLabel } from "./adapters.js";
 import type {
   CodingAgentAvailability,
@@ -80,6 +81,7 @@ export type CapacityRefusalCode =
   | "capacity_unknown"
   | "capacity_stale"
   | "usage_policy_unknown"
+  | "usage_policy_paid"
   | "capacity_exhausted"
   | "capacity_reserve_margin"
   | "manual_receipt_expired";
@@ -279,6 +281,9 @@ export function buildProviderCapacityReceipt(
   };
 
   if (input.unmetered) {
+    // Unmetered configuration removes the window gate, never the paid-usage gate.
+    const unmeteredPolicy = resolveUsagePolicy(input.providerId, false, null, input.record?.credits ?? null);
+    const paidUnmetered = unmeteredPolicy.policy === "paid";
     return {
       ...base,
       unsupported: unsupportedFields({ windows: [], credits: null, bankedResets: [], planScope: null }),
@@ -292,10 +297,11 @@ export function buildProviderCapacityReceipt(
       expiresAt: null,
       confidence: "attested",
       freshness: "fresh",
-      usagePolicy: "unknown",
-      usagePolicyReason:
-        `Workspace configuration (codingAgent.capacityGateEnabled: false) names ${label} as unmetered; ` +
-        `usage policy was never observed.`,
+      usagePolicy: paidUnmetered ? "paid" : "unknown",
+      usagePolicyReason: paidUnmetered
+        ? unmeteredPolicy.reason
+        : `Workspace configuration (codingAgent.capacityGateEnabled: false) names ${label} as unmetered; ` +
+          `usage policy was never observed.`,
       windows: [],
       nextResetAt: null,
       availability: input.record?.availability ?? "unknown",
@@ -315,7 +321,7 @@ export function buildProviderCapacityReceipt(
 
   if (windows.length > 0 && input.record) {
     const observedAt = input.record.capturedAt;
-    const policy = resolveUsagePolicy(input.providerId, true, input.record.planScope);
+    const policy = resolveUsagePolicy(input.providerId, true, input.record.planScope, input.record.credits);
     return {
       ...base,
       unsupported: unsupportedFields({
@@ -422,6 +428,17 @@ export function evaluateCapacityAdmission(
     refreshRequired: extra.refreshRequired ?? true,
     receipt
   });
+
+  // Paid usage is never admitted, whatever vouched for it: an observation, an
+  // operator attestation or the unmetered workspace configuration. This runs
+  // before every source-specific shortcut below.
+  if (receipt.usagePolicy === "paid") {
+    return refuse(
+      "usage_policy_paid",
+      `${receipt.providerLabel} usage is paid (${receipt.usagePolicyReason}). Unattended admission refuses paid usage; ` +
+        `a subscription allowance is the only thing it spends.`
+    );
+  }
 
   if (receipt.source === "operator_config") {
     return {
@@ -763,11 +780,11 @@ function unsupportedFields(observed: {
 function resolveUsagePolicy(
   providerId: string,
   hasWindows: boolean,
-  planScope: string | null
+  planScope: string | null,
+  credits: CodingAgentCreditState | null
 ): { policy: CapacityUsagePolicy; reason: string } {
   if (providerId === "claude-code-cli") {
-    const billingKey = process.env.ANTHROPIC_API_KEY ?? process.env.ANTHROPIC_AUTH_TOKEN;
-    if (billingKey) {
+    if (hasBillingVariable(process.env, ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"])) {
       return {
         policy: "paid",
         reason: "An Anthropic API credential is configured on this host, so Claude Code usage may be billed as API spend rather than drawn from subscription allowance."
@@ -782,18 +799,25 @@ function resolveUsagePolicy(
   }
 
   if (providerId === "codex-cli") {
+    // Purchased credits and an API key both mean a Codex run may bill money, even beside plan windows.
+    if (credits && (credits.hasCredits || credits.unlimited)) {
+      return {
+        policy: "paid",
+        reason: "The Codex app server reported purchased credits on this account, so Codex usage may be billed beyond the plan allowance."
+      };
+    }
+    if (hasBillingVariable(process.env, ["OPENAI_API_KEY", "CODEX_API_KEY"])) {
+      return {
+        policy: "paid",
+        reason: "An OpenAI API credential is configured on this host, so Codex usage may be billed as API spend."
+      };
+    }
     if (hasWindows) {
       return {
         policy: "included",
         reason: planScope
           ? `The Codex app server reported plan rate-limit windows for the ${planScope} plan, which exist only for included usage.`
           : "The Codex app server reported plan rate-limit windows, which exist only for included ChatGPT plan usage."
-      };
-    }
-    if (process.env.OPENAI_API_KEY) {
-      return {
-        policy: "paid",
-        reason: "No plan allowance window was reported and an OpenAI API credential is configured, so Codex usage may be billed as API spend."
       };
     }
   }

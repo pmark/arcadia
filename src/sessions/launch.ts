@@ -10,6 +10,7 @@ import { ArcadiaError, validationError } from "../cli/errors.js";
 import { agentIdentityEnvironment, resolveSessionAgentIdentity } from "../codingAgents/agentIdentity.js";
 import { observeProviderCapacity, type ProviderCapacityObservation } from "../codingAgents/capacity.js";
 import { checkProviderSignIn, type ProviderSignInStatus } from "../codingAgents/signIn.js";
+import { evaluateLaunchSpend, type LaunchSpendDeps } from "../spend/spendGuard.js";
 import { loadWorkspaceConfig, unmeteredProviderSelector } from "../workspace/config.js";
 import { getWorkspacePaths } from "../workspace/paths.js";
 import { TIER_AGENTS, loadModelTierRegistry, sessionStartBinding, type ModelTierRegistry, type TierAgent } from "../codingAgents/modelTiers.js";
@@ -162,6 +163,12 @@ export interface GuardedLaunchInput {
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
   /**
+   * Seams for the spend check every launch passes (assessSpendRisk on the
+   * stripped environment). Required to run it under Vitest, where the real host
+   * probes never run; production always runs it and refuses a risk or unknown verdict.
+   */
+  spendCheck?: LaunchSpendDeps;
+  /**
    * Called the moment sign-in is confirmed -- not merely attempted -- so a
    * caller tracking a durable "signed out" blocker (the managed-production
    * tick) can clear it right away, independent of whether a later launch
@@ -263,10 +270,17 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // resumed lease) is gated on this one probe, so the provider binary and its
   // headless permission posture are checked right before sign-in does, with
   // nothing reserved yet: a missing prerequisite costs the next tick nothing.
-  const signInProbe = input.providerSignIn ?? ((provider: string, workspace: string) => checkProviderSignIn(provider, workspace, input.preflightEnv));
-  const providerSignIn = (provider: string, workspace: string): ProviderSignInStatus | null => {
+  const signInProbe = input.providerSignIn ?? ((provider: string, workspace: string) => checkProviderSignIn(provider, workspace, input.preflightEnv, { skipSpend: true }));
+  const providerSignIn = (provider: string, workspace: string, model?: string): ProviderSignInStatus | null => {
     checkLaunchPrerequisites({ provider, headless: true, env: input.preflightEnv });
-    return signInProbe(provider, workspace);
+    const status = signInProbe(provider, workspace);
+    if (status && !status.signedIn) return status;
+    // The spend check runs here whatever stands in for the sign-in probe, on the
+    // environment the child will really get (billing variables stripped); only a
+    // clear verdict launches. Real host probes are skipped under Vitest unless a test passes `spendCheck`.
+    if (process.env.VITEST && !input.spendCheck) return status;
+    const spend = evaluateLaunchSpend(provider, model, { env: input.preflightEnv, ...input.spendCheck });
+    return spend.verdict === "clear" ? status : { ...(status ?? { signedIn: true, remedy: "" }), spend };
   };
   const onProviderSignInConfirmed = input.onProviderSignInConfirmed;
 
@@ -432,11 +446,18 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     profileSandbox: preview.selection.profile?.sandbox ?? null,
     override: input.workerCapability
   });
+  // The Session starts on the registry's start tier (light by default) for its
+  // provider; the packet-bound selection stays the plan's tier, which the brief
+  // names as the escalation target. The fixture provider has no tier.
+  const startBinding = (TIER_AGENTS as readonly string[]).includes(agent) ? sessionStartBinding(agent as TierAgent, registry) : null;
+  const model = startBinding?.model ?? preview.selection.model;
+  const effort = startBinding ? startBinding.effort : (preview.selection.effort ?? null);
+
   // Checked from this worker process's own context, before issueAdmission
   // reserves a concurrency slot and before any worktree or lease is created:
   // a signed-out provider must take no admission and no lease, so the next
   // tick can retry it for free once sign-in is restored.
-  refuseUnlessSignedIn(preview.selection.provider, providerSignIn(preview.selection.provider, input.workspace), onProviderSignInConfirmed);
+  refuseUnlessSignedIn(preview.selection.provider, providerSignIn(preview.selection.provider, input.workspace, model ?? undefined), onProviderSignInConfirmed);
 
   // The one mutation-owning development attempt this launch runs under. Its
   // refusals (a passed or exhausted lineage, a live owner whose Session still
@@ -454,12 +475,6 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     throw lineageRefusal(error);
   }
 
-  // The Session starts on the registry's start tier (light by default) for its
-  // provider; the packet-bound selection stays the plan's tier, which the brief
-  // names as the escalation target. The fixture provider has no tier.
-  const startBinding = (TIER_AGENTS as readonly string[]).includes(agent) ? sessionStartBinding(agent as TierAgent, registry) : null;
-  const model = startBinding?.model ?? preview.selection.model;
-  const effort = startBinding ? startBinding.effort : (preview.selection.effort ?? null);
 
   let admission: AdmissionReceipt | null = null;
   if (input.standingPolicy) {
@@ -1162,7 +1177,7 @@ function reuseOrRefuseLease(
   preview: LaunchPreview,
   tmux: TmuxAdapter,
   registry: ModelTierRegistry | undefined,
-  providerSignIn: (provider: string, workspace: string) => ProviderSignInStatus | null,
+  providerSignIn: (provider: string, workspace: string, model?: string) => ProviderSignInStatus | null,
   workspace: string,
   onProviderSignInConfirmed?: (provider: string) => void,
   beforeStart?: (alreadyRunning: boolean) => void
@@ -1202,14 +1217,14 @@ function resumeOrReturn(
   isAlreadyRunning: boolean,
   tmux: TmuxAdapter,
   registry: ModelTierRegistry | undefined,
-  providerSignIn: (provider: string, workspace: string) => ProviderSignInStatus | null,
+  providerSignIn: (provider: string, workspace: string, model?: string) => ProviderSignInStatus | null,
   workspace: string,
   onProviderSignInConfirmed?: (provider: string) => void
 ): AgentSession {
   if (isAlreadyRunning) {
     return getSession(db, session.id) ?? session;
   }
-  refuseUnlessSignedIn(session.provider, providerSignIn(session.provider, workspace), onProviderSignInConfirmed);
+  refuseUnlessSignedIn(session.provider, providerSignIn(session.provider, workspace, session.model ?? undefined), onProviderSignInConfirmed);
   return launchPreparedSession(db, session, tmux, registry, workspace);
 }
 

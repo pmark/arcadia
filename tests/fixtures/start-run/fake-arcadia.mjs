@@ -79,6 +79,13 @@ switch (key2) {
   case "workspace resolve":
     ok({ source: "user config", workspacePath: state.workspace });
     break;
+  case "spend check": {
+    // The real command exits 0 clear, 3 risk, 4 unknown, and prints its envelope either way.
+    const verdict = state.spend ?? "clear";
+    ok({ verdict, providers: [], warnings: [], checkedAt: new Date().toISOString() });
+    process.exitCode = verdict === "clear" ? 0 : verdict === "risk" ? 3 : 4;
+    break;
+  }
   case "production status":
     ok({ read: { status: "ok", policy: { desiredState: state.production.desiredState, revision: state.production.revision, epoch: state.production.epoch, authority: state.production.authority ?? null } }, liveAdmissions: state.production.liveAdmissions });
     break;

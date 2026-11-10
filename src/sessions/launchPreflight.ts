@@ -4,6 +4,7 @@ import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { providerLabel } from "../codingAgents/adapters.js";
 import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
+import { refuseUnlessSpendClear } from "../spend/spendGuard.js";
 
 /**
  * Refusals a launch makes BEFORE it reserves anything (admission, worktree,
@@ -128,5 +129,7 @@ export function refuseUnlessSignedIn(
       { code: "provider_not_signed_in", conflict: true, provider }
     );
   }
+  // Sign-in is confirmed, but a risk or unknown spend verdict still refuses: only clear launches.
+  if (signIn.spend) refuseUnlessSpendClear(signIn.spend, `Launching ${providerLabel(provider)}`);
   onConfirmed?.(provider);
 }

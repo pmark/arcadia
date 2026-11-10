@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { runCoordinatorRenewCommand } from "../src/commands/coordinator.js";
 import type { CapsuleSources } from "../src/coordinator/capsule.js";
 import { coordinatorPaths } from "../src/coordinator/paths.js";
+import { BILLING_ENV_NAMES } from "../src/spend/spendCheck.js";
+import type { LaunchSpendResult } from "../src/spend/spendGuard.js";
 import { COORDINATOR_ENV, listGenerations, seedCustodianGeneration } from "../src/coordinator/generations.js";
 import {
   RELAY_LAUNCH_DECISION_ID,
@@ -46,7 +48,7 @@ const sources: CapsuleSources = {
 
 interface Fake { launches: Array<{ name: string; cwd: string; args: string[] }>; killed: string[]; pings: string[]; deps: RelayDeps }
 
-function fakeDeps(projects: string, options: { deliver: boolean[]; inForce?: boolean; signedIn?: boolean }): Fake {
+function fakeDeps(projects: string, options: { deliver: boolean[]; inForce?: boolean; signedIn?: boolean; spend?: LaunchSpendResult }): Fake {
   let clock = new Date("2026-11-07T21:00:00Z").getTime();
   let attempt = 0;
   let ids = 0;
@@ -67,7 +69,7 @@ function fakeDeps(projects: string, options: { deliver: boolean[]; inForce?: boo
       killSession: (name) => { fake.killed.push(name); }
     },
     decision: () => ({ inForce: options.inForce ?? true, reason: "test decision" }),
-    signIn: () => ({ signedIn: options.signedIn ?? true, remedy: "sign in" }),
+    signIn: () => ({ signedIn: options.signedIn ?? true, remedy: "sign in", ...(options.spend ? { spend: options.spend } : {}) }),
     capacity: () => ({ admitted: true, reason: "ok" }),
     createWorktree: (_repo, directory) => { mkdirSync(directory, { recursive: true }); },
     firstUserMessage: readFirstUserMessage,
@@ -149,6 +151,32 @@ describe("coordinator relay launch (change 3)", () => {
     const again = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
     expect(again).toMatchObject({ outcome: "refused", reason: "launch_in_progress" });
     expect(fake.launches).toHaveLength(1);
+  });
+
+  it("strips every billing variable by name from the successor's environment (env -u), ahead of the custody variables", () => {
+    const { ws, repo, projects } = setup();
+    const fake = fakeDeps(projects, { deliver: [true] });
+    withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
+    const [launch] = fake.launches;
+    const unset = launch.args.flatMap((arg, index) => (launch.args[index - 1] === "-u" ? [arg] : []));
+    expect(unset).toEqual(expect.arrayContaining([...BILLING_ENV_NAMES]));
+    expect(launch.args.indexOf("-u")).toBeLessThan(launch.args.findIndex((arg) => arg.startsWith(`${COORDINATOR_ENV.token}=`)));
+  });
+
+  it.each([
+    ["risk", { provider: "claude", verdict: "risk", codes: ["extra_usage_enabled"], unknown: [] }, /extra_usage_enabled/],
+    ["unknown", { provider: "claude", verdict: "unknown", codes: [], unknown: ["not_subscription_auth:binary_missing"] }, /not_subscription_auth:binary_missing/]
+  ] as const)("a %s spend verdict means no claim and no tmux launch, and the predecessor keeps custody", (_label, spend, detail) => {
+    const { ws, repo, projects } = setup();
+    const fake = fakeDeps(projects, { deliver: [true], spend: spend as unknown as LaunchSpendResult });
+    const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
+    expect(result).toMatchObject({ outcome: "refused", reason: "spend", detail: expect.stringMatching(detail) });
+    expect(fake.launches).toEqual([]);
+    expect(fake.killed).toEqual([]);
+    // No claim: only the seeded custodian generation exists.
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => [row.generation, row.status])).toEqual([[1, "custodian"]]);
+    expect(fake.pings).toHaveLength(1);
+    expect(fake.pings[0]).toMatch(/spend gate refused; the predecessor keeps custody/);
   });
 
   it("retries once with a fresh session id, then pings once and leaves custody with the predecessor", () => {

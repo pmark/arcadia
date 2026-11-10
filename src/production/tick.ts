@@ -2986,7 +2986,8 @@ function attemptProjectLaunch(
       const claudeUsageRemedy = claudeUsageUnreadable
         ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) The worker asks the Claude CLI to refresh its own sign-in at most every 30 minutes; if that keeps failing, sign in to Claude Code again on this host.`
         : null;
-      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing") {
+      // A spend refusal (risk or unknown) is durable for the same reason: only a fix on the host clears it.
+      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing" || rawCode === "spend_risk" || rawCode === "spend_unknown") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
       } else if (claudeUsageRemedy) {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode!, reason: `${error.message} ${claudeUsageRemedy}`, actionKey, at: input.now });
@@ -3016,7 +3017,7 @@ function attemptProjectLaunch(
         // A signed-out or expired provider login is the operator's to fix on the
         // host: ping once per refusal episode (the refusal log dedupes the episode,
         // the ping queue dedupes the message), naming the provider and remedy.
-        if (rawCode === "provider_not_signed_in" || claudeUsageRemedy) {
+        if (rawCode === "provider_not_signed_in" || rawCode === "spend_risk" || claudeUsageRemedy) {
           try {
             queueOperatorPing(db, {
               // Issue #1616: the full capacity explanation runs past the ping

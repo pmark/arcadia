@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { executorSpendRefusal } from "../../spend/spendGuard.js";
+import { stripBillingEnv } from "../../spend/spendCheck.js";
+import type { LaunchSpendDeps } from "../../spend/spendGuard.js";
 import { getWorkspacePaths } from "../../workspace/paths.js";
 import type { IntelligenceV01Config } from "../config/types.js";
 import type { IntelligenceJob, IntelligenceUsage, JsonValue } from "../types.js";
@@ -32,6 +35,8 @@ export interface CodexTextExecutor {
 export interface CodexCliTextExecutorOptions {
   workspaceRoot: string;
   config: IntelligenceV01Config;
+  /** Seams for the spend check every run passes; required to run it under Vitest. */
+  spendCheck?: LaunchSpendDeps;
 }
 
 type CodexTextManifest = {
@@ -53,6 +58,11 @@ export function createCodexCliTextExecutor(
           "Codex CLI execution is not configured for Arcadia Intelligence.",
         );
       }
+
+
+      // Refuse before anything is written or spawned: a risk or unknown spend verdict never runs the CLI.
+      const spendRefusal = executorSpendRefusal("codex-cli", options.spendCheck);
+      if (spendRefusal) throw new CodexTextExecutionBlockedError(spendRefusal[0], spendRefusal[1]);
 
       const startedAt = Date.now();
       const jobWorkspace = path.join(
@@ -222,7 +232,7 @@ function runCodexCli(input: {
   spawnErrorCode?: string;
 }> {
   return new Promise((resolve) => {
-    const child = spawn(input.command, input.args, { stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(input.command, input.args, { stdio: ["pipe", "pipe", "pipe"], env: stripBillingEnv(process.env) });
     let stdout = "";
     let stderr = "";
     let settled = false;
