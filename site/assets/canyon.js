@@ -23,13 +23,13 @@
   let W = 0;
   let H = 0;
   let displayedPath = location.pathname;
-  const UP_ANGLE = 24;
+  const FEED_ANGLE = 4;
   const ASCENT_ANGLE = 44;
   const SCROLL_FRAME_MS = 1000 / 60;
   const SCROLL_RETENTION = .9;
   const SCROLL_SETTLE_PX = .5;
   const STATE_KEY = 'field-notes-camera-v1';
-  const FRAME_KEY = STATE_KEY + '-frame';
+  const FRAME_KEY = STATE_KEY + '-frame-v2';
   let saved;
   try { saved = JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null'); } catch {}
   const restoreNumber = value => Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -274,7 +274,8 @@ function drawStars(night) {
       const colors = scenePalette(p);
       drawSky(colors, p);
       drawStars(night);
-      horizonColor = colors[2];
+      // At the feed camera's shallow pitch, distant terrain meets the middle sky.
+      horizonColor = colors[1];
       previousSkyPhase = skyPhase;
       nextSkyUpdate = now + 250;
       previousPaletteBlend = paletteBlend;
@@ -499,6 +500,8 @@ function drawStars(night) {
     const rockNight = new THREE.Color('#8b91ce');
     const horizonTint = new THREE.Color();
     const rock = new THREE.MeshBasicMaterial({ vertexColors:true, side:THREE.DoubleSide });
+    const groundDay = new THREE.Color('#9b6452');
+    const groundNight = new THREE.Color('#59403f');
 
     const strata = [0, .19, .28, .45, .51, .64, .79, .89, 1, 1.02];
     const bands = strata.length - 1;
@@ -507,6 +510,10 @@ function drawStars(night) {
     const spacing = 2.45;
     const lookBehind = 5;
     const cellsPerUpdate = 10;
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(36, segments * spacing), new THREE.MeshBasicMaterial());
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.z = (lookBehind - segments / 2) * spacing;
+    canyon.add(ground);
     const centerAt = distance => 1.65 * Math.sin(distance * .073) + .63 * Math.sin(distance * .031);
     const walls = [-1, 1].map(side => {
       const geometry = new THREE.BufferGeometry();
@@ -580,7 +587,7 @@ function drawStars(night) {
       ctx.setTransform(skyCanvas.width / W, 0, 0, skyCanvas.height / H, 0, 0);
       camera.aspect = W / H;
       camera.updateProjectionMatrix();
-      canyon.scale.x = THREE.MathUtils.clamp(camera.aspect * .72, .39, 1);
+      canyon.scale.x = THREE.MathUtils.clamp(camera.aspect * .84, .55, 1.2);
     };
 
     const drawTerrain = (scroll, night, elevation, horizonColor) => {
@@ -590,7 +597,7 @@ function drawStars(night) {
       updateWalls(cell);
       const x = centerAt(travel) * canyon.scale.x;
       const height = 2.58 + elevation * 36;
-      const angle = THREE.MathUtils.lerp(UP_ANGLE, ASCENT_ANGLE, elevation);
+      const angle = THREE.MathUtils.lerp(FEED_ANGLE, ASCENT_ANGLE, elevation);
       camera.position.set(x, height, z);
       camera.lookAt(THREE.MathUtils.lerp(x, centerAt(travel + 14) * canyon.scale.x, .62), height + Math.tan(angle * Math.PI / 180) * 14, z - 14);
       if (horizonColor) {
@@ -598,6 +605,7 @@ function drawStars(night) {
         fog.color.setRGB(red / 255, green / 255, blue / 255, THREE.SRGBColorSpace);
         horizonTint.copy(fog.color);
         rock.color.copy(rockDay).lerp(rockNight, night).lerp(horizonTint, .25);
+        ground.material.color.copy(groundDay).lerp(groundNight, night).lerp(horizonTint, .25);
         skyTexture.needsUpdate = true;
       }
       renderer.render(scene, camera);
