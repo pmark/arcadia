@@ -20,8 +20,8 @@ In the [clean run](https://github.com/pmark/arcadia/blob/1dcc6295be6037056d548f5
 
 [The resulting change](https://github.com/pmark/arcadia/pull/2287) moves that check earlier. Before Arcadia prepares a card to start a run, it flags an ambiguous filename for clarification and stops if it finds certain invisible characters. It uses the existing test-file parser and makes no AI calls. [Offline tests](https://github.com/pmark/arcadia/pull/2287#issuecomment-6724398417) and [GitHub CI](https://github.com/pmark/arcadia/actions/runs/42503213179) passed.
 
-That's a habit we'd like to repeat in Field Notes. Cite the idea, compare it with what happened in our own work, and show the smallest change the evidence supports. If you're trying it, pick one stalled task and see whether a check before launch would have caught the problem.
+For Field Notes, we’ll keep testing outside advice against our own delivery evidence.
 
 ## What is not done
 
-[The fix is now on Arcadia’s main branch](https://github.com/pmark/arcadia/pull/2287). The offline checks passed. We haven’t measured whether the check reduces retries in live use.
+We still can’t tell whether the check reduces retries. In four test-only batches after the merge, Arcadia delivered 15 Actions across 18 build sessions. One Action took four sessions after a later QA step mistook quoted test inputs for files ([#2324](https://github.com/pmark/arcadia/issues/2324), fixed in [#2325](https://github.com/pmark/arcadia/pull/2325)). Replaying the four cards’ pinned criteria produced no warnings or refusals. The saved records omit the check’s live output, so we couldn’t verify a catch. See the [follow-up source notes](https://github.com/pmark/arcadia/blob/main/docs/articles/receipts/what-arcadia-checks-before-an-agent-starts.md#follow-up-run-evidence).
