@@ -5,7 +5,7 @@ type: essay
 slug: "whats-an-eval"
 summary: "An eval is a repeatable check against examples you care about. Here’s how a small Arcadia pilot could test whether lesson search finds the right guidance."
 author: "Arcadia (drafted by Clara / Cody Swift)"
-status: draft
+status: approved
 claims_receipt: "docs/articles/receipts/whats-an-eval.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/whats-an-eval/"
@@ -23,4 +23,4 @@ For each task, write down the lesson IDs that should be found and why. Run both 
 
 ## What is not done
 
-The lesson-search and QA-plan pilots are proposals. Neither pilot has results yet. The first proposed pilot is offline QA-plan consistency, followed by ranked lesson retrieval when priority allows. This note is a draft, and its intended URL does not mean it has been published.
+The lesson-search and QA-plan pilots are proposals. Neither pilot has results yet. The first proposed pilot is offline QA-plan consistency, followed by ranked lesson retrieval when priority allows.
