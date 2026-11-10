@@ -106,6 +106,7 @@ const EXACT: Record<string, AuthorityBoundary> = {
   "src/commands/startrun.ts": "production_policy",
   "src/dispatch/decisiondeferral.ts": "operator_authority",
   "src/sessions/launch.ts": "operator_authority",
+  "src/commands/keeper.ts": "operator_authority",
   "src/sessions/fixturepacketapproval.ts": "operator_authority",
   "src/sessions/fixturestandinglaunch.ts": "operator_authority",
   "src/capabilities/blogging/actions.ts": "operator_authority",
