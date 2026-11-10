@@ -12,6 +12,7 @@ import {
   renderProductionLivenessCheckSuccess,
   SPEND_CHECK_INTERVAL_MINUTES,
   decideSpend,
+  defaultSpendCheck,
   runProductionLivenessCheckCommand,
   staleMessage,
   suspectChild,
@@ -869,5 +870,9 @@ describe("the spend check on each liveness tick", () => {
       { workspace: root },
       { now: () => at4(20), readProductionActive: () => { throw new Error("policy unreadable"); }, checkSpend: () => spendReport("risk", ["paid_model_route"]), queuePing: () => { throw new Error("outbox down"); } }
     )).toThrow(/Could not read the production policy[\s\S]*outbox down/);
+  });
+
+  it("never runs the real probes in a test process: the default is a fixed clear report", () => {
+    expect(defaultSpendCheck(at4(0), { VITEST: "true" })).toMatchObject({ verdict: "clear", providers: [] });
   });
 });

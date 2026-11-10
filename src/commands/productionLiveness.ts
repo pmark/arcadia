@@ -169,7 +169,13 @@ function observeSpend(check: () => SpendReport): { verdict: SpendVerdict; codes:
   }
 }
 
-function defaultSpendCheck(now: number): SpendReport {
+/**
+ * A test process never runs the real `claude` or `codex` probes (the budget
+ * source does the same for VITEST): suites that drive the timer without
+ * injecting `checkSpend` get a fixed clear report. Production is unaffected.
+ */
+export function defaultSpendCheck(now: number, env: NodeJS.ProcessEnv = process.env): SpendReport {
+  if (env["VITEST"]) return { verdict: "clear", providers: [], warnings: ["notional_cost_only"], checkedAt: new Date(now).toISOString() };
   return assessSpendRisk(process.env, collectHostProbes(process.env), { now: new Date(now) });
 }
 
