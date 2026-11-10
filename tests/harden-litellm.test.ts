@@ -254,14 +254,96 @@ describe("harden-litellm.sh against a fake installation", () => {
     expect(result.out).toContain("variable reference A_API_KEY with a default, default hidden");
   });
 
-  it("when the key is not in the config it refuses and shows the hidden shape, not the value", () => {
+  // The layout the operator's real install showed: model api_keys are os.environ references, and the one literal
+  // key sits in an environment_variables block of the config, in the compose environment map and in .env.
+  function threeLocations(f: ReturnType<typeof fixture>, other = FAKE_KEY) {
+    const master = "sk-" + "MASTERMASTERMASTER0123456789";
+    writeFileSync(
+      f.files.config,
+      `model_list:
+  - model_name: arcadia-cloud-text
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+  - model_name: arcadia-default
+    litellm_params:
+      model: openai/local
+      api_key: local-placeholder
+environment_variables:
+  OPENAI_API_KEY: ${FAKE_KEY}
+general_settings:
+  master_key: ${master}
+`,
+    );
+    writeFileSync(
+      f.files.compose,
+      `services:
+  litellm:
+    container_name: litellm-proxy
+    ports:
+      - "4000:4000"
+    environment:
+      LITELLM_MASTER_KEY: ${master}
+      OPENAI_API_KEY: ${other}
+`,
+    );
+    writeFileSync(
+      path.join(f.dir, ".env"),
+      `LITELLM_MASTER_KEY=${master}\nLITELLM_SALT_KEY=${master}\nOPENAI_BASE_URL=https://api.openai.com/v1\nOPENAI_API_KEY=${FAKE_KEY}\n`,
+    );
+    return master;
+  }
+
+  it("moves a key that lives in the config env block, the compose environment and .env", () => {
+    const f = fixture();
+    const master = threeLocations(f);
+    const dry = f.run(["--budget-usd", "25"]);
+    expect(dry.status).toBe(0);
+    expect(dry.out).toContain("found in:");
+    expect(dry.out).not.toContain(FAKE_KEY);
+
+    const result = f.run(["--budget-usd", "25", "--apply"]);
+    expect(result.out).not.toContain("VERIFY FAIL");
+    expect(result.status).toBe(0);
+    expect(result.out).not.toContain(FAKE_KEY);
+    const config = f.read(f.files.config);
+    expect(config).not.toContain(FAKE_KEY);
+    expect(config).not.toContain("environment_variables");
+    expect(config).toContain("api_key: os.environ/OPENAI_API_KEY");
+    expect(config).toContain(master); // the master key is out of scope and untouched
+    const compose = f.read(f.files.compose);
+    expect(compose).not.toContain(FAKE_KEY);
+    expect(compose).toMatch(/\n {6}OPENAI_API_KEY:\n/);
+    expect(compose).toContain('"127.0.0.1:4000:4000"');
+    const env = f.read(path.join(f.dir, ".env"));
+    expect(env).not.toContain("OPENAI_API_KEY");
+    expect(env).toContain("LITELLM_SALT_KEY=");
+    expect(env).toContain("OPENAI_BASE_URL=");
+    expect(f.read(path.join(f.fake, "security.stdin"))).toContain(FAKE_KEY);
+    expect(f.read(path.join(f.fake, "security.argv"))).not.toContain(FAKE_KEY);
+    expect(f.backups().length).toBe(3); // config, compose, .env (the plist backup sits beside the plist)
+    expect(f.run(["--budget-usd", "25", "--apply"]).out).toContain("no changes needed");
+  });
+
+  it("refuses when two files hold different literal keys, changing nothing", () => {
+    const f = fixture();
+    threeLocations(f, "sk-proj-" + "DIFFERENTDIFFERENT0123456789");
+    const before = f.read(f.files.compose);
+    const result = f.run(["--budget-usd", "25", "--apply"]);
+    expect(result.status).toBe(3);
+    expect(result.out).toContain("different literal keys");
+    expect(result.out).not.toContain(FAKE_KEY);
+    expect(result.out).not.toContain("DIFFERENTDIFFERENT");
+    expect(f.read(f.files.compose)).toBe(before);
+    expect(f.backups()).toEqual([]);
+  });
+
+  it("when no file holds the key and the keychain has none it refuses and shows the hidden map", () => {
     const f = fixture();
     writeFileSync(f.files.config, CONFIG.replace(`"${FAKE_KEY}"`, "os.environ/OPENAI_API_KEY"));
-    writeFileSync(path.join(f.dir, ".env"), `OPENAI_API_KEY=${FAKE_KEY}\n`);
     const result = f.run(["--budget-usd", "25", "--apply"]);
     expect(result.status).toBe(3);
     expect(result.out).toContain("Where key-like settings live");
-    expect(result.out).toContain(".env:1: OPENAI_API_KEY = <KEY-SHAPED LITERAL");
     expect(result.out).not.toContain(FAKE_KEY);
     expect(f.backups()).toEqual([]);
   });

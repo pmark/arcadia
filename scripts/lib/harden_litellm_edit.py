@@ -47,6 +47,55 @@ def is_blank_or_comment(line):
     return stripped == "" or stripped.startswith("#")
 
 
+def env_line_re(name):
+    """A line that sets NAME to a literal key: `NAME: v`, `- NAME=v`, `NAME=v`, `export NAME=v`, optionally quoted."""
+    return re.compile(
+        r"""^\s*(?:-\s*)?(?:export\s+)?["']?%s["']?\s*[:=]\s*(["']?)(sk-[A-Za-z0-9_\-]{20,})\1["']?\s*(#.*)?$""" % re.escape(name)
+    )
+
+
+def cmd_key_find(args):
+    """Find the one literal provider key across several files. Exit 1: none. Exit 3: files disagree.
+    Prints the file names that hold it, or the key itself only with --print-key."""
+    pattern = env_line_re(args.env_var)
+    found = {}
+    for path in args.files:
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                lines = handle.read().split("\n")
+        except OSError:
+            continue
+        for line in lines:
+            m = KEY_LINE.match(line)
+            value = m.group(3) if m else None
+            if value is None:
+                m = pattern.match(line)
+                value = m.group(2) if m else None
+            if value is not None:
+                found.setdefault(value, [])
+                if path not in found[value]:
+                    found[value].append(path)
+    if not found:
+        sys.exit(1)
+    if len(found) > 1:
+        for n, (_, paths) in enumerate(found.items(), 1):
+            sys.stderr.write("refused: key %s is in: %s\n" % ("AB"[n - 1] if n <= 2 else n, ", ".join(paths)))
+        sys.stderr.write("refused: the files hold different literal keys; decide which is current, then rerun\n")
+        sys.exit(3)
+    value, paths = next(iter(found.items()))
+    sys.stdout.write(value if args.print_key else "found in: " + ", ".join(paths))
+
+
+def cmd_env_edit(args):
+    pattern = env_line_re(args.env_var)
+    lines = read_lines(args.file)
+    kept = [line for line in lines if not pattern.match(line)]
+    removed = len(lines) - len(kept)
+    write_lines(args.out, kept)
+    if removed:
+        print("change: %s: remove %d literal %s line(s) (value not shown)" % (args.file, removed, args.env_var))
+
+
 def continues(line, child):
     """True while a line still belongs to a key written at indent `child` (list items may sit at the key's indent)."""
     here = indent_of(line)
@@ -91,6 +140,26 @@ def cmd_config_edit(args):
             replaced += 1
     if replaced:
         changes.append("config: replace %d literal api_key value(s) with os.environ/%s (value not shown)" % (replaced, args.env_var))
+    pattern = env_line_re(args.env_var)
+    removed = 0
+    i = 0
+    while i < len(lines):
+        if not pattern.match(lines[i]):
+            i += 1
+            continue
+        here = indent_of(lines[i])
+        parent = next((j for j in range(i - 1, -1, -1) if not is_blank_or_comment(lines[j]) and indent_of(lines[j]) < here), None)
+        del lines[i]
+        removed += 1
+        if parent is not None and re.match(r"""^\s*["']?[\w.\-]+["']?:\s*(#.*)?$""", lines[parent]):
+            after = next((j for j in range(parent + 1, len(lines)) if not is_blank_or_comment(lines[j])), None)
+            if after is None or indent_of(lines[after]) <= indent_of(lines[parent]):
+                changes.append("config: remove now-empty block %s" % lines[parent].strip())
+                del lines[parent]
+                i = parent
+                continue
+    if removed:
+        changes.append("config: remove %d literal %s line(s); the container gets it from the environment (value not shown)" % (removed, args.env_var))
     if any(MASTER_LINE.match(line) for line in lines):
         print("advisory: master_key is a literal in the config; not changed by this script")
 
@@ -304,6 +373,16 @@ def main():
     p.add_argument("file")
     p.add_argument("--print-key", action="store_true")
     p.set_defaults(fn=cmd_config_key)
+    p = sub.add_parser("key-find")
+    p.add_argument("files", nargs="+")
+    p.add_argument("--env-var", required=True)
+    p.add_argument("--print-key", action="store_true")
+    p.set_defaults(fn=cmd_key_find)
+    p = sub.add_parser("env-edit")
+    p.add_argument("file")
+    p.add_argument("out")
+    p.add_argument("--env-var", required=True)
+    p.set_defaults(fn=cmd_env_edit)
     p = sub.add_parser("diagnose")
     p.add_argument("files", nargs="+")
     p.set_defaults(fn=cmd_diagnose)
