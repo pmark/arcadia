@@ -10,12 +10,15 @@ import {
   parseStaleSeconds,
   readWorkerProgress,
   renderProductionLivenessCheckSuccess,
+  SPEND_CHECK_INTERVAL_MINUTES,
+  decideSpend,
   runProductionLivenessCheckCommand,
   staleMessage,
   suspectChild,
   type LivenessState,
   type ProcessRow
 } from "../src/commands/productionLiveness.js";
+import type { SpendReport, SpendVerdict } from "../src/spend/spendCheck.js";
 import { createWorkerTick } from "../src/commands/worker.js";
 import { startHeartbeatBeacon } from "../src/commands/workerHeartbeatBeaconExecutor.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -66,10 +69,18 @@ const PROCESSES: ProcessRow[] = [
   { pid: 31788, ppid: WORKER.pid, elapsedSeconds: 300, command: "/Library/Frameworks/Python.framework/Versions/3.13/Resources/Python.app/Contents/MacOS/Python -I -c import json,sys" }
 ];
 
-function check(root: string, now: number, active: boolean | (() => boolean) = true, processes: () => ProcessRow[] = () => PROCESSES) {
+const spendReport = (verdict: SpendVerdict, codes: string[] = []): SpendReport => ({
+  verdict,
+  providers: [{ id: "claude", verdict, codes: codes as never, probes: [] }],
+  warnings: ["notional_cost_only"],
+  checkedAt: "2026-11-05T00:00:00.000Z"
+});
+const CLEAR = () => spendReport("clear");
+
+function check(root: string, now: number, active: boolean | (() => boolean) = true, processes: () => ProcessRow[] = () => PROCESSES, checkSpend: () => SpendReport = CLEAR) {
   return runProductionLivenessCheckCommand(
     { workspace: root, dashboardUrl: "http://arcadia.example.ts.net/" },
-    { now: () => now, readProductionActive: () => (typeof active === "function" ? active() : active), listProcesses: processes }
+    { now: () => now, readProductionActive: () => (typeof active === "function" ? active() : active), listProcesses: processes, checkSpend }
   ).data;
 }
 const pending = (root: string) => withDatabase(root, (db) => listPendingOperatorPings(db));
@@ -87,7 +98,7 @@ describe("the liveness state table, end to end through the ping outbox", () => {
 
   it("reads Inactive from a real workspace's policy, through the read-only path", () => {
     const root = workspace();
-    const result = runProductionLivenessCheckCommand({ workspace: root }).data;
+    const result = runProductionLivenessCheckCommand({ workspace: root }, { checkSpend: CLEAR }).data;
     expect(result.observation).toEqual({ kind: "inactive" });
   });
 
@@ -95,7 +106,7 @@ describe("the liveness state table, end to end through the ping outbox", () => {
     const root = workspace();
     writeBeaconRecord(root, at("02:00:00"));
     writeHeartbeat(root, at("02:00:00"));
-    const result = runProductionLivenessCheckCommand({ workspace: root }, { now: () => at("02:04:59"), readProductionActive: () => true });
+    const result = runProductionLivenessCheckCommand({ workspace: root }, { now: () => at("02:04:59"), readProductionActive: () => true, checkSpend: CLEAR });
     expect(result.data).toMatchObject({ ping: null, observation: { kind: "fresh", signal: "preservation-heartbeat" } });
     expect(renderProductionLivenessCheckSuccess(result)).toEqual([]);
     expect(pending(root)).toEqual([]);
@@ -123,11 +134,12 @@ describe("the liveness state table, end to end through the ping outbox", () => {
     writeBeaconRecord(root, at("02:10:30"));
     writeTickMarker(root, at("02:05:30"));
     check(root, at("02:10:30"));
-    const alertedState = readFileSync(dotfile(root, "production-liveness.json"), "utf8");
+    const alertFields = () => { const { spendCheckedAt: _ignored, ...rest } = state(root); return rest; };
+    const alertedState = alertFields();
 
     expect(check(root, at("02:11:30")).ping).toBeNull();
     expect(check(root, at("03:08:00")).ping).toBeNull();
-    expect(readFileSync(dotfile(root, "production-liveness.json"), "utf8")).toBe(alertedState);
+    expect(alertFields()).toEqual(alertedState);
     expect(pending(root)).toHaveLength(1);
 
     writeTickMarker(root, at("03:08:10"));
@@ -715,5 +727,170 @@ describe("the launchd agent", () => {
     const restart = script.slice(script.indexOf("  restart)\n    # Probe settings"));
     expect(restart).toContain('install_liveness_agent || echo "warning:');
     expect(readFileSync(lib, "utf8")).not.toMatch(/\bgit\b/);
+  });
+});
+
+describe("the spend check on each liveness tick", () => {
+  const spendPings = (root: string) => pending(root).filter((ping) => /Spend|spend/.test(ping.message));
+  const tick = (root: string, minute: number, verdict: () => SpendReport) => check(root, at("04:00:00") + minute * 20 * 60_000, false, undefined, verdict);
+
+  it("decides from the verdict alone: clear to risk pages, risk to risk is silent, unknown never pages", () => {
+    const none = { spend: null, spendUnknownSince: null };
+    const open = { spend: { alertedAt: "2026-11-05T04:00:00.000Z", pingId: "p1", codes: [] }, spendUnknownSince: null };
+    expect(decideSpend(none, "risk")).toMatchObject({ ping: "spend_risk", episode: "open" });
+    expect(decideSpend(open, "risk")).toMatchObject({ ping: null, episode: "keep" });
+    expect(decideSpend(open, "clear")).toMatchObject({ ping: "spend_recovered", episode: "closed" });
+    expect(decideSpend(none, "clear")).toMatchObject({ ping: null });
+    expect(decideSpend(none, "unknown")).toEqual({ ping: null, episode: "keep", digestUnknown: true });
+    expect(decideSpend(open, "unknown")).toMatchObject({ ping: null, episode: "keep" });
+  });
+
+  it("pages once at clear to risk naming the code, stays silent on risk to risk, and sends one recovery line", () => {
+    const root = workspace();
+    expect(tick(root, 0, CLEAR).spend.ping).toBeNull();
+    const first = tick(root, 1, () => spendReport("risk", ["api_key_in_launch_env"]));
+    expect(first.spend).toMatchObject({ verdict: "risk", ping: "spend_risk" });
+    expect(first.spend.message).toContain("api_key_in_launch_env");
+    expect(tick(root, 2, () => spendReport("risk", ["api_key_in_launch_env"])).spend.ping).toBeNull();
+    expect(spendPings(root)).toHaveLength(1);
+    const recovered = tick(root, 3, CLEAR);
+    expect(recovered.spend.ping).toBe("spend_recovered");
+    expect(recovered.spend.message).toContain("clear again");
+    expect(spendPings(root)).toHaveLength(2);
+    expect(state(root).spend).toBeNull();
+    expect(tick(root, 4, () => spendReport("risk", ["paid_model_route"])).spend.ping).toBe("spend_risk");
+  });
+
+  it("never pages for unknown, and a risk -> unknown -> risk run is one episode with one page", () => {
+    const root = workspace();
+    const unknown = tick(root, 0, () => spendReport("unknown"));
+    expect(unknown.spend).toMatchObject({ ping: null, message: null });
+    expect(unknown.spend.digestLine).toContain("digest only");
+    expect(spendPings(root)).toEqual([]);
+    expect(tick(root, 1, () => spendReport("risk", ["extra_usage_enabled"])).spend.ping).toBe("spend_risk");
+    expect(tick(root, 2, () => spendReport("unknown")).spend.ping).toBeNull();
+    expect(state(root).spend).not.toBeNull();
+    expect(tick(root, 3, () => spendReport("risk", ["extra_usage_enabled"])).spend.ping).toBeNull();
+    expect(spendPings(root)).toHaveLength(1);
+  });
+
+  it("names codes only, never an environment value", () => {
+    const root = workspace();
+    const secret = "sk-ant-SECRET-VALUE";
+    const previous = process.env["ANTHROPIC_API_KEY"];
+    process.env["ANTHROPIC_API_KEY"] = secret;
+    try {
+      tick(root, 0, () => spendReport("risk", ["api_key_in_launch_env"]));
+    } finally {
+      if (previous === undefined) delete process.env["ANTHROPIC_API_KEY"]; else process.env["ANTHROPIC_API_KEY"] = previous;
+    }
+    const [ping] = spendPings(root);
+    expect(ping?.message).toContain("api_key_in_launch_env");
+    expect(ping?.message).not.toContain(secret);
+    expect(readFileSync(dotfile(root, "production-liveness.json"), "utf8")).not.toContain(secret);
+  });
+
+  it("keeps the liveness tick working when the spend check throws: unknown, digest only", () => {
+    const root = workspace();
+    writeBeaconRecord(root, at("02:10:30"));
+    writeTickMarker(root, at("02:05:30"));
+    const result = check(root, at("02:10:30"), true, undefined, () => { throw new Error("probe exploded sk-ant-LEAK"); });
+    expect(result.ping).toBe("stale_alert");
+    expect(result.spend).toMatchObject({ verdict: "unknown", ping: null });
+    expect(JSON.stringify(result.spend)).not.toContain("LEAK");
+    expect(pending(root)).toHaveLength(1);
+  });
+
+  const at4 = (minutes: number) => at("04:00:00") + minutes * 60_000;
+  const counting = (verdict: SpendVerdict, codes: string[] = []) => {
+    const fn = vi.fn(() => spendReport(verdict, codes));
+    return fn;
+  };
+
+  it("throttles the probe: a tick inside the interval does not call checkSpend and never pages", () => {
+    const root = workspace();
+    const probe = counting("clear");
+    check(root, at4(0), false, undefined, probe);
+    expect(probe).toHaveBeenCalledTimes(1);
+    const skipped = check(root, at4(SPEND_CHECK_INTERVAL_MINUTES - 1), false, undefined, probe);
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(skipped.spend).toMatchObject({ verdict: "skipped", ping: null, message: null, digestLine: null });
+  });
+
+  it("runs the probe exactly at the interval boundary", () => {
+    const root = workspace();
+    const probe = counting("clear");
+    check(root, at4(0), false, undefined, probe);
+    check(root, at4(SPEND_CHECK_INTERVAL_MINUTES), false, undefined, probe);
+    expect(probe).toHaveBeenCalledTimes(2);
+  });
+
+  it("probes every tick while a risk episode is open, so recovery is seen promptly", () => {
+    const root = workspace();
+    check(root, at4(0), false, undefined, counting("risk", ["paid_model_route"]));
+    const open = counting("risk", ["paid_model_route"]);
+    check(root, at4(1), false, undefined, open);
+    check(root, at4(2), false, undefined, open);
+    expect(open).toHaveBeenCalledTimes(2);
+    const recovered = check(root, at4(3), false, undefined, counting("clear"));
+    expect(recovered.spend.ping).toBe("spend_recovered");
+    const after = counting("clear");
+    check(root, at4(4), false, undefined, after);
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it("does not re-page the stale alert on the tick after a probe crashed mid-run", () => {
+    const root = workspace();
+    writeBeaconRecord(root, at("02:10:30"));
+    writeTickMarker(root, at("02:05:30"));
+    // The probe sees the alert already on disk, then dies; the next tick must find it open.
+    // observeSpend swallows probe throws, so the on-disk state is captured and asserted outside.
+    let seenDuringProbe: LivenessState | null = null;
+    check(root, at("02:10:30"), true, undefined, () => {
+      seenDuringProbe = state(root);
+      throw new Error("killed mid-probe");
+    });
+    expect(seenDuringProbe).toMatchObject({ openAlert: { kind: "stale" } });
+    const again = check(root, at("02:11:30"));
+    expect(again.ping).toBeNull();
+    expect(pending(root).filter((ping) => ping.message.includes("Worker silent"))).toHaveLength(1);
+  });
+
+  it("persists the alert state before the probe runs", () => {
+    const root = workspace();
+    writeBeaconRecord(root, at("02:10:30"));
+    writeTickMarker(root, at("02:05:30"));
+    let seen: LivenessState | null = null;
+    check(root, at("02:10:30"), true, undefined, () => { seen = state(root); return spendReport("clear"); });
+    expect(seen).toMatchObject({ openAlert: { kind: "stale" } });
+  });
+
+  it("reports both a log-only liveness error and a spend queue failure", () => {
+    const root = workspace();
+    check(root, at4(0), false);
+    expect(() => runProductionLivenessCheckCommand(
+      { workspace: root },
+      { now: () => at4(20), readProductionActive: () => { throw new Error("policy unreadable"); }, checkSpend: () => spendReport("risk", ["paid_model_route"]), queuePing: () => { throw new Error("outbox down"); } }
+    )).toThrow(/Could not read the production policy[\s\S]*outbox down/);
+  });
+
+  it("retries a spend page that could not be queued on the very next tick", () => {
+    const root = workspace();
+    check(root, at4(0), false);
+    const failing = { now: () => at4(20), readProductionActive: () => false, checkSpend: () => spendReport("risk", ["paid_model_route"]), queuePing: () => { throw new Error("outbox down"); } };
+    expect(() => runProductionLivenessCheckCommand({ workspace: root }, failing)).toThrow(/outbox down/);
+    expect(state(root)).toMatchObject({ spend: null, spendCheckedAt: null });
+    const probe = vi.fn(() => spendReport("risk", ["paid_model_route"]));
+    const retried = runProductionLivenessCheckCommand({ workspace: root }, { now: () => at4(21), readProductionActive: () => false, checkSpend: probe }).data;
+    expect(probe).toHaveBeenCalledTimes(1);
+    expect(retried.spend.ping).toBe("spend_risk");
+  });
+
+  it("never runs the real probes in a test process: without a stub the tick is skipped, never clear", () => {
+    const root = workspace();
+    const result = runProductionLivenessCheckCommand({ workspace: root }, { now: () => at4(0), readProductionActive: () => false }).data;
+    expect(result.spend).toEqual({ verdict: "skipped", ping: null, pingId: null, message: null, digestLine: null });
+    expect(pending(root)).toEqual([]);
+    expect(state(root)).toMatchObject({ spend: null, spendUnknownSince: null, spendCheckedAt: null });
   });
 });

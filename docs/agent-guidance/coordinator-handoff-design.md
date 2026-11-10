@@ -444,7 +444,7 @@ The design rules:
 4. **The one new authority:** a standing Decision that lets the relay launch
    one successor per registered coordinator role at *due* or *forced*. It pins
    provider, model, effort, permission mode, attempt limit and expiry. Launching
-   sessions spends money and changes what runs, so this is the operator's call
+   sessions uses subscription allocation and changes what runs, so this is the operator's call
    (see the end of this document).
 
 ### (e) Watchers and wakes

@@ -3292,3 +3292,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A resolveRoute test shows a paid route with allowPaidUsage: true and no bound Decision gives paid_usage_not_allowed."; "A registry test shows no enrichment sets allowPaidUsage."; "The PR TLDR route bound to Decision 0126 still resolves as before, with a test, and the PR changes no Decision document.".
 - **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-paid-intelligence-routes-by-default-20261110).
+
+## 2026-11-10 — Completed arcadia/alert-on-verified-spend-risk-and-require-receipts
+
+- **Did:** Completed Action arcadia/alert-on-verified-spend-risk-and-require-receipts from accepted evidence (Candidate f1c4ab6f52fca98a563c4da132d0612878aa9ec7).
+- **Result:** Every declared acceptance criterion was accepted as met: "A decideLiveness-style unit test shows clear to risk pages once, risk to risk is silent, risk to clear sends a recovery line, and unknown never pages."; "docs/agents-context.md and the regenerated AGENTS.md state that no agent may claim or rule out spend without an arcadia spend check receipt, and pnpm check:agent-guidance passes with size budgets intact."; "The arcadia-signal skill states the same receipt rule in its .agents/skills and .claude/skills copies."; "coordinator-handoff-design.md says "uses subscription allocation" where it said "spends money".".
+- **Next:** Next ready Action in this inactive Plan: enforce-spend-check-at-launch-and-admission.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-alert-on-verified-spend-risk-2026-11-10).

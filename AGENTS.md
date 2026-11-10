@@ -54,7 +54,7 @@ preview` (`intent: proposal`, `requested_authority: propose`) without approval o
 Action. Preview records a receipt, changes no Project document or queue and grants no
 authority; use the configured workspace and never bypass denial. A successful preview submits
 (inline needs no file); confirm its receipt, as unregistered drafts are not. Durable path:
-`docs/agent-guidance/agent-asks.md`. Continue authorized work unless genuinely blocked.
+`docs/agent-guidance/agent-asks.md`. Continue authorized work unless blocked.
 
 ### Mandatory retrieval — before the operation
 
@@ -80,8 +80,8 @@ authority; host, privacy and scope gates apply.
 Exact same-scope replay deduplicates, recording supplied evidence/observations or a receipt; similar wording stays separate (no semantic merge). Supervisors harvest when assigned; nobody waits.
 Retrieve lessons on demand; Notes is the bounded verified hot cache.
 
-**Read `docs/agent-guidance/index.json` now.** Match each operation to its
-task/failure triggers, read its listed procedure **before acting**, and repeat when scope
+Read `docs/agent-guidance/index.json` now. Match each operation to its
+task/failure triggers, read its listed procedure before acting, and repeat when scope
 or symptoms change. Use bounded `rg` to read matching sections and cited evidence; a link
 or acknowledgement is not a read. Record loaded instruction paths/bytes and retrieved
 sections in session evidence. If a mandatory reference is missing, stale or
@@ -91,6 +91,7 @@ unreadable, stop that operation, preserve work and report the exact remedy.
 
 - **Authority:** `CONSTITUTION.md` outranks convenience. Deployment, publication,
   deletion, spending, credentials, production and messaging require an explicit Decision.
+  Spend claims need an `arcadia spend check` receipt.
   Capability, urgency, proposals and review findings grant nothing. Merge only under
   Decisions 0060/0080: independent review of the current head has no unresolved blocking
   finding, its required checks pass, and merge is clean. Important Decisions/authority
@@ -128,20 +129,20 @@ unreadable, stop that operation, preserve work and report the exact remedy.
   creation (max three rounds unless significant defects recur; CodeRabbit is advisory), watch
   required checks on each pushed head, repair valid findings/CI/base conflicts within
   authority, preserve blockers, and never weaken gates, tests or branch protection.
-- **Consequential changes:** understand guards, workarounds and constraints before
+- Consequential changes: understand guards, workarounds and constraints before
   changing them; verify affected behavior and report material unresolved uncertainty.
 - **Economy and truth:** find the vital few first, reuse existing capabilities,
   avoid speculative abstractions. Record defects in their owning repository's
   Issues, signals through Agent Asks, and missing capabilities as proposals.
   Deferrals name a revival trigger; showstoppers
-  follow the indexed stop-the-line rule without crossing approval boundaries.
+  follow the indexed stop-the-line rule within approval boundaries.
 - **Vocabulary:** Domain, Project, Mission, Outcome, Milestone, Action, Artifact,
   Decision, Log. Noun commands read; verbs may mutate within declared authority.
 
 ### Instruction budget
 
-Caps: bootstrap **8 KiB UTF-8**, root AGENTS.md **12 KiB**, default-loading project guidance
-**24 KiB**, **32 KiB combined** with **8 KiB** reserved for global guidance. Root overrides
+Caps: bootstrap 8 KiB UTF-8, root AGENTS.md 12 KiB, default-loading project guidance
+24 KiB, 32 KiB combined with 8 KiB reserved for global guidance. Root overrides
 retain this bootstrap; never raise provider limits or auto-import the procedural library.
 Setup, Way drift and dispatch fail explicitly on overflow or missing guidance: shrink or repair.
 <!-- ARCADIA_CONTEXT_END -->

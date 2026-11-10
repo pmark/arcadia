@@ -81,6 +81,7 @@ only from Decisions and the operator's own words.
 - **Helpers.** Brief each helper narrowly. Check its claimed external effects,
   such as a posted review comment, before relaying them.
 - **Evidence.** Keep the observation log, and capture lessons with `arcadia learn`.
+- **Spend claims.** Never claim or rule out spend without an `arcadia spend check` receipt; banners, `/cost` and model names are not evidence.
 - **Never route around a refusal.** A host or classifier refusal goes to the
   operator; Signal does not perform the refused act for another session.
 
