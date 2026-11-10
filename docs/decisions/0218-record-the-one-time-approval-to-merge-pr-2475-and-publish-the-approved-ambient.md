@@ -4,7 +4,7 @@ type: decision
 id: "0218"
 slug: record-the-one-time-approval-to-merge-pr-2475-and-publish-the-approved-ambient
 project: arcadia
-status: open
+status: approved
 question: "Record the one-time approval to merge PR #2475 and publish the approved ambient Ride soundtrack to Field Notes."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src
 updated: 2026-11-10
+answer: Publish the approved ambient Ride soundtrack
+decided: 2026-11-10
 ---
 
 # Decision 0218: Record the one-time approval to merge PR #2475 and publish the approved ambient Ride soundtrack to Field Notes.
