@@ -1,7 +1,7 @@
 ---
 arcadia: v1
 type: decision
-id: "0214"
+id: "0215"
 slug: record-the-operator-s-one-time-approval-to-merge-pr-2443-and-publish-its
 project: arcadia
 status: open
@@ -21,7 +21,7 @@ plan: record-run-unattended-test-pins-20261107-part-2
 updated: 2026-11-10
 ---
 
-# Decision 0214: Record the operator’s one-time approval to merge PR #2443 and publish its reviewed Field Notes sharing, SEO, canyon ride and alignment changes through the existing GitHub Pages workflow after current-head independent review and required checks pass.
+# Decision 0215: Record the operator’s one-time approval to merge PR #2443 and publish its reviewed Field Notes sharing, SEO, canyon ride and alignment changes through the existing GitHub Pages workflow after current-head independent review and required checks pass.
 
 ## Options
 
@@ -30,6 +30,6 @@ updated: 2026-11-10
 
 ## Rationale
 
-On 2026-11-10 the operator instructed: Please check the latest CI status, and merge and deploy the Field Notes changes once all checks pass. Scope is PR #2443 and its existing blog workflow; no additional channels, credentials, spending, or production START are authorized.
+The operator instructed: Please check the latest CI status, and merge and deploy the Field Notes changes once all checks pass. This replaces the conflicting candidate record in draft PR #2450; no additional channels, credentials, spending, or production START are authorized.
 
-Proposed by Agent Ask decision-publish-field-notes-pr-2443-20261110.
+Proposed by Agent Ask decision-publish-field-notes-pr-2443-current-base-20261110.

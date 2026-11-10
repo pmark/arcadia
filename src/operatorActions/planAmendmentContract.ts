@@ -149,12 +149,14 @@ export function validatePlanActivationInput(input: PlanActivationInput): void {
   exactKeys(e.actionUnchanged, ["id", "title", "status", "responsibility", "clarification"], "First Action");
   equal([e.projectBefore.slug, e.projectBefore.active_plan], [e.project, e.previousPlan], "INVALID_CONTRACT", "Project before-image");
   equal([e.planBefore.slug, e.planBefore.project, e.planBefore.status], [e.plan, e.project, "draft"], "INVALID_CONTRACT", "Plan before-image");
+  // Canonical settlement keeps a finished Plan `complete` and returns only an unfinished one to draft (Issue #2278).
+  const previousPlanFinished = e.previousPlanBefore.status === "complete";
   equal([e.previousPlanBefore.slug, e.previousPlanBefore.project, e.previousPlanBefore.status, e.previousPlanBefore.current_action],
-    [e.previousPlan, e.project, "active", e.projectBefore.current_action], "INVALID_CONTRACT", "Previous Plan before-image");
+    [e.previousPlan, e.project, previousPlanFinished ? "complete" : "active", e.projectBefore.current_action], "INVALID_CONTRACT", "Previous Plan before-image");
   if (typeof e.planBefore.milestone !== "string" || !e.planBefore.milestone.trim()) refuse("INVALID_CONTRACT", "The activated Plan must carry its Milestone.");
   equal(e.projectAfter, { active_plan: e.plan, current_action: e.action, milestone: e.planBefore.milestone }, "INVALID_CONTRACT", "Project after-image");
   equal(e.planAfter, { status: "active", current_action: e.action, recommended_model: s.model, recommended_reasoning_effort: s.effort }, "INVALID_CONTRACT", "Plan after-image");
-  equal(e.previousPlanAfter, { status: "draft", current_action: null }, "INVALID_CONTRACT", "Previous Plan after-image");
+  equal(e.previousPlanAfter, { status: previousPlanFinished ? "complete" : "draft", current_action: null }, "INVALID_CONTRACT", "Previous Plan after-image");
   equal(e.actionUnchanged.id, e.action, "INVALID_CONTRACT", "First Action id");
   if (e.actionUnchanged.status === "done" || !["agent", "autonomous"].includes(String(e.actionUnchanged.responsibility)) || e.actionUnchanged.clarification !== "clarified") {
     refuse("INVALID_CONTRACT", "The first Action must be unfinished, clarified and agent or autonomous-owned.");

@@ -458,10 +458,11 @@ describe("resolveIntelligenceRoute", () => {
       }
     });
 
-    it("keeps the PR TLDR route (cloud fast, Decision 0126) resolving as before", () => {
+    it("refuses the PR TLDR route (cloud fast, withdrawn Decision 0126) under Decision 0213's standing no-spend", () => {
       const config = loadIntelligenceConfig({
         ARCADIA_LITELLM_CLOUD_TEXT_ROUTE: "arcadia-cloud-text",
       });
+      expect(config.approvedPaidUsageDecisionIds).toEqual([]);
       const fast = config.routes.find((r) => r.id === "arcadia.text.generate.cloud.fast");
       expect(fast?.paidUsageDecision).toBe("0126");
       const resolution = resolveIntelligenceRoute(
@@ -477,13 +478,9 @@ describe("resolveIntelligenceRoute", () => {
           approvedPaidUsageDecisions: config.approvedPaidUsageDecisionIds,
         },
       );
-      expect(resolution.ok).toBe(true);
-      if (resolution.ok) {
-        expect(resolution.route.routeId).toBe("arcadia.text.generate.cloud.fast");
-        expect(resolution.route.liteLlmRoute).toBe("arcadia-cloud-text");
-        expect(resolution.route.requiresPaidUsage).toBe(true);
-      }
-      // Only the fast route is bound; other cloud text profiles stay refused.
+      expect(resolution.ok).toBe(false);
+      if (!resolution.ok) expect(resolution.code).toBe("paid_usage_not_allowed");
+      // Every other cloud text profile stays refused too.
       for (const profile of ["standard", "quality"] as const) {
         const other = resolveIntelligenceRoute(
           { capability: "text.generate", execution: "cloud-required", profile },

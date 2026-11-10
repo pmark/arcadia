@@ -71,7 +71,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
-import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunDayPinsCommand, runStartRunPinsCommand, runStartRunSignInCommand } from "./commands/startRun.js";
+import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunDayPinsCommand, runStartRunGateCheckCommand, runStartRunPinsCommand, runStartRunSignInCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -1251,6 +1251,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace?: string; json?: boolean }) =>
     runCliAction("start-run.day-evidence", options, () => runStartRunDayEvidenceCommand(options), (response) => JSON.stringify(response.data, null, 2).split("\n")));
+  addJsonOption(startRun.command("gate-check")
+    .description("Issue #2038: list the pending Agent Asks and open Decisions that name a pinned Action and would idle the run; read-only")
+    .requiredOption("--project <slug>", "Project whose Actions are pinned")
+    .requiredOption("--action <id...>", "A pinned Action id (repeatable)")
+    .option("--repository <path>", "Repository holding the Project's Decisions (default: the current directory)")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { project: string; action: string[]; repository?: string; workspace?: string; json?: boolean }) =>
+    runCliAction("start-run.gate-check", options, () => runStartRunGateCheckCommand({ ...options, actions: options.action }), (response) => JSON.stringify(response.data, null, 2).split("\n")));
   addJsonOption(startRun.command("sign-in")
     .description("Run only by a per-run START card: the Decision 0161 / 0143 sign-in renewal and bound-worker usage check, once (or --check-only)")
     .requiredOption("--repository <path>", "The Arcadia main checkout the bound worker serves")

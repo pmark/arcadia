@@ -911,6 +911,8 @@ export class FakeGitHub {
   ghFailures: Partial<Record<"pr close" | "pr reopen" | "run cancel" | "run rerun", string>> = {};
   /** One `gh pr close` that closes the PR and then reports this failure. */
   closeFailsAfterClosing: string | null = null;
+  /** After the next `gh pr close`, the next `gh pr view` fails with this stderr (the re-read of the state). */
+  viewFailsAfterClose: string | null = null;
   /** Like {@link ghFailures}, but fails every call until the entry is deleted. */
   stickyGhFailures: Partial<Record<"pr close" | "pr reopen" | "run cancel" | "run rerun", string>> = {};
   /** Every `gh issue create` that succeeded (the QA-plan sole-failure Issue, Decision 0169). */
@@ -1143,6 +1145,10 @@ export class FakeGitHub {
       const pr = this.find(args[2]);
       if (!pr) return { status: 1, stdout: "", stderr: `no pull request ${args[2]}`, error: null };
       pr.state = "CLOSED";
+      if (this.viewFailsAfterClose !== null) {
+        this.viewFailures.push(this.viewFailsAfterClose);
+        this.viewFailsAfterClose = null;
+      }
       if (this.closeFailsAfterClosing !== null) {
         // GitHub closed the PR but the CLI call failed or timed out.
         const stderr = this.closeFailsAfterClosing;

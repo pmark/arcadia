@@ -96,6 +96,15 @@ switch (key2) {
   case "production capacity":
     ok(state.capacity);
     break;
+  case "start-run gate-check": {
+    // state.pendingAsks: unsettled Agent Asks as the real gate reads them ({ id, actionIds }); "unreadable" is a gate that cannot be read.
+    if (state.pendingAsks === "unreadable") { process.stderr.write("the workspace database could not be read\n"); process.exit(1); }
+    const actions = args.filter((_a, i) => args[i - 1] === "--action");
+    const blocking = actions.flatMap((action) => (state.pendingAsks ?? []).filter((ask) => ask.actionIds.includes(action))
+      .map((ask) => ({ action, kind: "agent_ask", id: ask.id, title: "a pending proposal", settleCommand: `arcadia agent-ask settle ${ask.id}` })));
+    ok({ project: get("--project"), actions, blocking });
+    break;
+  }
   case "advance queue":
     ok(state.queue);
     break;

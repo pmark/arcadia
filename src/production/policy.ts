@@ -143,6 +143,10 @@ export const PRODUCTION_CONTROL_DEADLINES = {
  * target. A fresh sign-in failure refreshes it.
  */
 export const SIGN_IN_FAILURE_HOLD_MS = 15 * 60 * 1000;
+/** Issue #1249: consecutive sign-in exits (about an hour of renewed holds) after which one operator escalation opens. */
+export const SIGN_IN_ESCALATION_EXITS = 4;
+/** Issue #1249: continuous sign-in renewal after which the escalation opens even below the exit count. */
+export const SIGN_IN_ESCALATION_MS = 6 * 60 * 60 * 1000;
 
 /**
  * The separately explicit authority a finished, validated Session candidate
