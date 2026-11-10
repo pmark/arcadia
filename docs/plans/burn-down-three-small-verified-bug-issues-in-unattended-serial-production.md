@@ -11,11 +11,11 @@ updated: 2026-11-10
 actions:
   - id: accept-canonical-roles-in-session-ledger
     title: "Make the Session ledger accept every role registered in config/defaults/agent-roles.json while keeping its legacy roles valid, fixing Issue #1366."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the Session ledger accept every role registered in config/defaults/agent-roles.json while keeping its legacy roles valid, fixing Issue #1366."
+    next_action: Completed via Agent Ask complete-accept-canonical-roles-in-session-ledger-2026-11-10; no further action.
     expected_artifact: Evidence satisfying Agent Ask accept-canonical-roles-in-session-ledger
     clarification: clarified
     confidence: high
@@ -123,10 +123,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask label-exited-unreconciled-session-in-timeline
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-burn-down-worker-mergeable-src-fixes-20261110c
+    source: Agent Ask amend-label-exited-criterion-unquoted-20261110
     why: "The timeline prints \"Session running on A (exit 1)\" for an exited Session the tick has not reconciled, which tells the operator the opposite of what happened."
     acceptance_criteria:
-      - In src/timeline/collectors/sessions.ts, the session.ended event for an agent_sessions row whose status is prepared or running, with ended_at set and a non-null exit_status, has a summary of the form "Session exited on <action_id> (exit <n>), awaiting reconciliation", and the row is no longer described as running.
+      - "In src/timeline/collectors/sessions.ts, the session.ended event for an agent_sessions row whose status is prepared or running, with ended_at set and a non-null exit_status, has a summary that reads Session exited on, then the row's action_id, then the exit_status in parentheses after the word exit, then awaiting reconciliation (for action_id A1 and exit_status 1: Session exited on A1 (exit 1), awaiting reconciliation), and the row is no longer described as running."
       - The summary for every other status, including completed, failed, needs_input and a row with a null exit_status, is unchanged.
       - A regression test in tests/timeline-collectors.test.ts adds one agent_sessions row with status running, an ended_at and exit_status 1 to the existing fixture and asserts the new summary; it fails before the fix and passes after.
       - Every other test in tests/timeline-collectors.test.ts and tests/timeline-model.test.ts passes unchanged.
