@@ -31,10 +31,10 @@ The B trigger offered with A is moot, because B was chosen.
 | | A: dedupe-only | B: plus lesson promotion |
 |---|---|---|
 | Cost | 6 Actions, deterministic code and tests | 8 Actions: also a recurrence counter over similar lessons (today `learn` dedupes exact replays only) and a promoter |
-| Risk | Low. A caller-initiated write to one repository, and every outcome is reversible | Medium. A writer with no caller in the loop, which multiplies any matcher error |
+| Risk | Low. A caller-initiated write to one repository, and every outcome is reversible | Medium as first described: a writer with no caller in the loop, which multiplies any matcher error. As planned, the weekly triage is the caller, and [Slice B controls](#slice-b-controls) bound it |
 | Stays out | Promotion, the model tie-break, cross-repository routing, closing Issues, production-worker callers | The model tie-break, cross-repository routing, closing Issues |
 
-The vital few are the key and matcher, the outcome engine and the guidance change. Without the guidance change no agent's behavior changes, so it is in slice A.
+The vital few are the key and matcher, the outcome engine and the guidance change. Without the guidance change no agent's behavior changes, so it is in the plan whichever slice was chosen.
 
 ### 2. Where the dedupe index lives: GitHub, on each call
 
@@ -86,7 +86,7 @@ The vital few are the key and matcher, the outcome engine and the guidance chang
 - **The build needs no new Decision.** Decision 0121 (answered 2026-10-11) chose `arcadia bug`, and its deferral was a deferral, not a refusal. Decision 0049 approved the defect intake this extends.
 - **Exact approval boundaries:**
   1. The operator settles the Plan Ask and activates the draft Plan.
-  2. The operator answers the A/B Decision.
+  2. The decision Ask is settled with the operator's chat answer, B.
   3. Each PR merges only under Decisions 0060/0080.
   4. Out of slice, each needing its own Decision: any automatic writer with no caller (slice B), closing or merging duplicate Issues, a model tie-break beyond a local model, calls from unattended production workers (their `gh` token is used for PRs today, not intake), and moving red-alert diagnosis onto `arcadia bug`.
 
@@ -149,31 +149,39 @@ Token impact: small. Zero model calls at runtime. Build uses existing session al
 The risks named under option B are designed down without dropping anything the operator chose:
 - **Calibrated first.** Promotion depends on Action 5, the live-backlog proof of the matcher, so it never runs on an untested matcher.
 - **Always a caller.** Promotion is an explicit `arcadia bug promote` run by the weekly triage, never automatic on lesson capture. It previews by default, and only `--apply` writes. The triage procedure (Action 8) runs the preview, then the apply.
-- **Only defect-shaped input.** A lesson is promoted only when A's normalizer finds a component or an error signature, its recurrence is at least 3, and at least one of its versions has observation provenance. Process insights and pure inferences stay lessons and are listed as not promoted, with a reason.
-- **One recurrence count.** It is exact observations plus similar current lessons in the same scope, using A's matcher. The ambiguous band doesn't count, and retracted or superseded versions are excluded.
-- **One path to GitHub.** Every promotion goes through the Action 3 intake, so dedupe, QUEUED and idempotence all apply. A replay files nothing, and promotion never edits a lesson.
-- **Live proof before guidance.** Action 7's pull request records a preview against the live workspace's Arcadia lessons, with counts, reasons and would-be outcomes, and makes no Issue write.
+- **Only defect-shaped input.** A lesson is promoted only when all of these hold:
+  - A's normalizer finds a code component (not just a document path) or an error signature;
+  - it contains a failure statement;
+  - its current version is not low confidence;
+  - at least one version has `observation` or `operator_statement` provenance;
+  - its recurrence is at least 3.
+
+  Process insights, inferences and imports stay lessons, and each is listed as not promoted with its reason (scope-change review S1).
+- **One recurrence count.** It is distinct observation sources (one source at several revisions counts once, review S3) plus similar current lessons in the same scope, using A's matcher. The ambiguous band doesn't count, and retracted or superseded versions are excluded.
+- **One path to GitHub.** Every promotion goes through the Action 3 intake, so dedupe, QUEUED and idempotence all apply. Promotion evidence is only the lesson id and version, so a weekly re-run with a higher count adds no comment (review S2). A replay files nothing, and promotion never edits a lesson.
+- **Live proof before guidance.** Action 7 writes a checked-in evidence report, `arcadia-bug-promotion-preview`, with a preview against the live workspace's Arcadia lessons: counts, reasons and would-be outcomes, and no Issue write (review S4).
 - **Revival trigger for tuning the threshold:** a weekly triage marks 2 or more promoted Issues as not-a-bug, or finds 3 or more defect-shaped lessons recurring below the threshold.
 
 ## Previewed Asks (receipts; not settled)
 
-**Settle only the slice B plan (`plan-arcadia-bug-intake-slice-b-20261109`) and the decision v2. The decision v2 should be answered B, the operator's chat answer.** The slice B plan carries every repair from review rounds 1 to 3 and adds the two promotion Actions. All slice A plan previews are superseded. The round-1 previews are superseded but keep their receipts: a used request id refuses changed content. Disposing of the round-1 previews is the operator's settle step, not this planner's.
+**Settle only the slice B plan v2 (`plan-arcadia-bug-intake-slice-b-v2-20261109`) and the decision v2. The decision v2 should be answered B, the operator's chat answer.** The slice B plan v2 carries every repair from review rounds 1 to 3 and the scope-change review, and adds the two promotion Actions. All slice A plan previews are superseded. The round-1 previews are superseded but keep their receipts: a used request id refuses changed content. Disposing of the round-1 previews is the operator's settle step, not this planner's.
 
 | Ask | Request id | Proposal | Capture | Fingerprint | Result |
 |---|---|---|---|---|---|
-| **Plan, slice B** ([plan-ask.json](plan-ask.json)) | `plan-arcadia-bug-intake-slice-b-20261109` | `agentask_3ffe439f3e7933eb80` | `capture_49af854e-2854-4d63-8993-b91aa6553a41` | `3ffe439f3e79…8d56` | ok, 8 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
+| **Plan, slice B v2** ([plan-ask.json](plan-ask.json)) | `plan-arcadia-bug-intake-slice-b-v2-20261109` | `agentask_3577f3d675b893f5ac` | `capture_f906fb8b-e251-48d6-a1da-8b591f943e29` | `3577f3d675b8…41e9` | ok, 8 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
+| Plan, slice B (superseded) | `plan-arcadia-bug-intake-slice-b-20261109` | `agentask_3ffe439f3e7933eb80` | `capture_49af854e-2854-4d63-8993-b91aa6553a41` | `3ffe439f3e79…8d56` | ok, 8 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
 | v3 Plan, slice A (superseded) | `plan-arcadia-bug-intake-slice-a-v3-20261109` | `agentask_bb99d16cee9e1fcf55` | `capture_3be63682-d564-45aa-abdc-469fe74b553e` | `bb99d16cee9e…32cf` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
 | v2 Plan (superseded) | `plan-arcadia-bug-intake-slice-a-v2-20261109` | `agentask_9ce9aa1708b6456ced` | `capture_1bff2549-c0ae-4164-ab23-8101c2047f8a` | `9ce9aa1708b6…0f6c` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
 | **v2** Decision, first slice ([decision-ask.json](decision-ask.json)) | `decision-arcadia-bug-first-slice-v2-20261109` | `agentask_7fa9afdefe782635e1` | `capture_041633bc-1538-4fe1-9a78-a45fe000d18b` | `7fa9afdefe78…d669` | ok, 1 create effect, `gate_question: reasonable_disagreement`, no refusals, 0 Project writes |
 | round 1 Plan (superseded) | `plan-arcadia-bug-intake-slice-a-20261109` | `agentask_2552596036e2791080` | `capture_3822da73-f1b1-4da6-91bf-3f637c49c96b` | `2552596036e2…6dbe` | ok, 6 create effects, no refusals, 0 Project writes; would create an inactive draft Plan |
 | round 1 Decision (superseded) | `decision-arcadia-bug-first-slice-20261109` | `agentask_eb791d9b6b481f1080` | `capture_94c9a4ce-a914-44f2-8466-fce581981231` | `eb791d9b6b48…cf6f` | ok, 1 create effect, `gate_question: reasonable_disagreement`, no refusals, 0 Project writes |
 
-All six previews were run in workspace `martianrover`. Settling is the operator's step, through the supervisor or Signal.
+All seven previews were run in workspace `martianrover`. Settling is the operator's step, through the supervisor or Signal.
 
 ## What I could not verify
 
 - **Threshold quality.** The 0.3, 0.4, 0.6 and 0.7 values are design starting points. The 2026-11-09 lessons are not in the `learn` store under the terms I searched (0 matches), so Action 1 builds its fixture from the stopgap Issue texts.
-- **Headless `gh` auth** in launched Sessions. Slice A treats an auth failure as QUEUED, so nothing is lost, but whether launched Sessions can write Issues isn't tested.
+- **Headless `gh` auth** in launched Sessions. The build treats an auth failure as QUEUED, so nothing is lost, but whether launched Sessions can write Issues isn't tested.
 - **Owning-repository resolution.** I assume the Project's registered repository remote is the owner. Cross-repository reports are out of slice. Revival trigger: the first report filed to the wrong repository.
 - **`execution: build` on a draft Plan.** #2134 is closed, and the draft-Plan writer emits the route (`src/ask/settlement.ts:2736`). The preview's effect summary doesn't display it, so it is proven only at settlement.
 - **Latency.** The 7.1 s figure is one sample from this host.

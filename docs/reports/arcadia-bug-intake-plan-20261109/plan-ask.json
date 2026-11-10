@@ -1,11 +1,11 @@
 {
  "agent_ask": "v1",
- "request_id": "plan-arcadia-bug-intake-slice-b-20261109",
+ "request_id": "plan-arcadia-bug-intake-slice-b-v2-20261109",
  "project": "arcadia",
  "intent": "plan",
  "requested_authority": "apply_if_approved",
  "desired_result": "Build arcadia bug slice B (operator choice 2026-11-09): a zero-model, dedupe-first bug intake that extends the existing arcadia defect signal with GitHub reconciliation, so any agent files a bug in one command and gets exactly one outcome (CREATED, with regression_of when a completed Issue recurs; APPENDED with recurrence count; LINKED; or QUEUED when GitHub is unreachable), plus promotion of recurring defect-shaped arcadia learn lessons through the same intake from the weekly triage.",
- "rationale": "Operator request 2026-11-09 (Issue #2379; proposal receipt agentask_df9fdc3ecaeb817fc2). The operator answered the first-slice question in chat on 2026-11-09 with B (verbatim: \"B: plus promotion\"); that answer still has to be recorded by settling decision Ask decision-arcadia-bug-first-slice-v2-20261109 (receipt agentask_7fa9afdefe782635e1). Decision 0121 chose arcadia bug and deferred the build; Decision 0049 approved the arcadia defect intake that already fingerprints, merges evidence and scores similarity but has zero live signals and never reaches GitHub; red-alert diagnosis already has a marker-search, comment-or-create GitHub filer behind an injectable GhRunner. Reuse both. Index is GitHub read per call through the listing API (940 Issues, about 7 s), no projection; unreachable GitHub yields QUEUED with no write. Never closes, reopens, relabels or retitles an Issue and never writes an Action, Decision, pointer, queue, Plan or PROJECT.md. Promotion risk controls: the promoter runs only after the matcher is proven on the live backlog, only from an explicit caller (the weekly triage), previews by default, and promotes only defect-shaped lessons with recurrence of at least 3 and at least one observation-provenance version. Token impact: small; zero runtime model calls; a light-model tie-break and a local projection are deferred with triggers in the memo. Creates an inactive draft Plan; the operator settles and activates. Supersedes slice A previews plan-arcadia-bug-intake-slice-a-20261109, -v2- and -v3- (latest receipt agentask_bb99d16cee9e1fcf55); settle only this Ask. Memo: docs/reports/arcadia-bug-intake-plan-20261109/memo.md",
+ "rationale": "Operator request 2026-11-09 (Issue #2379; proposal receipt agentask_df9fdc3ecaeb817fc2). The operator answered the first-slice question in chat on 2026-11-09 with B (verbatim: \"B: plus promotion\"); that answer still has to be recorded by settling decision Ask decision-arcadia-bug-first-slice-v2-20261109 (receipt agentask_7fa9afdefe782635e1). Decision 0121 chose arcadia bug and deferred the build; Decision 0049 approved the arcadia defect intake that already fingerprints, merges evidence and scores similarity but has zero live signals and never reaches GitHub; red-alert diagnosis already has a marker-search, comment-or-create GitHub filer behind an injectable GhRunner. Reuse both. Index is GitHub read per call through the listing API (940 Issues, about 7 s), no projection; unreachable GitHub yields QUEUED with no write. Never closes, reopens, relabels or retitles an Issue and never writes an Action, Decision, pointer, queue, Plan or PROJECT.md. Promotion risk controls: the promoter runs only after the matcher is proven on the live backlog, only from an explicit caller (the weekly triage), previews by default, and promotes only defect-shaped lessons (a code component or error signature plus a failure statement, not only a document path, and not low confidence) with recurrence of at least 3 distinct sources and at least one observation or operator_statement version. Token impact: small; zero runtime model calls; a light-model tie-break and a local projection are deferred with triggers in the memo. Creates an inactive draft Plan; the operator settles and activates. Supersedes slice A previews plan-arcadia-bug-intake-slice-a-20261109, -v2- and -v3- (latest receipt agentask_bb99d16cee9e1fcf55); also supersedes plan-arcadia-bug-intake-slice-b-20261109 (receipt agentask_3ffe439f3e7933eb80) after the scope-change review; settle only this v2. Memo: docs/reports/arcadia-bug-intake-plan-20261109/memo.md",
  "references": [
   "https://github.com/pmark/arcadia/issues/2379",
   "docs/decisions/0121-decide-whether-and-how-arcadia-sessions-get-a-supervisor-that-watches-for.md",
@@ -89,10 +89,10 @@
   {
    "id": "lesson-recurrence-count",
    "execution": "build",
-   "desired_result": "Write failing tests, then implement src/learning/recurrence.ts: a read-only recurrence count per current lesson in one scope, equal to its exact observations plus other current lessons in that scope that the bug matcher classes as exact or similar.",
+   "desired_result": "Write failing tests, then implement src/learning/recurrence.ts: a read-only recurrence count per current lesson in one scope, equal to its distinct observation sources (by source reference, not by revision) plus other current lessons in that scope that the bug matcher classes as exact or similar.",
    "why": "arcadia learn dedupes only exact replays, so a lesson that recurs in new words never looks recurring; promotion needs one honest count.",
    "acceptance": [
-    "tests/lesson-recurrence-count.test.ts proves the count equals exact observations plus similar current lessons in the same scope, and that lessons in other scopes never count.",
+    "tests/lesson-recurrence-count.test.ts proves the count equals distinct observation sources plus similar current lessons in the same scope, that one source observed at several revisions counts once, and that lessons in other scopes never count.",
     "The test proves retracted and superseded versions are excluded and that two lessons in the ambiguous band do not count toward each other.",
     "The test proves the function performs no write to any lesson table and no model or network call."
    ],
@@ -103,14 +103,15 @@
   {
    "id": "promote-recurring-lessons",
    "execution": "build",
-   "desired_result": "Write failing tests, then implement src/bug/promote.ts and wire a bug promote subcommand into src/commands/bug.ts: list current lessons whose recurrence is at least a threshold (default 3) and whose text is defect-shaped, preview the intake outcome for each by default, and with --apply file each through the same intake exactly once.",
+   "desired_result": "Write failing tests, then implement src/bug/promote.ts and wire a bug promote subcommand into src/commands/bug.ts: list current lessons whose recurrence is at least a threshold (default 3) and whose text is defect-shaped (a code component or error signature together with a failure statement), preview the intake outcome for each by default, and with --apply file each through the same intake exactly once. Each promotion's evidence is the lesson id and current version id only, and every preview and apply run is written to a checked-in evidence report named arcadia-bug-promotion-preview under the reports folder.",
    "why": "This closes the gap that made the record run's lessons depend on someone remembering to file them, while keeping process insights as lessons rather than bugs.",
    "acceptance": [
-    "tests/promote-recurring-lessons.test.ts proves a defect-shaped lesson at the threshold yields one intake outcome on apply and a replay of promote yields zero new GitHub writes.",
-    "The test proves a lesson below the threshold, a lesson without a component or error signature, and a lesson whose versions are all inference provenance are listed as not promoted with a reason.",
+    "tests/promote-recurring-lessons.test.ts proves a defect-shaped lesson at the threshold yields one intake outcome on apply, and that a second apply in a later week with the lesson unchanged but its count higher yields zero new GitHub writes.",
+    "The test proves promotion evidence is exactly the lesson id and current version id, so the request fingerprint does not change when the recurrence count changes.",
+    "The test proves each of these is listed as not promoted with a reason: a lesson below the threshold; a lesson with neither a code component nor an error signature; a lesson whose only component is a document path; a lesson with no failure statement; a lesson whose current version has low confidence; and a lesson whose versions are all inference or imported provenance.",
     "The test proves promote without --apply performs zero GitHub writes and zero database writes, and that an unreachable index leaves each candidate QUEUED.",
     "A write spy in the test proves promotion never edits, retracts or corrects a lesson and never writes an Action, Decision, pointer, queue, Plan or PROJECT.md.",
-    "A preview run against the live workspace's Arcadia lessons is recorded in the pull request with each candidate's count, reason and would-be outcome, and makes no Issue write."
+    "The arcadia-bug-promotion-preview evidence report records a preview run against the live workspace's Arcadia lessons with each candidate's count, reason and would-be outcome, and states that the run made no Issue write."
    ],
    "dependencies": [
     "bug-cli-command",
