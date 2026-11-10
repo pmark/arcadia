@@ -215,6 +215,39 @@ describe("harden-litellm.sh against a fake installation", () => {
     expect(result.out).not.toContain(FAKE_KEY);
   });
 
+  it("--diagnose shows where key-like settings live with every value hidden", () => {
+    const f = fixture();
+    const result = f.run(["--diagnose"]);
+    expect(result.status).toBe(0);
+    expect(result.out).toContain("KEY-SHAPED LITERAL");
+    expect(result.out).toContain("master_key");
+    expect(result.out).not.toContain(FAKE_KEY);
+    expect(result.out).not.toContain("FAKEFAKE");
+    expect(f.read(f.files.config)).toBe(CONFIG);
+  });
+
+  it("when the key is not in the config it refuses and shows the hidden shape, not the value", () => {
+    const f = fixture();
+    writeFileSync(f.files.config, CONFIG.replace(`"${FAKE_KEY}"`, "os.environ/OPENAI_API_KEY"));
+    writeFileSync(path.join(f.dir, ".env"), `OPENAI_API_KEY=${FAKE_KEY}\n`);
+    const result = f.run(["--budget-usd", "25", "--apply"]);
+    expect(result.status).toBe(3);
+    expect(result.out).toContain("Where key-like settings live");
+    expect(result.out).toContain(".env:1: OPENAI_API_KEY= <KEY-SHAPED LITERAL");
+    expect(result.out).not.toContain(FAKE_KEY);
+    expect(f.backups()).toEqual([]);
+  });
+
+  it("finds docker-compose.yaml when docker-compose.yml is absent", () => {
+    const f = fixture();
+    const renamed = path.join(f.dir, "docker-compose.yaml");
+    writeFileSync(renamed, COMPOSE);
+    rmSync(f.files.compose);
+    const result = f.run(["--budget-usd", "25"]);
+    expect(result.status).toBe(0);
+    expect(result.out).toContain("docker-compose.yaml");
+  });
+
   it("refuses a compose file it cannot understand", () => {
     const f = fixture();
     writeFileSync(f.files.compose, "services:\n  other:\n    image: x\n");
