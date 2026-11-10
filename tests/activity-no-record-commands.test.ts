@@ -97,6 +97,7 @@ function validDesignRecord(): string {
  */
 function invocations(): Record<string, string[][]> {
   return {
+    "spend check": [["spend", "check", "--provider", "opencode", "--model", "opencode-go/fixture", "--json"]],
     "ask show": [["ask", "show", "missing-receipt"], ["ask", "show", "missing-receipt", "--workspace", path.join(root, "missing-workspace")]],
     "ask-trail": [["ask-trail", "missing-receipt"]],
     "provider-usage": [["provider-usage", "--json"], ["provider-usage", "--claude-source", "invalid", "--json"], ["provider-usage", "--opencode-session", "ses_explicit", "--opencode-export", "unused.json", "--json"]],
