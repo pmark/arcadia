@@ -4,7 +4,7 @@ type: decision
 id: "0208"
 slug: record-the-operator-s-one-time-approval-to-publish-clara-s-field-note-what-s-an
 project: arcadia
-status: open
+status: approved
 question: Record the operator’s one-time approval to publish Clara’s Field Note “What’s an eval? Start with a lesson you should have found” to Arcadia Field Notes on GitHub Pages and its Atom feed.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: record-run-unattended-test-pins-20261107-part-2
-updated: 2026-11-10
+updated: 2026-11-09
+answer: Publish Clara’s first Evals Field Note
+decided: 2026-11-09
 ---
 
 # Decision 0208: Record the operator’s one-time approval to publish Clara’s Field Note “What’s an eval? Start with a lesson you should have found” to Arcadia Field Notes on GitHub Pages and its Atom feed.
