@@ -49,6 +49,14 @@ Keep the intended `canonical` URL in the source metadata. The Pages layout
 generates the HTML canonical link from the public page URL, including the
 `/arcadia` base path.
 
+## Resources
+
+For a Field Note that draws on outside research or a practical guide, add or
+reuse its source in `_data/resources.yml`. Link the original source, describe
+how the note applies it, and include each related Field Note slug in `posts`.
+Resources lists only sources with at least one published companion post, so
+drafts and withdrawn notes stay out of the public index.
+
 ## One-time operator setup (not done by the build)
 
 Settings > Pages > Source = "GitHub Actions". Until then the deploy job is

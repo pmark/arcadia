@@ -1,0 +1,17 @@
+- title: AI agent trends 2026
+  publisher: Google Cloud
+  url: https://cloud.google.com/resources/content/ai-agent-trends-2026
+  relevance: Arcadia used the report’s ideas about grounded agent workflows to examine what an operator sees when a source goes silent.
+  posts: [what-needs-me]
+
+- title: "Beyond code generation: A developer’s guide to agentic engineering"
+  publisher: GitHub
+  url: https://github.blog/ai-and-ml/github-copilot/beyond-code-generation-a-developers-guide-to-agentic-engineering/
+  relevance: Arcadia used GitHub’s workflow framing to look at where its own runs lost time and move a check for ambiguous instructions earlier.
+  posts: [what-arcadia-checks-before-an-agent-starts]
+
+- title: We are Changing our Developer Productivity Experiment Design
+  publisher: METR
+  url: https://metr.org/blog/2026-02-24-uplift-update/
+  relevance: METR’s discussion of who and what gets measured informed why the Field Note examines specific Arcadia runs before drawing conclusions about speed.
+  posts: [what-arcadia-checks-before-an-agent-starts]
