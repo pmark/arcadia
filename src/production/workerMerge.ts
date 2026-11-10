@@ -204,6 +204,7 @@ export const WORKER_MERGE_EXCLUDED_DOCUMENTS: ReadonlySet<string> = new Set([
   "docs/working-copy-safety.md",
   "docs/planning-process.md",
   "docs/managed-documents.md",
+  "docs/relay-driven-operations.md",
   "start_here.md",
   "install_with_a_coding_agent.md"
 ]);
