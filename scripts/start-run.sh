@@ -639,8 +639,6 @@ phase_p0() {
     [[ -z "${CODEX_SANDBOX:-}" ]] || refuse "host-only Grant: an agent sandbox may not run it"
     check_operator_press_record
   fi
-  # A set API key can bill paid API usage instead of the Claude subscription; its value is never read.  REF:L155
-  [[ -z "${ANTHROPIC_API_KEY:-}" ]] || refuse "ANTHROPIC_API_KEY is set in this host environment, which can bill paid API usage; unset it (its value was not read)"
   [[ -z "${ARCADIA_WORKSPACE:-}" ]] || refuse "ARCADIA_WORKSPACE is set; the configured workspace must resolve on its own"  # ADOPT:L72
   for tool in git jq mise timeout node launchctl ps tmux; do command -v "$tool" >/dev/null || refuse "$tool is required on PATH"; done  # REF:L159
   [[ "$(cd "$LIBRARY_DIR/../../.." && pwd -P)" == "$ARCADIA_REPO" ]] || refuse "this card does not live in the library of the checkout that holds this executor"
@@ -662,6 +660,11 @@ phase_p0() {
   fi
   rec_str reviewedRevision "$PIN"
   rec_str executorSha256 "$EXECUTOR_SHA"
+  # The spend check (arcadia spend check, assessSpendRisk) on the launch environment as the Sessions get it (billing variables stripped by
+  # env -u): only clear proceeds; risk and unknown both refuse. Only the verdict enum is read back, never a value.  REF:L155
+  SPEND_CHECK="$(arcadia spend check --provider claude --launch-env stripped --json || true)"
+  SPEND_VERDICT="$(jq -r '.data.verdict | select(. == "clear" or . == "risk" or . == "unknown")' <<<"$SPEND_CHECK" 2>/dev/null || true)"
+  [[ "$SPEND_VERDICT" == clear ]] || refuse "the spend check is ${SPEND_VERDICT:-unreadable}, not clear; run arcadia spend check --launch-env stripped and fix what it names: risk, unknown and an unreadable result all refuse"
   claim_operator_press_record
 }
 

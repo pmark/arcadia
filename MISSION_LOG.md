@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-09
+updated: 2026-11-10
 ---
 
 # Mission Log: Arcadia
@@ -3271,3 +3271,37 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-inline-text-escaping.test.ts is a new test file that imports inlineText from ../src/sessions/operatorQaPlan.js and asserts inlineText applied to the text of one, two and three separated by a newline, a tab, runs of spaces and a BEL control character (code point 7), with leading and trailing spaces, returns "one two three"."; "The same test file asserts inlineText inserts a backslash before each of the characters * _ ` [ ] < > | ~ and the backslash itself, using the single input a*b_c`d[e]<f>|g~h\i whose expected output is a\*b\_c\`d\[e\]\<f\>\|g\~h\\i."; "The same test file asserts inlineText("&amp; &#38; AT&T") returns "\&amp; \&#38; AT&T" (only an ampersand that starts an entity is escaped) and that inlineText("@octocat") returns "@" followed by a zero-width space (code point U+200B) and "octocat"."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-inline-text-escaping.test.ts, a new test file that imports only vitest and src/sessions/operatorQaPlan.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Plan complete; every Action is done.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-inline-text-escaping-98b4bce3754c).
+
+## 2026-11-10 — Completed arcadia/pin-opencode-to-go-models
+
+- **Did:** Completed Action arcadia/pin-opencode-to-go-models from accepted evidence (Candidate 50d7f1084e5d3f13e8db903a21366c6a9b24c7c8).
+- **Result:** Every declared acceptance criterion was accepted as met: "The binding validator refuses opencode/ and huggingface/ model ids and accepts opencode-go/ ids, with a test for each."; "Helper brief guidance names opencode-go/ as the only allowed OpenCode prefix.".
+- **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-pin-opencode-to-go-models-2026-11-10-r2).
+
+## 2026-11-10 — Completed arcadia/build-arcadia-spend-check
+
+- **Did:** Completed Action arcadia/build-arcadia-spend-check from accepted evidence (Candidate 0605bb8cf6a9d70eac2d6935f95bc9306d80342c).
+- **Result:** Every declared acceptance criterion was accepted as met: "arcadia spend check [--provider claude|codex|opencode|all] [--launch-env current|stripped] [--model <id>] --json prints verdict clear, risk or unknown with per-provider codes and exits 0, 3 or 4 respectively."; "Table-driven fixtures cover each risk code from the report (api_key_in_launch_env, third_party_provider, api_key_helper, not_subscription_auth, extra_usage_enabled, purchased_credits_available, paid_model_route) with a risk verdict."; "A fixture with claude.ai/firstParty auth, no billing variables, extra usage off and the banner text "Claude API" present gives clear (the false-alarm regression)."; "A missing claude binary gives unknown, and no output contains the fixture's secret sentinel value.".
+- **Next:** Next ready Action in this inactive Plan: enforce-spend-check-at-launch-and-admission.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-build-arcadia-spend-check-2026-11-10c).
+
+## 2026-11-10 — Completed arcadia/enforce-spend-check-at-launch-and-admission
+
+- **Did:** Completed Action arcadia/enforce-spend-check-at-launch-and-admission from accepted evidence (Candidate 9b5a5523c269b1c433ac15a3a8a062b99c26b926).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/provider-capacity-admission.test.ts asserts a paid capacity policy gives admitted: false, including operator_config and attestation receipts whose policy is paid, and Codex purchased credits."; "checkProviderSignIn uses assessSpendRisk, so a non-subscription auth method, a Codex login that is not ChatGPT, or a non-opencode-go/ OpenCode model refuses the launch, with a test for each."; "A launch test with a fixture ANTHROPIC_API_KEY shows the argv carries env -u ANTHROPIC_API_KEY and the launch is refused on a risk or unknown verdict."; "A relay renew test shows a risk verdict means no claim and no tmux launch."; "go --launch and the Intelligence CLI executors refuse on a risk or unknown verdict, with a test for each."; "scripts/start-run.sh P0 calls arcadia spend check --launch-env stripped and refuses on risk or unknown."; "The PR records arcadia production status showing managed production Inactive on the head that merges.".
+- **Next:** Next ready Action in this inactive Plan: alert-on-verified-spend-risk-and-require-receipts.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-enforce-spend-check-at-launch-and-admission-2026-11-10-r2).
+## 2026-11-10 — Completed arcadia/refuse-paid-intelligence-routes-by-default
+
+- **Did:** Completed Action arcadia/refuse-paid-intelligence-routes-by-default from accepted evidence (Candidate 42c2c80728cd04e2d3c8a942f78bc20928aa1b1d).
+- **Result:** Every declared acceptance criterion was accepted as met: "A resolveRoute test shows a paid route with allowPaidUsage: true and no bound Decision gives paid_usage_not_allowed."; "A registry test shows no enrichment sets allowPaidUsage."; "The PR TLDR route bound to Decision 0126 still resolves as before, with a test, and the PR changes no Decision document.".
+- **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-refuse-paid-intelligence-routes-by-default-20261110).
+
+## 2026-11-10 — Completed arcadia/alert-on-verified-spend-risk-and-require-receipts
+
+- **Did:** Completed Action arcadia/alert-on-verified-spend-risk-and-require-receipts from accepted evidence (Candidate f1c4ab6f52fca98a563c4da132d0612878aa9ec7).
+- **Result:** Every declared acceptance criterion was accepted as met: "A decideLiveness-style unit test shows clear to risk pages once, risk to risk is silent, risk to clear sends a recovery line, and unknown never pages."; "docs/agents-context.md and the regenerated AGENTS.md state that no agent may claim or rule out spend without an arcadia spend check receipt, and pnpm check:agent-guidance passes with size budgets intact."; "The arcadia-signal skill states the same receipt rule in its .agents/skills and .claude/skills copies."; "coordinator-handoff-design.md says "uses subscription allocation" where it said "spends money".".
+- **Next:** Next ready Action in this inactive Plan: enforce-spend-check-at-launch-and-admission.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-alert-on-verified-spend-risk-2026-11-10).

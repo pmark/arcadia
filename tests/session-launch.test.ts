@@ -2,7 +2,9 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { BILLING_ENV_NAMES } from "../src/spend/spendCheck.js";
+import { billingUnsetArgs } from "../src/spend/spendGuard.js";
 import defaultAdapters from "../config/defaults/provider-adapters.json" with { type: "json" };
 import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../src/codingAgents/capacity.js";
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
@@ -622,6 +624,7 @@ describe("launchGuardedHostSession", () => {
     expect(tmux.launches[0].args.slice(0, -1)).toEqual([
       "-u", "ARCADIA_OPERATOR_SCRIPT_ID", "-u", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR",
       "-u", "ARCADIA_REQUIRE_INLINE_WORKSPACE",
+      ...billingUnsetArgs(),
       "GIT_AUTHOR_NAME=Owen Swift",
       "GIT_AUTHOR_EMAIL=owen.swift@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Owen Swift",
@@ -1274,9 +1277,9 @@ describe("launchGuardedHostSession", () => {
     // in a shell that reads the token file itself rather than a literal
     // "claude" argv, so the token value is never a process argument anywhere.
     expect(launch.command).toBe("env");
-    expect(launch.args[11]).toBe("sh");
-    expect(launch.args[12]).toBe("-c");
-    const script = launch.args[13];
+    expect(launch.args[11 + billingUnsetArgs().length]).toBe("sh");
+    expect(launch.args[12 + billingUnsetArgs().length]).toBe("-c");
+    const script = launch.args[13 + billingUnsetArgs().length];
     expect(script).toContain("CLAUDE_CODE_OAUTH_TOKEN=");
     expect(script).toContain("cat");
     expect(script).toContain(getWorkspacePaths(fixture.workspace).claudeCodeTokenFile);
@@ -1314,7 +1317,7 @@ describe("launchGuardedHostSession", () => {
     doLaunch(fixture, tmux, preview.previewFingerprint);
     expect(tmux.launches[0].command).toBe("env");
     expect(tmux.launches[0].args).not.toContain("sh");
-    expect(tmux.launches[0].args[11]).toBe("claude");
+    expect(tmux.launches[0].args[11 + billingUnsetArgs().length]).toBe("claude");
     expect(tmux.launches[0].args).toContain("--session-id");
   });
 
@@ -2463,6 +2466,79 @@ describe("launch preflight and headless permission posture", () => {
     expect(args).not.toContain("--settings");
     expect(interactiveTmux.launches[0].record).toBeUndefined();
     expect(headlessTmux.launches[0].record).toBeDefined();
+  });
+});
+
+describe("the spend check at Session launch (strip by construction, refuse on risk or unknown)", () => {
+  const SECRET = "sk-ant-SENTINEL-launch-0123456789";
+  const verdictReport = (verdict: "clear" | "risk" | "unknown") => (id: "claude" | "codex" | "opencode") => ({
+    verdict,
+    providers: [{ id, verdict, codes: verdict === "risk" ? ["api_key_helper" as const] : [], probes: verdict === "unknown" ? [{ id: "not_subscription_auth", status: "unknown" as const, reason: "binary_missing" as const }] : [] }],
+    warnings: [], checkedAt: "2026-11-10T00:00:00.000Z"
+  });
+  const launchWith = (fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, verdict: "clear" | "risk" | "unknown", fingerprint: string, requestId = "req-1") =>
+    withDatabase(fixture.workspace, (db) => launchGuardedHostSession({
+      db, workspace: fixture.workspace, repoRoot: fixture.repo, projectSlug: "test-project", requestId, previewFingerprint: fingerprint,
+      profiles, adapters, now: fixture.now, tmux, agentWorktreeRoot: path.join(fixture.root, requestId),
+      // A stand-in sign-in proves the spend gate runs whatever replaces the sign-in probe.
+      providerSignIn: () => ({ signedIn: true, remedy: "unused" }),
+      spendCheck: { report: verdictReport(verdict) }
+    }));
+  const sessionCount = (fixture: ReturnType<typeof preparedFixture>) =>
+    withDatabase(fixture.workspace, (db) => (db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get() as { n: number }).n);
+
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("a clear verdict launches with env -u for every billing variable, including a lowercase spelling that is present, and no value in argv", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", SECRET);
+    vi.stubEnv("anthropic_api_key", SECRET);
+    vi.stubEnv("OPENAI_API_KEY", "");
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    launchWith(fixture, tmux, "clear", preview1(fixture).previewFingerprint);
+    expect(tmux.launches).toHaveLength(1);
+    const { command, args } = tmux.launches[0];
+    expect(command).toBe("env");
+    const unset = args.flatMap((arg, index) => (args[index - 1] === "-u" ? [arg] : []));
+    expect(unset).toEqual(expect.arrayContaining([...BILLING_ENV_NAMES, "anthropic_api_key"]));
+    expect(args.indexOf("-u")).toBeLessThan(args.findIndex((arg) => arg.startsWith("GIT_AUTHOR_NAME=")));
+    expect(args.some((arg) => arg.includes(SECRET))).toBe(false);
+  });
+
+  it("refuses a risk verdict (spend_risk) before any admission, worktree or Session, even with a stand-in sign-in", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", SECRET);
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    let caught: unknown;
+    try { launchWith(fixture, tmux, "risk", preview1(fixture).previewFingerprint); } catch (error) { caught = error; }
+    expect(caught).toBeInstanceOf(ArcadiaError);
+    expect((caught as ArcadiaError).details).toMatchObject({ code: "spend_risk", conflict: true, codes: ["api_key_helper"] });
+    expect((caught as ArcadiaError).message).toContain("api_key_helper");
+    expect((caught as ArcadiaError).message).not.toContain(SECRET);
+    expect(tmux.launches).toHaveLength(0);
+    expect(sessionCount(fixture)).toBe(0);
+  });
+
+  it("refuses an unknown verdict (spend_unknown) exactly like risk", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    let caught: unknown;
+    try { launchWith(fixture, tmux, "unknown", preview1(fixture).previewFingerprint); } catch (error) { caught = error; }
+    expect((caught as ArcadiaError).details).toMatchObject({ code: "spend_unknown", conflict: true });
+    expect((caught as ArcadiaError).message).toContain("not_subscription_auth:binary_missing");
+    expect(tmux.launches).toHaveLength(0);
+    expect(sessionCount(fixture)).toBe(0);
+  });
+
+  it("also refuses when resuming a prepared Session whose process never started", () => {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    const preview = preview1(fixture);
+    const first = launchWith(fixture, tmux, "clear", preview.previewFingerprint);
+    withDatabase(fixture.workspace, (db) => { db.prepare("UPDATE agent_sessions SET status = 'prepared' WHERE id = ?").run(first.session.id); });
+    tmux.live.delete(first.session.tmux_session_name);
+    expect(() => launchWith(fixture, tmux, "risk", preview.previewFingerprint)).toThrow(expect.objectContaining({ details: expect.objectContaining({ code: "spend_risk" }) }));
+    expect(tmux.launches).toHaveLength(1);
   });
 });
 

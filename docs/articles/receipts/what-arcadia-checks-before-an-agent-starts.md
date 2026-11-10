@@ -20,6 +20,22 @@
 
 The repeated Field Notes habit is editorial direction proposed in this post.
 
+## Follow-up run evidence
+
+Mira / Claudia Mason reviewed the retained part-2 evidence after the four successful STARTs following [#2287](https://github.com/pmark/arcadia/pull/2287). The first batch ended at 21:05 UTC, before #2287 merged at 21:06 UTC, and is excluded. The [public readiness account](https://github.com/pmark/arcadia/blob/b3cef2f2e/docs/managed-production-readiness.md#L5-L15) gives the delivery and failure scope. The original publication date and cutoff are preserved.
+
+| Post-merge START | Pinned source revision | Selected Action slots | Recorded build sessions | Worker merges | Replay warnings / refusals |
+| --- | --- | ---: | ---: | ---: | ---: |
+| Nov 8 22:04 UTC, batch 2 | `564789b97dfedba5f80146bb6c30ce4884d12f1a` | 5 | 6 | 3 | 0 / 0 |
+| Nov 9 00:47 UTC, batch 3 | `bff95d6880d9283570355befe152e4fc89d5475b` | 5 | 5 | 5 | 0 / 0 |
+| Nov 9 02:51 UTC, batch 4 | `21d1b56b9bf65538fc983b842e7bcc5919a58acb` | 5 | 5 | 5 | 0 / 0 |
+| Nov 9 06:49 UTC, batch 5 | `bf1b304c5b2dbf3d09270922ee23b2aea6384be8` | 2 | 2 | 2 | 0 / 0 |
+
+- **Replay method:** Read each successful START descriptor, extract its selected Action IDs from the Plan frontmatter at the pinned revision, and call `startRunCriteriaFindings` on each Action. The validator and its completion-parser source matched #2287 byte for byte. Batches 2 and 3 overlap by two Actions, so 17 slots represent 15 distinct Actions. A superseded batch 4 descriptor is excluded.
+- **Session accounting:** `arcadia start-run day-evidence --json` supplied activation and admission counts. The `attemptTokens` rows in `arcadia production status --json`, grouped by Action, show 14 of the 15 Actions at one recorded build session each and `pin-authoritative-control-path` at four. These are build session counts. They exclude individual process launches, CI retries, reviewer calls and any retries the check may have prevented.
+- **Separate failure:** The [later QA-plan defect](https://github.com/pmark/arcadia/issues/2324) stopped batch 2 after three merges. [#2325](https://github.com/pmark/arcadia/pull/2325) fixed the QA renderer, and [#2326](https://github.com/pmark/arcadia/pull/2326) delivered the Action in batch 3.
+- **Limits:** Shell executor receipts omit the earlier pin-command output. These successful-card replays cannot reveal a warning, early refusal or edit that left no retained descriptor. No live catch or reduction in retries is established. This is a serial, test-only cohort.
+
 ## Independent review
 
 - Reviewer: separate read-only Codex context `field_notes_factcheck`.

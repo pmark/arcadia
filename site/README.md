@@ -24,7 +24,30 @@ GitHub Pages; AMC ([arcadiamissioncontrol.com](https://arcadiamissioncontrol.com
   other files to the repository on `main`). Jekyll (`jekyll-feed`) then renders it.
 - `.github/workflows/blog.yml` builds on pull requests (check only) and deploys
   on pushes to `main` that touch `docs/articles/`, `site/` or the workflow.
-- The pages are static HTML and CSS: no JavaScript, responsive, light/dark.
+- Post links and the feed are rendered by Jekyll. The site adds Canyon
+  Pass as a progressive enhancement over a still background. The
+  background follows the simulated Martian day with a static star field. The
+  system reduced-motion or forced-colors preference disables the moving background.
+- The wordmark, typefaces, sol palette and star field follow the
+  [Mission Control Site](https://github.com/pmark/mission-control-site).
+  Field Notes keeps the sky running between the index and articles and restores
+  the camera pose on a same-tab reload. The AMC-style icon toggle controls the
+  interface theme independently of the sky clock.
+  Three.js is loaded from a version-pinned CDN when motion is enabled.
+
+## Topics and canonical URLs
+
+Give each article one to three distinct lowercase topic slugs in its front
+matter, for example `tags: [agent-workflows, testing]`. Reuse existing slugs
+when they fit. The build rejects missing or malformed tags on otherwise
+approved posts. The Topic Atlas at `/tags/` groups published posts by their
+tags and sizes each label by the number of posts in that topic. The topic
+counts and links update on the next build when an article is added, retagged,
+or withdrawn.
+
+Keep the intended `canonical` URL in the source metadata. The Pages layout
+generates the HTML canonical link from the public page URL, including the
+`/arcadia` base path.
 
 ## One-time operator setup (not done by the build)
 

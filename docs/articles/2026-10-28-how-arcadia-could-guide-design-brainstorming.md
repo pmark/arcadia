@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/how-arcadia-could-guide-design-brainstor
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/how-arcadia-could-guide-design-brainstorming/"
 channels: [site, rss]
+tags: [interface-design, agent-workflows, experiments]
 ---
 
 # How Arcadia could guide design brainstorming
@@ -17,9 +18,7 @@ channels: [site, rss]
 On 2026-10-28 the operator raised an idea: Arcadia should help with
 brainstorming a design by using the established practices of the design field,
 whether that is a game, a website, an app or a song, and the list of fields
-should have no fixed end. This note describes the proposal that came out of
-that idea. It is a proposal only. No design facility exists in Arcadia today,
-and nothing below should be read as a feature you can use.
+should have no fixed end. This note describes the proposed durable facilitation workflow. Arcadia's [design skill](../../.agents/skills/arcadia-design/SKILL.md) can guide a bounded design session and prepare Agent Ask previews. The field-neutral workflow below remains a design proposal.
 
 ## What the rehearsals found, in short
 
@@ -216,7 +215,7 @@ persona, one game persona) then "passed with changes", leading to revision 4:
 
 ## What is not done
 
-- **Nothing is built.** There is no Plan, Action, Decision or code. Revision 4
+- **The proposed workflow has no implementation proof in this record.** Revision 4
   was submitted as Agent Ask request
   `proposal-field-neutral-design-guidance-2026-10-28` and accepted on
   2026-10-28 as preserved evidence only. Nothing about the plan or queue changed.
@@ -241,5 +240,4 @@ persona, one game persona) then "passed with changes", leading to revision 4:
 - **Open Phase 2 questions include:** where a brief lives before a Project exists, the
   field-guide format and home, the surface for viewing a brief, and how owners
   who are not Arcadia operators are named.
-- **Not for publication yet.** No public pull request pins these claims, so
-  this draft is not eligible for Field Notes under Decision 0120.
+- **Publication remains on hold.** [PR #1869](https://github.com/pmark/arcadia/pull/1869) preserves the article and rehearsal material. Its evidence consists of simulations and relayed records. A milestone claim needs a real walk-through with independently checkable evidence.

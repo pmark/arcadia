@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type {
   CodingAgentAvailabilityRecord,
   CodingAgentAvailabilitySnapshot
@@ -52,7 +52,12 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
   }
   delete process.env.ARCADIA_CAPACITY_RECEIPTS_PATH;
-  delete process.env.ANTHROPIC_API_KEY;
+  for (const name of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "anthropic_api_key", "OPENAI_API_KEY", "CODEX_API_KEY"]) delete process.env[name];
+});
+
+beforeEach(() => {
+  // Hermetic: the host's own billing variables must not decide a fixture's policy.
+  for (const name of ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "OPENAI_API_KEY", "CODEX_API_KEY"]) delete process.env[name];
 });
 
 function scratch(): string {
@@ -371,6 +376,7 @@ describe("refresh is bounded and spends no tokens", () => {
 
     expect(imports.sort()).toEqual([
       "../intent/registries.js",
+      "../spend/billingEnv.js",
       "./adapters.js",
       "./availability.js",
       "./availability.js",
@@ -786,5 +792,88 @@ describe("the spend budget check is hermetic", () => {
     }
     expect(calls).toEqual([]);
     expect(createHash("sha256").update(readFileSync(configFile)).digest("hex")).toBe(before);
+  });
+});
+
+describe("admission refuses paid usage from every policy source", () => {
+  it("refuses an observed paid policy (an API credential) even with a fresh, roomy window", () => {
+    process.env.ANTHROPIC_API_KEY = "sk-fixture-sentinel";
+    const decision = decisionFor("claude-code-cli");
+    expect(decision).toMatchObject({ admitted: false, code: "usage_policy_paid" });
+    expect(decision.receipt.usagePolicy).toBe("paid");
+    // The refusal names the mechanism, never the variable's value.
+    expect(decision.reason).not.toContain("sk-fixture-sentinel");
+  });
+
+  it("counts an empty or blank key as absent and a lowercase name as present", () => {
+    process.env.ANTHROPIC_API_KEY = "";
+    process.env.ANTHROPIC_AUTH_TOKEN = "   ";
+    expect(decisionFor("claude-code-cli")).toMatchObject({ admitted: true, code: null });
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    process.env.ANTHROPIC_API_KEY = "";
+    process.env.ANTHROPIC_AUTH_TOKEN = "sk-token-fixture";
+    expect(decisionFor("claude-code-cli")).toMatchObject({ admitted: false, code: "usage_policy_paid" });
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
+    process.env.anthropic_api_key = "sk-lower-fixture";
+    expect(decisionFor("claude-code-cli")).toMatchObject({ admitted: false, code: "usage_policy_paid" });
+  });
+
+  it("refuses Codex purchased credits even beside a plan window, and unlimited credits too", () => {
+    expect(decisionFor("codex-cli", { credits: { hasCredits: true, unlimited: false, balance: "12.50" } }))
+      .toMatchObject({ admitted: false, code: "usage_policy_paid" });
+    expect(decisionFor("codex-cli", { credits: { hasCredits: false, unlimited: true, balance: null } }))
+      .toMatchObject({ admitted: false, code: "usage_policy_paid" });
+    // Zero credits stay included.
+    expect(decisionFor("codex-cli", { credits: { hasCredits: false, unlimited: false, balance: "0" } }))
+      .toMatchObject({ admitted: true });
+  });
+
+  it("refuses Codex when an OpenAI API credential is set, and an empty one is absent", () => {
+    process.env.OPENAI_API_KEY = "";
+    expect(decisionFor("codex-cli")).toMatchObject({ admitted: true });
+    process.env.CODEX_API_KEY = "sk-codex-fixture";
+    expect(decisionFor("codex-cli")).toMatchObject({ admitted: false, code: "usage_policy_paid" });
+  });
+
+  it("refuses an operator_config receipt whose policy is paid, even though that source admits everything else", () => {
+    const unmetered = buildProviderCapacityReceipt({ providerId: "claude-code-cli", profiles, record: null, now: NOW, unmetered: true });
+    expect(evaluateCapacityAdmission(unmetered, NOW)).toMatchObject({ admitted: true });
+    const paid = { ...unmetered, usagePolicy: "paid" as const, usagePolicyReason: "fixture paid policy" };
+    expect(paid.source).toBe("operator_config");
+    expect(evaluateCapacityAdmission(paid, NOW)).toMatchObject({ admitted: false, code: "usage_policy_paid" });
+  });
+
+  it("refuses the unmetered workspace configuration when an API credential makes the provider paid", () => {
+    process.env.ANTHROPIC_API_KEY = "sk-unmetered-fixture";
+    const observed = observeProviderCapacity(profiles, { now: NOW, snapshot: snapshot([]), unmeteredProvider: "all" });
+    const claude = observed.providers.find((entry) => entry.providerId === "claude-code-cli")!;
+    expect(claude.receipt.source).toBe("operator_config");
+    expect(claude).toMatchObject({ admitted: false, code: "usage_policy_paid" });
+    expect(observed.providers.find((entry) => entry.providerId === "codex-cli")).toMatchObject({ admitted: true });
+  });
+
+  it("refuses an operator attestation whose policy is paid", () => {
+    const store: OperatorCapacityReceiptStore = {
+      version: 1,
+      receipts: {
+        "gemini-cli": {
+          providerId: "gemini-cli", grantedBy: "operator", usagePolicy: "paid",
+          windows: [{ label: "daily", usedPercentage: 10, remainingPercentage: 90, resetsAt: null }],
+          note: null, recordedAt: NOW.toISOString(), expiresAt: "2026-09-06T16:00:00.000Z"
+        }
+      }
+    };
+    const observed = observeProviderCapacity(
+      [profile("gemini_build", "gemini-cli", "build", "workspace-write")],
+      { now: NOW, snapshot: snapshot([]), operatorReceipts: store }
+    );
+    expect(observed.providers[0].receipt.source).toBe("operator_receipt");
+    expect(observed.providers[0]).toMatchObject({ admitted: false, code: "usage_policy_paid" });
+  });
+
+  it("keeps refusing a paid policy through the admission selector", () => {
+    process.env.ANTHROPIC_API_KEY = "sk-selector-fixture";
+    const observed = observeProviderCapacity(profiles, { now: NOW, snapshot: snapshot([record("claude-code-cli")]) });
+    expect(observed.providers.find((entry) => entry.providerId === "claude-code-cli")).toMatchObject({ admitted: false, code: "usage_policy_paid" });
   });
 });

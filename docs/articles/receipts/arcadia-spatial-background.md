@@ -1,5 +1,11 @@
 # Design draft evidence for Arcadia spatial background
 
+## Editorial refresh, 2026-11-09
+
+Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The draft distinguishes the [workspace scaffold #1427](https://github.com/pmark/arcadia/pull/1427) from the separately released [Field Notes Canyon Pass #2385](https://github.com/pmark/arcadia/pull/2385). The [site contract](../../../site/README.md) describes the still fallback. The proposed spatial context behavior remains a concept.
+
+The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
+
 - Type: essay, design concept.
 - Article: docs/articles/2026-10-14-arcadia-spatial-background.md.
 - Source: the operator's request in this conversation to describe a lightweight SVG background with apparent depth, proposal-to-Action transitions, hierarchical zoom, and navigation establishing context; followed by the explicit destination `@docs/articles`.

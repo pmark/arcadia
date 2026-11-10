@@ -14,6 +14,11 @@ later.
 Arcadia is also a local-first project operating system for people juggling
 multiple creative, technical, and entrepreneurial efforts at the same time.
 
+**Explore Arcadia:**
+
+- [Field Notes](https://pmark.github.io/arcadia/) — the Arcadia blog.
+- [Arcadia Mission Control](https://ArcadiaMissionControl.com) — guides, explainers, and articles about Arcadia.
+
 **New here? Read [How Arcadia Works](docs/operating-model.md)** — what problem it
 solves, why plans live in your repositories rather than in Arcadia, and what is
 built versus still proposed.

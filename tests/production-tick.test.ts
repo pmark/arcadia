@@ -34,15 +34,18 @@ import {
   MECHANICAL_TRANSITIONS,
   normalizeProductionScope,
   PRODUCTION_CONTROL_DEADLINES,
+  readDayGrantEvidence,
   SIGN_IN_FAILURE_HOLD_MS,
   type ProductionScope
 } from "../src/production/policy.js";
+import { isFailedBatch } from "../src/operatorActions/startRunDayGrant.js";
 import {
   ensureProductionTickTables,
   runManagedProductionTick,
   resetProductionRepairBudget,
   listRecentBaseBranchAdvances,
   listLaunchBlockers,
+  recordSpendLaunchBlocker,
   listOperatorEscalations,
   listProductionAttemptTokens,
   BASE_BRANCH_OBSERVATION_FAILURE_RETRY_MS
@@ -309,6 +312,51 @@ describe("runManagedProductionTick", () => {
       expect(pings()).toHaveLength(1);
       expect(pings()[0].kind).toBe("attention");
       expect(pings()[0].message).toContain("1 merged");
+    });
+
+    it("announces scope complete once when the Plan's last in-scope Action merged and the Plan has no current_action (Issue #2273)", () => {
+      const fixture = preparedFixture({ secondAction: true, skipPacket: true });
+      const tmux = new FakeTmux();
+      // The finished-Plan shape: every Action done, the Plan complete, no pointer in PROJECT.md or the Plan.
+      const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replaceAll("status: open", "status: done")
+        .replace("status: active", "status: complete").replace("current_action: define-contract\n", ""));
+      const projectPath = path.join(fixture.repo, "PROJECT.md");
+      writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace("current_action: define-contract\n", ""));
+      activateActions(fixture, ["test-project/define-contract", "test-project/second-action"]);
+      const events = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+        db.prepare("SELECT payload_json FROM events WHERE event_type = 'managed_production.scope_complete'").all()) as Array<{ payload_json: string }>;
+      const pings = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+        db.prepare("SELECT message, kind FROM operator_pings WHERE message LIKE 'Production scope complete%'").all()) as Array<{ message: string; kind: string }>;
+
+      tickOnce(fixture, tmux);
+      tickOnce(fixture, tmux);
+
+      expect(tmux.launches).toHaveLength(0);
+      expect(events()).toHaveLength(1);
+      expect(JSON.parse(events()[0].payload_json)).toMatchObject({ projectSlug: "test-project", merged: 2, escalated: 0 });
+      expect(pings()).toHaveLength(1);
+      expect(pings()[0].message).toContain("2 merged");
+      // The day-grant evidence reads that event as the batch's scope-complete record (a clean batch, not a failed one).
+      const evidence = withReadOnlyDatabase(fixture.workspace, (db) => readDayGrantEvidence(db, "1970-01-01T00:00:00.000Z"));
+      const scoped = evidence.activations.at(-1)!;
+      expect(scoped.scopeComplete).toEqual({ merged: 2, escalated: 0 });
+      expect(isFailedBatch({ admitted: 1, scopeComplete: scoped.scopeComplete })).toBe(false);
+    });
+
+    it("announces nothing for a finished Plan while an in-scope Action is still open (Issue #2273)", () => {
+      const fixture = preparedFixture({ secondAction: true, skipPacket: true });
+      const tmux = new FakeTmux();
+      const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+      writeFileSync(planPath, readFileSync(planPath, "utf8").replace("current_action: define-contract\n", ""));
+      const projectPath = path.join(fixture.repo, "PROJECT.md");
+      writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace("current_action: define-contract\n", ""));
+      activateActions(fixture, ["test-project/define-contract", "test-project/second-action"]);
+
+      tickOnce(fixture, tmux);
+
+      expect(withReadOnlyDatabase(fixture.workspace, (db) =>
+        db.prepare("SELECT COUNT(*) AS n FROM events WHERE event_type = 'managed_production.scope_complete'").get())).toEqual({ n: 0 });
     });
 
     it.each(["repair_budget_exhausted", "operator_gate_pending", "environment_wall"])(
@@ -1947,6 +1995,22 @@ describe("runManagedProductionTick", () => {
     }
     expect(tmux.launches).toHaveLength(0);
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))).toBeNull();
+  });
+
+  it("records a spend refusal as a launch blocker without a repair attempt or a ping, and only for spend codes (review-repair catch)", () => {
+    const fixture = preparedFixture();
+    const at = fixture.now;
+    withDatabase(fixture.workspace, (db) => {
+      ensureProductionTickTables(db);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "capacity_refused", reason: "x", actionKey: "test-project/a", at })).toBe(false);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: null, reason: "x", actionKey: null, at })).toBe(false);
+      expect(listLaunchBlockers(db)).toEqual([]);
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "spend_risk", reason: "risk (api_key_helper)", actionKey: "test-project/a", at })).toBe(true);
+      expect(listLaunchBlockers(db)[0]).toMatchObject({ projectSlug: "test-project", code: "spend_risk" });
+      expect(recordSpendLaunchBlocker(db, { projectSlug: "test-project", code: "spend_unknown", reason: "unknown", actionKey: "test-project/a", at })).toBe(true);
+      expect(listLaunchBlockers(db)[0]).toMatchObject({ code: "spend_unknown" });
+      expect(db.prepare("SELECT COUNT(*) AS n FROM operator_pings").get()).toEqual({ n: 0 });
+    });
   });
 
   it("names a stale Claude reading whose read-only refresh was rejected (Decision 0130): durable blocker, one deduped sign-in ping", () => {

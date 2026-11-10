@@ -13,7 +13,7 @@ Nothing was closed or relabelled, and no Plan, pointer or queue moved. As the re
 5. **Bugs arrive faster than a small allocation can clear them.** About 30 bug-shaped Issues filed in each of the last two weeks are still open, 11 to 12 of them S2 or worse. Much of that is review follow-ups, so what gets filed matters as much as what gets fixed.
 6. **Relay isn't yet a conversation.** The sky, overlay and routes exist. Answers, lookups, the menu, the server thread, and any way to answer or stop from Relay don't. Six new defects and 15 proposals now hold the gaps ([inventory](#relay-gap-inventory)).
 
-**Owen was not launched.** OpenCode here is metered API-key billing (Decision 0118's rationale; local stats show $0.60 over 7 sessions in 30 days). No Decision covers it for triage, and the brief said to stop and report rather than work around that. The mechanical pass ran on Claude Haiku helpers instead, which is a different model from the one the operator asked for. See [How this was done](#how-this-was-done).
+**Owen was not launched, on a premise that turned out to be wrong.** I took OpenCode to be metered API-key billing from Decision 0118's rationale, found no Decision covering it for triage, and held it, as the brief said to for new spend. The operator corrected this on 2026-11-09: OpenCode works exactly like the Codex and Claude Code plans, with tokens allocated weekly. Whether that changes any approval gate is the operator's call, proposed in `correct-decision-0118-opencode-plan-premise-20261109`. The mechanical pass ran on Claude Haiku helpers instead, which isn't the agent the operator asked for. Arcadia still has no probe for remaining OpenCode allowance. See [How this was done](#how-this-was-done).
 
 ## Ranked batches
 

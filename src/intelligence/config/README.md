@@ -20,7 +20,11 @@ This stays:
 - one local LiteLLM endpoint
 - a small in-code route registry, not a generic rules engine
 - paid usage gated per-request via `executionPolicy.allowPaidUsage`, never
-  an automatic fallback
+  an automatic fallback, and refused by default: a `requiresPaidUsage` route
+  also needs a `paidUsageDecision` id that appears in
+  `approvedPaidUsageDecisionIds` (checked-in allowlist; Decision documents are
+  not read at runtime). Only cloud text `fast` is bound, to Decision 0126
+  (explicit PR TLDRs); anything else fails `paid_usage_not_allowed`
 - one retry maximum
 - SQLite-backed durable jobs
 - independent bounded execution pools, with conservative local concurrency

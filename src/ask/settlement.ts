@@ -664,11 +664,15 @@ export function settleAgentAsk(db: Database.Database, input: {
             const projectBefore = readFileSync(projectPath, "utf8");
             const previousBefore = readFileSync(activePlanPath, "utf8");
             const updated = today();
+            const previousPlanFinished = plan.status === "complete";
             fileMutations.push(
               { path: projectPath, before: projectBefore, after: setTopLevelFields(projectBefore, {
                 active_plan: target.slug, current_action: selected.id, milestone: target.milestone ?? proposal.normalized.desiredResult, updated
               }) },
-              { path: activePlanPath, before: previousBefore, after: setTopLevelFields(previousBefore, { status: "draft", current_action: null, updated }) },
+              // A finished Plan keeps `status: complete` (Issue #2278); only an unfinished one returns to draft.
+              { path: activePlanPath, before: previousBefore, after: setTopLevelFields(previousBefore, {
+                status: previousPlanFinished ? "complete" : "draft", current_action: null, updated
+              }) },
               { path: targetPath, before, after: setTopLevelFields(before, {
                 status: "active", current_action: selected.id, recommended_model: input.model,
                 recommended_reasoning_effort: input.effort ?? null, updated
@@ -683,7 +687,9 @@ export function settleAgentAsk(db: Database.Database, input: {
             arrangeQueue = true;
             actionIdsToValidate.push(selected.id);
             effects.push(`Activated Plan ${target.slug}; selected ${queueActionKey} with ${input.model}${input.effort ? ` / ${input.effort}` : ""}.`);
-            effects.push(`Returned Plan ${plan.slug} to draft without changing any Action completion state.`);
+            effects.push(previousPlanFinished
+              ? `Kept finished Plan ${plan.slug} at status complete without changing any Action completion state.`
+              : `Returned Plan ${plan.slug} to draft without changing any Action completion state.`);
             effects.push("Replaced this Project's queue segment; preserved every other Project's relative order. Started no process.");
             const log = discovered.docs.find((doc): doc is LogDoc => doc.type === "log" && doc.project === project.slug);
             const logPath = path.join(repoRoot, log?.relativePath ?? "MISSION_LOG.md");
@@ -691,7 +697,7 @@ export function settleAgentAsk(db: Database.Database, input: {
             const appendActivation = (current: string | null): string => appendLog(current, project.slug, {
               ...proposal.normalized,
               desiredResult: `Activated ${target.slug} at ${selected.id}.`,
-              rationale: `Operator-settled Plan transition. Previous Plan ${plan.slug} remains draft with completion state preserved. ${proposal.normalized.rationale ?? ""}`
+              rationale: `Operator-settled Plan transition. Previous Plan ${plan.slug} ${previousPlanFinished ? "keeps status complete" : "remains draft"} with completion state preserved. ${proposal.normalized.rationale ?? ""}`
             });
             fileMutations.push({ path: logPath, before: logBefore, after: appendActivation(logBefore), reappend: appendActivation });
             break;
@@ -2727,6 +2733,7 @@ function newDraftPlan(
     `    title: ${yamlScalar(action.desiredResult)}`,
     "    status: open",
     `    responsibility: ${responsibility}`,
+    ...(action.execution ? [`    execution: ${action.execution}`] : []),
     "    effort: session",
     `    next_action: ${yamlScalar(action.desiredResult)}`,
     `    expected_artifact: ${yamlScalar(`Evidence satisfying Agent Ask ${action.id}`)}`,

@@ -1,3 +1,4 @@
+import type { LaunchSpendDeps } from "../spend/spendGuard.js";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -124,6 +125,8 @@ export interface ManagedProductionTickOptions {
   agentWorktreeRoot?: string;
   /** Test-only override for the provider sign-in preflight; defaults to `checkProviderSignIn`. */
   providerSignIn?: (provider: string, workspace: string) => ProviderSignInStatus | null;
+  /** Seams for the launch spend check (a fixed report in replays and tests); omitted, the real host probes run and only clear launches. */
+  spendCheck?: LaunchSpendDeps;
   /**
    * Pre-launch Session capability preflight (workspace write, host validation,
    * preservation). Any wall refuses the launch before a Session is prepared, so
@@ -1149,6 +1152,10 @@ function outOfScopePointerHold(
  * done and the pointer has moved out of scope, so the worker will never
  * launch again under this policy. One attention ping per policy revision (an
  * event row is the dedup record) tells the operator to turn production Off.
+ *
+ * A Plan whose last Action just merged has no `current_action` at all (Issue
+ * #2273), so there is no pointer to read: a null `planSlug` names the Project's
+ * checked-in `active_plan`, and the same every-in-scope-Action-done test decides.
  */
 function announceScopeComplete(
   db: Database.Database,
@@ -1156,10 +1163,14 @@ function announceScopeComplete(
 ): void {
   try {
     const read = readProductionPolicySafely(db);
-    if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope || input.planSlug === null) return;
+    if (read.status !== "ok" || read.policy.desiredState !== "active" || !read.policy.scope) return;
     const scopeKeys = read.policy.scope.actions.filter((key) => key.startsWith(`${input.projectSlug}/`));
     if (scopeKeys.length === 0) return;
-    const plan = discoverDocs(input.repoRoot).docs.find((doc) => doc.type === "plan" && doc.project === input.projectSlug && doc.slug === input.planSlug);
+    const docs = discoverDocs(input.repoRoot).docs;
+    const projectDoc = docs.find((doc) => doc.type === "project" && doc.slug === input.projectSlug);
+    const planSlug = input.planSlug ?? (projectDoc?.type === "project" ? projectDoc.activePlan : null) ?? null;
+    if (planSlug === null) return;
+    const plan = docs.find((doc) => doc.type === "plan" && doc.project === input.projectSlug && doc.slug === planSlug);
     if (plan?.type !== "plan") return;
     const done = new Set(plan.actions.filter((action) => action.status === "done").map((action) => `${input.projectSlug}/${action.id}`));
     if (!scopeKeys.every((key) => done.has(key))) return;
@@ -2606,6 +2617,7 @@ function attemptReviewRepairLaunch(
           capacityObservation: input.options.capacityObservation,
           agentWorktreeRoot: input.options.agentWorktreeRoot,
           providerSignIn: input.options.providerSignIn,
+          spendCheck: input.options.spendCheck,
           workerCapability: ownWorkerCapability(input.options),
           onProviderSignInConfirmed: () => clearLaunchBlocker(db, input.projectSlug)
         });
@@ -2627,6 +2639,9 @@ function attemptReviewRepairLaunch(
     const code = error instanceof ArcadiaError && typeof error.details?.code === "string" ? error.details.code : null;
     const message = error instanceof Error ? error.message : String(error);
     if (error instanceof ArcadiaError && error.details?.conflict) {
+      // A spend refusal (risk or unknown) is durable like any launch blocker: record it, exactly as the ordinary launch
+      // path does. It is not a failed repair attempt, and liveness owns paging, so no ping here.
+      recordSpendLaunchBlocker(db, { projectSlug: input.projectSlug, code, reason: message, actionKey, at: input.now });
       const line = `Review repair launch refused for ${actionKey}${code ? ` [${code}]` : ""}: ${message}`;
       if (recordLaunchRefusalIfNew(db, actionKey, `review-repair:${code ?? message}`, line, input.now)) input.log(line);
       return { attempted: true, outcome: "refused", reason: message, actionKey };
@@ -2670,6 +2685,12 @@ function attemptProjectLaunch(
   }
 
   let transition = resolveProjectTransition({ repoRoot: input.repoRoot, projectSlug: input.projectSlug, db, tmux: input.tmux, supersededCompletionAskIds: resumedSessionSupersededAskIds(db, input.repoRoot, input.projectSlug, input.tmux) });
+  // Issue #2273: a Plan whose last Action merged names no Action, so neither the
+  // out-of-scope-pointer branch below nor any later one is reached. Announce before
+  // the successor-activation attempt, which an Active scope over this Plan holds.
+  if (!transition.dispatch.context) {
+    announceScopeComplete(db, { repoRoot: input.repoRoot, projectSlug: input.projectSlug, planSlug: null, now: input.now, log: input.log });
+  }
   if (transition.kind === "activate" && transition.activation?.candidate) {
     // Decision 0048: the active Plan cannot continue, but the explicit queue
     // names exactly one approved Plan and Action. Activate it in this same tick
@@ -2928,6 +2949,7 @@ function attemptProjectLaunch(
       capacityObservation: input.options.capacityObservation,
       agentWorktreeRoot: input.options.agentWorktreeRoot,
       providerSignIn: input.options.providerSignIn,
+          spendCheck: input.options.spendCheck,
       // The launch re-runs the same preflight with the selected profile's
       // sandbox, which this tick's profile-less preflight cannot see.
       workerCapability: ownWorkerCapability(input.options),
@@ -2972,7 +2994,8 @@ function attemptProjectLaunch(
       const claudeUsageRemedy = claudeUsageUnreadable
         ? `Claude usage could not be read (${describeClaudeUsageRefreshState(claudeUsageRefreshState)}) The worker asks the Claude CLI to refresh its own sign-in at most every 30 minutes; if that keeps failing, sign in to Claude Code again on this host.`
         : null;
-      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing") {
+      // A spend refusal (risk or unknown) is durable for the same reason: only a fix on the host clears it.
+      if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing" || rawCode === "spend_risk" || rawCode === "spend_unknown") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
       } else if (claudeUsageRemedy) {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode!, reason: `${error.message} ${claudeUsageRemedy}`, actionKey, at: input.now });
@@ -3002,6 +3025,8 @@ function attemptProjectLaunch(
         // A signed-out or expired provider login is the operator's to fix on the
         // host: ping once per refusal episode (the refusal log dedupes the episode,
         // the ping queue dedupes the message), naming the provider and remedy.
+        // Spend risk records the durable blocker above but never pings here: the liveness
+        // timer owns spend paging (one page per verified episode), so one episode pages once.
         if (rawCode === "provider_not_signed_in" || claudeUsageRemedy) {
           try {
             queueOperatorPing(db, {
@@ -3694,6 +3719,16 @@ export interface LaunchBlockerRecord {
  * existing only as a line in the worker log. Overwrites any prior blocker for
  * the same Project: only the current reason is durable, not a history.
  */
+/** Records a launch blocker for a spend refusal (`spend_risk` or `spend_unknown`) only; no repair attempt and no ping. Returns whether it recorded. */
+export function recordSpendLaunchBlocker(
+  db: Database.Database,
+  input: { projectSlug: string; code: string | null; reason: string; actionKey: string | null; at: Date }
+): boolean {
+  if (input.code !== "spend_risk" && input.code !== "spend_unknown") return false;
+  recordLaunchBlocker(db, { ...input, code: input.code });
+  return true;
+}
+
 function recordLaunchBlocker(
   db: Database.Database,
   input: { projectSlug: string; code: string; reason: string; actionKey: string | null; at: Date }

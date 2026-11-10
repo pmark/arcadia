@@ -29,6 +29,7 @@ import {
 } from "../src/sessions/index.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
+import { billingUnsetArgs, type LaunchSpendDeps } from "../src/spend/spendGuard.js";
 
 const roots: string[] = [];
 
@@ -53,6 +54,37 @@ class FakeTmux implements TmuxAdapter {
 }
 
 describe("tmux-backed Sessions", () => {
+  describe("go --launch spend check", () => {
+    const report = (verdict: "risk" | "unknown") => (id: "claude" | "codex" | "opencode") => ({
+      verdict,
+      providers: [{ id, verdict, codes: verdict === "risk" ? ["extra_usage_enabled" as const] : [], probes: verdict === "unknown" ? [{ id: "extra_usage_enabled", status: "unknown" as const, reason: "source_missing" as const }] : [] }],
+      warnings: [], checkedAt: "2026-11-10T00:00:00.000Z"
+    });
+    it.each([["risk", "spend_risk", "extra_usage_enabled"], ["unknown", "spend_unknown", "extra_usage_enabled:source_missing"]] as const)(
+      "refuses a %s verdict before any worktree, claim or process, headless or interactive",
+      (verdict, code, named) => {
+        for (const interactive of [false, true]) {
+          const fixture = preparedFixture();
+          const tmux = new FakeTmux();
+          let caught: unknown;
+          try { launch(fixture, tmux, "refused", { interactive, spendCheck: { report: report(verdict) } }); } catch (error) { caught = error; }
+          expect(caught, `interactive=${interactive}`).toBeInstanceOf(ArcadiaError);
+          expect((caught as ArcadiaError).details).toMatchObject({ code, conflict: true });
+          expect((caught as ArcadiaError).message).toContain(named);
+          expect(tmux.launches).toHaveLength(0);
+          expect(existsSync(path.join(fixture.root, "refused"))).toBe(false);
+        }
+      }
+    );
+    it("launches on a clear verdict", () => {
+      const fixture = preparedFixture();
+      const tmux = new FakeTmux();
+      const clear = (id: "claude" | "codex" | "opencode") => ({ verdict: "clear" as const, providers: [{ id, verdict: "clear" as const, codes: [], probes: [] }], warnings: [], checkedAt: "2026-11-10T00:00:00.000Z" });
+      launch(fixture, tmux, "clear", { spendCheck: { report: clear } });
+      expect(tmux.launches).toHaveLength(1);
+    });
+  });
+
   it("clears operator context only at the newly governed Session process boundary", () => {
     vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", "dispatch-button");
     vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", "/operator/dispatch-button.json");
@@ -125,7 +157,7 @@ describe("tmux-backed Sessions", () => {
     });
     expect(tmux.launches).toHaveLength(1);
     expect(tmux.launches[0].command).toBe("env");
-    expect(tmux.launches[0].args.slice(6, 10)).toEqual([
+    expect(tmux.launches[0].args.slice(6 + billingUnsetArgs().length, 10 + billingUnsetArgs().length)).toEqual([
       "GIT_AUTHOR_NAME=Claudia Mason",
       "GIT_AUTHOR_EMAIL=claudia.mason@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Claudia Mason",
@@ -183,7 +215,7 @@ describe("tmux-backed Sessions", () => {
     expect(result.data.session?.provider_session_id).toBe(result.data.session?.id);
     expect(tmux.launches).toHaveLength(1);
     expect(tmux.launches[0].command).toBe("env");
-    expect(tmux.launches[0].args.slice(6, 10)).toEqual([
+    expect(tmux.launches[0].args.slice(6 + billingUnsetArgs().length, 10 + billingUnsetArgs().length)).toEqual([
       "GIT_AUTHOR_NAME=Cody Mason",
       "GIT_AUTHOR_EMAIL=cody.mason@agents.arcadia.local",
       "GIT_COMMITTER_NAME=Cody Mason",
@@ -529,7 +561,7 @@ describe("tmux-backed Sessions", () => {
   });
 });
 
-function launch(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, suffix = "launch", extra: { interactive?: boolean; preflightEnv?: NodeJS.ProcessEnv } = {}) {
+function launch(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, suffix = "launch", extra: { interactive?: boolean; preflightEnv?: NodeJS.ProcessEnv; spendCheck?: LaunchSpendDeps } = {}) {
   return runGoCommand({
     ...extra,
     repo: fixture.repo,

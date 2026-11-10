@@ -1441,8 +1441,8 @@ To activate an existing draft Plan, preview a `plan` Ask targeting
 `--action <id>`, `--model <model-id>`, optional `--effort high`, and
 `--top` (or `--before`/`--after`). Apply requires the same options and
 exact preview fingerprint. The writer changes the Project milestone and both
-pointers, returns the previous Plan to draft without claiming completion, and
-replaces only that Project's queue segment. An ineligible first Action or
+pointers, returns an unfinished previous Plan to draft without claiming completion
+(a previous Plan already marked complete stays complete), and replaces only that Project's queue segment. An ineligible first Action or
 unreconciled Project Session refuses activation. Activation starts no process
 and grants no merge, deployment, spending or unattended-production authority.
 Select a model supported by the agent that will launch the next session.
@@ -2102,7 +2102,11 @@ whose earliest eligible Action is highest in the explicit Action queue, makes
 that Action current, and continues in the same invocation — seeding a
 one-time, reversible FIFO order first when approved legacy Actions have never
 been ordered. A genuine queue tie, an inactive Project, or a document defect
-still refuses. See Decision 0048. If the checked-out base itself is ahead and behind its
+still refuses. See Decision 0048. When an Active production scope covers the
+finished Plan, that activation is held until production is Off: press "Turn
+production Off" on /production, then run `arcadia go --apply --agent <agent>`
+(omit `--apply` to preview) to activate the successor Plan; it is one explicit
+step, and the scope-drift refusals and alerts name it. If the checked-out base itself is ahead and behind its
 remote, the host controller admits only recognized Arcadia-generated
 governance commits, one complete merge base, and a conflict-free result. It
 fetches that one upstream into an isolated controller ref, writes one
@@ -4037,7 +4041,7 @@ Without `--refresh` it makes no provider request and labels Claude's cached
 windows as credential-context-unverified. `--refresh` makes one bounded usage
 read each for Claude and Codex without writing the shared production telemetry
 or inheriting its cooldown. It reports actual request attempts, timestamps,
-HTTP/transport/parse outcomes and allowance windows. OpenCode account allowance stays unknown. Its optional local session usage is
+HTTP/transport/parse outcomes and allowance windows. OpenCode is a plan with a weekly token allocation, like Codex and Claude Code (see `docs/model-selection.md`), but Arcadia can't read how much remains, so its account allowance stays unknown. Its optional local session usage is
 reported separately and never supplies production allowance windows.
 
 Claude normally selects environment, file, then Keychain. Use

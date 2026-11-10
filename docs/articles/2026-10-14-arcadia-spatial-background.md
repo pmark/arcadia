@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/arcadia-spatial-background.md"
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/arcadia-spatial-background/"
 channels: [site, rss]
+tags: [interface-design]
 ---
 
 # Arcadia spatial background and conversational context
@@ -17,6 +18,8 @@ channels: [site, rss]
 Arcadia should give you a persistent sense of where your work lives. Behind the conversation sits a quiet, navigable vector landscape: your current Action, its Plan, its Project, and the wider portfolio.
 
 The central idea is simple: **navigate to the context, then speak within it.** You spend less time explaining which Project or Plan you mean because your location already establishes that scope.
+
+**November 9 update.** Field Notes now has Canyon Pass, a moving landscape behind the blog with a still fallback for reduced motion. It is a separate release. The workspace idea here gives navigation a different job: selecting a Plan or Action would set the scope of a conversation. [Field Notes implementation](../../site/README.md) · [Canyon Pass release](https://github.com/pmark/arcadia/pull/2385)
 
 ## One conversation with room to create
 
@@ -92,6 +95,6 @@ The first prototype can stage creation previews and simplify the sky, but it mus
 
 ## What is not done
 
-This is a design concept. Rendering, layout, scope assembly, accessibility, and proposal transitions have not been implemented or validated by this draft. The first prototype should be revisited when the spatial navigation concept is selected for design work; it should use a small fixture hierarchy before connecting to live records.
+A conversational workspace and context-navigation scaffold merged in [PR #1427](https://github.com/pmark/arcadia/pull/1427). The proposed portfolio landscape, motion tied to proposal transitions, and end-to-end contextual conversation still need proof. The first prototype should be revisited when the spatial navigation concept is selected for design work; it should use a small fixture hierarchy before connecting to live records.
 
 The deeper product idea is that **location becomes part of the conversation**. Arcadia carries the surrounding context while you concentrate on what you want to happen.

@@ -4,7 +4,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const execFileSyncMock = vi.fn();
-vi.mock("node:child_process", () => ({
+vi.mock("node:child_process", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("node:child_process")>()),
   execFileSync: (...args: unknown[]) => execFileSyncMock(...args)
 }));
 
@@ -12,7 +13,8 @@ import { checkProviderSignIn, parseClaudeCredentialState } from "../src/codingAg
 import { getWorkspacePaths } from "../src/workspace/paths.js";
 
 /** Hermetic default: never read this host's real keychain or credentials file. */
-const NO_STORE = { readCredentialState: () => ({ status: "unknown" as const }) };
+const NO_STORE = { readCredentialState: () => ({ status: "unknown" as const }), skipSpend: true };
+/** These tests exercise sign-in only; the spend check has its own file (spend-enforcement.test.ts). */
 
 /**
  * `checkProviderSignIn`'s claude-code-cli probe is a no-op under `VITEST`
@@ -88,7 +90,7 @@ describe("checkProviderSignIn", () => {
     type State = { status: "ok"; hasRefreshToken: boolean } | { status: "unknown" };
     const check = (readCredentialState: () => State, e = env) => {
       execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: true }));
-      return withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, e, { readCredentialState }));
+      return withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, e, { readCredentialState, skipSpend: true }));
     };
 
     it("admits a stored credential with a refresh token, even when its access token has expired", () => {
@@ -115,7 +117,7 @@ describe("checkProviderSignIn", () => {
     it("keeps the CLI loggedIn:false refusal", () => {
       execFileSyncMock.mockReturnValue(JSON.stringify({ loggedIn: false }));
       const read = vi.fn((): State => ({ status: "ok", hasRefreshToken: true }));
-      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, env, { readCredentialState: read }));
+      const result = withoutVitestGuard(() => checkProviderSignIn("claude-code-cli", undefined, env, { readCredentialState: read, skipSpend: true }));
       expect(result).toMatchObject({ signedIn: false });
     });
 

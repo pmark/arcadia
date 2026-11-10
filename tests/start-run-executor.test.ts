@@ -466,7 +466,9 @@ describe("start-run executor: P0 context refusals consume nothing", () => {
     ["an operator press record parented by another process", { press: "other-parent" }, {}, true, /not parented/],
     ["an already claimed operator press record", { press: "claimed" }, {}, true, /already claimed/],
     ["an agent sandbox", {}, { CODEX_SANDBOX: "seatbelt" }, true, /host-only/],
-    ["ANTHROPIC_API_KEY set", {}, { ANTHROPIC_API_KEY: "sk-fixture" }, true, /ANTHROPIC_API_KEY is set/],
+    ["a spend check that says risk", { state: (s) => { s.spend = "risk"; } }, {}, true, /spend check is risk, not clear/],
+    ["a spend check that says unknown", { state: (s) => { s.spend = "unknown"; } }, {}, true, /spend check is unknown, not clear/],
+    ["a spend check that cannot be read", { state: (s) => { s.spend = "garbled"; } }, {}, true, /spend check is unreadable, not clear/],
     ["ARCADIA_WORKSPACE set", {}, { ARCADIA_WORKSPACE: "/elsewhere" }, true, /ARCADIA_WORKSPACE is set/],
     ["a changed descriptor", { tamper: "descriptor" }, {}, true, /independently reviewed hashes/],
     ["a changed launcher", { tamper: "script" }, {}, true, /independently reviewed hashes/],
@@ -480,6 +482,16 @@ describe("start-run executor: P0 context refusals consume nothing", () => {
     const result = b.run("run", env, actions);
     // The not-from-/actions case runs without the operator context; the others carry it.
     expectRefusedClean(b, result, "P0", reason, headBefore);
+  });
+  it("runs the spend check with the stripped launch environment, so a set billing variable alone no longer refuses P0", () => {
+    const b = box();
+    const result = b.run("run", { ANTHROPIC_API_KEY: "sk-fixture" }, true);
+    const spend = b.calls().filter((call) => call.tool === "arcadia" && call.args.slice(0, 2).join(" ") === "spend check");
+    expect(spend.length).toBeGreaterThan(0);
+    expect(spend[0].args).toEqual(expect.arrayContaining(["--provider", "claude", "--launch-env", "stripped"]));
+    // Never refused at P0 for the variable; its value is in no output.
+    expect(result.receipt?.reason ?? "").not.toMatch(/ANTHROPIC_API_KEY|sk-fixture/);
+    expect(`${result.stdout}${result.stderr}`).not.toContain("sk-fixture");
   });
   it("refuses a pressed-twice card from its consumed marker", () => {
     const b = box();

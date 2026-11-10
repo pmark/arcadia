@@ -324,6 +324,25 @@ describe("Agent Ask settlement", () => {
     expect(() => runAgentAskSettleCommand({ ...options, model: "different" })).toThrow(/different operation/);
   });
 
+  it("keeps a finished outgoing Plan complete on activation, and still returns an unfinished one to draft (Issue #2278)", () => {
+    const { workspace, repo } = activationFixture();
+    const outgoing = path.join(repo, "docs/plans/demo-plan.md");
+    writeFileSync(outgoing, readFileSync(outgoing, "utf8")
+      .replace("status: active", "status: complete").replace("    status: open", "    status: done"));
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Finish demo Plan"], { cwd: repo });
+    const options = { workspace, proposal: "activate-production", requestId: "settle-activation-finished", disposition: "accepted" as const,
+      activate: true, action: "first", model: "gpt-6-astra", top: true, revision: 1 };
+    const preview = runAgentAskSettleCommand(options);
+    const applied = runAgentAskSettleCommand({ ...options, apply: true, preview: preview.data.receipt.previewFingerprint });
+    expect(applied.data.receipt.effects.join(" ")).toContain("Kept finished Plan demo-plan at status complete");
+    expect(applied.data.receipt.effects.join(" ")).not.toContain("to draft");
+    const previous = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.slug === "demo-plan");
+    expect(previous).toMatchObject({ status: "complete", currentAction: null, actions: [expect.objectContaining({ id: "existing", status: "done" })] });
+    expect(readFileSync(outgoing, "utf8")).toContain("status: complete");
+    expect(resolveDispatch(repo, "demo").context?.activePlan).toBe("production");
+  });
+
   it("refuses incomplete activation choices and stale document previews", () => {
     const { workspace, repo } = activationFixture();
     const options = { workspace, proposal: "activate-production", requestId: "settle-activation", disposition: "accepted" as const,
@@ -1487,6 +1506,29 @@ describe("Agent Ask settlement", () => {
     });
     const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "deliver-release-readiness")!;
     expect(plan.actions.find((action) => action.id === "build-release-proof")?.why).toBe("Everything after it is judged against this proof.");
+  });
+
+  it("carries each child's declared execution route into a new draft Plan (Issue #2134)", () => {
+    const { workspace, repo } = fixture();
+    const request = draftPlanAsk("ask-draft-plan-route").replace(
+      "  - desired_result: Build release proof",
+      "  - desired_result: Build release proof\n    execution: build"
+    );
+    expect(request).toContain("execution: build");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan-route",
+      disposition: "accepted", responsibility: "agent", revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-draft-plan-route",
+      disposition: "accepted", responsibility: "agent", revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const plan = discoverDocs(repo).docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "deliver-release-readiness")!;
+    expect(plan.actions.find((action) => action.id === "build-release-proof")?.executionRoute).toBe("build");
+    expect(plan.actions.find((action) => action.id === "publish-release-guide")?.executionRoute).toBeNull();
+    expect(discoverDocs(repo).errors.filter((error) => error.relativePath === "docs/plans/deliver-release-readiness.md")).toEqual([]);
   });
 
   it("creates a complete inactive draft Plan from one plan-shaped Ask", () => {

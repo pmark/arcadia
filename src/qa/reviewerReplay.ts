@@ -328,19 +328,38 @@ function proveSubscriptionAuth(
     throw new ReplayStop("auth", messageOf(error));
   }
   const result = runCommand({ ...launch, cwd: scratch, timeoutMs: AUTH_PROBE_TIMEOUT_MS, environment: CLAUDE_REVIEWER_ROUTE.environment() });
+  const proof = classifyClaudeAuthStatus(result.stdout);
+  if (proof.kind === "unreadable") throw new ReplayStop("auth", `Could not read \`claude auth status --json\` (exit ${String(result.status)}), so subscription sign-in is unproven and no reviewer ran.`);
+  if (proof.kind === "signed_out") throw new ReplayStop("auth", "Claude Code is not signed in, and no reviewer ran. Sign in with `claude auth login`; this tool never uses an API key.");
+  if (proof.kind === "not_subscription") {
+    throw new ReplayStop("auth", `Claude Code's sign-in is not a subscription (auth method ${proof.method}, provider ${proof.provider}), so no reviewer ran. This tool never runs on paid API usage or another provider.`);
+  }
+  return proof.method;
+}
+
+export type ClaudeAuthClassification =
+  | { kind: "unreadable" }
+  | { kind: "signed_out" }
+  | { kind: "not_subscription"; method: string; provider: string }
+  | { kind: "subscription"; method: string };
+
+/**
+ * The one subscription test, shared with `arcadia spend check`: only
+ * `loggedIn`, `authMethod` and `apiProvider` are read from the status output.
+ */
+export function classifyClaudeAuthStatus(stdout: string): ClaudeAuthClassification {
   let status: { loggedIn?: unknown; authMethod?: unknown; apiProvider?: unknown };
   try {
-    status = JSON.parse(result.stdout) as typeof status;
+    status = JSON.parse(stdout) as typeof status;
   } catch {
-    throw new ReplayStop("auth", `Could not read \`claude auth status --json\` (exit ${String(result.status)}), so subscription sign-in is unproven and no reviewer ran.`);
+    return { kind: "unreadable" };
   }
-  if (status.loggedIn !== true) throw new ReplayStop("auth", "Claude Code is not signed in, and no reviewer ran. Sign in with `claude auth login`; this tool never uses an API key.");
+  if (status === null || typeof status !== "object") return { kind: "unreadable" };
+  if (status.loggedIn !== true) return { kind: "signed_out" };
   const method = typeof status.authMethod === "string" ? status.authMethod : "unknown";
   const provider = typeof status.apiProvider === "string" ? status.apiProvider : "unknown";
-  if (!SUBSCRIPTION_AUTH_METHODS.has(method) || provider !== "firstParty") {
-    throw new ReplayStop("auth", `Claude Code's sign-in is not a subscription (auth method ${method}, provider ${provider}), so no reviewer ran. This tool never runs on paid API usage or another provider.`);
-  }
-  return method;
+  if (!SUBSCRIPTION_AUTH_METHODS.has(method) || provider !== "firstParty") return { kind: "not_subscription", method, provider };
+  return { kind: "subscription", method };
 }
 
 function runOnce(input: {
