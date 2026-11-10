@@ -5,7 +5,7 @@
 - Source repository and pinned revision: `pmark/arcadia@c2859d022fe9ce165b827153491f7bf29a98473f`.
 - Evidence observed: November 10, 2026, America/Los_Angeles.
 - Intended URL: [https://pmark.github.io/arcadia/posts/what-needs-me/](https://pmark.github.io/arcadia/posts/what-needs-me/). This is metadata only; no hosted page or feed entry is claimed.
-- Release state: draft; independent fact-check, exact-head PR review, and canonical publication Decision remain pending.
+- Release state: approved by [Decision 0216](../../decisions/0216-record-the-operator-s-one-time-approval-to-publish-clara-s-what-needs-me-field.md). This authorizes the one-time article release after exact-head PR review and required checks; it does not claim that a merge, deployment, or hosted page has happened.
 
 ## Claims and evidence
 
@@ -44,11 +44,21 @@ Scores use the frozen grader: **core** = correct initial disposition and support
 
 ## Mechanical checks and independent review
 
-- Front matter identifies a draft essay, intended canonical URL, channels, receipt, unfinished-work flag, and tags `[agent-workflows, evals]`.
+- Front matter identifies an approved essay, intended canonical URL, channels, receipt, unfinished-work flag, and tags `[agent-workflows, evals]`.
 - The essay has a substantive “What is not done” section and labels the delivery scenario hypothetical, the mock non-product, and the Relay work proposed.
 - Public source links are pinned to `c2859d022fe9ce165b827153491f7bf29a98473f` where applicable.
-- Draft status is not a PASS verdict. Independent fact-check and PR review are pending; no publication claim is made.
+- The Resources page source links the original Google report and related Field Note; stage/render checks are separately recorded in the PR.
+
+## Independent review
+
+- Reviewer: separate read-only context `/root/field_note_factcheck`.
+- Reviewed article and receipt revision: `fd7f16f13c185137d9e1d7c355a207599711fa33`.
+- Reviewed article SHA-256: `22e0f59efd67327c4a6127d556a6b37f5f9e9cc069a558376e8f4004ff668be4`.
+- Reviewed claims receipt SHA-256: `a7d77814a71897c7735ac75d0975fa4882591982d7ade10f93fc6c5ac77569f7`.
+- Findings: no blocking content findings. The eight-case comparison is labelled synthetic and bounded; the mock remains distinguished from shipped functionality; the Nov 9 event details are separated; proposed capabilities and live behavior limits are explicit.
+- Verdict: PASS
+- Scope: content fact-check only, not a review of the Resources implementation or the final release commit. The reviewer held publication pending the one-time Decision, now recorded as Decision 0216. Exact-head PR review remains pending.
 
 ## Delivery handoff
 
-After a canonical publication Decision, independent fact-check and exact-head PR review, required checks, and merge, verify the hosted canonical page and full-text Atom entry before reporting publication. To withdraw a published note, change its source status through a reviewed PR and verify removal from both page and feed after deployment.
+After exact-head PR review, required checks and merge under Decision 0216, verify the hosted canonical page, the single full-text Atom entry, and the linked Resources entry before reporting publication. To withdraw a published note, change its source status through a reviewed PR and verify removal from both page, feed, and Resources index after deployment.

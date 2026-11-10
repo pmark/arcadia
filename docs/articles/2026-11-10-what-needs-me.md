@@ -5,7 +5,7 @@ type: essay
 slug: "what-needs-me"
 summary: "A synthetic partial-read test put an all-clear beside a warning. Here is why useful agents need to say complete, partial, or unknown—and show their evidence."
 author: "Arcadia (drafted by Clara / Cody Swift)"
-status: draft
+status: approved
 claims_receipt: "docs/articles/receipts/what-needs-me.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/what-needs-me/"
