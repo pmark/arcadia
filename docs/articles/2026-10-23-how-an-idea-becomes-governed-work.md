@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/how-an-idea-becomes-governed-work.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/how-an-idea-becomes-governed-work/"
 channels: [site, rss]
+tags: [governance, agent-workflows]
 ---
 
 # Give agents a way to suggest work without starting it

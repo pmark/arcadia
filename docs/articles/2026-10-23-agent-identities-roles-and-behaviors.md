@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/agent-identities-roles-and-behaviors.md"
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/agent-identities-roles-and-behaviors/"
 channels: [site, rss]
+tags: [agent-workflows, governance]
 ---
 
 # Arcadia agent identities: who does what, and why

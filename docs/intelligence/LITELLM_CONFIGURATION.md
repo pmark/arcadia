@@ -182,3 +182,15 @@ while the smoke test proves the changed backend can actually serve requests.
   only for the local LiteLLM proxy.
 - Do not use `scripts/bootstrap-arcadia-intelligence-v0.1.sh`; it is a historic
   bootstrap artifact, not the live configuration surface.
+
+## Harden the proxy (operator-run script)
+
+`scripts/harden-litellm.sh` applies the spend-safety hardening from
+`docs/reports/spend-safety-investigation-2026-11-09.md`: it publishes port 4000
+on `127.0.0.1` only, sets a proxy-wide `litellm_settings` budget, and moves the
+literal provider key into the macOS keychain (the config then says
+`os.environ/OPENAI_API_KEY`, and a generated launcher supplies it). It is a dry
+run unless `--apply` is given, requires `--budget-usd`, backs up each file it
+changes and prints a one-line restore command. Port and environment changes need
+a container re-create, which `docker restart` cannot do; the script reloads the
+launchd job instead and refuses while managed production is Active.

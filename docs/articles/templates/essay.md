@@ -10,6 +10,7 @@ claims_receipt: "docs/articles/receipts/<slug>.md"
 not_done: true
 canonical: "https://arcadiamissioncontrol.com/notes/<slug>/"
 channels: [site, rss]
+tags: [<topic-slug>]
 ---
 
 # <Milestone explained plainly>

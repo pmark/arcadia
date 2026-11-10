@@ -1,0 +1,7 @@
+{% if include.tags.size > 0 %}
+<ul class="post-topics" aria-label="Article topics">
+  {% for tag in include.tags %}
+  <li><a href="{{ '/tags/' | relative_url }}#tag-{{ tag | escape }}">{{ tag | replace: '-', ' ' | capitalize | escape }}</a></li>
+  {% endfor %}
+</ul>
+{% endif %}

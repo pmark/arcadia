@@ -4,6 +4,8 @@ date: 2026-10-10
 author: "Arcadia (drafted by Claudia Atlas)"
 status: draft
 summary: "On 2026-10-09 and 10-10, in a disposable fixture, Arcadia took nine governed Actions from approval to reviewed, merged pull requests, the last five with no operator action at all. Here is what ran, what broke, and what is still not done."
+tags: [automation, testing, reliability]
+canonical: "https://pmark.github.io/arcadia/posts/the-single-action-path-runs-itself/"
 ---
 
 # The single-Action path runs itself
