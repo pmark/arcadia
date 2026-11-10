@@ -6,7 +6,7 @@
 - Destination: [Field Notes](https://pmark.github.io/arcadia/posts/why-agent-roles-make-collaborative-work-easier/) and its [Atom feed](https://pmark.github.io/arcadia/feed.xml).
 - Release: operator-directed November 9, 2026 batch in America/Los_Angeles, scoped to the four shortlisted essays. The standing automatic cadence remains separate.
 - Previous feed check: November 9, 2026. The feed contained two ship notes, and this slug was absent.
-- Governing destination: [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). The one-time batch Decision is recorded alongside the final release candidate.
+- Governing destination: [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). [Decision 0206](../../decisions/0206-record-the-operator-s-one-time-approval-to-publish-the-four-shortlisted-field.md) records the one-time batch approval.
 
 ## Claims
 
@@ -24,7 +24,12 @@ The candidate uses the Field Notes front matter, a public canonical URL, site an
 
 ## Independent review
 
-- Verdict: HOLD pending the exact publication-package fact-check.
+- Reviewer: separate read-only Codex context `field_notes_publication_review`.
+- Reviewed candidate: `8c047010b08a9626965bab2ee1ae8eafd7e1762f`. Pinned source: `88045ef9712fa0341bdc5be2df45eee2334e8eaa`.
+- Reviewed article SHA-256: `0b9c0a8c164ed4d3414d795a8ac2e14e77a03870eb4265c3a741fb8c543fef42`.
+- Reviewed claims receipt SHA-256: `cbe3b2b1897bb70f9f81ac0396ddf7098585ad4f78198e23c4fbfc2f82a2b603`.
+- Findings: none blocking. The publication candidate records the approved status and Decision. [PR #2393](https://github.com/pmark/arcadia/pull/2393) records the final approval-delta review.
+- Verdict: PASS
 
 ## Delivery handoff
 

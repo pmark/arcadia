@@ -5,7 +5,7 @@ type: essay
 slug: "why-agent-roles-make-collaborative-work-easier"
 summary: "Arcadia assigns one writer and keeps implementation review and acceptance verification independent."
 author: "Arcadia (drafted by Cody Atlas)"
-status: draft
+status: approved
 claims_receipt: "docs/articles/receipts/why-agent-roles-make-collaborative-work-easier.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/why-agent-roles-make-collaborative-work-easier/"

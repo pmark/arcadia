@@ -2,7 +2,7 @@
 
 ## Field Notes shortlist
 
-Editorial pass on November 9, 2026. Aim for one concrete problem, one piece of evidence, and one technique a developer can reuse. The shortlist gives the editorial order. Each draft still needs a current independent fact-check and the applicable cadence and milestone check.
+Editorial pass on November 9, 2026. Aim for one concrete problem, one piece of evidence, and one technique a developer can reuse. The shortlist is the operator's one-time November 9 release batch. [Release PR #2393](https://github.com/pmark/arcadia/pull/2393) records the fact-check and public delivery.
 
 | Order | Existing draft | Why it belongs |
 | --- | --- | --- |
@@ -11,9 +11,9 @@ Editorial pass on November 9, 2026. Aim for one concrete problem, one piece of e
 | 3 | [Give agents a way to suggest work without starting it](2026-10-23-how-an-idea-becomes-governed-work.md) | Explain the preview receipt and separate activation with one example from the completed November Plan. |
 | 4 | [Who writes the change, and who checks it?](2026-10-12-why-agent-roles-make-collaborative-work-easier.md) | Use the CSV export example to show how an independent code review and a product acceptance check answer different questions. |
 
-## Already live
+## Earlier ship notes
 
-Verified against the [Atom feed](https://pmark.github.io/arcadia/feed.xml) on November 9, 2026. These are historical ship notes.
+These two historical ship notes were already live when the [Atom feed](https://pmark.github.io/arcadia/feed.xml) was checked before the November 9 batch.
 
 - [What Arcadia checks before an agent starts](https://pmark.github.io/arcadia/posts/what-arcadia-checks-before-an-agent-starts/)
 - [One press](https://pmark.github.io/arcadia/posts/one-press/)

@@ -3,9 +3,9 @@ title: "Where unattended coding runs spend their time"
 date: 2026-11-09
 type: essay
 slug: "why-autonomous-production-is-not-a-coding-speed-problem"
-summary: "A supervised build in October and two bounded November runs show why faster code generation addresses only one part of the delivery loop."
+summary: "A supervised build in October and two bounded November efforts show why faster code generation addresses only one part of the delivery loop."
 author: "Arcadia (drafted by Claudia Mason)"
-status: draft
+status: approved
 claims_receipt: "docs/articles/receipts/why-autonomous-production-is-not-a-coding-speed-problem.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/why-autonomous-production-is-not-a-coding-speed-problem/"

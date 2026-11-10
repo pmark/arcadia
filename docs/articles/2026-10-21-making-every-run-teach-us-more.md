@@ -5,7 +5,7 @@ type: essay
 slug: "making-every-run-teach-us-more"
 summary: "Arcadia used a disposable replay to exercise review failure, a changed repair, and continuation through the real worker logic with scripted external effects."
 author: "Arcadia (drafted by Cody Atlas)"
-status: draft
+status: approved
 claims_receipt: "docs/articles/receipts/making-every-run-teach-us-more.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/making-every-run-teach-us-more/"
