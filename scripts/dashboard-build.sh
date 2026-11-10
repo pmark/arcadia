@@ -34,8 +34,23 @@ if ! ln -s "$$" "$LOCK" 2>/dev/null; then
 fi
 
 smoke_pid=""
+# Stops the check server and waits until it has gone, so its port is free when this returns. A kill only asks,
+# and a server under load can keep answering for a while; the next build would then find the port taken.
+# A server that ignores the request for 10 seconds is killed outright.
+stop_smoke() {
+  [[ -n "$smoke_pid" ]] || return 0
+  local pid="$smoke_pid" waited=0
+  smoke_pid=""
+  kill "$pid" 2>/dev/null || true
+  while kill -0 "$pid" 2>/dev/null; do
+    if [[ "$waited" -ge 20 ]]; then kill -9 "$pid" 2>/dev/null || true; break; fi
+    sleep 0.5
+    waited=$((waited + 1))
+  done
+  wait "$pid" 2>/dev/null || true
+}
 cleanup() {
-  [[ -z "$smoke_pid" ]] || kill "$smoke_pid" 2>/dev/null || true
+  stop_smoke
   heal_next_env "$REPO"
   # Another build may have taken over a lock it judged stale, so only remove our own.
   if [[ "$(readlink "$LOCK" 2>/dev/null || true)" == "$$" ]]; then rm -f "${LOCK:?}"; fi
@@ -133,8 +148,7 @@ until curl -fsS -o /dev/null --max-time 5 "http://127.0.0.1:$SMOKE_PORT/workspac
   sleep 2
   waited=$((waited + 2))
 done
-kill "$smoke_pid" 2>/dev/null || true
-smoke_pid=""
+stop_smoke
 
 printf '%s %s\n' "$target" "$head" > "$LIVE/current.tmp"
 mv "$LIVE/current.tmp" "$LIVE/current"
