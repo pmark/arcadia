@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { buildBatchMergeCard, type BatchPrFacts } from "../src/decisions/batchMerge.js";
+import { buildBatchMergeCard, classifyAuthorityPaths, type BatchPrFacts } from "../src/decisions/batchMerge.js";
 import {
   evaluateWorkerMerge,
   isWorkerMergeSafePath,
@@ -282,7 +282,6 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     "src/commands/production.ts",
     "src/decisions/batchMerge.ts",
     "src/identity/resolve.ts",
-    "src/feature/plain.ts",
     "tests/helpers/rehearsalHarness.ts",
     "tests/fast-rehearsal/helpers/github.ts",
     "apps/dashboard/app/api/production-control/route.ts",
@@ -335,6 +334,48 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
       expect(merge()).toMatchObject({ kind: "merged" });
     }
   );
+
+  // Decision 0214 A: an unclassified src/** change merges on the same proof gates.
+  describe("an unclassified src change (Decision 0214 A)", () => {
+    const UNCLASSIFIED = "src/digests/report.ts";
+    it("merges an unclassified src path, and still refuses a classified src path as authority_adjacent", () => {
+      candidate({ [UNCLASSIFIED]: "export const x = 1;\n" });
+      expect(merge()).toMatchObject({ kind: "merged" });
+      expect(github.mergeCalls).toHaveLength(1);
+    });
+    it("refuses a classified src path in the same candidate as an unclassified one", () => {
+      candidate({ [UNCLASSIFIED]: "x\n", "src/production/workerMerge.ts": "y\n" });
+      expect(merge()).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+      expect(github.mergeCalls).toEqual([]);
+    });
+    it("still refuses without an exact-head review", () => {
+      candidate({ [UNCLASSIFIED]: "x\n" });
+      expect(merge({ review: null })).toMatchObject({ kind: "refused", code: "review_missing" });
+      expect(merge({ review: gateFor("d".repeat(40)) })).toMatchObject({ kind: "refused", code: "review_stale_head" });
+      expect(github.mergeCalls).toEqual([]);
+    });
+    it("still refuses a failed check, unknown checks and a non-CLEAN merge state", () => {
+      candidate({ [UNCLASSIFIED]: "x\n" });
+      github.checks = () => [{ ...GREEN[0], conclusion: "FAILURE" }];
+      expect(merge()).toMatchObject({ kind: "refused", code: "check_failed" });
+      github.checks = () => [];
+      expect(merge()).toMatchObject({ kind: "refused", code: "checks_unknown" });
+      github.checks = () => GREEN;
+      github.mergeState = () => "BLOCKED";
+      expect(merge()).toMatchObject({ kind: "refused", code: "merge_state_not_clean" });
+      expect(github.mergeCalls).toEqual([]);
+    });
+    it("still withholds the merge when the mergeThroughPullRequest grant is withdrawn", () => {
+      candidate({ [UNCLASSIFIED]: "x\n" });
+      const outcome = mergeCandidatePullRequest({
+        db, repoRoot: repo, baseBranch: "main", sessionId: "session_1", actionKey: "fixture/write-feature", head,
+        settlementCommit: head, pullRequestUrl: URL, review: gateFor(head), now: new Date("2026-10-17T12:00:00Z"),
+        authorityChanged: () => "the worker pull-request merge opt-in was withdrawn"
+      }, { runCommand: github.runCommand });
+      expect(outcome.kind).toBe("withheld");
+      expect(github.mergeCalls).toEqual([]);
+    });
+  });
 
   // Review round 2, B1: a rename counts as both its old and new path.
   it.each([
@@ -562,6 +603,13 @@ describe("the worker-merge allowlist and the agent-guidance index", () => {
     const allowed = [...targets].filter((target) => isWorkerMergeSafePath(target) || isWorkerMergeSafePath(target.toUpperCase()));
     expect(allowed).toEqual([]);
   });
+  it("accepts an unclassified src path only and refuses classified or non-src ones (Decision 0214 A)", () => {
+    expect(classifyAuthorityPaths(["src/digests/report.ts"])).toEqual([]);
+    expect(isWorkerMergeSafePath("src/digests/report.ts")).toBe(true);
+    for (const file of ["src/production/workerMerge.ts", "src/cli.ts", "src/decisions/batchMerge.ts", "SRC/Production/x.ts", "apps/dashboard/lib/x.ts", "scripts/x.ts", "src/.hidden/x.ts"]) {
+      expect(isWorkerMergeSafePath(file)).toBe(false);
+    }
+  });
   it.each([
     "tests/helpers/x.ts",
     "tests/fast-rehearsal/helpers/x.ts",
@@ -585,7 +633,9 @@ describe("the worker-merge allowlist and the agent-guidance index", () => {
   it.each([
     "tests/worker-merge.test.ts",
     "docs/guide.md",
-    "notes.md"
+    "notes.md",
+    "src/digests/report.ts",
+    "src/feature/plain.ts"
   ])("allows the allowlisted path %s", (file) => {
     expect(isWorkerMergeSafePath(file)).toBe(true);
   });

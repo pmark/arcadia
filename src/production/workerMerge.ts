@@ -174,8 +174,9 @@ export function evaluateWorkerMerge(facts: WorkerMergeFacts): WorkerMergeEvaluat
  * unattended (an allowlist: anything else is authority-adjacent). Matched on
  * the LOWERCASED path, because the host's file system may be case-insensitive
  * (`docs/Decisions/x.md` is `docs/decisions/x.md` there).
- * - No source or app code at all: no `src/**` (every module can define or
- *   enforce a gate), no `apps/**` (dashboard server components can run
+ * - Source only when unclassified (Decision 0214 A): a `src/**` path that
+ *   `classifyAuthorityPaths` leaves unclassified (see `isUnclassifiedSourcePath`),
+ *   because a gate-enforcing module is classified; no `apps/**` (dashboard server components can run
  *   commands), no scripts, config or manifests.
  * - `tests/**`, minus the shared helpers and harness fakes that gate proofs;
  * - `docs/**` Markdown, minus Decisions, agent guidance, Plans, scout state,
@@ -217,7 +218,21 @@ export function isWorkerMergeSafePath(path: string): boolean {
   if (segments.some((segment) => segment === "" || segment.startsWith(".") || segment !== segment.trim())) return false;
   if (GOVERNANCE_FILE_NAMES.has(segments[segments.length - 1])) return false;
   if (WORKER_MERGE_EXCLUDED_DOCUMENTS.has(lower)) return false;
-  return WORKER_MERGE_SAFE_PATHS.some((pattern) => pattern.test(lower));
+  if (WORKER_MERGE_SAFE_PATHS.some((pattern) => pattern.test(lower))) return true;
+  return isUnclassifiedSourcePath(path, lower);
+}
+
+/**
+ * Decision 0214 A: a `src/**` path is worker-merge-safe only when the
+ * batch-merge classifier names no authority boundary for it, as written and
+ * lowercased (a case-insensitive file system must not slip past a
+ * case-sensitive prefix). The classifier is the only guard for source, so a
+ * classified path stays authority-adjacent; `apps/**`, scripts, config and
+ * manifests stay off the allowlist.
+ */
+function isUnclassifiedSourcePath(path: string, lower: string): boolean {
+  if (!lower.startsWith("src/")) return false;
+  return classifyAuthorityPaths([path]).length === 0 && classifyAuthorityPaths([lower]).length === 0;
 }
 
 /** Every path a diff touches, renames and copies as BOTH their old and new path (`--no-renames`), so a move out of a governed path counts. */
