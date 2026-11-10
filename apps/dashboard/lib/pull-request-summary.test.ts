@@ -48,9 +48,12 @@ describe("PR TLDR service", () => {
     expect(request).toMatchObject({ capability: "text.generate", execution: "cloud-required", executionTarget: "cloud", profile: "fast", executionPolicy: { allowPaidUsage: true, maxRetries: 1 } });
     expect(request).not.toHaveProperty("model");
     const config = loadIntelligenceConfig({ ARCADIA_LITELLM_LOCAL_TEXT_ROUTE: "local-fixture", ARCADIA_LITELLM_CLOUD_TEXT_ROUTE: "arcadia-cloud-text", ARCADIA_CODEX_TEXT_ROUTE: "codex-fixture" });
-    const approvedPaidUsageDecisions = config.approvedPaidUsageDecisionIds;
-    expect(approvedPaidUsageDecisions).toContain("0126");
+    // Decision 0213 A (standing no-spend) withdrew 0126: the default allowlist is empty and the paid PR TLDR route is refused.
+    expect(config.approvedPaidUsageDecisionIds).toEqual([]);
     expect(config.routes.find((route) => route.id === "arcadia.text.generate.cloud.fast")?.paidUsageDecision).toBe("0126");
+    expect(resolveIntelligenceRoute(request, config.routes, { ...request.executionPolicy, approvedPaidUsageDecisions: config.approvedPaidUsageDecisionIds })).toMatchObject({ ok: false, code: "paid_usage_not_allowed" });
+    // The resolver itself still honours an explicitly approved id (a future Decision), so the gate stays a real allowlist.
+    const approvedPaidUsageDecisions = ["0126"];
     expect(resolveIntelligenceRoute(request, config.routes, { ...request.executionPolicy, approvedPaidUsageDecisions })).toMatchObject({ ok: true, route: { profile: "fast", location: "cloud", executor: "litellm", liteLlmRoute: "arcadia-cloud-text", requiresPaidUsage: true } });
     expect(resolveIntelligenceRoute(request, config.routes, { allowPaidUsage: false, approvedPaidUsageDecisions })).toMatchObject({ ok: false, code: "paid_usage_not_allowed" });
     // Without the approved Decision allowlist the paid route is refused by default.
