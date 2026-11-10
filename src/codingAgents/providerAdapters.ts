@@ -494,6 +494,7 @@ export function validateProviderAdapterRegistry(
     if (!binding.model?.trim() || binding.modelArgs.length === 0) {
       throw new Error(`Provider adapter binding ${binding.id} must enforce a model.`);
     }
+    assertOpenCodeModelPinned(binding);
     if (binding.reviewOnly !== undefined && typeof binding.reviewOnly !== "boolean") {
       throw new Error(`Provider adapter binding ${binding.id} reviewOnly must be a boolean.`);
     }
@@ -523,6 +524,39 @@ export function validateProviderAdapterRegistry(
       if (!CONTEXT_SCOPES.includes(scope)) {
         throw new Error(`Provider adapter binding ${binding.id} has invalid context scope ${scope}.`);
       }
+    }
+  }
+}
+
+/** The only OpenCode model prefix covered by the subscription; others bill money. */
+export const OPENCODE_ALLOWED_MODEL_PREFIX = "opencode-go/";
+
+/**
+ * True only for an exact, case-sensitive `opencode-go/<id>` with no whitespace
+ * and no path traversal. Everything else (Zen `opencode/`, `huggingface/`,
+ * bare ids, odd casing) is refused so a binding cannot select a paid route.
+ */
+export function isOpenCodeGoModelId(model: string): boolean {
+  if (!model.startsWith(OPENCODE_ALLOWED_MODEL_PREFIX)) return false;
+  const rest = model.slice(OPENCODE_ALLOWED_MODEL_PREFIX.length);
+  return rest.length > 0 && !/\s/.test(model) && !rest.split("/").includes("..");
+}
+
+function assertOpenCodeModelPinned(binding: ProviderAdapterBinding): void {
+  const paidPrefix = /^\s*(opencode|huggingface)\//i;
+  const isOpenCode = /opencode/i.test(binding.provider);
+  const ids = [binding.model];
+  binding.modelArgs.forEach((arg, index) => {
+    if (binding.modelArgs[index - 1] === "--model" || arg.startsWith("--model=")) {
+      ids.push(arg.startsWith("--model=") ? arg.slice("--model=".length) : arg);
+    }
+  });
+  for (const id of ids) {
+    if (isOpenCode ? !isOpenCodeGoModelId(id) : paidPrefix.test(id)) {
+      throw new Error(
+        `Provider adapter binding ${binding.id} model ${JSON.stringify(id)} is refused: ` +
+          `OpenCode models must use the ${OPENCODE_ALLOWED_MODEL_PREFIX} prefix (opencode/ and huggingface/ bill money).`
+      );
     }
   }
 }

@@ -35,18 +35,20 @@ actions:
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Enforce the spend check in production and relay: admission refuses paid, sign-in preflight uses assessSpendRisk, Session and relay launches strip billing variables, and start-run.sh P0 runs the check."
+    next_action: "Enforce the spend check in production and relay: admission refuses paid, sign-in preflight uses assessSpendRisk, Session and relay launches strip billing variables, go --launch and the Intelligence CLI executors refuse on risk or unknown, and start-run.sh P0 runs the check."
     expected_artifact: Evidence satisfying Agent Ask enforce-spend-check-at-launch-and-admission
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-guard-against-paid-usage-20261109-b
+    source: Agent Ask amend-guard-against-paid-usage-review-r1-20261110
     why: "Today admission admits paid usage and launches inherit billing variables, so one environment change could bill unattended work."
     acceptance_criteria:
-      - "tests/provider-capacity-admission.test.ts asserts a paid capacity policy gives admitted: false, including operator_config and attestation receipts whose policy is paid."
+      - "tests/provider-capacity-admission.test.ts asserts a paid capacity policy gives admitted: false, including operator_config and attestation receipts whose policy is paid, and Codex purchased credits."
+      - checkProviderSignIn uses assessSpendRisk, so a non-subscription auth method, a Codex login that is not ChatGPT, or a non-opencode-go/ OpenCode model refuses the launch, with a test for each.
       - A launch test with a fixture ANTHROPIC_API_KEY shows the argv carries env -u ANTHROPIC_API_KEY and the launch is refused on a risk or unknown verdict.
       - A relay renew test shows a risk verdict means no claim and no tmux launch.
+      - go --launch and the Intelligence CLI executors refuse on a risk or unknown verdict, with a test for each.
       - scripts/start-run.sh P0 calls arcadia spend check --launch-env stripped and refuses on risk or unknown.
-      - The change merges while managed production is Off.
+      - The PR records arcadia production status showing managed production Inactive on the head that merges.
     depends_on: [build-arcadia-spend-check]
     decisions: []
     references: ["docs/reports/spend-safety-investigation-2026-11-09.md", "https://github.com/pmark/arcadia/issues/2372", "https://github.com/pmark/arcadia/issues/2373", "https://github.com/pmark/arcadia/issues/2374"]
@@ -56,26 +58,27 @@ actions:
     responsibility: agent
     execution: build
     effort: session
-    next_action: Run the spend check on each liveness tick, page once per risk episode, send unknown to the digest only, and add the no-claims-without-a-receipt rule to shared guidance.
+    next_action: Run the spend check on each liveness tick, page once per risk episode, send unknown to the digest only, and add the no-claims-without-a-receipt rule to shared guidance and the Signal skill.
     expected_artifact: Evidence satisfying Agent Ask alert-on-verified-spend-risk-and-require-receipts
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-guard-against-paid-usage-20261109-b
+    source: Agent Ask amend-guard-against-paid-usage-review-r1-20261110
     why: "Monitoring should alarm only on verified spend risk and never on banners, and agents need one rule for claiming or ruling out spend."
     acceptance_criteria:
       - A decideLiveness-style unit test shows clear to risk pages once, risk to risk is silent, risk to clear sends a recovery line, and unknown never pages.
       - "docs/agents-context.md and the regenerated AGENTS.md state that no agent may claim or rule out spend without an arcadia spend check receipt, and pnpm check:agent-guidance passes with size budgets intact."
+      - The arcadia-signal skill states the same receipt rule in its .agents/skills and .claude/skills copies.
       - coordinator-handoff-design.md says "uses subscription allocation" where it said "spends money".
     depends_on: [build-arcadia-spend-check]
     decisions: []
     references: ["docs/reports/spend-safety-investigation-2026-11-09.md", "https://github.com/pmark/arcadia/issues/2375"]
   - id: pin-opencode-to-go-models
     title: Pin OpenCode to opencode-go/ models in the binding validator and helper briefs.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin OpenCode to opencode-go/ models in the binding validator and helper briefs.
+    next_action: Completed via Agent Ask complete-pin-opencode-to-go-models-2026-11-10-r2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-opencode-to-go-models
     clarification: clarified
     confidence: high
@@ -93,17 +96,17 @@ actions:
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make resolveRoute refuse every requiresPaidUsage route unless config names an approved Decision, and set action.advice to allowPaidUsage: false, following the operator's answer to the standing no-spend Decision."
+    next_action: "Make resolveRoute refuse every requiresPaidUsage route unless config names an approved Decision, and set action.advice to allowPaidUsage: false; the PR TLDR route under Decision 0126 is out of scope until the operator answers the standing no-spend Decision."
     expected_artifact: Evidence satisfying Agent Ask refuse-paid-intelligence-routes-by-default
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-guard-against-paid-usage-20261109-b
-    why: "Paid Intelligence routes can be enabled by config alone today, with no Decision behind them."
+    source: Agent Ask amend-guard-against-paid-usage-review-r1-20261110
+    why: "Paid Intelligence routes can be enabled by config alone today, with no Decision behind them; whether 0126's PR TLDR route survives is the operator's Decision, never the builder's."
     acceptance_criteria:
       - "A resolveRoute test shows a paid route with allowPaidUsage: true and no bound Decision gives paid_usage_not_allowed."
       - A registry test shows no enrichment sets allowPaidUsage.
-      - The PR TLDR route follows the operator's recorded answer to the standing no-spend Decision.
-    depends_on: [build-arcadia-spend-check]
+      - The PR TLDR route bound to Decision 0126 still resolves as before, with a test, and the PR changes no Decision document.
+    depends_on: []
     decisions: []
     references: ["docs/reports/spend-safety-investigation-2026-11-09.md", "https://github.com/pmark/arcadia/issues/2376"]
 questions: []

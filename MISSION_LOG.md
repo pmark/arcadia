@@ -3272,6 +3272,13 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Next:** Plan complete; every Action is done.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-inline-text-escaping-98b4bce3754c).
 
+## 2026-11-10 — Completed arcadia/pin-opencode-to-go-models
+
+- **Did:** Completed Action arcadia/pin-opencode-to-go-models from accepted evidence (Candidate 50d7f1084e5d3f13e8db903a21366c6a9b24c7c8).
+- **Result:** Every declared acceptance criterion was accepted as met: "The binding validator refuses opencode/ and huggingface/ model ids and accepts opencode-go/ ids, with a test for each."; "Helper brief guidance names opencode-go/ as the only allowed OpenCode prefix.".
+- **Next:** Next ready Action in this inactive Plan: build-arcadia-spend-check.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-pin-opencode-to-go-models-2026-11-10-r2).
+
 ## 2026-11-10 — Completed arcadia/build-arcadia-spend-check
 
 - **Did:** Completed Action arcadia/build-arcadia-spend-check from accepted evidence (Candidate 0605bb8cf6a9d70eac2d6935f95bc9306d80342c).
