@@ -108,6 +108,19 @@ const FIRST_PARTY_HOST = "api.anthropic.com";
 const OPENCODE_GO_PREFIX = "opencode-go/";
 const CODEX_SUBSCRIPTION_LOGIN = "logged in using chatgpt";
 
+/**
+ * Codex login is a subscription only when every recognised status line says ChatGPT.
+ * A conflicting line (an API-key login or "not logged in") anywhere in the output is risk,
+ * so mixed output fails closed instead of trusting the first line.
+ */
+function isNonSubscriptionCodexLogin(value: string): boolean {
+  const recognised = value
+    .split(/\r?\n/)
+    .map((line) => line.trim().toLowerCase())
+    .filter((line) => /^(logged in using\b|not logged in)/.test(line));
+  return recognised.length === 0 || recognised.some((line) => !line.startsWith(CODEX_SUBSCRIPTION_LOGIN));
+}
+
 /** Every variable that can route a launch to paid usage; `--launch-env stripped` removes exactly these. */
 export const BILLING_ENV_NAMES: readonly string[] = [...CLAUDE_KEYS, ...OPENAI_KEYS, ...PROVIDER_SWITCHES, BASE_URL];
 
@@ -195,7 +208,7 @@ function assessClaude(env: NodeJS.ProcessEnv, probes: SpendProbes["claude"], now
 function assessCodex(env: NodeJS.ProcessEnv, probes: SpendProbes["codex"]): SpendProviderReport {
   return finish("codex", [
     { code: "api_key_in_launch_env", entry: envEntry("api_key_in_launch_env", anyPresent(env, OPENAI_KEYS)) },
-    { code: "not_subscription_auth", entry: fromProbe(probes?.loginStatus, "not_subscription_auth", (value) => !value.trim().toLowerCase().startsWith(CODEX_SUBSCRIPTION_LOGIN)) },
+    { code: "not_subscription_auth", entry: fromProbe(probes?.loginStatus, "not_subscription_auth", isNonSubscriptionCodexLogin) },
     { code: "purchased_credits_available", entry: fromProbe(probes?.credits, "purchased_credits_available", (value) => value) }
   ]);
 }

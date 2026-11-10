@@ -234,6 +234,11 @@ describe("collectHostProbes and the command", () => {
     const clear = codexOnly(codexLogin({ stderr: "Logged in using ChatGPT\n" }));
     expect(clear.data.verdict).toBe("clear");
   });
+  it("codex login: conflicting status lines fail closed; a warning line before ChatGPT stays clear", () => {
+    expect(codexOnly(codexLogin({ stderr: "Logged in using ChatGPT\nLogged in using an API key" })).data.providers[0].codes).toContain("not_subscription_auth");
+    expect(codexOnly(codexLogin({ stderr: "Logged in using ChatGPT\nNot logged in" })).data.providers[0].codes).toContain("not_subscription_auth");
+    expect(codexOnly(codexLogin({ stderr: "WARNING: config deprecated\nLogged in using ChatGPT\r\n" })).data.verdict).toBe("clear");
+  });
   it("apiKeyHelper in a managed-settings.d drop-in is risk; an unreadable or malformed drop-in is unknown", () => {
     const dir = "/Library/Application Support/ClaudeCode/managed-settings.d";
     const base = { [`${home}/.claude.json`]: goodFiles(`${home}/.claude.json`)! };
