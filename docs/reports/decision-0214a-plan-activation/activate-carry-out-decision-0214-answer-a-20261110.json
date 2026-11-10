@@ -1,0 +1,110 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-carry-out-decision-0214-answer-a-20261110",
+  "title": "Activate the Decision 0214 A Plan at the classifier-coverage audit",
+  "script": "activate-carry-out-decision-0214-answer-a-20261110.sh",
+  "repeatable": false,
+  "problem": "The Decision 0214 A Plan is an inactive draft; PROJECT still points at the finished part-2 test-pins Plan, so no Action is selected.",
+  "desired_effect": "Activate the Decision 0214 A Plan at implement-a-classifier-coverage-audit, standard / medium; keep the finished previous Plan at status complete and place this Project queue segment at the top. Plan activation only.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-carry-out-decision-0214-answer-a-20261110.sh run",
+  "authority": {
+    "does": [
+      "Fresh-preview the exact pinned proposal, validate the before/after images through the existing shared runner, then apply that fingerprint.",
+      "Set Project/Plan pointers and standard / medium pins; preserve all Action contents and every other Project relative queue order.",
+      "Append one Mission Log entry, archive the Ask and publish only the canonical settlement commit by normal push; retain receipts."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, production policy, service restart, install or merge.",
+      "Never increases concurrency or grants spend/credentials/merge authority; never changes Action status, criteria or responsibility.",
+      "Never force-pushes, publishes unrelated commits or treats generating this action as approval."
+    ]
+  },
+  "success": {
+    "effect": "The Decision 0214 A Plan is active at implement-a-classifier-coverage-audit, standard / medium; the previous Plan stays complete; settlement published.",
+    "next": "Continue through normal governed Action/Session admission. This is not a Session launch or production START; each Action's PR stays the operator's merge."
+  },
+  "failure": {
+    "effect": "Refuses before mutation on drift; preserves any canonical local settlement on publication failure.",
+    "next": "Read the receipt; re-review stale pins, or retry publication of the existing settlement without another apply."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "afd3e85e2e789015cd4f4b5ea0e696a50ad10640"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-carry-out-decision-0214-answer-a-20261110.yaml",
+      "sha256": "2ac22db928bb9af3e041b0c9f66538b128611a99a0839d17fe294a843e3e0570",
+      "proposal": "activate-carry-out-decision-0214-answer-a-20261110"
+    },
+    "settlement": {
+      "requestId": "activate-carry-out-decision-0214-answer-a-20261110",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "implement-a-classifier-coverage-audit",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src",
+      "previousPlan": "record-run-unattended-test-pins-20261107-part-2",
+      "action": "implement-a-classifier-coverage-audit",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "record-run-unattended-test-pins-20261107-part-2",
+        "current_action": null,
+        "milestone": "Record run unattended test pins 20261107 part 2"
+      },
+      "projectAfter": {
+        "active_plan": "carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src",
+        "current_action": "implement-a-classifier-coverage-audit",
+        "milestone": "Carry out Decision 0214 answer A: unattended production's worker may merge src/** candidate changes that touch no authority boundary, after an audit proves the authority classifier covers every gate-enforcing source module."
+      },
+      "planBefore": {
+        "slug": "carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Carry out Decision 0214 answer A: unattended production's worker may merge src/** candidate changes that touch no authority boundary, after an audit proves the authority classifier covers every gate-enforcing source module."
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "implement-a-classifier-coverage-audit",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "record-run-unattended-test-pins-20261107-part-2",
+        "project": "arcadia",
+        "status": "complete",
+        "current_action": null
+      },
+      "previousPlanAfter": {
+        "status": "complete",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "implement-a-classifier-coverage-audit",
+        "title": "Implement a classifier-coverage audit: a test that enumerates every src module defining or enforcing an approval, spend, review or merge gate and asserts classifyAuthorityPaths classifies it, extending the classifier for any module it misses.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/implement-a-classifier-coverage-audit",
+        "arcadia/implement-decision-0214-a-in-src"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
