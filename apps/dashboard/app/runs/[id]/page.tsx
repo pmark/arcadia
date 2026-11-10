@@ -3,6 +3,7 @@
 import { AlertTriangle, CheckCircle2, Clock3, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { use, useCallback, useEffect, useRef, useState } from "react";
+import { CopyableCodeBlock } from "../../../components/copyable-code-block";
 import { ErrorState } from "../../../components/dashboard-ui";
 
 interface ExecutionContextJson {
@@ -272,12 +273,11 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
         {outputLines.length > 0 ? (
           <section>
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-muted">Executor Output</h2>
-            <pre
-              ref={outputRef}
+            <CopyableCodeBlock
+              preRef={outputRef}
+              text={outputLines.join("\n")}
               className="h-80 overflow-auto rounded-md border border-line bg-canvas p-4 font-mono text-xs leading-5 text-ink"
-            >
-              {outputLines.join("\n")}
-            </pre>
+            />
             {outputError ? <p className="mt-2 text-xs text-clay">{outputError}</p> : null}
           </section>
         ) : active ? (
@@ -418,9 +418,10 @@ function FollowUpReviewPanel({
       {ctx.finalOutput ? (
         <div className="mt-4">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Final Output</h3>
-          <pre className="mt-2 max-h-40 overflow-auto rounded-md border border-line bg-canvas p-3 font-mono text-xs leading-5 text-ink">
-            {ctx.finalOutput.trim().split("\n").slice(-20).join("\n")}
-          </pre>
+          <CopyableCodeBlock
+            text={ctx.finalOutput.trim().split("\n").slice(-20).join("\n")}
+            className="mt-2 max-h-40 overflow-auto rounded-md border border-line bg-canvas p-3 font-mono text-xs leading-5 text-ink"
+          />
         </div>
       ) : null}
 

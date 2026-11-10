@@ -3,6 +3,7 @@
 import { AlertTriangle, CheckCircle2, Clock3, Loader2, Play, TerminalSquare } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { CopyableCodeBlock } from "./copyable-code-block";
 import { shortName, type NextAfterRule } from "../lib/nextOperatorAction";
 
 export type ScriptStatus = "available" | "running" | "succeeded" | "failed";
@@ -98,7 +99,7 @@ export function OperatorActionCard({ script, launching, onLaunch, muted = false,
       </details>
 
       {script.state.message ? <p className={`mt-3 text-sm ${script.state.status === "failed" ? "text-clay" : "text-muted"}`}>{script.state.message}</p> : null}
-      {script.receipt ? <div className="mt-3 text-sm"><p>{script.receipt.message}</p><p className="mt-1 text-muted">Next: {script.receipt.next}</p><details className="mt-2"><summary className="cursor-pointer font-semibold">Receipt: {script.receipt.reason}</summary><pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs">{JSON.stringify(script.receipt, null, 2)}</pre></details></div> : null}
+      {script.receipt ? <div className="mt-3 text-sm"><p>{script.receipt.message}</p><p className="mt-1 text-muted">Next: {script.receipt.next}</p><details className="mt-2"><summary className="cursor-pointer font-semibold">Receipt: {script.receipt.reason}</summary><CopyableCodeBlock text={JSON.stringify(script.receipt, null, 2)} className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-all text-xs" /></details></div> : null}
       {checkError ? <p className="mt-3 rounded-md border border-clay/30 bg-clay/5 p-3 text-sm text-clay" role="alert">{checkError}</p> : null}
       {confirming && shownConfirmation ? (
         <div role="alertdialog" aria-label="Confirm before running" className="mt-4 rounded-md border-2 border-clay/60 bg-clay/5 p-3 text-sm">
