@@ -146,3 +146,6 @@ Compaction is strongly discouraged.
 - **How to start the successor.** Starting a session can fail over Remote Control.
   If it does, give the operator a paste-ready prompt to start Signal n+1 in the
   desktop app, and put it at the top as a 👆 banner.
+- **Launching agents.** Resolve every launch with `arcadia role brief --role <id>
+  --agent <agent> --json` and pass its `launch` model and effort explicitly;
+  see [helper-launch.md](../../../docs/agent-guidance/helper-launch.md).

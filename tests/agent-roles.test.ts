@@ -180,6 +180,18 @@ actions:
   });
 });
 
+describe("launch defaults", () => {
+  it("omitted tier starts on the workspace sessionStartTier and an explicit tier still wins", () => {
+    const brief = buildRoleBrief({ role: "implementer", agent: "claude" });
+    expect(brief.identity.tier).toBe("light");
+    expect(brief.launch).toEqual({ model: "haiku", effort: "low" });
+    expect(brief.escalationTier).toBe("standard");
+    const explicit = buildRoleBrief({ role: "implementer", agent: "claude", tier: "heavy" });
+    expect(explicit.identity.tier).toBe("heavy");
+    expect(explicit.launch.model).toBe(BUNDLED_MODEL_TIERS.tiers.heavy.claude!.model);
+  });
+});
+
 describe("headless native role preparation", () => {
   it("allows read-only discovery/preparation without unrelated Arcadia mutations", () => {
     const rules = headlessClaudeAllowList([]);
