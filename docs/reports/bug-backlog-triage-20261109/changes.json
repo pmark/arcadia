@@ -1,2080 +1,2868 @@
 {
- "base_sha": "bf1b304c5b2dbf3d09270922ee23b2aea6384be8",
- "retrieved_at": "2026-11-09T06:31:00Z",
- "applied": false,
- "note": "Proposal only. Re-fetch each Issue and re-check the base and governed values before applying; add or remove only the named labels.",
- "closures": [
-  {
-   "number": 978,
-   "updated_at": "2026-10-05T21:59:45Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Checked directly by Rowan.",
-   "action_refs": []
-  },
-  {
-   "number": 1000,
-   "updated_at": "2026-10-06T05:43:28Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#2341",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#2341, preserving any unique requirement.",
-   "caveat": "Same near-limit unit shard failure as #2341; its revival trigger has since fired.",
-   "action_refs": []
-  },
-  {
-   "number": 1041,
-   "updated_at": "2026-10-08T04:41:36Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Observed code and tests.",
-   "action_refs": []
-  },
-  {
-   "number": 1129,
-   "updated_at": "2026-10-09T08:26:16Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Observed repo script fixed; inferred not that the installed skill copy is (see #1686).",
-   "action_refs": []
-  },
-  {
-   "number": 1168,
-   "updated_at": "2026-10-10T03:27:09Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Observed request id, ordering and acceptable gating with a test; the 'sort gating items first' ordering is by kind, not strictly by gate (inference).",
-   "action_refs": []
-  },
-  {
-   "number": 1173,
-   "updated_at": "2026-10-09T23:07:04Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Observation: fix and test present; mirror Action #1271 is stale, still status: open in the draft Plan.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#settle-superseded-decision-ask-rejection"
-   ]
-  },
-  {
-   "number": 1190,
-   "updated_at": "2026-10-10T06:38:03Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Resolved for the To-do surface; #1759 tracks the separate Review page.",
-   "action_refs": []
-  },
-  {
-   "number": 1270,
-   "updated_at": "2026-10-11T21:09:40Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#960",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#960, preserving any unique requirement.",
-   "caveat": "Mirror Action of #960 (item 4 only); pair canonical.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-claim-when-passed-attempt-receipt-is-unparseable"
-   ]
-  },
-  {
-   "number": 1271,
-   "updated_at": "2026-10-11T21:09:43Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Mirror Action of #1173; code resolved, so the Action needs a governed completion or closure.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#settle-superseded-decision-ask-rejection"
-   ]
-  },
-  {
-   "number": 1272,
-   "updated_at": "2026-10-11T21:09:47Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Mirror Action of #1213 item 1; code and tests cover it. The Plan Action is still status: open (docs/plans seven-verified... :49) so it needs a governed completion, and item 2 stays in #1213.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#amend-action-consumes-block-scalar-and-literal-ids"
-   ]
-  },
-  {
-   "number": 1273,
-   "updated_at": "2026-10-11T21:09:50Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#1022",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#1022, preserving any unique requirement.",
-   "caveat": "Mirror Action of #1022; pair canonical.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-queue-positions-of-projects-not-visible-at-arrange"
-   ]
-  },
-  {
-   "number": 1274,
-   "updated_at": "2026-10-11T21:09:53Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#1011",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#1011, preserving any unique requirement.",
-   "caveat": "Mirror Action of #1011; pair canonical.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#refuse-hidden-renames-in-committed-completion-replay"
-   ]
-  },
-  {
-   "number": 1275,
-   "updated_at": "2026-11-08T05:37:10Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#1187",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#1187, preserving any unique requirement.",
-   "caveat": "Mirror Action of #1187; pair canonical, one fix.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#allocate-decision-numbers-from-origin-and-refuse-duplicates"
-   ]
-  },
-  {
-   "number": 1276,
-   "updated_at": "2026-10-11T21:10:01Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#1160",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#1160, preserving any unique requirement.",
-   "caveat": "Mirror Action of #1160 (and #1731); the pair is canonical, defect and Action are one fix.",
-   "action_refs": [
-    "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#write-yaml-scalars-that-round-trip-as-strings"
-   ]
-  },
-  {
-   "number": 1414,
-   "updated_at": "2026-10-15T00:35:46Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Test file located by name; withheld-EOF case not read.",
-   "action_refs": []
-  },
-  {
-   "number": 1419,
-   "updated_at": "2026-10-15T04:15:12Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Code and tests read; did not run; revival trigger (recurrence) is not shown.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries"
-   ]
-  },
-  {
-   "number": 1460,
-   "updated_at": "2026-10-16T15:58:11Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#2341",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#2341, preserving any unique requirement.",
-   "caveat": "Same unit-shard-near-limit cancellation as #2341 (then named unit-2).",
-   "action_refs": []
-  },
-  {
-   "number": 1509,
-   "updated_at": "2026-10-17T21:28:24Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#first-unattended-run"
-   ]
-  },
-  {
-   "number": 1536,
-   "updated_at": "2026-10-18T18:50:49Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Test read; not run. The Action's done mark also exists.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed"
-   ]
-  },
-  {
-   "number": 1655,
-   "updated_at": "2026-10-21T07:53:25Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-mail-ack-receipt-kind-collision"
-   ]
-  },
-  {
-   "number": 1656,
-   "updated_at": "2026-10-21T07:53:31Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name"
-   ]
-  },
-  {
-   "number": 1657,
-   "updated_at": "2026-10-21T07:53:35Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries"
-   ]
-  },
-  {
-   "number": 1695,
-   "updated_at": "2026-10-22T16:55:46Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Observation: stale admission can no longer yield a pass result.",
-   "action_refs": []
-  },
-  {
-   "number": 1698,
-   "updated_at": "2026-10-22T17:47:09Z",
-   "reason": "duplicate",
-   "canonical_issue": "pmark/arcadia#1628",
-   "basis": "verified-duplicate",
-   "remaining_proof": "Consolidate into pmark/arcadia#1628, preserving any unique requirement.",
-   "caveat": "Same test, same tmux-name collision, same acceptance.",
-   "action_refs": []
-  },
-  {
-   "number": 1738,
-   "updated_at": "2026-10-24T21:23:12Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Clean-run test read; rerun and next-run files confirmed only by matching 'is not active' assertion lines.",
-   "action_refs": []
-  },
-  {
-   "number": 1744,
-   "updated_at": "2026-10-25T02:29:33Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Observation: the cleanup defect is fixed with tests. The extra ask for a manual Off recovery CLI route (recordCommittedCompletionSettlement is only called from tick.ts) is not separately verified.",
-   "action_refs": []
-  },
-  {
-   "number": 1767,
-   "updated_at": "2026-10-25T23:27:59Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#rebuild-cover-mail-ack-receipt-kind-collision"
-   ]
-  },
-  {
-   "number": 1800,
-   "updated_at": "2026-10-26T19:41:25Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Code and test read; not run; the live consumed attempt is unaffected.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op"
-   ]
-  },
-  {
-   "number": 1920,
-   "updated_at": "2026-10-31T04:50:12Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "not run",
-   "action_refs": []
-  },
-  {
-   "number": 1965,
-   "updated_at": "2026-11-01T06:45:30Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op"
-   ]
-  },
-  {
-   "number": 1966,
-   "updated_at": "2026-11-01T06:45:34Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed"
-   ]
-  },
-  {
-   "number": 1967,
-   "updated_at": "2026-11-01T06:45:38Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-retired-descriptor-byte-change"
-   ]
-  },
-  {
-   "number": 1990,
-   "updated_at": "2026-11-02T04:36:46Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-worker-merge-allowlist-carve-outs"
-   ]
-  },
-  {
-   "number": 1991,
-   "updated_at": "2026-11-02T04:36:50Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-blast-radius-safety-patterns"
-   ]
-  },
-  {
-   "number": 2049,
-   "updated_at": "2026-11-04T08:50:02Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#recovery-signal-replay-gate"
-   ]
-  },
-  {
-   "number": 2050,
-   "updated_at": "2026-11-04T08:50:15Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#session-proposal-stays-out-of-candidate"
-   ]
-  },
-  {
-   "number": 2051,
-   "updated_at": "2026-11-04T08:50:20Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#worker-reconciles-own-pointer-commits"
-   ]
-  },
-  {
-   "number": 2052,
-   "updated_at": "2026-11-04T08:50:24Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#headless-session-resolves-arcadia-cli"
-   ]
-  },
-  {
-   "number": 2053,
-   "updated_at": "2026-11-04T08:50:28Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#qa-plan-sole-failure-spends-no-repair"
-   ]
-  },
-  {
-   "number": 2054,
-   "updated_at": "2026-11-04T08:50:42Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#red-alerts-for-repair-stops-and-no-progress"
-   ]
-  },
-  {
-   "number": 2055,
-   "updated_at": "2026-11-04T08:50:46Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-work-monitor-malformed-record"
-   ]
-  },
-  {
-   "number": 2056,
-   "updated_at": "2026-11-04T08:50:51Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-recovery-unparseable-time-order"
-   ]
-  },
-  {
-   "number": 2057,
-   "updated_at": "2026-11-04T08:51:44Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-reconcile-refuses-activation-commit"
-   ]
-  },
-  {
-   "number": 2084,
-   "updated_at": "2026-11-05T03:20:26Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "observed code and test; not run here",
-   "action_refs": []
-  },
-  {
-   "number": 2123,
-   "updated_at": "2026-11-05T21:54:12Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-qa-plan-status-must-be-fail"
-   ]
-  },
-  {
-   "number": 2139,
-   "updated_at": "2026-11-06T12:53:41Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-project-budget-exceeded"
-   ]
-  },
-  {
-   "number": 2140,
-   "updated_at": "2026-11-06T12:53:55Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-blank-override-falls-through"
-   ]
-  },
-  {
-   "number": 2141,
-   "updated_at": "2026-11-06T12:54:10Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-safety-lines-order-and-limit"
-   ]
-  },
-  {
-   "number": 2154,
-   "updated_at": "2026-11-06T20:21:36Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "verified-resolved",
-   "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
-   "caveat": "Observation: code and test present. The arcadia clarify --work id lookup is not claimed fixed, but the issue's Expected is the amendment path.",
-   "action_refs": []
-  },
-  {
-   "number": 2162,
-   "updated_at": "2026-11-06T23:39:22Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/portfolio-docs-protocol#build-parser"
-   ]
-  },
-  {
-   "number": 2163,
-   "updated_at": "2026-11-06T23:39:26Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/portfolio-docs-protocol#build-upsert"
-   ]
-  },
-  {
-   "number": 2164,
-   "updated_at": "2026-11-06T23:39:39Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/portfolio-docs-protocol#wire-docs-sync-command"
-   ]
-  },
-  {
-   "number": 2165,
-   "updated_at": "2026-11-06T23:39:54Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/portfolio-docs-protocol#contract-work-pointer"
-   ]
-  },
-  {
-   "number": 2166,
-   "updated_at": "2026-11-06T23:40:07Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/portfolio-docs-protocol#second-project-validation"
-   ]
-  },
-  {
-   "number": 2167,
-   "updated_at": "2026-11-06T23:40:20Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/portfolio-docs-protocol#repair-clarification-response-ux"
-   ]
-  },
-  {
-   "number": 2168,
-   "updated_at": "2026-11-06T23:40:34Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/portfolio-docs-protocol#ingest-mission-logs"
-   ]
-  },
-  {
-   "number": 2169,
-   "updated_at": "2026-11-06T23:40:39Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/portfolio-docs-protocol#persist-dependencies"
-   ]
-  },
-  {
-   "number": 2186,
-   "updated_at": "2026-11-07T14:59:36Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-red-alert-token-estimate"
-   ]
-  },
-  {
-   "number": 2187,
-   "updated_at": "2026-11-07T14:59:48Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-defect-summary-normalization"
-   ]
-  },
-  {
-   "number": 2188,
-   "updated_at": "2026-11-07T15:00:02Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-scheduling-sequence-equality"
-   ]
-  },
-  {
-   "number": 2189,
-   "updated_at": "2026-11-07T15:00:07Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-action-doc-ref-parse"
-   ]
-  },
-  {
-   "number": 2190,
-   "updated_at": "2026-11-07T15:00:12Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-journey-action-key-split"
-   ]
-  },
-  {
-   "number": 2191,
-   "updated_at": "2026-11-07T15:00:16Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-surface-date-validation"
-   ]
-  },
-  {
-   "number": 2192,
-   "updated_at": "2026-11-07T15:00:20Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-governed-record-path"
-   ]
-  },
-  {
-   "number": 2193,
-   "updated_at": "2026-11-07T15:00:33Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-ask-intent-work-kind"
-   ]
-  },
-  {
-   "number": 2194,
-   "updated_at": "2026-11-07T15:00:46Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-timeline-summary-and-order"
-   ]
-  },
-  {
-   "number": 2195,
-   "updated_at": "2026-11-07T15:01:00Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-answer-menu-letters"
-   ]
-  },
-  {
-   "number": 2196,
-   "updated_at": "2026-11-07T15:01:04Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-lesson-scope-normalization"
-   ]
-  },
-  {
-   "number": 2197,
-   "updated_at": "2026-11-07T15:01:18Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-agent-watch-ref-parsing"
-   ]
-  },
-  {
-   "number": 2198,
-   "updated_at": "2026-11-07T15:01:22Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-close-out-canonical-json"
-   ]
-  },
-  {
-   "number": 2199,
-   "updated_at": "2026-11-07T15:01:27Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-card-expiry-parse"
-   ]
-  },
-  {
-   "number": 2200,
-   "updated_at": "2026-11-07T15:01:31Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-ci-text-neutralization"
-   ]
-  },
-  {
-   "number": 2201,
-   "updated_at": "2026-11-07T15:01:36Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-issue-ref-parsing"
-   ]
-  },
-  {
-   "number": 2202,
-   "updated_at": "2026-11-07T15:01:41Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-way-trigger-parsing"
-   ]
-  },
-  {
-   "number": 2203,
-   "updated_at": "2026-11-07T15:01:46Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-narration-text-split"
-   ]
-  },
-  {
-   "number": 2204,
-   "updated_at": "2026-11-07T15:01:50Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-markdown-speech-strip"
-   ]
-  },
-  {
-   "number": 2205,
-   "updated_at": "2026-11-07T15:02:04Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107#pin-agent-role-guard"
-   ]
-  },
-  {
-   "number": 2288,
-   "updated_at": "2026-11-08T19:41:40Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-reasoning-effort-mapping"
-   ]
-  },
-  {
-   "number": 2289,
-   "updated_at": "2026-11-08T19:41:45Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-cli-wants-json"
-   ]
-  },
-  {
-   "number": 2290,
-   "updated_at": "2026-11-08T19:41:49Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-requirement-id-format"
-   ]
-  },
-  {
-   "number": 2291,
-   "updated_at": "2026-11-08T19:42:02Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-doc-ref-builders"
-   ]
-  },
-  {
-   "number": 2292,
-   "updated_at": "2026-11-08T19:42:07Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-checks-repair-request-id"
-   ]
-  },
-  {
-   "number": 2293,
-   "updated_at": "2026-11-08T19:42:19Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-handoff-request-prefix"
-   ]
-  },
-  {
-   "number": 2294,
-   "updated_at": "2026-11-08T19:42:33Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-review-response-normalization"
-   ]
-  },
-  {
-   "number": 2295,
-   "updated_at": "2026-11-08T19:42:37Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-image-mime-extension"
-   ]
-  },
-  {
-   "number": 2296,
-   "updated_at": "2026-11-08T19:42:41Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-authoritative-control-path"
-   ]
-  },
-  {
-   "number": 2297,
-   "updated_at": "2026-11-08T19:42:46Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-stable-proposal-id"
-   ]
-  },
-  {
-   "number": 2298,
-   "updated_at": "2026-11-08T19:42:51Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-north-star-step-reasons"
-   ]
-  },
-  {
-   "number": 2299,
-   "updated_at": "2026-11-08T19:42:55Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-milestone-and-log-doc-refs"
-   ]
-  },
-  {
-   "number": 2300,
-   "updated_at": "2026-11-08T19:42:59Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-yaml-scalar-quoting"
-   ]
-  },
-  {
-   "number": 2301,
-   "updated_at": "2026-11-08T19:43:13Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-launch-agent-workspace-arg"
-   ]
-  },
-  {
-   "number": 2302,
-   "updated_at": "2026-11-08T19:43:17Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-lesson-keywords"
-   ]
-  },
-  {
-   "number": 2303,
-   "updated_at": "2026-11-08T19:43:31Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-cloudflare-worker-name"
-   ]
-  },
-  {
-   "number": 2304,
-   "updated_at": "2026-11-08T19:43:35Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-liveness-duration-format"
-   ]
-  },
-  {
-   "number": 2305,
-   "updated_at": "2026-11-08T19:43:48Z",
-   "reason": "completed",
-   "canonical_issue": null,
-   "basis": "decision-0081-mirror",
-   "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
-   "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
-   "action_refs": [
-    "plan/record-run-unattended-test-pins-20261107-part-2#pin-repository-frame-extraction"
-   ]
+  "base_sha": "bf1b304c5b2dbf3d09270922ee23b2aea6384be8",
+  "retrieved_at": "2026-11-09T06:31:00Z",
+  "applied": false,
+  "note": "Proposal only. Re-fetch each Issue and re-check the base and governed values before applying; add or remove only the named labels.",
+  "closures": [
+    {
+      "number": 978,
+      "updated_at": "2026-10-05T21:59:45Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Checked directly by Rowan.",
+      "action_refs": []
+    },
+    {
+      "number": 1000,
+      "updated_at": "2026-10-06T05:43:28Z",
+      "reason": "duplicate",
+      "canonical_issue": "pmark/arcadia#2341",
+      "basis": "verified-duplicate",
+      "remaining_proof": "Consolidate into pmark/arcadia#2341, preserving any unique requirement.",
+      "caveat": "Same near-limit unit shard failure as #2341; its revival trigger has since fired.",
+      "action_refs": []
+    },
+    {
+      "number": 1041,
+      "updated_at": "2026-10-08T04:41:36Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Observed code and tests.",
+      "action_refs": []
+    },
+    {
+      "number": 1129,
+      "updated_at": "2026-10-09T08:26:16Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Observed repo script fixed; inferred not that the installed skill copy is (see #1686).",
+      "action_refs": []
+    },
+    {
+      "number": 1168,
+      "updated_at": "2026-10-10T03:27:09Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Observed request id, ordering and acceptable gating with a test; the 'sort gating items first' ordering is by kind, not strictly by gate (inference).",
+      "action_refs": []
+    },
+    {
+      "number": 1173,
+      "updated_at": "2026-10-09T23:07:04Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Observation: fix and test present; mirror Action #1271 is stale, still status: open in the draft Plan.",
+      "action_refs": [
+        "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#settle-superseded-decision-ask-rejection"
+      ]
+    },
+    {
+      "number": 1190,
+      "updated_at": "2026-10-10T06:38:03Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Resolved for the To-do surface; #1759 tracks the separate Review page.",
+      "action_refs": []
+    },
+    {
+      "number": 1270,
+      "updated_at": "2026-10-11T21:09:40Z",
+      "reason": "duplicate",
+      "canonical_issue": "pmark/arcadia#960",
+      "basis": "verified-duplicate",
+      "remaining_proof": "Consolidate into pmark/arcadia#960, preserving any unique requirement.",
+      "caveat": "Mirror Action of #960 (item 4 only); pair canonical.",
+      "action_refs": [
+        "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-claim-when-passed-attempt-receipt-is-unparseable"
+      ]
+    },
+    {
+      "number": 1271,
+      "updated_at": "2026-10-11T21:09:43Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Mirror Action of #1173; code resolved, so the Action needs a governed completion or closure.",
+      "action_refs": [
+        "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#settle-superseded-decision-ask-rejection"
+      ]
+    },
+    {
+      "number": 1272,
+      "updated_at": "2026-10-11T21:09:47Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Mirror Action of #1213 item 1; code and tests cover it. The Plan Action is still status: open (docs/plans seven-verified... :49) so it needs a governed completion, and item 2 stays in #1213.",
+      "action_refs": [
+        "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#amend-action-consumes-block-scalar-and-literal-ids"
+      ]
+    },
+    {
+      "number": 1273,
+      "updated_at": "2026-10-11T21:09:50Z",
+      "reason": "duplicate",
+      "canonical_issue": "pmark/arcadia#1022",
+      "basis": "verified-duplicate",
+      "remaining_proof": "Consolidate into pmark/arcadia#1022, preserving any unique requirement.",
+      "caveat": "Mirror Action of #1022; pair canonical.",
+      "action_refs": [
+        "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#keep-queue-positions-of-projects-not-visible-at-arrange"
+      ]
+    },
+    {
+      "number": 1274,
+      "updated_at": "2026-10-11T21:09:53Z",
+      "reason": "duplicate",
+      "canonical_issue": "pmark/arcadia#1011",
+      "basis": "verified-duplicate",
+      "remaining_proof": "Consolidate into pmark/arcadia#1011, preserving any unique requirement.",
+      "caveat": "Mirror Action of #1011; pair canonical.",
+      "action_refs": [
+        "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#refuse-hidden-renames-in-committed-completion-replay"
+      ]
+    },
+    {
+      "number": 1275,
+      "updated_at": "2026-11-08T05:37:10Z",
+      "reason": "duplicate",
+      "canonical_issue": "pmark/arcadia#1187",
+      "basis": "verified-duplicate",
+      "remaining_proof": "Consolidate into pmark/arcadia#1187, preserving any unique requirement.",
+      "caveat": "Mirror Action of #1187; pair canonical, one fix.",
+      "action_refs": [
+        "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#allocate-decision-numbers-from-origin-and-refuse-duplicates"
+      ]
+    },
+    {
+      "number": 1276,
+      "updated_at": "2026-10-11T21:10:01Z",
+      "reason": "duplicate",
+      "canonical_issue": "pmark/arcadia#1160",
+      "basis": "verified-duplicate",
+      "remaining_proof": "Consolidate into pmark/arcadia#1160, preserving any unique requirement.",
+      "caveat": "Mirror Action of #1160 (and #1731); the pair is canonical, defect and Action are one fix.",
+      "action_refs": [
+        "plan/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and#write-yaml-scalars-that-round-trip-as-strings"
+      ]
+    },
+    {
+      "number": 1414,
+      "updated_at": "2026-10-15T00:35:46Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Test file located by name; withheld-EOF case not read.",
+      "action_refs": []
+    },
+    {
+      "number": 1419,
+      "updated_at": "2026-10-15T04:15:12Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Code and tests read; did not run; revival trigger (recurrence) is not shown.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries"
+      ]
+    },
+    {
+      "number": 1460,
+      "updated_at": "2026-10-16T15:58:11Z",
+      "reason": "duplicate",
+      "canonical_issue": "pmark/arcadia#2341",
+      "basis": "verified-duplicate",
+      "remaining_proof": "Consolidate into pmark/arcadia#2341, preserving any unique requirement.",
+      "caveat": "Same unit-shard-near-limit cancellation as #2341 (then named unit-2).",
+      "action_refs": []
+    },
+    {
+      "number": 1509,
+      "updated_at": "2026-10-17T21:28:24Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#first-unattended-run"
+      ]
+    },
+    {
+      "number": 1536,
+      "updated_at": "2026-10-18T18:50:49Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Test read; not run. The Action's done mark also exists.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed"
+      ]
+    },
+    {
+      "number": 1655,
+      "updated_at": "2026-10-21T07:53:25Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-mail-ack-receipt-kind-collision"
+      ]
+    },
+    {
+      "number": 1656,
+      "updated_at": "2026-10-21T07:53:31Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name"
+      ]
+    },
+    {
+      "number": 1657,
+      "updated_at": "2026-10-21T07:53:35Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries"
+      ]
+    },
+    {
+      "number": 1695,
+      "updated_at": "2026-10-22T16:55:46Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Observation: stale admission can no longer yield a pass result.",
+      "action_refs": []
+    },
+    {
+      "number": 1698,
+      "updated_at": "2026-10-22T17:47:09Z",
+      "reason": "duplicate",
+      "canonical_issue": "pmark/arcadia#1628",
+      "basis": "verified-duplicate",
+      "remaining_proof": "Consolidate into pmark/arcadia#1628, preserving any unique requirement.",
+      "caveat": "Same test, same tmux-name collision, same acceptance.",
+      "action_refs": []
+    },
+    {
+      "number": 1738,
+      "updated_at": "2026-10-24T21:23:12Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Clean-run test read; rerun and next-run files confirmed only by matching 'is not active' assertion lines.",
+      "action_refs": []
+    },
+    {
+      "number": 1744,
+      "updated_at": "2026-10-25T02:29:33Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Observation: the cleanup defect is fixed with tests. The extra ask for a manual Off recovery CLI route (recordCommittedCompletionSettlement is only called from tick.ts) is not separately verified.",
+      "action_refs": []
+    },
+    {
+      "number": 1767,
+      "updated_at": "2026-10-25T23:27:59Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#rebuild-cover-mail-ack-receipt-kind-collision"
+      ]
+    },
+    {
+      "number": 1800,
+      "updated_at": "2026-10-26T19:41:25Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Code and test read; not run; the live consumed attempt is unaffected.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op"
+      ]
+    },
+    {
+      "number": 1920,
+      "updated_at": "2026-10-31T04:50:12Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "not run",
+      "action_refs": []
+    },
+    {
+      "number": 1965,
+      "updated_at": "2026-11-01T06:45:30Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op"
+      ]
+    },
+    {
+      "number": 1966,
+      "updated_at": "2026-11-01T06:45:34Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed"
+      ]
+    },
+    {
+      "number": 1967,
+      "updated_at": "2026-11-01T06:45:38Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-retired-descriptor-byte-change"
+      ]
+    },
+    {
+      "number": 1990,
+      "updated_at": "2026-11-02T04:36:46Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-worker-merge-allowlist-carve-outs"
+      ]
+    },
+    {
+      "number": 1991,
+      "updated_at": "2026-11-02T04:36:50Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-blast-radius-safety-patterns"
+      ]
+    },
+    {
+      "number": 2049,
+      "updated_at": "2026-11-04T08:50:02Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#recovery-signal-replay-gate"
+      ]
+    },
+    {
+      "number": 2050,
+      "updated_at": "2026-11-04T08:50:15Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#session-proposal-stays-out-of-candidate"
+      ]
+    },
+    {
+      "number": 2051,
+      "updated_at": "2026-11-04T08:50:20Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#worker-reconciles-own-pointer-commits"
+      ]
+    },
+    {
+      "number": 2052,
+      "updated_at": "2026-11-04T08:50:24Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#headless-session-resolves-arcadia-cli"
+      ]
+    },
+    {
+      "number": 2053,
+      "updated_at": "2026-11-04T08:50:28Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#qa-plan-sole-failure-spends-no-repair"
+      ]
+    },
+    {
+      "number": 2054,
+      "updated_at": "2026-11-04T08:50:42Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#red-alerts-for-repair-stops-and-no-progress"
+      ]
+    },
+    {
+      "number": 2055,
+      "updated_at": "2026-11-04T08:50:46Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-work-monitor-malformed-record"
+      ]
+    },
+    {
+      "number": 2056,
+      "updated_at": "2026-11-04T08:50:51Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-recovery-unparseable-time-order"
+      ]
+    },
+    {
+      "number": 2057,
+      "updated_at": "2026-11-04T08:51:44Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-reconcile-refuses-activation-commit"
+      ]
+    },
+    {
+      "number": 2084,
+      "updated_at": "2026-11-05T03:20:26Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "observed code and test; not run here",
+      "action_refs": []
+    },
+    {
+      "number": 2123,
+      "updated_at": "2026-11-05T21:54:12Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-qa-plan-status-must-be-fail"
+      ]
+    },
+    {
+      "number": 2139,
+      "updated_at": "2026-11-06T12:53:41Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-project-budget-exceeded"
+      ]
+    },
+    {
+      "number": 2140,
+      "updated_at": "2026-11-06T12:53:55Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-blank-override-falls-through"
+      ]
+    },
+    {
+      "number": 2141,
+      "updated_at": "2026-11-06T12:54:10Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-safety-lines-order-and-limit"
+      ]
+    },
+    {
+      "number": 2154,
+      "updated_at": "2026-11-06T20:21:36Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "verified-resolved",
+      "remaining_proof": "Re-check at the current base, then propose closure with this evidence.",
+      "caveat": "Observation: code and test present. The arcadia clarify --work id lookup is not claimed fixed, but the issue's Expected is the amendment path.",
+      "action_refs": []
+    },
+    {
+      "number": 2162,
+      "updated_at": "2026-11-06T23:39:22Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/portfolio-docs-protocol#build-parser"
+      ]
+    },
+    {
+      "number": 2163,
+      "updated_at": "2026-11-06T23:39:26Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/portfolio-docs-protocol#build-upsert"
+      ]
+    },
+    {
+      "number": 2164,
+      "updated_at": "2026-11-06T23:39:39Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/portfolio-docs-protocol#wire-docs-sync-command"
+      ]
+    },
+    {
+      "number": 2165,
+      "updated_at": "2026-11-06T23:39:54Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/portfolio-docs-protocol#contract-work-pointer"
+      ]
+    },
+    {
+      "number": 2166,
+      "updated_at": "2026-11-06T23:40:07Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/portfolio-docs-protocol#second-project-validation"
+      ]
+    },
+    {
+      "number": 2167,
+      "updated_at": "2026-11-06T23:40:20Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/portfolio-docs-protocol#repair-clarification-response-ux"
+      ]
+    },
+    {
+      "number": 2168,
+      "updated_at": "2026-11-06T23:40:34Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/portfolio-docs-protocol#ingest-mission-logs"
+      ]
+    },
+    {
+      "number": 2169,
+      "updated_at": "2026-11-06T23:40:39Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/portfolio-docs-protocol#persist-dependencies"
+      ]
+    },
+    {
+      "number": 2186,
+      "updated_at": "2026-11-07T14:59:36Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-red-alert-token-estimate"
+      ]
+    },
+    {
+      "number": 2187,
+      "updated_at": "2026-11-07T14:59:48Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-defect-summary-normalization"
+      ]
+    },
+    {
+      "number": 2188,
+      "updated_at": "2026-11-07T15:00:02Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-scheduling-sequence-equality"
+      ]
+    },
+    {
+      "number": 2189,
+      "updated_at": "2026-11-07T15:00:07Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-action-doc-ref-parse"
+      ]
+    },
+    {
+      "number": 2190,
+      "updated_at": "2026-11-07T15:00:12Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-journey-action-key-split"
+      ]
+    },
+    {
+      "number": 2191,
+      "updated_at": "2026-11-07T15:00:16Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-surface-date-validation"
+      ]
+    },
+    {
+      "number": 2192,
+      "updated_at": "2026-11-07T15:00:20Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-governed-record-path"
+      ]
+    },
+    {
+      "number": 2193,
+      "updated_at": "2026-11-07T15:00:33Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-ask-intent-work-kind"
+      ]
+    },
+    {
+      "number": 2194,
+      "updated_at": "2026-11-07T15:00:46Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-timeline-summary-and-order"
+      ]
+    },
+    {
+      "number": 2195,
+      "updated_at": "2026-11-07T15:01:00Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-answer-menu-letters"
+      ]
+    },
+    {
+      "number": 2196,
+      "updated_at": "2026-11-07T15:01:04Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-lesson-scope-normalization"
+      ]
+    },
+    {
+      "number": 2197,
+      "updated_at": "2026-11-07T15:01:18Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-agent-watch-ref-parsing"
+      ]
+    },
+    {
+      "number": 2198,
+      "updated_at": "2026-11-07T15:01:22Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-close-out-canonical-json"
+      ]
+    },
+    {
+      "number": 2199,
+      "updated_at": "2026-11-07T15:01:27Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-card-expiry-parse"
+      ]
+    },
+    {
+      "number": 2200,
+      "updated_at": "2026-11-07T15:01:31Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-ci-text-neutralization"
+      ]
+    },
+    {
+      "number": 2201,
+      "updated_at": "2026-11-07T15:01:36Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-issue-ref-parsing"
+      ]
+    },
+    {
+      "number": 2202,
+      "updated_at": "2026-11-07T15:01:41Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-way-trigger-parsing"
+      ]
+    },
+    {
+      "number": 2203,
+      "updated_at": "2026-11-07T15:01:46Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-narration-text-split"
+      ]
+    },
+    {
+      "number": 2204,
+      "updated_at": "2026-11-07T15:01:50Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-markdown-speech-strip"
+      ]
+    },
+    {
+      "number": 2205,
+      "updated_at": "2026-11-07T15:02:04Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107#pin-agent-role-guard"
+      ]
+    },
+    {
+      "number": 2288,
+      "updated_at": "2026-11-08T19:41:40Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-reasoning-effort-mapping"
+      ]
+    },
+    {
+      "number": 2289,
+      "updated_at": "2026-11-08T19:41:45Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-cli-wants-json"
+      ]
+    },
+    {
+      "number": 2290,
+      "updated_at": "2026-11-08T19:41:49Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-requirement-id-format"
+      ]
+    },
+    {
+      "number": 2291,
+      "updated_at": "2026-11-08T19:42:02Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-doc-ref-builders"
+      ]
+    },
+    {
+      "number": 2292,
+      "updated_at": "2026-11-08T19:42:07Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-checks-repair-request-id"
+      ]
+    },
+    {
+      "number": 2293,
+      "updated_at": "2026-11-08T19:42:19Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-handoff-request-prefix"
+      ]
+    },
+    {
+      "number": 2294,
+      "updated_at": "2026-11-08T19:42:33Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-review-response-normalization"
+      ]
+    },
+    {
+      "number": 2295,
+      "updated_at": "2026-11-08T19:42:37Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-image-mime-extension"
+      ]
+    },
+    {
+      "number": 2296,
+      "updated_at": "2026-11-08T19:42:41Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-authoritative-control-path"
+      ]
+    },
+    {
+      "number": 2297,
+      "updated_at": "2026-11-08T19:42:46Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-stable-proposal-id"
+      ]
+    },
+    {
+      "number": 2298,
+      "updated_at": "2026-11-08T19:42:51Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-north-star-step-reasons"
+      ]
+    },
+    {
+      "number": 2299,
+      "updated_at": "2026-11-08T19:42:55Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-milestone-and-log-doc-refs"
+      ]
+    },
+    {
+      "number": 2300,
+      "updated_at": "2026-11-08T19:42:59Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-yaml-scalar-quoting"
+      ]
+    },
+    {
+      "number": 2301,
+      "updated_at": "2026-11-08T19:43:13Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-launch-agent-workspace-arg"
+      ]
+    },
+    {
+      "number": 2302,
+      "updated_at": "2026-11-08T19:43:17Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-lesson-keywords"
+      ]
+    },
+    {
+      "number": 2303,
+      "updated_at": "2026-11-08T19:43:31Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-cloudflare-worker-name"
+      ]
+    },
+    {
+      "number": 2304,
+      "updated_at": "2026-11-08T19:43:35Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-liveness-duration-format"
+      ]
+    },
+    {
+      "number": 2305,
+      "updated_at": "2026-11-08T19:43:48Z",
+      "reason": "completed",
+      "canonical_issue": null,
+      "basis": "decision-0081-mirror",
+      "remaining_proof": "Re-verify the linked Action's acceptance at the current base, then close under Decision 0081, keeping the Action reference.",
+      "caveat": "Mirror of a governed Action already marked done. Decision 0081 allows closure after re-verifying the Action's acceptance at the governed base.",
+      "action_refs": [
+        "plan/record-run-unattended-test-pins-20261107-part-2#pin-repository-frame-extraction"
+      ]
+    }
+  ],
+  "labels": [
+    {
+      "number": 852,
+      "updated_at": "2026-10-04T17:28:15Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 925,
+      "updated_at": "2026-10-05T04:01:04Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 960,
+      "updated_at": "2026-10-05T05:41:40Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 976,
+      "updated_at": "2026-10-05T21:03:04Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 984,
+      "updated_at": "2026-10-06T02:27:59Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 987,
+      "updated_at": "2026-10-06T06:13:51Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 993,
+      "updated_at": "2026-10-06T05:01:48Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 998,
+      "updated_at": "2026-10-06T05:27:12Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1001,
+      "updated_at": "2026-10-06T05:47:12Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1003,
+      "updated_at": "2026-10-06T06:37:39Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1007,
+      "updated_at": "2026-10-06T07:51:16Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1011,
+      "updated_at": "2026-10-06T09:15:38Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1012,
+      "updated_at": "2026-10-06T09:27:19Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1015,
+      "updated_at": "2026-10-06T15:22:52Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1016,
+      "updated_at": "2026-10-06T15:22:52Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1021,
+      "updated_at": "2026-10-06T17:26:02Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1022,
+      "updated_at": "2026-10-06T17:26:54Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1051,
+      "updated_at": "2026-10-08T15:32:54Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1122,
+      "updated_at": "2026-10-09T07:34:25Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1126,
+      "updated_at": "2026-10-09T07:55:41Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1129,
+      "updated_at": "2026-10-09T08:26:16Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1140,
+      "updated_at": "2026-10-09T10:06:45Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1144,
+      "updated_at": "2026-10-09T14:33:14Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1155,
+      "updated_at": "2026-10-09T19:13:15Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1168,
+      "updated_at": "2026-10-10T03:27:09Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1176,
+      "updated_at": "2026-10-10T01:02:36Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1180,
+      "updated_at": "2026-10-10T03:46:13Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1189,
+      "updated_at": "2026-10-10T05:56:00Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1213,
+      "updated_at": "2026-10-10T20:47:47Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1214,
+      "updated_at": "2026-10-10T21:02:57Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1228,
+      "updated_at": "2026-10-11T01:17:37Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1249,
+      "updated_at": "2026-10-11T15:22:45Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1267,
+      "updated_at": "2026-10-11T18:22:35Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1277,
+      "updated_at": "2026-10-11T21:51:42Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1286,
+      "updated_at": "2026-10-12T01:04:17Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1322,
+      "updated_at": "2026-10-28T00:39:04Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1461,
+      "updated_at": "2026-10-16T16:55:29Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1466,
+      "updated_at": "2026-10-16T18:03:31Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1516,
+      "updated_at": "2026-10-17T23:44:39Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1519,
+      "updated_at": "2026-10-18T00:55:58Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1549,
+      "updated_at": "2026-10-19T01:25:29Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1551,
+      "updated_at": "2026-10-19T01:25:31Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1565,
+      "updated_at": "2026-10-19T06:20:24Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1569,
+      "updated_at": "2026-10-19T13:23:34Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1570,
+      "updated_at": "2026-10-19T13:23:36Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1572,
+      "updated_at": "2026-10-19T13:23:39Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1574,
+      "updated_at": "2026-10-19T14:13:23Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1585,
+      "updated_at": "2026-10-19T17:28:38Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1600,
+      "updated_at": "2026-10-20T01:05:20Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1603,
+      "updated_at": "2026-10-20T05:01:28Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1606,
+      "updated_at": "2026-10-20T09:49:06Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1607,
+      "updated_at": "2026-10-20T05:38:17Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1614,
+      "updated_at": "2026-10-20T09:40:33Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1615,
+      "updated_at": "2026-10-20T09:40:34Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1624,
+      "updated_at": "2026-10-20T17:02:13Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1627,
+      "updated_at": "2026-10-20T19:15:37Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1645,
+      "updated_at": "2026-10-21T01:10:02Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1646,
+      "updated_at": "2026-10-21T01:12:37Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1652,
+      "updated_at": "2026-10-21T05:50:15Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1660,
+      "updated_at": "2026-10-21T08:13:38Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1670,
+      "updated_at": "2026-10-21T16:43:08Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1685,
+      "updated_at": "2026-10-22T01:15:24Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1686,
+      "updated_at": "2026-10-22T02:58:33Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1702,
+      "updated_at": "2026-10-22T21:24:11Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1708,
+      "updated_at": "2026-10-23T05:12:35Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1731,
+      "updated_at": "2026-10-24T19:16:19Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1739,
+      "updated_at": "2026-10-24T21:48:18Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1759,
+      "updated_at": "2026-10-25T18:14:35Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1773,
+      "updated_at": "2026-10-26T01:04:17Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1775,
+      "updated_at": "2026-10-26T03:12:05Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1825,
+      "updated_at": "2026-10-27T19:04:48Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1826,
+      "updated_at": "2026-10-27T19:24:39Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1827,
+      "updated_at": "2026-10-27T19:49:50Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1841,
+      "updated_at": "2026-10-28T02:33:07Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1848,
+      "updated_at": "2026-10-28T04:44:08Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1854,
+      "updated_at": "2026-10-28T15:20:36Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1859,
+      "updated_at": "2026-10-28T21:13:18Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1862,
+      "updated_at": "2026-10-28T21:30:42Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1864,
+      "updated_at": "2026-10-28T23:39:14Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1874,
+      "updated_at": "2026-10-29T05:35:49Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1875,
+      "updated_at": "2026-10-29T06:35:25Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1886,
+      "updated_at": "2026-10-29T18:27:36Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1897,
+      "updated_at": "2026-10-30T01:17:43Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1898,
+      "updated_at": "2026-10-30T01:19:30Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1909,
+      "updated_at": "2026-10-30T19:35:54Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1910,
+      "updated_at": "2026-10-30T19:35:57Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1920,
+      "updated_at": "2026-10-31T04:50:12Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1924,
+      "updated_at": "2026-10-31T06:06:20Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1929,
+      "updated_at": "2026-11-09T05:45:40Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1953,
+      "updated_at": "2026-11-01T02:12:17Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1962,
+      "updated_at": "2026-11-01T05:15:21Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1976,
+      "updated_at": "2026-11-01T18:12:17Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 1978,
+      "updated_at": "2026-11-01T18:28:31Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 1980,
+      "updated_at": "2026-11-01T20:36:14Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 2004,
+      "updated_at": "2026-11-02T17:54:35Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 2008,
+      "updated_at": "2026-11-02T19:05:37Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 2013,
+      "updated_at": "2026-11-02T21:58:21Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2015,
+      "updated_at": "2026-11-02T20:11:42Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 2018,
+      "updated_at": "2026-11-03T00:06:30Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2021,
+      "updated_at": "2026-11-03T02:02:04Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2025,
+      "updated_at": "2026-11-03T10:16:06Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 2029,
+      "updated_at": "2026-11-03T14:45:50Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2038,
+      "updated_at": "2026-11-04T02:26:54Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2084,
+      "updated_at": "2026-11-05T03:20:26Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2093,
+      "updated_at": "2026-11-05T05:25:45Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2102,
+      "updated_at": "2026-11-05T07:16:03Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2103,
+      "updated_at": "2026-11-05T07:16:04Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2104,
+      "updated_at": "2026-11-05T07:16:05Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2111,
+      "updated_at": "2026-11-05T07:51:09Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 2117,
+      "updated_at": "2026-11-05T14:38:16Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    },
+    {
+      "number": 2119,
+      "updated_at": "2026-11-05T17:56:37Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2134,
+      "updated_at": "2026-11-07T05:38:04Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2154,
+      "updated_at": "2026-11-06T20:21:36Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2159,
+      "updated_at": "2026-11-06T22:03:33Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2160,
+      "updated_at": "2026-11-06T22:03:34Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2273,
+      "updated_at": "2026-11-08T05:36:45Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2274,
+      "updated_at": "2026-11-08T05:36:46Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2278,
+      "updated_at": "2026-11-08T07:08:18Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2284,
+      "updated_at": "2026-11-08T16:15:51Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "verified"
+    },
+    {
+      "number": 2316,
+      "updated_at": "2026-11-08T21:37:42Z",
+      "add": [
+        "bug"
+      ],
+      "basis": "classified-from-title-and-body"
+    }
+  ],
+  "refresh_20261111": {
+    "taken": "2026-11-11",
+    "against_main": "a3a109bff",
+    "note": "Nothing closed or relabelled. Closure candidates need a fresh coverage check at the current base before any closure.",
+    "already_closed": [
+      {
+        "number": 749,
+        "closed_at": "2026-11-09T07:31:00Z",
+        "reason": "completed"
+      },
+      {
+        "number": 1249,
+        "closed_at": "2026-11-10T08:41:42Z",
+        "reason": "completed"
+      },
+      {
+        "number": 1366,
+        "closed_at": "2026-11-09T07:30:34Z",
+        "reason": "completed"
+      },
+      {
+        "number": 1646,
+        "closed_at": "2026-11-10T06:51:23Z",
+        "reason": "completed"
+      },
+      {
+        "number": 1670,
+        "closed_at": "2026-11-10T07:50:32Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2011,
+        "closed_at": "2026-11-09T07:31:28Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2102,
+        "closed_at": "2026-11-10T07:47:35Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2119,
+        "closed_at": "2026-11-10T06:40:18Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2134,
+        "closed_at": "2026-11-09T17:23:34Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2159,
+        "closed_at": "2026-11-09T17:25:12Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2227,
+        "closed_at": "2026-11-10T06:34:25Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2273,
+        "closed_at": "2026-11-09T17:31:01Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2278,
+        "closed_at": "2026-11-09T17:24:03Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2284,
+        "closed_at": "2026-11-10T07:21:49Z",
+        "reason": "completed"
+      },
+      {
+        "number": 2341,
+        "closed_at": "2026-11-10T06:35:05Z",
+        "reason": "completed"
+      }
+    ],
+    "closure_candidates": [
+      {
+        "number": 899,
+        "evidence": "Governed Action done: plan/bootstrap-managed-production-to-build-flight-deck#prepare-three-action-rehearsal-operator-runbooks, plan/bootstrap-managed-production-to-build-flight-deck#normalize-check-contexts-in-review-readiness, plan/bootstrap-managed-production-to-build-flight-deck#fix-rehearsal-g1-plan-and-operator-guidance, plan/bootstrap-managed-production-to-build-flight-deck#code-review-not-applicable-criteria, plan/bootstrap-managed-production-to-build-flight-deck#code-review-not-applicable-naming, plan/bootstrap-managed-production-to-build-flight-deck#code-review-tests-criterion-stability, plan/bootstrap-managed-production-to-build-flight-deck#define-agent-peer-watch-contract, plan/bootstrap-managed-production-to-build-flight-deck#define-agent-comms-role, plan/bootstrap-managed-production-to-build-flight-deck#prepare-run-2-rehearsal-scripts, plan/bootstrap-managed-production-to-build-flight-deck#document-rehearsal-runbook; acceptance coverage not re-proved"
+      },
+      {
+        "number": 925,
+        "evidence": "Governed Action done: plan/bootstrap-managed-production-to-build-flight-deck#prepare-three-action-rehearsal-operator-runbooks; acceptance coverage not re-proved"
+      },
+      {
+        "number": 940,
+        "evidence": "Governed Action done: plan/bootstrap-managed-production-to-build-flight-deck#keep-exempt-commands-out-of-activity-log, plan/bootstrap-managed-production-to-build-flight-deck#define-agent-comms-role, plan/bootstrap-managed-production-to-build-flight-deck#require-inline-workspace-mode, plan/bootstrap-managed-production-to-build-flight-deck#adopt-rehearsal-freeze-window, plan/bootstrap-managed-production-to-build-flight-deck#prepare-run-2-rehearsal-scripts, plan/bootstrap-managed-production-to-build-flight-deck#accept-settled-descendant-in-g8-reconciliation, plan/bootstrap-managed-production-to-build-flight-deck#prepare-run-3-rehearsal-scripts, plan/bootstrap-managed-production-to-build-flight-deck#embed-validation-evidence-in-preserved-pr-body, plan/bootstrap-managed-production-to-build-flight-deck#document-rehearsal-runbook; acceptance coverage not re-proved"
+      },
+      {
+        "number": 944,
+        "evidence": "Governed Action done: plan/bootstrap-managed-production-to-build-flight-deck#define-agent-comms-role; acceptance coverage not re-proved"
+      },
+      {
+        "number": 987,
+        "evidence": "Governed Action done: plan/bootstrap-managed-production-to-build-flight-deck#document-rehearsal-runbook, plan/bootstrap-managed-production-to-build-flight-deck#build-fast-rehearsal-harness, plan/bootstrap-managed-production-to-build-flight-deck#build-checkpoint-replay-and-base-check, plan/bootstrap-managed-production-to-build-flight-deck#fix-serial-pr-base-stacking, plan/bootstrap-managed-production-to-build-flight-deck#build-chain-rehearsal-run-scripts; acceptance coverage not re-proved"
+      },
+      {
+        "number": 989,
+        "evidence": "Governed Action done: plan/bootstrap-managed-production-to-build-flight-deck#build-fast-rehearsal-harness, plan/bootstrap-managed-production-to-build-flight-deck#build-checkpoint-replay-and-base-check, plan/bootstrap-managed-production-to-build-flight-deck#fix-serial-pr-base-stacking; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1015,
+        "evidence": "Governed Action done: plan/bootstrap-managed-production-to-build-flight-deck#prepare-run7-chain; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1016,
+        "evidence": "Governed Action done: plan/bootstrap-managed-production-to-build-flight-deck#prepare-run7-chain; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1262,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-retired-descriptor-byte-change; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1277,
+        "evidence": "Governed Action done: plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#declare-action-route-and-fix-the-approval-check; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1286,
+        "evidence": "Governed Action done: plan/production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the#stop-spending-into-an-environment-wall; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1419,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1470,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-mail-ack-receipt-kind-collision, plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#rebuild-cover-mail-ack-receipt-kind-collision; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1509,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#first-unattended-run; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1536,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1570,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#test-transient-review-retry-after-exhaustion, plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#refresh-decision-0130-status-and-1559-fake, plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#guard-repair-gate-upsert-role; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1574,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#guard-repair-gate-upsert-role; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1582,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#test-transient-review-retry-after-exhaustion; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1585,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#refresh-decision-0130-status-and-1559-fake; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1628,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1655,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-mail-ack-receipt-kind-collision; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1656,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#isolate-launch-preview-tmux-name; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1657,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#bound-guidance-test-teardown-retries; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1767,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#rebuild-cover-mail-ack-receipt-kind-collision; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1800,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1886,
+        "evidence": "Governed Action done: plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-project-budget-exceeded, plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-blank-override-falls-through; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1965,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#preserve-codex-config-on-semantic-no-op; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1966,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#assert-tmux-temp-launcher-removed; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1967,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#cover-retired-descriptor-byte-change; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1987,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-worker-merge-allowlist-carve-outs; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1989,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-blast-radius-safety-patterns; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1990,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-worker-merge-allowlist-carve-outs; acceptance coverage not re-proved"
+      },
+      {
+        "number": 1991,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-blast-radius-safety-patterns; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2004,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-recovery-unparseable-time-order, plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-qa-plan-status-must-be-fail; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2015,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-work-monitor-malformed-record; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2018,
+        "evidence": "Commit 64b3372fe on main carries a Closes/Fixes line for this Issue; Issue was reopened, so confirm the fix covers the reopen reason"
+      },
+      {
+        "number": 2049,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#recovery-signal-replay-gate; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2050,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#session-proposal-stays-out-of-candidate; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2051,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#worker-reconciles-own-pointer-commits; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2052,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#headless-session-resolves-arcadia-cli; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2053,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#qa-plan-sole-failure-spends-no-repair; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2054,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#red-alerts-for-repair-stops-and-no-progress; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2055,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-work-monitor-malformed-record; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2056,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-recovery-unparseable-time-order; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2057,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-reconcile-refuses-activation-commit; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2123,
+        "evidence": "Governed Action done: plan/arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider#pin-qa-plan-status-must-be-fail; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2139,
+        "evidence": "Governed Action done: plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-project-budget-exceeded; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2140,
+        "evidence": "Governed Action done: plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-guidance-blank-override-falls-through; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2141,
+        "evidence": "Governed Action done: plan/keep-unattended-serial-production-running-overnight-on-three-test-only-actions#pin-safety-lines-order-and-limit; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2162,
+        "evidence": "Governed Action done: plan/portfolio-docs-protocol#build-parser; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2163,
+        "evidence": "Governed Action done: plan/portfolio-docs-protocol#build-upsert; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2164,
+        "evidence": "Governed Action done: plan/portfolio-docs-protocol#wire-docs-sync-command; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2165,
+        "evidence": "Governed Action done: plan/portfolio-docs-protocol#contract-work-pointer; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2166,
+        "evidence": "Governed Action done: plan/portfolio-docs-protocol#second-project-validation; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2167,
+        "evidence": "Governed Action done: plan/portfolio-docs-protocol#repair-clarification-response-ux; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2168,
+        "evidence": "Governed Action done: plan/portfolio-docs-protocol#ingest-mission-logs; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2169,
+        "evidence": "Governed Action done: plan/portfolio-docs-protocol#persist-dependencies; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2186,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-red-alert-token-estimate; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2187,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-defect-summary-normalization; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2188,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-scheduling-sequence-equality; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2189,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-action-doc-ref-parse; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2190,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-journey-action-key-split; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2191,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-surface-date-validation; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2192,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-governed-record-path; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2193,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-ask-intent-work-kind; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2194,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-timeline-summary-and-order; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2195,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-answer-menu-letters; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2196,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-lesson-scope-normalization; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2197,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-agent-watch-ref-parsing; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2198,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-close-out-canonical-json; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2199,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-card-expiry-parse; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2200,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-ci-text-neutralization; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2201,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-issue-ref-parsing; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2202,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-way-trigger-parsing; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2203,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-narration-text-split; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2204,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-markdown-speech-strip; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2205,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107#pin-agent-role-guard; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2288,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-reasoning-effort-mapping; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2289,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-cli-wants-json; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2290,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-requirement-id-format; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2291,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-doc-ref-builders; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2292,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-checks-repair-request-id; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2293,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-handoff-request-prefix; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2294,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-review-response-normalization; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2295,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-image-mime-extension; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2296,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-authoritative-control-path; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2297,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-stable-proposal-id; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2298,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-north-star-step-reasons; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2299,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-milestone-and-log-doc-refs; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2300,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-yaml-scalar-quoting; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2301,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-launch-agent-workspace-arg; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2302,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-lesson-keywords; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2303,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-cloudflare-worker-name; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2304,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-liveness-duration-format; acceptance coverage not re-proved"
+      },
+      {
+        "number": 2305,
+        "evidence": "Governed Action done: plan/record-run-unattended-test-pins-20261107-part-2#pin-repository-frame-extraction; acceptance coverage not re-proved"
+      }
+    ],
+    "action_proposals": [
+      {
+        "plan": "bootstrap-managed-production-to-build-flight-deck",
+        "actions": [
+          {
+            "action": "generate-neutral-rehearsal-dry-preparation",
+            "issue": 1031
+          },
+          {
+            "action": "close-completed-board-mirrors",
+            "issue": 490
+          },
+          {
+            "action": "treat-blocked-status-as-undispatchable",
+            "issue": 494
+          },
+          {
+            "action": "serialize-decision-deferral-pointer-write",
+            "issue": 505
+          },
+          {
+            "action": "settle-commit-survives-gitignored-asks",
+            "issue": 512
+          },
+          {
+            "action": "fix-decision-approve-resolution-body",
+            "issue": 746
+          },
+          {
+            "action": "fix-tidy-torn-tail-byte-offset",
+            "issue": 749
+          },
+          {
+            "action": "stabilize-flaky-test-suite",
+            "issue": 765
+          },
+          {
+            "action": "stabilize-flaky-test-suite",
+            "issue": 766
+          },
+          {
+            "action": "stabilize-flaky-test-suite",
+            "issue": 768
+          },
+          {
+            "action": "stabilize-flaky-test-suite",
+            "issue": 778
+          },
+          {
+            "action": "allow-manual-preservation-first-binding-after-base-advance",
+            "issue": 811
+          },
+          {
+            "action": "report-missing-validation-commands-in-broker-readiness",
+            "issue": 813
+          },
+          {
+            "action": "stabilize-flaky-test-suite",
+            "issue": 831
+          },
+          {
+            "action": "support-action-deferral-via-agent-ask",
+            "issue": 844
+          },
+          {
+            "action": "diagnose-manual-preservation-response-budget-timeout",
+            "issue": 848
+          },
+          {
+            "action": "withdraw-superseded-847-activation-asks",
+            "issue": 875
+          },
+          {
+            "action": "resolve-merged-pr-review-followups",
+            "issue": 916
+          },
+          {
+            "action": "resolve-merged-pr-review-followups",
+            "issue": 918
+          },
+          {
+            "action": "resolve-merged-pr-review-followups",
+            "issue": 921
+          },
+          {
+            "action": "resolve-merged-pr-review-followups",
+            "issue": 930
+          },
+          {
+            "action": "resolve-merged-pr-review-followups",
+            "issue": 933
+          },
+          {
+            "action": "fix-reviewer-verdict-name-echo",
+            "issue": 937
+          },
+          {
+            "action": "harden-peer-watch-ownership-join",
+            "issue": 939
+          },
+          {
+            "action": "fix-identity-block-fail-soft",
+            "issue": 942
+          },
+          {
+            "action": "harden-experiment-guard-leak-check-attribution",
+            "issue": 945
+          },
+          {
+            "action": "fix-experiment-workspace-friction",
+            "issue": 947
+          },
+          {
+            "action": "harden-activity-leak-fix-followups",
+            "issue": 949
+          }
+        ],
+        "receipt": {
+          "plan": "bootstrap-managed-production-to-build-flight-deck",
+          "request_id": "request-bug-triage-closed-refresh-20261111-285a7538",
+          "proposal_id": "agentask_84fc1691428f356f82",
+          "capture_id": "capture_a1f4369b-7c00-4137-8e65-f4affd9c3313"
+        }
+      },
+      {
+        "plan": "burn-down-three-small-verified-bug-issues-in-unattended-serial-production",
+        "actions": [
+          {
+            "action": "report-cut-work-monitor-attention-lines",
+            "issue": 2011
+          },
+          {
+            "action": "truncate-torn-journal-tail-by-byte-offset",
+            "issue": 749
+          }
+        ],
+        "receipt": {
+          "plan": "burn-down-three-small-verified-bug-issues-in-unattended-serial-production",
+          "request_id": "request-bug-triage-closed-refresh-20261111-b2e7dba3",
+          "proposal_id": "agentask_3e6a0f7da237e773f9",
+          "capture_id": "capture_ae7df029-bf1e-476a-9cf1-11d63282b63c"
+        }
+      },
+      {
+        "plan": "deliver-one-authorized-action-through-a-persistent-go-conversation",
+        "actions": [
+          {
+            "action": "connect-conversation-to-protected-continue",
+            "issue": 1889
+          },
+          {
+            "action": "implement-project-go-conversation",
+            "issue": 1889
+          },
+          {
+            "action": "project-session-evidence-into-conversation",
+            "issue": 1889
+          },
+          {
+            "action": "prove-go-delivery-from-coding-agent-session",
+            "issue": 1889
+          },
+          {
+            "action": "prove-one-action-conversation-delivery",
+            "issue": 1889
+          },
+          {
+            "action": "reconcile-conversation-retries-and-reconnects",
+            "issue": 1889
+          }
+        ],
+        "receipt": {
+          "plan": "deliver-one-authorized-action-through-a-persistent-go-conversation",
+          "request_id": "request-bug-triage-closed-refresh-20261111-9525ac75",
+          "proposal_id": "agentask_dd8fbfbc268f3acdbf",
+          "capture_id": "capture_015d4ead-6907-4515-85da-45c68743d0d5"
+        }
+      },
+      {
+        "plan": "execute-one-approved-named-run-safely-with-production-off",
+        "actions": [
+          {
+            "action": "prove-approved-run-completion",
+            "issue": 1389
+          }
+        ],
+        "receipt": {
+          "plan": "execute-one-approved-named-run-safely-with-production-off",
+          "request_id": "request-bug-triage-closed-refresh-20261111-1dfaf3da",
+          "proposal_id": "agentask_e22b9d3684e5c7a067",
+          "capture_id": "capture_1d0d85b4-3d47-490c-8b3a-df5dd51743b6"
+        }
+      },
+      {
+        "plan": "guard-the-operator-s-machine-against-data-loss-from-arcadia-s-own-scripts-and",
+        "actions": [
+          {
+            "action": "alert-on-unsaved-and-local-only-work",
+            "issue": 1154
+          },
+          {
+            "action": "keep-tests-off-the-live-workspace",
+            "issue": 1154
+          },
+          {
+            "action": "lint-shell-scripts-for-safe-deletes",
+            "issue": 1154
+          }
+        ],
+        "receipt": {
+          "plan": "guard-the-operator-s-machine-against-data-loss-from-arcadia-s-own-scripts-and",
+          "request_id": "request-bug-triage-closed-refresh-20261111-5df2b1fa",
+          "proposal_id": "agentask_eaaa8dc57f688a849c",
+          "capture_id": "capture_9a4f3cea-da09-46d8-8aa4-26955e9342c3"
+        }
+      },
+      {
+        "plan": "make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and",
+        "actions": [
+          {
+            "action": "align-ask-superpower-outcome",
+            "issue": 589
+          },
+          {
+            "action": "route-execution-shaped-asks-to-planning",
+            "issue": 589
+          },
+          {
+            "action": "trace-every-ask-to-its-outcome",
+            "issue": 589
+          },
+          {
+            "action": "align-ask-superpower-outcome",
+            "issue": 591
+          },
+          {
+            "action": "route-execution-shaped-asks-to-planning",
+            "issue": 591
+          },
+          {
+            "action": "trace-every-ask-to-its-outcome",
+            "issue": 591
+          }
+        ],
+        "receipt": {
+          "plan": "make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and",
+          "request_id": "request-bug-triage-closed-refresh-20261111-21833043",
+          "proposal_id": "agentask_73fb2684c1f87f645e",
+          "capture_id": "capture_ca4671f5-add4-43c0-bbfd-63a52d58d514"
+        }
+      },
+      {
+        "plan": "recover-completed-governance-overlap-in-protected-go",
+        "actions": [
+          {
+            "action": "reconcile-completed-governance-overlap",
+            "issue": 1376
+          }
+        ],
+        "receipt": {
+          "plan": "recover-completed-governance-overlap-in-protected-go",
+          "request_id": "request-bug-triage-closed-refresh-20261111-48e6e457",
+          "proposal_id": "agentask_fe597599ebfbe3590f",
+          "capture_id": "capture_28c03f9d-9dbc-44f9-b0df-26475a3036f9"
+        }
+      },
+      {
+        "plan": "redesign-the-phone-dashboard-into-one-judgment-home-a-complete-operator-script",
+        "actions": [
+          {
+            "action": "focus-runs-on-active-work-and-next-push",
+            "issue": 809
+          }
+        ],
+        "receipt": {
+          "plan": "redesign-the-phone-dashboard-into-one-judgment-home-a-complete-operator-script",
+          "request_id": "request-bug-triage-closed-refresh-20261111-d00c9698",
+          "proposal_id": "agentask_0e8c34cf8b94c81d1e",
+          "capture_id": "capture_7e018333-a6ae-4abf-858d-3301a6557219"
+        }
+      },
+      {
+        "plan": "seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and",
+        "actions": [
+          {
+            "action": "amend-action-consumes-block-scalar-and-literal-ids",
+            "issue": 1031
+          }
+        ],
+        "receipt": {
+          "plan": "seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and",
+          "request_id": "request-bug-triage-closed-refresh-20261111-8ef5cc62",
+          "proposal_id": "agentask_bd321c5e68fc2514ed",
+          "capture_id": "capture_f8e5d06e-dd9f-46ee-a8c1-59a57474a2fe"
+        }
+      },
+      {
+        "plan": "unify-interactive-and-unattended-coordination-with-safe-concurrent-actions",
+        "actions": [
+          {
+            "action": "preview-safe-concurrent-action-selection",
+            "issue": 1728
+          },
+          {
+            "action": "prove-atomic-scoped-concurrent-admission",
+            "issue": 1728
+          },
+          {
+            "action": "prove-one-supported-native-supervision-adapter",
+            "issue": 1728
+          },
+          {
+            "action": "prove-safe-concurrent-settlement-and-integration",
+            "issue": 1728
+          }
+        ],
+        "receipt": {
+          "plan": "unify-interactive-and-unattended-coordination-with-safe-concurrent-actions",
+          "request_id": "request-bug-triage-closed-refresh-20261111-3278a861",
+          "proposal_id": "agentask_819f4f650d2b20af30",
+          "capture_id": "capture_84d4fccf-0e91-4ec9-a54e-35d59a3ea383"
+        }
+      }
+    ]
   }
- ],
- "labels": [
-  {
-   "number": 852,
-   "updated_at": "2026-10-04T17:28:15Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 925,
-   "updated_at": "2026-10-05T04:01:04Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 960,
-   "updated_at": "2026-10-05T05:41:40Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 976,
-   "updated_at": "2026-10-05T21:03:04Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 984,
-   "updated_at": "2026-10-06T02:27:59Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 987,
-   "updated_at": "2026-10-06T06:13:51Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 993,
-   "updated_at": "2026-10-06T05:01:48Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 998,
-   "updated_at": "2026-10-06T05:27:12Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1001,
-   "updated_at": "2026-10-06T05:47:12Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1003,
-   "updated_at": "2026-10-06T06:37:39Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1007,
-   "updated_at": "2026-10-06T07:51:16Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1011,
-   "updated_at": "2026-10-06T09:15:38Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1012,
-   "updated_at": "2026-10-06T09:27:19Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1015,
-   "updated_at": "2026-10-06T15:22:52Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1016,
-   "updated_at": "2026-10-06T15:22:52Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1021,
-   "updated_at": "2026-10-06T17:26:02Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1022,
-   "updated_at": "2026-10-06T17:26:54Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1051,
-   "updated_at": "2026-10-08T15:32:54Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1122,
-   "updated_at": "2026-10-09T07:34:25Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1126,
-   "updated_at": "2026-10-09T07:55:41Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1129,
-   "updated_at": "2026-10-09T08:26:16Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1140,
-   "updated_at": "2026-10-09T10:06:45Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1144,
-   "updated_at": "2026-10-09T14:33:14Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1155,
-   "updated_at": "2026-10-09T19:13:15Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1168,
-   "updated_at": "2026-10-10T03:27:09Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1176,
-   "updated_at": "2026-10-10T01:02:36Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1180,
-   "updated_at": "2026-10-10T03:46:13Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1189,
-   "updated_at": "2026-10-10T05:56:00Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1213,
-   "updated_at": "2026-10-10T20:47:47Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1214,
-   "updated_at": "2026-10-10T21:02:57Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1228,
-   "updated_at": "2026-10-11T01:17:37Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1249,
-   "updated_at": "2026-10-11T15:22:45Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1267,
-   "updated_at": "2026-10-11T18:22:35Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1277,
-   "updated_at": "2026-10-11T21:51:42Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1286,
-   "updated_at": "2026-10-12T01:04:17Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1322,
-   "updated_at": "2026-10-28T00:39:04Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1461,
-   "updated_at": "2026-10-16T16:55:29Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1466,
-   "updated_at": "2026-10-16T18:03:31Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1516,
-   "updated_at": "2026-10-17T23:44:39Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1519,
-   "updated_at": "2026-10-18T00:55:58Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1549,
-   "updated_at": "2026-10-19T01:25:29Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1551,
-   "updated_at": "2026-10-19T01:25:31Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1565,
-   "updated_at": "2026-10-19T06:20:24Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1569,
-   "updated_at": "2026-10-19T13:23:34Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1570,
-   "updated_at": "2026-10-19T13:23:36Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1572,
-   "updated_at": "2026-10-19T13:23:39Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1574,
-   "updated_at": "2026-10-19T14:13:23Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1585,
-   "updated_at": "2026-10-19T17:28:38Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1600,
-   "updated_at": "2026-10-20T01:05:20Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1603,
-   "updated_at": "2026-10-20T05:01:28Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1606,
-   "updated_at": "2026-10-20T09:49:06Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1607,
-   "updated_at": "2026-10-20T05:38:17Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1614,
-   "updated_at": "2026-10-20T09:40:33Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1615,
-   "updated_at": "2026-10-20T09:40:34Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1624,
-   "updated_at": "2026-10-20T17:02:13Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1627,
-   "updated_at": "2026-10-20T19:15:37Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1645,
-   "updated_at": "2026-10-21T01:10:02Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1646,
-   "updated_at": "2026-10-21T01:12:37Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1652,
-   "updated_at": "2026-10-21T05:50:15Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1660,
-   "updated_at": "2026-10-21T08:13:38Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1670,
-   "updated_at": "2026-10-21T16:43:08Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1685,
-   "updated_at": "2026-10-22T01:15:24Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1686,
-   "updated_at": "2026-10-22T02:58:33Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1702,
-   "updated_at": "2026-10-22T21:24:11Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1708,
-   "updated_at": "2026-10-23T05:12:35Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1731,
-   "updated_at": "2026-10-24T19:16:19Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1739,
-   "updated_at": "2026-10-24T21:48:18Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1759,
-   "updated_at": "2026-10-25T18:14:35Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1773,
-   "updated_at": "2026-10-26T01:04:17Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1775,
-   "updated_at": "2026-10-26T03:12:05Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1825,
-   "updated_at": "2026-10-27T19:04:48Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1826,
-   "updated_at": "2026-10-27T19:24:39Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1827,
-   "updated_at": "2026-10-27T19:49:50Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1841,
-   "updated_at": "2026-10-28T02:33:07Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1848,
-   "updated_at": "2026-10-28T04:44:08Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1854,
-   "updated_at": "2026-10-28T15:20:36Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1859,
-   "updated_at": "2026-10-28T21:13:18Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1862,
-   "updated_at": "2026-10-28T21:30:42Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1864,
-   "updated_at": "2026-10-28T23:39:14Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1874,
-   "updated_at": "2026-10-29T05:35:49Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1875,
-   "updated_at": "2026-10-29T06:35:25Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1886,
-   "updated_at": "2026-10-29T18:27:36Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1897,
-   "updated_at": "2026-10-30T01:17:43Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1898,
-   "updated_at": "2026-10-30T01:19:30Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1909,
-   "updated_at": "2026-10-30T19:35:54Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1910,
-   "updated_at": "2026-10-30T19:35:57Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1920,
-   "updated_at": "2026-10-31T04:50:12Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1924,
-   "updated_at": "2026-10-31T06:06:20Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1929,
-   "updated_at": "2026-11-09T05:45:40Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1953,
-   "updated_at": "2026-11-01T02:12:17Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1962,
-   "updated_at": "2026-11-01T05:15:21Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1976,
-   "updated_at": "2026-11-01T18:12:17Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 1978,
-   "updated_at": "2026-11-01T18:28:31Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 1980,
-   "updated_at": "2026-11-01T20:36:14Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 2004,
-   "updated_at": "2026-11-02T17:54:35Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 2008,
-   "updated_at": "2026-11-02T19:05:37Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 2013,
-   "updated_at": "2026-11-02T21:58:21Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2015,
-   "updated_at": "2026-11-02T20:11:42Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 2018,
-   "updated_at": "2026-11-03T00:06:30Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2021,
-   "updated_at": "2026-11-03T02:02:04Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2025,
-   "updated_at": "2026-11-03T10:16:06Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 2029,
-   "updated_at": "2026-11-03T14:45:50Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2038,
-   "updated_at": "2026-11-04T02:26:54Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2084,
-   "updated_at": "2026-11-05T03:20:26Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2093,
-   "updated_at": "2026-11-05T05:25:45Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2102,
-   "updated_at": "2026-11-05T07:16:03Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2103,
-   "updated_at": "2026-11-05T07:16:04Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2104,
-   "updated_at": "2026-11-05T07:16:05Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2111,
-   "updated_at": "2026-11-05T07:51:09Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 2117,
-   "updated_at": "2026-11-05T14:38:16Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  },
-  {
-   "number": 2119,
-   "updated_at": "2026-11-05T17:56:37Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2134,
-   "updated_at": "2026-11-07T05:38:04Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2154,
-   "updated_at": "2026-11-06T20:21:36Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2159,
-   "updated_at": "2026-11-06T22:03:33Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2160,
-   "updated_at": "2026-11-06T22:03:34Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2273,
-   "updated_at": "2026-11-08T05:36:45Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2274,
-   "updated_at": "2026-11-08T05:36:46Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2278,
-   "updated_at": "2026-11-08T07:08:18Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2284,
-   "updated_at": "2026-11-08T16:15:51Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "verified"
-  },
-  {
-   "number": 2316,
-   "updated_at": "2026-11-08T21:37:42Z",
-   "add": [
-    "bug"
-   ],
-   "basis": "classified-from-title-and-body"
-  }
- ]
 }
