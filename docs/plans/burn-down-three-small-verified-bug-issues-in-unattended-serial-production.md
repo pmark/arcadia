@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: burn-down-three-small-verified-bug-issues-in-unattended-serial-production
 project: arcadia
-status: active
+status: draft
 milestone: Burn down three small verified bug Issues in unattended serial production.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -136,7 +136,6 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1144"]
 questions: []
 decisions: []
-current_action: truncate-torn-journal-tail-by-byte-offset
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
