@@ -115,11 +115,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2472"]
   - id: label-exited-unreconciled-session-in-timeline
     title: "Make the timeline Session collector say a Session that has ended_at and an exit status but is still prepared or running has exited and awaits reconciliation, instead of labelling it running, fixing item 3 of Issue #1144."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the timeline Session collector say a Session that has ended_at and an exit status but is still prepared or running has exited and awaits reconciliation, instead of labelling it running, fixing item 3 of Issue #1144."
+    next_action: Completed via Agent Ask auto-settle-arcadia-label-exited-unreconciled-session-in-timeline-aca705dc607d; no further action.
     expected_artifact: Evidence satisfying Agent Ask label-exited-unreconciled-session-in-timeline
     clarification: clarified
     confidence: high
@@ -136,7 +136,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1144"]
 questions: []
 decisions: []
-current_action: label-exited-unreconciled-session-in-timeline
+current_action: truncate-torn-journal-tail-by-byte-offset
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
