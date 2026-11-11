@@ -94,11 +94,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2471"]
   - id: round-formatted-minutes-before-splitting-hours
     title: "Make formatMinutes in src/orientation/effort.ts round to whole minutes before splitting hours, so 119.6 minutes reads 2h and never 1h60m, fixing Issue #2472."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make formatMinutes in src/orientation/effort.ts round to whole minutes before splitting hours, so 119.6 minutes reads 2h and never 1h60m, fixing Issue #2472."
+    next_action: Completed via Agent Ask auto-settle-arcadia-round-formatted-minutes-before-splitting-hours-e4e3776d5064; no further action.
     expected_artifact: Evidence satisfying Agent Ask round-formatted-minutes-before-splitting-hours
     clarification: clarified
     confidence: high
@@ -136,7 +136,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1144"]
 questions: []
 decisions: []
-current_action: round-formatted-minutes-before-splitting-hours
+current_action: label-exited-unreconciled-session-in-timeline
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

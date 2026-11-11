@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Burn down three small verified bug Issues in unattended serial production.
 active_plan: burn-down-three-small-verified-bug-issues-in-unattended-serial-production
 updated: 2026-11-11
-current_action: round-formatted-minutes-before-splitting-hours
+current_action: label-exited-unreconciled-session-in-timeline
 ---
 
 # Arcadia
