@@ -57,11 +57,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pick-dashboard-live-smoke-port-from-the-os
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-test-flake-burn-down-20261111
+    source: Agent Ask amend-dashboard-live-port-retry-20261111
     why: "The smoke port is 40000 plus a random offset, so another test in the same CI shard can hold it and the file fails with EADDRINUSE about once a morning."
     acceptance_criteria:
       - tests/dashboard-live.test.ts no longer computes its smoke port from Math.random; it obtains each port by listening on port 0, reading the assigned port and closing that listener before passing the port to the dashboard script and stand-in server.
-      - Every test in tests/dashboard-live.test.ts passes, including the collision cases that deliberately reuse an occupied port.
+      - In every test except the collision cases that deliberately reuse an occupied port, a bind that fails with EADDRINUSE obtains a fresh OS-assigned port and retries, at most three attempts in all, before the test fails; the deliberate collision cases still use the occupied port unchanged.
+      - Every test in tests/dashboard-live.test.ts passes, including those collision cases.
       - Apart from the settlement records Arcadia writes, the change touches only tests/dashboard-live.test.ts. Proof that the tests, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
     decisions: []
