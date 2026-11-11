@@ -187,7 +187,8 @@ describe("batched candidate blobs", () => {
   });
 
   it.each(["empty", "extra", "invalid"])("refuses %s capture identities and cleans its private scratch", fault => {
-    const f = fixture(); const before = f.state();
+    // A file unchanged from the base is reused, not hashed, so change one to reach hash-object.
+    const f = fixture(); writeFileSync(path.join(f.repo, "changed-for-capture"), "changed\n"); const before = f.state();
     vi.mocked(execFileSync).mockImplementation(((command: string, args: string[], options: ExecFileSyncOptions) => {
       const response = realExec(command, args, options);
       if (command !== "git" || args[0] !== "hash-object" || !args.includes("--stdin-paths")) return response;

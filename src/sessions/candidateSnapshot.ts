@@ -24,6 +24,26 @@ function removeStaleScratchIndexes(common: string): void {
   } catch { /* best effort: a stale scratch index never affects a snapshot */ }
 }
 
+/** Maximum bytes of changed (non-baseline) candidate content one capture reads. */
+const CAPTURE_LIMIT_BYTES = 64 * 1024 * 1024;
+
+/** Regular-file blob ids (modes 100644/100755) of the immutable `baseRevision`
+ * tree for the given paths, keyed by path. Only a candidate for reuse: the
+ * reader reuses one only when the candidate's own bytes hash to it. */
+function baselineRegularBlobs(
+  git: (args: string[], input?: Buffer | string) => Buffer | string,
+  baseRevision: string,
+  paths: readonly string[]
+): Record<string, string> {
+  const wanted = new Set(paths);
+  const blobs: Record<string, string> = Object.create(null);
+  for (const entry of git(["ls-tree", "-rz", baseRevision]).toString().split("\0").filter(Boolean)) {
+    const match = /^100[67][0-7]{2} blob ([0-9a-f]{40}|[0-9a-f]{64})\t([\s\S]+)$/.exec(entry);
+    if (match && wanted.has(match[2])) blobs[match[2]] = match[1];
+  }
+  return blobs;
+}
+
 /**
  * Baseline symlink blobs: every mode-120000 entry in the immutable
  * `baseRevision` tree whose path is among `selected`, keyed by path. This
@@ -105,7 +125,7 @@ function privilegedRead<T>(script: string, root: string, input: unknown, label: 
           { reason: "killed", command: "/usr/bin/python3", signal, cwd: root, remedy: "Retry the capture; it reads the candidate again from the start." });
       }
       if (code === "ENOENT") throw validationError("Candidate capture could not start: /usr/bin/python3 is not available on this host.");
-      throw validationError("Candidate capture refused: regular candidate files only, no symlink/path escapes, at most 64 MiB total.",
+      throw validationError("Candidate capture refused: regular candidate files only, no symlink/path escapes, at most 64 MiB of changed content.",
         { captureDiagnostic: stderr ? String(stderr).slice(-4000) : "Capture returned invalid output." });
     }
   });
@@ -132,7 +152,8 @@ export const PRESERVATION_TRAILER = "Arcadia-Preservation-Request";
  * changed on disk -- falls through to the privileged reader below and
  * refuses exactly as before for an actual symlink; a baseline symlink
  * replaced by a regular file captures its current regular content normally. */
-export function snapshotCandidate(candidate: string, baseRevision?: string): string {
+export function snapshotCandidate(candidate: string, baseRevision?: string, options?: { captureLimitBytes?: number }): string {
+  const captureLimit = options?.captureLimitBytes ?? CAPTURE_LIMIT_BYTES;
   const root = realpathSync(candidate);
   const common = path.resolve(root, bounded("git", ["rev-parse", "--git-common-dir"], { cwd: root, encoding: "utf8" }).toString().trim());
   removeStaleScratchIndexes(common);
@@ -169,24 +190,35 @@ export function snapshotCandidate(candidate: string, baseRevision?: string): str
     }
     const trustedPaths = new Set(trustedSymlinks.map(entry => entry.path));
     const toCapture = trustedPaths.size ? selected.filter(file => !trustedPaths.has(file)) : selected;
-    const captured = privilegedRead<Array<{ path: string; mode: number; bytes: string }>>(CAPTURE_FILES, root, toCapture, "<candidate capture>", scratch);
+    // The limit bounds only what differs from the immutable base: the reader
+    // hashes every regular file it reads and, where that hash equals the base
+    // blob at the same path, returns the blob id instead of the bytes.
+    const baselineBlobs = baseRevision ? baselineRegularBlobs(git, baseRevision, toCapture) : {};
+    const captured = privilegedRead<Array<{ path: string; mode: number; bytes?: string; blob?: string }>>(
+      CAPTURE_FILES, root, { files: toCapture, base: baselineBlobs, limit: captureLimit }, "<candidate capture>", scratch);
     const entries: string[] = [];
-    if (captured.length) {
+    for (const file of captured) {
+      if (file.blob === undefined) continue;
+      if (file.blob !== baselineBlobs[file.path]) throw validationError("Candidate capture returned an unexpected baseline blob identity.");
+      entries.push(`${file.mode & 0o111 ? "100755" : "100644"} ${file.blob}\t${file.path}\0`);
+    }
+    const fresh = captured.filter(file => file.blob === undefined);
+    if (fresh.length) {
       // Git reads only private copies of the anchored capture, never mutable
       // candidate paths. --no-filters keeps attributes and clean filters out.
-      const inputs = captured.map((file, index) => {
+      const inputs = fresh.map((file, index) => {
         const inputPath = path.join(scratch, `blob-${index}`);
-        writeFileSync(inputPath, Buffer.from(file.bytes, "base64"), { flag: "wx", mode: 0o600 });
+        writeFileSync(inputPath, Buffer.from(file.bytes ?? "", "base64"), { flag: "wx", mode: 0o600 });
         // Git's C-style path quoting: octal bytes also cover quotes, newlines,
         // backslashes and non-ASCII characters in the scratch directory path.
         return '"' + [...Buffer.from(inputPath)].map(byte => `\\${byte.toString(8).padStart(3, "0")}`).join("") + '"';
       });
       const hashes = git(["hash-object", "-w", "--no-filters", "--stdin-paths"], inputs.join("\n") + "\n")
         .toString().trim().split("\n");
-      if (hashes.length !== captured.length || hashes.some(hash => !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(hash))) {
+      if (hashes.length !== fresh.length || hashes.some(hash => !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(hash))) {
         throw validationError("Candidate capture returned invalid Git blob identities.");
       }
-      captured.forEach((file, index) => entries.push(`${file.mode & 0o111 ? "100755" : "100644"} ${hashes[index]}\t${file.path}\0`));
+      fresh.forEach((file, index) => entries.push(`${file.mode & 0o111 ? "100755" : "100644"} ${hashes[index]}\t${file.path}\0`));
     }
     for (const symlink of trustedSymlinks) entries.push(`120000 ${symlink.hash}\t${symlink.path}\0`);
     git(["read-tree", "--empty"]);
@@ -348,7 +380,7 @@ function gitWithInput(repository: string, args: string[], input: Buffer | string
 
 // Isolated system interpreter; neither PYTHONPATH nor candidate modules load.
 const CAPTURE_FILES = String.raw`
-import os, sys, json, stat, base64
+import os, sys, json, stat, base64, hashlib
 flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
 root = os.open("/", flags | os.O_DIRECTORY)
 for component in sys.argv[1].split("/"):
@@ -356,8 +388,10 @@ for component in sys.argv[1].split("/"):
         child = os.open(component, flags | os.O_DIRECTORY, dir_fd=root)
         os.close(root)
         root = child
+request = json.load(sys.stdin)
+limit, base = request["limit"], request["base"]
 results, total = [], 0
-for name in json.load(sys.stdin):
+for name in request["files"]:
     parts = name.split("/")
     if any(p in ("", ".", "..") for p in parts): raise ValueError("Invalid candidate path")
     fd = os.dup(root)
@@ -368,9 +402,14 @@ for name in json.load(sys.stdin):
             fd = child
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode): raise ValueError("Preservation supports regular candidate files only")
-        with os.fdopen(os.dup(fd), "rb") as stream: data = stream.read(64*1024*1024+1)
+        with os.fdopen(os.dup(fd), "rb") as stream: data = stream.read(limit+1)
+        if len(data) > limit: raise ValueError("Candidate file exceeds the preservation capture limit")
+        want = base.get(name)
+        if want and hashlib.new("sha1" if len(want) == 40 else "sha256", b"blob %d\0" % len(data) + data).hexdigest() == want:
+            results.append(dict(path=name, mode=info.st_mode, blob=want))
+            continue
         total += len(data)
-        if total > 64*1024*1024: raise ValueError("Candidate exceeds the 64 MiB preservation capture limit")
+        if total > limit: raise ValueError("Candidate changed content exceeds the preservation capture limit")
         results.append(dict(path=name, mode=info.st_mode, bytes=base64.b64encode(data).decode("ascii")))
     except FileNotFoundError:
         pass
