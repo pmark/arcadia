@@ -269,6 +269,7 @@ import {
   runSessionDisposeRecoveryCommand,
   runSessionPreviewDisposeRecoveryCommand
 } from "./commands/recoveryDisposition.js";
+import { renderSessionRetireHandoffSuccess, runSessionRetireHandoffCommand } from "./commands/handoffRetirement.js";
 import { confirmOperatorLaunchAtTerminal, refuseInsideArcadiaSession, type OperatorLaunchSource } from "./sessions/operatorLaunch.js";
 import { runAssessPrBlastRadiusCommand, renderAssessPrBlastRadiusSuccess } from "./commands/prBlastRadius.js";
 import { renderPrCodeReviewSuccess, renderPrDeclineFindingSuccess, runPrCodeReviewCommand, runPrDeclineFindingCommand } from "./commands/prCodeReview.js";
@@ -2783,6 +2784,22 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .requiredOption("--fingerprint <sha256>", "The exact disposition fingerprint from session preview-dispose-recovery")
   ).action((options: { workspace: string; repo: string; original: string; successor: string; fingerprint: string; json?: boolean }) =>
     runCliAction("session.disposeRecovery", options, () => runSessionDisposeRecoveryCommand(options), renderSessionDisposeRecoverySuccess)
+  );
+  addJsonOption(
+    session.command("retire-handoff <id>")
+      .description("Retire an unpreserved incomplete_resumable handoff so the next tick dispatches its Action fresh (Issue #2490); preview unless --apply --preview; never touches the worktree")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+      .requiredOption("--request-id <id>", "Idempotency key for this retirement")
+      .requiredOption("--reason <text>", "Why the candidate is unpreservable and retired")
+      .option("--preview <sha256>", "Exact preview fingerprint required with --apply")
+      .option("--apply", "Apply the exact previewed retirement")
+      .addHelpText("after", `
+Two-phase usage: preview first, then apply with the fingerprint it prints.
+  arcadia session retire-handoff <id> --request-id <id> --reason "<why>"
+  arcadia session retire-handoff <id> --request-id <id> --reason "<why>" --apply --preview <fingerprint>
+Allowed only while Production is Off. The candidate worktree stays on disk, untouched.`)
+  ).action((id: string, options: { workspace: string; requestId: string; reason: string; preview?: string; apply?: boolean; json?: boolean }) =>
+    runCliAction("session.retireHandoff", options, () => runSessionRetireHandoffCommand({ ...options, session: id }), renderSessionRetireHandoffSuccess)
   );
   addJsonOption(
     session.command("reconcile <id>")

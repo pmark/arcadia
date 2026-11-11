@@ -107,6 +107,8 @@ const EXACT: Record<string, AuthorityBoundary> = {
   "src/dispatch/decisiondeferral.ts": "operator_authority",
   "src/sessions/launch.ts": "operator_authority",
   "src/commands/keeper.ts": "operator_authority",
+  // #2490: retires an incomplete_resumable lease handoff (releases its Action claim), like keeper launch control.
+  "src/commands/handoffretirement.ts": "operator_authority",
   "src/sessions/fixturepacketapproval.ts": "operator_authority",
   "src/sessions/fixturestandinglaunch.ts": "operator_authority",
   "src/capabilities/blogging/actions.ts": "operator_authority",

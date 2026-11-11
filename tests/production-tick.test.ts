@@ -68,6 +68,8 @@ import { recordClearProbeEvidence } from "./helpers/sessionProbeEvidence.js";
 import { resolveSessionTimeLimitMs } from "../src/production/sessionLifetime.js";
 import { getRepositoryLease, reserveAgentWorktree, systemTmux, type TmuxAdapter } from "../src/sessions/index.js";
 import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
+import { renderSessionRetireHandoffSuccess, runSessionRetireHandoffCommand } from "../src/commands/handoffRetirement.js";
+import { applyHandoffRetirement, previewHandoffRetirement } from "../src/sessions/handoffRetirement.js";
 import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
@@ -3505,6 +3507,159 @@ function recordCompetingManagedRun(workspace: string, workItemId: string): void 
     ).run(runId, workItemId, "2026-08-30T12:00:00.000Z", "2026-08-30T12:00:00.000Z");
   });
 }
+
+// Issue #2490: the governed retirement of an unpreserved incomplete_resumable
+// handoff. The tick resumed the same stale worktree forever; after the retire
+// it must dispatch the Action fresh and leave the old candidate untouched.
+describe("session retire-handoff (Issue #2490)", () => {
+  function stalledHandoff() {
+    const fixture = preparedFixture();
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let walled = false;
+    let tickNumber = 0;
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000),
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      workerCapability: (_workspace: string, sandbox?: string | null) => walled && sandbox !== undefined
+        ? [{ wallClass: "preservation" as const, evidence: "The preservation route heartbeat is stale (33s old, limit 15s)", remedy: "Restart the worker." }]
+        : []
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    writeFileSync(path.join(first.worktree_path, "partial.txt"), "first step\n");
+    git(first.worktree_path, ["add", "partial.txt"]);
+    git(first.worktree_path, ["commit", "-m", "Partial progress"]);
+    walled = true; // keep the tick from resuming the handoff before the operator retires it
+    tmux.live.delete(first.tmux_session_name);
+    tick(); tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.id))?.outcome).toBe("incomplete_resumable");
+    const off = (requestId = "policy-off-1") => withDatabase(fixture.workspace, (db) => deactivateProduction(db, { requestId, now: new Date(fixture.now.getTime() + 500_000) }));
+    const input = (requestId = "retire-1", reason = "capture refuses the 71.9 MiB tree; unpreservable") =>
+      ({ sessionId: first.id, requestId, reason, tmux, now: new Date(fixture.now.getTime() + 600_000) });
+    const preview = (requestId?: string, reason?: string) => withReadOnlyDatabase(fixture.workspace, (db) => previewHandoffRetirement({ db, ...input(requestId, reason) }));
+    const apply = (fingerprint: string, requestId?: string, reason?: string) =>
+      withDatabase(fixture.workspace, (db) => applyHandoffRetirement({ db, ...input(requestId, reason), fingerprint }));
+    const refusal = (run: () => unknown): string | undefined => {
+      try { run(); } catch (error) { return (error as { details?: { code?: string } }).details?.code ?? String(error); }
+      return undefined;
+    };
+    const mutate = (sql: string, ...args: unknown[]) => withDatabase(fixture.workspace, (db) => db.prepare(sql).run(...args));
+    const resume = () => { walled = false; };
+    return { fixture, tmux, tick, first, off, preview, apply, refusal, mutate, resume };
+  }
+
+  it("refuses while Production is Active and names no mutation", () => {
+    const f = stalledHandoff();
+    const preview = f.preview();
+    expect(preview.ready).toBe(false);
+    expect(preview.refusals.map((r) => r.code)).toEqual(["production_active"]);
+    expect(f.refusal(() => f.apply(preview.fingerprint!))).toBe("production_active");
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => getSessionExitReceipt(db, f.first.id))?.superseded_by_session_id).toBeNull();
+  });
+
+  it("refuses an unknown Session, a non-handoff exit, a preserved candidate and a live Session for the Action", () => {
+    const f = stalledHandoff();
+    f.off();
+    expect(f.preview().ready).toBe(true);
+    const unknown = withReadOnlyDatabase(f.fixture.workspace, (db) => previewHandoffRetirement({ db, sessionId: "session_nope", requestId: "r", reason: "x", tmux: f.tmux }));
+    expect(unknown.refusals.map((r) => r.code)).toEqual(["session_unknown"]);
+
+    f.mutate("UPDATE agent_sessions SET status = 'running' WHERE id = ?", f.first.id);
+    expect(f.preview().refusals.map((r) => r.code)).toEqual(["session_live"]);
+    f.mutate("UPDATE agent_sessions SET status = 'completed' WHERE id = ?", f.first.id);
+    f.tmux.live.add(f.first.tmux_session_name);
+    expect(f.preview().refusals.map((r) => r.code)).toEqual(["session_live"]);
+    f.tmux.live.delete(f.first.tmux_session_name);
+
+    f.mutate(`INSERT INTO candidate_preservation_receipts (id, request_id, repository_path, candidate_worktree_path, branch, base_branch, base_revision,
+      action_id, packet_sha256, policy_epoch, policy_revision, candidate_fingerprint, commit_sha, preservation_state, receipt_json, created_at)
+      VALUES ('cpr_1', ?, 'r', 'w', 'b', 'main', 'x', 'a', 'p', 1, 1, 'f', 'c', 'LOCAL ONLY', '{}', 't')`, `worker-tick-preserve-${f.first.id}`);
+    expect(f.preview().refusals.map((r) => r.code)).toEqual(["preserved_candidate"]);
+    f.mutate("DELETE FROM candidate_preservation_receipts");
+
+    f.mutate("UPDATE session_exit_receipts SET outcome = 'successful_exit', lease_handoff = 0 WHERE session_id = ?", f.first.id);
+    expect(f.preview().refusals.map((r) => r.code)).toEqual(["not_incomplete_resumable"]);
+    expect(f.refusal(() => f.apply("0".repeat(64)))).toBe("not_incomplete_resumable");
+  });
+
+  it("refuses a stale fingerprint and an empty reason, and a second request id for a retired Session", () => {
+    const f = stalledHandoff();
+    f.off();
+    const preview = f.preview();
+    expect(f.refusal(() => f.apply("f".repeat(64)))).toBe("stale_preview");
+    expect(f.refusal(() => f.preview("retire-1", "  "))).toMatch(/non-empty/);
+    f.apply(preview.fingerprint!);
+    expect(f.preview("retire-2").refusals.map((r) => r.code)).toEqual(["already_superseded"]);
+    expect(f.refusal(() => f.apply(preview.fingerprint!, "retire-2"))).toBe("already_superseded");
+  });
+
+  it("is an idempotent replay for the same request and state, and refuses a request id reused elsewhere", () => {
+    const f = stalledHandoff();
+    f.off();
+    const preview = f.preview();
+    const applied = f.apply(preview.fingerprint!);
+    expect(applied.created).toBe(true);
+    const again = f.apply(preview.fingerprint!);
+    expect(again).toMatchObject({ created: false, retirement: { id: applied.retirement.id } });
+    const replayPreview = f.preview();
+    expect(replayPreview).toMatchObject({ ready: false, fingerprint: preview.fingerprint, retirement: { id: applied.retirement.id } });
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM session_handoff_retirements").get())).toEqual({ n: 1 });
+    expect(f.refusal(() => withDatabase(f.fixture.workspace, (db) => applyHandoffRetirement({
+      db, sessionId: "session_other", requestId: "retire-1", reason: "x", tmux: f.tmux, fingerprint: preview.fingerprint!
+    })))).toBe("request_reused");
+    expect(() => withDatabase(f.fixture.workspace, (db) => db.prepare("DELETE FROM session_handoff_retirements").run())).toThrow(/append-only/);
+  });
+
+  it("runs through the CLI command: preview prints a fingerprint, --apply needs it, and the output names the untouched worktree", () => {
+    const f = stalledHandoff();
+    f.off();
+    const base = { workspace: f.fixture.workspace, session: f.first.id, requestId: "retire-cli", reason: "unpreservable", tmux: f.tmux };
+    const shown = runSessionRetireHandoffCommand(base);
+    expect(shown.data).toMatchObject({ mode: "preview", ready: true });
+    expect(renderSessionRetireHandoffSuccess(shown).join("\n")).toContain("Retirement fingerprint:");
+    expect(() => runSessionRetireHandoffCommand({ ...base, apply: true })).toThrow(/--preview/);
+    const fingerprint = (shown.data as { fingerprint: string }).fingerprint;
+    const applied = runSessionRetireHandoffCommand({ ...base, apply: true, preview: fingerprint });
+    expect(renderSessionRetireHandoffSuccess(applied).join("\n")).toContain(`left on disk, untouched, for manual salvage): ${f.first.worktree_path}`);
+    expect(runSessionRetireHandoffCommand({ ...base, apply: true, preview: fingerprint }).data).toMatchObject({ mode: "apply", created: false });
+  });
+
+  it("stops the resume and dispatches the Action fresh: new worktree from the current base, new completion request id, old candidate untouched", () => {
+    const f = stalledHandoff();
+    const oldHead = git(f.first.worktree_path, ["rev-parse", "HEAD"]).trim();
+    const oldStatus = git(f.first.worktree_path, ["status", "--porcelain"]);
+    const completionIds = () => [...new Set(f.tmux.launches.flatMap((l) => JSON.stringify(l).match(/complete-define-contract-[0-9a-f]{12}/g) ?? []))];
+    f.off();
+    const preview = f.preview();
+    expect(preview.ready).toBe(true);
+    const { retirement } = f.apply(preview.fingerprint!);
+    expect(retirement).toMatchObject({ session_id: f.first.id, action_id: "define-contract", base_revision: f.first.base_revision });
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => getSessionExitReceipt(db, f.first.id))?.superseded_by_session_id).toBe("retired:retire-1");
+    // The base moves on, as main did after #2489.
+    writeFileSync(path.join(f.fixture.repo, "base-advance.txt"), "main moved\n");
+    git(f.fixture.repo, ["add", "."]);
+    git(f.fixture.repo, ["commit", "-m", "advance base"]);
+    const currentBase = git(f.fixture.repo, ["rev-parse", "HEAD"]).trim();
+    expect(f.tmux.launches).toHaveLength(1);
+    f.resume();
+    activatePolicy(f.fixture, "policy-grant-2");
+    const result = f.tick();
+    expect(result.projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    expect(f.tmux.launches).toHaveLength(2);
+    const fresh = withReadOnlyDatabase(f.fixture.workspace, (db) => getRepositoryLease(db, f.fixture.repo))!;
+    expect(fresh.id).not.toBe(f.first.id);
+    expect(fresh.worktree_path).not.toBe(f.first.worktree_path);
+    expect(fresh.base_revision).toBe(currentBase);
+    expect(existsSync(path.join(fresh.worktree_path, "partial.txt"))).toBe(false);
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => db.prepare("SELECT 1 FROM session_exit_receipts WHERE superseded_by_session_id = ?").get(fresh.id))).toBeUndefined();
+    expect(completionIds()).toHaveLength(2);
+    // The retired candidate is exactly as the worker left it.
+    expect(git(f.first.worktree_path, ["rev-parse", "HEAD"]).trim()).toBe(oldHead);
+    expect(git(f.first.worktree_path, ["status", "--porcelain"])).toBe(oldStatus);
+    expect(readFileSync(path.join(f.first.worktree_path, "partial.txt"), "utf8")).toBe("first step\n");
+  });
+});
 
 describe("red alerts from the worker tick", () => {
   function tickAt(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, offsetMs: number, capacity = false) {

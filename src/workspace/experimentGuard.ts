@@ -278,6 +278,11 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   // experiment's isolated store there); it reads --repo with read-only Git,
   // launches nothing and touches no host or live state.
   "session dispose-recovery": ALLOWED,
+  // Allowed, not guarded: its only writes are one append-only receipt, one
+  // exit-receipt supersession sentinel and a claim-column release in the
+  // resolved workspace's own database; it launches nothing and touches no
+  // worktree, Git state or live host.
+  "session retire-handoff": ALLOWED,
   "pr assess-blast-radius": ALLOWED,
   "pr code-review": exempt("Reads a pull request's advisory review from GitHub for the named repository; reads no workspace."),
   "pr decline-finding": guarded(

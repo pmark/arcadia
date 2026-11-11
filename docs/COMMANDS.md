@@ -1987,6 +1987,59 @@ and grants no authority.
   `largestPassageBytes`, `root`, `rootSource`, `projectRoot` and `warnings`;
   everything but `elapsedMs` is identical between runs.
 
+## Retire An Unpreservable Incomplete Handoff
+
+A Session that exits `incomplete_resumable` leaves a lease handoff that the next
+tick resumes in the same worktree. When the host can never capture that
+candidate (Issue #2490: a 71.9 MiB tree the capture refuses on every resume), the
+Action deadlocks. This verb retires exactly that handoff so the next tick
+dispatches the Action fresh. Two phases, like `agent-ask settle`:
+
+```sh
+pnpm arcadia session retire-handoff <session-id> --request-id <id> --reason "<why>" --workspace "$WORKSPACE" [--json]
+pnpm arcadia session retire-handoff <session-id> --request-id <id> --reason "<why>" --workspace "$WORKSPACE" --apply --preview <fingerprint> [--json]
+```
+
+The preview writes only the CLI activity entry and prints the fingerprint, the
+candidate worktree and the claim it would release. Apply refuses unless every
+fact still matches. Refusal codes: `session_unknown`, `not_incomplete_resumable`
+(no exit receipt, another outcome, or no lease handoff), `already_superseded`
+(including an earlier retirement under another request id), `preserved_candidate`
+(a `worker-tick-preserve-<session>` preservation receipt exists: resume or
+integrate it instead), `session_live` (a prepared or running Session for the
+same Project, Plan and Action, or the handoff's terminal is live),
+`production_active` and `production_unknown` (retire only while managed
+production is Off, the same stance as `session dispose-recovery`), `request_reused`
+(the request id retired a different Session), `stale_preview`.
+
+Effect, in one transaction: the exit receipt's `superseded_by_session_id` becomes
+`retired:<request-id>` (so the Session is no longer a resumable handoff or a
+terminal candidate gating admission), the Action claim held by that candidate is
+released (its worktree reservation stays, so `tidy` still protects it), and one
+append-only row in `session_handoff_retirements` records the reason, Session,
+Action, worktree, branch, base revision and time. It never touches the worktree,
+branch, files, Agent Asks or Plan documents. The candidate stays on disk,
+untouched, for manual salvage. The same request id and state replays the same
+receipt (`already recorded`).
+
+A drafted completion Ask for the stalled candidate is separate: reject it through
+`agent-ask settle` before the next START so it cannot hold the Action.
+
+Operator QA:
+
+1. With Production Off, run the preview for a Session whose exit is
+   `incomplete_resumable` and which has no preservation receipt. Expect
+   `Ready: yes`, a fingerprint, and the worktree path.
+2. Run it against a Session that is not such a handoff (or while Production is
+   Active). Expect `Refused (...)` with the matching code and no change.
+3. Run the apply with the fingerprint. Expect `Retired handoff: hretire_...` and
+   the worktree path "left on disk, untouched".
+4. Run the apply again. Expect `(already recorded)` and no second row.
+5. Check the worktree: `git -C <path> status --porcelain` and `git -C <path>
+   rev-parse HEAD` are unchanged.
+6. After the next START, the tick launches a new Session in a new worktree from
+   the current base, with a new completion request id.
+
 ## Dispose A Failed Recovery Successor With No Recorded Start
 
 An explicit `--recover-session` successor can fail with no recorded provider
