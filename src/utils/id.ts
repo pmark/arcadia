@@ -44,6 +44,7 @@ const PREFIXES = {
   preservationReceipt: "presv",
   sessionExitReceipt: "exit",
   recoverySuccessorDisposition: "rdisp",
+  handoffRetirement: "hretire",
   operatorLaunchAuthorization: "olauth",
   nativeMailMessage: "nmail",
   nativeMailReceipt: "nmrcpt"
