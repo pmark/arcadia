@@ -195,5 +195,8 @@ Do not claim acceptance from self-reported counts. Resolve identity before every
 commit/comment. Completion, governance changes, messaging, merge and production
 retain the indexed authority gates. Never mark governed status by hand.
 
+Launching any helper or session: resolve identity, model and effort first, per
+[helper-launch.md](../../../docs/agent-guidance/helper-launch.md).
+
 When assigned supervision, load [arcadia-supervisor](../arcadia-supervisor/SKILL.md).
 Supervision is a relationship and duty, not an eighth registered role.

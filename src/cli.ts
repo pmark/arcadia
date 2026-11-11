@@ -5031,14 +5031,14 @@ Origin: every item has "origin" (a string from a field its source records, else 
   addJsonOption(role.command("brief")
     .requiredOption("--role <id>", "Registered role ID")
     .requiredOption("--agent <agent>", "codex, claude or opencode")
-    .requiredOption("--tier <tier>", "light, standard or heavy")
+    .option("--tier <tier>", "light, standard or heavy; default: workspace sessionStartTier (light)")
     .option("--action <ref>", "Exact plan-slug#action-id")
     .option("--specialization <label>", "Domain label only; cannot grant permissions")
     .option("--requested-by <role>", "Validate native delegate eligibility for this requester role; pair with --depth")
     .option("--depth <number>", "Requester depth (top-level Lead is 0); pair with --requested-by", (value: string) => /^\d+$/.test(value) ? Number(value) : NaN)
     .option("--repo <path>", "Repository to read the Action from", resolveInvocationPath, invocationRoot())
     .option("--workspace <path>", "Read-only workspace config override"))
-    .action((options: { role: string; agent: string; tier: string; action?: string; specialization?: string; requestedBy?: string; depth?: number; repo: string; workspace?: string; json?: boolean }) =>
+    .action((options: { role: string; agent: string; tier?: string; action?: string; specialization?: string; requestedBy?: string; depth?: number; repo: string; workspace?: string; json?: boolean }) =>
       runCliAction("role brief", options, () => runRoleBriefCommand({ ...options, repoRoot: options.repo }), renderRoleBriefSuccess));
 
   const identityCommand = program

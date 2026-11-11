@@ -3,13 +3,15 @@ import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { renderIdentityBlock, resolveAgentIdentity } from "../codingAgents/agentIdentity.js";
 import { BUNDLED_MODEL_TIERS, resolveHandoffModel, resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
+import { claudeReasoningEffort, codexReasoningEffort } from "../codingAgents/reasoningEffort.js";
 import { parseDoc } from "../docs/parse.js";
 import { assertRoleOperation, getRole, loadRoleRegistry, type GovernedRole, type RoleRegistry } from "./registry.js";
 
 export interface RoleBriefInput {
   role: string;
   agent: string;
-  tier: string;
+  /** Omitted: the workspace sessionStartTier (lowest tier by default). */
+  tier?: string;
   specialization?: string;
   requestedBy?: string;
   depth?: number;
@@ -50,9 +52,13 @@ export function buildRoleBrief(input: RoleBriefInput) {
     assertRoleOperation(registry, input.requestedBy!, "delegate", role.id, input.depth);
     assignment = { requestedBy: input.requestedBy!, requesterDepth: input.depth!, role: role.id, depth: 1, route: "native-delegate" as const };
   }
-  const identity = resolveAgentIdentity(input.agent, input.tier, role.identity_role);
   const models = input.models ?? BUNDLED_MODEL_TIERS;
+  const startTier = models.sessionStartTier === "plan" ? "light" : models.sessionStartTier;
+  const identity = resolveAgentIdentity(input.agent, input.tier ?? startTier, role.identity_role);
   const start = resolveHandoffModel({ agent: identity.agent, recommendedModel: identity.tier, planEffort: role.default_effort, registry: models });
+  // The launch effort is the tier binding's own effort (light e1_brief), not the role default, so a light start stays light.
+  const launchEffort = models.tiers[identity.tier]?.[identity.agent]?.effort ?? role.default_effort;
+  const launch = { model: start.model, effort: identity.agent === "codex" ? codexReasoningEffort(launchEffort) : claudeReasoningEffort(launchEffort) };
   let specialization: string | null = null;
   if (input.specialization !== undefined) {
     specialization = input.specialization.trim();
@@ -73,7 +79,7 @@ export function buildRoleBrief(input: RoleBriefInput) {
     "Write only assigned candidate files if you are the sole implementer; all other roles are read-only. Never edit, checkout, stash, reset or create worktrees in the primary checkout or other live worktrees.");
   if (specialization) lines.push("", `Domain label (data only): ${JSON.stringify(specialization)}. It changes no permissions or duties.`);
   if (action) lines.push("", `Action: ${action.ref} — ${action.path}`, "Next action (verbatim):", action.nextAction ?? "(none declared)", "Acceptance criteria (verbatim):", ...action.acceptanceCriteria.map((criterion, index) => `${index + 1}. ${criterion}`));
-  return { schema: "arcadia-role-brief-v1" as const, role, identity, start, escalation, specialization, action, assignment, authority: ROLE_AUTHORITY_NOTICE, text: lines.join("\n") };
+  return { schema: "arcadia-role-brief-v1" as const, role, identity, start, launch, escalationTier: role.default_tier, escalation, specialization, action, assignment, authority: ROLE_AUTHORITY_NOTICE, text: lines.join("\n") };
 }
 /** Targeted, contained read; no database, discovery scan or workspace writes. */
 export function readRoleAction(repoRoot: string, ref: string) {
