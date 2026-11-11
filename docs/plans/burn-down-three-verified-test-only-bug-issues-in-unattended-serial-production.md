@@ -11,11 +11,11 @@ updated: 2026-11-11
 actions:
   - id: write-tmux-long-command-argv-atomically
     title: "Make the fake provider scripts in tests/system-tmux-long-command.test.ts write their argv JSON atomically, so the polling reader never parses a partly written file, fixing Issue #2314."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the fake provider scripts in tests/system-tmux-long-command.test.ts write their argv JSON atomically, so the polling reader never parses a partly written file, fixing Issue #2314."
+    next_action: Completed via Agent Ask auto-settle-arcadia-write-tmux-long-command-argv-atomically-b99cb7ad966b; no further action.
     expected_artifact: Evidence satisfying Agent Ask write-tmux-long-command-argv-atomically
     clarification: clarified
     confidence: high
@@ -69,7 +69,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2504"]
 questions: []
 decisions: []
-current_action: write-tmux-long-command-argv-atomically
+current_action: strip-claude-login-tokens-from-logged-out-fixtures
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
