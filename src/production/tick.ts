@@ -2412,6 +2412,10 @@ export function runManagedProductionTick(
     // must take effect here rather than being frozen at the tick's start.
     const launchInScope = projectInActiveScope(db, project.slug);
     const mayLaunch = active && launchInScope;
+    // Issue #2273: scope completion depends only on the checked-in Plan (every in-scope Action done), never on
+    // what the pointer or a pending terminal candidate holds. Announce it before the launch branches, some of
+    // which (a held out-of-scope pointer, a refused handoff) never reach attemptProjectLaunch's announcements.
+    if (mayLaunch) announceScopeComplete(db, { repoRoot, projectSlug: project.slug, planSlug: null, now, log });
     if (active && !launchInScope) {
       // Outside the standing grant: no preview, no admission, no refusal line.
       // Nothing is resolved or spawned for it here; the reconciliation above

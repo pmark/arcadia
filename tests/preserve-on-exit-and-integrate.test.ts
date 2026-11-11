@@ -338,6 +338,33 @@ describe("preserve-on-exit and integrate", () => {
     expect(tmux.launches).toHaveLength(1);
   });
 
+  it("announces scope complete once even while the out-of-scope pointer is held by an unlanded terminal candidate (W1 shape, Issue #2273)", () => {
+    const { fixture, tmux } = completedWhileOff();
+    // Every in-scope Action (second-action) is done on the checked-in Plan; the pointer still names define-contract.
+    const planPath = path.join(fixture.repo, "docs", "plans", "copy-proof.md");
+    const plan = readFileSync(planPath, "utf8");
+    const at = plan.indexOf("  - id: second-action");
+    expect(at).toBeGreaterThan(-1);
+    writeFileSync(planPath, plan.slice(0, at) + plan.slice(at).replace("status: open", "status: done"));
+    const scope = normalizeProductionScope({
+      intent: "Only the dependent Action remains in scope.", projects: ["test-project"], plans: ["test-project/copy-proof"],
+      actions: ["test-project/second-action"], providers: ["claude-code-cli"], maxConcurrentSessions: 1,
+      mechanicalTransitions: ["validation", "acceptance", "pointer"]
+    });
+    activatePolicy(fixture, scope, "scoped-held-complete-grant");
+    const tick = (offsetMs: number) => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + offsetMs), log: () => undefined,
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      handoff: { preserve: { validate: fixtureValidator(true) } }
+    })).projects[0];
+    const first = tick(120_000);
+    tick(150_000);
+    expect(first.launch?.reason).toContain("terminal candidate");
+    const count = (sql: string) => withReadOnlyDatabase(fixture.workspace, (db) => (db.prepare(sql).get() as { n: number }).n);
+    expect(count("SELECT COUNT(*) AS n FROM events WHERE event_type = 'managed_production.scope_complete'")).toBe(1);
+    expect(count("SELECT COUNT(*) AS n FROM operator_pings WHERE message LIKE 'Production scope complete%'")).toBe(1);
+  });
+
   it("holds the pointer only for a terminal candidate recovery owns (shared predicate, Issue #1512)", () => {
     const { fixture, session } = completedWhileOff();
     const pending = () => withDatabase(fixture.workspace, (db) => {
