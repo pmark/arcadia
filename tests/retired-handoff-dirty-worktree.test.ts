@@ -38,17 +38,17 @@ const lookup = (main: string) => ({
   repositoryPath: main, projectSlug: "p", actionId: "stalled-action", agent: "claude", baseBranch: "main", now: new Date()
 });
 
-function recordSession(db: Database.Database, f: ReturnType<typeof fixture>, superseded: string | null) {
+function recordSession(db: Database.Database, f: ReturnType<typeof fixture>, superseded: string | null, id = "s1") {
   ensureSessionExitReceiptsTable(db);
   db.pragma("foreign_keys = OFF");
   const at = new Date().toISOString();
   db.prepare(`INSERT INTO agent_sessions (id, project_id, project_slug, repository_path, plan_path, plan_slug, action_id, work_item_id, packet_id,
     packet_path, packet_sha256, authorizing_decisions_json, provider_profile, provider, model, base_revision, branch, worktree_path,
     provider_session_id, display_name, terminal_transport, tmux_session_name, status, prepared_at, created_at, updated_at)
-    VALUES ('s1','pr','p',?, 'plan.md','plan','stalled-action','wi','pk','pk.md','00','[]','prof','claude','m','base',?,?, 'ps','n','tmux','tmux-s1','completed',?,?,?)`)
-    .run(f.main, f.branch, f.worktree, at, at, at);
+    VALUES (?,'pr','p',?, 'plan.md','plan','stalled-action','wi','pk','pk.md','00','[]','prof','claude','m','base',?,?, ?,'n','tmux',?,'completed',?,?,?)`)
+    .run(id, f.main, f.branch, f.worktree, `ps-${id}`, `tmux-${id}`, at, at, at);
   db.prepare(`INSERT INTO session_exit_receipts (id, session_id, request_id, outcome, reason, next_action_json, lease_handoff, superseded_by_session_id, is_simulated, created_at, updated_at)
-    VALUES ('r1','s1','req1','incomplete_resumable','r','{}',1,?,0,?,?)`).run(superseded, at, at);
+    VALUES (?,?,?,'incomplete_resumable','r','{}',1,?,0,?,?)`).run(`r-${id}`, id, `req-${id}`, superseded, at, at);
 }
 
 describe("dirty prepared worktree of a retired handoff (Issue #2492)", () => {
@@ -71,6 +71,23 @@ describe("dirty prepared worktree of a retired handoff (Issue #2492)", () => {
   it("still refuses a dirty prepared worktree that no Session describes", () => {
     const f = fixture();
     withDatabase(f.workspace, (db) => {
+      expect(evaluateDraftOnlyCandidate(db, lookup(f.main)).kind).toBe("refuse");
+    });
+  });
+
+  it("still refuses when a resumed predecessor (superseded by a live successor id) shares the dirty worktree", () => {
+    const f = fixture();
+    withDatabase(f.workspace, (db) => {
+      recordSession(db, f, "s2");
+      expect(evaluateDraftOnlyCandidate(db, lookup(f.main)).kind).toBe("refuse");
+    });
+  });
+
+  it("still refuses when a non-retired successor row on the same branch exists beside a retired one", () => {
+    const f = fixture();
+    withDatabase(f.workspace, (db) => {
+      recordSession(db, f, "retired:req-retire-1", "s1");
+      recordSession(db, f, null, "s2");
       expect(evaluateDraftOnlyCandidate(db, lookup(f.main)).kind).toBe("refuse");
     });
   });
