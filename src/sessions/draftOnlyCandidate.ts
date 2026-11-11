@@ -362,7 +362,7 @@ interface CandidateLookup {
  * (`<agent>/<slugified-action-id>-<timestamp>`) that is still on disk and holds
  * uncommitted changes -- the manual-handoff case no Session row can describe.
  */
-function dirtyPreparedCandidates(input: Pick<CandidateLookup, "repositoryPath" | "actionId" | "agent">): Array<{ path: string; branch: string }> {
+function dirtyPreparedCandidates(db: Database.Database, input: Pick<CandidateLookup, "repositoryPath" | "actionId" | "agent">): Array<{ path: string; branch: string }> {
   const listing = tryGit(input.repositoryPath, ["worktree", "list", "--porcelain"]);
   if (listing === null) return [];
   const safeAction = input.actionId.replaceAll(/[^a-z0-9-]/gi, "-").toLowerCase().slice(0, 72);
@@ -372,9 +372,34 @@ function dirtyPreparedCandidates(input: Pick<CandidateLookup, "repositoryPath" |
     if (!record.branch?.startsWith(prefix)) continue;
     if (lstatOrNull(record.path) === null) continue;
     if (uncommittedChanges(record.path).length === 0) continue;
+    if (isRetiredHandoffWorktree(db, record.path, record.branch)) continue;
     found.push({ path: record.path, branch: record.branch.replace(/^refs\/heads\//, "") });
   }
   return found;
+}
+
+/**
+ * True only when at least one Session row names this path or branch, every such
+ * row's exit receipt carries the `retired:<request-id>` sentinel that
+ * `arcadia session retire-handoff` writes, and no other row (a live successor,
+ * or a predecessor a resume superseded by a real Session id) names it. A resume
+ * also sets `superseded_by_session_id` and its successor reuses the directory,
+ * so only the retired sentinel proves nobody holds it. The directory stays on
+ * disk for manual salvage and must not block a fresh launch (#2492). Fails closed.
+ */
+function isRetiredHandoffWorktree(db: Database.Database, worktree: string, branchRef: string): boolean {
+  try {
+    const has = (name: string) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
+    if (!has("agent_sessions") || !has("session_exit_receipts")) return false;
+    const branch = branchRef.replace(/^refs\/heads\//, "");
+    const rows = db.prepare(`SELECT r.superseded_by_session_id AS superseded FROM agent_sessions s
+      LEFT JOIN session_exit_receipts r ON r.session_id = s.id
+      WHERE s.worktree_path = ? OR s.worktree_path = ? OR s.branch IN (?, ?)`)
+      .all(worktree, canonicalPath(worktree), branch, `refs/heads/${branch}`) as Array<{ superseded: string | null }>;
+    return rows.length > 0 && rows.every((row) => row.superseded?.startsWith("retired:") === true);
+  } catch {
+    return false;
+  }
 }
 
 function buildReceipt(input: CandidateLookup, candidate: { path: string; branch: string }, drafts: CapturedDraft[]): DraftRecoveryReceipt | null {
@@ -418,7 +443,7 @@ export function evaluateDraftOnlyCandidate(db: Database.Database, input: Candida
   /** Deterministic fault injection between evaluation and final hash verification. */
   beforeResumeVerification?: () => void;
 }): DraftCandidateDecision {
-  const candidates = dirtyPreparedCandidates(input);
+  const candidates = dirtyPreparedCandidates(db, input);
   if (candidates.length === 0) return { kind: "none" };
   const [candidate] = candidates;
   const ordinaryRefusal = (candidateKind: CandidateKind): DraftCandidateDecision => ({
