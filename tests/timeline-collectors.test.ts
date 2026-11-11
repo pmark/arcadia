@@ -156,6 +156,11 @@ beforeAll(async () => {
       branch: "claude/a2-20261006T010203000Z", worktree_path: "/h/.claude/worktrees/a2-20261006T010203000Z/demo", display_name: "x", terminal_transport: "tmux", status: "completed",
       prepared_at: at(-600), started_at: at(-590), ended_at: at(-300), created_at: at(-600), updated_at: at(-300)
     });
+    insert(db, "agent_sessions", {
+      id: "session_2", project_id: "proj_demo", project_slug: "demo", plan_slug: "demo-plan", action_id: "A3", provider: "claude-code-cli", model: "unregistered-model", effort: "e2_standard",
+      branch: "claude/A3-20261006T010203000Z", worktree_path: "/h/.claude/worktrees/A3-20261006T010203000Z/demo", display_name: "x", terminal_transport: "tmux", status: "running", exit_status: 1,
+      prepared_at: at(-585), started_at: at(-580), ended_at: at(-570), created_at: at(-585), updated_at: at(-570)
+    });
     insert(db, "session_role_attempts", { id: "role_1", requirement_id: "demo/demo-plan/a2", input_revision: "r", role: "qa", ordinal: 1, request_id: "role-req-1", actor_id: "qa-reviewer:codex-terra", mutation_owner: 0, status: "failed", created_at: at(-280), updated_at: at(-270) });
     insert(db, "agent_ask_proposals", { id: "proposal_1", request_id: "complete-a1", capture_id: "capture_1", fingerprint: "f", format: "strict", intent_kind: "complete", project_ref: "demo", proposal_json: "{}", created_at: at(-200) });
     insert(db, "agent_ask_settlements", {
@@ -241,6 +246,10 @@ describe("timeline collectors on a fixture workspace", () => {
     const qa = collection.raw.filter((event) => event.kind === "role.qa");
     expect(qa.map((event) => event.summary)).toEqual(expect.arrayContaining(["QA failed on a2"]));
     expect(qa.find((event) => event.summary === "QA failed on a2")).toMatchObject({ workKind: "verify", attention: true, actor: expect.objectContaining({ tool: "codex" }) });
+  });
+
+  it("sessions: an ended Session still running with an exit status is labelled as awaiting reconciliation", () => {
+    expect(find((event) => event.id === "sessions:session_2:ended")?.summary).toBe("Session exited on A3 (exit 1), awaiting reconciliation");
   });
 
   it("decisions, production, queue, pings and operator scripts each contribute their events", () => {
