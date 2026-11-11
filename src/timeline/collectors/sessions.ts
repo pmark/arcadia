@@ -92,7 +92,9 @@ export function collectSessions(context: CollectorContext): TimelineEvent[] {
       }
       if (row.ended_at) {
         const attention = row.status === "failed" || row.status === "needs_input";
-        push({ ...base, id: `sessions:${row.id}:ended`, time: row.ended_at, kind: "session.ended", workKind: workKindFor("session.ended"), summary: `Session ${row.status} on ${row.action_id}${row.exit_status !== null ? ` (exit ${row.exit_status})` : ""}${simulated}`, actor: who.actor, attention, provenance: { event: "agent_sessions.ended_at and status", actor: who.provenance } });
+        // The process ended but the row was never reconciled out of prepared/running.
+        const awaitingReconciliation = (row.status === "prepared" || row.status === "running") && row.exit_status !== null;
+        push({ ...base, id: `sessions:${row.id}:ended`, time: row.ended_at, kind: "session.ended", workKind: workKindFor("session.ended"), summary: awaitingReconciliation ? `Session exited on ${row.action_id} (exit ${row.exit_status}), awaiting reconciliation${simulated}` : `Session ${row.status} on ${row.action_id}${row.exit_status !== null ? ` (exit ${row.exit_status})` : ""}${simulated}`, actor: who.actor, attention, provenance: { event: "agent_sessions.ended_at and status", actor: who.provenance } });
       }
       if (row.stall_flagged_at) {
         push({ ...base, id: `sessions:${row.id}:stalled`, time: row.stall_flagged_at, kind: "session.stalled", workKind: workKindFor("session.stalled"), summary: `Session flagged as stalled on ${row.action_id}`, actor: launcher.actor, attention: true, provenance: { event: "agent_sessions.stall_flagged_at (set by the worker's stall detector)", actor: "the worker flags stalls" }, dedupeKeys: [`session-stalled:${row.id}`] });
