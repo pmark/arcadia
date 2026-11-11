@@ -7,7 +7,7 @@ status: active
 milestone: Burn down three small verified bug Issues in unattended serial production.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-10
+updated: 2026-11-11
 actions:
   - id: accept-canonical-roles-in-session-ledger
     title: "Make the Session ledger accept every role registered in config/defaults/agent-roles.json while keeping its legacy roles valid, fixing Issue #1366."
@@ -73,11 +73,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2011"]
   - id: read-zoneless-space-separated-time-as-utc
     title: "Make parseTimeBound in src/timeline/time.ts read a space-separated time with no zone, such as 2026-10-06 03:30, as UTC like its T-separated form, fixing Issue #2471."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make parseTimeBound in src/timeline/time.ts read a space-separated time with no zone, such as 2026-10-06 03:30, as UTC like its T-separated form, fixing Issue #2471."
+    next_action: Completed via Agent Ask auto-settle-arcadia-read-zoneless-space-separated-time-as-utc-a35cf6a4094c; no further action.
     expected_artifact: Evidence satisfying Agent Ask read-zoneless-space-separated-time-as-utc
     clarification: clarified
     confidence: high
@@ -136,7 +136,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1144"]
 questions: []
 decisions: []
-current_action: read-zoneless-space-separated-time-as-utc
+current_action: round-formatted-minutes-before-splitting-hours
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

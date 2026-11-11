@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-10
+updated: 2026-11-11
 ---
 
 # Mission Log: Arcadia
@@ -3340,3 +3340,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Operator-settled Plan transition. Previous Plan carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src keeps status complete with completion state preserved. Decision 0157 and Decision 0214 A. Replaces the unsubmitted activate-burn-down-worker-mergeable-20261110, which started at accept-canonical-roles-in-session-ledger; that Action was already delivered by b59f3504e and is recorded complete in the same change (independent pre-mortem, issue 1929 comment 6778259176). The card embeds this accepted activation as its planActivation block. Activation sets the Plan active with current_action read-zoneless-space-separated-time-as-utc; the previous Plan, carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src, is complete and stays complete. No Action content changes. The two operator_authority Actions are excluded from the card's scope.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-11-11 — Completed arcadia/read-zoneless-space-separated-time-as-utc
+
+- **Did:** Completed Action arcadia/read-zoneless-space-separated-time-as-utc from accepted evidence (Candidate b8a87602afd632478cee466107a0e295f1fddd97).
+- **Result:** Every declared acceptance criterion was accepted as met: "parseTimeBound in src/timeline/time.ts returns the UTC instants 2026-10-06T03:30:00.000Z, 2026-10-06T03:30:15.000Z and 2026-10-06T03:30:15.250Z for the inputs "2026-10-06 03:30", "2026-10-06 03:30:15" and "2026-10-06 03:30:15.250", whatever the host time zone."; "The inputs "2026-10-06 03:30Z", "2026-10-06T03:30:00-07:00", "2026-10-06T03:30", "2026-10-06" and the relative forms 30m and 6h return exactly what they return today."; "A regression test in tests/timeline-model.test.ts sets process.env.TZ to America/Los_Angeles, restores it in a finally block, covers the three space-separated inputs, and fails before the fix and passes after."; "Every other test in tests/timeline-model.test.ts passes unchanged."; "Apart from the settlement records Arcadia writes, the change touches only src/timeline/time.ts and tests/timeline-model.test.ts. Proof that the tests, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-read-zoneless-space-separated-time-as-utc-a35cf6a4094c).
