@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-test-flake-burn-down-20261111
+project: arcadia
+intent: plan
+target_ref: plan/burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
+requested_authority: propose
+desired_result: Activate the draft Plan burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production so one per-run START card runs its three worker-mergeable test-only Actions, starting at write-tmux-long-command-argv-atomically.
+rationale: Decision 0157 and Decision 0214 A, on the operator's 2026-11-11 route A ("We've got 7.5 hours and 22% — let's use them up!", relayed by Signal 8). The card embeds this accepted activation as its planActivation block, so it settles only at the operator's press. Activation sets the Plan active with current_action write-tmux-long-command-argv-atomically. The previous Plan, burn-down-three-small-verified-bug-issues-in-unattended-serial-production, keeps its two unfinished operator_authority Actions (truncate-torn-journal-tail-by-byte-offset, report-cut-work-monitor-attention-lines) and returns to draft. No Action content changes.
