@@ -29,12 +29,12 @@ Evidence for each is in [changes.json](changes.json) under `refresh_20261111.clo
 
 42 distinct unfinished Actions across 10 Plans (53 Action–Issue pairs) point at a closed or fixed Issue. The active Plan's current Action `truncate-torn-journal-tail-by-byte-offset` (#749) and `report-cut-work-monitor-attention-lines` (#2011) are both fixed on main (`ad48f90fa`, `a03559b0b`). One `arcadia agent-ask preview` proposal per Plan (`intent: proposal`, `requested_authority: propose`) asks for completion with proof or withdrawal; a closed Issue alone proves nothing about acceptance. Receipts:
 
-- `agentask_84fc1691428f356f82` (28 Actions, bootstrap-managed-production-to-build-flight-dec)
+- `agentask_84fc1691428f356f82` (20 Actions, bootstrap-managed-production-to-build-flight-dec)
 - `agentask_3e6a0f7da237e773f9` (2 Actions, burn-down-three-small-verified-bug-issues-in-una)
 - `agentask_dd8fbfbc268f3acdbf` (6 Actions, deliver-one-authorized-action-through-a-persiste)
 - `agentask_e22b9d3684e5c7a067` (1 Action, execute-one-approved-named-run-safely-with-produ)
 - `agentask_eaaa8dc57f688a849c` (3 Actions, guard-the-operator-s-machine-against-data-loss-f)
-- `agentask_73fb2684c1f87f645e` (6 Actions, make-ask-the-superpower-tool-for-planning-data-a)
+- `agentask_73fb2684c1f87f645e` (3 Actions, make-ask-the-superpower-tool-for-planning-data-a)
 - `agentask_fe597599ebfbe3590f` (1 Action, recover-completed-governance-overlap-in-protecte)
 - `agentask_0e8c34cf8b94c81d1e` (1 Action, redesign-the-phone-dashboard-into-one-judgment-h)
 - `agentask_bd321c5e68fc2514ed` (1 Action, seven-verified-settlement-queue-and-preservation)
