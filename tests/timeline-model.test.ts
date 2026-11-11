@@ -145,6 +145,18 @@ describe("event schema", () => {
 
 describe("time windows", () => {
   const now = new Date("2026-10-06T05:00:00.000Z");
+  it("reads a space-separated time with no zone as UTC whatever the host zone", () => {
+    const original = process.env.TZ;
+    process.env.TZ = "America/Los_Angeles";
+    try {
+      expect(parseTimeBound("2026-10-06 03:30", now, "--since").toISOString()).toBe("2026-10-06T03:30:00.000Z");
+      expect(parseTimeBound("2026-10-06 03:30:15", now, "--since").toISOString()).toBe("2026-10-06T03:30:15.000Z");
+      expect(parseTimeBound("2026-10-06 03:30:15.250", now, "--since").toISOString()).toBe("2026-10-06T03:30:15.250Z");
+    } finally {
+      if (original === undefined) delete process.env.TZ;
+      else process.env.TZ = original;
+    }
+  });
   it("parses ISO and relative bounds, and counts a relative --since back from the window end", () => {
     expect(parseTimeBound("6h", now, "--since").toISOString()).toBe("2026-10-05T23:00:00.000Z");
     expect(parseTimeBound("30m", now, "--since").toISOString()).toBe("2026-10-06T04:30:00.000Z");
