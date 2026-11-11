@@ -27,7 +27,7 @@ Evidence for each is in [changes.json](changes.json) under `refresh_20261111.clo
 
 ### Governed Actions whose Issue is closed (Agent Ask proposals)
 
-53 unfinished Actions across 10 Plans point at a closed or fixed Issue. The active Plan's current Action `truncate-torn-journal-tail-by-byte-offset` (#749) and `report-cut-work-monitor-attention-lines` (#2011) are both fixed on main (`ad48f90fa`, `a03559b0b`). One `arcadia agent-ask preview` proposal per Plan (`intent: proposal`, `requested_authority: propose`) asks for completion with proof or withdrawal; a closed Issue alone proves nothing about acceptance. Receipts:
+42 distinct unfinished Actions across 10 Plans (53 Action–Issue pairs) point at a closed or fixed Issue. The active Plan's current Action `truncate-torn-journal-tail-by-byte-offset` (#749) and `report-cut-work-monitor-attention-lines` (#2011) are both fixed on main (`ad48f90fa`, `a03559b0b`). One `arcadia agent-ask preview` proposal per Plan (`intent: proposal`, `requested_authority: propose`) asks for completion with proof or withdrawal; a closed Issue alone proves nothing about acceptance. Receipts:
 
 - `agentask_84fc1691428f356f82` (28 Actions, bootstrap-managed-production-to-build-flight-dec)
 - `agentask_3e6a0f7da237e773f9` (2 Actions, burn-down-three-small-verified-bug-issues-in-una)
