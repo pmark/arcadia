@@ -40,10 +40,11 @@ export function largestEffortFitting(availableMinutes: number): OrientationEffor
 
 /** Human-readable minutes for packet/CLI lines: 90 -> "1h30m", 60 -> "1h", 20 -> "20m". */
 export function formatMinutes(minutes: number): string {
-  if (minutes < 60) {
-    return `${Math.round(minutes)}m`;
+  const total = Number.isFinite(minutes) ? Math.max(0, Math.round(minutes)) : 0;
+  if (total < 60) {
+    return `${total}m`;
   }
-  const hours = Math.floor(minutes / 60);
-  const remainder = Math.round(minutes % 60);
+  const hours = Math.floor(total / 60);
+  const remainder = total % 60;
   return remainder === 0 ? `${hours}h` : `${hours}h${remainder}m`;
 }

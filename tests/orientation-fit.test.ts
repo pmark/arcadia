@@ -65,6 +65,14 @@ describe("effort vocabulary", () => {
     expect(formatMinutes(20)).toBe("20m");
     expect(formatMinutes(60)).toBe("1h");
     expect(formatMinutes(90)).toBe("1h30m");
+    expect(formatMinutes(119.6)).toBe("2h");
+    expect(formatMinutes(59.6)).toBe("1h");
+    expect(formatMinutes(89.5)).toBe("1h30m");
+    expect(formatMinutes(0.4)).toBe("0m");
+    expect(formatMinutes(-60)).toBe("0m");
+    expect(formatMinutes(-160)).toBe("0m");
+    expect(formatMinutes(Number.NaN)).toBe("0m");
+    expect(formatMinutes(Number.POSITIVE_INFINITY)).toBe("0m");
   });
 });
 
