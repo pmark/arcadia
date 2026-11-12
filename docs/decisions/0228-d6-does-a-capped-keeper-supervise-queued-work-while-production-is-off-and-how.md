@@ -4,7 +4,7 @@ type: decision
 id: "0228"
 slug: d6-does-a-capped-keeper-supervise-queued-work-while-production-is-off-and-how
 project: arcadia
-status: open
+status: approved
 question: "D6: Does a capped keeper supervise queued work while production is Off, and how does a successor take over?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
 updated: 2026-11-12
+answer: A
+decided: 2026-11-12
 ---
 
 # Decision 0228: D6: Does a capped keeper supervise queued work while production is Off, and how does a successor take over?

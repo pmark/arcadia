@@ -4,7 +4,7 @@ type: decision
 id: "0224"
 slug: d2-may-one-day-approval-cover-an-ordered-list-of-already-accepted-plans
 project: arcadia
-status: open
+status: approved
 question: "D2: May one day approval cover an ordered list of already-accepted Plans?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
 updated: 2026-11-12
+answer: A
+decided: 2026-11-12
 ---
 
 # Decision 0224: D2: May one day approval cover an ordered list of already-accepted Plans?

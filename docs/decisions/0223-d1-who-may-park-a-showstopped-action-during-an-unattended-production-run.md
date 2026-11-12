@@ -4,7 +4,7 @@ type: decision
 id: "0223"
 slug: d1-who-may-park-a-showstopped-action-during-an-unattended-production-run
 project: arcadia
-status: open
+status: approved
 question: "D1: Who may park a showstopped Action during an unattended production run?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
 updated: 2026-11-12
+answer: A
+decided: 2026-11-12
 ---
 
 # Decision 0223: D1: Who may park a showstopped Action during an unattended production run?
