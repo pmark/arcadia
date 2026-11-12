@@ -51,15 +51,17 @@ export function operatorHeldEscalation(db: Database.Database, actionKey: string,
 }
 
 /**
- * Decision 0223 (D1, answer A): the only Action-local stop classes that hold
- * their Action besides the review-repair kinds. Repair-budget exhaustion for
- * that Action and the loopback validation hold (Issue #2519). Each keeps its
- * candidate, counters and evidence, and its dependents stay unready. Global,
- * unknown or shared failures (sign-in, authority, STOP, storage, custody) are
- * deliberately absent: they still stop the scope. Widening this set needs a
- * new Decision.
+ * Decision 0223 (D1, answer A): the only Action-local stop class that holds
+ * its Action besides the review-repair kinds: the loopback validation hold
+ * (Issue #2519), Action-local by construction. Repair-budget exhaustion is
+ * NOT here: tmux, draft-retirement and worktree failures raise it for shared
+ * causes too, so classifying those causes is a later slice. Each held kind
+ * keeps its candidate, counters and evidence, and its dependents stay unready.
+ * Global, unknown or shared failures (sign-in, authority, STOP, storage,
+ * custody) are deliberately absent: they still stop the scope. Widening this
+ * set needs a new Decision.
  */
-export const ACTION_LOCAL_HELD_ESCALATIONS: ReadonlySet<string> = new Set(["repair_budget_exhausted", "completion_loopback_denied"]);
+export const ACTION_LOCAL_HELD_ESCALATIONS: ReadonlySet<string> = new Set(["completion_loopback_denied"]);
 
 /** This Action's open escalation when it is one of the Action-local held classes, or null. Read-only; a missing table answers null. */
 function actionLocalHold(db: Database.Database, actionKey: string): { kind: string; firstDetectedAt: string } | null {

@@ -23,7 +23,7 @@ import { markCaughtUpWorkerMerges } from "./workerMerge.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
+import { ACTION_LOCAL_HELD_ESCALATIONS, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
 import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_ESCALATION_EXITS, SIGN_IN_ESCALATION_MS, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
@@ -1076,14 +1076,18 @@ function settledCandidateHold(db: Database.Database, repoRoot: string, projectSl
  * every tick -- the row itself, not a fresh notification each tick, is the
  * durable, operator-visible fact.
  */
-function recordOperatorEscalation(
+export function recordOperatorEscalation(
   db: Database.Database,
   input: { actionKey: string; kind: string; message: string; remedy: string | null; now: Date }
 ): boolean {
   const at = input.now.toISOString();
-  const existing = db.prepare("SELECT action_key FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
-    | { action_key: string }
+  const existing = db.prepare("SELECT action_key, kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
+    | { action_key: string; kind: string }
     | undefined;
+  // Decision 0223: a held kind never replaces an open escalation of a different,
+  // non-held kind, so a global row can never become skippable.
+  const heldKind = (kind: string) => ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || REVIEW_REPAIR_ESCALATIONS.has(kind);
+  if (existing && existing.kind !== input.kind && heldKind(input.kind) && !heldKind(existing.kind)) return false;
   db.prepare(
     `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
        VALUES (@action_key, @kind, @message, @remedy, @at, @at)

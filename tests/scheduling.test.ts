@@ -8,6 +8,7 @@ import { activateProduction, deactivateProduction, fingerprintProductionScope, n
 import { ensureCandidatePreservationTable } from "../src/sessions/candidatePreservation.js";
 import { DISCOVERY_LIMITS, recordDiscovery } from "../src/scheduling/discovery.js";
 import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardPush, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
+import { recordOperatorEscalation } from "../src/production/tick.js";
 import { buildPortfolioSchedule, buildProjectSchedule, writeProjectOrder } from "../src/scheduling/schedule.js";
 import {
   DEFAULT_BOARD_POLL_INTERVAL_MS,
@@ -573,7 +574,6 @@ describe("scheduling pass", () => {
       "review_repair_rounds_exhausted",
       "review_repair_gated",
       "review_repair_gate_defect",
-      "repair_budget_exhausted",
       "completion_loopback_denied"
     ])("passes over held Action A (%s), selects independent B, never dependent C, and keeps A's escalation row", (kind) => {
       const fx = shape();
@@ -610,6 +610,28 @@ describe("scheduling pass", () => {
         expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:06:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
       });
       expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
+    });
+
+    it("a repair budget exhausted by a tmux launch failure is a shared stop: A still holds the scope", () => {
+      const fx = shape();
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        hold(db, "alpha/a", "repair_budget_exhausted");
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:05:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
+      });
+      expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
+    });
+
+    it("a held kind never replaces an open global escalation on the same Action", () => {
+      const fx = shape();
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        hold(db, "alpha/a", "storage_unavailable");
+        recordOperatorEscalation(db, { actionKey: "alpha/a", kind: "completion_loopback_denied", message: "loopback", remedy: null, now: new Date(at) });
+        expect(holdRow(db, "alpha/a")).toEqual({ kind: "storage_unavailable", first_detected_at: at });
+        expect(nextOf(db)).toBe("alpha/a");
+      });
     });
 
     it.each(["storage_unavailable", "provider_sign_in_failed", "authority_denied"])("a global or shared stop (%s) on A still holds the scope", (kind) => {
