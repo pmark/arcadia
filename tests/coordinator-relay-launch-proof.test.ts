@@ -67,6 +67,7 @@ function harness(mode: string) {
     decision: () => ({ inForce: true, reason: "test decision" }),
     signIn: () => ({ signedIn: true, remedy: "" }),
     capacity: () => ({ admitted: true, reason: "ok" }),
+    startPressInProgress: () => ({ inProgress: false, detail: "none" }),
     createWorktree: (_repo, directory) => { mkdirSync(directory, { recursive: true }); },
     firstUserMessage: readFirstUserMessage,
     claudeProjectsDirectory: projects,
