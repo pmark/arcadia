@@ -7,15 +7,15 @@ status: active
 milestone: Burn down three verified test-only bug Issues in unattended serial production.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-11
+updated: 2026-11-12
 actions:
   - id: write-tmux-long-command-argv-atomically
     title: "Make the fake provider scripts in tests/system-tmux-long-command.test.ts write their argv JSON atomically, so the polling reader never parses a partly written file, fixing Issue #2314."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the fake provider scripts in tests/system-tmux-long-command.test.ts write their argv JSON atomically, so the polling reader never parses a partly written file, fixing Issue #2314."
+    next_action: Completed via Agent Ask auto-settle-arcadia-write-tmux-long-command-argv-atomically-46068000b8b8; no further action.
     expected_artifact: Evidence satisfying Agent Ask write-tmux-long-command-argv-atomically
     clarification: clarified
     confidence: high
