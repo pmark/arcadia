@@ -16,10 +16,18 @@ const required = ["pnpm lint", "pnpm exec tsc --noEmit"];
 const roots: string[] = [];
 const checkCommand = (argv: string[]) => argv.at(-1) === "echo fixture" ? "pnpm lint" : argv.at(-1) === "--noEmit" ? "pnpm exec tsc --noEmit" : argv.at(-1);
 let failCommand: string | null = null;
+// When set, the vitest JSON report the mocked named-test run writes (Issue #2519).
+let vitestReport: ((cwd: string) => unknown) | null = null;
 
 beforeEach(() => {
   failCommand = null;
-  vi.mocked(runOwnedValidation).mockReset().mockImplementation(({ argv }) => {
+  vitestReport = null;
+  vi.mocked(runOwnedValidation).mockReset().mockImplementation(({ argv, cwd }) => {
+    const json = argv.find((arg) => arg.startsWith("--outputFile.json="));
+    if (json && vitestReport) {
+      writeFileSync(json.slice("--outputFile.json=".length), JSON.stringify(vitestReport(cwd)));
+      return { status: 1, signal: null, stdout: "", stderr: "", timedOut: false, terminalProven: true, error: null };
+    }
     const report = argv.find((arg) => arg.startsWith("--test-reporter-destination="));
     if (report) writeFileSync(report.slice("--test-reporter-destination=".length), "TAP version 13\nok 1 - fixture\n# pass 1\n# fail 0\n");
     return { status: checkCommand(argv) === failCommand ? 1 : 0, signal: null, stdout: "", stderr: checkCommand(argv) === failCommand ? "fixture check failed" : "", timedOut: false, terminalProven: true, error: null };
@@ -27,13 +35,13 @@ beforeEach(() => {
 });
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-function candidate() {
+function candidate(options: { vitest?: boolean } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), "criteria-validation-"));
   roots.push(root);
   const repository = path.join(root, "repo"), workspace = path.join(root, "workspace");
   mkdirSync(path.join(repository, "tests"), { recursive: true });
   mkdirSync(workspace);
-  writeFileSync(path.join(repository, "package.json"), JSON.stringify({ name: "fixture", scripts: { lint: "echo fixture" } }));
+  writeFileSync(path.join(repository, "package.json"), JSON.stringify({ name: "fixture", scripts: { lint: "echo fixture" }, ...(options.vitest ? { devDependencies: { vitest: "*" } } : {}) }));
   writeFileSync(path.join(repository, "tests/ready.test.js"), "// fixture, execution is replaced by the owned-validator mock\n");
   const env = { ...process.env, GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.invalid", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.invalid" };
   const git = (...args: string[]) => execFileSync("git", args, { cwd: repository, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
@@ -41,6 +49,10 @@ function candidate() {
   git("init", "-q"); git("add", "."); git("commit", "-qm", "fixture");
   mkdirSync(path.join(repository, "node_modules/typescript/bin"), { recursive: true });
   writeFileSync(path.join(repository, "node_modules/typescript/bin/tsc"), "// installed fixture compiler, execution is mocked\n");
+  if (options.vitest) {
+    mkdirSync(path.join(repository, "node_modules/vitest"), { recursive: true });
+    writeFileSync(path.join(repository, "node_modules/vitest/vitest.mjs"), "// installed fixture runner, execution is mocked\n");
+  }
   return { repository, worktree: repository, workspace, base: git("rev-parse", "HEAD"), commands: ["true"], acceptanceCriteria: ["tests/ready.test.js, pnpm lint and tsc pass."] };
 }
 
@@ -149,5 +161,33 @@ describe("criteria-required checks", () => {
     writeFileSync(path.join(input.repository, "package.json"), JSON.stringify({ name: "fixture", scripts: { lint: "true" } }));
     expect(validateCompletionCandidate(input, { unconfinedForTests: true })).toMatchObject({ status: "refused", reason: expect.stringContaining("captured for validation") });
     expect(runOwnedValidation).not.toHaveBeenCalled();
+  });
+});
+
+// Issue #2519: a named test that binds loopback fails with EPERM under the Seatbelt profile.
+describe("vitest named tests denied loopback networking", () => {
+  const failed = (cwd: string, tests: Array<{ title: string; messages: string[] }>) => ({
+    testResults: [{ name: path.join(cwd, "tests/ready.test.js"), status: "failed", message: "",
+      assertionResults: tests.map((test) => ({ fullName: test.title, title: test.title, status: "failed", failureMessages: test.messages })) }]
+  });
+
+  it("holds as unavailable when every failing test is a loopback EPERM denial", () => {
+    vitestReport = (cwd) => failed(cwd, [
+      { title: "serves on loopback", messages: ["Error: listen EPERM: operation not permitted 127.0.0.1:0"] },
+      { title: "connects to loopback", messages: ["Error: connect EPERM 127.0.0.1:3000"] }
+    ]);
+    const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
+    expect(result).toMatchObject({ status: "refused", hostFault: true, failures: ["tests/ready.test.js > serves on loopback", "tests/ready.test.js > connects to loopback"],
+      reason: expect.stringContaining("need loopback networking") });
+  });
+
+  it("stays refused when a real assertion failure is mixed with a loopback denial", () => {
+    vitestReport = (cwd) => failed(cwd, [
+      { title: "serves on loopback", messages: ["Error: listen EPERM: operation not permitted 127.0.0.1:0"] },
+      { title: "computes the total", messages: ["AssertionError: expected 1 to be 2"] }
+    ]);
+    const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
+    expect(result).toMatchObject({ status: "refused", hostFault: false, reason: expect.stringContaining("vitest exited 1") });
+    expect(result).not.toMatchObject({ reason: expect.stringContaining("loopback networking") });
   });
 });

@@ -280,7 +280,21 @@ function declaresVitest(source: string): boolean {
 
 interface VitestReport {
   testResults?: Array<{ name?: string; status?: string; message?: string;
-    assertionResults?: Array<{ fullName?: string; title?: string; status?: string }> }>;
+    assertionResults?: Array<{ fullName?: string; title?: string; status?: string; failureMessages?: string[] }> }>;
+}
+
+/** A loopback bind or connect denied by the Seatbelt profile (Issue #2519). */
+const LOOPBACK_DENIED = /\b(?:listen|connect|bind) EPERM\b/;
+
+/** True when every failing test (or, for a file that failed without a test, its file message) is a loopback denial, so no real assertion failed. */
+function failuresAreLoopbackDenials(report: VitestReport | null): boolean {
+  const failedFiles = (report?.testResults ?? []).filter((file) => file.status === "failed" || (file.assertionResults ?? []).some((test) => test.status === "failed"));
+  if (!failedFiles.length) return false;
+  return failedFiles.every((file) => {
+    const failedTests = (file.assertionResults ?? []).filter((test) => test.status === "failed");
+    if (!failedTests.length) return LOOPBACK_DENIED.test(file.message ?? "");
+    return failedTests.every((test) => LOOPBACK_DENIED.test((test.failureMessages ?? []).join("\n")));
+  });
 }
 
 // Runs the command in its own process group, output discarded so no
@@ -453,6 +467,9 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
       const failed = (file.assertionResults ?? []).filter((test) => test.status === "failed");
       for (const test of failed) failures.push(`${relativeName(file.name)} > ${test.fullName ?? test.title ?? "(unnamed test)"}`);
       if (!failed.length && file.status === "failed") failures.push(`${relativeName(file.name)} (${file.message ? untrusted(file.message, 120) : "failed to run"})`);
+    }
+    if (result.status !== 0 && failuresAreLoopbackDenials(parsed)) {
+      return unavailable("the named tests need loopback networking, which the validation confinement denies (Issue #2519); proof must come from the required CI checks on the pull request head.", failures);
     }
     if (result.status !== 0) return deny(`the named tests failed (vitest exited ${result.status}).`, failures.length ? failures : namedTests);
     // A zero exit proves only that nothing failed: every named file must
