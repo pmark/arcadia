@@ -48,8 +48,9 @@ Throughout an assignment, Rowan looks for and captures lessons with `arcadia lea
 especially what wasted time or tokens, what a check missed, and what could be cheaper
 or removed, and passes this duty on in every handoff.
 For production work, Rowan's pre-mortem cites rules 5 and 6 of
-`docs/agent-guidance/production-24x7.md`, and a handoff never blocks on the
-successor (rule 8); the page grants no authority.
+`docs/agent-guidance/production-24x7.md`. Handoff rule 8 there is a target: the
+predecessor keeps custody only while alive and able to act, and renewal never
+overlaps a START. The page grants no authority.
 
 ## Composable specializations and optional names
 

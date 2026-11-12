@@ -1,14 +1,14 @@
 # Production 24/7 rules
 
 Operator direction 2026-11-12: production is never idle. Arcadia starts every
-session. Operator decisions D1 to D6 are pending. Rules marked "needs Decision"
-are targets, not authority.
+session. Operator decisions D1 to D6 are pending. Rules marked "Pending D<n>"
+are targets, not authority, and describe intended behaviour, not present fact.
 
 This page grants no authority and changes no gate. Spend, credentials, deletion,
 publication, Plan acceptance, the day grant or each START press, and merges on
 authority paths stay with the operator. Sources: the rules proposal
 (agentask_93d0170cd186a88db7) and the independent Codex review
-(agentask_b99a3e8db0ae4c862f).
+(agentask_b99a3e8db0ae4c862f), whose corrected wording this page uses.
 
 Each rule gives the corrected wording, what it prevents, and how it is checked
 today and what is still pending.
@@ -17,9 +17,10 @@ today and what is still pending.
 
 - **Rule:** keep a supply of ready, worker-mergeable Actions. The floor of six
   across two Plans is an uncalibrated target, not a guarantee. Prove two
-  worthwhile independent Actions in one accepted, granted scope first. Count
-  approved supply separately from proposals. Never add filler work to meet a
-  number.
+  worthwhile independent Actions in one accepted, granted scope first, and
+  prepare one accepted fallback Plan next. Grow supply from observed throughput
+  and restocking lead time. Count approved supply separately from proposals. No
+  filler work to satisfy a number.
 - **Prevents:** production idling because one START covered one Plan and nothing
   else was ready.
 - **Today:** the keeper restocks through Asks. Nothing counts the supply yet.
@@ -41,26 +42,27 @@ today and what is still pending.
 
 ## 3. Fallback across Plans
 
-- **Rule:** when the active Plan has no runnable Action, production moves to the
-  next accepted Plan in a scope-safe way. Reuse the existing Decisions 0048,
-  0116 and later 0122. The missing work is accepted supply plus that transition.
-  A preference record approves no new Plan and changes no grant. A preference
-  selection alone is not admission.
+- **Rule (target, Pending D2):** when the active Plan has no runnable Action,
+  production should move to the next accepted Plan in a scope-safe way. Reuse
+  the existing Decisions 0048 and 0116, and eventually 0122. The missing work is
+  accepted supply plus that transition. A preference record approves no new Plan
+  and changes no grant. A preference selection alone is not admission.
 - **Prevents:** "No Plan is eligible" ending the day.
 - **Today:** not possible without a new press for each Plan.
-- **Pending:** needs D2 and code (housekeeping item 7).
+- **Pending D2:** code (housekeeping item 7).
 
 ## 4. Park one, keep going
 
-- **Rule:** a showstopper parks only its own Action, with an Issue and a revival
-  trigger. The run takes the next ready Action. Parking is never completion and
-  never edits acceptance criteria. Keep the existing held-candidate path. Extend
-  it only to named Action-local failures under D1. Shared sign-in, authority,
-  STOP, storage or custody failures still stop the affected scope. Dependents of
-  a parked Action never launch. Never report a run with parked work as all merged.
+- **Rule (target, Pending D1):** a showstopper should park only its own Action,
+  with an Issue and a revival trigger. The run should then take the next ready
+  Action. Parking is never completion and never edits acceptance criteria. Keep
+  the existing held-candidate path, and extend it only to named Action-local
+  failures. Shared sign-in, authority, STOP, storage or custody failures still
+  stop the affected scope. Dependents of a parked Action never launch. Never
+  report a run with parked work as all merged.
 - **Prevents:** one held Action idling the whole run.
 - **Today:** the operator sets an Action aside by a Plan amendment only.
-- **Pending:** needs D1 and code (housekeeping item 6).
+- **Pending D1:** code (housekeeping item 6).
 
 ## 5. Environment parity
 
@@ -73,15 +75,16 @@ today and what is still pending.
   #2519, #2515).
 - **Today:** the operator acts on the replay's finding instead of pressing past
   it.
-- **Pending:** a parity canary at card build, and the environment fixes (needs
-  code; #2521 and #2515 need operator merge).
+- **Pending:** a parity canary at card build, and the environment fixes. #2521
+  must prove owned-port access AND denial of unrelated host services. #2521 and
+  #2515 need operator merge (needs code).
 
 ## 6. Fix in parallel, never by hand-merge
 
 - **Rule:** prepare fixes in disjoint candidates while blocked. Do not merge
   under Decision 0182 C inside a run window, even between Actions. No one merges
-  a live worker candidate through GitHub by hand. An operator "accept" goes
-  through the governed settle, so the worker integrates it.
+  a live worker candidate through GitHub by hand. Preserve the freeze until a
+  separately authorized integration path is proved.
 - **Prevents:** the base drift that forced production Off on 11-11 (#1929).
 - **Today:** holds by procedure.
 - **Pending:** a merge guard that refuses a worker-candidate PR while Active
@@ -89,28 +92,28 @@ today and what is still pending.
 
 ## 7. Arcadia starts every session
 
-- **Rule:** coordinator, Signal, helper and keeper sessions are started,
-  replaced and stopped by an Arcadia verb, on the timer or at a custodian's
-  request. Keep the target and list coverage for each role: implementer,
-  planner, researcher, plan-critic, independent reviewer, QA, keeper, Rowan and
-  Signal. Launch, replace, stop and provider support are separate columns.
-  Reviewer and QA stay independent Sessions under Decision 0114. A process that
-  started is not proof of a delivered prompt, the right model, or continued
-  operation. A paste-ready prompt handed to the operator is a defect and gets an
-  Issue.
+- **Rule (target, Pending D3 and D5):** coordinator, Signal, helper and keeper
+  sessions should be started, replaced and stopped by an Arcadia verb, on the
+  timer or at a custodian's request. Keep the target and list coverage for each
+  role: implementer, planner, researcher, plan-critic, independent reviewer, QA,
+  keeper, Rowan and Signal. Launch, replace, stop and provider support are
+  separate columns. Reviewer and QA stay independent Sessions under Decision
+  0114. A process that started is not proof of a delivered prompt, the right
+  model, or continued operation. A paste-ready prompt handed to the operator is
+  a defect and gets an Issue.
 - **Prevents:** the operator starting sessions by hand (for example the 3 h
   14 min Rowan gap).
 - **Today:** the keeper start brief and the operator's own launches.
 - **Pending:** keeper activation wiring (Decision 0190), coordinator relay
-  (Decision 0191 gates 6, 9, 10 and 11), and helper start (needs D3 and code).
+  (Decision 0191 gates 6, 9, 10 and 11), and helper start (D3 and code).
 
 ## 8. Handoffs never block
 
-- **Rule:** the outgoing coordinator keeps custody and keeps working until its
-  successor accepts. If launch attempts fail, it continues and pings once. It
-  keeps custody only while alive and able to act. Never overlap renewal with a
-  START. Bounded no-accept cleanup, verified watchers and an atomic custody
-  acceptance are required before relay goes live.
+- **Rule:** the predecessor keeps custody only while it is alive and safely able
+  to act. "It continues" cannot recover a dead or exhausted host. Target
+  requirements: bounded no-accept cleanup; verified watchers; atomic custody
+  acceptance; a stop or fence for stale writers; a governed absent-custodian
+  recovery route; and renewal never overlapping a START.
 - **Prevents:** a gap in coordination while a successor is missing.
 - **Today:** holds by procedure. The predecessor continues until accepted.
 - **Pending:** the relay launches at 60% context and the timer alarms when no
@@ -126,8 +129,8 @@ today and what is still pending.
   minutes) and a lapsed keeper heartbeat (10 minutes).
 - **Prevents:** silent stalls of the kind that ran for about 15 hours on 11-11.
 - **Today:** the existing momentum alarm runs only inside a run window.
-- **Pending:** wider timer alarms and the keeper duty when Off, which needs D6
-  (needs code).
+- **Pending D6:** the keeper's duty while Off (0190 says stop at Off), plus wider
+  timer alarms (needs code).
 
 ## 10. Idle is measured and owned
 
