@@ -4,7 +4,7 @@ type: decision
 id: "0226"
 slug: d4-who-accepts-asks-that-restock-independent-work-inside-an-accepted-plan
 project: arcadia
-status: open
+status: approved
 question: "D4: Who accepts Asks that restock independent work inside an accepted Plan?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
 updated: 2026-11-12
+answer: A
+decided: 2026-11-12
 ---
 
 # Decision 0226: D4: Who accepts Asks that restock independent work inside an accepted Plan?
