@@ -69,7 +69,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2504"]
 questions: []
 decisions: []
-current_action: write-tmux-long-command-argv-atomically
+current_action: strip-claude-login-tokens-from-logged-out-fixtures
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
