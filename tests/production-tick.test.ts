@@ -1656,7 +1656,7 @@ describe("runManagedProductionTick", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toHaveLength(0);
   });
 
-  it.each(["completion_validation_unavailable", "completion_refused_repeatedly"])("does not relaunch an Action held by %s until the operator resets it (Issue #1613)", (kind) => {
+  it.each(["completion_validation_unavailable", "completion_loopback_denied", "completion_refused_repeatedly"])("does not relaunch an Action held by %s until the operator resets it (Issue #1613)", (kind) => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();
     activatePolicy(fixture);

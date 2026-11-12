@@ -13,6 +13,15 @@ import { ENVIRONMENT_WALL_ESCALATION_KIND } from "../src/production/sessionCapab
 import { EMITTED_ESCALATION_KINDS } from "../src/production/tick.js";
 
 describe("blocker-kind remedy registry (#1284)", () => {
+  it("(#2519) gives a loopback-denied hold its own remedy, not the host-fault text, and forbids a budget reset", () => {
+    const remedy = JSON.stringify(blockerRemedyFor("completion_loopback_denied"));
+    expect(remedy).toContain("loopback networking");
+    expect(remedy).toContain("required CI checks on the pull request head");
+    expect(remedy).toContain("Do not reset the repair budget");
+    expect(remedy).not.toContain("host fault");
+    expect(JSON.stringify(blockerRemedyFor("completion_validation_unavailable"))).toContain("host fault");
+  });
+
   it("(#1615) names a refused self-settled completion as a scope or validation failure, not a missing settlement commit", () => {
     const text = JSON.stringify(blockerRemedyFor("self_settled_completion_refused"));
     expect(text).toMatch(/scope or validation/);

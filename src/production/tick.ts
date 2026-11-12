@@ -45,7 +45,7 @@ import { canonicalPath, getActiveActionClaim, getRepositoryLease, resolveProject
 import { launchGuardedHostSession, resumedSessionSupersededAskIds } from "../sessions/launch.js";
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { clearPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
-import { COMPLETION_REFUSED_REPEATEDLY_ESCALATION, COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, draftedCompletionRefusalSubject, draftedCompletionTimeoutSubject, findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
+import { COMPLETION_LOOPBACK_DENIED_ESCALATION, COMPLETION_REFUSED_REPEATEDLY_ESCALATION, COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, draftedCompletionRefusalSubject, draftedCompletionTimeoutSubject, findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import { refreshPreservedPullRequestBody, systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
@@ -1537,7 +1537,7 @@ function recordOperatorGateEscalation(
   // A completion settled without its commit on the candidate (Issue #1518) is
   // the gate's cause and is recorded only once, at the exit tick: keep it.
   if (previous?.kind === COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION || previous?.kind === SELF_SETTLED_COMPLETION_REFUSED_ESCALATION
-    || previous?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || previous?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) return false;
+    || previous?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || previous?.kind === COMPLETION_LOOPBACK_DENIED_ESCALATION || previous?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) return false;
   const remedy = operatorGateRemedy(db, { ...input, label });
   if (previous) clearOperatorEscalation(db, actionKey);
   recordOperatorEscalation(db, { actionKey, kind: OPERATOR_GATE_ESCALATION, message, remedy, now: input.now });
@@ -2935,7 +2935,7 @@ function attemptProjectLaunch(
   const existingEscalation = db
     .prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?")
     .get(actionKey) as { kind: string } | undefined;
-  if (existingEscalation?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || existingEscalation?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) {
+  if (existingEscalation?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || existingEscalation?.kind === COMPLETION_LOOPBACK_DENIED_ESCALATION || existingEscalation?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) {
     return {
       attempted: false,
       outcome: "skipped",
@@ -3433,6 +3433,7 @@ export const EMITTED_ESCALATION_KINDS: readonly string[] = [
   TERMINAL_CANDIDATE_ESCALATION,
   COMPLETION_SETTLEMENT_NOT_IN_CANDIDATE_ESCALATION,
   COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION,
+  COMPLETION_LOOPBACK_DENIED_ESCALATION,
   COMPLETION_REFUSED_REPEATEDLY_ESCALATION,
   PROVIDER_SIGN_IN_DEAD_ESCALATION,
   SELF_SETTLED_COMPLETION_REFUSED_ESCALATION,
@@ -3463,7 +3464,7 @@ export function resetProductionRepairBudget(db: Database.Database, actionKey: st
     | { kind: string }
     | undefined;
   if (existing?.kind === "repair_budget_exhausted" || existing?.kind === ENVIRONMENT_WALL_ESCALATION_KIND || existing?.kind === BUDGET_EXHAUSTED_ESCALATION_KIND || existing?.kind === "review_budget_exhausted" || existing?.kind === "required_checks_timeout"
-    || existing?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || existing?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) {
+    || existing?.kind === COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION || existing?.kind === COMPLETION_LOOPBACK_DENIED_ESCALATION || existing?.kind === COMPLETION_REFUSED_REPEATEDLY_ESCALATION) {
     clearOperatorEscalation(db, actionKey);
     clearPreservationRefusal(db, draftedCompletionRefusalSubject(actionKey));
     clearPreservationRefusal(db, draftedCompletionTimeoutSubject(actionKey));

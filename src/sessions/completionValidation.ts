@@ -99,6 +99,8 @@ export type CompletionValidationResult =
       hostFault: boolean;
       /** With `hostFault`: the validation ran out of time rather than failing to start. */
       timedOut?: boolean;
+      /** Issue #2519: every failing named test reported only a loopback EPERM denial. The classification comes from a report the candidate can influence, so only the required CI checks on the PR head can prove the completion. */
+      loopbackDenied?: boolean;
     };
 
 // A repository-relative test file path: under `tests/`, `test/` or a
@@ -280,7 +282,23 @@ function declaresVitest(source: string): boolean {
 
 interface VitestReport {
   testResults?: Array<{ name?: string; status?: string; message?: string;
-    assertionResults?: Array<{ fullName?: string; title?: string; status?: string }> }>;
+    assertionResults?: Array<{ fullName?: string; title?: string; status?: string; failureMessages?: string[] }> }>;
+}
+
+/** A failure message whose first line is a non-assertion error for a loopback bind or connect denied by the Seatbelt profile (Issue #2519). An assertion quoting EPERM does not match. */
+const LOOPBACK_DENIED = /^(?!AssertionError)\w*Error: (?:listen|connect|bind) EPERM\b/;
+
+/** True when every failing test (or, for a file that failed without a test, its file message) is a loopback denial, so no real assertion failed. */
+function failuresAreLoopbackDenials(report: VitestReport | null): boolean {
+  const failedFiles = (report?.testResults ?? []).filter((file) => file.status === "failed" || (file.assertionResults ?? []).some((test) => test.status === "failed"));
+  if (!failedFiles.length) return false;
+  // Only the first line of each message counts: a multi-line message cannot smuggle a denial in below its real error.
+  const firstLine = (message: string | undefined) => (message ?? "").split("\n")[0] ?? "";
+  return failedFiles.every((file) => {
+    const failedTests = (file.assertionResults ?? []).filter((test) => test.status === "failed");
+    if (!failedTests.length) return LOOPBACK_DENIED.test(firstLine(file.message));
+    return failedTests.every((test) => (test.failureMessages ?? []).length > 0 && (test.failureMessages ?? []).every((message) => LOOPBACK_DENIED.test(firstLine(message))));
+  });
 }
 
 // Runs the command in its own process group, output discarded so no
@@ -453,6 +471,9 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
       const failed = (file.assertionResults ?? []).filter((test) => test.status === "failed");
       for (const test of failed) failures.push(`${relativeName(file.name)} > ${test.fullName ?? test.title ?? "(unnamed test)"}`);
       if (!failed.length && file.status === "failed") failures.push(`${relativeName(file.name)} (${file.message ? untrusted(file.message, 120) : "failed to run"})`);
+    }
+    if (result.status !== 0 && failuresAreLoopbackDenials(parsed)) {
+      return { ...unavailable("the named tests reported only loopback networking denials (Issue #2519); the validation confinement denies loopback, so proof must come from the required CI checks on the pull request head.", failures) as Extract<CompletionValidationResult, { status: "refused" }>, loopbackDenied: true };
     }
     if (result.status !== 0) return deny(`the named tests failed (vitest exited ${result.status}).`, failures.length ? failures : namedTests);
     // A zero exit proves only that nothing failed: every named file must
