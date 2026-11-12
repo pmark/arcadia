@@ -140,9 +140,10 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
 
   it("starts the Session and hands the provider the exact 64 KiB brief, leaving no launcher file behind", async () => {
     const out = path.join(root, "argv.json");
+    const outTemp = `${out}.tmp`;
     const runDir = path.join(root, "run");
     const provider = path.join(root, "provider.mjs");
-    writeFileSync(provider, `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(out)}, JSON.stringify(process.argv.slice(2)));\n`);
+    writeFileSync(provider, `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(outTemp)}, JSON.stringify(process.argv.slice(2)));\nfs.renameSync(${JSON.stringify(outTemp)}, ${JSON.stringify(out)});\n`);
     systemTmux.launch({
       name,
       cwd: root,
@@ -192,7 +193,8 @@ describe.skipIf(!tmuxBinary)("systemTmux.launch with a long Session brief (real 
   it("delivers the brief byte-identical with no launcherDirectory (temporary directory removed)", async () => {
     const out = path.join(root, "argv-temp.json");
     const provider = path.join(root, "provider-temp.mjs");
-    writeFileSync(provider, `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(out)}, JSON.stringify(process.argv.slice(2)));\n`);
+    const outTemp = `${out}.tmp`;
+    writeFileSync(provider, `import fs from "node:fs";\nfs.writeFileSync(${JSON.stringify(outTemp)}, JSON.stringify(process.argv.slice(2)));\nfs.renameSync(${JSON.stringify(outTemp)}, ${JSON.stringify(out)});\n`);
     const name = `arcadia-temp-brief-${process.pid}-${Date.now()}`;
     // The launcher's private temporary directory is created under TMPDIR, so point it at one this test owns.
     const tempDir = mkdtempSync(path.join(root, "tmpdir-"));
