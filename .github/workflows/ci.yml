@@ -58,6 +58,22 @@ jobs:
           cache: true
       - run: mise exec -- corepack enable pnpm
       - run: mise exec -- pnpm install --frozen-lockfile
+      # tmux-gated tests (describe.skipIf(!tmuxBinary)) skip silently without tmux
+      # (#2515). Retry apt up to 3 times (#1697 flake: apt can exit 100).
+      - name: Install tmux for tmux-gated unit tests
+        run: |
+          for attempt in 1 2 3; do
+            if sudo apt-get update && sudo apt-get install -y tmux; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "::error::tmux install failed after 3 attempts"
+              exit 1
+            fi
+            sleep 10
+          done
+      - name: Require tmux so tmux-gated tests cannot skip silently
+        run: tmux -V
       # Unit tests resolve workspace imports through vitest aliases, but a few
       # suites read dist/. `pnpm build` also runs ESLint, which the lint job
       # already enforces, so CI builds only the artifacts.
