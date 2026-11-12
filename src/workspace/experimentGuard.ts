@@ -215,6 +215,14 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
     "Claims the host's daily Claude renewal, runs the Claude CLI, publishes a diagnostic Decision to main and asks the live worker for a usage check.",
     FROM_LIVE_TERMINAL
   ),
+  "start-run hold": guarded(
+    "Writes a governed hold marker for a waiting START card in the operator-script library that the live run window reads.",
+    FROM_LIVE_TERMINAL
+  ),
+  "start-run unhold": guarded(
+    "Removes a governed START card hold marker from the operator-script library and records the removal.",
+    FROM_LIVE_TERMINAL
+  ),
   "production status": ALLOWED,
   "production freeze-check": ALLOWED,
   "production liveness-check": exempt("A launchd timer reads the named workspace read-only each minute; a row a minute would be noise, and only a page writes, through the ping outbox, besides its own .arcadia state files."),
