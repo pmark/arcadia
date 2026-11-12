@@ -51,17 +51,46 @@ export function operatorHeldEscalation(db: Database.Database, actionKey: string,
 }
 
 /**
- * Decision 0223 (D1, answer A): the only Action-local stop class that holds
- * its Action besides the review-repair kinds: the loopback validation hold
- * (Issue #2519), Action-local by construction. Repair-budget exhaustion is
- * NOT here: tmux, draft-retirement and worktree failures raise it for shared
- * causes too, so classifying those causes is a later slice. Each held kind
- * keeps its candidate, counters and evidence, and its dependents stay unready.
- * Global, unknown or shared failures (sign-in, authority, STOP, storage,
- * custody) are deliberately absent: they still stop the scope. Widening this
- * set needs a new Decision.
+ * Decision 0223 (D1, answer A): the Action-local stop classes that hold their
+ * Action besides the review-repair kinds. `completion_loopback_denied`
+ * (Issue #2519) and `completion_validation_unavailable` (Issue #1613, the
+ * validation-environment hold) are Action-local by construction: each names
+ * one candidate's pre-acceptance validation. Each held kind keeps its
+ * candidate, counters and evidence, and its dependents stay unready. Global,
+ * unknown or shared failures (sign-in, authority, STOP, storage, custody,
+ * environment wall) are deliberately absent: they still stop the scope.
  */
-export const ACTION_LOCAL_HELD_ESCALATIONS: ReadonlySet<string> = new Set(["completion_loopback_denied"]);
+export const ACTION_LOCAL_HELD_ESCALATIONS: ReadonlySet<string> = new Set(["completion_loopback_denied", "completion_validation_unavailable"]);
+
+/** The kind that two classes share: held only when its recorded cause is Action-local (see `repairBudgetCauseIsActionLocal`). */
+export const REPAIR_BUDGET_EXHAUSTED_KIND = "repair_budget_exhausted";
+
+/**
+ * Who spent an Action's repair attempts, named by the code that records each
+ * attempt (`recordRepairAttempt`), never inferred from the escalation kind or
+ * the error text. `action_local`: the Action's own resumed Session exited
+ * incomplete without changing its candidate. `shared`: a launch, tmux,
+ * worktree or draft-retirement failure, or anything else. Callers that name no
+ * cause record `shared`.
+ */
+export type RepairBudgetCause = "action_local" | "shared";
+
+/**
+ * True only when every recorded attempt was explicitly Action-local. Fails
+ * safe: a missing row, a legacy row (no local count), one shared attempt or a
+ * read error answers false, which keeps the stop run-wide.
+ */
+export function repairBudgetCauseIsActionLocal(db: Database.Database, actionKey: string): boolean {
+  try {
+    const row = db.prepare("SELECT attempts, local_attempts FROM production_repair_attempts WHERE action_key = ?").get(actionKey) as { attempts: number; local_attempts: number } | undefined;
+    return !!row && row.attempts > 0 && row.local_attempts === row.attempts;
+  } catch { return false; }
+}
+
+/** Whether an escalation of this kind on this Action is an Action-local hold (held, not run-stopping). */
+export function isActionLocalHeldKind(db: Database.Database, actionKey: string, kind: string): boolean {
+  return ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || (kind === REPAIR_BUDGET_EXHAUSTED_KIND && repairBudgetCauseIsActionLocal(db, actionKey));
+}
 
 /** This Action's open escalation when it is one of the Action-local held classes, or null. Read-only; a missing table answers null. */
 function actionLocalHold(db: Database.Database, actionKey: string): { kind: string; firstDetectedAt: string } | null {
@@ -69,7 +98,7 @@ function actionLocalHold(db: Database.Database, actionKey: string): { kind: stri
   try {
     row = db.prepare("SELECT kind, first_detected_at FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string; first_detected_at: string } | undefined;
   } catch { return null; }
-  return row && ACTION_LOCAL_HELD_ESCALATIONS.has(row.kind) ? { kind: row.kind, firstDetectedAt: row.first_detected_at } : null;
+  return row && isActionLocalHeldKind(db, actionKey, row.kind) ? { kind: row.kind, firstDetectedAt: row.first_detected_at } : null;
 }
 
 /** What a caller knows about the Action now, so the staleness check need not rediscover it. */

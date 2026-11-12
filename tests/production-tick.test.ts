@@ -13,6 +13,7 @@ import type { CapacityAdmissionDecision, ProviderCapacityObservation } from "../
 import type { ProviderAdapterRegistry } from "../src/codingAgents/providerAdapters.js";
 import { renderProductionStatusSuccess, runProductionStatusCommand } from "../src/commands/production.js";
 import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
+import { operatorHeldEscalation } from "../src/production/terminalCandidates.js";
 import {
   createCodexInvocation,
   createReviewItem,
@@ -2771,6 +2772,11 @@ describe("runManagedProductionTick", () => {
     const escalationAfterLastFailure = escalationsAfterLastFailure.find((entry) => entry.actionKey === "test-project/define-contract");
     expect(escalationAfterLastFailure?.kind).toBe("repair_budget_exhausted");
     expect(escalationAfterLastFailure?.remedy).toContain("arcadia production reset-repair-budget test-project/define-contract");
+    // Decision 0223: a tmux launch failure spends the budget on a shared cause, so this exhaustion is a global stop, never held.
+    withReadOnlyDatabase(fixture.workspace, (db) => {
+      expect(db.prepare("SELECT attempts, local_attempts FROM production_repair_attempts WHERE action_key = 'test-project/define-contract'").get()).toMatchObject({ local_attempts: 0 });
+      expect(operatorHeldEscalation(db, "test-project/define-contract")).toBeNull();
+    });
 
     const exhausted = withDatabase(fixture.workspace, (db) =>
       runManagedProductionTick(db, fixture.workspace, {

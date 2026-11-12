@@ -23,7 +23,7 @@ import { markCaughtUpWorkerMerges } from "./workerMerge.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { ACTION_LOCAL_HELD_ESCALATIONS, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
+import { isActionLocalHeldKind, type RepairBudgetCause, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
 import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_ESCALATION_EXITS, SIGN_IN_ESCALATION_MS, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
@@ -535,7 +535,8 @@ export function ensureProductionTickTables(db: Database.Database): void {
       attempts INTEGER NOT NULL DEFAULT 0,
       last_error TEXT,
       last_attempt_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
+      updated_at TEXT NOT NULL,
+      local_attempts INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE IF NOT EXISTS production_attempt_tokens (
       action_key TEXT NOT NULL,
@@ -583,9 +584,16 @@ export function ensureProductionTickTables(db: Database.Database): void {
   `);
   ensureProductionLaunchBlockersTable(db);
   ensureProductionLaunchRefusalDedupeKeyColumn(db);
+  ensureRepairAttemptsLocalColumn(db);
   ensureProductionReviewStepTable(db);
   ensureRedAlertTables(db);
   ensureActionJourneyLogTable(db);
+}
+
+/** A table that predates `local_attempts` gains it at 0: every earlier attempt is unclassified, so shared (fail safe). */
+function ensureRepairAttemptsLocalColumn(db: Database.Database): void {
+  const columns = new Set((db.prepare("PRAGMA table_info(production_repair_attempts)").all() as Array<{ name: string }>).map((column) => column.name));
+  if (!columns.has("local_attempts")) db.prepare("ALTER TABLE production_repair_attempts ADD COLUMN local_attempts INTEGER NOT NULL DEFAULT 0").run();
 }
 
 /**
@@ -1084,12 +1092,11 @@ export function recordOperatorEscalation(
   const existing = db.prepare("SELECT action_key, kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
     | { action_key: string; kind: string }
     | undefined;
-  // Decision 0223: a new Action-local held kind never replaces an open escalation
-  // of a different, non-held kind, so a global row can never become skippable.
-  // Review-repair kinds are excluded: they predate D1 and legitimately replace
-  // the verdict-wait rows (independent_verdict_failed and the like).
-  const isHeld = (kind: string) => ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || REVIEW_REPAIR_ESCALATIONS.has(kind);
-  if (existing && existing.kind !== input.kind && ACTION_LOCAL_HELD_ESCALATIONS.has(input.kind) && !isHeld(existing.kind)) return false;
+  // Decision 0223: a new Action-local held row (a held kind, or repair_budget_exhausted whose recorded cause is
+  // Action-local) never replaces an open escalation of a different, non-held kind, so a global row can never become
+  // skippable. Review-repair kinds are held too: they predate D1 and legitimately replace the verdict-wait rows.
+  const isHeld = (kind: string) => isActionLocalHeldKind(db, input.actionKey, kind) || REVIEW_REPAIR_ESCALATIONS.has(kind);
+  if (existing && existing.kind !== input.kind && isActionLocalHeldKind(db, input.actionKey, input.kind) && !isHeld(existing.kind)) return false;
   db.prepare(
     `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
        VALUES (@action_key, @kind, @message, @remedy, @at, @at)
@@ -2274,7 +2281,7 @@ export function runManagedProductionTick(
               worktreeClean: () => tryGit(lease.worktree_path, ["status", "--porcelain"]) === ""
             });
             if (unchanged) {
-              recordRepairAttempt(db, actionKey, `Resumed Session ${lease.id} exited incomplete without changing its candidate.`, now);
+              recordRepairAttempt(db, actionKey, `Resumed Session ${lease.id} exited incomplete without changing its candidate.`, now, "action_local");
               const attempts = getRepairAttempts(db, actionKey);
               if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
                 recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts,
@@ -2698,7 +2705,7 @@ function attemptReviewRepairLaunch(
     // retirement, a worktree error): counted against the finite repair budget
     // exactly like attemptProjectLaunch's, so it cannot cycle every tick.
     const failure = formatLaunchFailure(error);
-    recordRepairAttempt(db, actionKey, failure, input.now);
+    recordRepairAttempt(db, actionKey, failure, input.now, "shared");
     recordFailedRun(db, input.projectSlug, { reason: `Review repair launch failed for ${actionKey}: ${failure}`, actionKey });
     input.log(`Review repair launch attempt failed for ${actionKey}: ${failure}`);
     const attemptsAfter = getRepairAttempts(db, actionKey);
@@ -3227,7 +3234,7 @@ function attemptProjectLaunch(
       return { attempted: true, outcome: "refused", reason: error.message, actionKey };
     }
     const message = formatLaunchFailure(error);
-    recordRepairAttempt(db, actionKey, message, input.now);
+    recordRepairAttempt(db, actionKey, message, input.now, "shared");
     recordFailedRun(db, input.projectSlug, { reason: `Launch failed for ${actionKey}: ${message}`, actionKey });
     input.log(`Launch attempt failed for ${actionKey}: ${message}`);
     // Record the exhaustion escalation the instant this attempt pushes the
@@ -3385,18 +3392,20 @@ function getRepairAttempts(db: Database.Database, actionKey: string): { attempts
   return { attempts: row?.attempts ?? 0, lastError: row?.last_error ?? null };
 }
 
-function recordRepairAttempt(db: Database.Database, actionKey: string, error: string, now: Date): void {
+/** `cause` is explicit at every call site; a caller that cannot name an Action-local cause records `shared` (run-stopping). */
+function recordRepairAttempt(db: Database.Database, actionKey: string, error: string, now: Date, cause: RepairBudgetCause = "shared"): void {
   const at = now.toISOString();
-  const existing = db.prepare("SELECT attempts FROM production_repair_attempts WHERE action_key = ?").get(actionKey) as
-    | { attempts: number }
+  const existing = db.prepare("SELECT attempts, local_attempts FROM production_repair_attempts WHERE action_key = ?").get(actionKey) as
+    | { attempts: number; local_attempts: number }
     | undefined;
   const attempts = (existing?.attempts ?? 0) + 1;
+  const localAttempts = (existing?.local_attempts ?? 0) + (cause === "action_local" ? 1 : 0);
   db.prepare(
-    `INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at)
-       VALUES (@action_key, @attempts, @last_error, @last_attempt_at, @updated_at)
+    `INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at, local_attempts)
+       VALUES (@action_key, @attempts, @last_error, @last_attempt_at, @updated_at, @local_attempts)
      ON CONFLICT(action_key) DO UPDATE SET
-       attempts = @attempts, last_error = @last_error, last_attempt_at = @last_attempt_at, updated_at = @updated_at`
-  ).run({ action_key: actionKey, attempts, last_error: error, last_attempt_at: at, updated_at: at });
+       attempts = @attempts, last_error = @last_error, last_attempt_at = @last_attempt_at, updated_at = @updated_at, local_attempts = @local_attempts`
+  ).run({ action_key: actionKey, attempts, last_error: error, last_attempt_at: at, updated_at: at, local_attempts: localAttempts });
 }
 
 function resetRepairAttempts(db: Database.Database, actionKey: string): void {

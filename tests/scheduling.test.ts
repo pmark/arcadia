@@ -8,7 +8,7 @@ import { activateProduction, deactivateProduction, fingerprintProductionScope, n
 import { ensureCandidatePreservationTable } from "../src/sessions/candidatePreservation.js";
 import { DISCOVERY_LIMITS, recordDiscovery } from "../src/scheduling/discovery.js";
 import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardPush, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
-import { recordOperatorEscalation } from "../src/production/tick.js";
+import { ensureProductionTickTables, recordOperatorEscalation } from "../src/production/tick.js";
 import { buildPortfolioSchedule, buildProjectSchedule, writeProjectOrder } from "../src/scheduling/schedule.js";
 import {
   DEFAULT_BOARD_POLL_INTERVAL_MS,
@@ -557,6 +557,13 @@ describe("scheduling pass", () => {
     const hold = (db: Parameters<typeof activateProduction>[0], key: string, kind: string) => db.prepare(
       `INSERT OR REPLACE INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
        VALUES (?, ?, 'held', 'operator', ?, ?)`).run(key, kind, at, at);
+    /** The recorded cause of an Action's repair attempts: `local` of `total` attempts were explicitly Action-local. */
+    const spend = (db: Parameters<typeof activateProduction>[0], key: string, total: number, local: number) => {
+      ensureProductionTickTables(db);
+      db.prepare(
+        `INSERT OR REPLACE INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at, local_attempts)
+         VALUES (?, ?, 'e', ?, ?, ?)`).run(key, total, at, at, local);
+    };
     const holdRow = (db: Parameters<typeof activateProduction>[0], key: string) => db.prepare(
       "SELECT kind, first_detected_at FROM production_operator_escalations WHERE action_key = ?").get(key);
     const scoped = (db: Parameters<typeof activateProduction>[0], actions: string[]) => {
@@ -574,7 +581,8 @@ describe("scheduling pass", () => {
       "review_repair_rounds_exhausted",
       "review_repair_gated",
       "review_repair_gate_defect",
-      "completion_loopback_denied"
+      "completion_loopback_denied",
+      "completion_validation_unavailable"
     ])("passes over held Action A (%s), selects independent B, never dependent C, and keeps A's escalation row", (kind) => {
       const fx = shape();
       withDatabase(fx.workspace, (db) => {
@@ -587,19 +595,84 @@ describe("scheduling pass", () => {
       expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: b");
     });
 
+    it("repair_budget_exhausted from an explicitly Action-local cause: A held, independent B lands, dependent C never launches, A keeps candidate and counters", () => {
+      const fx = shape();
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        spend(db, "alpha/a", 3, 3);
+        hold(db, "alpha/a", "repair_budget_exhausted");
+        expect(nextOf(db)).toBe("alpha/b");
+        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:05:00.000Z") }).projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "b" });
+        expect(holdRow(db, "alpha/a")).toEqual({ kind: "repair_budget_exhausted", first_detected_at: at });
+        expect(db.prepare("SELECT attempts, local_attempts FROM production_repair_attempts WHERE action_key = 'alpha/a'").get()).toEqual({ attempts: 3, local_attempts: 3 });
+      });
+      // A is not marked done and dependent C was never made current.
+      const project = readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8");
+      expect(project).toContain("current_action: b");
+      expect(project).not.toContain("current_action: c");
+    });
+
+    it.each([
+      ["a tmux, worktree or launch failure (shared)", 3, 0],
+      ["a mix of Action-local and shared attempts", 3, 2],
+      ["a legacy row recorded before causes were named", 3, 0]
+    ])("repair_budget_exhausted from %s is a global stop: A still holds the scope", (_name, total, local) => {
+      const fx = shape();
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        spend(db, "alpha/a", total, local);
+        hold(db, "alpha/a", "repair_budget_exhausted");
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:05:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
+      });
+      expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
+    });
+
+    it("repair_budget_exhausted with no attempts row (unknown cause) fails safe to global", () => {
+      const fx = shape();
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        ensureProductionTickTables(db);
+        db.prepare("DELETE FROM production_repair_attempts WHERE action_key = 'alpha/a'").run();
+        hold(db, "alpha/a", "repair_budget_exhausted");
+        expect(nextOf(db)).toBe("alpha/a");
+      });
+    });
+
+    it("an Action-local repair budget exhaustion never replaces an open global escalation; review-repair rows and shared causes still upsert as before", () => {
+      const fx = shape();
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        spend(db, "alpha/a", 3, 3);
+        hold(db, "alpha/a", "provider_sign_in_failed");
+        recordOperatorEscalation(db, { actionKey: "alpha/a", kind: "repair_budget_exhausted", message: "budget", remedy: null, now: new Date(at) });
+        expect(holdRow(db, "alpha/a")).toEqual({ kind: "provider_sign_in_failed", first_detected_at: at });
+        expect(nextOf(db)).toBe("alpha/a");
+        hold(db, "alpha/a", "review_repair_gated");
+        recordOperatorEscalation(db, { actionKey: "alpha/a", kind: "repair_budget_exhausted", message: "budget", remedy: null, now: new Date(at) });
+        expect(holdRow(db, "alpha/a")).toMatchObject({ kind: "repair_budget_exhausted" });
+        spend(db, "alpha/a", 3, 1);
+        hold(db, "alpha/a", "provider_sign_in_failed");
+        recordOperatorEscalation(db, { actionKey: "alpha/a", kind: "repair_budget_exhausted", message: "budget", remedy: null, now: new Date(at) });
+        expect(holdRow(db, "alpha/a")).toMatchObject({ kind: "repair_budget_exhausted" });
+      });
+    });
+
     it("keeps A next, so the scope idles rather than advancing, when only dependent C remains", () => {
       const fx = fixture([{ slug: "alpha", current: "a", actions: [{ id: "a" }, { id: "c", dependsOn: ["a"] }] }]);
       withDatabase(fx.workspace, (db) => {
         scoped(db, ["alpha/a", "alpha/c"]);
+        spend(db, "alpha/a", 3, 3);
         hold(db, "alpha/a", "repair_budget_exhausted");
         expect(nextOf(db)).toBe("alpha/a");
         expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:05:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
       });
     });
 
-    it.each(["repair_budget_exhausted", "completion_loopback_denied"])("refuses to pass over a %s hold without an Active scope naming A", (kind) => {
+    it.each(["repair_budget_exhausted", "completion_loopback_denied", "completion_validation_unavailable"])("refuses to pass over a %s hold without an Active scope naming A", (kind) => {
       const fx = shape();
       withDatabase(fx.workspace, (db) => {
+        spend(db, "alpha/a", 3, 3);
         hold(db, "alpha/a", kind);
         expect(nextOf(db)).toBe("alpha/a");
         scoped(db, []);
@@ -608,17 +681,6 @@ describe("scheduling pass", () => {
         deactivateProduction(db, { requestId: "d1-off" });
         expect(nextOf(db)).toBe("alpha/a");
         expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:06:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
-      });
-      expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
-    });
-
-    it("a repair budget exhausted by a tmux launch failure is a shared stop: A still holds the scope", () => {
-      const fx = shape();
-      withDatabase(fx.workspace, (db) => {
-        scoped(db, actions);
-        hold(db, "alpha/a", "repair_budget_exhausted");
-        expect(nextOf(db)).toBe("alpha/a");
-        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:05:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
       });
       expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
     });
