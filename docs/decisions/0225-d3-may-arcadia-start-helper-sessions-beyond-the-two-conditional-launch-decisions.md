@@ -11,7 +11,7 @@ gate_question: approval_boundary
 recommendation: A
 options:
   - label: A
-    consequence: The designated custodian may request registered specialist types through the standard role and launch route. Lowest tier first. At most two launch attempts per assignment, a daily cap, no nested delegation, and autonomous replacement only for the bound assignment. Requires an approved finite spend envelope; a missing envelope refuses. First proof targets the currently used provider; other providers follow after native tests. Removes the paste dependency. Helpers still have no authority. Grants no START.
+    consequence: The designated custodian may request registered specialist types through the standard role and launch route. Lowest tier first. At most two launch attempts per assignment, a daily cap, no nested delegation, and autonomous replacement only for the bound assignment. Requires an approved finite spend and capacity envelope; a missing spend or capacity envelope refuses. Registered reviewer and QA sessions stay separate, independent Sessions, never native children. First proof targets the currently used provider; other providers follow after native tests. Removes the paste dependency. Helpers still have no authority. Grants no START.
     recommended: true
   - label: B
     consequence: Ship only the already-authorized coordinator and keeper routes and explicitly assigned helper launches. Useful today, but a helper that goes absent does not replace itself. Helpers stay background subagents of a coordinator. Grants no START.
@@ -28,7 +28,7 @@ updated: 2026-11-12
 
 ## Options
 
-- **A** (recommended): The designated custodian may request registered specialist types through the standard role and launch route. Lowest tier first. At most two launch attempts per assignment, a daily cap, no nested delegation, and autonomous replacement only for the bound assignment. Requires an approved finite spend envelope; a missing envelope refuses. First proof targets the currently used provider; other providers follow after native tests. Removes the paste dependency. Helpers still have no authority. Grants no START.
+- **A** (recommended): The designated custodian may request registered specialist types through the standard role and launch route. Lowest tier first. At most two launch attempts per assignment, a daily cap, no nested delegation, and autonomous replacement only for the bound assignment. Requires an approved finite spend and capacity envelope; a missing spend or capacity envelope refuses. Registered reviewer and QA sessions stay separate, independent Sessions, never native children. First proof targets the currently used provider; other providers follow after native tests. Removes the paste dependency. Helpers still have no authority. Grants no START.
 - **B**: Ship only the already-authorized coordinator and keeper routes and explicitly assigned helper launches. Useful today, but a helper that goes absent does not replace itself. Helpers stay background subagents of a coordinator. Grants no START.
 - **C**: Keep automatic helper launches disabled. Fails the unattended lifecycle outcome and leaves each launch call with a person. Grants no START.
 

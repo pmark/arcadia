@@ -11,7 +11,7 @@ gate_question: approval_boundary
 recommendation: A
 options:
   - label: A
-    consequence: Approve P1 and P2 separately at one short prompt each. Approve a reviewed remote first-registration and correction route bound to verified Session identity. Choose whether the automatic keeper uses the tmux relay or the built background launcher; if the latter, record the narrow amendment to 0190. Tests the unproven host assumption before any timer is wired, and avoids an unrestricted register-anyone verb. Grants no START.
+    consequence: Approve P1 and P2 separately, each with exact provider and model (Claude Haiku 5.5, low effort), one short prompt, an arcadia spend check receipt and a stop condition (claude stop, or kill the pane within 10 minutes). Approve a reviewed remote first-registration and correction route bound to verified Session identity. Choose whether the automatic keeper uses the tmux relay or the built background launcher; if the latter, record the narrow amendment to 0190. Tests the unproven host assumption before any timer is wired, and avoids an unrestricted register-anyone verb. Includes no credential probe and no provider fallback. Grants no START.
     recommended: true
   - label: B
     consequence: Keep all launches behind the unclosed prerequisites. Safe, but automatic continuity stays unproved, and no paste workaround is recorded as success. Grants no START.
@@ -25,7 +25,7 @@ updated: 2026-11-12
 
 ## Options
 
-- **A** (recommended): Approve P1 and P2 separately at one short prompt each. Approve a reviewed remote first-registration and correction route bound to verified Session identity. Choose whether the automatic keeper uses the tmux relay or the built background launcher; if the latter, record the narrow amendment to 0190. Tests the unproven host assumption before any timer is wired, and avoids an unrestricted register-anyone verb. Grants no START.
+- **A** (recommended): Approve P1 and P2 separately, each with exact provider and model (Claude Haiku 5.5, low effort), one short prompt, an arcadia spend check receipt and a stop condition (claude stop, or kill the pane within 10 minutes). Approve a reviewed remote first-registration and correction route bound to verified Session identity. Choose whether the automatic keeper uses the tmux relay or the built background launcher; if the latter, record the narrow amendment to 0190. Tests the unproven host assumption before any timer is wired, and avoids an unrestricted register-anyone verb. Includes no credential probe and no provider fallback. Grants no START.
 - **B**: Keep all launches behind the unclosed prerequisites. Safe, but automatic continuity stays unproved, and no paste workaround is recorded as success. Grants no START.
 
 ## Rationale
