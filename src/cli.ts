@@ -71,7 +71,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
-import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunDayPinsCommand, runStartRunGateCheckCommand, runStartRunHoldCommand, runStartRunPinsCommand, runStartRunSignInCommand } from "./commands/startRun.js";
+import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunDayPinsCommand, runStartRunGateCheckCommand, runStartRunHoldCommand, runStartRunPinsCommand, runStartRunSignInCommand, runStartRunUnholdCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -1271,6 +1271,15 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--library <path>", "Operator-script library (default: the main checkout's library)")
   ).action((card: string, options: { reason: string; evidence: string; by?: string; repository?: string; library?: string; json?: boolean }) =>
     runCliAction("start-run.hold", Object.assign(options, { card }), () => runStartRunHoldCommand(Object.assign(options, { card })), (response) => JSON.stringify(response.data, null, 2).split("\n")));
+  addJsonOption(startRun.command("unhold")
+    .description("Clear a START card hold: removes only <card>.held.json and records the removal in <card>.held-history.jsonl")
+    .argument("<card>", "The START card id")
+    .requiredOption("--reason <text>", "Why the hold is cleared (at most 500 characters)")
+    .option("--by <name>", "Who clears it (default: the local user)")
+    .option("--repository <path>", "Arcadia repository (default: the current directory)")
+    .option("--library <path>", "Operator-script library (default: the main checkout's library)")
+  ).action((card: string, options: { reason: string; by?: string; repository?: string; library?: string; json?: boolean }) =>
+    runCliAction("start-run.unhold", Object.assign(options, { card }), () => runStartRunUnholdCommand(Object.assign(options, { card })), (response) => JSON.stringify(response.data, null, 2).split("\n")));
   addJsonOption(startRun.command("gate-check")
     .description("Issue #2038: list the pending Agent Asks and open Decisions that name a pinned Action and would idle the run; read-only")
     .requiredOption("--project <slug>", "Project whose Actions are pinned")

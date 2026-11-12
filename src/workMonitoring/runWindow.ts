@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -252,7 +252,7 @@ export function holdStartCard(
   if (!reason || reason.length > 500) throw validationError("--reason is required and must be at most 500 characters.");
   const evidence = input.evidence.trim();
   const isUrl = /^https:\/\/\S+$/.test(evidence);
-  const isRepoPath = !path.isAbsolute(evidence) && !evidence.split(/[\\/]/).includes("..") && /^\S+$/.test(evidence);
+  const isRepoPath = !isUrl && !path.isAbsolute(evidence) &&!evidence.split(/[\\/]/).includes("..") && /^\S+$/.test(evidence);
   if (!isUrl && !isRepoPath) throw validationError("--evidence must be an https URL or a repository-relative path.");
   if (isRepoPath && !existsSync(path.join(input.repository, evidence))) throw validationError(`--evidence path ${evidence} does not exist in the repository.`);
 
@@ -272,7 +272,29 @@ export function holdStartCard(
 
   const hold: StartCardHold = { schema: START_CARD_HOLD_SCHEMA, id, reason, evidence, heldAt: now.toISOString(), heldBy: input.heldBy };
   writeFileSync(path.join(library, `${id}.held.json`), `${JSON.stringify(hold, null, 2)}\n`);
+  appendHoldHistory(library, id, { event: "held", at: hold.heldAt, by: hold.heldBy, reason, evidence });
   return hold;
+}
+
+/**
+ * `arcadia start-run unhold`: remove only `<id>.held.json` and record the removal in `<id>.held-history.jsonl`.
+ * It refuses when there is no marker. It never edits the card's own files.
+ */
+export function unholdStartCard(library: string, id: string, input: { reason: string; unheldBy: string }, now: Date): StartCardHold {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw validationError("START card id must be a plain card name.");
+  const reason = input.reason.trim();
+  if (!reason || reason.length > 500) throw validationError("--reason is required and must be at most 500 characters.");
+  const markerPath = path.join(library, `${id}.held.json`);
+  if (!existsSync(markerPath)) throw validationError(`START card ${id} has no hold marker to remove.`);
+  const previous = readStartCardHold(library, id);
+  if (previous === "unreadable" || previous === null) throw validationError(`START card ${id} hold marker could not be read; it was not removed.`);
+  unlinkSync(markerPath);
+  appendHoldHistory(library, id, { event: "unheld", at: now.toISOString(), by: input.unheldBy, reason, previousReason: previous.reason, previousEvidence: previous.evidence });
+  return previous;
+}
+
+function appendHoldHistory(library: string, id: string, entry: Record<string, unknown>): void {
+  appendFileSync(path.join(library, `${id}.held-history.jsonl`), `${JSON.stringify({ id, ...entry })}\n`);
 }
 
 function oneLine(value: unknown): string {

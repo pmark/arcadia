@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderWorkMonitorSuccess } from "../src/commands/workMonitor.js";
 import { withDatabase } from "../src/db/connection.js";
 import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
-import { formatRunWindowLines, holdStartCard, observeRunWindow, type RunWindowDeps } from "../src/workMonitoring/runWindow.js";
+import { formatRunWindowLines, holdStartCard, observeRunWindow, type RunWindowDeps, unholdStartCard } from "../src/workMonitoring/runWindow.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const MAIN = "a".repeat(40);
@@ -197,6 +197,31 @@ describe("work monitor run window held START cards", () => {
     expect(window.state).toBe("open");
     expect(window.held).toEqual([]);
     expect(window.unknown.join(" ")).toContain("START card start-run-bad hold marker could not be read");
+  });
+
+  it("unholdStartCard removes only the marker, refuses when none exists, and records the removal in history", () => {
+    card("start-run-u");
+    const cardBefore = readFileSync(path.join(library, "start-run-u.json"), "utf8");
+    holdStartCard(library, "start-run-u", { reason: "first", evidence: EVIDENCE, heldBy: "tester", repository: library }, NOW);
+    expect(observe().held).toHaveLength(1);
+    unholdStartCard(library, "start-run-u", { reason: "fixed", unheldBy: "tester" }, NOW);
+    expect(existsSync(path.join(library, "start-run-u.held.json"))).toBe(false);
+    expect(readFileSync(path.join(library, "start-run-u.json"), "utf8")).toBe(cardBefore);
+    const history = readFileSync(path.join(library, "start-run-u.held-history.jsonl"), "utf8").trim().split("\n").map((line) => JSON.parse(line));
+    expect(history.map((entry) => entry.event)).toEqual(["held", "unheld"]);
+    expect(history[1]).toMatchObject({ reason: "fixed", previousReason: "first", previousEvidence: EVIDENCE });
+    expect(observe()).toMatchObject({ state: "open", held: [] });
+    expect(observe().reasons.map((reason) => reason.subject)).toEqual(["start-run-u"]);
+    expect(() => unholdStartCard(library, "start-run-u", { reason: "again", unheldBy: "tester" }, NOW)).toThrow(/no hold marker/);
+  });
+
+  it("an expired or consumed card ignores its hold marker", () => {
+    card("start-run-exp", { expires_at: "2026-11-01T00:00:00.000Z" });
+    writeFileSync(path.join(library, "start-run-exp.held.json"), JSON.stringify({ schema: "arcadia-card-held-v1", id: "start-run-exp", reason: "r", evidence: EVIDENCE, heldAt: NOW.toISOString(), heldBy: "t" }));
+    card("start-run-used", { consumed: true });
+    writeFileSync(path.join(library, "start-run-used.held.json"), JSON.stringify({ schema: "arcadia-card-held-v1", id: "start-run-used", reason: "r", evidence: EVIDENCE, heldAt: NOW.toISOString(), heldBy: "t" }));
+    const window = observe();
+    expect(window).toMatchObject({ state: "closed", reasons: [], held: [], unknown: [] });
   });
 
   it("holdStartCard writes only the marker and refuses missing, consumed or expired cards", () => {

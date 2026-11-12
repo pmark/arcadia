@@ -18,7 +18,7 @@ import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { readDayGrantEvidence } from "../production/policy.js";
 import { namedTestFiles } from "../sessions/completionValidation.js";
 import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
-import { defaultRunWindowDeps, holdStartCard, type StartCardHold } from "../workMonitoring/runWindow.js";
+import { defaultRunWindowDeps, holdStartCard, unholdStartCard, type StartCardHold } from "../workMonitoring/runWindow.js";
 import { runProductionStatusCommand } from "./production.js";
 import { resolveOperatorGate } from "../ask/operatorGate.js";
 
@@ -437,6 +437,16 @@ export function runStartRunHoldCommand(options: StartRunHoldOptions, now: Date =
   const library = options.library ?? defaultRunWindowDeps(repository).libraryDir();
   const hold = holdStartCard(library, options.card, { reason: options.reason, evidence: options.evidence, heldBy: options.by ?? os.userInfo().username, repository }, now);
   return createSuccess({ command: "start-run.hold", data: hold });
+}
+
+export interface StartRunUnholdOptions { card: string; reason: string; by?: string; repository?: string; library?: string }
+
+/** `arcadia start-run unhold`: remove one card's hold marker and record the removal in its history file. Grants nothing. */
+export function runStartRunUnholdCommand(options: StartRunUnholdOptions, now: Date = new Date()): CommandSuccess<StartCardHold> {
+  const repository = options.repository ?? process.cwd();
+  const library = options.library ?? defaultRunWindowDeps(repository).libraryDir();
+  const previous = unholdStartCard(library, options.card, { reason: options.reason, unheldBy: options.by ?? os.userInfo().username }, now);
+  return createSuccess({ command: "start-run.unhold", data: previous });
 }
 
 export interface StartRunGateCheckOptions { project: string; actions: string[]; repository?: string; workspace?: string }
