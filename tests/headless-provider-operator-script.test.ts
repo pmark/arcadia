@@ -68,6 +68,8 @@ const headlessRun = (call: Call, name?: string): boolean =>
   Array.isArray(call.args) && !call.args.includes("--help") && (name === undefined || call.name === name) &&
   ((call.name === "codex" && call.args[0] === "exec") || (call.name === "opencode" && call.args[0] === "run") || (call.name === "claude" && call.args.includes("--print")));
 
+const CLAUDE_LOGIN_ENV = ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"] as const;
+
 function harness(extra: Record<string, string> = {}) {
   const bin = stubBin();
   const base = temp("headless-base-");
@@ -79,6 +81,8 @@ function harness(extra: Record<string, string> = {}) {
     ARCADIA_OPERATOR_SCRIPT_ID: ID, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: path.join(library, `${ID}.json`),
     ...extra
   };
+  // A logged-out Claude fixture must not inherit a login token from the parent environment, which would make Arcadia treat claude as signed in.
+  if (extra.FAKE_PROVIDER_MODE_claude === "not-logged-in") for (const name of CLAUDE_LOGIN_ENV) delete env[name];
   const run = (options: Partial<Pick<HeadlessTestOptions, "keep" | "providers" | "models" | "providerTimeoutMs" | "now" | "signalSource" | "hostPreserve">> = {}) =>
     runHeadlessProviderTest({
       repoRoot, runDirectory, runId: "run-1", scriptId: ID, keep: options.keep ?? false, env, tempBase: base, liveLeakCheck: false,
@@ -339,6 +343,23 @@ describe("headless provider run (real Arcadia experiment workspace, stub provide
     expect(JSON.parse(readFileSync(outcome.receiptPath, "utf8")).providers.map((entry: ProviderResult) => [entry.provider, entry.outcome])).toEqual([["codex", "SKIPPED"], ["claude", "PASS"]]);
     expect(leftoverRoots(base)).toEqual([]);
   }, 300_000);
+
+  it("keeps a logged-out Claude fixture logged out when the parent environment carries login tokens", async () => {
+    const saved = Object.fromEntries(CLAUDE_LOGIN_ENV.map((name) => [name, process.env[name]]));
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "parent-token";
+    process.env.ANTHROPIC_API_KEY = "parent-key";
+    try {
+      const { run, env } = harness({ FAKE_PROVIDER_MODE_claude: "not-logged-in" });
+      expect(CLAUDE_LOGIN_ENV.map((name) => env[name])).toEqual([undefined, undefined]);
+      const out = await run({ providers: ["claude"] });
+      expect(out.outcome).toBe("refused");
+      expect(out.providers[0]).toMatchObject({ provider: "claude", outcome: "SKIPPED" });
+    } finally {
+      for (const name of CLAUDE_LOGIN_ENV) {
+        if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name];
+      }
+    }
+  });
 
   it("skips Claude when it is not logged in or lacks the headless flags, naming which", async () => {
     const loggedOut = harness({ FAKE_PROVIDER_MODE_claude: "not-logged-in" });
