@@ -192,6 +192,24 @@ describe("vitest named tests denied loopback networking", () => {
     expect(result).not.toMatchObject({ reason: expect.stringContaining("loopback networking") });
   });
 
+  it("stays refused when an AssertionError line starts with listen EPERM", () => {
+    vitestReport = (cwd) => failed(cwd, [
+      { title: "asserts the denial", messages: ["AssertionError: listen EPERM: operation not permitted 127.0.0.1:0"] }
+    ]);
+    const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
+    expect(result).toMatchObject({ status: "refused", hostFault: false, reason: expect.stringContaining("vitest exited 1") });
+    expect(result).not.toMatchObject({ loopbackDenied: true });
+  });
+
+  it("stays refused when a multi-line message hides a denial below a real first line", () => {
+    vitestReport = (cwd) => failed(cwd, [
+      { title: "two errors", messages: ["Error: expected 1 to be 2\nError: listen EPERM: operation not permitted 127.0.0.1:0"] }
+    ]);
+    const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
+    expect(result).toMatchObject({ status: "refused", hostFault: false });
+    expect(result).not.toMatchObject({ loopbackDenied: true });
+  });
+
   it("stays refused when an assertion merely quotes listen EPERM", () => {
     vitestReport = (cwd) => failed(cwd, [
       { title: "reports the message", messages: ["AssertionError: expected 'listen EPERM' to be undefined"] }

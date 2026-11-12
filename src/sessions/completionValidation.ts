@@ -285,17 +285,19 @@ interface VitestReport {
     assertionResults?: Array<{ fullName?: string; title?: string; status?: string; failureMessages?: string[] }> }>;
 }
 
-/** A failure message whose first line is a loopback bind or connect denied by the Seatbelt profile (Issue #2519). A quoted EPERM inside an assertion does not match. */
-const LOOPBACK_DENIED = /^(?:\w*Error): (?:listen|connect|bind) EPERM\b/;
+/** A failure message whose first line is a non-assertion error for a loopback bind or connect denied by the Seatbelt profile (Issue #2519). An assertion quoting EPERM does not match. */
+const LOOPBACK_DENIED = /^(?!AssertionError)\w*Error: (?:listen|connect|bind) EPERM\b/;
 
 /** True when every failing test (or, for a file that failed without a test, its file message) is a loopback denial, so no real assertion failed. */
 function failuresAreLoopbackDenials(report: VitestReport | null): boolean {
   const failedFiles = (report?.testResults ?? []).filter((file) => file.status === "failed" || (file.assertionResults ?? []).some((test) => test.status === "failed"));
   if (!failedFiles.length) return false;
+  // Only the first line of each message counts: a multi-line message cannot smuggle a denial in below its real error.
+  const firstLine = (message: string | undefined) => (message ?? "").split("\n")[0] ?? "";
   return failedFiles.every((file) => {
     const failedTests = (file.assertionResults ?? []).filter((test) => test.status === "failed");
-    if (!failedTests.length) return LOOPBACK_DENIED.test(file.message ?? "");
-    return failedTests.every((test) => LOOPBACK_DENIED.test((test.failureMessages ?? []).join("\n")));
+    if (!failedTests.length) return LOOPBACK_DENIED.test(firstLine(file.message));
+    return failedTests.every((test) => (test.failureMessages ?? []).length > 0 && (test.failureMessages ?? []).every((message) => LOOPBACK_DENIED.test(firstLine(message))));
   });
 }
 

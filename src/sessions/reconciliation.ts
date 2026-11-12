@@ -643,7 +643,7 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
     if (unavailable?.status === "refused" && unavailable.loopbackDenied) {
       const message = `Pre-acceptance validation held the drafted completion: the named tests reported only loopback networking denials (Issue #2519), so the local run proved nothing about the candidate. ${result.detail ?? refusal}`;
       return { kind: "refused", reason: message, hold: {
-        kind: COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, message,
+        kind: COMPLETION_LOOPBACK_DENIED_ESCALATION, message,
         remedy: `Not a pass. The named tests reported only loopback EPERM denials, and that classification comes from a test report the candidate could influence. Judge the completion from the required CI checks on the pull request head before accepting it; the candidate is preserved at ${worktree} on ${session.branch}.`
       } };
     }
@@ -719,6 +719,8 @@ type DraftedCompletionSettlement =
 export interface CompletionHold { kind: string; message: string; remedy: string }
 export const COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION = "completion_validation_unavailable";
 export const COMPLETION_REFUSED_REPEATEDLY_ESCALATION = "completion_refused_repeatedly";
+/** Issue #2519: loopback-only EPERM failures. A hold, never a pass; its remedy is judged from CI, not a budget reset. */
+export const COMPLETION_LOOPBACK_DENIED_ESCALATION = "completion_loopback_denied";
 /** The identical-refusal count's subject for an Action; cleared when its completion settles or an operator resets the budget. */
 export const MAX_VALIDATION_TIMEOUTS = 2;
 export const draftedCompletionTimeoutSubject = (actionKey: string) => `drafted-completion-timeout:${actionKey}`;
