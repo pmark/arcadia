@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { runCoordinatorRenewCommand } from "../src/commands/coordinator.js";
+import { relayStartPressInterlock, runCoordinatorRenewCommand } from "../src/commands/coordinator.js";
 import type { CapsuleSources } from "../src/coordinator/capsule.js";
 import { coordinatorPaths } from "../src/coordinator/paths.js";
 import { BILLING_ENV_NAMES } from "../src/spend/spendCheck.js";
@@ -16,6 +16,7 @@ import {
   readFirstUserMessage,
   readRelayDecision,
   renewCoordinator,
+  startPressInProgressIn,
   type RelayDeps
 } from "../src/coordinator/relay.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -78,7 +79,8 @@ function fakeDeps(projects: string, options: { deliver: boolean[]; inForce?: boo
     now: () => new Date(clock),
     newSessionId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}`,
     ping: (message) => { fake.pings.push(message); },
-    sources: () => sources
+    sources: () => sources,
+    startPressInProgress: () => ({ inProgress: false, detail: "none" })
   };
   return fake;
 }
@@ -327,5 +329,117 @@ describe("coordinator relay launch (change 3)", () => {
     const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, fake.deps));
     expect(result).toMatchObject({ outcome: "launched", generation: 2 });
     expect(result.outcome === "launched" ? result.warnings?.[0] : null).toMatch(/log write failed/);
+  });
+});
+
+describe("startPressInProgressIn (START interlock detector)", () => {
+  const now = new Date("2026-11-12T12:00:00Z");
+  const started = (agoMs: number) => new Date(now.getTime() - agoMs).toISOString();
+  function library() {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-startpress-"));
+    roots.push(root);
+    return root;
+  }
+  function press(lib: string, card: string, id: string, input: { run?: unknown; descriptor?: unknown }) {
+    const dir = path.join(lib, "runs", "operator", card, id);
+    mkdirSync(dir, { recursive: true });
+    const text = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value));
+    if (input.run !== undefined) writeFileSync(path.join(dir, "run.json"), text(input.run));
+    if (input.descriptor !== null) writeFileSync(path.join(dir, "descriptor.json"), text(input.descriptor ?? { startRun: { schema: "arcadia-start-run-v1" } }));
+  }
+  const detect = (lib: string, pidAlive: (pid: number) => boolean = () => true) => startPressInProgressIn(lib, { now, pidAlive });
+
+  it("a missing library or no presses is not in progress", () => {
+    expect(detect(path.join(library(), "absent"))).toMatchObject({ inProgress: false });
+    const lib = library();
+    mkdirSync(path.join(lib, "runs", "operator", "markers"), { recursive: true });
+    writeFileSync(path.join(lib, "runs", "operator", "x.consumed.json"), "{}");
+    expect(detect(lib)).toMatchObject({ inProgress: false });
+  });
+
+  it("a running START press with a live pid blocks", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(60_000) } });
+    expect(detect(lib, (pid) => pid === 4242)).toMatchObject({ inProgress: true, detail: expect.stringContaining("start/r1") });
+  });
+
+  it("a running START press with the current process pid blocks without a stub", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: { status: "running", pid: process.pid, startedAt: started(1000) } });
+    expect(startPressInProgressIn(lib, { now })).toMatchObject({ inProgress: true });
+  });
+
+  it("a hard-stopped press (dead pid) does not wedge the relay and is named", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(60_000) } });
+    const result = detect(lib, () => false);
+    expect(result.inProgress).toBe(false);
+    expect(result.detail).toContain("start/r1");
+    expect(result.detail).toContain("dead");
+  });
+
+  it("a record without a usable pid blocks while recent and stops blocking past the age bound", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: { status: "running", startedAt: started(60_000) } });
+    expect(detect(lib)).toMatchObject({ inProgress: true });
+    const old = library();
+    press(old, "start", "r1", { run: { status: "running", startedAt: started(7 * 3_600_000) } });
+    expect(detect(old)).toMatchObject({ inProgress: false });
+  });
+
+  it("an aged record is stale even when its pid answers (pid reuse)", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(7 * 3_600_000) } });
+    expect(detect(lib, () => true)).toMatchObject({ inProgress: false });
+  });
+
+  it("a running non-START operator card never blocks", () => {
+    const lib = library();
+    press(lib, "other", "r1", { run: { status: "running", pid: 4242, startedAt: started(1000) }, descriptor: { kind: "script" } });
+    expect(detect(lib)).toMatchObject({ inProgress: false });
+  });
+
+  it("a completed press and an in_progress receipt alone do not block", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: { status: "succeeded", pid: 4242, startedAt: started(1000) } });
+    mkdirSync(path.join(lib, "runs", "start", "r2"), { recursive: true });
+    writeFileSync(path.join(lib, "runs", "start", "r2", "receipt.json"), JSON.stringify({ outcome: "in_progress" }));
+    expect(detect(lib)).toMatchObject({ inProgress: false });
+  });
+
+  it("fails closed on an unparseable run record", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: "{not json" });
+    expect(detect(lib)).toMatchObject({ inProgress: true, unreadable: true, detail: expect.stringContaining("PRESS_UNREADABLE") });
+  });
+
+  it("fails closed on a running press whose descriptor is missing or unparseable, and on a running record with no pid or time", () => {
+    const missing = library();
+    press(missing, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(1000) }, descriptor: null });
+    expect(detect(missing)).toMatchObject({ inProgress: true, unreadable: true });
+    const bad = library();
+    press(bad, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(1000) }, descriptor: "{oops" });
+    expect(detect(bad)).toMatchObject({ inProgress: true, unreadable: true });
+    const blank = library();
+    press(blank, "start", "r1", { run: { status: "running" } });
+    expect(detect(blank)).toMatchObject({ inProgress: true, unreadable: true });
+  });
+
+  it("renew refuses on an unreadable press with its own reason text, before any launch", () => {
+    const { ws, repo, projects } = setup();
+    const lib = path.join(repo, "artifacts", "generated", "operator-scripts");
+    press(lib, "start", "r1", { run: "{not json" });
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const deps = { ...fake.deps, startPressInProgress: relayStartPressInterlock };
+    const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, deps));
+    expect(result).toMatchObject({ outcome: "refused", reason: "start_in_progress", detail: expect.stringContaining("cannot be read") });
+    expect(fake.launches).toHaveLength(0);
+  });
+
+  it("the command's interlock reads the primary checkout's artifacts/generated/operator-scripts library", () => {
+    const { repo } = setup();
+    expect(relayStartPressInterlock(repo)).toMatchObject({ inProgress: false });
+    press(path.join(repo, "artifacts", "generated", "operator-scripts"), "start", "r1", { run: { status: "running", pid: process.pid, startedAt: new Date().toISOString() } });
+    expect(relayStartPressInterlock(repo)).toMatchObject({ inProgress: true });
   });
 });

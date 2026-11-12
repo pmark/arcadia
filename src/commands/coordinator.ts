@@ -39,7 +39,7 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
-import { renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult } from "../coordinator/relay.js";
+import { renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult, type StartPressStatus } from "../coordinator/relay.js";
 import { observeProviderCapacity } from "../codingAgents/capacity.js";
 import { checkProviderSignIn } from "../codingAgents/signIn.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
@@ -288,6 +288,9 @@ export function renderCoordinatorAcceptSuccess(response: CommandSuccess<Coordina
  * standing Decision recording answer A is on main (RELAY_LAUNCH_DECISION_ID).
  * Custody-guarded: a caller with a coordinator identity must be the custodian.
  */
+/** The START-press interlock `renew` passes to the relay: the primary checkout's operator-scripts library. */
+export const relayStartPressInterlock = (repo: string): StartPressStatus => startPressInProgressIn(path.join(repo, "artifacts", "generated", "operator-scripts"));
+
 export function runCoordinatorRenewCommand(options: Scope & { repo?: string; effort?: string; env?: NodeJS.ProcessEnv; deps?: RelayDeps }): CommandSuccess<RenewResult> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = mainWorktreeRoot(options.repo);
@@ -297,7 +300,7 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
       sources: () => defaultCapsuleSources({ db, repoRoot: repoRoot ?? repositoryRoot(), project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
       ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
       signIn: (provider) => checkProviderSignIn(provider, workspacePath),
-      startPressInProgress: (repo) => startPressInProgressIn(path.join(repo, "artifacts", "generated", "operator-scripts")),
+      startPressInProgress: relayStartPressInterlock,
       capacity: (provider) => {
         const registries = loadPhase3Registries(workspacePath);
         validatePhase3Registries(registries);

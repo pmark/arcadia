@@ -85,8 +85,8 @@ export interface RelayDeps {
   newSessionId(): string;
   ping(message: string): void;
   sources(): CapsuleSources;
-  /** Whether a START press is still running; a successor launch is refused while one is. Optional: absent means no interlock. */
-  startPressInProgress?(repoRoot: string): { inProgress: boolean; detail: string };
+  /** Whether a START press is still running (or its record unreadable); a successor launch is refused while so. Required: the interlock cannot be omitted. */
+  startPressInProgress(repoRoot: string): StartPressStatus;
 }
 
 export interface RenewInput {
@@ -232,8 +232,8 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
   const decision = deps.decision(repoRoot, now);
   if (!decision.inForce) return refuse(RELAY_LAUNCH_DECISION_ID === null ? "decision_pending" : "decision_not_in_force", decision.reason);
 
-  const startPress = deps.startPressInProgress?.(repoRoot);
-  if (startPress?.inProgress) return refuse("start_in_progress", `A START press is still in progress (${startPress.detail}); the relay launches no successor until its receipt is written.`);
+  const startPress = deps.startPressInProgress(repoRoot);
+  if (startPress.inProgress) return refuse("start_in_progress", startPress.unreadable ? `A START press record cannot be read (${startPress.detail}); the relay launches no successor until it is resolved.` : `A START press is still in progress (${startPress.detail}); the relay launches no successor until its run record finishes or its runner dies.`);
 
   const custodian = currentCustodian(db, input.project, input.role);
   if (!custodian) return refuse("no_custodian", `No custodian generation of ${input.role} is recorded for ${input.project}; register the coordinator first.`);
@@ -335,29 +335,81 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
 }
 
 /** The real host dependencies. */
+/** A START press record older than this is stale whatever its pid says (pid reuse; a press runs for minutes). */
+export const START_PRESS_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+
+export interface StartPressStatus { inProgress: boolean; detail: string; unreadable?: boolean }
+
 /**
- * Reads the operator-scripts library's START presses: a press is in progress while its
- * `runs/operator/<card>/<press>/run.json` status is `running`, or its `runs/<card>/<press>/receipt.json`
- * outcome is `in_progress`. Unreadable entries are skipped, never treated as in progress.
+ * Scans the operator-scripts library for a START press that is genuinely in progress. Only cards whose
+ * `descriptor.json` carries `startRun` count (as scripts/start-run.sh and startRunDayGrant.ts decide). A press is in
+ * progress when its `runs/operator/<card>/<press>/run.json` says `running` AND the runner is live: its `pid` answers
+ * signal 0 and `startedAt` is younger than START_PRESS_MAX_AGE_MS; a record without a usable pid blocks only for
+ * that age. A dead pid or an expired record is a hard-stopped press (SIGKILL, crash, reboot): it stops blocking, so
+ * the relay is never wedged, and the detail names it for the operator. A receipt `in_progress` is the same hard-stop
+ * state start-run.sh documents ("treat everything listed as done and the rest as unknown"); it never blocks by itself,
+ * only the live run record does. Fail closed: a START (or unidentifiable) press whose descriptor or run record cannot be
+ * read, or a library directory that cannot be listed, refuses (mirrors start-run.sh PRESS_UNREADABLE). A missing
+ * library or card directory means no press.
+ * Recovery from a stale press: none needed to launch; the next START press (start-run.sh) still reads the receipt.
  */
-export function startPressInProgressIn(library: string): { inProgress: boolean; detail: string } {
-  const listDirs = (dir: string): string[] => { try { return readdirSync(dir); } catch { return []; } };
-  const readJsonFile = (file: string): Record<string, unknown> | null => { try { return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; } catch { return null; } };
-  for (const card of listDirs(path.join(library, "runs", "operator"))) {
-    for (const press of listDirs(path.join(library, "runs", "operator", card))) {
-      if (readJsonFile(path.join(library, "runs", "operator", card, press, "run.json"))?.status === "running") return { inProgress: true, detail: `${card}/${press} status running` };
+export function startPressInProgressIn(
+  library: string,
+  options: { now?: Date; pidAlive?: (pid: number) => boolean; maxAgeMs?: number } = {}
+): StartPressStatus {
+  const now = (options.now ?? new Date()).getTime();
+  const maxAgeMs = options.maxAgeMs ?? START_PRESS_MAX_AGE_MS;
+  const pidAlive = options.pidAlive ?? defaultPidAlive;
+  const unreadable = (what: string): StartPressStatus => ({ inProgress: true, unreadable: true, detail: `PRESS_UNREADABLE: ${what} cannot be read, so it cannot be ruled out; preserve it and stop for the operator` });
+  const list = (dir: string): string[] | StartPressStatus => {
+    try { return readdirSync(dir); } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return code === "ENOENT" || code === "ENOTDIR" ? [] : unreadable(`${dir} (${code ?? "error"})`);
+    }
+  };
+  const readJson = (file: string): { ok: true; value: Record<string, unknown> | null } | { ok: false; code: string } => {
+    try { return { ok: true, value: JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown> }; } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return code === "ENOENT" ? { ok: true, value: null } : { ok: false, code: code ?? "unparseable" };
+    }
+  };
+  const root = path.join(library, "runs", "operator");
+  const cards = list(root);
+  if (!Array.isArray(cards)) return cards;
+  const stale: string[] = [];
+  for (const card of cards) {
+    const presses = list(path.join(root, card));
+    if (!Array.isArray(presses)) return presses;
+    for (const press of presses) {
+      const dir = path.join(root, card, press);
+      const run = readJson(path.join(dir, "run.json"));
+      if (!run.ok) return unreadable(`${card}/${press}/run.json`);
+      if (run.value === null) continue; // not a press directory (markers, consumed files)
+      const descriptor = readJson(path.join(dir, "descriptor.json"));
+      if (!descriptor.ok || descriptor.value === null) {
+        // A START press whose descriptor is gone cannot be told from a non-START card; only a running one matters.
+        if (run.value.status === "running") return unreadable(`${card}/${press}/descriptor.json`);
+        continue;
+      }
+      if (!descriptor.value.startRun) continue; // not a START card
+      if (run.value.status !== "running") continue;
+      const startedAt = typeof run.value.startedAt === "string" ? Date.parse(run.value.startedAt) : Number.NaN;
+      const pid = typeof run.value.pid === "number" && Number.isInteger(run.value.pid) && run.value.pid > 0 ? run.value.pid : null;
+      if (!Number.isFinite(startedAt) && pid === null) return unreadable(`${card}/${press}/run.json (running with neither a usable pid nor startedAt)`);
+      const age = Number.isFinite(startedAt) ? now - startedAt : 0;
+      if (Number.isFinite(startedAt) && age >= maxAgeMs) { stale.push(`${card}/${press} (older than ${Math.round(maxAgeMs / 3_600_000)}h)`); continue; }
+      if (pid !== null && !pidAlive(pid)) { stale.push(`${card}/${press} (runner pid ${pid} is dead)`); continue; }
+      return { inProgress: true, detail: `${card}/${press} status running${pid !== null ? `, runner pid ${pid} live` : ", no usable pid, record is recent"}` };
     }
   }
-  for (const card of listDirs(path.join(library, "runs"))) {
-    if (card === "operator") continue;
-    for (const press of listDirs(path.join(library, "runs", card))) {
-      if (readJsonFile(path.join(library, "runs", card, press, "receipt.json"))?.outcome === "in_progress") return { inProgress: true, detail: `${card}/${press} receipt in_progress` };
-    }
-  }
-  return { inProgress: false, detail: "no START press in progress" };
+  return { inProgress: false, detail: stale.length > 0 ? `no START press in progress; hard-stopped, ignored: ${stale.join(", ")}` : "no START press in progress" };
 }
 
-export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (message: string) => void; signIn: RelayDeps["signIn"]; capacity: RelayDeps["capacity"]; startPressInProgress?: RelayDeps["startPressInProgress"] }): RelayDeps {
+function defaultPidAlive(pid: number): boolean {
+  try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
+}
+
+export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (message: string) => void; signIn: RelayDeps["signIn"]; capacity: RelayDeps["capacity"]; startPressInProgress: RelayDeps["startPressInProgress"] }): RelayDeps {
   return {
     tmux: systemTmux,
     startPressInProgress: input.startPressInProgress,
