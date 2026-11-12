@@ -1,11 +1,11 @@
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderWorkMonitorSuccess } from "../src/commands/workMonitor.js";
 import { withDatabase } from "../src/db/connection.js";
 import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
-import { formatRunWindowLines, observeRunWindow, type RunWindowDeps } from "../src/workMonitoring/runWindow.js";
+import { formatRunWindowLines, holdStartCard, observeRunWindow, type RunWindowDeps } from "../src/workMonitoring/runWindow.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const MAIN = "a".repeat(40);
@@ -158,5 +158,64 @@ describe("work monitor run window", () => {
     // Unknown (launchctl unavailable) must not invent a refusal.
     const unknown = observe(deps({ workerRunning: () => null }));
     expect(unknown.reasons[0]).toMatchObject({ pressable: true });
+  });
+});
+
+describe("work monitor run window held START cards", () => {
+  const EVIDENCE = "https://github.com/pmark/arcadia/issues/2522";
+
+  it("reports a held card without opening the window, and never edits the card files", () => {
+    card("start-run-held");
+    const cardBefore = readFileSync(path.join(library, "start-run-held.json"), "utf8");
+    writeFileSync(path.join(library, "start-run-held.held.json"), JSON.stringify({
+      schema: "arcadia-card-held-v1", id: "start-run-held", reason: "no-go until the fix lands", evidence: EVIDENCE, heldAt: NOW.toISOString(), heldBy: "tester"
+    }));
+    const window = observe();
+    expect(window.state).toBe("closed");
+    expect(window.reasons).toEqual([]);
+    expect(window.held).toEqual([`START card start-run-held is held: no-go until the fix lands (${EVIDENCE})`]);
+    expect(formatRunWindowLines(window)).toEqual([`START card start-run-held is held: no-go until the fix lands (${EVIDENCE})`]);
+    expect(readFileSync(path.join(library, "start-run-held.json"), "utf8")).toBe(cardBefore);
+  });
+
+  it("keeps the window open for an unheld card alongside a held one", () => {
+    card("start-run-held");
+    card("start-run-ready");
+    writeFileSync(path.join(library, "start-run-held.held.json"), JSON.stringify({
+      schema: "arcadia-card-held-v1", id: "start-run-held", reason: "r", evidence: "docs/x.md", heldAt: NOW.toISOString(), heldBy: "tester"
+    }));
+    const window = observe();
+    expect(window.state).toBe("open");
+    expect(window.reasons.map((reason) => reason.subject)).toEqual(["start-run-ready"]);
+    expect(window.held).toHaveLength(1);
+  });
+
+  it("reports unknown, not held, when a hold marker is unreadable", () => {
+    card("start-run-bad");
+    writeFileSync(path.join(library, "start-run-bad.held.json"), "{not json");
+    const window = observe();
+    expect(window.state).toBe("open");
+    expect(window.held).toEqual([]);
+    expect(window.unknown.join(" ")).toContain("START card start-run-bad hold marker could not be read");
+  });
+
+  it("holdStartCard writes only the marker and refuses missing, consumed or expired cards", () => {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "arcadia-hold-repo-"));
+    roots.push(repo);
+    writeFileSync(path.join(repo, "evidence.md"), "x");
+    card("start-run-a");
+    const input = { reason: "held for review", evidence: "evidence.md", heldBy: "tester", repository: repo };
+    const hold = holdStartCard(library, "start-run-a", input, NOW);
+    expect(hold).toMatchObject({ schema: "arcadia-card-held-v1", id: "start-run-a", evidence: "evidence.md", heldBy: "tester" });
+    expect(JSON.parse(readFileSync(path.join(library, "start-run-a.held.json"), "utf8"))).toMatchObject({ reason: "held for review" });
+
+    expect(() => holdStartCard(library, "start-run-missing", input, NOW)).toThrow(/missing/);
+    card("start-run-consumed", { consumed: true });
+    expect(() => holdStartCard(library, "start-run-consumed", input, NOW)).toThrow(/already consumed/);
+    card("start-run-old", { expires_at: "2026-11-01T00:00:00.000Z" });
+    expect(() => holdStartCard(library, "start-run-old", input, NOW)).toThrow(/expired/);
+    expect(() => holdStartCard(library, "start-run-a", { ...input, evidence: "../etc/passwd" }, NOW)).toThrow(/evidence/);
+    expect(() => holdStartCard(library, "start-run-a", { ...input, evidence: "missing.md" }, NOW)).toThrow(/does not exist/);
+    expect(() => holdStartCard(library, "start-run-a", { ...input, reason: "  " }, NOW)).toThrow(/reason/);
   });
 });

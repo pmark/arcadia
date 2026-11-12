@@ -1,8 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { validationError } from "../cli/errors.js";
 import { readProductionPolicySafely } from "../production/policy.js";
 
 /**
@@ -15,6 +16,9 @@ import { readProductionPolicySafely } from "../production/policy.js";
  * already trusts: the production policy (as `arcadia production status`
  * does) and the operator-script library (descriptor plus consumed marker).
  * A source that cannot be read makes the state `unknown`, never an error.
+ *
+ * A governed hold (`<card-id>.held.json`, written only by `arcadia start-run hold`)
+ * reports a waiting card as held. A held card is not counted as opening the window.
  */
 
 export interface RunWindowReason {
@@ -34,12 +38,27 @@ export interface RunWindow {
   reasons: RunWindowReason[];
   /** One line per source that could not be read. */
   unknown: string[];
+  /** One line per waiting START card held by a governed marker. Never counted in `reasons`, so never opens the window. */
+  held: string[];
   observedAt: string;
+}
+
+export const START_CARD_HOLD_SCHEMA = "arcadia-card-held-v1";
+
+/** A governed hold on one waiting START card, written only by `arcadia start-run hold`. */
+export interface StartCardHold {
+  schema: typeof START_CARD_HOLD_SCHEMA;
+  id: string;
+  reason: string;
+  /** An https URL, or a repository-relative path. */
+  evidence: string;
+  heldAt: string;
+  heldBy: string;
 }
 
 export interface RunWindowDeps {
   now(): Date;
-  /** The operator-script library directory (descriptors and `<id>.consumed.json` markers). */
+  /** The operator-script library directory (descriptors, `<id>.consumed.json` markers and `<id>.held.json` holds). */
   libraryDir(): string;
   /** The local view of origin/main, or null when it cannot be resolved. */
   originMain(): string | null;
@@ -92,6 +111,7 @@ export function observeRunWindow(db: Database.Database, deps: RunWindowDeps = de
   const now = deps.now();
   const reasons: RunWindowReason[] = [];
   const unknown: string[] = [];
+  let held: string[] = [];
 
   try {
     const read = readProductionPolicySafely(db);
@@ -110,18 +130,34 @@ export function observeRunWindow(db: Database.Database, deps: RunWindowDeps = de
   }
 
   try {
-    reasons.push(...waitingStartCards(deps, now, unknown));
+    const waiting = waitingStartCards(deps, now, unknown);
+    reasons.push(...waiting.reasons);
+    held = waiting.held;
   } catch (error) {
     unknown.push(`the operator-script library could not be read (${oneLine(error)})`);
   }
 
   const state = reasons.length > 0 ? "open" : unknown.length > 0 ? "unknown" : "closed";
-  return { state, reasons, unknown, observedAt: now.toISOString() };
+  return { state, reasons, unknown, held, observedAt: now.toISOString() };
 }
 
-function waitingStartCards(deps: RunWindowDeps, now: Date, unknown: string[]): RunWindowReason[] {
+/** Reads `<id>.held.json`: null when there is no hold, the hold when valid, "unreadable" when present but invalid. */
+function readStartCardHold(library: string, id: string): StartCardHold | null | "unreadable" {
+  const file = path.join(library, `${id}.held.json`);
+  if (!existsSync(file)) return null;
+  try {
+    const hold = JSON.parse(readFileSync(file, "utf8")) as Partial<StartCardHold>;
+    if (hold?.schema !== START_CARD_HOLD_SCHEMA || hold.id !== id) return "unreadable";
+    if (typeof hold.reason !== "string" || !hold.reason.trim() || typeof hold.evidence !== "string" || !hold.evidence.trim()) return "unreadable";
+    return hold as StartCardHold;
+  } catch {
+    return "unreadable";
+  }
+}
+
+function waitingStartCards(deps: RunWindowDeps, now: Date, unknown: string[]): { reasons: RunWindowReason[]; held: string[] } {
   const library = deps.libraryDir();
-  const names = readdirSync(library).filter((name) => name.endsWith(".json") && !name.endsWith(".consumed.json")).sort();
+  const names = readdirSync(library).filter((name) => name.endsWith(".json") && !name.endsWith(".consumed.json") && !name.endsWith(".held.json")).sort();
   const candidates: Array<{ id: string; reviewedRevision: string; expiresAt: string; expiry: number; workerLabel: string | null }> = [];
   let unreadable = 0;
   for (const name of names) {
@@ -148,34 +184,46 @@ function waitingStartCards(deps: RunWindowDeps, now: Date, unknown: string[]): R
     candidates.push({ id, reviewedRevision: pins.reviewedRevision, expiresAt: new Date(expiry).toISOString(), expiry, workerLabel: typeof pins.workerLabel === "string" && pins.workerLabel ? pins.workerLabel : null });
   }
   if (unreadable > 0) unknown.push(`${unreadable} operator-script descriptor${unreadable === 1 ? "" : "s"} could not be read, so a waiting START card may be hidden`);
-  if (candidates.length === 0) return [];
+  if (candidates.length === 0) return { reasons: [], held: [] };
 
   const origin = deps.originMain();
   if (!origin) {
     unknown.push("the local origin/main revision could not be resolved, so waiting START cards cannot be matched");
-    return [];
+    return { reasons: [], held: [] };
   }
-  return candidates
-    .filter((card) => card.reviewedRevision === origin)
-    .map((card) => {
-      // Preflight P2 refuses "worker job <label> has no running PID"; say so here instead of "ready to press" (Issue #2179).
-      const down = card.workerLabel !== null && deps.workerRunning?.(card.workerLabel) === false;
-      return {
-        kind: "start_card_waiting" as const,
-        subject: card.id,
-        until: card.expiresAt,
-        pressable: !down,
-        detail: down
-          ? `START card ${card.id} is not pressable: worker ${card.workerLabel} has no running PID, so preflight P2 would refuse (see arcadia worker status and worker.log for a lost lock); it is pinned to origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
-          : `START card ${card.id} is ready to press at origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
-      };
-    });
+  const reasons: RunWindowReason[] = [];
+  const held: string[] = [];
+  for (const card of candidates.filter((item) => item.reviewedRevision === origin)) {
+    const hold = readStartCardHold(library, card.id);
+    if (hold === "unreadable") {
+      unknown.push(`START card ${card.id} hold marker could not be read, so the card is counted as waiting`);
+    } else if (hold) {
+      held.push(`START card ${card.id} is held: ${hold.reason} (${hold.evidence})`);
+      continue;
+    }
+    reasons.push(waitingReason(card, origin, deps));
+  }
+  return { reasons, held };
 }
 
-/** Lines for the top of the text output; empty when the window is closed. */
+function waitingReason(card: { id: string; expiresAt: string; workerLabel: string | null }, origin: string, deps: RunWindowDeps): RunWindowReason {
+  // Preflight P2 refuses "worker job <label> has no running PID"; say so here instead of "ready to press" (Issue #2179).
+  const down = card.workerLabel !== null && deps.workerRunning?.(card.workerLabel) === false;
+  return {
+    kind: "start_card_waiting",
+    subject: card.id,
+    until: card.expiresAt,
+    pressable: !down,
+    detail: down
+      ? `START card ${card.id} is not pressable: worker ${card.workerLabel} has no running PID, so preflight P2 would refuse (see arcadia worker status and worker.log for a lost lock); it is pinned to origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
+      : `START card ${card.id} is ready to press at origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
+  };
+}
+
+/** Lines for the top of the text output. A closed window shows only held-card notes (empty when there are none). */
 export function formatRunWindowLines(window: RunWindow): string[] {
-  if (window.state === "closed") return [];
-  if (window.state === "unknown") return [`Run window: UNKNOWN (${window.unknown.join("; ")}).`];
+  if (window.state === "closed") return window.held.slice();
+  if (window.state === "unknown") return [`Run window: UNKNOWN (${window.unknown.join("; ")}).`, ...window.held];
   const cardWaiting = window.reasons.some((reason) => reason.kind === "start_card_waiting");
   const lines = [cardWaiting
     ? "Run window: OPEN. Do not merge to main now: it will make the waiting START card refuse."
@@ -183,8 +231,48 @@ export function formatRunWindowLines(window: RunWindow): string[] {
   for (const reason of window.reasons) {
     lines.push(`- ${reason.detail}${reason.until ? ` (until ${reason.until})` : ""}.`);
   }
+  for (const item of window.held) lines.push(`- ${item}.`);
   for (const item of window.unknown) lines.push(`- Also unknown: ${item}.`);
   return lines;
+}
+
+/**
+ * `arcadia start-run hold`: write the governed hold marker for one waiting START card. It refuses a card that is missing,
+ * consumed, expired or not a START card descriptor, and it never edits the card's own files. A hold grants nothing and
+ * blocks nothing; it only stops the run window from counting the card as opening it.
+ */
+export function holdStartCard(
+  library: string,
+  id: string,
+  input: { reason: string; evidence: string; heldBy: string; repository: string },
+  now: Date
+): StartCardHold {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw validationError("START card id must be a plain card name.");
+  const reason = input.reason.trim();
+  if (!reason || reason.length > 500) throw validationError("--reason is required and must be at most 500 characters.");
+  const evidence = input.evidence.trim();
+  const isUrl = /^https:\/\/\S+$/.test(evidence);
+  const isRepoPath = !path.isAbsolute(evidence) && !evidence.split(/[\\/]/).includes("..") && /^\S+$/.test(evidence);
+  if (!isUrl && !isRepoPath) throw validationError("--evidence must be an https URL or a repository-relative path.");
+  if (isRepoPath && !existsSync(path.join(input.repository, evidence))) throw validationError(`--evidence path ${evidence} does not exist in the repository.`);
+
+  const descriptorPath = path.join(library, `${id}.json`);
+  if (!existsSync(descriptorPath)) throw validationError(`START card ${id} is missing from the operator-script library.`);
+  if (existsSync(path.join(library, `${id}.consumed.json`))) throw validationError(`START card ${id} is already consumed; nothing to hold.`);
+  let descriptor: { startRun?: unknown; expires_at?: unknown };
+  try {
+    descriptor = JSON.parse(readFileSync(descriptorPath, "utf8"));
+  } catch {
+    throw validationError(`START card ${id} descriptor could not be read.`);
+  }
+  if (!descriptor?.startRun || typeof descriptor.expires_at !== "string" || !Number.isFinite(Date.parse(descriptor.expires_at))) {
+    throw validationError(`START card ${id} is not a START card descriptor.`);
+  }
+  if (Date.parse(descriptor.expires_at) <= now.getTime()) throw validationError(`START card ${id} has expired; nothing to hold.`);
+
+  const hold: StartCardHold = { schema: START_CARD_HOLD_SCHEMA, id, reason, evidence, heldAt: now.toISOString(), heldBy: input.heldBy };
+  writeFileSync(path.join(library, `${id}.held.json`), `${JSON.stringify(hold, null, 2)}\n`);
+  return hold;
 }
 
 function oneLine(value: unknown): string {

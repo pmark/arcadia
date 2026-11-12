@@ -1,6 +1,7 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync, readdirSync, realpathSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { validationError } from "../cli/errors.js";
@@ -17,6 +18,7 @@ import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { readDayGrantEvidence } from "../production/policy.js";
 import { namedTestFiles } from "../sessions/completionValidation.js";
 import { runStartRunSignIn, staticSignInChecks, StartRunSignInRefusal, type StartRunSignInDeps, type StartRunSignInResult, type StaticSignInState } from "../production/startRunSignIn.js";
+import { defaultRunWindowDeps, holdStartCard, type StartCardHold } from "../workMonitoring/runWindow.js";
 import { runProductionStatusCommand } from "./production.js";
 import { resolveOperatorGate } from "../ask/operatorGate.js";
 
@@ -422,6 +424,19 @@ export function runStartRunDayPinsCommand(options: StartRunDayPinsOptions, deps:
 export function runStartRunDayEvidenceCommand(options: { workspace?: string }): CommandSuccess<DayEvidence> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   return createSuccess({ command: "start-run.day-evidence", workspace: workspacePath, data: withReadOnlyDatabase(workspacePath, (db) => readDayGrantEvidence(db, ATTEMPT_COUNT_EARLIEST)) });
+}
+
+export interface StartRunHoldOptions { card: string; reason: string; evidence: string; by?: string; repository?: string; library?: string }
+
+/**
+ * `arcadia start-run hold`: write `<library>/<card>.held.json` so the run window reports a waiting START card as held
+ * instead of as opening the window. It writes only that marker, never the card's own files, and grants nothing.
+ */
+export function runStartRunHoldCommand(options: StartRunHoldOptions, now: Date = new Date()): CommandSuccess<StartCardHold> {
+  const repository = options.repository ?? process.cwd();
+  const library = options.library ?? defaultRunWindowDeps(repository).libraryDir();
+  const hold = holdStartCard(library, options.card, { reason: options.reason, evidence: options.evidence, heldBy: options.by ?? os.userInfo().username, repository }, now);
+  return createSuccess({ command: "start-run.hold", data: hold });
 }
 
 export interface StartRunGateCheckOptions { project: string; actions: string[]; repository?: string; workspace?: string }

@@ -290,6 +290,10 @@ pinned descriptor, so per-card review is small.
   this Grant is returned to Off. A later `scripts/restart-services-impl.sh`
   (restart-arcadia-services) rewrites that same worker label back to a
   source-run worker and so unbinds it; the next START card binds it again.
+- **Holding a waiting card.** `arcadia start-run hold <card> --reason <text> --evidence <https URL or repo path>`
+  writes only `<card>.held.json` (schema `arcadia-card-held-v1`), refuses a missing, consumed or expired card, and
+  never edits the card. `arcadia work monitor` then reports the card as held and does not count it as opening the
+  run window. A hold grants nothing and does not change preflight or press behavior.
 - **Delegated successors (Decision 0163).** After the operator presses a START
   card for the scope Decision 0163 names, Rowan alone may press successor cards
   for that same scope: pin one with
