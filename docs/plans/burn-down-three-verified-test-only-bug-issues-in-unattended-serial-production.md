@@ -30,11 +30,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2314"]
   - id: strip-claude-login-tokens-from-logged-out-fixtures
     title: "Make the logged-out Claude cases in tests/headless-provider-operator-script.test.ts ignore login tokens inherited from the parent environment, fixing Issue #1327."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the logged-out Claude cases in tests/headless-provider-operator-script.test.ts ignore login tokens inherited from the parent environment, fixing Issue #1327."
+    next_action: Completed via Agent Ask complete-strip-claude-login-tokens-from-logged-out-fixtures-v2-385b56be5ce9; no further action.
     expected_artifact: Evidence satisfying Agent Ask strip-claude-login-tokens-from-logged-out-fixtures
     clarification: clarified
     confidence: high
@@ -69,7 +69,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2504"]
 questions: []
 decisions: []
-current_action: strip-claude-login-tokens-from-logged-out-fixtures
+current_action: pick-dashboard-live-smoke-port-from-the-os
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
