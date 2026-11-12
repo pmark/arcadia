@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -67,7 +67,7 @@ const ALLOWED_PERMISSION_MODES = new Set(["auto", "default"]);
 
 export type RelayRefusal =
   | "decision_pending" | "decision_not_in_force" | "role_not_allowed" | "no_custodian" | "provider_unsupported"
-  | "renewal_limit" | "sign_in" | "spend" | "capacity" | "launch_in_progress" | "repository_unresolved";
+  | "renewal_limit" | "sign_in" | "spend" | "capacity" | "launch_in_progress" | "repository_unresolved" | "start_in_progress";
 
 export interface DecisionGate { inForce: boolean; reason: string }
 
@@ -85,6 +85,8 @@ export interface RelayDeps {
   newSessionId(): string;
   ping(message: string): void;
   sources(): CapsuleSources;
+  /** Whether a START press is still running; a successor launch is refused while one is. Optional: absent means no interlock. */
+  startPressInProgress?(repoRoot: string): { inProgress: boolean; detail: string };
 }
 
 export interface RenewInput {
@@ -230,6 +232,9 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
   const decision = deps.decision(repoRoot, now);
   if (!decision.inForce) return refuse(RELAY_LAUNCH_DECISION_ID === null ? "decision_pending" : "decision_not_in_force", decision.reason);
 
+  const startPress = deps.startPressInProgress?.(repoRoot);
+  if (startPress?.inProgress) return refuse("start_in_progress", `A START press is still in progress (${startPress.detail}); the relay launches no successor until its receipt is written.`);
+
   const custodian = currentCustodian(db, input.project, input.role);
   if (!custodian) return refuse("no_custodian", `No custodian generation of ${input.role} is recorded for ${input.project}; register the coordinator first.`);
   if (custodian.provider !== "claude") return refuse("provider_unsupported", `The relay launches Claude coordinators only so far; ${custodian.provider} waits for its probe.`);
@@ -330,9 +335,32 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
 }
 
 /** The real host dependencies. */
-export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (message: string) => void; signIn: RelayDeps["signIn"]; capacity: RelayDeps["capacity"] }): RelayDeps {
+/**
+ * Reads the operator-scripts library's START presses: a press is in progress while its
+ * `runs/operator/<card>/<press>/run.json` status is `running`, or its `runs/<card>/<press>/receipt.json`
+ * outcome is `in_progress`. Unreadable entries are skipped, never treated as in progress.
+ */
+export function startPressInProgressIn(library: string): { inProgress: boolean; detail: string } {
+  const listDirs = (dir: string): string[] => { try { return readdirSync(dir); } catch { return []; } };
+  const readJsonFile = (file: string): Record<string, unknown> | null => { try { return JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown>; } catch { return null; } };
+  for (const card of listDirs(path.join(library, "runs", "operator"))) {
+    for (const press of listDirs(path.join(library, "runs", "operator", card))) {
+      if (readJsonFile(path.join(library, "runs", "operator", card, press, "run.json"))?.status === "running") return { inProgress: true, detail: `${card}/${press} status running` };
+    }
+  }
+  for (const card of listDirs(path.join(library, "runs"))) {
+    if (card === "operator") continue;
+    for (const press of listDirs(path.join(library, "runs", card))) {
+      if (readJsonFile(path.join(library, "runs", card, press, "receipt.json"))?.outcome === "in_progress") return { inProgress: true, detail: `${card}/${press} receipt in_progress` };
+    }
+  }
+  return { inProgress: false, detail: "no START press in progress" };
+}
+
+export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (message: string) => void; signIn: RelayDeps["signIn"]; capacity: RelayDeps["capacity"]; startPressInProgress?: RelayDeps["startPressInProgress"] }): RelayDeps {
   return {
     tmux: systemTmux,
+    startPressInProgress: input.startPressInProgress,
     decision: (repoRoot, now) => readRelayDecision(repoRoot, now),
     signIn: input.signIn,
     capacity: input.capacity,

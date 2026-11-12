@@ -39,7 +39,7 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
-import { renewCoordinator, systemRelayDeps, type RelayDeps, type RenewResult } from "../coordinator/relay.js";
+import { renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult } from "../coordinator/relay.js";
 import { observeProviderCapacity } from "../codingAgents/capacity.js";
 import { checkProviderSignIn } from "../codingAgents/signIn.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
@@ -297,6 +297,7 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
       sources: () => defaultCapsuleSources({ db, repoRoot: repoRoot ?? repositoryRoot(), project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
       ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
       signIn: (provider) => checkProviderSignIn(provider, workspacePath),
+      startPressInProgress: (repo) => startPressInProgressIn(path.join(repo, "artifacts", "generated", "operator-scripts")),
       capacity: (provider) => {
         const registries = loadPhase3Registries(workspacePath);
         validatePhase3Registries(registries);

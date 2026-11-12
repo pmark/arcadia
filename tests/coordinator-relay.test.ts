@@ -153,6 +153,16 @@ describe("coordinator relay launch (change 3)", () => {
     expect(fake.launches).toHaveLength(1);
   });
 
+  it("refuses a successor launch while a START press is in progress, before any claim or launch", () => {
+    const { ws, repo, projects } = setup();
+    const fake = fakeDeps(projects, { deliver: [true] });
+    const deps = { ...fake.deps, startPressInProgress: () => ({ inProgress: true, detail: "card/press status running" }) };
+    const result = withDatabase(ws, (db) => renewCoordinator(db, ws, { project: "arcadia", role: "rowan", repoRoot: repo, effort: "e3_deep" }, deps));
+    expect(result).toMatchObject({ outcome: "refused", reason: "start_in_progress" });
+    expect(fake.launches).toHaveLength(0);
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => row.status)).toEqual(["custodian"]);
+  });
+
   it("strips every billing variable by name from the successor's environment (env -u), ahead of the custody variables", () => {
     const { ws, repo, projects } = setup();
     const fake = fakeDeps(projects, { deliver: [true] });
