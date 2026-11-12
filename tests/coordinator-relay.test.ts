@@ -1,8 +1,9 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { operatorScriptRunnerSource } from "../src/operatorActions/operatorExecution.js";
 import { relayStartPressInterlock, runCoordinatorRenewCommand } from "../src/commands/coordinator.js";
 import type { CapsuleSources } from "../src/coordinator/capsule.js";
 import { coordinatorPaths } from "../src/coordinator/paths.js";
@@ -16,7 +17,9 @@ import {
   readFirstUserMessage,
   readRelayDecision,
   renewCoordinator,
+  pidLiveness,
   startPressInProgressIn,
+  type PidLiveness,
   type RelayDeps
 } from "../src/coordinator/relay.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -347,7 +350,8 @@ describe("startPressInProgressIn (START interlock detector)", () => {
     if (input.run !== undefined) writeFileSync(path.join(dir, "run.json"), text(input.run));
     if (input.descriptor !== null) writeFileSync(path.join(dir, "descriptor.json"), text(input.descriptor ?? { startRun: { schema: "arcadia-start-run-v1" } }));
   }
-  const detect = (lib: string, pidAlive: (pid: number) => boolean = () => true) => startPressInProgressIn(lib, { now, pidAlive });
+  const detect = (lib: string, alive: (pid: number) => boolean = () => true) => startPressInProgressIn(lib, { now, liveness: (pid) => (alive(pid) ? "live" : "dead") });
+  const detectWith = (lib: string, liveness: (pid: number) => PidLiveness) => startPressInProgressIn(lib, { now, liveness });
 
   it("a missing library or no presses is not in progress", () => {
     expect(detect(path.join(library(), "absent"))).toMatchObject({ inProgress: false });
@@ -365,8 +369,8 @@ describe("startPressInProgressIn (START interlock detector)", () => {
 
   it("a running START press with the current process pid blocks without a stub", () => {
     const lib = library();
-    press(lib, "start", "r1", { run: { status: "running", pid: process.pid, startedAt: started(1000) } });
-    expect(startPressInProgressIn(lib, { now })).toMatchObject({ inProgress: true });
+    press(lib, "start", "r1", { run: { status: "running", pid: process.pid, startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString() } });
+    expect(startPressInProgressIn(lib, { now: new Date() })).toMatchObject({ inProgress: true });
   });
 
   it("a hard-stopped press (dead pid) does not wedge the relay and is named", () => {
@@ -387,10 +391,51 @@ describe("startPressInProgressIn (START interlock detector)", () => {
     expect(detect(old)).toMatchObject({ inProgress: false });
   });
 
-  it("an aged record is stale even when its pid answers (pid reuse)", () => {
+  it("a verified-live runner blocks however old the record is (no age release of a live press)", () => {
     const lib = library();
-    press(lib, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(7 * 3_600_000) } });
-    expect(detect(lib, () => true)).toMatchObject({ inProgress: false });
+    press(lib, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(30 * 3_600_000) } });
+    expect(detect(lib, () => true)).toMatchObject({ inProgress: true });
+  });
+
+  it("an unverifiable pid blocks while recent and is released past the age bound", () => {
+    const recent = library();
+    press(recent, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(60_000) } });
+    expect(detectWith(recent, () => "unverified")).toMatchObject({ inProgress: true });
+    const old = library();
+    press(old, "start", "r1", { run: { status: "running", pid: 4242, startedAt: started(7 * 3_600_000) } });
+    expect(detectWith(old, () => "unverified")).toMatchObject({ inProgress: false });
+  });
+
+  it("a dead runner with a surviving child still blocks; both dead is a hard stop", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: { status: "running", pid: 4242, childPid: 4243, startedAt: started(3_600_000) } });
+    expect(detect(lib, (pid) => pid === 4243)).toMatchObject({ inProgress: true, detail: expect.stringContaining("child pid 4243") });
+    const result = detect(lib, () => false);
+    expect(result.inProgress).toBe(false);
+    expect(result.detail).toContain("child pid 4243");
+  });
+
+  it("a corrupt run.json on a non-START card never blocks, and one on a START card still refuses", () => {
+    const lib = library();
+    press(lib, "other", "r1", { run: "{not json", descriptor: { kind: "script" } });
+    expect(detect(lib)).toMatchObject({ inProgress: false });
+    press(lib, "start", "r2", { run: "{not json" });
+    expect(detect(lib)).toMatchObject({ inProgress: true, unreadable: true });
+  });
+
+  it("pidLiveness: ESRCH is dead, EPERM is live, a reused pid (started after the record) is dead", () => {
+    const spy = vi.spyOn(process, "kill");
+    try {
+      spy.mockImplementation(() => { throw Object.assign(new Error("gone"), { code: "ESRCH" }); });
+      expect(pidLiveness(4242, Date.now())).toBe("dead");
+      spy.mockImplementation(() => { throw Object.assign(new Error("not permitted"), { code: "EPERM" }); });
+      expect(pidLiveness(4242, Date.now(), { startTime: () => Date.now() - 1000 })).toBe("live");
+      expect(pidLiveness(4242, Date.now(), { startTime: () => null })).toBe("unverified");
+      expect(pidLiveness(4242, Date.now() - 3_600_000, { startTime: () => Date.now() })).toBe("dead");
+    } finally { spy.mockRestore(); }
+    // Real ps: this process is live against a record from just before it started, and a different process once the record is years old.
+    expect(pidLiveness(process.pid, Date.now() - process.uptime() * 1000)).toBe("live");
+    expect(pidLiveness(process.pid, Date.now() - 400 * 86_400_000)).toBe("dead");
   });
 
   it("a running non-START operator card never blocks", () => {
@@ -439,7 +484,21 @@ describe("startPressInProgressIn (START interlock detector)", () => {
   it("the command's interlock reads the primary checkout's artifacts/generated/operator-scripts library", () => {
     const { repo } = setup();
     expect(relayStartPressInterlock(repo)).toMatchObject({ inProgress: false });
-    press(path.join(repo, "artifacts", "generated", "operator-scripts"), "start", "r1", { run: { status: "running", pid: process.pid, startedAt: new Date().toISOString() } });
+    press(path.join(repo, "artifacts", "generated", "operator-scripts"), "start", "r1", { run: { status: "running", pid: process.pid, startedAt: new Date(Date.now() - process.uptime() * 1000).toISOString() } });
     expect(relayStartPressInterlock(repo)).toMatchObject({ inProgress: true });
+  });
+
+  it("the operator runner records its child's pid in the press record while the script runs", () => {
+    const lib = library();
+    const state = path.join(lib, "run.json");
+    const script = path.join(lib, "card.sh");
+    writeFileSync(script, `#!/bin/sh\ncp "${state}" "${lib}/seen.json"\necho $$ > "${lib}/child.pid"\n`);
+    chmodSync(script, 0o755);
+    const result = spawnSync(process.execPath, ["-e", operatorScriptRunnerSource, script, state]);
+    expect(result.status).toBe(0);
+    const seen = JSON.parse(readFileSync(path.join(lib, "seen.json"), "utf8")) as { status: string; pid: number; childPid: number };
+    expect(seen).toMatchObject({ status: "running" });
+    expect(seen.childPid).toBe(Number(readFileSync(path.join(lib, "child.pid"), "utf8")));
+    expect(seen.pid).not.toBe(seen.childPid);
   });
 });

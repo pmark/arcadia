@@ -250,6 +250,7 @@ for (const key of Object.keys(env)) {
   if (key.startsWith("NEXT_") || key.startsWith("__NEXT_")) delete env[key];
 }
 const child = spawn(scriptPath, ["run"], { stdio: ["ignore", stdout, stderr], env });
+if (child.pid) writeState({ status: "running", pid: process.pid, childPid: child.pid, startedAt });
 let settled = false;
 const finish = (status, exitCode, message) => {
   if (settled) return;

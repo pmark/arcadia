@@ -335,31 +335,58 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
 }
 
 /** The real host dependencies. */
-/** A START press record older than this is stale whatever its pid says (pid reuse; a press runs for minutes). */
+/** Age past which a record whose runner and child cannot be verified live no longer blocks. A verified-live process always blocks. */
 export const START_PRESS_MAX_AGE_MS = 6 * 60 * 60 * 1000;
+/** A process that started this long after the record's startedAt is a reused pid, not the recorded process. */
+const PID_REUSE_TOLERANCE_MS = 60_000;
 
 export interface StartPressStatus { inProgress: boolean; detail: string; unreadable?: boolean }
+export type PidLiveness = "live" | "dead" | "unverified";
+
+/**
+ * Whether the recorded process is still the one that wrote the record. Signal 0 answers existence (EPERM means it
+ * exists); `ps -o lstart=` gives its start time, which must not be later than the record's startedAt by more than
+ * PID_REUSE_TOLERANCE_MS (a later start is a reused pid: dead). Existing but with no readable start time: unverified.
+ */
+export function pidLiveness(pid: number, startedAtMs: number, options: { startTime?: (pid: number) => number | null } = {}): PidLiveness {
+  try { process.kill(pid, 0); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EPERM") return "dead";
+  }
+  const started = (options.startTime ?? processStartTime)(pid);
+  if (started === null || !Number.isFinite(startedAtMs)) return "unverified";
+  return started > startedAtMs + PID_REUSE_TOLERANCE_MS ? "dead" : "live";
+}
+
+function processStartTime(pid: number): number | null {
+  try {
+    const out = execFileSync("ps", ["-o", "lstart=", "-p", String(pid)], { encoding: "utf8", env: { ...process.env, LC_ALL: "C" }, timeout: 5_000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const parsed = Date.parse(out);
+    return out !== "" && Number.isFinite(parsed) ? parsed : null;
+  } catch { return null; }
+}
 
 /**
  * Scans the operator-scripts library for a START press that is genuinely in progress. Only cards whose
- * `descriptor.json` carries `startRun` count (as scripts/start-run.sh and startRunDayGrant.ts decide). A press is in
- * progress when its `runs/operator/<card>/<press>/run.json` says `running` AND the runner is live: its `pid` answers
- * signal 0 and `startedAt` is younger than START_PRESS_MAX_AGE_MS; a record without a usable pid blocks only for
- * that age. A dead pid or an expired record is a hard-stopped press (SIGKILL, crash, reboot): it stops blocking, so
- * the relay is never wedged, and the detail names it for the operator. A receipt `in_progress` is the same hard-stop
- * state start-run.sh documents ("treat everything listed as done and the rest as unknown"); it never blocks by itself,
- * only the live run record does. Fail closed: a START (or unidentifiable) press whose descriptor or run record cannot be
- * read, or a library directory that cannot be listed, refuses (mirrors start-run.sh PRESS_UNREADABLE). A missing
- * library or card directory means no press.
- * Recovery from a stale press: none needed to launch; the next START press (start-run.sh) still reads the receipt.
+ * `descriptor.json` carries `startRun` count (as scripts/start-run.sh and startRunDayGrant.ts decide); the descriptor is
+ * read first, so a damaged record of a non-START card never blocks. For a START press whose `run.json` is `running`,
+ * the runner pid and (recorded by the runner since this change) the child `childPid` are checked: any process that is
+ * verified live (signal 0 plus a start time not after startedAt, so a reused pid is not mistaken) blocks, with no age
+ * limit, because a press can legitimately run for hours. Only when no recorded process is verified live and one is
+ * unverifiable (no pid recorded, or no readable start time) does the age bound apply: a record younger than
+ * START_PRESS_MAX_AGE_MS blocks, an older one is stale. When every recorded process is dead the press is hard-stopped
+ * (SIGKILL, crash, reboot): it does not block and is named in the detail. Records written before `childPid` existed
+ * have only the runner pid, so a surviving child of such a press cannot be seen. A receipt `in_progress` alone never
+ * blocks. Fail closed: a START (or unidentifiable) press whose descriptor or run record cannot be read, or a library
+ * directory that cannot be listed, refuses (PRESS_UNREADABLE). A directory without run.json is not a press (the
+ * runner has not written its record yet) and is skipped. A missing library means no press.
  */
 export function startPressInProgressIn(
   library: string,
-  options: { now?: Date; pidAlive?: (pid: number) => boolean; maxAgeMs?: number } = {}
+  options: { now?: Date; liveness?: (pid: number, startedAtMs: number) => PidLiveness; maxAgeMs?: number } = {}
 ): StartPressStatus {
   const now = (options.now ?? new Date()).getTime();
   const maxAgeMs = options.maxAgeMs ?? START_PRESS_MAX_AGE_MS;
-  const pidAlive = options.pidAlive ?? defaultPidAlive;
+  const liveness = options.liveness ?? pidLiveness;
   const unreadable = (what: string): StartPressStatus => ({ inProgress: true, unreadable: true, detail: `PRESS_UNREADABLE: ${what} cannot be read, so it cannot be ruled out; preserve it and stop for the operator` });
   const list = (dir: string): string[] | StartPressStatus => {
     try { return readdirSync(dir); } catch (error) {
@@ -373,6 +400,7 @@ export function startPressInProgressIn(
       return code === "ENOENT" ? { ok: true, value: null } : { ok: false, code: code ?? "unparseable" };
     }
   };
+  const usablePid = (value: unknown): number | null => (typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null);
   const root = path.join(library, "runs", "operator");
   const cards = list(root);
   if (!Array.isArray(cards)) return cards;
@@ -382,31 +410,31 @@ export function startPressInProgressIn(
     if (!Array.isArray(presses)) return presses;
     for (const press of presses) {
       const dir = path.join(root, card, press);
-      const run = readJson(path.join(dir, "run.json"));
-      if (!run.ok) return unreadable(`${card}/${press}/run.json`);
-      if (run.value === null) continue; // not a press directory (markers, consumed files)
+      const label = `${card}/${press}`;
       const descriptor = readJson(path.join(dir, "descriptor.json"));
-      if (!descriptor.ok || descriptor.value === null) {
-        // A START press whose descriptor is gone cannot be told from a non-START card; only a running one matters.
-        if (run.value.status === "running") return unreadable(`${card}/${press}/descriptor.json`);
-        continue;
-      }
-      if (!descriptor.value.startRun) continue; // not a START card
+      if (descriptor.ok && descriptor.value !== null && !descriptor.value.startRun) continue; // a readable non-START card
+      const run = readJson(path.join(dir, "run.json"));
+      if (run.ok && run.value === null) continue; // not a press directory
+      // Here the card is START, or its descriptor cannot be read (missing or damaged) so it cannot be ruled out.
+      if (!run.ok) return unreadable(`${label}/run.json`);
+      if (run.value === null) continue;
       if (run.value.status !== "running") continue;
+      if (!descriptor.ok || descriptor.value === null) return unreadable(`${label}/descriptor.json`);
       const startedAt = typeof run.value.startedAt === "string" ? Date.parse(run.value.startedAt) : Number.NaN;
-      const pid = typeof run.value.pid === "number" && Number.isInteger(run.value.pid) && run.value.pid > 0 ? run.value.pid : null;
-      if (!Number.isFinite(startedAt) && pid === null) return unreadable(`${card}/${press}/run.json (running with neither a usable pid nor startedAt)`);
+      const recorded = [["runner", usablePid(run.value.pid)], ["child", usablePid(run.value.childPid)]] as const;
+      const pids = recorded.filter((entry): entry is readonly ["runner" | "child", number] => entry[1] !== null);
+      if (!Number.isFinite(startedAt) && pids.length === 0) return unreadable(`${label}/run.json (running with neither a usable pid nor startedAt)`);
+      const states = pids.map(([who, pid]) => ({ who, pid, state: liveness(pid, startedAt) }));
+      const live = states.find((entry) => entry.state === "live");
+      if (live) return { inProgress: true, detail: `${label} status running, ${live.who} pid ${live.pid} live` };
+      const unverified = pids.length === 0 || states.some((entry) => entry.state === "unverified");
+      if (!unverified) { stale.push(`${label} (${states.map((entry) => `${entry.who} pid ${entry.pid}`).join(" and ")} dead)`); continue; }
       const age = Number.isFinite(startedAt) ? now - startedAt : 0;
-      if (Number.isFinite(startedAt) && age >= maxAgeMs) { stale.push(`${card}/${press} (older than ${Math.round(maxAgeMs / 3_600_000)}h)`); continue; }
-      if (pid !== null && !pidAlive(pid)) { stale.push(`${card}/${press} (runner pid ${pid} is dead)`); continue; }
-      return { inProgress: true, detail: `${card}/${press} status running${pid !== null ? `, runner pid ${pid} live` : ", no usable pid, record is recent"}` };
+      if (Number.isFinite(startedAt) && age >= maxAgeMs) { stale.push(`${label} (unverifiable and older than ${Math.round(maxAgeMs / 3_600_000)}h)`); continue; }
+      return { inProgress: true, detail: `${label} status running, ${pids.length === 0 ? "no usable pid" : "pid not verifiable"}, record is recent` };
     }
   }
   return { inProgress: false, detail: stale.length > 0 ? `no START press in progress; hard-stopped, ignored: ${stale.join(", ")}` : "no START press in progress" };
-}
-
-function defaultPidAlive(pid: number): boolean {
-  try { process.kill(pid, 0); return true; } catch (error) { return (error as NodeJS.ErrnoException).code === "EPERM"; }
 }
 
 export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (message: string) => void; signIn: RelayDeps["signIn"]; capacity: RelayDeps["capacity"]; startPressInProgress: RelayDeps["startPressInProgress"] }): RelayDeps {
