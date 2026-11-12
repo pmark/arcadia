@@ -113,6 +113,7 @@ export function renderResumePrompt(input: { project: string; role: string; gener
     `start each listed watcher yourself in the background and register it with \`arcadia coordinator subscribe ${scope} "<command>" --cursor <c>\`,`,
     `then \`arcadia coordinator verify ${scope} --generation ${input.generation} --snapshot-sha ${input.snapshotSha}\`,`,
     `then \`arcadia coordinator accept ${scope} --generation ${input.generation} --snapshot-sha ${input.snapshotSha}\`.`,
+    "accept is refused (predecessor_not_stood_down) until the predecessor records its own stand-down; wait and retry, and never record it for the predecessor.",
     `Snapshot: ${input.snapshotPath} (sha ${input.snapshotSha}).`,
     "Report verify's warnings in your first message and name the source of every approval you rely on."
   ].join(" ");

@@ -1,4 +1,6 @@
 import { execFileSync } from "node:child_process";
+import { statSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import type { CommandSuccess } from "../cli/response.js";
@@ -22,13 +24,19 @@ import {
   acceptGeneration,
   assertCoordinatorCustody,
   clearVerifyPass,
+  correctCustodianGeneration,
   currentCustodian,
   custodianOf,
+  listGenerations,
+  newestLaunching,
+  recordStandDown,
   relayCoordinatorSessions,
+  seedCustodianGeneration,
   type CustodyAdmission,
   type RelaySessionVerdict
 } from "../coordinator/generations.js";
 import { withRelayLock } from "../coordinator/lock.js";
+import { confirmSessionChallenge, findSessionTranscript, issueSessionChallenge, TRANSCRIPT_FRESH_MS, type ChallengePurpose, type VerifiedSession } from "../coordinator/sessionIdentity.js";
 import { coordinatorPaths } from "../coordinator/paths.js";
 import { defaultCapsuleSources } from "../coordinator/sources.js";
 import {
@@ -39,7 +47,7 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
-import { renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult, type StartPressStatus } from "../coordinator/relay.js";
+import { RELAY_ROLES, renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult, type StartPressStatus } from "../coordinator/relay.js";
 import { observeProviderCapacity } from "../codingAgents/capacity.js";
 import { checkProviderSignIn } from "../codingAgents/signIn.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
@@ -315,6 +323,129 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
   return createSuccess({ command: "coordinator.renew", workspace: workspacePath, data });
 }
 
+const TIERS = new Set(["light", "standard", "heavy"]);
+
+export type CoordinatorSessionBindData =
+  | { step: "challenge"; purpose: ChallengePurpose; nonce: string; expiresAt: string; next: string }
+  | { step: "confirmed"; purpose: ChallengePurpose; generation: number; verified: VerifiedSession; tier: string; identity: string };
+
+export type CoordinatorStandDownData = CoordinatorSessionBindData | { step: "recorded"; generation: number; successor: number; method: string };
+
+export interface SessionBindOptions {
+  challenge?: boolean; confirm?: string; sessionId?: string;
+  /** Test seam: Claude Code's projects directory (default ~/.claude/projects). */
+  claudeProjectsDirectory?: string; now?: Date;
+}
+
+function challengeStep(paths: ReturnType<typeof coordinatorPaths>, purpose: ChallengePurpose, command: string, now: Date): CoordinatorSessionBindData {
+  const issued = issueSessionChallenge(paths, { purpose, now });
+  return {
+    step: "challenge", purpose, nonce: issued.nonce, expiresAt: issued.expiresAt,
+    next: `${command} --confirm ${issued.nonce} --session-id <this Session's id>. Run it from the same Session that printed this nonce, before ${issued.expiresAt}.`
+  };
+}
+
+/**
+ * `arcadia coordinator register`: first registration (or, with `--correct`, correction) of a coordinator as the
+ * generation-1 custodian, bound to a VERIFIED Session identity (Decision 0227 A; design gate 9). Two steps:
+ * `--challenge` prints a nonce, `--confirm <nonce> --session-id <id>` proves that Session's transcript carries it and
+ * records the provider and model the transcript names. Only the coordinator roles; claude only. A correction needs the
+ * same proof for the replacing Session and is refused while the recorded Session is still live (unless it is the same
+ * Session correcting its own label), while a successor is launching, or for a relay-launched custodian.
+ */
+export function runCoordinatorRegisterCommand(options: Scope & SessionBindOptions & { correct?: boolean; tier?: string; identity?: string }): CommandSuccess<CoordinatorSessionBindData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  const purpose: ChallengePurpose = options.correct ? "correct" : "register";
+  if (!RELAY_ROLES.has(options.role)) throw validationError(`Only the coordinator roles ${[...RELAY_ROLES].join(" and ")} register, not ${options.role}.`, { reason: "role_not_allowed" });
+  if (Boolean(options.challenge) === (options.confirm !== undefined)) throw validationError("Give exactly one of --challenge or --confirm <nonce> (with --session-id, --tier and --identity).", { reason: "register_form" });
+  const projectsDirectory = options.claudeProjectsDirectory ?? path.join(homedir(), ".claude", "projects");
+  const paths = coordinatorPaths(workspacePath, options.project, options.role);
+  const command = `arcadia coordinator register --project ${options.project} --role ${options.role}${options.correct ? " --correct" : ""}`;
+  const data = withDatabase(workspacePath, (db) => withRelayLock(paths.root, (): CoordinatorSessionBindData => {
+    const custodian = currentCustodian(db, options.project, options.role);
+    if (options.correct) {
+      if (!custodian) throw validationError(`${options.role} for ${options.project} has no custodian to correct; register it first.`, { reason: "no_custodian" });
+      if (custodian.relayLaunched) throw validationError(`Generation ${custodian.generation} was launched by the relay; its custody moves only through accept, never a correction.`, { reason: "correction_relay_custodian" });
+      if (newestLaunching(db, options.project, options.role)) throw validationError(`A successor of ${options.role} is launching; no correction until it is accepted or fails.`, { reason: "launch_in_progress" });
+    } else if (listGenerations(db, options.project, options.role).length > 0) {
+      throw validationError(`${options.role} for ${options.project} is already registered; use --correct to fix it.`, { reason: "generation_exists" });
+    }
+    if (options.challenge) return challengeStep(paths, purpose, command, now);
+    const tier = options.tier ?? "";
+    const identity = (options.identity ?? "").trim();
+    if (!TIERS.has(tier)) throw validationError("--tier must be light, standard or heavy.", { reason: "invalid_tier" });
+    if (identity === "" || identity.length > 120) throw validationError("--identity must be 1 to 120 characters (the Session's resolved identity label).", { reason: "invalid_identity" });
+    // A live Session keeps its custody record: only itself may relabel it, or the recorded Session must be gone.
+    // Checked before the challenge is consumed, so a refusal costs the caller no new nonce.
+    if (options.correct && custodian && custodian.nativeSessionId !== options.sessionId) {
+      const recorded = custodian.nativeSessionId ? findSessionTranscript(projectsDirectory, custodian.nativeSessionId) : null;
+      if (recorded !== null && now.getTime() - statSync(recorded).mtimeMs <= TRANSCRIPT_FRESH_MS) {
+        throw validationError(`The recorded custodian Session ${custodian.nativeSessionId} is still live (its transcript was written within ${TRANSCRIPT_FRESH_MS / 60_000} minutes); it must correct itself, or end first.`, { reason: "custodian_session_live" });
+      }
+    }
+    const verified = confirmSessionChallenge(paths, { purpose, nonce: options.confirm ?? "", sessionId: options.sessionId ?? "", projectsDirectory, now });
+    const generation = {
+      provider: verified.provider, model: verified.model, tier, identity, nativeSessionId: verified.sessionId, transcriptPath: verified.transcriptPath,
+      project: options.project, role: options.role, now, lockHeld: true,
+      verification: { method: "transcript_challenge", sessionId: verified.sessionId, transcriptPath: verified.transcriptPath, model: verified.model }
+    };
+    if (options.correct && custodian) {
+      const corrected = correctCustodianGeneration(db, workspacePath, generation);
+      return { step: "confirmed", purpose, generation: corrected.generation, verified, tier, identity };
+    }
+    const seeded = seedCustodianGeneration(db, workspacePath, generation);
+    return { step: "confirmed", purpose, generation: seeded.generation, verified, tier, identity };
+  }));
+  return createSuccess({ command: "coordinator.register", workspace: workspacePath, data });
+}
+
+export function renderCoordinatorSessionBindSuccess(response: CommandSuccess<CoordinatorSessionBindData>): string[] {
+  const { data } = response;
+  if (data.step === "challenge") return [`Session challenge (${data.purpose}): ${data.nonce}`, `Expires ${data.expiresAt}.`, `Next: ${data.next}`];
+  return [`Verified session ${data.verified.sessionId} (${data.verified.provider} ${data.verified.model}); ${data.purpose === "register" ? "registered" : "corrected"} as generation ${data.generation} custodian (tier ${data.tier}, identity ${data.identity}).`];
+}
+
+/**
+ * `arcadia coordinator stand-down --successor N`: the current custodian records that it stands down for the launching
+ * successor, which `accept` requires first. A relay-launched custodian proves itself with its custody token; a seeded
+ * one (no token) with the transcript challenge, which must verify the Session recorded in its row. Records only: the
+ * predecessor stops itself afterwards.
+ */
+export function runCoordinatorStandDownCommand(options: Scope & SessionBindOptions & { successor: number; env?: NodeJS.ProcessEnv }): CommandSuccess<CoordinatorStandDownData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
+  if (!Number.isInteger(options.successor) || options.successor < 1) throw validationError("--successor must be a positive integer.", { reason: "invalid_generation" });
+  const projectsDirectory = options.claudeProjectsDirectory ?? path.join(homedir(), ".claude", "projects");
+  const paths = coordinatorPaths(workspacePath, options.project, options.role);
+  const command = `arcadia coordinator stand-down --project ${options.project} --role ${options.role} --successor ${options.successor}`;
+  const data = withDatabase(workspacePath, (db) => withRelayLock(paths.root, (): CoordinatorStandDownData => {
+    const custodian = currentCustodian(db, options.project, options.role);
+    if (!custodian) throw validationError(`No custodian of ${options.role} is recorded for ${options.project}; there is nothing to stand down.`, { reason: "no_custodian" });
+    if (custodian.relayLaunched) {
+      const admission = assertCoordinatorCustody(db, { command: "stand-down", env: options.env, project: options.project, role: options.role, now });
+      if (admission.kind !== "custodian") throw validationError("stand-down is run by the current custodian itself, with its own coordinator identity (a relay-launched custodian has a custody token).", { reason: "stand_down_identity" });
+      recordStandDown(db, workspacePath, { project: options.project, role: options.role, successor: options.successor, now, lockHeld: true });
+      return { step: "recorded", generation: custodian.generation, successor: options.successor, method: "custody_token" };
+    }
+    // A seeded custodian has no token: bind to its recorded Session by the transcript challenge.
+    if (Boolean(options.challenge) === (options.confirm !== undefined)) throw validationError("Give exactly one of --challenge or --confirm <nonce> with --session-id.", { reason: "stand_down_form" });
+    if (options.challenge) return challengeStep(paths, "stand-down", command, now);
+    if (!custodian.nativeSessionId) throw validationError(`Generation ${custodian.generation} has no recorded Session id, so its stand-down cannot be verified; correct the registration first.`, { reason: "custodian_session_unrecorded" });
+    if (options.sessionId !== custodian.nativeSessionId) throw validationError(`stand-down must come from the recorded custodian Session ${custodian.nativeSessionId}, not ${options.sessionId ?? "none"}.`, { reason: "stand_down_identity" });
+    const verified = confirmSessionChallenge(paths, { purpose: "stand-down", nonce: options.confirm ?? "", sessionId: options.sessionId, projectsDirectory, now });
+    recordStandDown(db, workspacePath, { project: options.project, role: options.role, successor: options.successor, now, lockHeld: true });
+    return { step: "recorded", generation: custodian.generation, successor: options.successor, method: `transcript_challenge:${verified.sessionId}` };
+  }));
+  return createSuccess({ command: "coordinator.stand-down", workspace: workspacePath, data });
+}
+
+export function renderCoordinatorStandDownSuccess(response: CommandSuccess<CoordinatorStandDownData>): string[] {
+  const { data } = response;
+  if (data.step === "recorded") return [`Generation ${data.generation} recorded its stand-down for generation ${data.successor} (${data.method}). The successor may now accept; stop this Session afterwards.`];
+  return renderCoordinatorSessionBindSuccess({ ...response, data });
+}
+
 export interface CoordinatorRelaySessionsData { project: string; allowed: string[]; sessions: RelaySessionVerdict[] }
 
 /**
@@ -348,7 +479,7 @@ export function renderCoordinatorRenewSuccess(response: CommandSuccess<RenewResu
   const { data } = response;
   if (data.outcome === "launched") {
     return [
-      `Launched ${data.tmuxName} as generation ${data.generation} (session ${data.sessionId}, attempt ${data.attempts}); prompt delivered. Custody moves when it runs accept.`,
+      `Launched ${data.tmuxName} as generation ${data.generation} (session ${data.sessionId}, attempt ${data.attempts}); prompt delivered. Next: record your stand-down with "arcadia coordinator stand-down --project <project> --role <role> --successor ${data.generation}"; custody moves when it then runs accept.`,
       ...(data.warnings ?? []).map((warning) => `warning: ${warning}`)
     ];
   }

@@ -22,6 +22,7 @@ import {
   claimNextGeneration,
   failGeneration,
   listGenerations,
+  recordStandDown,
   relayCoordinatorSessions,
   seedCustodianGeneration
 } from "../src/coordinator/generations.js";
@@ -82,6 +83,10 @@ function envFor(generation: number, token: string): NodeJS.ProcessEnv {
 /** The successor runs each inherited watcher itself, then registers it; this stands in for that step. */
 function armInherited(ws: string, env: NodeJS.ProcessEnv, now: Date, commandLine = "scripts/wait-for-event.sh --pr 2236", cursor = "c-10") {
   return runCoordinatorSubscribeCommand({ workspace: ws, ...base, commandLine, cursor, now, env });
+}
+
+function standDown(ws: string, successor: number, now: Date) {
+  return withDatabase(ws, (db) => recordStandDown(db, ws, { project: "arcadia", role: "rowan", successor, now }));
 }
 
 function claim(ws: string, now = at(1)) {
@@ -271,6 +276,7 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(15) });
     // A wrong token cannot accept.
     expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(16), env: envFor(2, "0".repeat(48)) })).toThrow(/custody/);
+    standDown(ws, 2, at(15));
     const accepted = runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(16), env });
     expect(accepted.data.custodian).toBe(2);
     const rows = withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"));
@@ -291,6 +297,7 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: next.snapshotSha, now: at(20), env: nextEnv });
     armInherited(ws, nextEnv, at(20));
     runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 3, snapshotSha: next.snapshotSha, sources: sources(), now: at(20) });
+    standDown(ws, 3, at(20));
     runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 3, snapshotSha: next.snapshotSha, now: at(21), env: nextEnv });
     expect(() => runCoordinatorNoteCommand({ workspace: ws, ...base, text: "late", now: at(22), env })).toThrow(/generation 3/);
     expect(() => runPingSendCommand({ workspace: ws, message: "late", env })).toThrow(/custody/);
@@ -376,6 +383,7 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     expect(result.data.passed).toBe(true);
     expect(result.data.cursorChanges).toEqual([{ command: "scripts/wait-for-event.sh --pr 2236", from: "c-10", to: "c-42" }]);
     expect(result.data.items.find((item) => item.id === 3)?.detail).toMatch(/cursor changed for .*c-10 -> c-42/);
+    standDown(ws, 2, at(61));
     expect(() => runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(62), env })).not.toThrow();
     // The same cursor reports no change.
     const again = handoff();
@@ -393,6 +401,7 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     const result = runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(6) });
     expect(result.data.passed).toBe(true);
     expect(result.data.cursorChanges).toEqual([{ command: "scripts/late-watch.sh --pr 2300", from: "l-1", to: "l-9" }]);
+    standDown(ws, 2, at(6));
     runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(7), env });
     expect(readFileSync(coordinatorPaths(ws, "arcadia", "rowan").generationsLog, "utf8")).toMatch(/"cursorChanges":\[\{"command":"scripts\/late-watch\.sh --pr 2300","from":"l-1","to":"l-9"\}\]/);
   });
@@ -429,6 +438,7 @@ describe("verify, subscribe --from-snapshot and accept", () => {
     const env = envFor(2, claimed.token);
     runCoordinatorSubscribeCommand({ workspace: ws, ...base, fromSnapshot: claimed.snapshotSha, now: at(3), env });
     runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) });
+    standDown(ws, 2, at(4));
     const accepted = runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(5), env });
     expect(accepted.data.custodian).toBe(2);
     expect(accepted.data.warnings?.[0]).toMatch(/log write failed/);
@@ -518,6 +528,7 @@ describe("coordinator relay-sessions: which tmux sessions START tolerates (#2286
     // A handoff in flight: the launching successor is held (and the seeded predecessor has no tmux name).
     expect(verdicts(ws)).toEqual([["arcadia-coord-rowan-g2", false]]);
     runCoordinatorVerifyCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, sources: sources(), now: at(4) });
+    standDown(ws, 2, at(4));
     runCoordinatorAcceptCommand({ workspace: ws, ...base, generation: 2, snapshotSha: claimed.snapshotSha, now: at(5), env });
     // Accepted: the relay-launched custodian is the one name allowed; the handed-off generation never is.
     expect(verdicts(ws)).toEqual([["arcadia-coord-rowan-g2", true]]);

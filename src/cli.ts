@@ -92,6 +92,10 @@ import {
   renderCoordinatorSubscribeSuccess,
   renderCoordinatorVerifySuccess,
   runCoordinatorAcceptCommand,
+  runCoordinatorRegisterCommand,
+  runCoordinatorStandDownCommand,
+  renderCoordinatorSessionBindSuccess,
+  renderCoordinatorStandDownSuccess,
   runCoordinatorCapsuleCommand,
   runCoordinatorNoteCommand,
   runCoordinatorSubscribeCommand,
@@ -1401,6 +1405,26 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .requiredOption("--snapshot-sha <sha>", "The sha the launch prompt pinned")
   ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha: string; json?: boolean }) =>
     runCliAction("coordinator.accept", options, () => runCoordinatorAcceptCommand({ ...options, env: process.env }), renderCoordinatorAcceptSuccess)
+  );
+  coordinatorScope(coordinator.command("register")
+    .description("Register a coordinator (rowan or signal, Claude Code) as the generation-1 custodian, bound to a verified Session: --challenge prints a nonce the Session's own transcript then carries, --confirm proves it and records the transcript's model. --correct fixes a registration the same way. Refuses a second registration")
+    .option("--challenge", "Step 1: print a one-time nonce; run it from the Session being registered")
+    .option("--confirm <nonce>", "Step 2: the nonce, with --session-id, --tier and --identity")
+    .option("--session-id <id>", "The Claude Code session UUID being registered")
+    .option("--tier <tier>", "light, standard or heavy (declared)")
+    .option("--identity <label>", "The Session's resolved identity label (declared)")
+    .option("--correct", "Correct the existing registration instead of creating it")
+  ).action((options: { workspace: string; project: string; role: string; challenge?: boolean; confirm?: string; sessionId?: string; tier?: string; identity?: string; correct?: boolean; json?: boolean }) =>
+    runCliAction("coordinator.register", options, () => runCoordinatorRegisterCommand(options), renderCoordinatorSessionBindSuccess)
+  );
+  coordinatorScope(coordinator.command("stand-down")
+    .description("The current custodian records that it stands down for the launching successor; accept refuses until it does. A relay-launched custodian uses its custody token; a registered desktop one uses --challenge then --confirm with its own session id")
+    .requiredOption("--successor <n>", "The launching successor generation", (value: string) => Number(value))
+    .option("--challenge", "Desktop custodian step 1: print a one-time nonce")
+    .option("--confirm <nonce>", "Desktop custodian step 2: the nonce, with --session-id")
+    .option("--session-id <id>", "The custodian's recorded Claude Code session UUID")
+  ).action((options: { workspace: string; project: string; role: string; successor: number; challenge?: boolean; confirm?: string; sessionId?: string; json?: boolean }) =>
+    runCliAction("coordinator.stand-down", options, () => runCoordinatorStandDownCommand({ ...options, env: process.env }), renderCoordinatorStandDownSuccess)
   );
   coordinatorScope(coordinator.command("renew")
     .description("Launch one successor coordinator through the tmux launcher (same provider and model, Remote Control, verified prompt delivery, one retry, one attention ping on failure). Refuses until the standing relay Decision is on main. Custody-guarded")

@@ -40,7 +40,7 @@ export const COORDINATOR_ENV = {
 } as const;
 
 /** The exact commands the custody guard covers (design section c, step 5). */
-export type GuardedCommand = "note" | "subscribe" | "subscribe-from-snapshot" | "hold" | "renew" | "accept" | "ping";
+export type GuardedCommand = "note" | "subscribe" | "subscribe-from-snapshot" | "hold" | "renew" | "accept" | "ping" | "stand-down";
 
 export function ensureCoordinatorGenerationsTable(db: Database.Database): void {
   db.exec(`CREATE TABLE IF NOT EXISTS coordinator_generations (
@@ -67,6 +67,8 @@ export function ensureCoordinatorGenerationsTable(db: Database.Database): void {
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     accepted_at TEXT,
+    stood_down_at TEXT,
+    stood_down_for INTEGER,
     PRIMARY KEY (project, role, generation)
   );
   CREATE UNIQUE INDEX IF NOT EXISTS idx_coordinator_generations_one_custodian
@@ -75,6 +77,10 @@ export function ensureCoordinatorGenerationsTable(db: Database.Database): void {
     ON coordinator_generations(project, role) WHERE status = 'launching';
   CREATE UNIQUE INDEX IF NOT EXISTS idx_coordinator_generations_token
     ON coordinator_generations(token_hash) WHERE token_hash IS NOT NULL;`);
+  // Workspaces created before predecessor stand-down existed lack the two columns.
+  const have = new Set((db.prepare("PRAGMA table_info(coordinator_generations)").all() as Array<{ name: string }>).map((column) => column.name));
+  if (!have.has("stood_down_at")) db.exec("ALTER TABLE coordinator_generations ADD COLUMN stood_down_at TEXT");
+  if (!have.has("stood_down_for")) db.exec("ALTER TABLE coordinator_generations ADD COLUMN stood_down_for INTEGER");
 }
 
 interface Row {
@@ -84,6 +90,7 @@ interface Row {
   brief_path: string | null; brief_sha: string | null; snapshot_path: string | null; snapshot_sha: string | null;
   token_hash: string | null; verified_sha: string | null; verified_at: string | null; failure_reason: string | null;
   created_at: string; updated_at: string; accepted_at: string | null;
+  stood_down_at: string | null; stood_down_for: number | null;
 }
 
 export interface GenerationRecord {
@@ -95,6 +102,8 @@ export interface GenerationRecord {
   relayLaunched: boolean;
   verifiedSha: string | null; verifiedAt: string | null; failureReason: string | null;
   createdAt: string; updatedAt: string; acceptedAt: string | null;
+  /** When this custodian recorded its stand-down, and for which successor generation (null until it does). */
+  stoodDownAt: string | null; stoodDownFor: number | null;
 }
 
 function toRecord(row: Row): GenerationRecord {
@@ -105,7 +114,8 @@ function toRecord(row: Row): GenerationRecord {
     briefPath: row.brief_path, briefSha: row.brief_sha, snapshotPath: row.snapshot_path, snapshotSha: row.snapshot_sha,
     relayLaunched: row.token_hash !== null,
     verifiedSha: row.verified_sha, verifiedAt: row.verified_at, failureReason: row.failure_reason,
-    createdAt: row.created_at, updatedAt: row.updated_at, acceptedAt: row.accepted_at
+    createdAt: row.created_at, updatedAt: row.updated_at, acceptedAt: row.accepted_at,
+    stoodDownAt: row.stood_down_at ?? null, stoodDownFor: row.stood_down_for ?? null
   };
 }
 
@@ -205,6 +215,11 @@ function refused(message: string, reason: string, details: Record<string, unknow
   return new ArcadiaError("VALIDATION_ERROR", message, 2, { reason, ...details });
 }
 
+/** Runs `fn` under the relay lock, or directly when the caller (a command that already holds it) says so: the lock is not reentrant. */
+function underRelayLock<T>(paths: CoordinatorPaths, input: { lock?: RelayLockDeps; lockHeld?: boolean }, fn: () => T): T {
+  return input.lockHeld ? fn() : withRelayLock(paths.root, fn, input.lock);
+}
+
 export interface GenerationIdentity {
   provider: string; model: string; tier: string; identity: string;
   nativeSessionId?: string | null; transcriptPath?: string | null;
@@ -219,11 +234,11 @@ export interface GenerationIdentity {
 export function seedCustodianGeneration(
   db: Database.Database,
   workspace: string,
-  input: GenerationIdentity & { project: string; role: string; now?: Date; lock?: RelayLockDeps }
+  input: GenerationIdentity & { project: string; role: string; now?: Date; lock?: RelayLockDeps; lockHeld?: boolean; verification?: Record<string, unknown> }
 ): GenerationRecord {
   const now = input.now ?? new Date();
   const paths = coordinatorPaths(workspace, input.project, input.role);
-  return withRelayLock(paths.root, () => {
+  return underRelayLock(paths, input, () => {
     const record = writeTransaction(db, () => {
       if (maxGeneration(db, input.project, input.role) > 0) {
         throw refused(`${input.role} for ${input.project} already has generations; a custodian is seeded only once.`, "generation_exists");
@@ -236,9 +251,74 @@ export function seedCustodianGeneration(
           input.nativeSessionId ?? null, input.transcriptPath ?? null, at, at, at);
       return listGenerations(db, input.project, input.role)[0];
     });
-    appendLog(paths, "custodian_seeded", { generation: 1, provider: input.provider, model: input.model }, now);
+    appendLog(paths, "custodian_seeded", { generation: 1, provider: input.provider, model: input.model, ...(input.verification ? { verification: input.verification } : {}) }, now);
     return record;
-  }, input.lock);
+  });
+}
+
+/**
+ * Corrects a tokenless (seeded, never relay-launched) custodian row in place
+ * after its replacement identity was verified (see sessionIdentity.ts). Refuses
+ * a relay-launched custodian (its custody moves only through accept) and any
+ * correction while a successor is launching. The previous values go to the log.
+ */
+export function correctCustodianGeneration(
+  db: Database.Database,
+  workspace: string,
+  input: GenerationIdentity & { project: string; role: string; now?: Date; lock?: RelayLockDeps; lockHeld?: boolean; verification?: Record<string, unknown> }
+): GenerationRecord {
+  const now = input.now ?? new Date();
+  const paths = coordinatorPaths(workspace, input.project, input.role);
+  return underRelayLock(paths, input, () => {
+    const { before, after } = writeTransaction(db, () => {
+      const current = currentCustodian(db, input.project, input.role);
+      if (!current) throw refused(`${input.role} for ${input.project} has no custodian to correct; register it first.`, "no_custodian");
+      if (current.relayLaunched) throw refused(`Generation ${current.generation} of ${input.role} was launched by the relay and holds a custody token; its custody moves only through accept, never a correction.`, "correction_relay_custodian");
+      if (newestLaunching(db, input.project, input.role)) throw refused(`A successor of ${input.role} is launching; no correction until it is accepted or fails.`, "launch_in_progress");
+      db.prepare(`UPDATE coordinator_generations SET provider = ?, model = ?, tier = ?, identity = ?, native_session_id = ?, transcript_path = ?,
+        stood_down_at = NULL, stood_down_for = NULL, updated_at = ? WHERE project = ? AND role = ? AND generation = ? AND status = 'custodian'`)
+        .run(input.provider, input.model, input.tier, input.identity, input.nativeSessionId ?? null, input.transcriptPath ?? null, now.toISOString(), input.project, input.role, current.generation);
+      return { before: current, after: currentCustodian(db, input.project, input.role) as GenerationRecord };
+    });
+    appendLogAfterCommit(paths, "custodian_corrected", {
+      generation: after.generation,
+      previous: { provider: before.provider, model: before.model, tier: before.tier, identity: before.identity, sessionId: before.nativeSessionId },
+      now: { provider: after.provider, model: after.model, tier: after.tier, identity: after.identity, sessionId: after.nativeSessionId },
+      ...(input.verification ? { verification: input.verification } : {})
+    }, now);
+    return after;
+  });
+}
+
+/**
+ * Records that the current custodian stands down for successor generation N,
+ * which must be the newest launching generation. `accept` refuses until this
+ * record names exactly that generation (gate 10, the stand-down half). It stops
+ * no process: the predecessor stops itself after recording it. Callers have
+ * already established who the predecessor is (custody token or verified Session).
+ */
+export function recordStandDown(
+  db: Database.Database,
+  workspace: string,
+  input: { project: string; role: string; successor: number; now?: Date; lock?: RelayLockDeps; lockHeld?: boolean }
+): GenerationRecord {
+  const now = input.now ?? new Date();
+  const paths = coordinatorPaths(workspace, input.project, input.role);
+  return underRelayLock(paths, input, () => {
+    const record = writeTransaction(db, () => {
+      const custodian = currentCustodian(db, input.project, input.role);
+      if (!custodian) throw refused(`No custodian of ${input.role} is recorded for ${input.project}; there is nothing to stand down.`, "no_custodian");
+      const launching = newestLaunching(db, input.project, input.role);
+      if (!launching || launching.generation !== input.successor) {
+        throw refused(`Generation ${input.successor} is not the launching successor of ${input.role}${launching ? ` (generation ${launching.generation} is)` : " (none is launching)"}; stand down only for the successor the relay launched.`, "successor_not_launching", { generation: input.successor });
+      }
+      db.prepare("UPDATE coordinator_generations SET stood_down_at = ?, stood_down_for = ?, updated_at = ? WHERE project = ? AND role = ? AND generation = ? AND status = 'custodian'")
+        .run(now.toISOString(), input.successor, now.toISOString(), input.project, input.role, custodian.generation);
+      return currentCustodian(db, input.project, input.role) as GenerationRecord;
+    });
+    appendLogAfterCommit(paths, "stood_down", { generation: record.generation, successor: input.successor }, now);
+    return record;
+  });
 }
 
 /** The row update only; the audit log is written after the transaction commits (see appendLogAfterCommit). */
@@ -486,6 +566,10 @@ export function acceptGeneration(db: Database.Database, paths: CoordinatorPaths,
   }
   const handedOff = writeTransaction(db, () => {
     const previous = currentCustodian(db, incoming.project, incoming.role);
+    // The predecessor's own stand-down for exactly this successor is recorded first (#2500 gate 10).
+    if (previous && previous.stoodDownFor !== incoming.generation) {
+      throw refused(`accept refused: generation ${previous.generation} (the current custodian) has not recorded its stand-down for generation ${incoming.generation}; custody is unchanged. The predecessor runs \`arcadia coordinator stand-down --project ${incoming.project} --role ${incoming.role} --successor ${incoming.generation}\`; retry accept after it does.`, "predecessor_not_stood_down", { generation: incoming.generation });
+    }
     if (previous) {
       db.prepare("UPDATE coordinator_generations SET status = 'handed_off', updated_at = ? WHERE project = ? AND role = ? AND generation = ?")
         .run(at, incoming.project, incoming.role, previous.generation);
