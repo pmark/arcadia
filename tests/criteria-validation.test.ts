@@ -25,7 +25,8 @@ beforeEach(() => {
   vi.mocked(runOwnedValidation).mockReset().mockImplementation(({ argv, cwd }) => {
     const json = argv.find((arg) => arg.startsWith("--outputFile.json="));
     if (json && vitestReport) {
-      writeFileSync(json.slice("--outputFile.json=".length), JSON.stringify(vitestReport(cwd)));
+      const body = vitestReport(cwd);
+      if (body !== undefined) writeFileSync(json.slice("--outputFile.json=".length), typeof body === "string" ? body : JSON.stringify(body));
       return { status: 1, signal: null, stdout: "", stderr: "", timedOut: false, terminalProven: true, error: null };
     }
     const report = argv.find((arg) => arg.startsWith("--test-reporter-destination="));
@@ -178,7 +179,7 @@ describe("vitest named tests denied loopback networking", () => {
     ]);
     const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
     expect(result).toMatchObject({ status: "refused", hostFault: true, failures: ["tests/ready.test.js > serves on loopback", "tests/ready.test.js > connects to loopback"],
-      reason: expect.stringContaining("need loopback networking") });
+      reason: expect.stringContaining("reported only loopback networking denials") });
   });
 
   it("stays refused when a real assertion failure is mixed with a loopback denial", () => {
@@ -189,5 +190,33 @@ describe("vitest named tests denied loopback networking", () => {
     const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
     expect(result).toMatchObject({ status: "refused", hostFault: false, reason: expect.stringContaining("vitest exited 1") });
     expect(result).not.toMatchObject({ reason: expect.stringContaining("loopback networking") });
+  });
+
+  it("stays refused when an assertion merely quotes listen EPERM", () => {
+    vitestReport = (cwd) => failed(cwd, [
+      { title: "reports the message", messages: ["AssertionError: expected 'listen EPERM' to be undefined"] }
+    ]);
+    const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
+    expect(result).toMatchObject({ status: "refused", hostFault: false, reason: expect.stringContaining("vitest exited 1") });
+  });
+
+  it("holds as loopback-denied when the file-level message is an EPERM with no failed test", () => {
+    vitestReport = (cwd) => ({ testResults: [{ name: path.join(cwd, "tests/ready.test.js"), status: "failed", message: "Error: listen EPERM: operation not permitted 127.0.0.1:0", assertionResults: [] }] });
+    const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
+    expect(result).toMatchObject({ status: "refused", hostFault: true, loopbackDenied: true, reason: expect.stringContaining("loopback networking") });
+  });
+
+  it("stays refused on a non-zero exit with no failed test and no matching file message", () => {
+    vitestReport = (cwd) => ({ testResults: [{ name: path.join(cwd, "tests/ready.test.js"), status: "failed", message: "SyntaxError: unexpected token", assertionResults: [] }] });
+    const result = validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true });
+    expect(result).toMatchObject({ status: "refused", hostFault: false, reason: expect.stringContaining("vitest exited 1") });
+    expect(result).not.toMatchObject({ loopbackDenied: true });
+  });
+
+  it("stays refused when the vitest report is missing or unparseable", () => {
+    vitestReport = () => undefined;
+    expect(validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true })).toMatchObject({ status: "refused", hostFault: false });
+    vitestReport = () => "{ not json";
+    expect(validateCompletionCandidate(candidate({ vitest: true }), { unconfinedForTests: true })).toMatchObject({ status: "refused", hostFault: false });
   });
 });
