@@ -4,7 +4,7 @@ type: decision
 id: "0227"
 slug: d5-which-bootstrap-probe-and-transport-route-enables-automatic-coordinator-and
 project: arcadia
-status: open
+status: approved
 question: "D5: Which bootstrap, probe and transport route enables automatic coordinator and keeper launch?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
 updated: 2026-11-12
+answer: A
+decided: 2026-11-12
 ---
 
 # Decision 0227: D5: Which bootstrap, probe and transport route enables automatic coordinator and keeper launch?
