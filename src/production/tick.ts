@@ -1084,10 +1084,12 @@ export function recordOperatorEscalation(
   const existing = db.prepare("SELECT action_key, kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as
     | { action_key: string; kind: string }
     | undefined;
-  // Decision 0223: a held kind never replaces an open escalation of a different,
-  // non-held kind, so a global row can never become skippable.
-  const heldKind = (kind: string) => ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || REVIEW_REPAIR_ESCALATIONS.has(kind);
-  if (existing && existing.kind !== input.kind && heldKind(input.kind) && !heldKind(existing.kind)) return false;
+  // Decision 0223: a new Action-local held kind never replaces an open escalation
+  // of a different, non-held kind, so a global row can never become skippable.
+  // Review-repair kinds are excluded: they predate D1 and legitimately replace
+  // the verdict-wait rows (independent_verdict_failed and the like).
+  const isHeld = (kind: string) => ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || REVIEW_REPAIR_ESCALATIONS.has(kind);
+  if (existing && existing.kind !== input.kind && ACTION_LOCAL_HELD_ESCALATIONS.has(input.kind) && !isHeld(existing.kind)) return false;
   db.prepare(
     `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
        VALUES (@action_key, @kind, @message, @remedy, @at, @at)
