@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Burn down three verified test-only bug Issues in unattended serial production.
 active_plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
-updated: 2026-11-11
-current_action: strip-claude-login-tokens-from-logged-out-fixtures
+updated: 2026-11-12
+current_action: pick-dashboard-live-smoke-port-from-the-os
 ---
 
 # Arcadia

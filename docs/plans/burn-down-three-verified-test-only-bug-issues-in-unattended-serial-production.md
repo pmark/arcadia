@@ -7,7 +7,7 @@ status: active
 milestone: Burn down three verified test-only bug Issues in unattended serial production.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-11
+updated: 2026-11-12
 actions:
   - id: write-tmux-long-command-argv-atomically
     title: "Make the fake provider scripts in tests/system-tmux-long-command.test.ts write their argv JSON atomically, so the polling reader never parses a partly written file, fixing Issue #2314."
@@ -30,11 +30,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2314"]
   - id: strip-claude-login-tokens-from-logged-out-fixtures
     title: "Make the logged-out Claude cases in tests/headless-provider-operator-script.test.ts ignore login tokens inherited from the parent environment, fixing Issue #1327."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the logged-out Claude cases in tests/headless-provider-operator-script.test.ts ignore login tokens inherited from the parent environment, fixing Issue #1327."
+    next_action: Completed via Agent Ask complete-strip-claude-login-tokens-from-logged-out-fixtures-a292873f2664; no further action.
     expected_artifact: Evidence satisfying Agent Ask strip-claude-login-tokens-from-logged-out-fixtures
     clarification: clarified
     confidence: high
@@ -69,7 +69,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2504"]
 questions: []
 decisions: []
-current_action: strip-claude-login-tokens-from-logged-out-fixtures
+current_action: pick-dashboard-live-smoke-port-from-the-os
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-11
+updated: 2026-11-12
 ---
 
 # Mission Log: Arcadia
@@ -3368,3 +3368,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Operator-settled Plan transition. Previous Plan burn-down-three-small-verified-bug-issues-in-unattended-serial-production remains draft with completion state preserved. Decision 0157 and Decision 0214 A, on the operator's 2026-11-11 route A ("We've got 7.5 hours and 22% — let's use them up!", relayed by Signal 8). The card embeds this accepted activation as its planActivation block, so it settles only at the operator's press. Activation sets the Plan active with current_action write-tmux-long-command-argv-atomically. The previous Plan, burn-down-three-small-verified-bug-issues-in-unattended-serial-production, keeps its two unfinished operator_authority Actions (truncate-torn-journal-tail-by-byte-offset, report-cut-work-monitor-attention-lines) and returns to draft. No Action content changes.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-11-12 — Completed arcadia/strip-claude-login-tokens-from-logged-out-fixtures
+
+- **Did:** Completed Action arcadia/strip-claude-login-tokens-from-logged-out-fixtures from accepted evidence (Candidate a292873f26648aa2a04d1d76a6e45d1408bf4b3c).
+- **Result:** Every declared acceptance criterion was accepted as met: "In tests/headless-provider-operator-script.test.ts, every logged-out Claude case runs with an environment that omits CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY even when the parent process has them set."; "A regression test in tests/headless-provider-operator-script.test.ts sets CLAUDE_CODE_OAUTH_TOKEN in the parent environment and asserts the logged-out case still skips or refuses Claude; it fails before the fix and passes after, and restores the parent environment afterwards."; "Every other test in tests/headless-provider-operator-script.test.ts passes unchanged, and apart from the settlement records Arcadia writes, the change touches only tests/headless-provider-operator-script.test.ts. Proof that the tests, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-strip-claude-login-tokens-from-logged-out-fixtures-a292873f2664).
