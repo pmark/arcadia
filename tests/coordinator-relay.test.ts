@@ -415,6 +415,28 @@ describe("startPressInProgressIn (START interlock detector)", () => {
     expect(result.detail).toContain("child pid 4243");
   });
 
+  it("stray files in the library, at card level and inside a card directory, are not presses", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: { status: "succeeded" } });
+    writeFileSync(path.join(lib, "runs", "operator", ".DS_Store"), "x");
+    writeFileSync(path.join(lib, "runs", "operator", "start", ".DS_Store"), "x");
+    writeFileSync(path.join(lib, "runs", "operator", "start", "note.lock"), "{");
+    expect(detect(lib)).toMatchObject({ inProgress: false });
+    // A real press next to the stray files still blocks.
+    press(lib, "start", "r2", { run: { status: "running", pid: 4242, startedAt: started(1000) } });
+    const blocked = detect(lib);
+    expect(blocked.inProgress).toBe(true);
+    expect(blocked.unreadable).toBeUndefined();
+  });
+
+  it("an unreadable refusal names the actual file and the cause", () => {
+    const lib = library();
+    press(lib, "start", "r1", { run: "{not json" });
+    const result = detect(lib);
+    expect(result.detail).toContain(path.join(lib, "runs", "operator", "start", "r1", "run.json"));
+    expect(result.detail).toContain("(not valid JSON)");
+  });
+
   it("a corrupt run.json on a non-START card never blocks, and one on a START card still refuses", () => {
     const lib = library();
     press(lib, "other", "r1", { run: "{not json", descriptor: { kind: "script" } });

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -387,17 +387,24 @@ export function startPressInProgressIn(
   const now = (options.now ?? new Date()).getTime();
   const maxAgeMs = options.maxAgeMs ?? START_PRESS_MAX_AGE_MS;
   const liveness = options.liveness ?? pidLiveness;
-  const unreadable = (what: string): StartPressStatus => ({ inProgress: true, unreadable: true, detail: `PRESS_UNREADABLE: ${what} cannot be read, so it cannot be ruled out; preserve it and stop for the operator` });
+  const unreadable = (what: string, cause: string): StartPressStatus => ({ inProgress: true, unreadable: true, detail: `PRESS_UNREADABLE: ${what} cannot be read (${cause}), so it cannot be ruled out; preserve it and stop for the operator` });
+  // A press is a directory; a stray file (.DS_Store, a lock, a note) is not one (start-run.sh: statSync(dir).isDirectory()).
+  const isDirectory = (entry: string): boolean | StartPressStatus => {
+    try { return statSync(entry).isDirectory(); } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      return code === "ENOENT" || code === "ENOTDIR" ? false : unreadable(entry, code ?? "stat error");
+    }
+  };
   const list = (dir: string): string[] | StartPressStatus => {
     try { return readdirSync(dir); } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      return code === "ENOENT" || code === "ENOTDIR" ? [] : unreadable(`${dir} (${code ?? "error"})`);
+      return code === "ENOENT" || code === "ENOTDIR" ? [] : unreadable(dir, code ?? "list error");
     }
   };
   const readJson = (file: string): { ok: true; value: Record<string, unknown> | null } | { ok: false; code: string } => {
     try { return { ok: true, value: JSON.parse(readFileSync(file, "utf8")) as Record<string, unknown> }; } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      return code === "ENOENT" ? { ok: true, value: null } : { ok: false, code: code ?? "unparseable" };
+      return code === "ENOENT" ? { ok: true, value: null } : { ok: false, code: code ?? "not valid JSON" };
     }
   };
   const usablePid = (value: unknown): number | null => (typeof value === "number" && Number.isInteger(value) && value > 0 ? value : null);
@@ -406,24 +413,28 @@ export function startPressInProgressIn(
   if (!Array.isArray(cards)) return cards;
   const stale: string[] = [];
   for (const card of cards) {
+    const cardDirectory = isDirectory(path.join(root, card));
+    if (cardDirectory !== true) { if (cardDirectory === false) continue; return cardDirectory; }
     const presses = list(path.join(root, card));
     if (!Array.isArray(presses)) return presses;
     for (const press of presses) {
       const dir = path.join(root, card, press);
       const label = `${card}/${press}`;
+      const pressDirectory = isDirectory(dir);
+      if (pressDirectory !== true) { if (pressDirectory === false) continue; return pressDirectory; }
       const descriptor = readJson(path.join(dir, "descriptor.json"));
       if (descriptor.ok && descriptor.value !== null && !descriptor.value.startRun) continue; // a readable non-START card
       const run = readJson(path.join(dir, "run.json"));
       if (run.ok && run.value === null) continue; // not a press directory
       // Here the card is START, or its descriptor cannot be read (missing or damaged) so it cannot be ruled out.
-      if (!run.ok) return unreadable(`${label}/run.json`);
+      if (!run.ok) return unreadable(path.join(dir, "run.json"), run.code);
       if (run.value === null) continue;
       if (run.value.status !== "running") continue;
-      if (!descriptor.ok || descriptor.value === null) return unreadable(`${label}/descriptor.json`);
+      if (!descriptor.ok || descriptor.value === null) return unreadable(path.join(dir, "descriptor.json"), descriptor.ok ? "missing" : descriptor.code);
       const startedAt = typeof run.value.startedAt === "string" ? Date.parse(run.value.startedAt) : Number.NaN;
       const recorded = [["runner", usablePid(run.value.pid)], ["child", usablePid(run.value.childPid)]] as const;
       const pids = recorded.filter((entry): entry is readonly ["runner" | "child", number] => entry[1] !== null);
-      if (!Number.isFinite(startedAt) && pids.length === 0) return unreadable(`${label}/run.json (running with neither a usable pid nor startedAt)`);
+      if (!Number.isFinite(startedAt) && pids.length === 0) return unreadable(path.join(dir, "run.json"), "running with neither a usable pid nor startedAt");
       const states = pids.map(([who, pid]) => ({ who, pid, state: liveness(pid, startedAt) }));
       const live = states.find((entry) => entry.state === "live");
       if (live) return { inProgress: true, detail: `${label} status running, ${live.who} pid ${live.pid} live` };
