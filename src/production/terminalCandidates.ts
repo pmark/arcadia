@@ -46,7 +46,28 @@ import { REVIEW_REPAIR_ESCALATIONS, REVIEW_REPAIR_ROUNDS_EXHAUSTED } from "./rev
  */
 export function operatorHeldEscalation(db: Database.Database, actionKey: string, context: RepairStopContext = {}): { kind: string; firstDetectedAt: string } | null {
   const state = reviewRepairEscalationState(db, actionKey, context);
-  return state && state.staleReason === null ? { kind: state.kind, firstDetectedAt: state.firstDetectedAt } : null;
+  if (state) return state.staleReason === null ? { kind: state.kind, firstDetectedAt: state.firstDetectedAt } : null;
+  return actionLocalHold(db, actionKey);
+}
+
+/**
+ * Decision 0223 (D1, answer A): the only Action-local stop classes that hold
+ * their Action besides the review-repair kinds. Repair-budget exhaustion for
+ * that Action and the loopback validation hold (Issue #2519). Each keeps its
+ * candidate, counters and evidence, and its dependents stay unready. Global,
+ * unknown or shared failures (sign-in, authority, STOP, storage, custody) are
+ * deliberately absent: they still stop the scope. Widening this set needs a
+ * new Decision.
+ */
+export const ACTION_LOCAL_HELD_ESCALATIONS: ReadonlySet<string> = new Set(["repair_budget_exhausted", "completion_loopback_denied"]);
+
+/** This Action's open escalation when it is one of the Action-local held classes, or null. Read-only; a missing table answers null. */
+function actionLocalHold(db: Database.Database, actionKey: string): { kind: string; firstDetectedAt: string } | null {
+  let row: { kind: string; first_detected_at: string } | undefined;
+  try {
+    row = db.prepare("SELECT kind, first_detected_at FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string; first_detected_at: string } | undefined;
+  } catch { return null; }
+  return row && ACTION_LOCAL_HELD_ESCALATIONS.has(row.kind) ? { kind: row.kind, firstDetectedAt: row.first_detected_at } : null;
 }
 
 /** What a caller knows about the Action now, so the staleness check need not rediscover it. */
