@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: 26.04 ships uutils timeout, which the durable executor refuses (#2527)
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -44,7 +44,7 @@ jobs:
     # small shard. Branch protection requires the checks unit-1..unit-4, so the
     # unit-N gate jobs below keep those names and fail unless every shard passed.
     name: unit-shard-${{ matrix.shard }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: 26.04 ships uutils timeout, which the durable executor refuses (#2527)
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -76,7 +76,7 @@ jobs:
     name: unit-${{ matrix.gate }}
     needs: unit
     if: ${{ always() }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: 26.04 ships uutils timeout, which the durable executor refuses (#2527)
     timeout-minutes: 5
     strategy:
       matrix:
@@ -90,7 +90,7 @@ jobs:
           test "$RESULT" = "success"
 
   dashboard:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: 26.04 ships uutils timeout, which the durable executor refuses (#2527)
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -104,7 +104,7 @@ jobs:
       - run: mise exec -- pnpm dashboard:build
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # pinned: 26.04 ships uutils timeout, which the durable executor refuses (#2527)
     timeout-minutes: 15
     env:
       ARCADIA_CONFIG_PATH: ${{ github.workspace }}/.tmp/isolated-arcadia-config.json
