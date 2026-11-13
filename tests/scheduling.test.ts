@@ -811,7 +811,7 @@ describe("scheduling pass", () => {
       expect(readFileSync(path.join(repo, "candidate-a.md"), "utf8")).toBe("A's output\n");
     });
 
-    it("a run with parked work is never reported all merged: the pinned-Action predicate the replay stops on still names the held Action", () => {
+    it("discovery status: held A and dependent C stay unfinished in the Plan, so a run with parked work never reads as all merged", () => {
       const fx = shape();
       const repo = fx.repos.alpha;
       withDatabase(fx.workspace, (db) => {
@@ -822,8 +822,8 @@ describe("scheduling pass", () => {
       });
       landDone(repo, "b", "chore(arcadia): settle complete-b");
 
-      // scripts/production-replay.ts stops with `all_merged` only when no pinned Action of the Plan is other than done.
-      // The predicate is inline in that script, so it is reproduced here over the same Plan discovery it uses.
+      // Copy of the replay's all_merged predicate (scripts/production-replay.ts:1546-1558) minus its pinned-scope filter; it can drift from that script.
+      // The replay stops with `all_merged` only when no pinned Action of the Plan is other than done.
       const unmergedPinned = (): string[] | null => {
         const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.project === "alpha" && doc.slug === "alpha-plan") as
           { actions: Array<{ id: string; status: string }> } | undefined;
