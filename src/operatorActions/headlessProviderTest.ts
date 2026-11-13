@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { appendFileSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { homedir, tmpdir } from "node:os";
 import path from "node:path";
@@ -498,6 +498,30 @@ function bindingModelFor(workspace: string, profile: string): string {
   return bindings[0].model;
 }
 
+/**
+ * `arcadia init --profile experiment` copies the defaults config files read-only (0444). The harness writes several of them
+ * (coding-agent-profiles, provider-adapters, ask-rules, intent-registry, template-registry, coding-agent-models), so every copied
+ * file under the experiment workspace's config directory gets the owner write bit. Harness-side only: the live workspace and the
+ * product's own copy step are unchanged.
+ */
+function makeCopiedConfigWritable(workspace: string): void {
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const full = path.join(directory, entry.name);
+      if (entry.isDirectory()) walk(full);
+      else if (entry.isFile()) chmodSync(full, statSync(full).mode | 0o200);
+    }
+  };
+  const config = path.join(workspace, "config");
+  if (existsSync(config)) walk(config);
+}
+
+/** Make the experiment workspace's copied config writable, then record the build profile in its coding-agent profiles. */
+export function prepareExperimentConfig(workspace: string, profile: string): void {
+  makeCopiedConfigWritable(workspace);
+  setBuildProfile(workspace, profile);
+}
+
 function setBuildProfile(workspace: string, profile: string): void {
   const file = path.join(workspace, "config", "coding-agent-profiles.json");
   const config = JSON.parse(readFileSync(file, "utf8"));
@@ -981,7 +1005,7 @@ async function runProviderAttempt(context: Context, provider: ProviderName, temp
 
   try {
     mustArcadia(context, null, ["init", "--profile", "experiment", workspace, "--json"], "experiment workspace init");
-    setBuildProfile(workspace, PROVIDER_PROFILE[provider]);
+    prepareExperimentConfig(workspace, PROVIDER_PROFILE[provider]);
     const override = context.options.models?.[provider]?.trim() || null;
     if (override) setStartModelOverride(workspace, provider, override);
     const fixture = createFixture(context, workspace, date, bindingModelFor(workspace, PROVIDER_PROFILE[provider]));
