@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
 project: arcadia
-status: active
+status: complete
 milestone: Burn down three verified test-only bug Issues in unattended serial production.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-12
+updated: 2026-11-13
 actions:
   - id: write-tmux-long-command-argv-atomically
     title: "Make the fake provider scripts in tests/system-tmux-long-command.test.ts write their argv JSON atomically, so the polling reader never parses a partly written file, fixing Issue #2314."
@@ -49,11 +49,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/1327"]
   - id: pick-dashboard-live-smoke-port-from-the-os
     title: "Make tests/dashboard-live.test.ts use a port the operating system reported free instead of a random one, so its smoke server no longer collides with EADDRINUSE, fixing Issue #2504."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make tests/dashboard-live.test.ts use a port the operating system reported free instead of a random one, so its smoke server no longer collides with EADDRINUSE, fixing Issue #2504."
+    next_action: Completed via Agent Ask complete-pick-dashboard-live-smoke-port-from-the-os-2026-11-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask pick-dashboard-live-smoke-port-from-the-os
     clarification: clarified
     confidence: high
@@ -69,7 +69,6 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2504"]
 questions: []
 decisions: []
-current_action: pick-dashboard-live-smoke-port-from-the-os
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
