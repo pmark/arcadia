@@ -65,6 +65,12 @@ const STATUS_TIMEOUT_MS = 120_000;
  */
 const PING_POLL_TIMEOUT_MS = 120_000;
 
+/**
+ * `review --json` cold-starts tsx under load and was killed by the 30 s default
+ * (Issue #2581), so the review snapshot gets 90 s.
+ */
+const REVIEW_TIMEOUT_MS = 90_000;
+
 /** A CLI call killed by its timeout, typed so pollers can back off (Issue #2581). */
 export class CliTimeoutError extends Error {
   constructor(
@@ -144,7 +150,7 @@ export class ArcadiaCli {
   }
 
   review(): Promise<ArcadiaJsonSuccess<ReviewData>> {
-    return this.runJson<ReviewData>(this.withWorkspace(["review", "--json"]));
+    return this.runJson<ReviewData>(this.withWorkspace(["review", "--json"]), { timeoutMs: REVIEW_TIMEOUT_MS });
   }
 
   reviewShow(id: string): Promise<ArcadiaJsonSuccess<ReviewShowData>> {
