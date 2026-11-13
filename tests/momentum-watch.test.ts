@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -65,7 +65,8 @@ function row(overrides: Partial<IdleFrontRow> & { desired?: "active" | "inactive
 
 const moving = (overrides: Partial<IdleFrontRow> = {}) => row({ state: "moving", blocker_class: "none", blocked_since: null, tap_ready: null, blockers: [], idle_minutes: 0, idle_minutes_by_cause: { detection_lag: 0, no_route: 0, waiting_on_operator: 0, no_ready_work: 0 }, ...overrides });
 
-const pending = (root: string) => withDatabase(root, (db) => listPendingOperatorPings(db));
+// Duty pings have their own agent and suite (tests/duty-alarms.test.ts); these suites pin the idle, keeper and check alarms.
+const pending = (root: string) => withDatabase(root, (db) => listPendingOperatorPings(db)).filter((ping) => ping.agent !== "Duty alarm");
 const stateOf = (root: string) => JSON.parse(readFileSync(path.join(root, ".arcadia", "momentum-watch.json"), "utf8")) as MomentumWatchState;
 
 function heartbeat(root: string, armedAt: string, armedUntil: string, session: string | null = "Keeper 1"): void {
@@ -270,7 +271,9 @@ describe("the keeper alarm, end to end through the ping outbox", () => {
     expect(quiet.keeper.ping).toBeNull();
     expect(quiet.idle.ping).toBeNull();
     expect(pending(root)).toHaveLength(0);
-    expect(existsSync(path.join(root, ".arcadia", "momentum-watch.json"))).toBe(false);
+    // The duty alarm records its own Off-with-nothing episode in the same state file; the idle and keeper slots stay empty.
+    expect(stateOf(root).idle.open).toBeNull();
+    expect(stateOf(root).keeper.open).toBeNull();
     await run(root, "17:01:00", moving());
     expect((await run(root, "17:02:00", off)).keeper.ping).toBe("close");
     expect(pending(root)[1]?.message).toContain("✅ MOMENTUM KEEPER alarm closed: Production is Off and no scope Action is waiting, so no keeper is required");
@@ -358,8 +361,10 @@ describe("liveness-check runs the momentum alarm on the same timer", () => {
     expect(response.data.momentum?.idle.ping).toBe("alert");
     expect(response.data.momentum?.keeper.ping).toBe("alert");
     const lines = renderProductionLivenessTimerSuccess(response);
-    expect(lines).toHaveLength(2);
-    expect(lines.every((line) => line.includes("🚨🚨🚨 MOMENTUM"))).toBe(true);
+    // The fixture's 3 ready Actions sit under the default floor, so the duty alarm pages too (its own suite pins that).
+    expect(lines).toHaveLength(3);
+    expect(lines.filter((line) => line.includes("🚨🚨🚨 MOMENTUM"))).toHaveLength(2);
+    expect(lines.filter((line) => line.includes("🚨🚨🚨 DUTY"))).toHaveLength(1);
   });
 
   it("never lets a momentum failure stop the worker check, and exits non-zero with both", async () => {

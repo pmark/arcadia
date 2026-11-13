@@ -23,9 +23,13 @@ today and what is still pending.
   filler work to satisfy a number.
 - **Prevents:** production idling because one START covered one Plan and nothing
   else was ready.
-- **Today:** the keeper restocks through Asks. Nothing counts the supply yet.
-- **Pending:** a read-only ready-work command with reasons, and a timer alarm
-  below the floor (needs code, housekeeping item 2).
+- **Today:** the keeper restocks through Asks. The duty alarm on the momentum
+  timer pages once per episode when the ready count is below the floor (default
+  6, `arcadia production liveness-check --ready-floor`; the default is
+  uncalibrated). It stays quiet while a running Action is healthy: moving with
+  recent activity, however long it has run.
+- **Pending:** a read-only ready-work command with reasons, and calibration of
+  the floor from observed throughput.
 
 ## 2. Ready is proven, not claimed
 
@@ -116,8 +120,11 @@ today and what is still pending.
   recovery route; and renewal never overlapping a START.
 - **Prevents:** a gap in coordination while a successor is missing.
 - **Today:** holds by procedure. The predecessor continues until accepted.
-- **Pending:** the relay launches at 60% context and the timer alarms when no
-  accept comes within 10 minutes (needs code).
+- **Today:** the duty alarm pages once when the coordinator custodian has had no
+  live transcript for 10 minutes (the coordinator's own 10-minute liveness
+  test). It does not yet read a successor's accept.
+- **Pending:** the relay launches at 60% context and an accept-timeout alarm
+  (needs code).
 
 ## 9. No silent stall
 
@@ -128,9 +135,14 @@ today and what is still pending.
   routed blocker pages once. So do an empty ready list, a missing custodian (10
   minutes) and a lapsed keeper heartbeat (10 minutes).
 - **Prevents:** silent stalls of the kind that ran for about 15 hours on 11-11.
-- **Today:** the existing momentum alarm runs only inside a run window.
-- **Pending D6:** the keeper's duty while Off (0190 says stop at Off), plus wider
-  timer alarms (needs code).
+- **Today:** the existing momentum alarm runs only inside a run window. The duty
+  alarm also pages, once per episode, when production is Off with nothing
+  eligible, and when no custodian has been live for 10 minutes. A page that
+  opens an episode is never repeated until that episode closes, and only one
+  episode is open at a time; the root condition is the first by precedence
+  (custodian, then Off with nothing eligible, then ready below the floor).
+- **Pending D6:** the keeper's duty while Off (0190 says stop at Off), and the
+  20-minute no-merge and keeper-lapse alarms that rule 9 names (needs code).
 
 ## 10. Idle is measured and owned
 
@@ -140,7 +152,12 @@ today and what is still pending.
   authorize new sessions or a retry. Delivery and acknowledgment are distinct.
 - **Prevents:** the same stall recurring unexamined.
 - **Today:** `arcadia production idle-front` already computes minutes by cause.
-- **Pending:** digest reporting and the stop-the-line Issue (small code).
+  Each duty episode records its root cause, the contributing conditions, its
+  owner and next event, and its start. Delivery (the outbox row that queued the
+  page) is recorded separately from acknowledgment, which stays empty until an
+  acknowledgment path exists. The close line gives the episode's duration.
+- **Pending:** the digest reporting, the stop-the-line Issue for an episode over
+  60 minutes, and acknowledgment capture (small code).
 
 ## 11. The operator's authority does not erode
 
@@ -159,8 +176,11 @@ today and what is still pending.
 
 - By procedure alone: rules 6, 8 and 11. Rule 5 holds because the operator acts
   on the replay's finding instead of pressing past it.
-- Rule 1 holds only by keeper restocking, and nothing counts it yet.
-- Rules 2, 3, 4, 7, 9 and 10 and the checks behind 1, 5 and 6 need code.
+- Rule 1 holds only by keeper restocking; the duty alarm pages a shortfall but
+  does not count throughput.
+- Rules 2, 3, 4 and 7 and the checks behind 5 and 6 need code. Rules 1, 8, 9 and
+  10 have the duty alarm described above, on the liveness timer, which waits for
+  operator merge.
 
 ## Open decisions
 

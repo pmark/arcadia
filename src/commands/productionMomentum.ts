@@ -1,9 +1,27 @@
-import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { currentCustodian } from "../coordinator/generations.js";
+import { findSessionTranscript } from "../coordinator/sessionIdentity.js";
+import { withReadOnlyDatabase } from "../db/connection.js";
 import { ARMED_WAKE_SCHEMA, type IdleFrontRow } from "../production/idleFront.js";
+import {
+  CUSTODIAN_ROLE,
+  DUTY_READY_FLOOR_DEFAULT,
+  DUTY_READY_FLOOR_MAX,
+  decideDuty,
+  dutyAlertMessage,
+  dutyCloseMessage,
+  emptyDutySlot,
+  type CustodianLiveness,
+  type DutyEpisodeRecord,
+  type DutyInput,
+  type DutySlot
+} from "../production/dutyAlarms.js";
+import { readProductionPolicySafely } from "../production/policy.js";
 import {
   KEEPER_DEFAULT_GRACE_MINUTES,
   KEEPER_DEFAULT_HEARTBEAT_MINUTES,
@@ -69,11 +87,14 @@ import {
 
 const STATE_FILE = "momentum-watch.json";
 const PING_AGENT = "Momentum watch";
+/** Duty pings name their own agent, so the operator can tell a duty page from an idle or keeper page. */
+const DUTY_PING_AGENT = "Duty alarm";
 
 export interface ProductionMomentumOptions {
   workspace?: string;
   idleMinutes?: number | string;
   keeperGraceMinutes?: number | string;
+  readyFloor?: number | string;
   dashboardUrl?: string;
   /** Default `<workspace>/.arcadia/armed-wakes`, where idle-front reads armed-until files too. */
   wakesDir?: string;
@@ -84,7 +105,12 @@ export interface ProductionMomentumDependencies {
   readRow?: (workspacePath: string, now: Date, wakesDir: string) => Promise<IdleFrontRow>;
   listProcesses?: () => ProcessRow[];
   queuePing?: (input: LivenessPingInput) => { id: string };
+  /** Test seam: the custodian's liveness; defaults to the coordinator's own transcript signal. */
+  readCustodian?: (workspacePath: string) => CustodianLiveness;
 }
+
+/** The momentum state plus the duty slot; a state file written before duty alarms reads as an empty duty slot. */
+type MomentumState = MomentumWatchState & { duty: DutySlot };
 
 export interface MomentumAlarmResult {
   ping: SlotTransition;
@@ -102,7 +128,9 @@ export interface ProductionMomentumData {
   idle: MomentumAlarmResult;
   keeper: MomentumAlarmResult;
   check: MomentumAlarmResult;
-  thresholds: { idleMinutes: number; keeperGraceMinutes: number };
+  /** The duty alarm (no custodian, Off with nothing eligible, ready below the floor); one episode at a time. */
+  duty: MomentumAlarmResult;
+  thresholds: { idleMinutes: number; keeperGraceMinutes: number; readyFloor: number };
 }
 
 function wholeMinutes(value: number | string | undefined, fallback: number, min: number, max: number, flag: string): number {
@@ -122,6 +150,36 @@ export function parseKeeperGraceMinutes(value: number | string | undefined): num
   return wholeMinutes(value, KEEPER_DEFAULT_GRACE_MINUTES, 1, 120, "--keeper-grace-minutes");
 }
 
+export function parseReadyFloor(value: number | string | undefined): number {
+  return wholeMinutes(value, DUTY_READY_FLOOR_DEFAULT, 1, DUTY_READY_FLOOR_MAX, "--ready-floor");
+}
+
+/**
+ * Custodian liveness from the coordinator's own signal: the newest write to the
+ * current `rowan` custodian's transcript, the same test `coordinator` uses for a
+ * live Session. Read-only. Any failure is unknown, never silent.
+ */
+export function readCustodianLiveness(workspacePath: string, projectsDirectory = path.join(homedir(), ".claude", "projects")): CustodianLiveness {
+  try {
+    return withReadOnlyDatabase(workspacePath, (db) => {
+      const read = readProductionPolicySafely(db);
+      if (read.status !== "ok") return { readable: false, lastLiveAt: null, reason: read.reason };
+      let newest: number | null = null;
+      for (const project of read.policy.scope?.projects ?? []) {
+        const custodian = currentCustodian(db, project, CUSTODIAN_ROLE);
+        if (!custodian?.nativeSessionId) continue;
+        const transcript = findSessionTranscript(projectsDirectory, custodian.nativeSessionId);
+        if (transcript === null) continue;
+        const modified = statSync(transcript).mtimeMs;
+        if (newest === null || modified > newest) newest = modified;
+      }
+      return { readable: true, lastLiveAt: newest, reason: null };
+    });
+  } catch (error) {
+    return { readable: false, lastLiveAt: null, reason: errorText(error) };
+  }
+}
+
 function statePath(workspacePath: string): string {
   return path.join(workspacePath, ".arcadia", STATE_FILE);
 }
@@ -137,28 +195,46 @@ function validSlot(value: unknown): value is AlertSlot {
     && typeof open.alertedAt === "string" && Number.isFinite(Date.parse(open.alertedAt));
 }
 
-/** A state that cannot be read restarts both episodes: the cost is a repeated page, never a lost one. */
-function readState(workspacePath: string): { state: MomentumWatchState; problem: string | null } {
+function emptyState(): MomentumState {
+  return { ...emptyMomentumState(), duty: emptyDutySlot() };
+}
+
+function validDuty(value: unknown): value is DutySlot {
+  if (value === undefined || value === null) return true;
+  if (typeof value !== "object") return false;
+  const slot = value as Partial<DutySlot>;
+  if (slot.closedAt !== null && slot.closedAt !== undefined && typeof slot.closedAt !== "string") return false;
+  if (slot.open === null || slot.open === undefined) return true;
+  const open = slot.open as Partial<DutyEpisodeRecord>;
+  return typeof open.cause === "string" && Array.isArray(open.contributing) && typeof open.key === "string"
+    && typeof open.startedAt === "string" && Number.isFinite(Date.parse(open.startedAt))
+    && typeof open.owner === "string" && typeof open.nextEvent === "string";
+}
+
+/** A state that cannot be read restarts every episode: the cost is a repeated page, never a lost one. */
+function readState(workspacePath: string): { state: MomentumState; problem: string | null } {
   let raw: string;
   try {
     raw = readFileSync(statePath(workspacePath), "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: emptyMomentumState(), problem: null };
-    return { state: emptyMomentumState(), problem: errorText(error) };
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { state: emptyState(), problem: null };
+    return { state: emptyState(), problem: errorText(error) };
   }
   try {
-    const value = JSON.parse(raw) as Partial<MomentumWatchState>;
+    const value = JSON.parse(raw) as Partial<MomentumState>;
     if (value.schema !== MOMENTUM_STATE_SCHEMA) throw new Error("unknown schema");
     if (!validSlot(value.idle) || !validSlot(value.keeper) || !validSlot(value.check)) throw new Error("malformed alert slot");
+    if (!validDuty(value.duty)) throw new Error("malformed duty slot");
     const since = value.checkFailingSince ?? null;
     if (since !== null && !(typeof since === "string" && Number.isFinite(Date.parse(since)))) throw new Error("malformed checkFailingSince");
-    return { state: { schema: MOMENTUM_STATE_SCHEMA, idle: value.idle, keeper: value.keeper, check: value.check, checkFailingSince: since }, problem: null };
+    const duty: DutySlot = value.duty ? { open: value.duty.open ?? null, closedAt: value.duty.closedAt ?? null } : emptyDutySlot();
+    return { state: { schema: MOMENTUM_STATE_SCHEMA, idle: value.idle, keeper: value.keeper, check: value.check, checkFailingSince: since, duty }, problem: null };
   } catch (error) {
-    return { state: emptyMomentumState(), problem: errorText(error) };
+    return { state: emptyState(), problem: errorText(error) };
   }
 }
 
-function writeState(workspacePath: string, state: MomentumWatchState): void {
+function writeState(workspacePath: string, state: MomentumState): void {
   const target = statePath(workspacePath);
   mkdirSync(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.tmp`;
@@ -187,6 +263,7 @@ export async function runProductionMomentumCheckCommand(
 ): Promise<CommandSuccess<ProductionMomentumData>> {
   const idleMinutes = parseIdleMinutes(options.idleMinutes);
   const keeperGraceMinutes = parseKeeperGraceMinutes(options.keeperGraceMinutes);
+  const readyFloor = parseReadyFloor(options.readyFloor);
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const now = new Date((dependencies.now ?? Date.now)());
   const wakesDir = path.resolve(options.wakesDir ?? path.join(workspacePath, ".arcadia", "armed-wakes"));
@@ -204,7 +281,7 @@ export async function runProductionMomentumCheckCommand(
 
   const queue = dependencies.queuePing ?? queueThroughPing;
   const failures: string[] = [];
-  const next: MomentumWatchState = { ...state };
+  const next: MomentumState = { ...state };
 
   const step = (
     slot: AlertSlot,
@@ -283,6 +360,54 @@ export async function runProductionMomentumCheckCommand(
   );
   next.keeper = keeperStep.slot;
 
+  // The duty alarm: one open episode per root condition, paged on open and once on close. Its
+  // own state and outbox key, but the same queue, state file and failure handling as the other alarms.
+  const dutyPrior = state.duty.open;
+  const custodian = (dependencies.readCustodian ?? readCustodianLiveness)(workspacePath);
+  const duty = decideDuty(dutyPrior, {
+    now: now.getTime(),
+    readyCount: readRow.ready_actions,
+    floor: readyFloor,
+    production: readRow.critical_path.state === "unreadable" || readRow.critical_path.desired_state === null
+      ? "unknown"
+      : readRow.critical_path.desired_state === "active" ? "active" : "off",
+    eligibleCount: readRow.ready_actions,
+    custodian,
+    running: {
+      count: readRow.critical_path.live_admissions,
+      // The read model has no per-Action clock: a moving critical path with admissions is the healthy signal.
+      lastActivityAt: readRow.critical_path.state === "moving" && readRow.critical_path.live_admissions > 0 ? now.getTime() : null
+    }
+  } satisfies DutyInput);
+  let dutyResult: MomentumAlarmResult = { ping: null, pingId: null, message: null, open: dutyPrior !== null };
+  let nextDuty: DutySlot = { open: duty.next, closedAt: state.duty.closedAt };
+  if (duty.transition === "open" || duty.transition === "close") {
+    const priorPingId = dutyPrior?.delivery?.pingId ?? "unqueued";
+    const opening = duty.next as DutyEpisodeRecord;
+    const message = duty.transition === "open" ? dutyAlertMessage(opening, now) : dutyCloseMessage(dutyPrior as DutyEpisodeRecord, priorPingId, now);
+    try {
+      const pingId = queue({
+        workspace: workspacePath,
+        message,
+        kind: "attention",
+        link: dashboardLink(options.dashboardUrl, "/production"),
+        agent: DUTY_PING_AGENT,
+        episodeKey: duty.transition === "open" ? opening.key : closingKey(priorPingId),
+        episodeAfter: state.duty.closedAt,
+        now
+      }).id;
+      nextDuty = duty.transition === "open"
+        ? { open: { ...opening, delivery: { pingId, queuedAt: now.toISOString() } }, closedAt: state.duty.closedAt }
+        : { open: null, closedAt: now.toISOString() };
+      dutyResult = { ping: duty.transition === "open" ? "alert" : "close", pingId, message, open: nextDuty.open !== null };
+    } catch (error) {
+      // Nothing changes on a failed queue, so the next run decides the same transition and retries it.
+      nextDuty = { open: dutyPrior, closedAt: state.duty.closedAt };
+      failures.push(`The duty ${duty.transition === "open" ? "alarm" : "recovery"} was not queued and will be retried on the next run: ${errorText(error)}`);
+    }
+  }
+  next.duty = nextDuty;
+
   if (stateProblem !== null || JSON.stringify(next) !== JSON.stringify(state)) writeState(workspacePath, next);
   if (stateProblem !== null) failures.push(`The momentum state file was unreadable and has been replaced: ${stateProblem}`);
   if (failures.length > 0) throw validationError(failures.join(" "));
@@ -299,13 +424,14 @@ export async function runProductionMomentumCheckCommand(
       idle: idleStep.result,
       keeper: keeperStep.result,
       check: checkStep.result,
-      thresholds: { idleMinutes, keeperGraceMinutes }
+      duty: dutyResult,
+      thresholds: { idleMinutes, keeperGraceMinutes, readyFloor }
     }
   });
 }
 
 export function renderProductionMomentumLines(data: ProductionMomentumData, stamp = new Date().toISOString()): string[] {
-  return [data.check, data.idle, data.keeper]
+  return [data.check, data.idle, data.keeper, data.duty]
     .filter((result) => result.message !== null)
     .map((result) => `${stamp} queued ping ${result.pingId}: ${result.message}`);
 }
@@ -313,6 +439,7 @@ export function renderProductionMomentumLines(data: ProductionMomentumData, stam
 export interface LivenessTimerOptions extends ProductionLivenessOptions {
   idleMinutes?: number | string;
   keeperGraceMinutes?: number | string;
+  readyFloor?: number | string;
 }
 
 export interface LivenessTimerData extends ProductionLivenessData {
@@ -336,6 +463,7 @@ export async function runProductionLivenessTimerCommand(
   // Refuse bad thresholds before either check runs, so a bad flag never half-runs the timer.
   parseIdleMinutes(options.idleMinutes);
   parseKeeperGraceMinutes(options.keeperGraceMinutes);
+  parseReadyFloor(options.readyFloor);
   let liveness: CommandSuccess<ProductionLivenessData> | null = null;
   const failures: string[] = [];
   let livenessError: unknown = null;
@@ -348,7 +476,7 @@ export async function runProductionLivenessTimerCommand(
   let momentum: CommandSuccess<ProductionMomentumData> | null = null;
   try {
     momentum = await runProductionMomentumCheckCommand(
-      { workspace: liveness?.workspace ?? options.workspace, idleMinutes: options.idleMinutes, keeperGraceMinutes: options.keeperGraceMinutes, dashboardUrl: options.dashboardUrl },
+      { workspace: liveness?.workspace ?? options.workspace, idleMinutes: options.idleMinutes, keeperGraceMinutes: options.keeperGraceMinutes, readyFloor: options.readyFloor, dashboardUrl: options.dashboardUrl },
       { ...(dependencies.liveness?.now ? { now: dependencies.liveness.now } : {}), ...(dependencies.liveness?.listProcesses ? { listProcesses: dependencies.liveness.listProcesses } : {}), ...dependencies.momentum }
     );
   } catch (error) {

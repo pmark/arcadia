@@ -391,7 +391,8 @@ describe("liveness-check runs the budget on the same timer", () => {
       { liveness: { readProductionActive: () => false }, momentum: { readRow: async () => closedRow() }, budget: { sources: sources(claudeHome()) } }
     );
     expect(response.data.coordinatorBudget).toEqual({ coordinators: [], problems: [] });
-    expect(renderProductionLivenessTimerSuccess(response)).toEqual([]);
+    // Production Off with nothing eligible now pages the duty alarm once; the budget itself still says nothing.
+    expect(renderProductionLivenessTimerSuccess(response).filter((line) => !line.includes("🚨🚨🚨 DUTY"))).toEqual([]);
   });
 
   it("never reads a developer's real sessions from a test process", () => {
