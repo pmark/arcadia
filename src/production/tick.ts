@@ -1840,12 +1840,17 @@ function recordRepairBudgetExhaustedEscalation(
 function pruneStaleOperatorEscalations(db: Database.Database, projectSlug: string, currentActionKey: string | null): void {
   // Operator decision 2026-10-21: an Action held by a review repair escalation
   // keeps it while the pointer is on another Action; the operator resolves it.
-  const heldKinds = [...REVIEW_REPAIR_ESCALATIONS];
-  db.prepare(`DELETE FROM production_operator_escalations WHERE action_key LIKE ? AND action_key != ? AND kind NOT IN (${heldKinds.map(() => "?").join(", ")})`).run(
+  // Decision 0223 D1 (Issue #2545): so does an Action-local hold (the held kinds, and repair_budget_exhausted only when its
+  // recorded cause is Action-local). Each row is judged against its own Action, so a global-cause row is still pruned.
+  const staleRows = db.prepare("SELECT action_key, kind FROM production_operator_escalations WHERE action_key LIKE ? AND action_key != ?").all(
     `${projectSlug}/%`,
-    currentActionKey ?? "",
-    ...heldKinds
-  );
+    currentActionKey ?? ""
+  ) as { action_key: string; kind: string }[];
+  const deleteRow = db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?");
+  for (const row of staleRows) {
+    if (REVIEW_REPAIR_ESCALATIONS.has(row.kind) || isActionLocalHeldKind(db, row.action_key, row.kind)) continue;
+    deleteRow.run(row.action_key);
+  }
   db.prepare("DELETE FROM production_dependency_unresolved_sightings WHERE action_key LIKE ? AND action_key != ?").run(
     `${projectSlug}/%`,
     currentActionKey ?? ""
