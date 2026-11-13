@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
-import { COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
 import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 
 // Issue #1599: which test files an Action's acceptance criteria name. The
@@ -97,4 +101,50 @@ describe("validateCompletionCandidate", () => {
     const result = validateCompletionCandidate({ repository: "/nonexistent", worktree: "/nonexistent", base: "HEAD", workspace: "/nonexistent", commands: ["true"], acceptanceCriteria: ["tests/x.test.ts passes."] });
     expect(result).toMatchObject({ status: "refused", reason: expect.stringContaining("macOS Seatbelt") });
   });
+});
+
+// Issue #1765: a criteria-required `pnpm lint` ran under the 120s per-command
+// bound while a timeout reported the 900s whole-validation bound. Each case
+// builds a real two-commit repository: the base declares `lint`, the candidate
+// adds one named node test file.
+describe("criteria-required command bound and timeout message", () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+
+  function fixture(lintScript: string) {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "completion-bound-")));
+    dirs.push(root);
+    const repository = path.join(root, "repo");
+    mkdirSync(path.join(repository, "tests"), { recursive: true });
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: repository, encoding: "utf8" }).trim();
+    git("init", "-q");
+    writeFileSync(path.join(repository, "package.json"), JSON.stringify({ name: "fixture", private: true, scripts: { lint: lintScript } }, null, 2));
+    git("add", "."); git("commit", "-q", "-m", "base");
+    const base = git("rev-parse", "HEAD");
+    writeFileSync(path.join(repository, "tests", "named.test.mjs"), "import test from \"node:test\";\ntest(\"passes\", () => {});\n");
+    git("add", "."); git("commit", "-q", "-m", "candidate");
+    const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "completion-workspace-")));
+    dirs.push(workspace);
+    return { repository, worktree: repository, base, workspace, commands: ["true"], acceptanceCriteria: ["tests/named.test.mjs passes.", "pnpm lint passes."] };
+  }
+
+  it("gives criteria-required lint its own 240-second bound and keeps configured commands at 120 seconds", () => {
+    expect(COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS["pnpm lint"]).toBe(240_000);
+    expect(COMPLETION_COMMAND_TIMEOUT_MS).toBe(120_000);
+  });
+
+  it("names the command bound it actually hit when a criteria-required lint runs out", () => {
+    const result = validateCompletionCandidate(fixture("sleep 3"), { unconfinedForTests: true, requiredCommandTimeoutMs: { "pnpm lint": 1_000 } });
+    expect(result).toMatchObject({ status: "refused", timedOut: true, reason: expect.stringContaining("pnpm lint did not finish within 1s") });
+  }, 60_000);
+
+  it("changes the message when the bound applied to the lint changes", () => {
+    const result = validateCompletionCandidate(fixture("sleep 3"), { unconfinedForTests: true, requiredCommandTimeoutMs: { "pnpm lint": 2_000 } });
+    expect(result).toMatchObject({ status: "refused", timedOut: true, reason: expect.stringContaining("pnpm lint did not finish within 2s") });
+  }, 60_000);
+
+  it("names the whole-validation bound when that, not the lint's own bound, is the one hit", () => {
+    const result = validateCompletionCandidate(fixture("sleep 3"), { unconfinedForTests: true, timeoutMs: 1_000 });
+    expect(result).toMatchObject({ status: "refused", timedOut: true, reason: expect.stringContaining("the validation did not finish within 1s, the bound on the whole validation") });
+  }, 60_000);
 });
