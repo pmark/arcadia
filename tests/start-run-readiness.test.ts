@@ -195,6 +195,45 @@ describe("start scope admission", () => {
   });
 });
 
+describe("an Action id declared by more than one Plan", () => {
+  const plain = [{ id: "alpha" }, { id: "beta" }, { id: "gate" }];
+  const gated = [{ id: "alpha", dependsOn: ["gate"] }, { id: "beta" }, { id: "gate" }];
+
+  function collision(draft: TestAction[] | null, active: TestAction[]): string {
+    const root = repo();
+    write(root, "PROJECT.md", projectDoc({ activePlan: "plan-b" }));
+    if (draft) write(root, "docs/plans/plan-a.md", planDoc("plan-a", "draft", draft));
+    write(root, "docs/plans/plan-b.md", planDoc("plan-b", "active", active));
+    return root;
+  }
+
+  const readyIds = (root: string) =>
+    resolveAcceptedReadiness(root, "demo").plans.find((plan) => plan.planSlug === "plan-b")!
+      .actions.filter((action) => action.ready).map((action) => action.actionId);
+
+  it("does not let an unaccepted Plan's clean Action admit the accepted Plan's gated one", () => {
+    const root = collision(plain, gated);
+    expect(readyIds(root)).toEqual(["beta", "gate"]);
+    const admission = admitStartScope(root, "demo", "plan-b", ["alpha", "beta"]);
+    expect(admission.admitted).toBe(false);
+    expect(admission.refusals.join("\n")).toContain("alpha");
+  });
+
+  it("does not let an unaccepted Plan's gated Action refuse the accepted Plan's clean one", () => {
+    const root = collision(gated, plain);
+    expect(readyIds(root)).toEqual(["alpha", "beta", "gate"]);
+    const admission = admitStartScope(root, "demo", "plan-b", ["alpha", "beta"]);
+    expect(admission.refusals).toEqual([]);
+    expect(admission.admitted).toBe(true);
+  });
+
+  it("gives the same answer with the unaccepted Plan removed", () => {
+    const root = collision(null, gated);
+    expect(readyIds(root)).toEqual(["beta", "gate"]);
+    expect(admitStartScope(root, "demo", "plan-b", ["alpha", "beta"]).admitted).toBe(false);
+  });
+});
+
 describe("start-run readiness command", () => {
   it("is read-only and reports admission for a named scope without a workspace", () => {
     const root = fixture();

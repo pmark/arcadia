@@ -797,7 +797,13 @@ export function resolveActionReadiness(
 export function actionReadinessFrom(
   discovered: DiscoveryResult,
   projectSlug: string,
-  actionId: string
+  actionId: string,
+  /**
+   * Evaluate against this Plan instead of the first Plan in the Project that
+   * declares `actionId`. A caller walking one specific Plan must pass it: an
+   * Action id declared by two Plans would otherwise let the other Plan decide.
+   */
+  withinPlan?: PlanDoc
 ): ActionReadiness {
   const empty: ActionReadiness = {
     found: false,
@@ -815,7 +821,8 @@ export function actionReadinessFrom(
     (doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === projectSlug.toLowerCase()
   );
 
-  const plan = projectPlans.find((candidate) => candidate.actions.some((entry) => entry.id === actionId)) ?? null;
+  const plan =
+    withinPlan ?? projectPlans.find((candidate) => candidate.actions.some((entry) => entry.id === actionId)) ?? null;
   const action = plan?.actions.find((entry) => entry.id === actionId) ?? null;
   if (!plan || !action) {
     return empty;
@@ -1192,7 +1199,7 @@ function planReadySetWalk(discovered: DiscoveryResult, projectSlug: string, plan
   const evaluatedAll = plan.actions
     .filter((action) => action.status !== "done")
     .map((action) => {
-      const readiness = actionReadinessFrom(discovered, projectSlug, action.id);
+      const readiness = actionReadinessFrom(discovered, projectSlug, action.id, plan);
       const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
       const isReady = readiness.blockers.length === 0 && readiness.operatorQuestion === null && authorized;
       return { action, readiness, isReady };

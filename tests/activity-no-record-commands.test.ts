@@ -90,6 +90,26 @@ function validDesignRecord(): string {
   return record;
 }
 
+/** A minimal Project with one active Plan and one ready Action, so `start-run readiness` runs its success path. */
+function readinessRepository(): string {
+  const directory = path.join(root, "readiness-repo");
+  mkdirSync(path.join(directory, "docs", "plans"), { recursive: true });
+  writeFileSync(path.join(directory, "PROJECT.md"), [
+    "---", "arcadia: v1", "type: project", "slug: arcadia", "name: Arcadia", "status: active",
+    "goal: Prove readiness records no activity.", "milestone: First milestone", "active_plan: plan-a",
+    "updated: 2026-11-12", "---", ""
+  ].join("\n"));
+  writeFileSync(path.join(directory, "docs", "plans", "plan-a.md"), [
+    "---", "arcadia: v1", "type: plan", "slug: plan-a", "project: arcadia", "status: active",
+    "milestone: First milestone", "token_impact: medium", "token_budget: One bounded pass.",
+    "recommended_model: gpt-5.6-terra", "updated: 2026-11-12", "actions:",
+    "  - id: alpha", "    title: Work alpha", "    status: open", "    responsibility: agent", "    effort: short",
+    "    clarification: clarified", "    next_action: Do alpha.", "    confidence: high", "    source: conversation",
+    "    acceptance_criteria:", "      - The change is covered by a test.", "    depends_on: []", "---", ""
+  ].join("\n"));
+  return directory;
+}
+
 /**
  * One or more invocations of every command the CLI records no activity for.
  * A command that becomes exempt fails "covers every no-record command" until
@@ -102,7 +122,7 @@ function invocations(): Record<string, string[][]> {
     "ask-trail": [["ask-trail", "missing-receipt"]],
     "provider-usage": [["provider-usage", "--json"], ["provider-usage", "--claude-source", "invalid", "--json"], ["provider-usage", "--opencode-session", "ses_explicit", "--opencode-export", "unused.json", "--json"]],
     "audit host-preview": [["audit", "host-preview", "--root", path.join(root, "missing-site"), "--seconds", "1"]],
-    "start-run readiness": [["start-run", "readiness", "--project", "arcadia", "--repository", path.join(root, "missing-repo"), "--json"]],
+    "start-run readiness": [["start-run", "readiness", "--project", "arcadia", "--repository", readinessRepository(), "--json"]],
     "production liveness-check": [["production", "liveness-check"]],
     "production idle-front": [["production", "idle-front"]],
     "coordinator budget": [["coordinator", "budget"], ["coordinator", "budget", "--session", "not a session id"]],
