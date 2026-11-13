@@ -22,6 +22,18 @@ const git = (repo: string, ...args: string[]) => {
   return result.stdout.trim();
 };
 
+/** A port the operating system reported free: listen on port 0, read the assigned port, close the listener. */
+const freePort = () => {
+  const result = spawnSync(process.execPath, ["-e", `const s = require("net").createServer().listen(0, "127.0.0.1", () => { console.log(s.address().port); s.close(); });`], { encoding: "utf8" });
+  const port = Number(result.stdout.trim());
+  if (!port) throw new Error(`no free port: ${result.stderr}`);
+  return String(port);
+};
+
+/** A bind can still lose a race for the port after it was released; this many attempts in all, each on a fresh port. */
+const attempts = 3;
+const portInUse = (result: SpawnSyncReturns<string>) => /EADDRINUSE|already in use/.test(`${result.stdout}${result.stderr}`);
+
 /** A small repository with a stand-in `next`, which records how it was called. */
 function fixture() {
   const repo = mkdtempSync(path.join(os.tmpdir(), "arcadia-dashboard-live-"));
@@ -69,7 +81,7 @@ if (cmd === "build") {
     ARCADIA_DASHBOARD_NEXT: next,
     ARCADIA_DASHBOARD_FREEZE_CHECK: freeze,
     ARCADIA_DASHBOARD_BOUNCE: bounce,
-    ARCADIA_DASHBOARD_SMOKE_PORT: String(40_000 + Math.floor(Math.random() * 20_000)),
+    ARCADIA_DASHBOARD_SMOKE_PORT: freePort(),
     // Room for a loaded runner to start the stand-in server. Only the test that expects the check to time out sets less.
     ARCADIA_DASHBOARD_SMOKE_DEADLINE: "30",
     ARCADIA_DASHBOARD_MODE: "build",
@@ -88,7 +100,16 @@ if (cmd === "build") {
     calls: () => (existsSync(calls) ? readFileSync(calls, "utf8").trim().split("\n") : []),
     current: () => (existsSync(path.join(live, "current")) ? readFileSync(path.join(live, "current"), "utf8").trim() : null),
     head: () => git(repo, "rev-parse", "HEAD"),
-    build: (over: Record<string, string> = {}) => spawnSync(path.join(scripts, "dashboard-build.sh"), { env: { ...env, ...over }, encoding: "utf8" }),
+    // The collision cases use the occupied port as it is; every other build retries on a fresh OS-assigned port after EADDRINUSE.
+    buildOnce: (over: Record<string, string> = {}) => spawnSync(path.join(scripts, "dashboard-build.sh"), { env: { ...env, ...over }, encoding: "utf8" }),
+    build: (over: Record<string, string> = {}) => {
+      let result = spawnSync(path.join(scripts, "dashboard-build.sh"), { env: { ...env, ...over }, encoding: "utf8" });
+      for (let attempt = 1; attempt < attempts && portInUse(result); attempt++) {
+        env.ARCADIA_DASHBOARD_SMOKE_PORT = freePort();
+        result = spawnSync(path.join(scripts, "dashboard-build.sh"), { env: { ...env, ...over }, encoding: "utf8" });
+      }
+      return result;
+    },
     serve: (over: Record<string, string> = {}) => spawnSync(path.join(scripts, "dashboard-serve.sh"), { env: { ...env, ...over }, encoding: "utf8" }),
     clean: () => {
       expect(git(repo, "status", "--porcelain")).toBe("");
@@ -194,7 +215,8 @@ describe("live dashboard build", () => {
     const f = fixture();
     succeeded(f.build({ TEST_SLOW_STOP: "1" }));
     f.change("apps/dashboard/page.tsx");
-    succeeded(f.build());
+    // No retry: this test exists to prove the second build can reuse the first build's port. A retry would pick a fresh port and mask the regression.
+    succeeded(f.buildOnce());
     expect(f.current()).toBe(`b ${f.head()}`);
     f.clean();
   });
@@ -320,7 +342,7 @@ describe("live dashboard build", () => {
     const port = f.env.ARCADIA_DASHBOARD_SMOKE_PORT;
     const other = spawn(process.execPath, ["-e", `require("http").createServer((_, r) => r.end("x")).listen(${port}, "127.0.0.1")`]);
     spawnSync("sleep", ["1"]);
-    const result = f.build();
+    const result = f.buildOnce();
     other.kill();
     expect(result.status).toBe(1);
     expect(result.stdout).toContain("already in use");
@@ -390,7 +412,7 @@ describe("live dashboard build", () => {
     const port = f.env.ARCADIA_DASHBOARD_SMOKE_PORT;
     const other = spawn(process.execPath, ["-e", `require("http").createServer((_, r) => { r.statusCode = 404; r.end("x"); }).listen(${port}, "127.0.0.1")`]);
     spawnSync("sleep", ["1"]);
-    const result = f.build();
+    const result = f.buildOnce();
     other.kill();
     expect(result.status).toBe(1);
     expect(result.stdout).toContain("already in use");
