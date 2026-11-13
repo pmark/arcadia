@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -18,10 +18,12 @@ describe("claudeFolderTrust (probe P1: a fresh folder hits the trust prompt)", (
     writeFileSync(file, JSON.stringify({ projects }));
     return file;
   };
-  it("trusts an exactly listed folder and any folder under a trusted one", () => {
-    const file = state({ "/work/repo": { hasTrustDialogAccepted: true } });
-    expect(claudeFolderTrust("/work/repo", file)).toMatchObject({ trusted: true, trustedFolder: "/work/repo" });
-    expect(claudeFolderTrust("/work/repo/.claude/worktrees/x", file)).toMatchObject({ trusted: true, trustedFolder: "/work/repo" });
+  const real = (target: string): string => realpathSync(target);
+  it("trusts an exactly listed folder and any folder under a trusted one, including one that does not exist yet", () => {
+    const repo = real(scratch());
+    const file = state({ [repo]: { hasTrustDialogAccepted: true } });
+    expect(claudeFolderTrust(repo, file)).toMatchObject({ trusted: true, trustedFolder: repo });
+    expect(claudeFolderTrust(path.join(repo, ".claude", "worktrees", "x"), file)).toMatchObject({ trusted: true, trustedFolder: repo });
   });
   it("does not trust a fresh folder, an unaccepted entry, a sibling with a shared prefix, a missing or an unreadable state file", () => {
     const file = state({ "/work/repo": { hasTrustDialogAccepted: false }, "/work/rep": { hasTrustDialogAccepted: true } });
@@ -32,30 +34,54 @@ describe("claudeFolderTrust (probe P1: a fresh folder hits the trust prompt)", (
     writeFileSync(broken, "{not json");
     expect(claudeFolderTrust("/x", broken)).toMatchObject({ trusted: false, detail: expect.stringMatching(/cannot be read/) });
   });
+  it("judges a symlink by its real path: one pointing out of a trusted tree is untrusted, a symlinked repo path is trusted by its target", () => {
+    const trustedRoot = real(scratch());
+    const outside = real(scratch());
+    const file = state({ [trustedRoot]: { hasTrustDialogAccepted: true } });
+    const escape = path.join(trustedRoot, "escape");
+    symlinkSync(outside, escape);
+    expect(claudeFolderTrust(escape, file).trusted).toBe(false);
+    const alias = path.join(real(scratch()), "alias");
+    symlinkSync(trustedRoot, alias);
+    expect(claudeFolderTrust(alias, file)).toMatchObject({ trusted: true, trustedFolder: trustedRoot });
+  });
+  it("refuses a grant that exists only because the filesystem root or the home directory is trusted, naming it", () => {
+    const home = real(scratch());
+    const project = path.join(home, "Dev", "repo");
+    mkdirSync(project, { recursive: true });
+    const viaHome = claudeFolderTrust(project, state({ [home]: { hasTrustDialogAccepted: true } }), home);
+    expect(viaHome).toMatchObject({ trusted: false, detail: expect.stringContaining(`only through ${home}`) });
+    expect(claudeFolderTrust(project, state({ "/": { hasTrustDialogAccepted: true } }), home).trusted).toBe(false);
+    // A specific grant below the blanket one still counts.
+    expect(claudeFolderTrust(project, state({ [home]: { hasTrustDialogAccepted: true }, [project]: { hasTrustDialogAccepted: true } }), home)).toMatchObject({ trusted: true, trustedFolder: project });
+  });
 });
 
-describe("discoverBackgroundSession (probe P2: --bg ignores --session-id)", () => {
+describe("discoverBackgroundSession (probe P2: --bg ignores --session-id; launch output is only a candidate)", () => {
   const cwd = "/work/repo";
   const uuid = "686736ac-1111-4222-8333-444455556666";
-  it("takes the id the launch printed and never the id that was asked for, ignoring the notice line", () => {
+  it("accepts a printed id only when an agents row in this cwd matches it, and resolves the full id and model", () => {
+    const rows = JSON.stringify([{ id: "686736ac", sessionId: uuid, name: "renamed since", cwd, model: "claude-haiku-5-5", effort: "low" }]);
     const out = "--bg manages the session id; ignoring --session-id a63607ad\nstarted background session 686736ac";
-    const found = discoverBackgroundSession({ launchOutput: out, agentsJson: null, name: "n", cwd });
-    expect(found).toMatchObject({ stopId: "686736ac", sessionId: null, source: "launch-output" });
+    expect(discoverBackgroundSession({ launchOutput: out, agentsJson: rows, name: "n", cwd })).toMatchObject({ verified: true, stopId: "686736ac", sessionId: uuid, model: "claude-haiku-5-5", effort: "low" });
   });
-  it("resolves the full session id from the matching claude agents row", () => {
-    const rows = JSON.stringify([{ id: "686736ac", sessionId: uuid, name: "n", cwd, model: "claude-haiku-5-5", effort: "low" }]);
-    expect(discoverBackgroundSession({ launchOutput: "started 686736ac", agentsJson: rows, name: "n", cwd })).toMatchObject({ stopId: "686736ac", sessionId: uuid, model: "claude-haiku-5-5", effort: "low" });
-  });
-  it("falls back to the single row with this exact name and cwd when nothing was printed", () => {
+  it("ignores decoy 8-hex tokens (a date, a hex word) and takes the unique name+cwd row instead", () => {
     const rows = JSON.stringify([{ id: uuid, name: "n", cwd }, { id: "ffffffff", name: "n", cwd: "/other" }]);
-    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: rows, name: "n", cwd })).toMatchObject({ stopId: uuid, sessionId: uuid, source: "agents-json" });
+    const found = discoverBackgroundSession({ launchOutput: "started 20261112 build deadbeef", agentsJson: rows, name: "n", cwd });
+    expect(found).toMatchObject({ verified: true, stopId: uuid, sessionId: uuid, source: "agents-json" });
   });
-  it("returns null rather than guess: two matching rows, no match, bad JSON, or nothing at all", () => {
+  it("does not let a decoy token match a row in another cwd", () => {
+    const rows = JSON.stringify([{ id: "20261112", name: "n", cwd: "/other" }]);
+    expect(discoverBackgroundSession({ launchOutput: "20261112", agentsJson: rows, name: "n", cwd })).toMatchObject({ verified: false, stopId: null, unverifiedPrintedId: "20261112" });
+  });
+  it("is unverified, with a null stopId, for an id with no matching row, two matching rows, bad JSON, no listing, or the notice only", () => {
+    const none = discoverBackgroundSession({ launchOutput: "started 20261112", agentsJson: "[]", name: "n", cwd });
+    expect(none).toMatchObject({ verified: false, stopId: null, sessionId: null, unverifiedPrintedId: "20261112" });
     const two = JSON.stringify([{ id: "aaaaaaaa", name: "n", cwd }, { id: "bbbbbbbb", name: "n", cwd }]);
-    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: two, name: "n", cwd })).toBeNull();
-    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: "[]", name: "n", cwd })).toBeNull();
-    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: "nope", name: "n", cwd })).toBeNull();
-    expect(discoverBackgroundSession({ launchOutput: "--bg manages the session id; ignoring --session-id deadbeef", agentsJson: null, name: "n", cwd })).toBeNull();
+    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: two, name: "n", cwd }).verified).toBe(false);
+    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: "nope", name: "n", cwd }).verified).toBe(false);
+    expect(discoverBackgroundSession({ launchOutput: "started 686736ac", agentsJson: null, name: "n", cwd })).toMatchObject({ verified: false, stopId: null, unverifiedPrintedId: "686736ac" });
+    expect(discoverBackgroundSession({ launchOutput: "--bg manages the session id; ignoring --session-id deadbeef", agentsJson: null, name: "n", cwd })).toMatchObject({ verified: false, unverifiedPrintedId: null });
   });
 });
 

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
@@ -39,15 +39,37 @@ export interface FolderTrust { trusted: boolean; detail: string; trustedFolder: 
 
 export const defaultClaudeStatePath = (home: string = homedir()): string => path.join(home, ".claude.json");
 
+function realpathOrNull(target: string): string | null {
+  try { return realpathSync(target); } catch { return null; }
+}
+
+/** realpath of the nearest existing ancestor, with the not-yet-existing remainder appended (a worktrees directory may not exist yet). */
+function realpathThroughMissing(target: string): string {
+  const resolved = path.resolve(target);
+  const parts: string[] = [];
+  for (let candidate = resolved; ; candidate = path.dirname(candidate)) {
+    const real = realpathOrNull(candidate);
+    if (real !== null) return path.join(real, ...parts.reverse());
+    parts.push(path.basename(candidate));
+    if (path.dirname(candidate) === candidate) return resolved;
+  }
+}
+
 /**
  * Whether Claude Code already trusts `folder`: `projects[<dir>].hasTrustDialogAccepted === true` in `~/.claude.json`
- * for the folder or any ancestor (Claude Code applies a trusted parent to its subdirectories; this is the model the
- * existing go-broker trust setup in src/agentSetup/goBrokerAgentSetup.ts uses, and the one P1 is consistent with: only
- * the fresh, never-trusted fixture stopped). A missing or unreadable state file is "not trusted": the launch would
- * stop at the prompt, so it fails closed.
+ * for the folder or an ancestor. Decisions, each tested:
+ *  - Paths are compared by realpath on both sides, so a symlink inside a trusted tree that points out is judged by
+ *    where it really is (untrusted), and a symlinked repository path by its real path.
+ *  - A trust grant that exists only because `/` or the user's home directory is trusted does not count: that is a
+ *    blanket grant, not a decision about this folder, and the launch is refused naming it.
+ *  - Ancestor inheritance itself is an ASSUMPTION (the go-broker trust setup in src/agentSetup/goBrokerAgentSetup.ts
+ *    uses it, and P1 only showed a fresh folder failing). If Claude Code does not inherit trust, this check passes
+ *    falsely and the launch stalls at the trust prompt, which the relay's delivery check then catches after its claim,
+ *    worktree and tmux session exist. It does not fail closed on that point.
+ * A missing or unreadable state file is "not trusted".
  */
-export function claudeFolderTrust(folder: string, statePath: string = defaultClaudeStatePath()): FolderTrust {
-  const resolved = path.resolve(folder);
+export function claudeFolderTrust(folder: string, statePath: string = defaultClaudeStatePath(), home: string = homedir()): FolderTrust {
+  const resolved = realpathThroughMissing(folder);
   let state: { projects?: Record<string, { hasTrustDialogAccepted?: unknown } | undefined> };
   try {
     state = JSON.parse(readFileSync(statePath, "utf8")) as typeof state;
@@ -55,10 +77,21 @@ export function claudeFolderTrust(folder: string, statePath: string = defaultCla
     const code = (error as NodeJS.ErrnoException).code;
     return { trusted: false, trustedFolder: null, detail: `Claude Code's trusted-folder state ${statePath} ${code === "ENOENT" ? "does not exist" : "cannot be read"}, so ${resolved} cannot be shown to be trusted.` };
   }
-  const projects = state?.projects ?? {};
+  const trusted = new Set<string>();
+  for (const [key, entry] of Object.entries(state?.projects ?? {})) {
+    if (entry?.hasTrustDialogAccepted === true) trusted.add(realpathOrNull(key) ?? path.resolve(key));
+  }
+  const homeReal = realpathOrNull(home) ?? path.resolve(home);
+  const blanket: string[] = [];
   for (let candidate = resolved; ; candidate = path.dirname(candidate)) {
-    if (projects[candidate]?.hasTrustDialogAccepted === true) return { trusted: true, trustedFolder: candidate, detail: `${resolved} is trusted (via ${candidate}).` };
+    if (trusted.has(candidate)) {
+      if (candidate === path.parse(candidate).root || candidate === homeReal) blanket.push(candidate);
+      else return { trusted: true, trustedFolder: candidate, detail: `${resolved} is trusted (via ${candidate}).` };
+    }
     if (path.dirname(candidate) === candidate) break;
+  }
+  if (blanket.length > 0) {
+    return { trusted: false, trustedFolder: null, detail: `${resolved} is trusted only through ${blanket.join(" and ")}, a blanket grant (the filesystem root or the home directory) that Arcadia does not accept for an unattended launch; have the operator trust ${resolved} itself.` };
   }
   return {
     trusted: false, trustedFolder: null,
@@ -74,11 +107,18 @@ const FULL_ID = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\
 const SHORT_ID = /\b[0-9a-f]{8}\b/i;
 
 export interface BackgroundSession {
-  /** The id `claude stop` takes. */
-  stopId: string;
+  /**
+   * True only when `claude agents --json` lists a row in this launch's cwd that matches the printed id, or the one row
+   * with this launch's exact name and cwd. An unverified result is never a stop target: `stopId` is null.
+   */
+  verified: boolean;
+  /** The id `claude stop` takes; null unless verified. */
+  stopId: string | null;
   /** The full session UUID when the host exposed one, else null. */
   sessionId: string | null;
-  source: "launch-output" | "agents-json";
+  /** An id seen in the launch output that no agents row confirmed; informational only, never recorded as the session. */
+  unverifiedPrintedId: string | null;
+  source: "agents-json" | "unverified";
   cwd: string | null;
   /** Raw model/effort fields of the `claude agents --json` row, when it carries them. */
   model: string | null;
@@ -95,39 +135,40 @@ export function parseAgentRows(json: string): AgentRow[] | null {
   return Array.isArray(rows) ? rows.filter((row): row is AgentRow => row !== null && typeof row === "object") : null;
 }
 
-function describe(row: AgentRow, source: BackgroundSession["source"], fallbackId: string): BackgroundSession {
+function verifiedSession(row: AgentRow): BackgroundSession | null {
   const sessionId = [text(row.sessionId), text(row.id)].find((value) => value !== null && FULL_ID.test(value)) ?? null;
-  return {
-    stopId: text(row.id) ?? sessionId ?? fallbackId,
-    sessionId, source, cwd: text(row.cwd),
-    model: text(row.model),
-    effort: text(row.effort) ?? text(row.reasoningEffort)
-  };
+  const stopId = text(row.id) ?? sessionId;
+  if (stopId === null) return null;
+  return { verified: true, stopId, sessionId, unverifiedPrintedId: null, source: "agents-json", cwd: text(row.cwd), model: text(row.model), effort: text(row.effort) ?? text(row.reasoningEffort) };
 }
 
 /**
  * The real session of a `claude --bg` launch. `--bg` prints "--bg manages the session id; ignoring --session-id" and
  * assigns its own id (P2: pinned `a63607ad...` ignored, host chose `686736ac...`), so the id we asked for is never
- * recorded. In order: an id the launch output printed (matched to its `claude agents --json` row when that lists it),
- * else the single row of `claude agents --json` whose name and cwd are exactly the launch's. Anything ambiguous or
- * absent returns null; the caller refuses to record a guess.
+ * recorded. Launch output is free text: any 8-hex token in it (a date such as 20261112, a count, a version) is only a
+ * CANDIDATE. An id is accepted only through `claude agents --json`:
+ *  1. a row in this launch's cwd whose id or sessionId equals or starts with a printed token; else
+ *  2. the single row with this launch's exact name and cwd (the keeper may retitle itself, so a printed-id match does
+ *     not require the name; the name match is the fallback for output that printed nothing usable).
+ * Otherwise the result is `verified: false` with a null `stopId`: the caller must not record a stop target, and the
+ * printed candidate is kept only for the error message.
  */
-export function discoverBackgroundSession(input: { launchOutput: string; agentsJson: string | null; name: string; cwd: string }): BackgroundSession | null {
+export function discoverBackgroundSession(input: { launchOutput: string; agentsJson: string | null; name: string; cwd: string }): BackgroundSession {
   const rows = input.agentsJson === null ? null : parseAgentRows(input.agentsJson);
   // The ignored-session-id notice itself contains no id; strip it so a hex word in it can never be read as one.
   const printedText = input.launchOutput.split("\n").filter((line) => !/ignoring --session-id/i.test(line)).join("\n");
-  const printed = FULL_ID.exec(printedText)?.[0] ?? SHORT_ID.exec(printedText)?.[0] ?? null;
-  if (printed !== null) {
-    const row = rows?.find((candidate) => [candidate.id, candidate.sessionId].some((value) => typeof value === "string" && (value === printed || value.startsWith(printed))));
-    if (row) return describe(row, "launch-output", printed);
-    return { stopId: printed, sessionId: FULL_ID.test(printed) ? printed : null, source: "launch-output", cwd: null, model: null, effort: null };
+  const tokens = [...printedText.matchAll(new RegExp(FULL_ID.source, "gi")), ...printedText.matchAll(new RegExp(SHORT_ID.source, "gi"))].map((match) => match[0].toLowerCase());
+  const unverified: BackgroundSession = { verified: false, stopId: null, sessionId: null, unverifiedPrintedId: tokens[0] ?? null, source: "unverified", cwd: null, model: null, effort: null };
+  if (rows === null) return unverified;
+  const resolvedCwd = path.resolve(input.cwd);
+  const inCwd = rows.filter((candidate) => typeof candidate.cwd === "string" && path.resolve(candidate.cwd) === resolvedCwd);
+  const printedMatches = inCwd.filter((candidate) => [candidate.id, candidate.sessionId].some((value) => typeof value === "string" && tokens.some((token) => value.toLowerCase() === token || value.toLowerCase().startsWith(token))));
+  if (printedMatches.length === 1) return verifiedSession(printedMatches[0]) ?? unverified;
+  if (printedMatches.length === 0) {
+    const named = inCwd.filter((candidate) => candidate.name === input.name);
+    if (named.length === 1) return verifiedSession(named[0]) ?? unverified;
   }
-  if (rows) {
-    const resolvedCwd = path.resolve(input.cwd);
-    const matches = rows.filter((candidate) => candidate.name === input.name && typeof candidate.cwd === "string" && path.resolve(candidate.cwd) === resolvedCwd);
-    if (matches.length === 1) return describe(matches[0], "agents-json", "");
-  }
-  return null;
+  return unverified;
 }
 
 // ---------------------------------------------------------------------------

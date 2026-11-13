@@ -715,12 +715,18 @@ now code (`src/coordinator/launchProof.ts`) used by the relay and by
   before the brief arrives. The relay refuses (`folder_untrusted`, one ping, no
   claim, worktree or session) unless Claude Code's `~/.claude.json` trusts the
   worktrees directory or an ancestor; `keeper start` refuses likewise, and its
-  dry run reports the verdict. Arcadia never writes the trust state; the
+  dry run reports the verdict. Paths are compared by realpath; a trust that
+  exists only through `/` or the home directory is refused. Inheritance from a
+  trusted parent is an assumption: if Claude does not inherit it, the check
+  passes falsely and the launch stalls at the prompt (the relay's delivery
+  check then fails the attempt). Arcadia never writes the trust state; the
   operator trusts a folder once, interactively.
 - **`--bg` session id.** `--bg` ignores `--session-id`, so the keeper no longer
   passes it. The real id is read from the launch output, else from
-  `claude agents --json` (a single row with the launch's exact name and cwd);
-  an id that cannot be read writes no record and says so. Stop is
+  `claude agents --json`: a printed token is only a candidate, accepted only when
+  a row in the launch cwd matches it, else the single row with the launch's
+  exact name and cwd (looked up a few times over a few seconds). An id no row
+  confirms writes no record, is never a stop target, and the error says so. Stop is
   `claude stop <id>`; no tmux.
 - **Exact brief.** The SHA-256 of the brief handed to the launcher is recorded
   beside the SHA-256 of the transcript's first main-chain user message, and

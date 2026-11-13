@@ -75,6 +75,9 @@ export interface KeeperDependencies {
 /** After a launch, up to this many polls (each KEEPER_POLL_MS) wait for the first reply so the actual model is observed. */
 const KEEPER_POLLS = 18;
 const KEEPER_POLL_MS = 5_000;
+/** `claude agents --json` right after a launch may not list the session yet: a few attempts over a few seconds. */
+const KEEPER_LOOKUP_ATTEMPTS = 4;
+const KEEPER_LOOKUP_PAUSE_MS = 2_000;
 
 export interface KeeperOptions { workspace?: string; wakesDir?: string }
 export interface KeeperStopOptions extends KeeperOptions { forget?: boolean }
@@ -274,14 +277,25 @@ function launchLocked(
 
   const launched = claude(argv, dependencies, checkout);
   if (!launched.ok) throw validationError(`The keeper did not start and no record was written: ${launched.error}`);
-  // The id comes from what the host printed or lists, never from one we asked for: --bg ignores --session-id.
-  const listing = claude(["agents", "--json"], dependencies, checkout);
-  const discovered = discoverBackgroundSession({ launchOutput: launched.stdout, agentsJson: listing.ok ? listing.stdout : null, name, cwd: checkout });
-  if (discovered === null) {
-    throw validationError(`The keeper may be running, but its session id could not be read from the launch output or \`claude agents --json\`${listing.ok ? "" : ` (${listing.error})`}, so no record was written. Inspect \`claude agents\` and stop it by hand if listed.`, { reason: "session_id_undiscovered" });
+  // The id is accepted only through `claude agents --json` (launch output is free text, so a printed token is a candidate);
+  // --bg ignores --session-id, so the one we might ask for is never used. A freshly launched session may not be listed
+  // yet: retry a few times over a few seconds.
+  const sleep = dependencies.sleep ?? ((ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); });
+  let discovered = discoverBackgroundSession({ launchOutput: launched.stdout, agentsJson: null, name, cwd: checkout });
+  let listError = "";
+  for (let attempt = 0; attempt < KEEPER_LOOKUP_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) sleep(KEEPER_LOOKUP_PAUSE_MS);
+    const listing = claude(["agents", "--json"], dependencies, checkout);
+    listError = listing.ok ? "" : ` (${listing.error})`;
+    if (!listing.ok) continue;
+    discovered = discoverBackgroundSession({ launchOutput: launched.stdout, agentsJson: listing.stdout, name, cwd: checkout });
+    if (discovered.verified) break;
+  }
+  if (!discovered.verified || discovered.stopId === null) {
+    const candidate = discovered.unverifiedPrintedId === null ? "" : ` The launch output contained ${discovered.unverifiedPrintedId}, which no \`claude agents --json\` row in ${checkout} confirms, so it is not used as a stop target.`;
+    throw validationError(`The keeper may be running, but its session could not be verified against \`claude agents --json\`${listError}, so no record was written.${candidate} Inspect \`claude agents\` and stop it by hand if listed.`, { reason: "session_id_undiscovered" });
   }
   // Bounded wait for the transcript to show the delivered brief and the model's first reply; deterministic file reads only.
-  const sleep = dependencies.sleep ?? ((ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); });
   const projects = dependencies.claudeProjectsDirectory ?? path.join(homedir(), ".claude", "projects");
   let transcript = { deliveredSha: null as string | null, model: null as string | null, effort: null as string | null };
   for (let poll = 0; poll < KEEPER_POLLS; poll += 1) {
