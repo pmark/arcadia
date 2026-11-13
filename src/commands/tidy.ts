@@ -516,6 +516,7 @@ function assessWorktree(input: {
       ? { ...base, verdict: "detached", mergeProof: "ancestry", reason: "Detached at a commit the base branch already contains." }
       : {
           ...base,
+          ahead: countCommits(record.path, compareRef, record.head),
           verdict: "unmerged",
           reason: `Detached at ${record.head.slice(0, 8)}, which the base branch does not contain. Name a branch for it before it can be retired.`
         };
