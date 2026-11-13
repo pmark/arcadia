@@ -630,7 +630,7 @@ import {
   runWorkflowShowCommand,
   runWorkflowValidateCommand
 } from "./commands/workflow.js";
-import { normalizeError, validationError } from "./cli/errors.js";
+import { normalizeError, usageError, validationError } from "./cli/errors.js";
 import { enclosingProjectRoot, invocationRoot, resolveInvocationPath } from "./cli/invocation.js";
 import { parseDoc } from "./docs/parse.js";
 import type { BackBurnerSurfaceCondition } from "./domain/types.js";
@@ -1352,8 +1352,11 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--todo <key>", "The /todo item this is about, as <kind>:<project>/<id> (the key `arcadia todo` prints); the Discord message links straight to it")
     .option("--agent <name>", "Who is pinging, shown in the message")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; todo?: string; agent?: string; json?: boolean }) =>
-    runCliAction("ping.send", options, () => runPingSendCommand({ ...options, message: message.join(" "), env: process.env }), renderPingSendSuccess)
+  ).action((message: string[], options: { workspace: string; kind?: string; channel?: string; link?: string; todo?: string; agent?: string; json?: boolean }, command: Command) =>
+    runCliAction("ping.send", options, () => {
+      refuseLikelyMissingPingSubcommand(message, command.parent?.args ?? []);
+      return runPingSendCommand({ ...options, message: message.join(" "), env: process.env });
+    }, renderPingSendSuccess)
   );
   addJsonOption(ping.command("pending")
     .description("List operator pings pending Discord delivery")
@@ -5983,6 +5986,19 @@ interface ProductionCliOptions {
 
 function collectRepeatable(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+/**
+ * `ping` defaults to `send`, so `arcadia ping list` would queue a real operator
+ * ping reading "list" (issue #2570). A lone likely-but-missing subcommand word
+ * with no `send` on the command line is refused; `ping send list` still sends.
+ */
+const LIKELY_MISSING_PING_SUBCOMMANDS = ["list", "ls", "status", "show"];
+function refuseLikelyMissingPingSubcommand(message: string[], pingArgs: string[]): void {
+  if (message.length !== 1 || pingArgs.includes("send")) return;
+  const word = message[0];
+  if (!LIKELY_MISSING_PING_SUBCOMMANDS.includes(word.toLowerCase())) return;
+  throw usageError(`"${word}" is not an arcadia ping subcommand (send, pending, sent). To ping the word itself, run: arcadia ping send ${word}`);
 }
 
 function addJsonOption(command: Command): Command {
