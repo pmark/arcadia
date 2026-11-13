@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -631,6 +631,64 @@ describe("decision commands in a candidate worktree", () => {
     } finally {
       process.chdir(previous);
       git(repoRoot, ["worktree", "remove", "--force", candidate]);
+    }
+  });
+});
+
+describe("decision approve resolves the repository from the invoking directory (Issue #2403)", () => {
+  /**
+   * The launcher changes directory into Arcadia's checkout and records the
+   * operator's real directory in ARCADIA_INVOKED_FROM. Resolving the Decision
+   * repository from process.cwd() searched main for a Decision that exists only
+   * on the candidate branch.
+   */
+  function candidateWithOpenDecision(): { workspace: string; repoRoot: string; projectSlug: string; candidate: string } {
+    const { workspace, repoRoot, projectSlug } = workspaceWithProject();
+    const candidate = path.join(scratch(), "candidate");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "candidate/invoked-from", candidate], { cwd: repoRoot });
+    const previous = process.cwd();
+    try {
+      process.chdir(candidate);
+      runDecisionNewCommand({ workspace, project: projectSlug, slug: "candidate-only", question: "Settle this?" });
+    } finally {
+      process.chdir(previous);
+    }
+    return { workspace, repoRoot, projectSlug, candidate };
+  }
+
+  it("uses ARCADIA_INVOKED_FROM when the runtime cwd is somewhere else", () => {
+    const { workspace, repoRoot, projectSlug, candidate } = candidateWithOpenDecision();
+    const elsewhere = scratch();
+    const previousInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
+    const previous = process.cwd();
+    try {
+      process.env.ARCADIA_INVOKED_FROM = candidate;
+      process.chdir(elsewhere);
+      const dryRun = runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", dryRun: true });
+      expect(dryRun.data.absolutePath).toBe(path.join(realpathSync(candidate), "docs/decisions/0001-candidate-only.md"));
+      expect(dryRun.data.applied).toBe(false);
+    } finally {
+      process.chdir(previous);
+      if (previousInvokedFrom === undefined) delete process.env.ARCADIA_INVOKED_FROM;
+      else process.env.ARCADIA_INVOKED_FROM = previousInvokedFrom;
+      execFileSync("git", ["worktree", "remove", "--force", candidate], { cwd: repoRoot });
+    }
+  });
+
+  it("falls back to process.cwd() when ARCADIA_INVOKED_FROM is unset", () => {
+    const { workspace, repoRoot, projectSlug, candidate } = candidateWithOpenDecision();
+    const previousInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
+    const previous = process.cwd();
+    try {
+      delete process.env.ARCADIA_INVOKED_FROM;
+      process.chdir(candidate);
+      const dryRun = runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", dryRun: true });
+      expect(dryRun.data.absolutePath).toBe(path.join(realpathSync(candidate), "docs/decisions/0001-candidate-only.md"));
+    } finally {
+      process.chdir(previous);
+      if (previousInvokedFrom === undefined) delete process.env.ARCADIA_INVOKED_FROM;
+      else process.env.ARCADIA_INVOKED_FROM = previousInvokedFrom;
+      execFileSync("git", ["worktree", "remove", "--force", candidate], { cwd: repoRoot });
     }
   });
 });

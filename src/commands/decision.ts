@@ -20,6 +20,7 @@ import {
   type DocValidationError
 } from "../docs/types.js";
 import { applyDecisionDeferral, findAppliedDeferralReceipt, reverseDecisionDeferral, type DecisionDeferralConsequence, type DecisionReversalConsequence } from "../dispatch/decisionDeferral.js";
+import { invocationRoot } from "../cli/invocation.js";
 import { commitOnlyPaths, projectCheckoutFor, tryGit } from "../git/worktrees.js";
 import { localDateStamp } from "../utils/time.js";
 import { decisionOptionsDigest } from "../decisions/optionsDigest.js";
@@ -837,7 +838,7 @@ export function resolveProjectRepoFromDb(db: Parameters<typeof getProject>[0], p
       project: projectIdOrSlug
     });
   }
-  return projectCheckoutFor(repoPath, process.cwd());
+  return projectCheckoutFor(repoPath, invocationRoot());
 }
 
 function nextDecisionId(decisionsDir: string): string {
