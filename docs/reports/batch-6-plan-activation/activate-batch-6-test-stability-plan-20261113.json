@@ -1,0 +1,111 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-batch-6-test-stability-plan-20261113",
+  "title": "Activate the batch 6 test-stability Plan at the relay pid-record fix",
+  "script": "activate-batch-6-test-stability-plan-20261113.sh",
+  "repeatable": false,
+  "problem": "The batch 6 test-stability Plan is an inactive draft; PROJECT still points at the finished burn-down Plan, so no Action is selected.",
+  "desired_effect": "Activate the batch 6 test-stability Plan at stabilize-coordinator-relay-pid-record-snapshot, standard / medium; keep the finished burn-down Plan at status complete and place this Project queue segment at the top. Plan activation only.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-batch-6-test-stability-plan-20261113.sh run",
+  "authority": {
+    "does": [
+      "Fresh-preview the exact pinned proposal, validate the before/after images through the existing shared runner, then apply that fingerprint.",
+      "Set Project/Plan pointers and standard / medium pins; preserve all Action contents and every other Project relative queue order.",
+      "Append one Mission Log entry, archive the Ask and publish only the canonical settlement commit by normal push; retain receipts."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, production policy, service restart, install or merge.",
+      "Never increases concurrency or grants spend/credentials/merge authority; never changes Action status, criteria or responsibility.",
+      "Never force-pushes, publishes unrelated commits or treats generating this action as approval."
+    ]
+  },
+  "success": {
+    "effect": "The batch 6 test-stability Plan is active at stabilize-coordinator-relay-pid-record-snapshot, standard / medium; the burn-down Plan stays complete; settlement published.",
+    "next": "Continue through normal governed Action/Session admission. This is not a Session launch or production START; each Action's PR stays the operator's merge."
+  },
+  "failure": {
+    "effect": "Refuses before mutation on drift; preserves any canonical local settlement on publication failure.",
+    "next": "Read the receipt; re-review stale pins, or retry publication of the existing settlement without another apply."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "dca21ed605a254ff69141a9457676b08d7038746"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-batch-6-20261113.yaml",
+      "sha256": "be10d4c730b2b90e104b6fc5176c198d01b9d265e51b058070b468f09d9034c7",
+      "proposal": "activate-batch-6-20261113"
+    },
+    "settlement": {
+      "requestId": "activate-batch-6-20261113",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "stabilize-coordinator-relay-pid-record-snapshot",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with",
+      "previousPlan": "burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production",
+      "action": "stabilize-coordinator-relay-pid-record-snapshot",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production",
+        "current_action": null,
+        "milestone": "Burn down three verified test-only bug Issues in unattended serial production."
+      },
+      "projectAfter": {
+        "active_plan": "draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with",
+        "current_action": "stabilize-coordinator-relay-pid-record-snapshot",
+        "milestone": "Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises"
+      },
+      "planBefore": {
+        "slug": "draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises"
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "stabilize-coordinator-relay-pid-record-snapshot",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production",
+        "project": "arcadia",
+        "status": "complete",
+        "current_action": null
+      },
+      "previousPlanAfter": {
+        "status": "complete",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "stabilize-coordinator-relay-pid-record-snapshot",
+        "title": "Make the runner pid-record test sample after childPid lands so it stops racing the writer.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/stabilize-coordinator-relay-pid-record-snapshot",
+        "arcadia/dashboard-live-allocate-free-smoke-port",
+        "arcadia/harden-start-run-executor-calls-log-reader"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
