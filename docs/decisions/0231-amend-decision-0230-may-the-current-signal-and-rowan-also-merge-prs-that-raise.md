@@ -4,7 +4,7 @@ type: decision
 id: "0231"
 slug: amend-decision-0230-may-the-current-signal-and-rowan-also-merge-prs-that-raise
 project: arcadia
-status: open
+status: approved
 question: "Amend Decision 0230: may the current Signal and Rowan also merge PRs that raise, carry, record or answer a Decision, on the same merge gate?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
 updated: 2026-11-13
+answer: "A: Amend Decision 0230 so Signal and Rowan may also merge PRs that raise, carry, record or answer a Decision, on the same gate. Answering a Decision still needs the operator's own verified words; START, spend, credentials and gate or branch-protection changes stay the operator's."
+decided: 2026-11-13
 ---
 
 # Decision 0231: Amend Decision 0230: may the current Signal and Rowan also merge PRs that raise, carry, record or answer a Decision, on the same merge gate?
