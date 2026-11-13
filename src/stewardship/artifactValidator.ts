@@ -422,6 +422,12 @@ function claimsImplementationOccurred(artifactText: string): boolean {
 // change. "I changed no repository files, only the plan file" (R494) is a
 // disclaimer, not a claim. Each clause is judged on its own, so "I changed no
 // repository files, but I modified src/cli.ts" still counts as a claim.
+// A base verb ("did modify src/cli.ts", "then do update the docs") is also a plan
+// verb, so the auxiliary-marked claims below count only with a first-person
+// subject or a src/ or tests/ path object, and never for "the plan" object. They
+// are line patterns, so a clause-wide "changed no" cannot negate them.
+const BASE_IMPLEMENTATION_VERB =
+  "(?:implement|change|modify|update|create|add|remove|delete|refactor|fix|edit|write|rewrite|patch|replace|rename|move|commit|push)";
 const IMPLEMENTATION_CLAIM_PATTERNS = [
   /\b(?:I|we|Codex)\s+(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|edited|rewrote)\b/i,
   /\b(?:implementation|changes?)\s+(?:completed|made|landed|finished)\b/i,
@@ -429,10 +435,20 @@ const IMPLEMENTATION_CLAIM_PATTERNS = [
 ];
 const IMPLEMENTATION_CLAIM_LINE_PATTERNS = [
   /^#{1,6}\s+(?:Files Changed|Changed Files)\b/i,
-  /\bFiles changed:\s*(?!none\b|n\/a\b|not applicable\b)/i
+  /\bFiles changed:\s*(?!none\b|n\/a\b|not applicable\b)/i,
+  // "I did modify the launcher", "I did patch src/cli.ts"; "I did not" never matches.
+  new RegExp(
+    `\\b(?:I|we|Codex)\\s+did\\s+${BASE_IMPLEMENTATION_VERB}\\s+(?!(?:the\\s+)?(?:plan|planning)\\b)(?:(?:the|a|an|this|that|these|those|it|them|my|our|its|their)(?![\\w-])|src\\/|tests?\\/)`,
+    "i"
+  ),
+  // "DID MODIFY src/cli.ts", with or without a separator before it.
+  new RegExp(`\\bdid\\s+${BASE_IMPLEMENTATION_VERB}\\s+(?:src\\/|tests?\\/)`, "i"),
+  // A line that opens with "I patched" is a claim. The same verb after
+  // "besides that" stays unflagged, as the Issue requires, so it is not a clause pattern.
+  /^(?:I|we|Codex)\s+patched\s+(?!(?:no|nothing|none|zero|only)\b)/i
 ];
 const CLAIM_VERB =
-  "(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|made|completed|landed|finished)";
+  "(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|made|completed|landed|finished|patched)";
 const NEGATED_IMPLEMENTATION_CLAIM = new RegExp(
   [
     // "I changed no files", "we modified nothing", "Codex added none"; never
@@ -448,7 +464,7 @@ const NEGATED_IMPLEMENTATION_CLAIM = new RegExp(
 // The only file a planning run may write is its own plan. A named path must be
 // under a plans/ directory and never under src/ or tests/.
 const PLAN_FILE_NOUN =
-  "(?:(?:the|this|a|my|our)\\s+)?(?:\\w+\\s+)?(?:plan|planning)(?:\\s+(?:file|artifact|document|doc))?(?:\\s+(?:at|in)\\s+(?!\\S*\\b(?:src|tests?)\\/)(?!\\S*\\.\\.)\\S*\\bplans\\/\\S*)?";
+  "(?:(?:the|this|a|my|our)\\s+)?(?:\\w+\\s+)?(?:plan|planning)(?:\\s+(?:file|artifact|document|doc))?(?:\\s+(?:at|in)\\s+(?!\\S*\\b(?:src|tests?)\\/)(?!\\S*\\u0001)\\S*\\bplans\\/\\S*)?";
 const PLAN_FILE_OBJECT = new RegExp(
   `^\\s*(?:(?:I|we|Codex)\\s+)?(?:(?:also|then|just)\\s+)?(?:changed|modified|updated|created|added|wrote)\\s+(?:only\\s+)?${PLAN_FILE_NOUN}\\s*$`,
   "i"
@@ -460,11 +476,16 @@ const EXCEPTION_BOUNDARY = /^(?:except(?:\s+for)?|other\s+than|besides|apart\s+f
 // "and", "then" and "also" open a clause too, so a subjectless claim after a
 // disclaimer ("I changed no other files and modified src/cli.ts") is judged alone.
 // "save" opens an exception only when a path follows ("I changed no files save
-// src/cli.ts"), so "to save time" is not split. A "." splits a sentence only
-// when whitespace or the line's end follows, so a path such as
-// "plans/../src/cli.ts" stays one clause for the plan-file check.
+// src/cli.ts", "save for src/cli.ts", "save the src/cli.ts"), so "to save time"
+// is not split. Every "." still splits a sentence, as it always has; only a ".."
+// inside a path token is masked before splitting (see implementationClaimEvidence).
 const IMPLEMENTATION_CLAUSE_BOUNDARY =
-  /([;,:]|\.(?=\s|$)|\b(?:but|however|although|though|yet|and|then|also|except(?:\s+for)?|other\s+than|besides|apart\s+from)\b|\bsave(?=\s+\S*\/))/i;
+  /([;,:.]|\b(?:but|however|although|though|yet|and|then|also|except(?:\s+for)?|other\s+than|besides|apart\s+from)\b|\bsave(?=\s+(?:(?:for|the|a|an)\s+)?\S*\/))/i;
+// A ".." that is part of a path ("plans/../src") is masked to this character
+// before the clause split, so it is never a sentence boundary and the plan-file
+// check can reject it.
+const PATH_DOT_DOT = /(?:(?<=\/)\.\.|\.\.(?=\/))/g;
+const PATH_DOT_DOT_MASK = "\u0001";
 // A clause after a split loses its subject, so "I updated only the plan file
 // and fixed the launcher" leaves "fixed the launcher". A later clause that
 // opens with an affirmative past-tense implementation verb carries the subject
@@ -472,10 +493,11 @@ const IMPLEMENTATION_CLAUSE_BOUNDARY =
 // so a participle used as an adjective ("changed resolution", "updated
 // constitution") is not a claim. A line's first clause is never judged this
 // way, so a plan phase such as "Added assertion" stays a plan.
-// A base verb ("did modify src/cli.ts") is a claim only after did/do/does, so a
-// planned step such as "then add the assertion" stays a plan.
+// Base verbs ("then do update the docs", "does update the schema") are never a
+// subjectless claim: they are plans. A claim with a base verb needs a first-person
+// or "DID" auxiliary, handled by IMPLEMENTATION_CLAIM_PATTERNS.
 const SUBJECTLESS_IMPLEMENTATION_CLAIM =
-  /^\s*(?:(?:I|we|Codex)\s+)?(?:(?:also|then|just|have|has|had)\s+)*(?:(?:did|do|does)\s+(?:implement|change|modify|update|create|add|remove|delete|refactor|fix|edit|write|rewrite|patch|replace|rename|move|commit|push)|implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|edited|wrote|rewrote|patched|replaced|renamed|moved|committed|pushed)\s+(?:(?:the|a|an|this|that|these|those|it|them|my|our|its|their)(?![\w-])|src\/|tests?\/)/i;
+  /^\s*(?:(?:I|we|Codex)\s+)?(?:(?:also|then|just|have|has|had)\s+)*(?:implemented|changed|modified|updated|created|added|removed|deleted|refactored|fixed|edited|wrote|rewrote|patched|replaced|renamed|moved|committed|pushed)\s+(?:(?:the|a|an|this|that|these|those|it|them|my|our|its|their)(?![\w-])|src\/|tests?\/)/i;
 
 function implementationClaimEvidence(artifactText: string): string[] {
   const affirmative = (clause: string): boolean =>
@@ -487,7 +509,7 @@ function implementationClaimEvidence(artifactText: string): string[] {
     .filter((line) => {
       if (IMPLEMENTATION_CLAIM_LINE_PATTERNS.some((pattern) => pattern.test(line))) return true;
       // split() with a capture group interleaves clauses and their boundaries.
-      const parts = line.split(IMPLEMENTATION_CLAUSE_BOUNDARY);
+      const parts = line.replace(PATH_DOT_DOT, PATH_DOT_DOT_MASK).split(IMPLEMENTATION_CLAUSE_BOUNDARY);
       let previousNamedAClaim = false;
       for (let index = 0; index < parts.length; index += 2) {
         const clause = parts[index] ?? "";
