@@ -18,7 +18,7 @@ afterEach(() => vi.useRealTimers());
 describe("pull-request inventory request coordinator", () => {
   it("turns a never-settling cold request into a retryable deadline error", async () => {
     vi.useFakeTimers();
-    const fetchImpl = vi.fn(() => new Promise<Response>(() => undefined));
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
     const coordinator = createInventoryRequestCoordinator({ fetchImpl, timeoutMs: 50 });
 
     const pending = coordinator.request(true);
@@ -32,7 +32,7 @@ describe("pull-request inventory request coordinator", () => {
   });
 
   it("aborts and suppresses a request when its consumer unmounts", async () => {
-    const fetchImpl = vi.fn(() => new Promise<Response>(() => undefined));
+    const fetchImpl = vi.fn<typeof fetch>(() => new Promise<Response>(() => undefined));
     const coordinator = createInventoryRequestCoordinator({ fetchImpl });
 
     const pending = coordinator.request(false);
