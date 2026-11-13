@@ -1,10 +1,10 @@
 agent_ask: v1
-request_id: plan-record-run-unattended-test-pins-part-3-20261113
+request_id: plan-record-run-unattended-test-pins-part-3-r2-20261113
 project: arcadia
 intent: plan
 requested_authority: propose
 desired_result: Record run unattended test pins 20261113 part 3
-rationale: "Plan 3 drafting helper (Claudia Swift, Haiku, low effort), on behalf of Rowan 12, 2026-11-13: the record run on main needs more independent, test-only work staged after part 2. This INACTIVE draft Plan holds twenty test-only Actions in the shape of merged pins #2216 and the part 1 and part 2 pins. Each creates one new test file under tests/ and changes no src/ file, so every change stays inside the worker merge safe paths. Each pins one pure function's current behaviour with deterministic inputs and no network, timer, child process, database or live service. None names a function already covered by a test on main, none is already an Action in a Plan under docs/plans, and none sits in an authority path or in a source file touched by an open pull request when drafted. A helper wrote every test on main fbdeaf044 and ran vitest over the twenty files, eslint and tsc with no source change, then discarded the files from the branch. Actions are independent and ordered simplest first. Registering this draft changes no active pointer, queue, production policy, spend or authority; activation and the day approval stay with the operator and Rowan."
+rationale: "Plan 3 drafting helper (Claudia Swift, Haiku, low effort), on behalf of Rowan 12, 2026-11-13: the record run on main needs more independent, test-only work staged after part 2. This INACTIVE draft Plan holds twenty test-only Actions in the shape of merged pins #2216 and the part 1 and part 2 pins. Each creates one new test file under tests/ and changes no src/ file, so every change stays inside the worker merge safe paths. Each pins one pure function's current behaviour with deterministic inputs and no network, timer, child process, database or live service. No pinned function is directly tested on main, except that safeText has one incidental assertion in src/decisions/nextSteps.test.ts (a control and bidi character case) and the pin adds the whitespace, non-string and truncation coverage; none is already an Action in a Plan under docs/plans, and none sits in an authority path or in a source file touched by an open pull request when drafted. A helper wrote every test on main fbdeaf044 and ran vitest over the twenty files, eslint and tsc with no source change, then discarded the files from the branch. Actions are independent and ordered simplest first. Registering this draft changes no active pointer, queue, production policy, spend or authority; activation and the day approval stay with the operator and Rowan."
 acceptance:
   - "An inactive draft Plan holds the twenty independent test-only Actions below in this order, and no active pointer, queue or production policy changes on registration."
 actions:
@@ -76,7 +76,7 @@ actions:
     dependencies: []
   - id: pin-safe-text-collapse
     desired_result: "Pin that safe text collapses whitespace, truncates to the limit and reads non-strings as empty, with a new test file."
-    why: "safeText cleans free text before it is written into next-step lines, and no test calls it directly, so dropping the whitespace collapse or the length limit would let unsafe or oversized text through without failing a test today."
+    why: "safeText cleans free text before it reaches next-step lines and has only one control-character assertion, in nextSteps.test.ts, so dropping the whitespace collapse, non-string guard or length limit would pass every test today."
     execution: build
     acceptance:
       - "tests/pin-safe-text-collapse.test.ts is a new test file that imports safeText from ../src/decisions/nextSteps.js and asserts it returns an empty string for the number 42 and for null."
