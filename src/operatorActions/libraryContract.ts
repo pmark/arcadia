@@ -123,6 +123,14 @@ export function startRunLauncher(id: string): string {
 
 /** One Action of the activated Plan as the activation queue sees it (settlement orders its non-done Actions). */
 export interface PlanQueueAction { id: string; status: string; dependsOn: string[] }
+/**
+ * The queue segment an activation settles: the Plan's non-done Actions in dependency order, using the same ordering
+ * function as activation settlement (src/ask/settlement.ts). Every caller that checks a planActivation uses this (#2478).
+ */
+export function expectedActivationSegment(project: string, planQueue: readonly PlanQueueAction[]): string[] {
+  return dependencyOrderedActionIds(planQueue.filter((action) => action.status !== "done")
+    .map((action) => ({ id: action.id, dependencies: action.dependsOn }))).map((actionId) => `${project}/${actionId}`);
+}
 
 function validateStartRun(d: OperatorScriptDescriptor, id: string, script: string, planQueue?: readonly PlanQueueAction[]): void {
   try { validateStartRunPins(d.startRun); }
@@ -147,10 +155,8 @@ function validateStartRun(d: OperatorScriptDescriptor, id: string, script: strin
     }
     if (planQueue !== undefined) {
       let expected: string[];
-      try {
-        expected = dependencyOrderedActionIds(planQueue.filter((action) => action.status !== "done")
-          .map((action) => ({ id: action.id, dependencies: action.dependsOn }))).map((actionId) => `${pins.project}/${actionId}`);
-      } catch (error) { return fail("INVALID_START_RUN", error instanceof Error ? error.message : String(error)); }
+      try { expected = expectedActivationSegment(pins.project, planQueue); }
+      catch (error) { return fail("INVALID_START_RUN", error instanceof Error ? error.message : String(error)); }
       if (JSON.stringify(e.queueSegment) !== JSON.stringify(expected)) {
         fail("INVALID_START_RUN", `The embedded planActivation queueSegment must equal the activation queue, the Plan's non-done Actions in dependency order: expected ${JSON.stringify(expected)}, got ${JSON.stringify(e.queueSegment)}.`);
       }
