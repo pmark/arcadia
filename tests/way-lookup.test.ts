@@ -493,6 +493,9 @@ describe("stop-production wording against the real guidance (Issue #2348)", () =
     "where is the off button",
     "stop everything",
     "turn off production",
+    "switch production off",
+    "switch off everything",
+    "switch off production",
     "what happens when I stop production"
   ])("returns the production Off guidance first for %j", (question) => {
     const top = first(question);
