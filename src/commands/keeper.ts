@@ -1,9 +1,10 @@
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { linkSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validationError } from "../cli/errors.js";
+import { validationError, type ArcadiaError } from "../cli/errors.js";
 import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
@@ -153,23 +154,74 @@ function lockPath(workspacePath: string): string {
   return path.join(workspacePath, ".arcadia", KEEPER_LOCK_FILE);
 }
 
-/** Exclusive-create, so two concurrent starts cannot both pass the guard. A lock older than five minutes is a crashed start and is replaced once. */
-function acquireLock(workspacePath: string, now: number): () => void {
+interface FileIdentity { ino: number; mtimeMs: number }
+
+function identityOf(file: string): FileIdentity | null {
+  try {
+    const stat = statSync(file);
+    return { ino: stat.ino, mtimeMs: stat.mtimeMs };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Removes `target` only if it is still the exact file `expected` describes. The file is first renamed to a name only
+ * this call owns, so nothing is ever unlinked by path alone. If the file moved aside is not the expected one (another
+ * starter created a fresh lock in between), it is put back with a hard link, which never overwrites: a lock that is
+ * live is never lost. Returns true only when the expected file was removed.
+ */
+function removeExact(target: string, expected: FileIdentity): boolean {
+  const aside = `${target}.${process.pid}.${randomUUID()}.reclaim`;
+  try { renameSync(target, aside); } catch { return false; }
+  const moved = identityOf(aside);
+  if (moved !== null && moved.ino === expected.ino && moved.mtimeMs === expected.mtimeMs) {
+    try { unlinkSync(aside); } catch { /* already gone */ }
+    return true;
+  }
+  try {
+    linkSync(aside, target);
+    unlinkSync(aside);
+  } catch {
+    // Something re-created the lock meanwhile: leave the displaced one at its aside name rather than overwrite it.
+  }
+  return false;
+}
+
+/**
+ * Exclusive-create, so two concurrent starts cannot both pass the guard. A lock older than five minutes is a crashed
+ * start: it is claimed by renaming away the exact file observed (see removeExact), so a starter never removes or
+ * replaces a lock another starter has just created, and the release removes only the file this start created.
+ */
+export function acquireLock(workspacePath: string, now: number, hooks: { beforeReclaim?: () => void } = {}): () => void {
   const target = lockPath(workspacePath);
+  const inProgress = (): ArcadiaError => validationError(`Another \`arcadia keeper start\` is in progress (${target}); nothing was launched.`);
   mkdirSync(path.dirname(target), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       writeFileSync(target, `${JSON.stringify({ pid: process.pid, at: new Date(now).toISOString() })}\n`, { flag: "wx" });
-      return () => { try { unlinkSync(target); } catch { /* already gone */ } };
+      const own = identityOf(target);
+      return () => { if (own !== null) removeExact(target, own); };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw validationError(`The keeper start lock could not be taken: ${(error as Error).message}`);
-      let age: number;
-      try { age = Date.now() - statSync(target).mtimeMs; } catch { continue; }
-      if (age < LOCK_STALE_MS) throw validationError(`Another \`arcadia keeper start\` is in progress (${target}); nothing was launched.`);
-      try { unlinkSync(target); } catch { /* raced with its owner */ }
+      const observed = identityOf(target);
+      if (observed === null) continue;
+      if (Date.now() - observed.mtimeMs < LOCK_STALE_MS || attempt > 0) throw inProgress();
+      hooks.beforeReclaim?.();
+      // Claim only the exact stale file observed. If it was replaced by a fresh lock meanwhile, removeExact restores that
+      // lock and this start loops to the in-progress refusal above.
+      removeExact(target, observed);
     }
   }
-  throw validationError(`The keeper start lock ${target} could not be taken.`);
+  throw inProgress();
+}
+
+/** A workspace inside the primary checkout would put the lock and record into the tree and make the checkout dirty. */
+function refuseWorkspaceInCheckout(workspacePath: string, checkout: string): void {
+  const relative = path.relative(realpathSync(checkout), realpathSync(workspacePath));
+  if (relative === "" || (relative.split(path.sep)[0] !== ".." && !path.isAbsolute(relative))) {
+    throw validationError(`The workspace ${workspacePath} is inside the primary checkout ${checkout}; its keeper lock and record would make that checkout dirty. Use a workspace outside the checkout.`, { reason: "workspace_in_checkout" });
+  }
 }
 
 interface Heartbeat { session: string | null; armedUntil: string; live: boolean }
@@ -250,6 +302,7 @@ export function runKeeperStartCommand(options: KeeperStartOptions, dependencies:
   // `--bg` manages the session id and ignores --session-id (probe P2), so none is passed; the real one is discovered after launch.
   const argv = ["--bg", "--remote-control", KEEPER_REMOTE_CONTROL_NAME, "-n", name, "--model", model, "--permission-mode", "auto", prompt];
   const checkout = primaryCheckout(dependencies.cwd ?? invocationRoot());
+  refuseWorkspaceInCheckout(workspacePath, checkout);
   const trust = claudeFolderTrust(checkout, dependencies.claudeStatePath ?? defaultClaudeStatePath(dependencies.env ?? process.env, undefined, checkout));
   if (options.dryRun) {
     const live = liveReason(workspacePath, options, dependencies);

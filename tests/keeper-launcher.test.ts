@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   KEEPER_LOCK_FILE,
   KEEPER_RECORD_FILE,
+  acquireLock,
   readKeeperRecord,
   renderKeeperStartSuccess,
   runKeeperStartCommand,
@@ -439,5 +440,72 @@ describe("arcadia keeper start: probe P1/P2 adaptations (trusted folder, real --
     const interactive = fakeClaude();
     interactive.setLaunchRow({ name: "♾️ Flynn · keeper starting", cwd: interactive.dir });
     expect(() => runKeeperStartCommand({ workspace: workspace(), supervisor: SUPERVISOR }, interactive.deps)).toThrow(/could not be verified/);
+  });
+});
+
+describe("arcadia keeper start: stale-lock reclaim and checkout workspace (#2464)", () => {
+  const TEN_MINUTES = 10 * 60_000;
+
+  /** A lock left by a crashed start: its mtime is well past the five-minute stale window. */
+  function staleLock(root: string): string {
+    const lock = path.join(root, ".arcadia", KEEPER_LOCK_FILE);
+    writeFileSync(lock, `${JSON.stringify({ pid: 1, at: "crashed" })}\n`);
+    const old = new Date(Date.now() - TEN_MINUTES);
+    utimesSync(lock, old, old);
+    return lock;
+  }
+
+  it("starter A claims the stale lock and creates a fresh one before B reclaims: B does not remove or replace A's live lock and refuses", () => {
+    const root = workspace();
+    const lock = staleLock(root);
+    const probe: { inode?: number; release?: () => void } = {};
+    expect(() => acquireLock(root, Date.now(), {
+      beforeReclaim: () => {
+        // A runs to completion between B's staleness check and B's reclaim.
+        probe.release = acquireLock(root, Date.now());
+        probe.inode = statSync(lock).ino;
+      }
+    })).toThrow(/in progress/);
+    expect(probe.release).toBeDefined();
+    // A's fresh lock is still the same file, untouched by B.
+    expect(existsSync(lock)).toBe(true);
+    expect(statSync(lock).ino).toBe(probe.inode);
+    probe.release?.();
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it("two starters that both find the lock stale: exactly one proceeds and the other refuses with the in-progress error", () => {
+    const root = workspace();
+    const lock = staleLock(root);
+    const winners: Array<() => void> = [];
+    const refusals: string[] = [];
+    const start = (hooks: { beforeReclaim?: () => void } = {}): void => {
+      try {
+        winners.push(acquireLock(root, Date.now(), hooks));
+      } catch (error) {
+        refusals.push((error as Error).message);
+      }
+    };
+    // Starter B pauses after seeing the stale lock; starter C takes it and holds it while B resumes.
+    start({ beforeReclaim: () => start() });
+    expect(winners).toHaveLength(1);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatch(/in progress/);
+    // The surviving lock is the winner's own file, not one B replaced.
+    expect(existsSync(lock)).toBe(true);
+    winners[0]?.();
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it("refuses a --workspace inside the primary checkout before any lock or record is written", () => {
+    const fake = fakeClaude();
+    const inside = path.join(fake.dir, "workspace");
+    mkdirSync(inside);
+    initWorkspace(inside);
+    mkdirSync(path.join(inside, ".arcadia"), { recursive: true });
+    expect(() => runKeeperStartCommand({ workspace: inside, supervisor: SUPERVISOR }, fake.deps)).toThrow(/inside the primary checkout/);
+    expect(existsSync(path.join(inside, ".arcadia", KEEPER_LOCK_FILE))).toBe(false);
+    expect(existsSync(path.join(inside, ".arcadia", KEEPER_RECORD_FILE))).toBe(false);
+    expect(fake.calls()).toEqual([]);
   });
 });
