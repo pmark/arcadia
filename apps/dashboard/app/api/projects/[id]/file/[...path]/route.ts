@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { resolveReadyWorkspace } from "../../../../../../../../src/cli/workspace";
@@ -48,12 +48,22 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
       return NextResponse.json({ error: "Only text documentation files can be opened from here." }, { status: 400 });
     }
 
-    const fileStat = await stat(absolutePath);
+    // Containment must hold for the file the OS will actually open: a symlink
+    // inside the repository can point outside it. A missing target rejects here
+    // with ENOENT and is answered as not found below.
+    const realRepo = await realpath(repoPath);
+    const realPath = await realpath(absolutePath);
+    const relativeToRealRepo = path.relative(realRepo, realPath);
+    if (relativeToRealRepo === ".." || relativeToRealRepo.startsWith(`..${path.sep}`) || path.isAbsolute(relativeToRealRepo)) {
+      return NextResponse.json({ error: "File path is outside the Project repository." }, { status: 400 });
+    }
+
+    const fileStat = await stat(realPath);
     if (!fileStat.isFile()) {
       return NextResponse.json({ error: "Path is not a file." }, { status: 404 });
     }
 
-    const bytes = await readFile(absolutePath);
+    const bytes = await readFile(realPath);
     return new Response(bytes, {
       headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }
     });

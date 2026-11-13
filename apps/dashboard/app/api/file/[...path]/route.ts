@@ -1,4 +1,4 @@
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { ArcadiaCliError, resolveDashboardWorkspace } from "../../../../lib/arcadia-cli";
@@ -26,12 +26,22 @@ export async function GET(
       return NextResponse.json({ error: "File path is outside the Arcadia workspace.", details: null }, { status: 400 });
     }
 
-    const fileStat = await stat(absolutePath);
+    // Containment must hold for the file the OS will actually open: a symlink
+    // inside the workspace can point outside it. A missing target rejects here
+    // with ENOENT and is answered as not found below.
+    const realWorkspace = await realpath(workspace);
+    const realPath = await realpath(absolutePath);
+    const relativeToRealWorkspace = path.relative(realWorkspace, realPath);
+    if (relativeToRealWorkspace === ".." || relativeToRealWorkspace.startsWith(`..${path.sep}`) || path.isAbsolute(relativeToRealWorkspace)) {
+      return NextResponse.json({ error: "File path is outside the Arcadia workspace.", details: null }, { status: 400 });
+    }
+
+    const fileStat = await stat(realPath);
     if (!fileStat.isFile()) {
       return NextResponse.json({ error: "Path is not a file.", details: null }, { status: 404 });
     }
 
-    const bytes = await readFile(absolutePath);
+    const bytes = await readFile(realPath);
     return new Response(bytes, {
       headers: {
         "content-type": contentTypeForPath(absolutePath),
