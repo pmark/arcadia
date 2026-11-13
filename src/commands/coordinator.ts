@@ -47,8 +47,7 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
-import { stopPredecessorAfterAccept, systemClaudeStop, type PredecessorStopDeps, type PredecessorStopResult } from "../coordinator/predecessorStop.js";
-import { systemTmux } from "../sessions/index.js";
+import { runPredecessorStopAfterAccept, systemClaudeStop, systemPredecessorStopTmux, type AfterAcceptStop, type PredecessorStopDeps } from "../coordinator/predecessorStop.js";
 import { RELAY_ROLES, renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult, type StartPressStatus } from "../coordinator/relay.js";
 import { observeProviderCapacity } from "../codingAgents/capacity.js";
 import { checkProviderSignIn } from "../codingAgents/signIn.js";
@@ -267,7 +266,7 @@ export function renderCoordinatorVerifySuccess(response: CommandSuccess<VerifyRe
   ];
 }
 
-export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string; warnings?: string[]; predecessorStop: PredecessorStopResult | null }
+export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string; warnings?: string[]; predecessorStop: AfterAcceptStop["stop"]; predecessorStopError: AfterAcceptStop["error"] }
 
 /**
  * `arcadia coordinator accept --generation N --snapshot-sha <sha>`: the custody transfer (design step 5). After the
@@ -284,11 +283,12 @@ export function runCoordinatorAcceptCommand(options: Scope & { generation: numbe
       throw validationError(`accept is run by the incoming generation ${options.generation} itself, with its own coordinator identity.`, { reason: "accept_identity" });
     }
     const result = acceptGeneration(db, paths, admission.generation, now);
-    const predecessorStop = result.handedOff === null ? null : stopPredecessorAfterAccept(db, {
+    // Custody has moved above. A throw from the stop is reported in the result and never fails the accept.
+    const after: AfterAcceptStop = result.handedOff === null ? { stop: null, error: null } : runPredecessorStopAfterAccept(db, {
       workspace: workspacePath, project: options.project, role: options.role,
       successor: options.generation, predecessor: result.handedOff, repoRoot: mainWorktreeRoot(options.repo)
     }, options.stopDeps ?? systemPredecessorStopDeps(db));
-    return { ...result, snapshotSha: options.snapshotSha, predecessorStop };
+    return { ...result, snapshotSha: options.snapshotSha, predecessorStop: after.stop, predecessorStopError: after.error };
   }));
   return createSuccess({ command: "coordinator.accept", workspace: workspacePath, data });
 }
@@ -296,7 +296,7 @@ export function runCoordinatorAcceptCommand(options: Scope & { generation: numbe
 /** The real host dependencies of the predecessor stop: exact tmux and `claude stop`, the START interlock, and the operator ping. */
 function systemPredecessorStopDeps(db: Database.Database): PredecessorStopDeps {
   return {
-    tmux: systemTmux,
+    tmux: systemPredecessorStopTmux(),
     claudeStop: systemClaudeStop,
     startPressInProgress: relayStartPressInterlock,
     ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
@@ -313,6 +313,7 @@ export function renderCoordinatorAcceptSuccess(response: CommandSuccess<Coordina
   return [
     `Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`,
     ...stopLine,
+    ...(data.predecessorStopError ? [`warning: ${data.predecessorStopError.reason}: ${data.predecessorStopError.detail}`] : []),
     ...(data.warnings ?? []).map((warning) => `warning: ${warning}`)
   ];
 }

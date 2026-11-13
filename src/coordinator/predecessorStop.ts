@@ -1,8 +1,8 @@
-import { spawnSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
-import type { TmuxAdapter } from "../sessions/index.js";
+import { tmuxQueryEnv } from "../sessions/index.js";
 import type { StartPressStatus } from "./relay.js";
 import { coordinatorPaths } from "./paths.js";
 import { listGenerations, newestLaunching, type GenerationRecord } from "./generations.js";
@@ -16,36 +16,51 @@ import { listGenerations, newestLaunching, type GenerationRecord } from "./gener
  * Identity, in order:
  *  - `tmux`: a relay-launched predecessor (it holds a custody token) whose
  *    recorded tmux name is exactly `arcadia-coord-<role>-g<N>` for its own
- *    generation. Stopped with `tmux kill-session -t =<name>`, then confirmed
- *    gone with `has-session`; a session still live after the kill is `failed`.
- *  - `bg`: a predecessor with a recorded `claude --bg` id (`backgroundStopId`).
- *    Stopped with `claude stop <id>`.
+ *    generation. Before any kill, the live pane must run the recorded
+ *    `--session-id` (the same identity relayCoordinatorSessions and START
+ *    require); otherwise `identity_mismatch`. Stopped with
+ *    `tmux kill-session -t =<name>`, then confirmed gone.
+ *  - `bg`: a relay-launched predecessor with a recorded `claude --bg` id
+ *    (`backgroundStopId`). Stopped with `claude stop <id>`.
  *  - desktop or unrecorded: no stoppable identity is recorded, so nothing is
  *    guessed. The outcome is `manual_stop_required` with the exact title and
  *    session id, and the operator is pinged once.
  *
+ * Probes are tri-state: present, absent or unknown. Only a clean "absent" is
+ * `already_stopped`; an unknown answer is `failed` and never terminal.
+ *
  * Refusals (`deferred`, nothing stopped): a START press in progress or
  * unreadable, a successor launch in flight, or an unresolved repository. A
- * deferral is not terminal, so a later run may stop the predecessor. A
- * receipt beside the generations records each run. Terminal outcomes (stopped,
- * already_stopped, manual_stop_required) are not repeated, so a second run
- * reports the first result and pings nothing new. A failed stop is reported as
- * failed, never as success. Custody is never changed here: `accept` already
- * moved it.
+ * deferral is not terminal, so a later run may stop the predecessor. Terminal
+ * outcomes (stopped, already_stopped, manual_stop_required, identity_mismatch)
+ * are not repeated. A repeated non-terminal outcome with the same detail is not
+ * pinged again. Custody is never changed here: `accept` already moved it.
  */
 
 export const PREDECESSOR_STOP_SCHEMA = "arcadia-coordinator-predecessor-stop-v1" as const;
 
-export type PredecessorStopOutcome = "stopped" | "already_stopped" | "manual_stop_required" | "failed" | "deferred";
+export type PredecessorStopOutcome = "stopped" | "already_stopped" | "manual_stop_required" | "identity_mismatch" | "failed" | "deferred";
 export type PredecessorStopMethod = "tmux" | "bg" | "desktop" | "unrecorded";
+export type TmuxState = "present" | "absent" | "unknown";
+export type PaneIdentity = "match" | "mismatch" | "unknown";
+export type ClaudeStopResult = { ok: true } | { ok: false; notFound: boolean; error: string };
 
-const TERMINAL: ReadonlySet<PredecessorStopOutcome> = new Set(["stopped", "already_stopped", "manual_stop_required"]);
+const TERMINAL: ReadonlySet<PredecessorStopOutcome> = new Set(["stopped", "already_stopped", "manual_stop_required", "identity_mismatch"]);
 const SAFE_TMUX_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const SESSION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TMUX_LIMITS = { timeout: 15_000, killSignal: "SIGKILL" as const };
 
 export interface PredecessorStopDeps {
-  tmux: Pick<TmuxAdapter, "hasSession" | "killSession">;
-  /** `claude stop <id>`; an error whose text says the host no longer knows the session is reported as already gone. */
-  claudeStop(stopId: string): { ok: true } | { ok: false; error: string };
+  tmux: {
+    /** present, absent (tmux's own "no session" or "no server" answer), or unknown (any other tmux failure). */
+    state(name: string): TmuxState;
+    /** Ends the named session; throws when tmux refuses, so the caller reports failed. */
+    killSession(name: string): void;
+    /** Whether the live pane runs the recorded `--session-id`, found through its descendant processes. */
+    paneIdentity(name: string, sessionId: string): PaneIdentity;
+  };
+  /** `claude stop <id>`. Only a notFound answer (the host's own "session not found") counts as already gone. */
+  claudeStop(stopId: string): ClaudeStopResult;
   /** Whether a START press is running (or unreadable) in the primary checkout. Required: the interlock cannot be omitted. */
   startPressInProgress(repoRoot: string): StartPressStatus;
   ping(message: string): void;
@@ -57,7 +72,7 @@ export interface PredecessorStopResult {
   predecessor: number;
   successor: number;
   method: PredecessorStopMethod;
-  /** The exact command run, or null when none was (already stopped, deferred, manual). */
+  /** The exact command run, or null when none was (already stopped, deferred, manual, mismatch, or failed before a kill). */
   command: string | null;
   detail: string;
   /** The receipt path; null only when the receipt could not be written (see detail). */
@@ -66,6 +81,12 @@ export interface PredecessorStopResult {
   pinged: boolean;
   /** True when a terminal receipt from an earlier run was reported and nothing was run again. */
   reused: boolean;
+}
+
+export interface AfterAcceptStop {
+  stop: PredecessorStopResult | null;
+  /** Set when the stop threw after custody moved. The accept itself has succeeded. */
+  error: { reason: "predecessor_stop_failed"; detail: string } | null;
 }
 
 interface Receipt {
@@ -81,15 +102,82 @@ interface Receipt {
   finishedAt: string;
 }
 
-/** The real `claude stop`, bounded. Exact id only; never a name or a pattern. */
-export function systemClaudeStop(stopId: string): { ok: true } | { ok: false; error: string } {
-  const result = spawnSync("claude", ["stop", stopId], { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"] });
-  if (result.error) return { ok: false, error: result.error.message };
-  if (result.status !== 0) return { ok: false, error: `claude stop exited ${result.status}: ${((result.stderr ?? "").trim() || (result.stdout ?? "").trim()).slice(0, 400)}` };
-  return { ok: true };
+/** Live tmux: `has-session` exits 0 when present; tmux's own "no session" or "no server" answer is absent; anything else is unknown. */
+export function systemTmuxState(name: string): TmuxState {
+  try {
+    execFileSync("tmux", ["has-session", "-t", `=${name}`], { ...TMUX_LIMITS, stdio: ["ignore", "ignore", "pipe"], encoding: "utf8", env: tmuxQueryEnv() });
+    return "present";
+  } catch (error) {
+    const failure = error as { status?: unknown; stderr?: unknown; code?: unknown };
+    if (failure.code === "ETIMEDOUT") return "unknown";
+    const stderr = typeof failure.stderr === "string" ? failure.stderr : "";
+    if (typeof failure.status === "number" && failure.status !== 0 && (/can't find session/i.test(stderr) || /no server running/i.test(stderr))) return "absent";
+    return "unknown";
+  }
 }
 
-const GONE_TEXT = /no such|not found|unknown session|no session/i;
+/** Kills the named tmux session only. A refusal throws; the caller re-probes and reports failed. */
+export function systemTmuxKill(name: string): void {
+  execFileSync("tmux", ["kill-session", "-t", `=${name}`], { ...TMUX_LIMITS, stdio: "ignore", env: tmuxQueryEnv() });
+}
+
+/**
+ * Whether the pane of exactly `name` runs `claude --session-id <sessionId>`: the pane pid and its descendants are
+ * searched in `ps` output. Any read failure is unknown, never a guess.
+ */
+export function systemPaneIdentity(name: string, sessionId: string): PaneIdentity {
+  if (!SESSION_UUID.test(sessionId)) return "unknown";
+  let panePid: number;
+  try {
+    const out = execFileSync("tmux", ["list-panes", "-t", `=${name}:`, "-F", "#{pane_pid}"], { ...TMUX_LIMITS, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: tmuxQueryEnv() });
+    panePid = Number(out.split("\n")[0]);
+  } catch {
+    return "unknown";
+  }
+  if (!Number.isInteger(panePid) || panePid <= 1) return "unknown";
+  let table: string;
+  try {
+    table = execFileSync("ps", ["-A", "-o", "pid=,ppid=,args="], { encoding: "utf8", timeout: 15_000, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, LC_ALL: "C" } });
+  } catch {
+    return "unknown";
+  }
+  const children = new Map<number, number[]>();
+  const argv = new Map<number, string>();
+  for (const line of table.split("\n")) {
+    const row = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+    if (!row) continue;
+    const pid = Number(row[1]);
+    const ppid = Number(row[2]);
+    argv.set(pid, row[3]);
+    children.set(ppid, [...(children.get(ppid) ?? []), pid]);
+  }
+  const needle = new RegExp(`(^|\\s)--session-id[ =]${sessionId}(\\s|$)`, "i");
+  const queue = [panePid];
+  const seen = new Set<number>();
+  while (queue.length > 0) {
+    const pid = queue.shift() as number;
+    if (seen.has(pid)) continue;
+    seen.add(pid);
+    if (needle.test(argv.get(pid) ?? "")) return "match";
+    queue.push(...(children.get(pid) ?? []));
+  }
+  return "mismatch";
+}
+
+/** The real `claude stop`, bounded. Exact id only. Only the host's own "session not found" answer is notFound; auth and CLI failures are not. */
+export function systemClaudeStop(stopId: string): ClaudeStopResult {
+  const result = spawnSync("claude", ["stop", stopId], { encoding: "utf8", timeout: 60_000, stdio: ["ignore", "pipe", "pipe"] });
+  if (result.error) return { ok: false, notFound: false, error: result.error.message };
+  if (result.status === 0) return { ok: true };
+  const text = `${result.stderr ?? ""}\n${result.stdout ?? ""}`.trim();
+  const notFound = /\b(no such session|session not found)\b/i.test(text) && !/\b(auth|log ?in|credential|permission|unauthori[sz]ed|token)\b/i.test(text);
+  return { ok: false, notFound, error: `claude stop exited ${result.status}: ${text.slice(0, 400)}` };
+}
+
+/** The real tmux and `claude` dependencies, for the accept command. */
+export function systemPredecessorStopTmux(): PredecessorStopDeps["tmux"] {
+  return { state: systemTmuxState, killSession: systemTmuxKill, paneIdentity: systemPaneIdentity };
+}
 
 function receiptPath(root: string, generation: number): string {
   return path.join(root, `predecessor-stop-g${generation}.json`);
@@ -156,7 +244,12 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
     return { ...base, outcome: earlier.outcome, method: earlier.predecessor.method, command: earlier.command, detail: `${earlier.detail} (recorded ${earlier.finishedAt}; not run again)`, receipt: receiptPath(paths.root, input.predecessor), pinged: false, reused: true };
   }
 
-  const pingOnce = (message: string): boolean => { deps.ping(message.slice(0, 500)); return true; };
+  // A non-terminal outcome with the same detail as the prior receipt is not pinged again.
+  const notify = (outcome: PredecessorStopOutcome, detail: string, message: string): boolean => {
+    if (earlier && earlier.outcome === outcome && earlier.detail === detail) return false;
+    deps.ping(message.slice(0, 500));
+    return true;
+  };
   const finish = (fields: Pick<Receipt, "outcome" | "command" | "detail" | "predecessor">, pinged: boolean): PredecessorStopResult => {
     const receipt: Receipt = {
       schema: PREDECESSOR_STOP_SCHEMA, project: input.project, role: input.role,
@@ -180,43 +273,93 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
   })();
   if (refusal !== null) {
     const identity = predecessorIdentity(predecessor, input.role, successor);
-    const pinged = pingOnce(`Coordinator relay did not stop the predecessor ${input.role} generation ${predecessor.generation} (${input.project}; successor ${input.successor} accepted): ${refusal}. Stop it by its exact identity when the press or launch is clear.`);
-    return finish({ outcome: "deferred", command: null, detail: refusal, predecessor: identity }, pinged);
+    const message = `Coordinator relay did not stop the predecessor ${input.role} generation ${predecessor.generation} (${input.project}; successor ${input.successor} accepted): ${refusal}. Stop it by its exact identity when the press or launch is clear.`;
+    return finish({ outcome: "deferred", command: null, detail: refusal, predecessor: identity }, notify("deferred", refusal, message));
   }
 
   const identity = predecessorIdentity(predecessor, input.role, successor);
   if (identity.method === "tmux") {
     const name = identity.tmuxName as string;
-    try {
-      if (!deps.tmux.hasSession(name)) {
-        return finish({ outcome: "already_stopped", command: null, detail: `no live tmux session named ${name}`, predecessor: identity }, false);
-      }
-      const command = `tmux kill-session -t =${name}`;
-      deps.tmux.killSession?.(name);
-      if (deps.tmux.hasSession(name)) {
-        const detail = `${command} ran, but tmux session ${name} is still live; the predecessor is NOT stopped`;
-        return finish({ outcome: "failed", command, detail, predecessor: identity }, pingOnce(`Coordinator relay FAILED to stop the predecessor ${name} (${input.project}); it is still running after kill-session. Stop it by hand: tmux kill-session -t =${name}`));
-      }
-      return finish({ outcome: "stopped", command, detail: `stopped tmux session ${name} by its exact name`, predecessor: identity }, false);
-    } catch (error) {
-      const detail = `stopping tmux session ${name} raised an error (${error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160)}); the predecessor may still be running`;
-      return finish({ outcome: "failed", command: `tmux kill-session -t =${name}`, detail, predecessor: identity }, pingOnce(`Coordinator relay FAILED to stop the predecessor ${name} (${input.project}): ${detail}`));
+    const command = `tmux kill-session -t =${name}`;
+    // Every failure here is non-terminal and happens before or after a kill, so the custody is never changed.
+    const fail = (detail: string, ranCommand: string | null): PredecessorStopResult =>
+      finish({ outcome: "failed", command: ranCommand, detail, predecessor: identity }, notify("failed", detail, `Coordinator relay FAILED to stop the predecessor ${name} (${input.project}): ${detail}`));
+
+    let before: TmuxState;
+    try { before = deps.tmux.state(name); } catch (error) {
+      return fail(`the tmux probe for ${name} raised an error (${errorText(error)}); nothing was killed and the predecessor may still be running`, null);
     }
+    if (before === "unknown") return fail(`the tmux probe for ${name} could not tell whether it is live (probe unknown); nothing was killed`, null);
+    if (before === "absent") return finish({ outcome: "already_stopped", command: null, detail: `no live tmux session named ${name}`, predecessor: identity }, false);
+
+    // Identity before any kill: a hand-started or stale session that carries the exact name is not the recorded predecessor.
+    const sessionId = identity.nativeSessionId;
+    if (!sessionId) {
+      const detail = `tmux session ${name} is live but generation ${identity.generation} has no recorded session id to verify it against; nothing was killed`;
+      return finish({ outcome: "identity_mismatch", command: null, detail, predecessor: identity }, notify("identity_mismatch", detail, `Coordinator relay refused to stop ${name} (${input.project}): ${detail}. Stop it by hand if it is the predecessor.`));
+    }
+    let pane: PaneIdentity;
+    try { pane = deps.tmux.paneIdentity(name, sessionId); } catch (error) {
+      return fail(`the pane identity check for ${name} raised an error (${errorText(error)}); nothing was killed`, null);
+    }
+    if (pane === "unknown") return fail(`the pane identity of ${name} could not be read; nothing was killed`, null);
+    if (pane === "mismatch") {
+      const detail = `tmux session ${name} is live but its pane does not run the recorded session ${sessionId} of generation ${identity.generation}; it is not the predecessor, so nothing was killed`;
+      return finish({ outcome: "identity_mismatch", command: null, detail, predecessor: identity }, notify("identity_mismatch", detail, `Coordinator relay refused to stop ${name} (${input.project}): the live session does not run the recorded predecessor session ${sessionId}. Nothing was killed.`));
+    }
+
+    try { deps.tmux.killSession(name); } catch (error) {
+      return fail(`${command} failed (${errorText(error)}); the predecessor is NOT stopped`, command);
+    }
+    let after: TmuxState;
+    try { after = deps.tmux.state(name); } catch (error) {
+      return fail(`${command} ran, but the probe afterwards raised an error (${errorText(error)}); the stop is not confirmed`, command);
+    }
+    if (after === "present") return fail(`${command} ran, but tmux session ${name} is still live; the predecessor is NOT stopped`, command);
+    if (after === "unknown") return fail(`${command} ran, but the probe afterwards could not tell whether ${name} is live (probe unknown); the stop is not confirmed`, command);
+    return finish({ outcome: "stopped", command, detail: `stopped tmux session ${name} by its exact name`, predecessor: identity }, false);
   }
   if (identity.method === "bg") {
     const stopId = identity.stopId as string;
     const command = `claude stop ${stopId}`;
-    const result = deps.claudeStop(stopId);
+    let result: ClaudeStopResult;
+    try { result = deps.claudeStop(stopId); } catch (error) {
+      const detail = `${command} raised an error (${errorText(error)}); the predecessor is NOT confirmed stopped`;
+      return finish({ outcome: "failed", command, detail, predecessor: identity }, notify("failed", detail, `Coordinator relay FAILED to stop the predecessor background session ${stopId} (${input.project}): ${detail}`));
+    }
     if (result.ok) return finish({ outcome: "stopped", command, detail: `stopped background session ${stopId} by its recorded id`, predecessor: identity }, false);
-    if (GONE_TEXT.test(result.error)) return finish({ outcome: "already_stopped", command, detail: `claude no longer knows background session ${stopId} (${result.error.slice(0, 160)})`, predecessor: identity }, false);
+    if (result.notFound) return finish({ outcome: "already_stopped", command, detail: `claude reports no such session ${stopId}: ${result.error.slice(0, 160)}`, predecessor: identity }, false);
     const detail = `${command} failed: ${result.error.slice(0, 300)}; the predecessor is NOT stopped`;
-    return finish({ outcome: "failed", command, detail, predecessor: identity }, pingOnce(`Coordinator relay FAILED to stop the predecessor background session ${stopId} (${input.project}): ${result.error.slice(0, 200)}. Stop it by hand: claude stop ${stopId}`));
+    return finish({ outcome: "failed", command, detail, predecessor: identity }, notify("failed", detail, `Coordinator relay FAILED to stop the predecessor background session ${stopId} (${input.project}): ${result.error.slice(0, 200)}. Stop it by hand: claude stop ${stopId}`));
   }
   // Desktop or unrecorded: no stoppable identity is recorded, so nothing is guessed. The operator ends it by its exact title and session id.
   const title = identity.title;
   const sessionId = predecessor.nativeSessionId ?? "unrecorded";
   const detail = `generation ${input.predecessor} has no recorded stoppable pane or background id (${identity.method === "desktop" ? "a desktop coordinator" : "not relay-launched"}); end its Session by hand: title "${title}", session ${sessionId}`;
-  return finish({ outcome: "manual_stop_required", command: null, detail, predecessor: identity }, pingOnce(`Coordinator predecessor ${input.role} generation ${input.predecessor} (${input.project}) is handed off and must be stopped by hand: title "${title}", session ${sessionId}. Nothing was stopped.`));
+  return finish({ outcome: "manual_stop_required", command: null, detail, predecessor: identity }, notify("manual_stop_required", detail, `Coordinator predecessor ${input.role} generation ${input.predecessor} (${input.project}) is handed off and must be stopped by hand: title "${title}", session ${sessionId}. Nothing was stopped.`));
+}
+
+/**
+ * The post-accept wrapper. Custody has already moved when this runs, so a throw
+ * is turned into `predecessor_stop_failed` for the accept result and never fails
+ * the accept.
+ */
+export function runPredecessorStopAfterAccept(db: Database.Database, input: StopPredecessorInput, deps: PredecessorStopDeps): AfterAcceptStop {
+  try {
+    return { stop: stopPredecessorAfterAccept(db, input, deps), error: null };
+  } catch (error) {
+    return {
+      stop: null,
+      error: {
+        reason: "predecessor_stop_failed",
+        detail: `custody moved to generation ${input.successor} before the predecessor stop ran, and the stop raised an error (${errorText(error)}); generation ${input.predecessor} may still be running, so check its receipt and stop it by hand if needed`
+      }
+    };
+  }
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message.slice(0, 160) : String(error).slice(0, 160);
 }
 
 /**

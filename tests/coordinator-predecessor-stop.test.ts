@@ -12,7 +12,7 @@ import {
   recordStandDown,
   seedCustodianGeneration
 } from "../src/coordinator/generations.js";
-import { stopPredecessorAfterAccept, type PredecessorStopDeps } from "../src/coordinator/predecessorStop.js";
+import { runPredecessorStopAfterAccept, stopPredecessorAfterAccept, type PredecessorStopDeps } from "../src/coordinator/predecessorStop.js";
 import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -42,20 +42,26 @@ function fresh() {
   return { ws };
 }
 
-/** A fake tmux server: a set of live session names. kill removes a name; `stuck` names survive kill-session. */
-function fakeTmux(live: string[], stuck: string[] = []) {
+/**
+ * A fake tmux server: a set of live session names. kill removes a name; `stuck` names survive kill-session;
+ * `unknown` names fail the probe (a tmux error that is not "absent"); `identity` is what the pane check answers.
+ */
+function fakeTmux(live: string[], options: { stuck?: string[]; unknown?: string[]; identity?: "match" | "mismatch" | "unknown" } = {}) {
   const sessions = new Set(live);
   const killed: string[] = [];
   const tmux: PredecessorStopDeps["tmux"] = {
-    hasSession: (name) => sessions.has(name),
-    killSession: (name) => { killed.push(name); if (!stuck.includes(name)) sessions.delete(name); }
+    state: (name) => (options.unknown ?? []).includes(name) ? "unknown" : sessions.has(name) ? "present" : "absent",
+    killSession: (name) => { killed.push(name); if (!(options.stuck ?? []).includes(name)) sessions.delete(name); },
+    paneIdentity: () => options.identity ?? "match"
   };
   return { tmux, sessions, killed };
 }
 
-function deps(options: { live?: string[]; stuck?: string[]; claudeResult?: { ok: true } | { ok: false; error: string }; press?: { inProgress: boolean; detail: string; unreadable?: boolean } } = {}) {
-  const tmuxFake = fakeTmux(options.live ?? [], options.stuck ?? []);
-  const claudeStop = vi.fn((_id: string): { ok: true } | { ok: false; error: string } => options.claudeResult ?? { ok: true });
+type ClaudeFake = { ok: true } | { ok: false; notFound: boolean; error: string };
+
+function deps(options: { live?: string[]; stuck?: string[]; unknown?: string[]; identity?: "match" | "mismatch" | "unknown"; claudeResult?: ClaudeFake; press?: { inProgress: boolean; detail: string; unreadable?: boolean } } = {}) {
+  const tmuxFake = fakeTmux(options.live ?? [], { stuck: options.stuck, unknown: options.unknown, identity: options.identity });
+  const claudeStop = vi.fn((_id: string): ClaudeFake => options.claudeResult ?? { ok: true });
   const ping = vi.fn((_message: string) => undefined);
   const press = vi.fn((_repo: string) => options.press ?? { inProgress: false, detail: "no START press in progress" });
   const stopDeps: PredecessorStopDeps = { tmux: tmuxFake.tmux, claudeStop, startPressInProgress: press, ping, now: () => NOW };
@@ -227,7 +233,7 @@ describe("gate 10: stopping the predecessor after accept", () => {
     const { ws } = fresh();
     relayPredecessorThenAccept(ws);
     withDatabase(ws, (db) => db.prepare("UPDATE coordinator_generations SET tmux_name = NULL, bg_stop_id = ? WHERE project = ? AND role = ? AND generation = 1").run("bg-id-9c1d", PROJECT, ROLE));
-    const fake = deps({ claudeResult: { ok: false, error: "claude stop exited 1: permission denied" } });
+    const fake = deps({ claudeResult: { ok: false, notFound: false, error: "claude stop exited 1: permission denied" } });
     const result = stop(ws, 1, fake.stopDeps);
     expect(result.outcome).toBe("failed");
     expect(result.command).toBe("claude stop bg-id-9c1d");
@@ -277,5 +283,134 @@ describe("gate 10: stopping the predecessor after accept", () => {
     });
     expect(typeof receipt.startedAt).toBe("string");
     expect(typeof receipt.finishedAt).toBe("string");
+  });
+});
+
+describe("gate 10 review fixes (PR 2543 follow-up)", () => {
+  it("(1) an unknown tmux probe records failed, not already_stopped, and custody is unaffected; a healthy re-run stops it", () => {
+    const { ws } = fresh();
+    relayPredecessorThenAccept(ws);
+    const probeError = deps({ live: ["arcadia-coord-rowan-g1"], unknown: ["arcadia-coord-rowan-g1"] });
+    const unknown = stop(ws, 1, probeError.stopDeps);
+    expect(unknown.outcome).toBe("failed");
+    expect(unknown.detail).toContain("probe");
+    expect(probeError.tmuxFake.killed).toEqual([]);
+    expect(probeError.ping).toHaveBeenCalledTimes(1);
+    expect(receiptOf(ws, 1).outcome).toBe("failed");
+    withDatabase(ws, (db) => {
+      const rows = listGenerations(db, PROJECT, ROLE);
+      expect(rows.find((row) => row.generation === 2)?.status).toBe("custodian");
+      expect(rows.find((row) => row.generation === 1)?.status).toBe("handed_off");
+    });
+    // failed is not terminal: a healthy probe on the next run stops it.
+    const healthy = deps({ live: ["arcadia-coord-rowan-g1"] });
+    expect(stop(ws, 1, healthy.stopDeps).outcome).toBe("stopped");
+    expect(healthy.tmuxFake.killed).toEqual(["arcadia-coord-rowan-g1"]);
+  });
+
+  it("(1) an unknown probe after the kill is failed, never stopped", () => {
+    const { ws } = fresh();
+    relayPredecessorThenAccept(ws);
+    // The probe is healthy before the kill and unknown after it: the fake flips after kill.
+    const sessions = new Set(["arcadia-coord-rowan-g1"]);
+    let killed = false;
+    const tmux: PredecessorStopDeps["tmux"] = {
+      state: () => (killed ? "unknown" : sessions.has("arcadia-coord-rowan-g1") ? "present" : "absent"),
+      killSession: () => { killed = true; },
+      paneIdentity: () => "match"
+    };
+    const ping = vi.fn((_message: string) => undefined);
+    const result = withDatabase(ws, (db) => stopPredecessorAfterAccept(db, { workspace: ws, project: PROJECT, role: ROLE, successor: 2, predecessor: 1, repoRoot: REPO },
+      { tmux, claudeStop: () => ({ ok: true }), startPressInProgress: () => ({ inProgress: false, detail: "none" }), ping, now: () => NOW }));
+    expect(result.outcome).toBe("failed");
+    expect(result.outcome).not.toBe("stopped");
+  });
+
+  it("(2) a hand-started session with the exact name is never killed: identity_mismatch, one ping, and a terminal receipt", () => {
+    const { ws } = fresh();
+    relayPredecessorThenAccept(ws);
+    const fake = deps({ live: ["arcadia-coord-rowan-g1"], identity: "mismatch" });
+    const result = stop(ws, 1, fake.stopDeps);
+    expect(result.outcome).toBe("identity_mismatch");
+    expect(result.command).toBeNull();
+    expect(fake.tmuxFake.killed).toEqual([]);
+    expect(fake.tmuxFake.sessions.has("arcadia-coord-rowan-g1")).toBe(true);
+    expect(fake.ping).toHaveBeenCalledTimes(1);
+    expect(receiptOf(ws, 1).outcome).toBe("identity_mismatch");
+    // Terminal: a repeat run reports the receipt and pings nothing.
+    const again = deps({ live: ["arcadia-coord-rowan-g1"], identity: "mismatch" });
+    expect(stop(ws, 1, again.stopDeps)).toMatchObject({ outcome: "identity_mismatch", reused: true });
+    expect(again.ping).not.toHaveBeenCalled();
+    expect(again.tmuxFake.killed).toEqual([]);
+  });
+
+  it("(2) an unverifiable pane identity is failed (non-terminal) and never killed", () => {
+    const { ws } = fresh();
+    relayPredecessorThenAccept(ws);
+    const fake = deps({ live: ["arcadia-coord-rowan-g1"], identity: "unknown" });
+    const result = stop(ws, 1, fake.stopDeps);
+    expect(result.outcome).toBe("failed");
+    expect(fake.tmuxFake.killed).toEqual([]);
+    expect(receiptOf(ws, 1).outcome).toBe("failed");
+  });
+
+  it("(3) claude stop: only the specific session-not-found outcome is already_stopped; auth and CLI errors are failed and retryable", () => {
+    const { ws } = fresh();
+    relayPredecessorThenAccept(ws);
+    withDatabase(ws, (db) => db.prepare("UPDATE coordinator_generations SET tmux_name = NULL, bg_stop_id = ? WHERE project = ? AND role = ? AND generation = 1").run("bg-id-auth", PROJECT, ROLE));
+    // Auth text that mentions "not found" must not count as gone.
+    const auth = deps({ claudeResult: { ok: false, notFound: false, error: "claude stop exited 1: not logged in; credentials not found" } });
+    expect(stop(ws, 1, auth.stopDeps).outcome).toBe("failed");
+    expect(auth.ping).toHaveBeenCalledTimes(1);
+    const cli = deps({ claudeResult: { ok: false, notFound: false, error: "spawn claude ENOENT" } });
+    expect(stop(ws, 1, cli.stopDeps).outcome).toBe("failed");
+    // Retryable: a real not-found after the failures is already_stopped.
+    const gone = deps({ claudeResult: { ok: false, notFound: true, error: "no such session: bg-id-auth" } });
+    expect(stop(ws, 1, gone.stopDeps).outcome).toBe("already_stopped");
+    expect(gone.claudeStop).toHaveBeenCalledWith("bg-id-auth");
+  });
+
+  it("(4) a repeated deferral with the same refusal does not re-ping; the receipt still records each run", () => {
+    const { ws } = fresh();
+    relayPredecessorThenAccept(ws);
+    const press = { inProgress: true, detail: "start-run pid 4242 live" };
+    const first = deps({ live: ["arcadia-coord-rowan-g1"], press });
+    expect(stop(ws, 1, first.stopDeps)).toMatchObject({ outcome: "deferred", pinged: true });
+    const second = deps({ live: ["arcadia-coord-rowan-g1"], press });
+    const repeat = stop(ws, 1, second.stopDeps);
+    expect(repeat).toMatchObject({ outcome: "deferred", pinged: false });
+    expect(second.ping).not.toHaveBeenCalled();
+    expect(second.tmuxFake.killed).toEqual([]);
+  });
+
+  it("(4) a repeated failure with the same detail does not re-ping", () => {
+    const { ws } = fresh();
+    relayPredecessorThenAccept(ws);
+    const first = deps({ live: ["arcadia-coord-rowan-g1"], stuck: ["arcadia-coord-rowan-g1"] });
+    expect(stop(ws, 1, first.stopDeps).outcome).toBe("failed");
+    expect(first.ping).toHaveBeenCalledTimes(1);
+    const second = deps({ live: ["arcadia-coord-rowan-g1"], stuck: ["arcadia-coord-rowan-g1"] });
+    expect(stop(ws, 1, second.stopDeps)).toMatchObject({ outcome: "failed", pinged: false });
+    expect(second.ping).not.toHaveBeenCalled();
+  });
+
+  it("(5) the post-accept wrapper turns a throw after custody moved into predecessor_stop_failed, without throwing", () => {
+    const { ws } = fresh();
+    relayPredecessorThenAccept(ws);
+    // A stuck session takes the failure path, which pings; the ping queue then throws and the error escapes the stop.
+    const throwing: PredecessorStopDeps = {
+      tmux: { state: () => "present", killSession: () => undefined, paneIdentity: () => "match" },
+      claudeStop: () => ({ ok: true, }),
+      startPressInProgress: () => ({ inProgress: false, detail: "none" }),
+      ping: () => { throw new Error("ping queue down"); },
+      now: () => NOW
+    };
+    const outcome = withDatabase(ws, (db) => runPredecessorStopAfterAccept(db, { workspace: ws, project: PROJECT, role: ROLE, successor: 2, predecessor: 1, repoRoot: REPO }, throwing));
+    expect(outcome.stop).toBeNull();
+    expect(outcome.error?.reason).toBe("predecessor_stop_failed");
+    expect(outcome.error?.detail).toContain("ping queue down");
+    withDatabase(ws, (db) => {
+      expect(listGenerations(db, PROJECT, ROLE).find((row) => row.generation === 2)?.status).toBe("custodian");
+    });
   });
 });
