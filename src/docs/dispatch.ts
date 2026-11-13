@@ -1113,43 +1113,7 @@ export function resolveReadySet(repoRoot: string, projectSlug?: string): ReadySe
   const planPath = plan.relativePath;
   const currentActionId = project.currentAction ?? plan.currentAction;
 
-  // Every unfinished Action, so the walk can see the gates themselves (a
-  // deferred or blocked Action is a stop, not an absence). `blocked` and
-  // `deferred` are read but excluded from `ready`/`nearest` below, exactly as
-  // they were before this list existed — a caller that only wants the ready
-  // set sees no change.
-  const evaluatedAll = plan.actions
-    .filter((action) => action.status !== "done")
-    .map((action) => {
-      const readiness = actionReadinessFrom(discovered, resolvedProjectSlug, action.id);
-      const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
-      const isReady = readiness.blockers.length === 0 && readiness.operatorQuestion === null && authorized;
-      return { action, readiness, isReady };
-    });
-
-  const evaluated = evaluatedAll.filter(
-    ({ action }) => action.status !== "blocked" && action.status !== "deferred"
-  );
-
-  const ready: ReadySetEntry[] = evaluated
-    .filter((entry) => entry.isReady)
-    .map((entry) => ({
-      actionId: entry.action.id,
-      title: entry.action.title,
-      responsibility: entry.action.responsibility
-    }));
-
-  const candidates: ReadySetCandidate[] = evaluatedAll.map((entry) => ({
-    actionId: entry.action.id,
-    title: entry.action.title,
-    responsibility: entry.action.responsibility,
-    ready: entry.isReady,
-    gate: readySetGateFor(entry.action, entry.readiness),
-    blockers: entry.readiness.blockers,
-    operatorQuestion: entry.readiness.operatorQuestion,
-    deferringDecisionId: entry.readiness.deferringDecisionId,
-    requiredDecisionId: entry.readiness.requiredDecisions.find((decision) => !decision.resolved)?.id ?? null
-  }));
+  const { ready, candidates, evaluated } = planReadySetWalk(discovered, resolvedProjectSlug, plan);
 
   const suggestedCurrentAction = ready.length === 0
     ? null
@@ -1211,6 +1175,228 @@ function readySetGateFor(action: PlanActionDoc, readiness: ActionReadinessResult
   if (readiness.requiredDecisions.some((decision) => !decision.resolved)) return "decision";
   if (action.responsibility === "requires_review") return "capacity_proof_run";
   return null;
+}
+
+/**
+ * The per-Plan walk shared by `resolveReadySet` (the active Plan) and
+ * `resolveAcceptedReadiness` (every accepted Plan). Every unfinished Action is
+ * evaluated from the one document read, so the two callers cannot disagree
+ * about any Action's readiness.
+ */
+function planReadySetWalk(discovered: DiscoveryResult, projectSlug: string, plan: PlanDoc) {
+  // Every unfinished Action, so the walk can see the gates themselves (a
+  // deferred or blocked Action is a stop, not an absence). `blocked` and
+  // `deferred` are read but excluded from `ready`/`nearest` below, exactly as
+  // they were before this list existed — a caller that only wants the ready
+  // set sees no change.
+  const evaluatedAll = plan.actions
+    .filter((action) => action.status !== "done")
+    .map((action) => {
+      const readiness = actionReadinessFrom(discovered, projectSlug, action.id);
+      const authorized = action.responsibility === "agent" || action.responsibility === "autonomous";
+      const isReady = readiness.blockers.length === 0 && readiness.operatorQuestion === null && authorized;
+      return { action, readiness, isReady };
+    });
+
+  const evaluated = evaluatedAll.filter(
+    ({ action }) => action.status !== "blocked" && action.status !== "deferred"
+  );
+
+  const ready: ReadySetEntry[] = evaluated
+    .filter((entry) => entry.isReady)
+    .map((entry) => ({
+      actionId: entry.action.id,
+      title: entry.action.title,
+      responsibility: entry.action.responsibility
+    }));
+
+  const candidates: ReadySetCandidate[] = evaluatedAll.map((entry) => ({
+    actionId: entry.action.id,
+    title: entry.action.title,
+    responsibility: entry.action.responsibility,
+    ready: entry.isReady,
+    gate: readySetGateFor(entry.action, entry.readiness),
+    blockers: entry.readiness.blockers,
+    operatorQuestion: entry.readiness.operatorQuestion,
+    deferringDecisionId: entry.readiness.deferringDecisionId,
+    requiredDecisionId: entry.readiness.requiredDecisions.find((decision) => !decision.resolved)?.id ?? null
+  }));
+
+  return { ready, candidates, evaluated };
+}
+
+/** The smallest batch worth starting together: two independent ready Actions in one accepted scope. */
+export const WORTHWHILE_BATCH_MINIMUM = 2;
+
+/** One unfinished Action of an accepted or unaccepted Plan, with why it is or is not ready. */
+export interface AcceptedReadinessAction {
+  actionId: string;
+  title: string;
+  responsibility: string;
+  status: string;
+  ready: boolean;
+  /** "ready" when `ready`, otherwise the first reason it is not. */
+  reason: string;
+}
+
+export interface AcceptedPlanReadiness {
+  planSlug: string;
+  planPath: string;
+  planStatus: string;
+  /** Only an `active` Plan is accepted; a draft is never admitted to a start scope. */
+  accepted: boolean;
+  /** Unfinished Actions in declaration order. Empty for an unaccepted Plan, whose Actions are not evaluated. */
+  actions: AcceptedReadinessAction[];
+  readyCount: number;
+}
+
+export interface AcceptedReadinessResolution {
+  projectSlug: string | null;
+  /** PROJECT.md active_plan: the operator's current preference for which Plan governs work. */
+  activePlan: string | null;
+  /** Project-level blockers (unresolved Project, inactive Project, unreadable documents). Any blocker refuses admission. */
+  blockers: DispatchBlocker[];
+  plans: AcceptedPlanReadiness[];
+  readyTotal: number;
+  /** The accepted Plan with the most ready Actions, or null when no accepted Plan has any. */
+  bestScope: { planSlug: string; readyCount: number } | null;
+  /** How many more ready Actions the best accepted scope needs to reach the minimum; 0 when met. */
+  shortfall: number;
+  statement: string;
+}
+
+/**
+ * Every ready Action across accepted Plans of one Project, with a reason for
+ * each other unfinished Action and the shortfall against the batch minimum.
+ *
+ * Read-only and document-only: it never consults the database, the pointer
+ * queue or any run. A Plan counts as accepted only when its status is `active`.
+ * Readiness reuses the same walk as `resolveReadySet`, so an Action listed
+ * ready here is one that `resolveReadySet` would also call ready for its Plan.
+ */
+export function resolveAcceptedReadiness(repoRoot: string, projectSlug?: string): AcceptedReadinessResolution {
+  const discovered = discoverDocs(repoRoot);
+  const { project, blockers } = resolveActivePlan(repoRoot, projectSlug, discovered, { ignorePointerConsistency: true });
+  if (!project) {
+    return {
+      projectSlug: projectSlug ?? null,
+      activePlan: null,
+      blockers,
+      plans: [],
+      readyTotal: 0,
+      bestScope: null,
+      shortfall: WORTHWHILE_BATCH_MINIMUM,
+      statement: "No Project resolved, so no accepted Plan can be scoped."
+    };
+  }
+
+  const plans = discovered.docs
+    .filter((doc): doc is PlanDoc => doc.type === "plan" && doc.project.toLowerCase() === project.slug.toLowerCase())
+    .sort((left, right) => left.slug.localeCompare(right.slug));
+
+  const planReadiness: AcceptedPlanReadiness[] = plans.map((plan) => {
+    const accepted = plan.status === "active";
+    if (!accepted) {
+      return { planSlug: plan.slug, planPath: plan.relativePath, planStatus: plan.status, accepted, actions: [], readyCount: 0 };
+    }
+    const { candidates } = planReadySetWalk(discovered, project.slug, plan);
+    const actions: AcceptedReadinessAction[] = candidates.map((candidate) => {
+      const action = plan.actions.find((entry) => entry.id === candidate.actionId)!;
+      const ready = candidate.ready && action.status !== "blocked" && action.status !== "deferred";
+      return {
+        actionId: candidate.actionId,
+        title: candidate.title,
+        responsibility: candidate.responsibility,
+        status: action.status,
+        ready,
+        reason: ready ? "ready" : notReadyReason(action.status, candidate)
+      };
+    });
+    return {
+      planSlug: plan.slug,
+      planPath: plan.relativePath,
+      planStatus: plan.status,
+      accepted,
+      actions,
+      readyCount: actions.filter((entry) => entry.ready).length
+    };
+  });
+
+  const bestScope = planReadiness
+    .filter((entry) => entry.accepted && entry.readyCount > 0)
+    .reduce<{ planSlug: string; readyCount: number } | null>((best, entry) =>
+      !best || entry.readyCount > best.readyCount ? { planSlug: entry.planSlug, readyCount: entry.readyCount } : best, null);
+  const bestCount = bestScope?.readyCount ?? 0;
+  const shortfall = Math.max(0, WORTHWHILE_BATCH_MINIMUM - bestCount);
+  const readyTotal = planReadiness.reduce((sum, entry) => sum + entry.readyCount, 0);
+  const statement = shortfall === 0
+    ? `${bestScope!.planSlug} has ${bestCount} ready Actions, meeting the minimum of ${WORTHWHILE_BATCH_MINIMUM} independent Actions in one accepted scope.`
+    : bestScope
+      ? `Shortfall: the best accepted scope (${bestScope.planSlug}) has ${bestCount} ready Action(s); ${shortfall} more needed for a batch of ${WORTHWHILE_BATCH_MINIMUM}.`
+      : `Shortfall: no accepted Plan has a ready Action; ${WORTHWHILE_BATCH_MINIMUM} needed for a batch.`;
+
+  return {
+    projectSlug: project.slug,
+    activePlan: project.activePlan ?? null,
+    blockers,
+    plans: planReadiness,
+    readyTotal,
+    bestScope,
+    shortfall,
+    statement
+  };
+}
+
+function notReadyReason(status: string, candidate: ReadySetCandidate): string {
+  if (status === "blocked") return "status is blocked";
+  if (status === "deferred" || candidate.deferringDecisionId) return `deferred${candidate.deferringDecisionId ? ` by Decision ${candidate.deferringDecisionId}` : ""}`;
+  if (candidate.responsibility !== "agent" && candidate.responsibility !== "autonomous") return `responsibility ${candidate.responsibility} is not coding-agent work`;
+  if (candidate.operatorQuestion) return `open clarification question: ${candidate.operatorQuestion}`;
+  if (candidate.requiredDecisionId) return `requires unresolved Decision ${candidate.requiredDecisionId}`;
+  if (candidate.blockers.length > 0) return `blocked: ${candidate.blockers[0].message}`;
+  return candidate.gate ? `gated (${candidate.gate})` : "not ready";
+}
+
+export interface StartScopeAdmission {
+  admitted: boolean;
+  planSlug: string;
+  actionIds: string[];
+  /** Every reason the scope is refused; empty when admitted. */
+  refusals: string[];
+}
+
+/**
+ * Admit a start scope (one Plan and its Actions) only if, at this read, the
+ * Plan is accepted, the Plan is still the Project's active_plan preference, and
+ * every named Action is an unfinished, ready Action of that Plan. Derived fresh
+ * from the documents on every call, so a preference or status change between
+ * two checks refuses the second one. Admits nothing on its own: it reports.
+ */
+export function admitStartScope(repoRoot: string, projectSlug: string, planSlug: string, actionIds: string[]): StartScopeAdmission {
+  const refusals: string[] = [];
+  const resolution = resolveAcceptedReadiness(repoRoot, projectSlug);
+  if (!resolution.projectSlug) refusals.push("The Project does not resolve; nothing is admitted.");
+  for (const blocker of resolution.blockers) refusals.push(`Project blocker (${blocker.relativePath} ${blocker.field}): ${blocker.message}`);
+  if (actionIds.length === 0) refusals.push("A start scope needs at least one Action.");
+  if (new Set(actionIds).size !== actionIds.length) refusals.push("A start scope names each Action once.");
+  const plan = resolution.plans.find((entry) => entry.planSlug === planSlug);
+  if (!plan) {
+    refusals.push(`Plan ${planSlug} is not a Plan of this Project.`);
+  } else if (!plan.accepted) {
+    refusals.push(`Plan ${planSlug} is ${plan.planStatus}, not accepted (active); an unaccepted Plan is never admitted.`);
+  }
+  if (resolution.activePlan !== planSlug) {
+    refusals.push(`The Project's active_plan preference is ${resolution.activePlan ?? "unset"}, not ${planSlug}; the scope was not derived from the current preference.`);
+  }
+  for (const actionId of actionIds) {
+    const entry = plan?.actions.find((action) => action.actionId === actionId);
+    if (!entry) {
+      refusals.push(`Action ${actionId} is not an unfinished Action of Plan ${planSlug} (out of scope).`);
+    } else if (!entry.ready) {
+      refusals.push(`Action ${actionId} is not ready: ${entry.reason}.`);
+    }
+  }
+  return { admitted: refusals.length === 0, planSlug, actionIds: [...actionIds], refusals };
 }
 
 export type { ArcadiaDoc };

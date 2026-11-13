@@ -71,7 +71,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
-import { renderStartRunPinsSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunDayPinsCommand, runStartRunGateCheckCommand, runStartRunHoldCommand, runStartRunPinsCommand, runStartRunSignInCommand, runStartRunUnholdCommand } from "./commands/startRun.js";
+import { renderStartRunPinsSuccess, renderStartRunReadinessSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunReadinessCommand, runStartRunDayPinsCommand, runStartRunGateCheckCommand, runStartRunHoldCommand, runStartRunPinsCommand, runStartRunSignInCommand, runStartRunUnholdCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -1292,6 +1292,14 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { project: string; action: string[]; repository?: string; workspace?: string; json?: boolean }) =>
     runCliAction("start-run.gate-check", options, () => runStartRunGateCheckCommand({ ...options, actions: options.action }), (response) => JSON.stringify(response.data, null, 2).split("\n")));
+  addJsonOption(startRun.command("readiness")
+    .description("Read-only: every ready Action across the Project's accepted (active) Plans, a reason for each other Action, and the shortfall against a batch of two; with --plan and --action, whether that scope would be admitted now. Proposes and grants nothing")
+    .requiredOption("--project <slug>", "Project whose accepted Plans are listed")
+    .option("--repository <path>", "Repository holding the Project's documents (default: the current directory)")
+    .option("--plan <slug>", "Admission check: the Plan the scope is drawn from")
+    .option("--action <id...>", "Admission check: an Action of that Plan (repeatable)")
+  ).action((options: { project: string; repository?: string; plan?: string; action?: string[]; json?: boolean }) =>
+    runCliAction("start-run.readiness", options, () => runStartRunReadinessCommand({ project: options.project, repository: options.repository, plan: options.plan, actions: options.action }), renderStartRunReadinessSuccess));
   addJsonOption(startRun.command("sign-in")
     .description("Run only by a per-run START card: the Decision 0161 / 0143 sign-in renewal and bound-worker usage check, once (or --check-only)")
     .requiredOption("--repository <path>", "The Arcadia main checkout the bound worker serves")
