@@ -29,7 +29,7 @@ import {
   type StartableCache,
   type UnknownEpisode
 } from "../production/dutyAlarms.js";
-import { readProductionPolicySafely } from "../production/policy.js";
+import { readInactiveConfiguration, readProductionPolicySafely } from "../production/policy.js";
 import {
   KEEPER_DEFAULT_GRACE_MINUTES,
   KEEPER_DEFAULT_HEARTBEAT_MINUTES,
@@ -119,6 +119,8 @@ export interface ProductionMomentumDependencies {
   readCustodian?: (workspacePath: string) => CustodianLiveness;
   /** Test seam: the startable count (ready Actions across accepted Plans); defaults to the readiness read model. */
   readStartable?: (workspacePath: string) => StartableCount;
+  /** Test seam: the repository the readiness walk reads; defaults to the invocation checkout. */
+  repoRoot?: () => string;
 }
 
 /** Ready Actions that can start now: the readiness read model's `readyTotal` for the production scope's Projects. */
@@ -187,7 +189,9 @@ export function readStartableCount(workspacePath: string, repoRoot: () => string
     const projects = withReadOnlyDatabase(workspacePath, (db) => {
       const read = readProductionPolicySafely(db);
       if (read.status !== "ok") throw new Error(read.reason);
-      return read.policy.scope?.projects ?? [];
+      if (read.policy.desiredState === "active") return read.policy.scope?.projects ?? [];
+      // Off clears the policy scope but retains the reviewed configuration in the same store; its Projects are the production scope.
+      return readInactiveConfiguration(db)?.scope.projects ?? [];
     });
     if (projects.length === 0) return { readable: false, count: null, reason: "no Project in the production scope" };
     const root = repoRoot();
@@ -256,10 +260,18 @@ function validAdmissions(value: unknown): value is NonNullable<DutySlot["admissi
     && (admissions.changedAt === null || (typeof admissions.changedAt === "string" && Number.isFinite(Date.parse(admissions.changedAt))));
 }
 
+/** Delivery must be recorded explicitly: null (not queued yet) or a real outbox row. A missing field would read as queued. */
+function validDelivery(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== "object" || value === undefined) return false;
+  const { pingId, queuedAt } = value as { pingId?: unknown; queuedAt?: unknown };
+  return typeof pingId === "string" && pingId !== "" && typeof queuedAt === "string" && Number.isFinite(Date.parse(queuedAt));
+}
+
 function validUnknown(value: unknown): value is UnknownEpisode {
   const episode = value as Partial<UnknownEpisode> | null | undefined;
   return !!episode && typeof episode.key === "string" && typeof episode.startedAt === "string"
-    && Number.isFinite(Date.parse(episode.startedAt)) && Array.isArray(episode.reasons);
+    && Number.isFinite(Date.parse(episode.startedAt)) && Array.isArray(episode.reasons) && validDelivery(episode.delivery);
 }
 
 function validStartable(value: unknown): value is StartableCache {
@@ -276,7 +288,7 @@ function validDuty(value: unknown): value is DutySlot {
   const open = slot.open as Partial<DutyEpisodeRecord>;
   return typeof open.cause === "string" && Array.isArray(open.contributing) && typeof open.key === "string"
     && typeof open.startedAt === "string" && Number.isFinite(Date.parse(open.startedAt))
-    && typeof open.owner === "string" && typeof open.nextEvent === "string";
+    && typeof open.owner === "string" && typeof open.nextEvent === "string" && validDelivery(open.delivery);
 }
 
 /** A state that cannot be read restarts every episode: the cost is a repeated page, never a lost one. */
@@ -446,7 +458,7 @@ export async function runProductionMomentumCheckCommand(
   const cacheFresh = cached !== null && now.getTime() - Date.parse(cached.readAt) < STARTABLE_CACHE_MINUTES * 60_000;
   const startable: StartableCount = cached !== null && cacheFresh
     ? { readable: true, count: cached.count, reason: null }
-    : (dependencies.readStartable ?? readStartableCount)(workspacePath);
+    : (dependencies.readStartable ?? ((workspace: string) => readStartableCount(workspace, dependencies.repoRoot)))(workspacePath);
   const startableCache: StartableCache | null = startable.readable && startable.count !== null
     ? (cached !== null && cacheFresh ? cached : { count: startable.count, readAt: now.toISOString() })
     : null;

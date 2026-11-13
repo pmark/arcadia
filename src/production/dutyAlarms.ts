@@ -301,9 +301,10 @@ export function dutyCloseMessage(open: DutyEpisodeRecord, pingId: string, now: D
 
 export function dutyUnknownMessage(record: UnknownEpisode, now: Date, clearedBeforeDelivery = false): string {
   const since = formatAge(now.getTime() - Date.parse(record.startedAt));
+  // The reasons are the only part fitPing may cut: the head and the episode key always survive.
   return fitPing(
-    `🚨🚨🚨 DUTY CANNOT JUDGE for ${since}: ${record.reasons.join("; ")}`,
-    " The duty alarm holds its conditions until they can be read.",
+    `🚨🚨🚨 DUTY CANNOT JUDGE for ${since}`,
+    `: ${record.reasons.join("; ")}. The duty alarm holds its conditions until they can be read.`,
     clearedBeforeDelivery ? ` Cleared before this page was sent; ${record.key}. Nothing was started.` : ` ${record.key}. Nothing was started.`
   );
 }

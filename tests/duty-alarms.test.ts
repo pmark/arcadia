@@ -13,8 +13,9 @@ import {
   type DutyEpisodeRecord,
   type DutyInput
 } from "../src/production/dutyAlarms.js";
-import { renderProductionMomentumLines, runProductionMomentumCheckCommand, type ProductionMomentumDependencies, type StartableCount } from "../src/commands/productionMomentum.js";
+import { readStartableCount, renderProductionMomentumLines, runProductionMomentumCheckCommand, type ProductionMomentumDependencies, type StartableCount } from "../src/commands/productionMomentum.js";
 import type { LivenessPingInput } from "../src/commands/productionLiveness.js";
+import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -230,7 +231,7 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
   }
 
   /** Every queued ping goes in `queued`; the keeper alarm also pages these Active fixtures, so duty assertions use the duty agent. */
-  function harness(root: string, queued: LivenessPingInput[], options: { failNext?: boolean; dutyOffAlarm?: boolean } = {}) {
+  function harness(root: string, queued: LivenessPingInput[], options: { failNext?: boolean; dutyOffAlarm?: boolean; repoRoot?: () => string } = {}) {
     let failNext = options.failNext ?? false;
     const deps: ProductionMomentumDependencies = {
       queuePing: (input) => {
@@ -247,7 +248,11 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
         runProductionMomentumCheckCommand(
           // dutyOffAlarm is passed exactly as the timer passes it: undefined unless the flag was given.
           { workspace: root, readyFloor: 6, dutyOffAlarm: options.dutyOffAlarm },
-          { ...deps, now: () => ms(clock), readRow: async () => ({ ...current, ts: at(clock) }), readCustodian: () => custodian, readStartable: () => startable }
+          // With a repoRoot, the real readiness read runs (no injected count); otherwise the count is injected.
+          {
+            ...deps, now: () => ms(clock), readRow: async () => ({ ...current, ts: at(clock) }), readCustodian: () => custodian,
+            ...(options.repoRoot ? { repoRoot: options.repoRoot } : { readStartable: () => startable })
+          }
         ).then((response) => response.data)
     };
   }
@@ -550,5 +555,111 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
       await runProductionMomentumCheckCommand({ workspace: root, readyFloor: 6 }, { ...deps, now: () => ms(clock), readRow: async () => ({ ...row(), ts: at(clock) }) });
     }
     expect(reads).toBe(2);
+  });
+
+  // Finding 1: production Off clears the policy scope; the real read must still count the retained Projects.
+  describe("the real startable read while production is Off", () => {
+    const actionLines = (id: string, status: string) => [
+      `  - id: ${id}`, `    title: Work ${id}`, `    status: ${status}`, "    responsibility: agent", "    effort: short",
+      "    clarification: clarified", `    next_action: Do ${id}.`, "    confidence: high", "    source: conversation",
+      "    acceptance_criteria:", "      - The change is covered by a deterministic test.", "    depends_on: []"
+    ];
+
+    function repoWith(actionStatus: "open" | "blocked"): string {
+      const repo = mkdtempSync(path.join(tmpdir(), "arcadia-duty-repo-"));
+      roots.push(repo);
+      mkdirSync(path.join(repo, "docs", "plans"), { recursive: true });
+      writeFileSync(path.join(repo, "PROJECT.md"), ["---", "arcadia: v1", "type: project", "slug: demo", "name: Demo", "status: active",
+        "goal: Test the duty read.", "milestone: First milestone", "active_plan: plan-a", "updated: 2026-11-12", "---", ""].join("\n"));
+      writeFileSync(path.join(repo, "docs", "plans", "plan-a.md"), ["---", "arcadia: v1", "type: plan", "slug: plan-a", "project: demo",
+        "status: active", "milestone: First milestone", "token_impact: medium", "token_budget: One bounded pass; tests are deterministic.",
+        "recommended_model: gpt-5.6-terra", "updated: 2026-11-12", "actions:", ...actionLines("alpha", actionStatus), ...actionLines("beta", actionStatus), "---", ""].join("\n"));
+      return repo;
+    }
+
+    /** What `arcadia production deactivate` leaves: scope cleared, the reviewed scope retained in its own table. */
+    function setOff(root: string, retained: boolean): void {
+      withDatabase(root, (db) => {
+        db.prepare("UPDATE production_policy SET desired_state = 'inactive', scope_json = NULL, authority_json = NULL").run();
+        if (retained) {
+          db.prepare(`INSERT INTO production_inactive_configuration
+              (id, configuration_revision, fingerprint, saved_at_policy_revision, source_epoch, source_authority_request_id, scope_json, not_carried_json, saved_at)
+            VALUES ('workspace', 1, 'test', 1, 1, NULL, ?, '[]', ?)`).run(JSON.stringify({ projects: ["demo"], plans: [], actions: [], providers: [] }), at("16:00:00"));
+        }
+      });
+    }
+
+    it("counts the retained Projects while Off, so a Off with nothing eligible pages through the real read", async () => {
+      const root = workspace();
+      setOff(root, true);
+      const queued: LivenessPingInput[] = [];
+      const h = harness(root, queued, { dutyOffAlarm: true, repoRoot: () => repoWith("blocked") });
+      const response = await h.run("17:00:00", row({ desired: "inactive", ready_actions: 0 }));
+      expect(response.duty.ping).toBe("alert");
+      expect(duties(queued)[0]?.message).toContain("production Off with nothing eligible");
+    });
+
+    it("counts ready work in the retained Projects while Off (no false alarm on a stocked Off)", () => {
+      const root = workspace();
+      setOff(root, true);
+      expect(readStartableCount(root, () => repoWith("open"))).toEqual({ readable: true, count: 2, reason: null });
+    });
+
+    it("stays unknown while Off when no configuration was ever retained, never a silent zero", () => {
+      const root = workspace();
+      setOff(root, false);
+      const read = readStartableCount(root, () => repoWith("open"));
+      expect(read.readable).toBe(false);
+      expect(read.count).toBeNull();
+    });
+  });
+
+  // Finding 2: a persisted episode without a `delivery` field must not read as already queued.
+  describe("persisted episodes must carry an explicit delivery", () => {
+    it("a recorded duty episode with no delivery field is queued again, never silently carried", async () => {
+      const root = workspace();
+      const statePath = path.join(root, ".arcadia", "momentum-watch.json");
+      const queued: LivenessPingInput[] = [];
+      const h = harness(root, queued);
+      await h.run("17:00:00", row({ ready_actions: 2 }));
+      const saved = JSON.parse(readFileSync(statePath, "utf8")) as { duty: { open: Record<string, unknown> } };
+      delete saved.duty.open.delivery;
+      writeFileSync(statePath, JSON.stringify(saved));
+      // The malformed episode is rejected (the momentum state is replaced), so the run reports it and pages a fresh episode.
+      await expect(h.run("17:01:00", row({ ready_actions: 2 }))).rejects.toThrow(/malformed duty slot/);
+      const alerts = duties(queued).filter((ping) => ping.message?.includes("ready Actions below the floor"));
+      expect(alerts).toHaveLength(2);
+      expect(state(root).duty.open).not.toBeNull();
+    });
+
+    it("a recorded cannot-judge episode with no delivery field is paged again, not treated as queued", async () => {
+      const root = workspace();
+      const statePath = path.join(root, ".arcadia", "momentum-watch.json");
+      const queued: LivenessPingInput[] = [];
+      const h = harness(root, queued);
+      const unreadable: CustodianLiveness = { readable: false, lastLiveAt: null, reason: "transcript store locked" };
+      await h.run("17:00:00", row({ ready_actions: 2 }), unreadable);
+      const saved = JSON.parse(readFileSync(statePath, "utf8")) as { duty: { unknown: Record<string, unknown> | null } };
+      expect(saved.duty.unknown).not.toBeNull();
+      delete saved.duty.unknown!.delivery;
+      writeFileSync(statePath, JSON.stringify(saved));
+      await h.run("17:01:00", row({ ready_actions: 2 }), unreadable);
+      expect(duties(queued).filter((ping) => ping.message?.includes("DUTY CANNOT JUDGE"))).toHaveLength(2);
+    });
+  });
+
+  // Finding 3: the episode key must survive a long reasons list (reasons belong in the cut detail, not the head).
+  it("a cannot-judge page keeps its episode key and the Nothing-was-started line when the reasons are long", async () => {
+    const root = workspace();
+    const queued: LivenessPingInput[] = [];
+    const h = harness(root, queued);
+    const longReason = "readiness blocked for demo: " + "field-name, ".repeat(40);
+    const unreadable: CustodianLiveness = { readable: false, lastLiveAt: null, reason: longReason };
+    await h.run("17:00:00", row({ ready_actions: 2 }), unreadable);
+    const page = duties(queued).find((ping) => ping.message?.includes("DUTY CANNOT JUDGE"))?.message ?? "";
+    const key = (JSON.parse(readFileSync(path.join(root, ".arcadia", "momentum-watch.json"), "utf8")) as { duty: { unknown: { key: string } } }).duty.unknown.key;
+    expect(page.length).toBeLessThanOrEqual(500);
+    expect(page).toContain(key);
+    expect(page).toContain("Nothing was started.");
   });
 });
