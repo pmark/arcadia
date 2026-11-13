@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -16,6 +16,7 @@ import {
 } from "../src/coordinator/generations.js";
 import {
   interlockRepository,
+  registeredPrimaryCheckout,
   stopPredecessorAfterAccept,
   stopPressInterlock,
   verifiedPrimaryCheckout,
@@ -24,6 +25,7 @@ import {
   type TmuxState
 } from "../src/coordinator/predecessorStop.js";
 import { withDatabase } from "../src/db/connection.js";
+import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -263,12 +265,12 @@ describe("PR 2543 round 4: the interlock repository is the invocation's own prim
     const other = gitClone(base, "other");
     const invocationPrimary = verifiedPrimaryCheckout(mine);
     expect(verifiedPrimaryCheckout(other)).toBe(realpathSync(other));
-    expect(interlockRepository(other, invocationPrimary)).toBeNull();
+    expect(interlockRepository(other, invocationPrimary, invocationPrimary)).toBeNull();
     const ws = fresh();
     relayPredecessorThenAccept(ws);
     const fake = tmuxSeq(["present"]);
     const { stopDeps } = depsWith(fake.tmux);
-    expect(stop(ws, stopDeps, interlockRepository(other, invocationPrimary)).outcome).toBe("deferred");
+    expect(stop(ws, stopDeps, interlockRepository(other, invocationPrimary, invocationPrimary)).outcome).toBe("deferred");
     expect(fake.killed).toEqual([]);
   });
 
@@ -276,8 +278,8 @@ describe("PR 2543 round 4: the interlock repository is the invocation's own prim
     const mine = gitClone(tempBase(), "mine");
     const invocationPrimary = verifiedPrimaryCheckout(mine);
     expect(invocationPrimary).toBe(realpathSync(mine));
-    expect(interlockRepository(undefined, invocationPrimary)).toBe(invocationPrimary);
-    expect(interlockRepository(mine, invocationPrimary)).toBe(invocationPrimary);
+    expect(interlockRepository(undefined, invocationPrimary, invocationPrimary)).toBe(invocationPrimary);
+    expect(interlockRepository(mine, invocationPrimary, invocationPrimary)).toBe(invocationPrimary);
   });
 
   it("a symlink, a trailing slash, and a relative path to the same primary resolve equal", () => {
@@ -286,9 +288,9 @@ describe("PR 2543 round 4: the interlock repository is the invocation's own prim
     const invocationPrimary = verifiedPrimaryCheckout(mine);
     const link = path.join(base, "link");
     symlinkSync(mine, link);
-    expect(interlockRepository(link, invocationPrimary)).toBe(invocationPrimary);
-    expect(interlockRepository(`${mine}/`, invocationPrimary)).toBe(invocationPrimary);
-    expect(interlockRepository(path.relative(process.cwd(), mine), invocationPrimary)).toBe(invocationPrimary);
+    expect(interlockRepository(link, invocationPrimary, invocationPrimary)).toBe(invocationPrimary);
+    expect(interlockRepository(`${mine}/`, invocationPrimary, invocationPrimary)).toBe(invocationPrimary);
+    expect(interlockRepository(path.relative(process.cwd(), mine), invocationPrimary, invocationPrimary)).toBe(invocationPrimary);
   });
 
   it("a subdirectory of the primary, a linked worktree, and a bogus path all defer", () => {
@@ -297,24 +299,26 @@ describe("PR 2543 round 4: the interlock repository is the invocation's own prim
     const invocationPrimary = verifiedPrimaryCheckout(mine);
     const sub = path.join(mine, "sub");
     mkdirSync(sub);
-    expect(interlockRepository(sub, invocationPrimary)).toBeNull();
+    expect(interlockRepository(sub, invocationPrimary, invocationPrimary)).toBeNull();
     const linked = path.join(base, "linked");
     git(["-C", mine, "worktree", "add", "-q", "-b", "linked-branch", linked]);
-    expect(interlockRepository(linked, invocationPrimary)).toBeNull();
-    expect(interlockRepository(path.join(base, "nope"), invocationPrimary)).toBeNull();
+    expect(interlockRepository(linked, invocationPrimary, invocationPrimary)).toBeNull();
+    expect(interlockRepository(path.join(base, "nope"), invocationPrimary, invocationPrimary)).toBeNull();
   });
 
   it("no invocation primary means no interlock repository, even for an explicit path", () => {
     const mine = gitClone(tempBase(), "mine");
-    expect(interlockRepository(mine, null)).toBeNull();
-    expect(interlockRepository(undefined, null)).toBeNull();
+    const invocationPrimary = verifiedPrimaryCheckout(mine);
+    expect(interlockRepository(undefined, null, invocationPrimary)).toBeNull();
+    // An explicit path to the registered checkout works from any cwd, even with no cwd primary.
+    expect(interlockRepository(mine, null, invocationPrimary)).toBe(invocationPrimary);
   });
 
   it("a missing operator-scripts library is unknown and defers the stop; an existing one reads as no press", () => {
     const base = tempBase();
     const noLibrary = gitClone(base, "nolib");
     const withLibrary = gitClone(base, "lib");
-    mkdirSync(path.join(withLibrary, "artifacts", "generated", "operator-scripts"), { recursive: true });
+    mkdirSync(path.join(withLibrary, "artifacts", "generated", "operator-scripts", "runs", "operator"), { recursive: true });
     expect(stopPressInterlock(noLibrary)).toMatchObject({ inProgress: true, unreadable: true });
     expect(stopPressInterlock(withLibrary).inProgress).toBe(false);
     const ws = fresh();
@@ -323,5 +327,113 @@ describe("PR 2543 round 4: the interlock repository is the invocation's own prim
     const { stopDeps } = depsWith(fake.tmux);
     expect(stop(ws, { ...stopDeps, startPressInProgress: stopPressInterlock }, noLibrary).outcome).toBe("deferred");
     expect(fake.killed).toEqual([]);
+  });
+});
+
+describe("PR 2543 round 5: the interlock is bound to the Project's registered checkout, not the cwd", () => {
+  function tempBase(): string {
+    const base = mkdtempSync(path.join(tmpdir(), "arcadia-round5-"));
+    roots.push(base);
+    return base;
+  }
+
+  function gitClone(base: string, name: string): string {
+    const dir = path.join(base, name);
+    mkdirSync(dir);
+    execFileSync("git", ["init", "-q", dir], { stdio: "ignore" });
+    git(["-C", dir, "commit", "-q", "--allow-empty", "-m", "init"]);
+    return dir;
+  }
+
+  /** Registers the Project "Arcadia" (slug arcadia) with a checkout path, or without one when `repo` is null. */
+  function registerProject(ws: string, repo: string | null): void {
+    withDatabase(ws, (db) => {
+      const project = upsertProject(db, { name: "Arcadia", mission: "Ship it", status: "active", currentMilestone: "m", nextAction: "n", workClassification: "autonomous" });
+      if (repo !== null) upsertProjectMetadata(db, { projectId: project.id, repoPath: repo });
+    });
+  }
+
+  function registeredFor(ws: string): string | null {
+    return withDatabase(ws, (db) => registeredPrimaryCheckout(db, PROJECT));
+  }
+
+  it("accept run from a second clone's primary with no --repo defers (the cwd is not the registered checkout)", () => {
+    const base = tempBase();
+    const registeredClone = gitClone(base, "registered");
+    const cwdClone = gitClone(base, "cwd-clone");
+    const ws = fresh();
+    registerProject(ws, registeredClone);
+    relayPredecessorThenAccept(ws);
+    const registered = registeredFor(ws);
+    expect(registered).toBe(realpathSync(registeredClone));
+    const repoRoot = interlockRepository(undefined, verifiedPrimaryCheckout(cwdClone), registered);
+    expect(repoRoot).toBeNull();
+    const fake = tmuxSeq(["present"]);
+    const { stopDeps } = depsWith(fake.tmux);
+    expect(stop(ws, stopDeps, repoRoot).outcome).toBe("deferred");
+    expect(fake.killed).toEqual([]);
+  });
+
+  it("the registered checkout given as --repo works from any cwd", () => {
+    const base = tempBase();
+    const registeredClone = gitClone(base, "registered");
+    const cwdClone = gitClone(base, "cwd-clone");
+    const ws = fresh();
+    registerProject(ws, registeredClone);
+    const registered = registeredFor(ws);
+    expect(interlockRepository(registeredClone, verifiedPrimaryCheckout(cwdClone), registered)).toBe(realpathSync(registeredClone));
+    expect(interlockRepository(registeredClone, null, registered)).toBe(realpathSync(registeredClone));
+  });
+
+  it("a second clone given as --repo defers, even from the registered checkout's cwd", () => {
+    const base = tempBase();
+    const registeredClone = gitClone(base, "registered");
+    const other = gitClone(base, "other");
+    const ws = fresh();
+    registerProject(ws, registeredClone);
+    const registered = registeredFor(ws);
+    expect(interlockRepository(other, verifiedPrimaryCheckout(registeredClone), registered)).toBeNull();
+  });
+
+  it("an unregistered Project defers, even with a valid checkout", () => {
+    const base = tempBase();
+    const clone = gitClone(base, "clone");
+    const ws = fresh();
+    relayPredecessorThenAccept(ws);
+    const registered = registeredFor(ws);
+    expect(registered).toBeNull();
+    expect(interlockRepository(undefined, verifiedPrimaryCheckout(clone), registered)).toBeNull();
+    expect(interlockRepository(clone, verifiedPrimaryCheckout(clone), registered)).toBeNull();
+  });
+
+  it("a Project with no registered path defers", () => {
+    const ws = fresh();
+    registerProject(ws, null);
+    expect(registeredFor(ws)).toBeNull();
+  });
+
+  it("a registered path that is missing, or is only a linked worktree, defers", () => {
+    const base = tempBase();
+    const primary = gitClone(base, "primary");
+    const linked = path.join(base, "linked");
+    git(["-C", primary, "worktree", "add", "-q", "-b", "linked-branch", linked]);
+    const missingWs = fresh();
+    registerProject(missingWs, path.join(base, "gone"));
+    expect(registeredFor(missingWs)).toBeNull();
+    const linkedWs = fresh();
+    registerProject(linkedWs, linked);
+    expect(registeredFor(linkedWs)).toBeNull();
+  });
+
+  it("an operator-scripts directory without runs/operator, or with it as a file, is unknown and defers", () => {
+    const base = tempBase();
+    const noRuns = gitClone(base, "noruns");
+    mkdirSync(path.join(noRuns, "artifacts", "generated", "operator-scripts"), { recursive: true });
+    expect(stopPressInterlock(noRuns)).toMatchObject({ inProgress: true, unreadable: true });
+    const runsAsFile = gitClone(base, "runsfile");
+    const library = path.join(runsAsFile, "artifacts", "generated", "operator-scripts");
+    mkdirSync(library, { recursive: true });
+    writeFileSync(path.join(library, "runs"), "not a directory");
+    expect(stopPressInterlock(runsAsFile)).toMatchObject({ inProgress: true, unreadable: true });
   });
 });

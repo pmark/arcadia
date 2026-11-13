@@ -1931,12 +1931,17 @@ forge the proof. Neither command launches, spends or grants authority.
 ### Predecessor stop after accept (gate 10, stop half)
 
 `accept` stops the predecessor under the same relay lock as the custody transfer.
-`--repo` must be this invocation's own primary worktree (compared by realpath, so a
-symlink, trailing slash or relative path to it is fine). Another clone, a linked
-worktree, a subdirectory, or a path that is not a checkout defers the stop, because
-the START press check reads that checkout's operator-scripts library. A missing
-operator-scripts library is unknown and defers the stop on this path; the shared
-reader used by `renew` still reads it as no press (unchanged here). The stop runs only when the successor is custodian
+The START press interlock is bound to the Project's registered primary checkout
+(`project_metadata.repo_path` for the Project's slug, the same registration planning
+promotion and plan activation read), not to where the command runs. The stop reads
+that checkout only when the registration is a primary worktree and the checkout
+that the command runs in, or an explicit `--repo`, resolves by realpath to the same
+checkout. Running `accept` from another clone's primary, or passing another clone
+or a linked worktree as `--repo`, defers the stop as `interlock_repository_unbound`.
+A Project with no registered checkout, or a registered path that is missing or not
+a primary worktree, defers too. A missing operator-scripts library, or one without
+`runs/operator`, is unknown and defers on this path; the shared reader used by
+`renew` still reads a missing directory as no press (unchanged here). The stop runs only when the successor is custodian
 and the predecessor is `handed_off` with its stand-down recorded for exactly that
 generation. Its identity is decided by recorded fields only:
 

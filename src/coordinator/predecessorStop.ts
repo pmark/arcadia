@@ -1,7 +1,8 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
+import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
 import { tmuxQueryEnv } from "../sessions/index.js";
 import { startPressInProgressIn, type StartPressStatus } from "./relay.js";
 import { coordinatorPaths } from "./paths.js";
@@ -207,15 +208,29 @@ export function verifiedPrimaryCheckout(candidate: string | null): string | null
 }
 
 /**
- * The repository the START press interlock may read. It must be the invocation's own primary checkout
- * (`invocationPrimary`, resolved from where the CLI runs), or an explicit path that resolves to that same checkout.
- * Another clone's primary, a linked worktree, or an unresolvable path yields null, and the stop defers.
- * (A generation records no repository at launch, so the invocation's primary is the only accepted root.)
+ * The Project's registered primary checkout: `project_metadata.repo_path` for the project with this slug, which must
+ * itself be a primary worktree. This is the same registration planning promotion and plan activation read. Null when
+ * the Project is unknown, has no registered path, or the registered path is not a primary checkout on disk.
  */
-export function interlockRepository(explicit: string | undefined, invocationPrimary: string | null): string | null {
-  if (invocationPrimary === null) return null;
-  const resolved = explicit === undefined ? invocationPrimary : verifiedPrimaryCheckout(explicit);
-  return resolved !== null && resolved === invocationPrimary ? resolved : null;
+export function registeredPrimaryCheckout(db: Database.Database, projectSlug: string): string | null {
+  const project = getProjectBySlug(db, projectSlug);
+  if (!project) return null;
+  const registered = getProjectMetadata(db, project.id)?.repo_path?.trim();
+  if (!registered) return null;
+  return verifiedPrimaryCheckout(registered);
+}
+
+/**
+ * The repository the START press interlock may read, bound to the PROJECT rather than to where the CLI runs.
+ * It is the Project's registered primary checkout, and only when `explicit` (an explicit --repo, if given) or else
+ * `cwdPrimary` (the primary of the checkout the command runs in) resolves to that same registered checkout. Any other
+ * clone, linked worktree, unresolvable path, or a Project without a registered checkout yields null: the stop defers
+ * as `interlock_repository_unbound`.
+ */
+export function interlockRepository(explicit: string | undefined, cwdPrimary: string | null, registered: string | null): string | null {
+  if (registered === null) return null;
+  const candidate = explicit === undefined ? cwdPrimary : verifiedPrimaryCheckout(explicit);
+  return candidate !== null && candidate === registered ? registered : null;
 }
 
 /**
@@ -226,6 +241,10 @@ export function interlockRepository(explicit: string | undefined, invocationPrim
 export function stopPressInterlock(repo: string): StartPressStatus {
   const library = path.join(repo, "artifacts", "generated", "operator-scripts");
   if (!existsSync(library)) return { inProgress: true, unreadable: true, detail: `${library} does not exist, so the START press state cannot be read` };
+  // A library without its runs/operator directory (or with that name as a file) is an unexpected shape: unknown, never "no press".
+  const runs = path.join(library, "runs", "operator");
+  const isDirectory = ((): boolean => { try { return statSync(runs).isDirectory(); } catch { return false; } })();
+  if (!isDirectory) return { inProgress: true, unreadable: true, detail: `${runs} is missing or not a directory, so the START press state cannot be read` };
   return startPressInProgressIn(library);
 }
 
@@ -322,7 +341,7 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
   // Refusals: a deferral stops nothing and pings the operator, since the predecessor still holds a live identity.
   const refusal = ((): string | null => {
     if (newestLaunching(db, input.project, input.role)) return "a successor launch of this role is in flight (launching); the predecessor is not stopped during a launch";
-    if (input.repoRoot === null) return "the repository could not be resolved to this invocation's own primary checkout, so the START press interlock cannot be checked; --repo must be that checkout (another clone, a linked worktree, or an unknown path is refused)";
+    if (input.repoRoot === null) return "interlock_repository_unbound: the START press interlock is bound to the Project's registered primary checkout, which is not resolvable here or does not match --repo or the current checkout (another clone, a linked worktree, an unregistered Project or an unknown path is refused)";
     const press = deps.startPressInProgress(input.repoRoot);
     if (press.inProgress) return press.unreadable ? `a START press record cannot be read (${press.detail}); the predecessor is not stopped during a press` : `a START press is in progress (${press.detail}); the predecessor is not stopped during a press`;
     return null;
