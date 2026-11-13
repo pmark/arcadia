@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -40,21 +41,23 @@ function workspace(): string {
 interface Fake { deps: KeeperDependencies; dir: string; calls: () => string[][]; cwds: () => string[]; setAgents: (json: string) => void }
 
 /** A fake `claude` on PATH: logs each argv as JSON, prints a short id for --bg, lists what the test sets. */
-function fakeClaude(behaviour: { failBg?: boolean; failStop?: string } = {}): Fake {
+function fakeClaude(behaviour: { failBg?: boolean; failStop?: string; silentBg?: boolean } = {}): Fake {
   const dir = realpathSync(scratch());
   execFileSync("git", ["init", "-q", dir]);
   const log = path.join(dir, "calls.jsonl");
   const agents = path.join(dir, "agents.json");
   const cwdLog = path.join(dir, "cwds.txt");
   writeFileSync(agents, "[]");
+  const statePath = path.join(dir, "claude-state.json");
+  writeFileSync(statePath, JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true } } }));
   const script = `#!/usr/bin/env node
-const fs = require("fs");
+import fs from "node:fs";
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");
 fs.appendFileSync(${JSON.stringify(cwdLog)}, fs.realpathSync(process.cwd()) + "\\n");
 const [cmd] = process.argv.slice(2);
 if (cmd === "--bg") {
   if (${behaviour.failBg === true}) { console.error("boom: not signed in"); process.exit(3); }
-  console.log("started background session abcd1234");
+  if (${behaviour.silentBg === true}) console.log("started"); else console.log("started background session abcd1234");
 } else if (cmd === "agents") {
   process.stdout.write(fs.readFileSync(${JSON.stringify(agents)}, "utf8"));
 } else if (cmd === "stop") {
@@ -66,7 +69,7 @@ if (cmd === "--bg") {
   writeFileSync(bin, script);
   chmodSync(bin, 0o755);
   return {
-    deps: { env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}` }, cwd: dir, briefPath: BRIEF, now: () => Date.parse("2026-11-10T20:00:00.000Z"), newSessionId: () => "11111111-2222-3333-4444-555555555555" },
+    deps: { env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}` }, cwd: dir, briefPath: BRIEF, now: () => Date.parse("2026-11-10T20:00:00.000Z"), claudeStatePath: statePath, claudeProjectsDirectory: path.join(dir, "projects"), sleep: () => undefined },
     dir,
     cwds: () => (existsSync(cwdLog) ? readFileSync(cwdLog, "utf8").trim().split("\n").filter(Boolean) : []),
     calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]) : []),
@@ -79,10 +82,12 @@ describe("arcadia keeper start", () => {
     const root = workspace();
     const fake = fakeClaude();
     const result = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR, dryRun: true }, fake.deps).data;
-    expect(result.argv.slice(0, 11)).toEqual([
+    expect(result.argv.slice(0, 10)).toEqual([
       "claude", "--bg", "--remote-control", "momentum-keeper", "-n", "♾️ Flynn · keeper starting",
-      "--model", "sonnet", "--permission-mode", "auto", "--session-id"
+      "--model", "sonnet", "--permission-mode", "auto"
     ]);
+    // `--bg` ignores --session-id (probe P2), so none is passed.
+    expect(result.argv).not.toContain("--session-id");
     const prompt = result.argv.at(-1) as string;
     expect(prompt).toContain(`coordinator session \`${SUPERVISOR}\``);
     expect(prompt).not.toContain("{{SUPERVISOR}}");
@@ -108,7 +113,7 @@ describe("arcadia keeper start", () => {
     const record = readKeeperRecord(root);
     expect(record).toMatchObject({
       status: "running", supervisor: SUPERVISOR, remoteControlName: "momentum-keeper", model: "sonnet",
-      sessionId: "11111111-2222-3333-4444-555555555555", stopId: "abcd1234", stoppedAt: null
+      sessionId: "abcd1234", stopId: "abcd1234", stoppedAt: null
     });
     expect(record?.argv).toEqual(data.argv);
   });
@@ -203,7 +208,8 @@ describe("arcadia keeper start safety", () => {
     const linked = path.join(scratch(), "linked");
     execFileSync("git", ["-C", fake.dir, "worktree", "add", "-q", "-b", "task", linked]);
     runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, { ...fake.deps, cwd: linked });
-    expect(fake.cwds()).toEqual([fake.dir]);
+    // The launch and the follow-up `claude agents --json` both run in the primary checkout.
+    expect(new Set(fake.cwds())).toEqual(new Set([fake.dir]));
     expect(readKeeperRecord(root)?.status).toBe("running");
     const plain = realpathSync(scratch());
     const other = fakeClaude();
@@ -235,5 +241,73 @@ describe("arcadia keeper start safety", () => {
     expect(runKeeperStatusCommand({ workspace: root }, fake.deps).data.listed).toBe(false);
     fake.setAgents(JSON.stringify([{ id: "abcd1234" }]));
     expect(runKeeperStatusCommand({ workspace: root }, fake.deps).data.listed).toBe(true);
+  });
+});
+
+describe("arcadia keeper start: probe P1/P2 adaptations (trusted folder, real --bg session id, exact brief, observed model)", () => {
+  const FULL = "686736ac-1111-4222-8333-444455556666";
+
+  it("refuses an untrusted launch folder before launching, and says why; the dry run reports it", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    const untrusted = { ...fake.deps, claudeStatePath: path.join(fake.dir, "absent-state.json") };
+    expect(() => runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, untrusted)).toThrow(/not started.*cannot be shown to be trusted/);
+    expect(fake.calls()).toEqual([]);
+    expect(readKeeperRecord(root)).toBeNull();
+    const dry = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR, dryRun: true }, untrusted);
+    expect(dry.data.trust.trusted).toBe(false);
+    expect(renderKeeperStartSuccess(dry).join("\n")).toMatch(/A real start would refuse: .*trust/);
+  });
+
+  it("records the REAL session id from claude agents, not one asked for, and never passes --session-id", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    fake.setAgents(JSON.stringify([{ id: "abcd1234", sessionId: FULL, name: "♾️ Flynn · keeper starting", cwd: fake.dir }]));
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    expect(fake.calls().find((call) => call[0] === "--bg")).not.toContain("--session-id");
+    expect(readKeeperRecord(root)).toMatchObject({ sessionId: FULL, stopId: "abcd1234", trustedFolder: fake.dir });
+  });
+
+  it("records the exact brief hash, verifies delivery against the transcript, and records the observed model (not the requested one)", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    fake.setAgents(JSON.stringify([{ id: "abcd1234", sessionId: FULL, name: "x", cwd: fake.dir }]));
+    const brief = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR, dryRun: true }, fake.deps).data.argv.at(-1) as string;
+    const projects = path.join(fake.dir, "projects", "slug");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(path.join(projects, `${FULL}.jsonl`), [
+      { type: "user", message: { content: brief } },
+      { type: "assistant", message: { model: "claude-haiku-5-5" } }
+    ].map((line) => JSON.stringify(line)).join("\n"));
+    const response = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    const proof = readKeeperRecord(root)?.proof;
+    expect(proof).toMatchObject({ transport: "bg", sessionId: FULL, delivered: true, observed: { provider: "claude", model: "claude-haiku-5-5", effort: null }, requested: { model: "sonnet" }, modelMatchesRequest: false });
+    expect(proof?.briefSha).toBe(createHash("sha256").update(brief.trim()).digest("hex"));
+    expect(renderKeeperStartSuccess(response).join("\n")).toMatch(/delivered exactly.*observed model claude-haiku-5-5, effort unobserved/s);
+    expect(proof?.warnings.join(" ")).toMatch(/does not correspond to the requested sonnet/);
+  });
+
+  it("flags a brief that was not delivered as sent, and an absent transcript as unverified, without failing the launch", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    fake.setAgents(JSON.stringify([{ id: "abcd1234", sessionId: FULL, name: "x", cwd: fake.dir }]));
+    const projects = path.join(fake.dir, "projects", "slug");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(path.join(projects, `${FULL}.jsonl`), `${JSON.stringify({ type: "user", message: { content: "something else" } })}\n`);
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    expect(readKeeperRecord(root)?.proof).toMatchObject({ delivered: false, observed: { model: null } });
+    const bare = workspace();
+    const printedOnly = fakeClaude();
+    runKeeperStartCommand({ workspace: bare, supervisor: SUPERVISOR }, printedOnly.deps);
+    const proof = readKeeperRecord(bare)?.proof;
+    expect(proof).toMatchObject({ delivered: false, deliveredSha: null, sessionId: null });
+    expect(proof?.warnings.join(" ")).toMatch(/no full session UUID/);
+  });
+
+  it("writes no record and says so when the session id can be neither read from the output nor listed", () => {
+    const root = workspace();
+    const fake = fakeClaude({ silentBg: true });
+    expect(() => runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps)).toThrow(/session id could not be read.*no record was written/);
+    expect(readKeeperRecord(root)).toBeNull();
   });
 });

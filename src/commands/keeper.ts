@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { mkdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,8 @@ import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { readWakeFiles } from "./productionIdleFront.js";
+import { buildLaunchProof, claudeFolderTrust, defaultClaudeStatePath, discoverBackgroundSession, observeTranscript, type FolderTrust, type LaunchProof } from "../coordinator/launchProof.js";
+import { findSessionTranscript } from "../coordinator/sessionIdentity.js";
 import { KEEPER_HEARTBEAT_FILE, KEEPER_ROLE } from "../production/momentumWatch.js";
 
 /**
@@ -17,6 +19,14 @@ import { KEEPER_HEARTBEAT_FILE, KEEPER_ROLE } from "../production/momentumWatch.
  * launcher. It never uses tmux, never takes a prompt or a credential from the
  * command line, and writes one small record under the workspace's .arcadia.
  * It is not wired to production activation.
+ *
+ * Probe P1/P2 adaptations (Decision 0227 D5 A, #1929): it launches only into an
+ * already-trusted folder (a fresh one stops at the trust prompt); under `--bg`
+ * `--session-id` is ignored, so it is not passed and the real session id is read
+ * from the launch output or `claude agents --json`; the exact brief's SHA-256 is
+ * recorded and compared with the transcript's first user message; and the
+ * provider, model and effort recorded are the ones the Session shows, never the
+ * requested values.
  */
 
 export const KEEPER_RECORD_SCHEMA = "arcadia-keeper-launch-v1" as const;
@@ -38,7 +48,12 @@ export interface KeeperRecord {
   name: string;
   remoteControlName: string;
   supervisor: string;
+  /** The model REQUESTED. The model the Session actually runs is `proof.observed.model`. */
   model: string;
+  /** Recorded since the P1/P2 adaptations; absent on older records. */
+  proof?: LaunchProof;
+  /** The trusted folder the launch relied on. */
+  trustedFolder?: string;
   argv: string[];
   launchedAt: string;
   stoppedAt: string | null;
@@ -50,8 +65,16 @@ export interface KeeperDependencies {
   /** Where the caller stands, used only to find the primary checkout; the spawn always runs in that checkout. */
   cwd?: string;
   briefPath?: string;
-  newSessionId?: () => string;
+  /** Claude Code's trusted-folder state; defaults to ~/.claude.json. */
+  claudeStatePath?: string;
+  /** Claude Code's projects directory (transcripts); defaults to ~/.claude/projects. */
+  claudeProjectsDirectory?: string;
+  sleep?: (ms: number) => void;
 }
+
+/** After a launch, up to this many polls (each KEEPER_POLL_MS) wait for the first reply so the actual model is observed. */
+const KEEPER_POLLS = 18;
+const KEEPER_POLL_MS = 5_000;
 
 export interface KeeperOptions { workspace?: string; wakesDir?: string }
 export interface KeeperStopOptions extends KeeperOptions { forget?: boolean }
@@ -193,6 +216,8 @@ export interface KeeperStartData {
   record: KeeperRecord | null;
   /** Dry run only: what a real start would meet. */
   liveKeeper: string | null;
+  /** Whether the launch folder is one Claude Code already trusts; a real start refuses when it is not. */
+  trust: FolderTrust;
 }
 
 /** Why a keeper counts as live, or null. A live heartbeat alone is enough: it is the alarm's own definition. */
@@ -219,16 +244,19 @@ export function runKeeperStartCommand(options: KeeperStartOptions, dependencies:
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const prompt = briefFor(supervisor, dependencies);
   const name = "♾️ Flynn · keeper starting";
-  const sessionId = (dependencies.newSessionId ?? randomUUID)();
-  const argv = ["--bg", "--remote-control", KEEPER_REMOTE_CONTROL_NAME, "-n", name, "--model", model, "--permission-mode", "auto", "--session-id", sessionId, prompt];
+  // `--bg` manages the session id and ignores --session-id (probe P2), so none is passed; the real one is discovered after launch.
+  const argv = ["--bg", "--remote-control", KEEPER_REMOTE_CONTROL_NAME, "-n", name, "--model", model, "--permission-mode", "auto", prompt];
+  const checkout = primaryCheckout(dependencies.cwd ?? invocationRoot());
+  const trust = claudeFolderTrust(checkout, dependencies.claudeStatePath ?? defaultClaudeStatePath());
   if (options.dryRun) {
     const live = liveReason(workspacePath, options, dependencies);
-    return createSuccess({ command: "keeper.start", workspace: workspacePath, data: { dryRun: true, argv: ["claude", ...argv], record: null, liveKeeper: live } });
+    return createSuccess({ command: "keeper.start", workspace: workspacePath, data: { dryRun: true, argv: ["claude", ...argv], record: null, liveKeeper: live, trust } });
   }
-  const checkout = primaryCheckout(dependencies.cwd ?? invocationRoot());
+  // Probe P1: an untrusted folder stops at the trust prompt and the keeper never receives its brief. Refuse before launching anything.
+  if (!trust.trusted) throw validationError(`The keeper was not started: ${trust.detail}`, { reason: "folder_untrusted" });
   const release = acquireLock(workspacePath, (dependencies.now ?? Date.now)());
   try {
-    return launchLocked(workspacePath, options, dependencies, { argv, name, sessionId, supervisor, model, checkout });
+    return launchLocked(workspacePath, options, dependencies, { argv, name, prompt, supervisor, model, checkout, trust });
   } finally {
     release();
   }
@@ -238,20 +266,42 @@ function launchLocked(
   workspacePath: string,
   options: KeeperStartOptions,
   dependencies: KeeperDependencies,
-  launch: { argv: string[]; name: string; sessionId: string; supervisor: string; model: string; checkout: string }
+  launch: { argv: string[]; name: string; prompt: string; supervisor: string; model: string; checkout: string; trust: FolderTrust }
 ): CommandSuccess<KeeperStartData> {
-  const { argv, checkout, model, name, sessionId, supervisor } = launch;
+  const { argv, checkout, model, name, prompt, supervisor, trust } = launch;
   const live = liveReason(workspacePath, options, dependencies);
   if (live !== null) throw validationError(`A Momentum Keeper is already live: ${live}. Run \`arcadia keeper status\`, or \`arcadia keeper stop\` first.`);
 
   const launched = claude(argv, dependencies, checkout);
   if (!launched.ok) throw validationError(`The keeper did not start and no record was written: ${launched.error}`);
-  const printed = launched.stdout.match(/\b[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?\b/i)?.[0];
+  // The id comes from what the host printed or lists, never from one we asked for: --bg ignores --session-id.
+  const listing = claude(["agents", "--json"], dependencies, checkout);
+  const discovered = discoverBackgroundSession({ launchOutput: launched.stdout, agentsJson: listing.ok ? listing.stdout : null, name, cwd: checkout });
+  if (discovered === null) {
+    throw validationError(`The keeper may be running, but its session id could not be read from the launch output or \`claude agents --json\`${listing.ok ? "" : ` (${listing.error})`}, so no record was written. Inspect \`claude agents\` and stop it by hand if listed.`, { reason: "session_id_undiscovered" });
+  }
+  // Bounded wait for the transcript to show the delivered brief and the model's first reply; deterministic file reads only.
+  const sleep = dependencies.sleep ?? ((ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); });
+  const projects = dependencies.claudeProjectsDirectory ?? path.join(homedir(), ".claude", "projects");
+  let transcript = { deliveredSha: null as string | null, model: null as string | null, effort: null as string | null };
+  for (let poll = 0; poll < KEEPER_POLLS; poll += 1) {
+    const file = discovered.sessionId === null ? null : findSessionTranscript(projects, discovered.sessionId);
+    if (file !== null) transcript = observeTranscript(file);
+    if (transcript.deliveredSha !== null && transcript.model !== null) break;
+    if (poll < KEEPER_POLLS - 1) sleep(KEEPER_POLL_MS);
+  }
+  const proof = buildLaunchProof({
+    transport: "bg", sessionId: discovered.sessionId, brief: prompt, transcript, agent: { model: discovered.model, effort: discovered.effort },
+    requestedModel: model, requestedEffort: null, now: new Date((dependencies.now ?? Date.now)())
+  });
+  if (discovered.sessionId === null) proof.warnings.push("The host listed no full session UUID for the keeper, so its transcript could not be read; delivery and model are unverified.");
   const record: KeeperRecord = {
     schema: KEEPER_RECORD_SCHEMA,
     status: "running",
-    sessionId,
-    stopId: printed ?? sessionId,
+    sessionId: discovered.sessionId ?? discovered.stopId,
+    stopId: discovered.stopId,
+    proof,
+    trustedFolder: trust.trustedFolder ?? checkout,
     name,
     remoteControlName: KEEPER_REMOTE_CONTROL_NAME,
     supervisor,
@@ -261,20 +311,29 @@ function launchLocked(
     stoppedAt: null
   };
   writeKeeperRecord(workspacePath, record);
-  return createSuccess({ command: "keeper.start", workspace: workspacePath, data: { dryRun: false, argv: record.argv, record, liveKeeper: null } });
+  return createSuccess({ command: "keeper.start", workspace: workspacePath, data: { dryRun: false, argv: record.argv, record, liveKeeper: null, trust } });
 }
 
 export function renderKeeperStartSuccess(response: CommandSuccess<KeeperStartData>): string[] {
-  const { argv, dryRun, liveKeeper, record } = response.data;
+  const { argv, dryRun, liveKeeper, record, trust } = response.data;
   if (dryRun) {
     return [
       "Dry run: nothing started or written. Exact command:",
       argv.map((part) => (/^[\w./:=@%+,-]+$/.test(part) ? part : JSON.stringify(part))).join(" "),
+      trust.trusted ? `Launch folder: trusted (${trust.detail})` : `A real start would refuse: ${trust.detail}`,
       liveKeeper ? `A real start would refuse: ${liveKeeper}.` : "No live keeper: a real start would proceed."
     ];
   }
   const started = record as KeeperRecord;
-  return [`Started ${started.name} (session ${started.stopId}, Remote Control name ${started.remoteControlName}, model ${started.model}).`, "Next: `arcadia keeper status`; the first heartbeat should appear within about 5 minutes."];
+  const proof = started.proof;
+  return [
+    `Started ${started.name} (session ${started.stopId}, Remote Control name ${started.remoteControlName}, requested model ${started.model}).`,
+    ...(proof ? [
+      `Launch proof: brief ${proof.delivered ? "delivered exactly" : "NOT verified as delivered"} (sha ${proof.briefSha.slice(0, 12)}); observed model ${proof.observed.model ?? "unobserved"}, effort ${proof.observed.effort ?? "unobserved"}.`,
+      ...proof.warnings.map((warning) => `Warning: ${warning}`)
+    ] : []),
+    "Next: `arcadia keeper status`; the first heartbeat should appear within about 5 minutes."
+  ];
 }
 
 export interface KeeperStatusData {
