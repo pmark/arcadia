@@ -24,7 +24,7 @@ import { activateProduction, fingerprintProductionScope, normalizeProductionScop
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { expectManagedDocumentsContract } from "./helpers/managedDocumentsContract.js";
 
-const cleanupHooks = vi.hoisted(() => ({ fail: false, paths: [] as string[] }));
+const cleanupHooks = vi.hoisted(() => ({ fail: false, paths: [] as string[], transientEnotempty: 0 }));
 vi.mock("node:fs", async importOriginal => {
   const actual = await importOriginal<typeof import("node:fs")>();
   return { ...actual, rmSync: (target: string, options?: Parameters<typeof actual.rmSync>[1]) => {
@@ -32,15 +32,41 @@ vi.mock("node:fs", async importOriginal => {
       cleanupHooks.paths.push(target);
       throw Object.assign(new Error("owned cleanup denied"), { code: "EPERM" });
     }
+    if (cleanupHooks.transientEnotempty > 0 && path.basename(target).startsWith("arcadia-agent-ask-complete-")) {
+      cleanupHooks.transientEnotempty -= 1;
+      throw Object.assign(new Error(`directory not empty, rmdir '${target}'`), { code: "ENOTEMPTY" });
+    }
     return actual.rmSync(target, options);
   } };
 });
 const roots: string[] = [];
-afterEach(() => { cleanupHooks.fail = false; for (const target of cleanupHooks.paths.splice(0)) rmSync(target, { recursive: true, force: true }); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+const TEARDOWN_MAX_ATTEMPTS = 5;
+// Retries only a transient ENOTEMPTY (a concurrent writer repopulating a
+// directory mid-removal), with a bounded attempt count and growing pause.
+// Every other error, and ENOTEMPTY past the bound, is rethrown and fails the afterEach.
+function removeFixtureTree(target: string): void {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      rmSync(target, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOTEMPTY" || attempt >= TEARDOWN_MAX_ATTEMPTS) throw error;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 25 * attempt);
+    }
+  }
+}
+afterEach(() => { cleanupHooks.fail = false; for (const target of cleanupHooks.paths.splice(0)) removeFixtureTree(target); for (const root of roots.splice(0)) removeFixtureTree(root); });
 
 describe("Agent Ask complete", () => {
   it("lists complete in the published contract", () => {
     expect(runAgentAskContractCommand().data.intents).toContain("complete");
+  });
+
+  it("retries a transient ENOTEMPTY during fixture teardown and still removes the fixture root", () => {
+    const { repo } = fixture();
+    expect(existsSync(repo)).toBe(true);
+    // Two transient ENOTEMPTY failures land on the fixture root during the afterEach teardown.
+    cleanupHooks.transientEnotempty = 2;
   });
 
   it("marks an Action done, advances the pointer to the next eligible Action, and appends a Log entry", () => {
