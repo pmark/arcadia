@@ -5,7 +5,8 @@ import { withDatabase, withReadOnlyDatabase } from "../src/db/connection.js";
 import { getProjectBySlug, listActionableReviewItems, updateReviewItemStatus } from "../src/db/repositories.js";
 import { loadActionOrder } from "../src/dispatch/order.js";
 import { activateProduction, deactivateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
-import { ensureCandidatePreservationTable } from "../src/sessions/candidatePreservation.js";
+import { discoverDocs } from "../src/docs/discover.js";
+import { ensureCandidatePreservationTable, findOutstandingCandidate } from "../src/sessions/candidatePreservation.js";
 import { DISCOVERY_LIMITS, recordDiscovery } from "../src/scheduling/discovery.js";
 import { projectScheduleToBoard, reconcileBoard, type BoardItem, type BoardPush, type BoardStatus, type SchedulingBoard } from "../src/scheduling/github.js";
 import { ensureProductionTickTables, recordOperatorEscalation } from "../src/production/tick.js";
@@ -706,6 +707,136 @@ describe("scheduling pass", () => {
         expect(holdRow(db, "alpha/a")).toEqual({ kind, first_detected_at: at });
       });
       expect(readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8")).toContain("current_action: a");
+    });
+
+    it.each([
+      ["a sign-in failure that is dead", "provider_sign_in_dead"],
+      ["an environment wall", "environment_wall"],
+      ["a terminal candidate that cannot integrate (candidate custody, owned by terminal recovery)", "terminal_candidate_not_integrable"],
+      ["a budget exhaustion", "budget_exhausted"],
+      ["a STOP (no dedicated escalation kind exists; an unknown kind fails safe to global)", "stop_the_line"]
+    ])("STOP and custody class: %s on A stops the scope, so B is not passed over and C never launches", (_name, kind) => {
+      const fx = shape();
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        spend(db, "alpha/a", 3, 3);
+        hold(db, "alpha/a", kind);
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:05:00.000Z") }).projects[0]?.pointer.moved).toBe(false);
+        expect(holdRow(db, "alpha/a")).toEqual({ kind, first_detected_at: at });
+      });
+      const project = readFileSync(path.join(fx.repos.alpha, "PROJECT.md"), "utf8");
+      expect(project).toContain("current_action: a");
+      expect(project).not.toContain("current_action: b");
+      expect(project).not.toContain("current_action: c");
+    });
+
+    /** Lands one Action's completion on main, as its settled candidate does: the Plan records it done. */
+    const landDone = (repo: string, id: string, message: string) => {
+      const file = path.join(repo, "docs", "plans", "alpha-plan.md");
+      const text = readFileSync(file, "utf8");
+      const next = text.replace(new RegExp(`(  - id: ${id}\\n    title: [^\\n]*\\n    status: )open`), "$1done");
+      if (next === text) throw new Error(`no open Action ${id} to land`);
+      writeFileSync(file, next);
+      git(repo, ["add", "-A"]);
+      git(repo, ["commit", "-qm", message]);
+    };
+    const counters = (db: Parameters<typeof activateProduction>[0]) => db.prepare(
+      "SELECT attempts, local_attempts FROM production_repair_attempts WHERE action_key = 'alpha/a'").get();
+
+    it("revival: after B lands and the pointer moves, held A is revived and completes with its candidate and counters intact", () => {
+      const fx = shape();
+      const repo = fx.repos.alpha;
+      // A's Session finished: its candidate sits in pull request #42, unmerged, on its own branch.
+      git(repo, ["checkout", "-q", "-b", "candidate/a"]);
+      writeFileSync(path.join(repo, "candidate-a.md"), "A's output\n");
+      git(repo, ["add", "candidate-a.md"]);
+      git(repo, ["commit", "-qm", "chore(arcadia): settle complete-a"]);
+      const candidateSha = git(repo, ["rev-parse", "HEAD"]).trim();
+      git(repo, ["checkout", "-q", "main"]);
+      const outstanding = () => withReadOnlyDatabase(fx.workspace, (db) => findOutstandingCandidate(db, { repositoryPath: repo, actionId: "a" }));
+
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        ensureCandidatePreservationTable(db);
+        db.prepare(
+          `INSERT INTO candidate_preservation_receipts (
+             id, request_id, repository_path, candidate_worktree_path, branch, base_branch, base_revision,
+             action_id, packet_sha256, policy_epoch, policy_revision, candidate_fingerprint, commit_sha,
+             preservation_state, pushed_remote, pull_request_number, pull_request_url, retry_action,
+             receipt_json, created_at
+           ) VALUES (
+             'cp_revival', 'req_revival', @repo, @repo, 'candidate/a', 'main', 'base', 'a', 'sha', 1, 1, 'fp', @sha,
+             'IN PR', 'origin', 42, 'https://github.com/example/repo/pull/42', NULL, '{}', '2026-11-12T10:00:00.000Z'
+           )`
+        ).run({ repo, sha: candidateSha });
+        spend(db, "alpha/a", 3, 3);
+        hold(db, "alpha/a", "repair_budget_exhausted");
+      });
+
+      // 1. B is independent: the pointer passes held A, which keeps its hold, counters and candidate.
+      withDatabase(fx.workspace, (db) => {
+        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:05:00.000Z") }).projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "b" });
+        expect(holdRow(db, "alpha/a")).toEqual({ kind: "repair_budget_exhausted", first_detected_at: at });
+        expect(counters(db)).toEqual({ attempts: 3, local_attempts: 3 });
+      });
+      expect(outstanding()).toMatchObject({ pullRequestNumber: 42 });
+
+      // 2. B lands and settles on main. Dependent C still waits on A, so the held A is next again.
+      landDone(repo, "b", "chore(arcadia): settle complete-b");
+      withDatabase(fx.workspace, (db) => {
+        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:10:00.000Z") }).projects[0]?.pointer).toMatchObject({ moved: true, from: "b", to: "a" });
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(counters(db)).toEqual({ attempts: 3, local_attempts: 3 });
+      });
+
+      // 3. The operator revives A by clearing its hold. Nothing else about A changes: the candidate and counters stay.
+      withDatabase(fx.workspace, (db) => {
+        db.prepare("DELETE FROM production_operator_escalations WHERE action_key = 'alpha/a'").run();
+        expect(nextOf(db)).toBe("alpha/a");
+        expect(counters(db)).toEqual({ attempts: 3, local_attempts: 3 });
+      });
+      expect(outstanding()).toMatchObject({ pullRequestNumber: 42 });
+
+      // 4. A's candidate lands (PR #42 merges) and its completion settles. The candidate is no longer outstanding, C is ready, and the pointer moves to it.
+      git(repo, ["merge", "--no-ff", "-q", "candidate/a", "-m", "Merge pull request #42"]);
+      landDone(repo, "a", "chore(arcadia): settle complete-a");
+      withDatabase(fx.workspace, (db) => {
+        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:20:00.000Z") }).projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "c" });
+        expect(counters(db)).toEqual({ attempts: 3, local_attempts: 3 });
+        expect(holdRow(db, "alpha/a")).toBeUndefined();
+      });
+      expect(outstanding()).toBeNull();
+      expect(readFileSync(path.join(repo, "PROJECT.md"), "utf8")).toContain("current_action: c");
+      expect(readFileSync(path.join(repo, "candidate-a.md"), "utf8")).toBe("A's output\n");
+    });
+
+    it("discovery status: held A and dependent C stay unfinished in the Plan, so a run with parked work never reads as all merged", () => {
+      const fx = shape();
+      const repo = fx.repos.alpha;
+      withDatabase(fx.workspace, (db) => {
+        scoped(db, actions);
+        spend(db, "alpha/a", 3, 3);
+        hold(db, "alpha/a", "repair_budget_exhausted");
+        expect(runSchedulingPass(db, { now: new Date("2026-11-12T10:05:00.000Z") }).projects[0]?.pointer).toMatchObject({ moved: true, from: "a", to: "b" });
+      });
+      landDone(repo, "b", "chore(arcadia): settle complete-b");
+
+      // Copy of the replay's all_merged predicate (scripts/production-replay.ts:1546-1558) minus its pinned-scope filter; it can drift from that script.
+      // The replay stops with `all_merged` only when no pinned Action of the Plan is other than done.
+      const unmergedPinned = (): string[] | null => {
+        const plan = discoverDocs(repo).docs.find((doc) => doc.type === "plan" && doc.project === "alpha" && doc.slug === "alpha-plan") as
+          { actions: Array<{ id: string; status: string }> } | undefined;
+        return plan ? plan.actions.filter((action) => action.status !== "done").map((action) => action.id) : null;
+      };
+      // Held A and dependent C are parked: the run is not all merged, and the report names them.
+      expect(unmergedPinned()).toEqual(["a", "c"]);
+      withDatabase(fx.workspace, (db) => expect(nextOf(db)).toBe("alpha/a"));
+
+      // Control: only when every pinned Action is done does the predicate report all merged.
+      landDone(repo, "a", "chore(arcadia): settle complete-a");
+      landDone(repo, "c", "chore(arcadia): settle complete-c");
+      expect(unmergedPinned()).toEqual([]);
     });
   });
 

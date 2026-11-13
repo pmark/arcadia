@@ -272,6 +272,57 @@ describe("runManagedProductionTick", () => {
       expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
     });
 
+    // Pointer moves past a held Action: the probe holds define-contract with `kind` (and, for a local cause, 3/3 Action-local
+    // repair attempts), moves the scope to second-action, and reads the hold row back before and after the tick.
+    const pointerPastHeldProbe = (kind: string, localCause = false) => {
+      const fixture = preparedFixture({ secondAction: true, skipPacket: true });
+      const tmux = new FakeTmux();
+      activateActions(fixture, ["test-project/define-contract", "test-project/second-action"]);
+      withDatabase(fixture.workspace, (db) => {
+        ensureProductionTickTables(db);
+        db.prepare(
+          `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+             VALUES ('test-project/define-contract', ?, 'held', 'operator resets it', ?, ?)`
+        ).run(kind, fixture.now.toISOString(), fixture.now.toISOString());
+        if (localCause) db.prepare(
+          `INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at, local_attempts)
+             VALUES ('test-project/define-contract', 3, 'e', ?, ?, 3)`
+        ).run(fixture.now.toISOString(), fixture.now.toISOString());
+      });
+      const holdRow = () => withReadOnlyDatabase(fixture.workspace, (db) => db.prepare(
+        "SELECT kind FROM production_operator_escalations WHERE action_key = 'test-project/define-contract'").get());
+      const before = holdRow();
+      const { launch } = tickOnce(fixture, tmux);
+      return { launch, before, after: holdRow(), tmuxLaunches: tmux.launches.length };
+    };
+
+    // Precondition and control: the probe's setup works. The independent Action launches, and a review-repair hold (kept by the
+    // prune by design) survives the pointer move. Without this passing test, the failing-first tests below could pass on a broken setup.
+    it("precondition: the probe records the hold and 3/3 Action-local attempts, launches the independent Action, and a review-repair hold survives", () => {
+      const probe = pointerPastHeldProbe("review_repair_gated", true);
+      expect(probe.before).toEqual({ kind: "review_repair_gated" });
+      expect(probe.launch).toMatchObject({ outcome: "launched", actionKey: "test-project/second-action" });
+      expect(probe.tmuxLaunches).toBe(1);
+      expect(probe.after).toEqual({ kind: "review_repair_gated" });
+    });
+
+    // REAL DEFECT (failing-first, Decision 0223 D1): pruneStaleOperatorEscalations (src/production/tick.ts) keeps only the three
+    // review-repair kinds on a non-current Action, so the Action-local held classes the scheduler now passes over lose their hold
+    // once the pointer moves on, and the no-relaunch guard (Issue #1613) disappears. Remove `.fails` when the prune honors
+    // ACTION_LOCAL_HELD_ESCALATIONS and Action-local repair_budget_exhausted.
+    it.fails("keeps an Action-local hold on the Action the pointer moved past (Decision 0223 D1: held, not pruned)", () => {
+      const probe = pointerPastHeldProbe("completion_loopback_denied");
+      expect(probe.launch).toMatchObject({ outcome: "launched", actionKey: "test-project/second-action" });
+      expect(probe.after).toEqual({ kind: "completion_loopback_denied" });
+    });
+
+    // Same defect for the Action-local repair budget, which no other test pins (tracked in https://github.com/pmark/arcadia/issues/2545).
+    it.fails("keeps an Action-local repair_budget_exhausted hold, with its 3/3 local counters, on the Action the pointer moved past", () => {
+      const probe = pointerPastHeldProbe("repair_budget_exhausted", true);
+      expect(probe.launch).toMatchObject({ outcome: "launched", actionKey: "test-project/second-action" });
+      expect(probe.after).toEqual({ kind: "repair_budget_exhausted" });
+    });
+
     it("skips an out-of-scope pointer it cannot re-point: no launch, no packet, no escalation", () => {
       const fixture = preparedFixture({ skipPacket: true });
       const tmux = new FakeTmux();
