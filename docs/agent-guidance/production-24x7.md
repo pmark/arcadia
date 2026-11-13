@@ -154,7 +154,7 @@ today and what is still pending.
 - **Today:** the existing gates, unchanged. Review rejects any housekeeping PR
   that relaxes one without a Decision.
 - **Pending:** none. This rule is already in force.
-- **Design draft:** a transcript-verified approval route is drafted in
+- **NOT IN FORCE:** a transcript-verified approval route is drafted in
   docs/design/transcript-verified-operator-approvals.md and is NOT in force until
   Decision 0229 is recorded; until then the rule above is the only rule.
 
