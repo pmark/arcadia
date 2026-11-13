@@ -4,7 +4,7 @@ type: decision
 id: "0229"
 slug: decide-how-a-coordinator-desktop-or-tmux-cli-session-verifies-an-operator
 project: arcadia
-status: open
+status: approved
 question: "Decide how a coordinator (desktop or tmux/CLI session) verifies an operator approval without the operator copy-pasting it, and whether that verification may act before the durable record exists. Governance change: nothing is usable until this Decision is answered."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
 updated: 2026-11-13
+answer: "A: Both. The transcript route is the quick fix; the governed approval record is the durable route. Any coordinator or helper may act on an operator approval only after verifying it by one of the two routes, recording source session id, timestamp and verbatim quote."
+decided: 2026-11-13
 ---
 
 # Decision 0229: Decide how a coordinator (desktop or tmux/CLI session) verifies an operator approval without the operator copy-pasting it, and whether that verification may act before the durable record exists. Governance change: nothing is usable until this Decision is answered.
