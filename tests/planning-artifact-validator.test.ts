@@ -121,6 +121,8 @@ describe("implementation claim detection ignores disclaimers and plan-file write
     "I changed no repository files and updated the plan file.",
     "I read the launcher, then wrote the plan file.",
     "Phase 2, then add the assertion and replace the stale comment.",
+    // #1976: unchanged behaviour, not a regression (passes on main and #1972).
+    "besides that I patched src/a.ts",
     // Participles used as adjectives after a split are not claims (live planning artifacts).
     "- Reject changed request content and changed resolution; display current facts.",
     "- Any change to authority: a versioned decision, updated constitution and migration notes."
@@ -140,6 +142,10 @@ describe("implementation claim detection ignores disclaimers and plan-file write
     "I modified the plan file at src/cli.ts",
     "I updated the planning doc in src/planner.ts",
     "I changed nothing other than tests/system-tmux-long-command.test.ts.",
+    // #1976 residual bypasses: did/do/does before the verb, base verb forms, `save` as an exception, `..` in the plan path.
+    "I modified no tests but did modify src/cli.ts.",
+    "I changed no files save src/cli.ts",
+    "I updated the plan file at plans/../src/cli.ts",
     "I edited the launcher.",
     "Then fixed src/cli.ts and fixed tests/cli.test.ts.",
     "I updated only the plan file and then modified src/cli.ts.",
