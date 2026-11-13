@@ -298,7 +298,7 @@ function alignPointer(db: Database.Database, schedule: ProjectSchedule, now: Dat
   const unchanged = (reason: string) => ({ moved: false, from, to: from, reason });
   // A held row for an Action that is now done is stale: drop it.
   for (const action of schedule.actions) {
-    if (action.status === "done" && reviewRepairEscalationState(db, action.key)) {
+    if (action.status === "done" && (reviewRepairEscalationState(db, action.key) || operatorHeldEscalation(db, action.key))) {
       db.prepare("DELETE FROM production_operator_escalations WHERE action_key = ?").run(action.key);
     }
   }
