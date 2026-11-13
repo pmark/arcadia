@@ -1487,6 +1487,32 @@ describe("Agent Ask settlement", () => {
     expect(drafted.actions.map((action) => action.why)).toEqual(values);
   });
 
+  it("round-trips bracket-prefixed acceptance criteria into the settled Plan (Issue #1731)", () => {
+    const { workspace, repo } = fixture();
+    const criteria = ["[ENTRY] A focused integration test proves the entry.", "[x] done marks the checklist item complete.", "{a} stays a literal acceptance phrase.", "true stays a literal string in the Plan."];
+    const request = [
+      "agent_ask: v1", "request_id: quote-criteria-1731", "project: demo", "intent: action",
+      "desired_result: Quote every acceptance criterion", "actions:",
+      "  - id: quoted-criteria", "    desired_result: Quote criteria", "    acceptance:",
+      ...criteria.map((criterion) => `      - ${JSON.stringify(criterion)}`),
+      "requested_authority: apply_if_approved", ""
+    ].join("\n");
+    const proposal = runAgentAskPreviewCommand({ workspace, request });
+    const preview = runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-quote-criteria-1731",
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1
+    });
+    runAgentAskSettleCommand({
+      workspace, proposal: proposal.data.proposal.id, requestId: "settle-quote-criteria-1731",
+      disposition: "accepted", responsibility: "agent", top: true, revision: 1,
+      preview: preview.data.receipt.previewFingerprint, apply: true
+    });
+    const docs = discoverDocs(repo);
+    expect(docs.errors.filter((error) => error.relativePath === "docs/plans/demo-plan.md")).toEqual([]);
+    const plan = docs.docs.find((doc): doc is PlanDoc => doc.type === "plan" && doc.slug === "demo-plan")!;
+    expect(plan.actions.find((action) => action.id === "quoted-criteria")?.acceptanceCriteria).toEqual(criteria);
+  });
+
   it("writes a per-Action why into a new draft Plan", () => {
     const { workspace, repo } = fixture();
     const request = draftPlanAsk("ask-draft-plan-why").replace(
