@@ -29,6 +29,35 @@ import type {
 
 const execFileAsync = promisify(execFile);
 
+export interface ExecFileOptions {
+  cwd: string;
+  env: NodeJS.ProcessEnv;
+  encoding: "utf8";
+  timeout: number;
+  maxBuffer: number;
+}
+
+/** Runs one CLI invocation. Injected by tests; the default wraps `execFile`. */
+export type ExecFileLike = (
+  file: string,
+  args: string[],
+  options: ExecFileOptions
+) => Promise<{ stdout: string; stderr: string }>;
+
+const defaultExecFile: ExecFileLike = async (file, args, options) => {
+  const result = await execFileAsync(file, args, {
+    cwd: options.cwd,
+    env: options.env,
+    encoding: "utf8",
+    timeout: options.timeout,
+    maxBuffer: options.maxBuffer
+  });
+  return { stdout: result.stdout, stderr: result.stderr };
+};
+
+/** Status is the first poll call and must not be killed by the 30 s default under load (Issue #2569). */
+const STATUS_TIMEOUT_MS = 120_000;
+
 /**
  * Which surface the activity log should attribute a call to. This process is
  * mostly a daemon — schedulers and pollers — so "automation" is the safe
@@ -45,6 +74,10 @@ export interface ArcadiaCliOptions {
   workspace: string | null;
   cliPath: string | null;
   timeoutMs?: number;
+  /** Test seam: replaces `execFile`. */
+  exec?: ExecFileLike;
+  /** Test seam: millisecond clock used to report elapsed time on failures. */
+  clock?: () => number;
 }
 
 export interface CliInvocation {
@@ -62,7 +95,7 @@ export class ArcadiaCli {
   constructor(private readonly options: ArcadiaCliOptions) {}
 
   status(): Promise<ArcadiaJsonSuccess<StatusData>> {
-    return this.runJson<StatusData>(this.withWorkspace(["status", "--json"]));
+    return this.runJson<StatusData>(this.withWorkspace(["status", "--json"]), { timeoutMs: STATUS_TIMEOUT_MS });
   }
 
   queue(): Promise<ArcadiaJsonSuccess<QueueData>> {
@@ -271,14 +304,10 @@ export class ArcadiaCli {
     options: { timeoutMs?: number; surface?: CliSurface } = {}
   ): Promise<ArcadiaJsonSuccess<TData> | ArcadiaJsonFailure> {
     const invocation = this.buildInvocation(args);
+    const timeout = options.timeoutMs ?? this.options.timeoutMs ?? 30_000;
+    const startedAt = this.now();
     try {
-      const result = await execFileAsync(invocation.command, invocation.args, {
-        cwd: repoRoot(),
-        env: surfaceEnv(options.surface),
-        encoding: "utf8",
-        timeout: options.timeoutMs ?? this.options.timeoutMs ?? 30_000,
-        maxBuffer: 16 * 1024 * 1024
-      });
+      const result = await this.execFile(invocation, timeout, options.surface);
       return JSON.parse(result.stdout) as ArcadiaJsonSuccess<TData>;
     } catch (error) {
       if (isExecError(error)) {
@@ -286,8 +315,7 @@ export class ArcadiaCli {
         if (parsed && parsed.ok === false) {
           return parsed;
         }
-        const detail = error.stderr?.trim() || error.stdout?.trim() || error.message;
-        throw new Error(`Arcadia CLI failed: ${detail}`, { cause: error });
+        throw this.callFailure(args, error, timeout, startedAt);
       }
       throw error;
     }
@@ -298,22 +326,54 @@ export class ArcadiaCli {
     options: { timeoutMs?: number; surface?: CliSurface } = {}
   ): Promise<ArcadiaJsonSuccess<TData>> {
     const invocation = this.buildInvocation(args);
+    const timeout = options.timeoutMs ?? this.options.timeoutMs ?? 30_000;
+    const startedAt = this.now();
     try {
-      const result = await execFileAsync(invocation.command, invocation.args, {
-        cwd: repoRoot(),
-        env: surfaceEnv(options.surface),
-        encoding: "utf8",
-        timeout: options.timeoutMs ?? this.options.timeoutMs ?? 30_000,
-        maxBuffer: 16 * 1024 * 1024
-      });
+      const result = await this.execFile(invocation, timeout, options.surface);
       return parseJsonResponse<TData>(result.stdout);
     } catch (error) {
       if (isExecError(error)) {
-        const detail = error.stderr?.trim() || error.stdout?.trim() || error.message;
-        throw new Error(`Arcadia CLI failed: ${detail}`, { cause: error });
+        throw this.callFailure(args, error, timeout, startedAt);
       }
       throw error;
     }
+  }
+
+  private execFile(invocation: CliInvocation, timeout: number, surface?: CliSurface) {
+    const exec = this.options.exec ?? defaultExecFile;
+    return exec(invocation.command, invocation.args, {
+      cwd: repoRoot(),
+      env: surfaceEnv(surface),
+      encoding: "utf8",
+      timeout,
+      maxBuffer: 16 * 1024 * 1024
+    });
+  }
+
+  private now(): number {
+    return (this.options.clock ?? Date.now)();
+  }
+
+  /**
+   * Turns a failed exec into an error that says what happened. A call killed by
+   * the timeout says so explicitly, with signal, exit code and elapsed ms, instead
+   * of the opaque "null" that the empty stderr produced before (Issue #2569).
+   */
+  private callFailure(args: string[], error: Error & { stdout?: string; stderr?: string }, timeoutMs: number, startedAt: number): Error {
+    const elapsedMs = this.now() - startedAt;
+    const label = commandLabel(args);
+    const killed = (error as { killed?: boolean }).killed === true;
+    const code = (error as { code?: unknown }).code;
+    const signal = (error as { signal?: unknown }).signal ?? null;
+    const exitCode = code === undefined ? null : String(code);
+    const diagnostics = `killed=${killed}, signal=${String(signal)}, exit code=${exitCode}, elapsed ${elapsedMs} ms`;
+    // A stdout overflow also kills the child, but it is not a timeout.
+    const timedOut = killed && code !== "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
+    if (timedOut) {
+      return new Error(`Arcadia CLI ${label} timed out after ${Math.round(timeoutMs / 1000)}s (${diagnostics})`, { cause: error });
+    }
+    const detail = error.stderr?.trim() || error.stdout?.trim() || error.message;
+    return new Error(`Arcadia CLI failed: ${detail} (${diagnostics})`, { cause: error });
   }
 
   private withWorkspace(args: string[]): string[] {
@@ -336,29 +396,35 @@ export class ArcadiaCli {
   }
 }
 
-export function buildCliInvocation(args: string[], cliPath: string | null): CliInvocation {
+export function buildCliInvocation(
+  args: string[],
+  cliPath: string | null,
+  fileExists: (candidate: string) => boolean = existsSync
+): CliInvocation {
   if (cliPath) {
     return { command: cliPath, args };
+  }
+
+  // The built CLI first: running the source through tsx cold-transpiles on every
+  // call, which under load pushed poll calls past their timeout (Issue #2569).
+  const builtCli = findExisting([
+    path.resolve(import.meta.dirname, "../../../dist/src/cli.js"),
+    path.resolve(import.meta.dirname, "../../../../dist/src/cli.js"),
+    path.resolve(process.cwd(), "dist/src/cli.js")
+  ], fileExists);
+
+  if (builtCli) {
+    return { command: process.execPath, args: [builtCli, ...args] };
   }
 
   const sourceCli = findExisting([
     path.resolve(import.meta.dirname, "../../../src/cli.ts"),
     path.resolve(import.meta.dirname, "../../../../src/cli.ts"),
     path.resolve(process.cwd(), "src/cli.ts")
-  ]);
+  ], fileExists);
 
   if (sourceCli) {
     return { command: findTsx(), args: [sourceCli, ...args] };
-  }
-
-  const builtCli = findExisting([
-    path.resolve(import.meta.dirname, "../../../dist/src/cli.js"),
-    path.resolve(import.meta.dirname, "../../../../dist/src/cli.js"),
-    path.resolve(process.cwd(), "dist/src/cli.js")
-  ]);
-
-  if (builtCli) {
-    return { command: process.execPath, args: [builtCli, ...args] };
   }
 
   throw new Error("Unable to locate Arcadia CLI. Set ARCADIA_CLI_PATH.");
@@ -372,8 +438,24 @@ function parseJsonResponse<TData>(stdout: string): ArcadiaJsonSuccess<TData> {
   return parsed;
 }
 
-function findExisting(paths: string[]): string | null {
-  return paths.find((candidate) => existsSync(candidate)) ?? null;
+/**
+ * The leading plain words of a command (`run show`, `orientation packet compose`),
+ * for log labels. Stops at the first flag or free-text argument, so a request
+ * body never ends up in a log line.
+ */
+function commandLabel(args: string[]): string {
+  const words: string[] = [];
+  for (const arg of args) {
+    if (words.length === 3 || !/^[a-z][a-z-]*$/.test(arg)) {
+      break;
+    }
+    words.push(arg);
+  }
+  return words.join(" ") || "command";
+}
+
+function findExisting(paths: string[], fileExists: (candidate: string) => boolean = existsSync): string | null {
+  return paths.find((candidate) => fileExists(candidate)) ?? null;
 }
 
 function findTsx(): string {
