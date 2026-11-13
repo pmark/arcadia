@@ -245,6 +245,8 @@ export interface OrientationPacketComposeOptions {
   includeDailyAdvantage?: boolean;
   summarizer?: MorningAiSummarizer;
   now?: Date;
+  /** Test seam: replaces the working-copy scan. */
+  workScan?: typeof scanProjectWorkingCopies;
 }
 
 export interface OrientationPacketComposeData {
@@ -294,7 +296,14 @@ export async function runOrientationPacketComposeCommand(
     let workSnapshot: ReturnType<typeof scanProjectWorkingCopies> | null = null;
     let workSafetyLines: string[];
     try {
-      workSnapshot = scanProjectWorkingCopies(listMonitoredProjects(db, { includeInactive: true }));
+      // Local Git evidence only. The GitHub PR lookup runs one `gh` call per pushed branch, serially,
+      // across every Project: it never finished inside the Discord bot's 200 s compose timeout and
+      // was relaunched every tick (Issue #2581). Pushed branches read "PR UNKNOWN" in the packet;
+      // `arcadia work monitor` still does the full PR scan on demand.
+      workSnapshot = (options.workScan ?? scanProjectWorkingCopies)(
+        listMonitoredProjects(db, { includeInactive: true }),
+        { includePullRequests: false }
+      );
       workSafetyLines = formatWorkingCopySafetyLines(workSnapshot);
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);

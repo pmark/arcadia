@@ -4,7 +4,7 @@ import { loadConfig } from "./config.js";
 import { handleArcadiaInteraction } from "./events/interactionCreate.js";
 import { handleArcadiaMessage } from "./events/messageCreate.js";
 import { logJson } from "./logging.js";
-import { startNotificationPoller } from "./notifications/poller.js";
+import { startNotificationPoller, startOperatorPingPoller } from "./notifications/poller.js";
 import { buildOrientationReplyHandler } from "./orientation/handler.js";
 import { startDigestScheduler } from "./digests/scheduler.js";
 import { startOrientationScheduler } from "./orientation/scheduler.js";
@@ -61,6 +61,7 @@ async function main(): Promise<void> {
       digestTargetLocalTime: config.digestTargetLocalTime
     });
     startNotificationPoller(client, config, cli, logJson);
+    startOperatorPingPoller(client, config, cli, logJson);
     startOrientationScheduler(client, config, cli, replyRouter, logJson);
     startDigestScheduler(client, config, cli, logJson);
   });

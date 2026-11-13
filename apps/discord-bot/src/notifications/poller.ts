@@ -7,7 +7,8 @@ import { formatMilestoneCompletedNotification } from "../formatters/milestoneFor
 import type { LogLevel } from "../logging.js";
 import { formatRequiresReviewNotificationItem } from "../formatters/requiresReviewFormatter.js";
 import { categorizeAgentAsk, categorizeNotification, sendToCategory } from "./categories.js";
-import { drainOperatorPings } from "./operatorPings.js";
+import { drainOperatorPings, type PingAllowedMentions } from "./operatorPings.js";
+import { createTimeoutBackoff, runWithTimeoutBackoff } from "./pollBackoff.js";
 import { todoItemUrl } from "../todoLinks.js";
 import { requiresReviewTransitionMessage } from "./requiresReview.js";
 import { runCompletedMessage, runRequiresReviewMessage } from "./runCompleted.js";
@@ -294,83 +295,79 @@ export function startNotificationPoller(
   cli: ArcadiaCli,
   logJson: (level: LogLevel, obj: Record<string, unknown>) => void
 ): void {
-  const tick = async (): Promise<void> => {
-    let hasActiveRuns = false;
-    try {
-      const statePath = notificationStatePath(config.arcadiaWorkspace);
-      const submissionPath = discordSubmissionStatePath(config.arcadiaWorkspace);
-      const [previous, snapshot, submissions] = await Promise.all([
-        loadNotificationState(statePath),
-        loadNotificationSnapshot(cli),
-        loadDiscordSubmissionState(submissionPath)
-      ]);
+  // One timeout means the next identical snapshot would likely time out too: skip a bounded number of
+  // ticks (logged) instead of relaunching it. Pings are not part of this (Issue #2581).
+  const backoff = createTimeoutBackoff();
+  let hasActiveRuns = false;
+  const pollNotifications = async (): Promise<void> => {
+    const statePath = notificationStatePath(config.arcadiaWorkspace);
+    const submissionPath = discordSubmissionStatePath(config.arcadiaWorkspace);
+    const [previous, snapshot, submissions] = await Promise.all([
+      loadNotificationState(statePath),
+      loadNotificationSnapshot(cli),
+      loadDiscordSubmissionState(submissionPath)
+    ]);
 
-      hasActiveRuns = snapshot.runs.some(
-        (run) => run.status === "running" || run.status === "pending_execution"
+    hasActiveRuns = snapshot.runs.some(
+      (run) => run.status === "running" || run.status === "pending_execution"
+    );
+
+    const evaluation = evaluateNotifications(snapshot, previous, new Date().toISOString(), submissions, config.dashboardUrl);
+
+    // Persist state after each individual send succeeds, rather than once at the
+    // end of the batch. Otherwise a failure partway through (rate limit, transient
+    // fetch error, etc.) leaves already-delivered messages unmarked as notified,
+    // and they get resent on every subsequent poll.
+    let workingState: NotificationState = previous
+      ? { ...previous, codexTaskStatuses: evaluation.nextState.codexTaskStatuses }
+      : evaluation.nextState;
+
+    for (const message of evaluation.messages) {
+      const sent = await sendToCategory(
+        (channelId, content) => sendToConfiguredChannel(client, channelId, content),
+        config,
+        categorizeNotification(message.key, snapshot),
+        message.content,
+        logJson
       );
-
-      const evaluation = evaluateNotifications(snapshot, previous, new Date().toISOString(), submissions, config.dashboardUrl);
-
-      // Persist state after each individual send succeeds, rather than once at the
-      // end of the batch. Otherwise a failure partway through (rate limit, transient
-      // fetch error, etc.) leaves already-delivered messages unmarked as notified,
-      // and they get resent on every subsequent poll.
-      let workingState: NotificationState = previous
-        ? { ...previous, codexTaskStatuses: evaluation.nextState.codexTaskStatuses }
-        : evaluation.nextState;
-
-      for (const message of evaluation.messages) {
-        const sent = await sendToCategory(
-          (channelId, content) => sendToConfiguredChannel(client, channelId, content),
-          config,
-          categorizeNotification(message.key, snapshot),
-          message.content,
-          logJson
-        );
-        for (const key of [message.key, ...(message.alsoKeys ?? [])]) {
-          const agentAskSettlementId = agentAskSettlementIdFromNotificationKey(key);
-          if (agentAskSettlementId) {
-            await cli.agentAskNotificationSent(agentAskSettlementId, sent.id);
-          }
+      for (const key of [message.key, ...(message.alsoKeys ?? [])]) {
+        const agentAskSettlementId = agentAskSettlementIdFromNotificationKey(key);
+        if (agentAskSettlementId) {
+          await cli.agentAskNotificationSent(agentAskSettlementId, sent.id);
         }
-        const reviewId = reviewIdFromNotificationKey(message.key);
-        if (reviewId) {
-          const item = snapshot.reviewItems.find((candidate) => candidate.id === reviewId);
-          if (item) {
-            await recordReviewMessage(reviewMessageStatePath(config.arcadiaWorkspace), {
-              reviewId: item.id,
-              reviewSlug: item.slug,
-              channelId: sent.channelId,
-              messageId: sent.id,
-              createdAt: new Date().toISOString()
-            });
-          }
-        }
-        for (const key of [message.key, ...(message.alsoKeys ?? [])]) {
-          workingState = withNotifiedMessageKey(workingState, key, snapshot);
-        }
-        await saveNotificationState(statePath, workingState);
-        logJson("info", { msg: "discord notification sent", key: message.key });
       }
-
-      if (evaluation.messages.length === 0) {
-        await saveNotificationState(statePath, workingState);
+      const reviewId = reviewIdFromNotificationKey(message.key);
+      if (reviewId) {
+        const item = snapshot.reviewItems.find((candidate) => candidate.id === reviewId);
+        if (item) {
+          await recordReviewMessage(reviewMessageStatePath(config.arcadiaWorkspace), {
+            reviewId: item.id,
+            reviewSlug: item.slug,
+            channelId: sent.channelId,
+            messageId: sent.id,
+            createdAt: new Date().toISOString()
+          });
+        }
       }
+      for (const key of [message.key, ...(message.alsoKeys ?? [])]) {
+        workingState = withNotifiedMessageKey(workingState, key, snapshot);
+      }
+      await saveNotificationState(statePath, workingState);
+      logJson("info", { msg: "discord notification sent", key: message.key });
+    }
+
+    if (evaluation.messages.length === 0) {
+      await saveNotificationState(statePath, workingState);
+    }
+  };
+
+  const tick = async (): Promise<void> => {
+    hasActiveRuns = false;
+    try {
+      await runWithTimeoutBackoff(backoff, "notification snapshot", logJson, pollNotifications);
     } catch (error) {
       logJson("error", {
         msg: "discord notification poll failed",
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-
-    // Its own try: the outbox lives in the database, not the notification
-    // state file, so a ping problem must not block settlement pings or the
-    // reverse.
-    try {
-      await drainOperatorPings(cli, config, (channelId, content, allowedMentions) => sendToConfiguredChannel(client, channelId, content, allowedMentions), logJson);
-    } catch (error) {
-      logJson("error", {
-        msg: "discord operator ping poll failed",
         error: error instanceof Error ? error.message : String(error)
       });
     }
@@ -379,6 +376,48 @@ export function startNotificationPoller(
     setTimeout(() => void tick(), nextInterval);
   };
 
+  setTimeout(() => void tick(), 0);
+}
+
+/**
+ * One drain of the operator-ping outbox. Never throws: a failure, including a timeout of
+ * `ping pending`, is logged and the next tick launches the call again. It does not back
+ * off and it does not share the snapshot's concurrency limiter, because pages depend on it
+ * (Issue #2581). Returns how many pings were delivered.
+ */
+export async function runOperatorPingPollTick(
+  cli: Pick<ArcadiaCli, "operatorPings" | "operatorPingSent">,
+  config: Pick<BotConfig, "discordChannelId" | "pingChannels"> & Partial<Pick<BotConfig, "dashboardUrl">>,
+  send: (channelId: string, content: string, allowedMentions: PingAllowedMentions) => Promise<{ id: string }>,
+  logJson: (level: LogLevel, obj: Record<string, unknown>) => void
+): Promise<number> {
+  try {
+    return await drainOperatorPings(cli, config, send, logJson);
+  } catch (error) {
+    logJson("error", {
+      msg: "discord operator ping poll failed",
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return 0;
+  }
+}
+
+/** The ping poll's own loop: independent of the notification snapshot, so a slow or timed-out snapshot never delays a page. */
+export function startOperatorPingPoller(
+  client: Client,
+  config: BotConfig,
+  cli: ArcadiaCli,
+  logJson: (level: LogLevel, obj: Record<string, unknown>) => void
+): void {
+  const tick = async (): Promise<void> => {
+    await runOperatorPingPollTick(
+      cli,
+      config,
+      (channelId, content, allowedMentions) => sendToConfiguredChannel(client, channelId, content, allowedMentions),
+      logJson
+    );
+    setTimeout(() => void tick(), config.pollIntervalSeconds * 1000);
+  };
   setTimeout(() => void tick(), 0);
 }
 

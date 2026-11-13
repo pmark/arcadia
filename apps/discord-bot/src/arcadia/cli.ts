@@ -59,6 +59,26 @@ const defaultExecFile: ExecFileLike = async (file, args, options) => {
 const STATUS_TIMEOUT_MS = 120_000;
 
 /**
+ * `ping pending` is what pages the operator, so it gets a longer budget than the
+ * 30 s default: a kill under load only delays a page, and the next poll retries
+ * (Issue #2581).
+ */
+const PING_POLL_TIMEOUT_MS = 120_000;
+
+/** A CLI call killed by its timeout, typed so pollers can back off (Issue #2581). */
+export class CliTimeoutError extends Error {
+  constructor(
+    readonly label: string,
+    readonly timeoutMs: number,
+    diagnostics: string,
+    options?: { cause?: unknown }
+  ) {
+    super(`Arcadia CLI ${label} timed out after ${Math.round(timeoutMs / 1000)}s (${diagnostics})`, options);
+    this.name = "CliTimeoutError";
+  }
+}
+
+/**
  * Which surface the activity log should attribute a call to. This process is
  * mostly a daemon — schedulers and pollers — so "automation" is the safe
  * default; only calls the operator actually triggered say "discord", or the
@@ -116,7 +136,7 @@ export class ArcadiaCli {
   }
 
   operatorPings(): Promise<ArcadiaJsonSuccess<OperatorPingsData>> {
-    return this.runJson<OperatorPingsData>(this.withWorkspace(["ping", "pending", "--json"]));
+    return this.runJson<OperatorPingsData>(this.withWorkspace(["ping", "pending", "--json"]), { timeoutMs: PING_POLL_TIMEOUT_MS });
   }
 
   operatorPingSent(pingId: string, messageId: string): Promise<ArcadiaJsonSuccess<{ pingId: string; messageId: string }>> {
@@ -370,7 +390,7 @@ export class ArcadiaCli {
     // A stdout overflow also kills the child, but it is not a timeout.
     const timedOut = killed && code !== "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
     if (timedOut) {
-      return new Error(`Arcadia CLI ${label} timed out after ${Math.round(timeoutMs / 1000)}s (${diagnostics})`, { cause: error });
+      return new CliTimeoutError(label, timeoutMs, diagnostics, { cause: error });
     }
     const detail = error.stderr?.trim() || error.stdout?.trim() || error.message;
     return new Error(`Arcadia CLI failed: ${detail} (${diagnostics})`, { cause: error });

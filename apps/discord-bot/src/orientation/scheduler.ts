@@ -3,6 +3,7 @@ import type { ArcadiaCli } from "../arcadia/cli.js";
 import type { BotConfig } from "../config.js";
 import type { LogLevel } from "../logging.js";
 import { fetchCategoryChannel } from "../notifications/categories.js";
+import { createTimeoutBackoff, runWithTimeoutBackoff } from "../notifications/pollBackoff.js";
 import type { DiscordReplyRouter } from "../replyRouter/router.js";
 
 /**
@@ -25,12 +26,16 @@ export function startOrientationScheduler(
   logJson: (level: LogLevel, obj: Record<string, unknown>) => void
 ): () => void {
   let stopped = false;
+  // A compose killed at its timeout is not relaunched on the next tick (Issue #2581).
+  const backoff = createTimeoutBackoff();
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const tick = async (): Promise<void> => {
     try {
       if (isPastTargetLocalTime(config.orientationTargetLocalTime)) {
-        await maybeSendPacket(client, config, cli, router, logJson);
+        await runWithTimeoutBackoff(backoff, "orientation compose", logJson, () =>
+          maybeSendPacket(client, config, cli, router, logJson)
+        );
       }
     } catch (error) {
       logJson("error", {
