@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
-import { linkSync, mkdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, realpathSync, renameSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { validationError, type ArcadiaError } from "../cli/errors.js";
@@ -154,6 +154,18 @@ function lockPath(workspacePath: string): string {
   return path.join(workspacePath, ".arcadia", KEEPER_LOCK_FILE);
 }
 
+/** The lock body: who holds it, when it started, and a token only that start knows, so a release removes only its own lock. */
+interface LockBody { pid?: unknown; startedAt?: unknown; token?: unknown }
+
+/** Test seams for the lock protocol; production passes none. */
+export interface KeeperLockHooks {
+  beforeReclaim?: () => void;
+  /** Under the reclaim gate, before the stale lock is re-verified and unlinked. */
+  afterGateAcquired?: () => void;
+  /** Under the reclaim gate, after the gate is taken, before the re-verify. */
+  beforeUnlink?: () => void;
+}
+
 interface FileIdentity { ino: number; mtimeMs: number }
 
 function identityOf(file: string): FileIdentity | null {
@@ -165,60 +177,110 @@ function identityOf(file: string): FileIdentity | null {
   }
 }
 
-/**
- * Removes `target` only if it is still the exact file `expected` describes. The file is first renamed to a name only
- * this call owns, so nothing is ever unlinked by path alone. If the file moved aside is not the expected one (another
- * starter created a fresh lock in between), it is put back with a hard link, which never overwrites: a lock that is
- * live is never lost. Returns true only when the expected file was removed.
- */
-function removeExact(target: string, expected: FileIdentity): boolean {
-  const aside = `${target}.${process.pid}.${randomUUID()}.reclaim`;
-  try { renameSync(target, aside); } catch { return false; }
-  const moved = identityOf(aside);
-  if (moved !== null && moved.ino === expected.ino && moved.mtimeMs === expected.mtimeMs) {
-    try { unlinkSync(aside); } catch { /* already gone */ }
-    return true;
-  }
+function readLockBody(file: string): LockBody | null {
   try {
-    linkSync(aside, target);
-    unlinkSync(aside);
+    const value: unknown = JSON.parse(readFileSync(file, "utf8"));
+    return value !== null && typeof value === "object" ? value : null;
   } catch {
-    // Something re-created the lock meanwhile: leave the displaced one at its aside name rather than overwrite it.
+    return null;
   }
-  return false;
+}
+
+/** True when the pid names a running process. EPERM means it runs under another user, so it is alive too. */
+function pidAlive(pid: unknown): boolean {
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** A lock is stale only when it is older than the window AND its owner is not running. A live owner always wins. */
+function isStale(file: string): boolean {
+  const identity = identityOf(file);
+  if (identity === null || Date.now() - identity.mtimeMs < LOCK_STALE_MS) return false;
+  return !pidAlive(readLockBody(file)?.pid);
 }
 
 /**
- * Exclusive-create, so two concurrent starts cannot both pass the guard. A lock older than five minutes is a crashed
- * start: it is claimed by renaming away the exact file observed (see removeExact), so a starter never removes or
- * replaces a lock another starter has just created, and the release removes only the file this start created.
+ * Removes the lock only while its body still carries this start's token. Read-then-unlink is sound here: a live lock is
+ * unlinked only by its owner, and a reclaimer unlinks a lock only when its owner is not alive (never this process) and
+ * only while it holds the reclaim gate.
  */
-export function acquireLock(workspacePath: string, now: number, hooks: { beforeReclaim?: () => void } = {}): () => void {
+function releaseOwn(target: string, token: string): void {
+  if (readLockBody(target)?.token !== token) return;
+  try { unlinkSync(target); } catch { /* already gone */ }
+}
+
+/**
+ * Replaces a stale lock. Only the holder of the reclaim gate (`<lock>.reclaim`, exclusive-create) may unlink the lock, and a
+ * second reclaimer is refused while the gate exists. Under the gate the lock must still be the exact stale file observed
+ * (same inode and mtime, still stale) before it is unlinked and this start's lock is created. A gate left by a crashed
+ * reclaimer is never removed automatically: the refusal names it so an operator can remove it by hand.
+ */
+function claimStale(target: string, observed: FileIdentity, body: string, token: string, hooks: KeeperLockHooks): () => void {
+  const gate = `${target}.reclaim`;
+  const inProgress = (detail = ""): ArcadiaError => validationError(`Another \`arcadia keeper start\` is in progress (${target}); nothing was launched.${detail}`);
+  try {
+    writeFileSync(gate, `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`, { flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw inProgress(` A reclaim is under way, or ${gate} was left by a crashed start: if no start is running and that file is older than ten minutes, remove it by hand.`);
+    }
+    throw validationError(`The keeper start reclaim gate could not be taken: ${(error as Error).message}`);
+  }
+  try {
+    hooks.afterGateAcquired?.();
+    hooks.beforeUnlink?.();
+    const current = identityOf(target);
+    if (current === null || current.ino !== observed.ino || current.mtimeMs !== observed.mtimeMs || !isStale(target)) throw inProgress();
+    try {
+      unlinkSync(target);
+      writeFileSync(target, body, { flag: "wx" });
+    } catch {
+      // Another starter took the path between the re-verify and the create: refuse, as for a live lock.
+      throw inProgress();
+    }
+    return () => releaseOwn(target, token);
+  } finally {
+    try { unlinkSync(gate); } catch { /* already gone */ }
+  }
+}
+
+/**
+ * Exclusive-create, so two concurrent starts cannot both pass the guard. A lock is taken only by `wx` create; when one exists
+ * and is stale (see isStale), it is replaced under the reclaim gate (see claimStale). No live lock is ever renamed or
+ * unlinked by a starter that does not own it.
+ */
+export function acquireLock(workspacePath: string, now: number, hooks: KeeperLockHooks = {}): () => void {
   const target = lockPath(workspacePath);
+  const token = randomUUID();
+  const body = `${JSON.stringify({ pid: process.pid, startedAt: new Date(now).toISOString(), token })}\n`;
   const inProgress = (): ArcadiaError => validationError(`Another \`arcadia keeper start\` is in progress (${target}); nothing was launched.`);
   mkdirSync(path.dirname(target), { recursive: true });
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      writeFileSync(target, `${JSON.stringify({ pid: process.pid, at: new Date(now).toISOString() })}\n`, { flag: "wx" });
-      const own = identityOf(target);
-      return () => { if (own !== null) removeExact(target, own); };
+      writeFileSync(target, body, { flag: "wx" });
+      return () => releaseOwn(target, token);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw validationError(`The keeper start lock could not be taken: ${(error as Error).message}`);
-      const observed = identityOf(target);
-      if (observed === null) continue;
-      if (Date.now() - observed.mtimeMs < LOCK_STALE_MS || attempt > 0) throw inProgress();
-      hooks.beforeReclaim?.();
-      // Claim only the exact stale file observed. If it was replaced by a fresh lock meanwhile, removeExact restores that
-      // lock and this start loops to the in-progress refusal above.
-      removeExact(target, observed);
     }
+    if (attempt > 0) throw inProgress();
+    const observed = identityOf(target);
+    if (observed === null) continue;
+    if (!isStale(target)) throw inProgress();
+    hooks.beforeReclaim?.();
+    return claimStale(target, observed, body, token, hooks);
   }
   throw inProgress();
 }
 
 /** A workspace inside the primary checkout would put the lock and record into the tree and make the checkout dirty. */
 function refuseWorkspaceInCheckout(workspacePath: string, checkout: string): void {
-  const relative = path.relative(realpathSync(checkout), realpathSync(workspacePath));
+  // realpath.native canonicalises letter case on case-insensitive volumes (macOS APFS); the JS realpath does not.
+  const relative = path.relative(realpathSync.native(checkout), realpathSync.native(workspacePath));
   if (relative === "" || (relative.split(path.sep)[0] !== ".." && !path.isAbsolute(relative))) {
     throw validationError(`The workspace ${workspacePath} is inside the primary checkout ${checkout}; its keeper lock and record would make that checkout dirty. Use a workspace outside the checkout.`, { reason: "workspace_in_checkout" });
   }
