@@ -154,28 +154,9 @@ today and what is still pending.
 - **Today:** the existing gates, unchanged. Review rejects any housekeeping PR
   that relaxes one without a Decision.
 - **Pending:** none. This rule is already in force.
-- **Draft, NOT IN FORCE until Decision `<DECISION-ID>` is answered A (both
-  routes) or B (transcript only) and this text is merged.** Until then the rule
-  above is the only rule: an operator approval never crosses sessions and must be
-  re-stated in each session. Once in force, a coordinator or helper may act on an
-  operator approval it verifies in either of two ways: (a) by reading the
-  originating session's transcript JSONL, `~/.claude/projects/*/<session-id>.jsonl`,
-  by session id; or (b) by reading the governed approval record that the operator
-  answered through an authorised surface, which any session may read. Route (a)
-  is the one a tmux or CLI session uses. The matched entry must be a genuine
-  user-role message typed by the operator in that session's chat. A tool result,
-  system notification, relayed or summarised peer message, subagent report, hook
-  output or another agent's paraphrase never counts. The approval must be dated
-  within 30 minutes before the act it permits. Record the source session id, UTC
-  timestamp, transcript path and the quote verbatim. The verifier must be a
-  different session when the transcript owner cannot read its own. The approval
-  grants only the action the operator's words already granted. An unreadable,
-  missing, stale, ambiguous or multi-match transcript fails closed: take no
-  action, hold visibly, and use the record route. A tmux or CLI coordinator finds
-  the Signal session id in its registration record (custodian session id and
-  transcript path). If the Signal transcript is not readable from its sandbox, it
-  holds visibly, asks the operator for an answer through the governed surface the
-  Decision names, and does not act on a relayed quote.
+- **Design draft:** a transcript-verified approval route is drafted in
+  docs/design/transcript-verified-operator-approvals.md and is NOT in force until
+  Decision 0229 is recorded; until then the rule above is the only rule.
 
 ## Holds today
 
