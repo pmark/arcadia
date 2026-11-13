@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { planAmendmentLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
+import { planAmendmentLauncher, startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { parseRetirementManifest, sha256 } from "../src/operatorActions/libraryRetirements.js";
 const root = path.resolve(import.meta.dirname, "..");
 const roots: string[] = [];
@@ -181,5 +181,43 @@ describe("Legacy library entries retire only through the exact-hash manifest", (
       "settle-complete-approval-must-apply-or-refuse-2026-09-20"]);
     expect(shipped.retirements).toHaveLength(5);
     for (const e of entries.values()) expect(`${e.id}${e.descriptorSha256}${e.scriptSha256}`).not.toMatch(/[*?[\]{}]/);
+  });
+});
+
+describe("A START card's planActivation queueSegment equals the activation queue (#2478)", () => {
+  const ID = "start-queue-segment-fixture-20261113";
+  const activation = () => (JSON.parse(readFileSync(path.join(root, "artifacts/generated/operator-scripts/activate-production-claude-plan-20261017.json"), "utf8")) as OperatorScriptDescriptor).planActivation!;
+  const open = (ids: string[]) => ids.map(id => ({ id, status: "open", dependsOn: [] as string[] }));
+  const local = (key: string, project: string) => key.slice(project.length + 1);
+  function startCard(pinned: string[], input: NonNullable<OperatorScriptDescriptor["planActivation"]>): OperatorScriptDescriptor {
+    return {
+      schema: "arcadia-operator-script-v1", id: ID, kind: "grant", title: "START: queue segment fixture", script: `${ID}.sh`, repeatable: false,
+      problem: "p", desired_effect: "e", authority: { does: ["d"], never_does: ["n"] }, success: { effect: "s", next: "n" }, failure: { effect: "f", next: "n" },
+      expires_at: "2026-11-20T00:00:00Z", planActivation: input,
+      startRun: {
+        schema: "arcadia-start-run-v1", reviewedRevision: "a".repeat(40), executorSha256: "b".repeat(64), workspace: "martianrover",
+        project: input.envelope.project, plan: input.envelope.plan, actions: pinned, provider: "claude-code-cli",
+        transitions: ["validation", "acceptance", "pointer", "packet_approval"], concurrency: 1, packetApprovalHours: 24, intent: "A fixture run.",
+        spendDecision: "0130", integrationDecision: "0058",
+        requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"],
+        requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts"], production: { revision: 83, epoch: 46 }, queueRevision: 290,
+        workerLabel: "com.arcadia.local.1.worker", gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
+        grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
+        consumedHistory: [{ path: "/abs/one.consumed.json", sha256: "c".repeat(64) }]
+      }
+    } as unknown as OperatorScriptDescriptor;
+  }
+  it("refuses a card whose Plan has a non-done Action outside the pinned scope", () => {
+    const input = activation(); const e = input.envelope;
+    const segment = e.queueSegment.map(key => local(key, e.project));
+    const pinned = segment.slice(0, 2);
+    const plan = [...open(segment), ...open(["outside-open-action"])];
+    expect(() => validateOperatorScriptContract(startCard(pinned, input), ID, startRunLauncher(ID), plan)).toThrow("arcadia/outside-open-action");
+  });
+  it("accepts a card whose queueSegment lists every non-done Action, ignoring done ones", () => {
+    const input = activation(); const e = input.envelope;
+    const segment = e.queueSegment.map(key => local(key, e.project));
+    const plan = [...open(segment), { id: "already-done", status: "done", dependsOn: [] }];
+    expect(() => validateOperatorScriptContract(startCard(segment, input), ID, startRunLauncher(ID), plan)).not.toThrow();
   });
 });
