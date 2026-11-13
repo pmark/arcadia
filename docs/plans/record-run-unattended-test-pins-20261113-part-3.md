@@ -38,10 +38,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-work-classification-queue
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-record-run-unattended-test-pins-part-3-r3-20261113
+    source: Agent Ask amend-plan3-pin-work-classification-20261113
     why: "queueForWorkClassification decides which queue a work item lands in, and no test file names it, so its requires_review, blocked and work_queue routing is not pinned by a direct test."
     acceptance_criteria:
-      - tests/pin-work-classification-queue.test.ts is a new test file that imports queueForWorkClassification from ../src/domain/constants.js and asserts it returns 'requires_review' for 'requires_review', 'blocked' for 'blocked' and 'work_queue' for 'ready'.
+      - tests/pin-work-classification-queue.test.ts is a new test file that imports queueForWorkClassification from ../src/domain/constants.js and asserts it returns 'requires_review' for 'requires_review', 'blocked' for 'blocked' and 'work_queue' for 'agent' and for 'autonomous'.
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-work-classification-queue.test.ts, a new test file that imports only vitest and src/domain/constants.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []

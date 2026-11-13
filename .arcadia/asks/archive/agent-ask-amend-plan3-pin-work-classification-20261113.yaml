@@ -1,0 +1,15 @@
+agent_ask: v1
+request_id: amend-plan3-pin-work-classification-20261113
+project: arcadia
+intent: plan
+target_ref: plan/record-run-unattended-test-pins-20261113-part-3
+requested_authority: propose
+desired_result: Correct the pin-work-classification-queue Action so it asserts a real WorkClassification instead of 'ready'.
+rationale: "Rowan 12's carry-forward, verified by Rowan 13 on origin/main: src/domain/constants.ts exports WORK_CLASSIFICATIONS autonomous, agent, requires_review and blocked; queueForWorkClassification takes a WorkClassification, and 'ready' is not one, so the test as drafted would not type-check against the signature and pins nothing real. 'agent' is a real classification that falls through to work_queue. Only the first acceptance criterion changes; the other two are restated verbatim."
+actions:
+  - target_ref: action/pin-work-classification-queue
+    desired_result: "Pin that work classifications route to the requires_review, blocked or work queue, with a new test file."
+    acceptance:
+      - "tests/pin-work-classification-queue.test.ts is a new test file that imports queueForWorkClassification from ../src/domain/constants.js and asserts it returns 'requires_review' for 'requires_review', 'blocked' for 'blocked' and 'work_queue' for 'agent' and for 'autonomous'."
+      - "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."
+      - "Apart from the settlement records Arcadia writes, the change touches only tests/pin-work-classification-queue.test.ts, a new test file that imports only vitest and src/domain/constants.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation."
