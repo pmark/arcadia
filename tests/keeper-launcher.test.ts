@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   KEEPER_LOCK_FILE,
   KEEPER_RECORD_FILE,
+  acquireLock,
   readKeeperRecord,
   renderKeeperStartSuccess,
   runKeeperStartCommand,
@@ -439,5 +440,156 @@ describe("arcadia keeper start: probe P1/P2 adaptations (trusted folder, real --
     const interactive = fakeClaude();
     interactive.setLaunchRow({ name: "♾️ Flynn · keeper starting", cwd: interactive.dir });
     expect(() => runKeeperStartCommand({ workspace: workspace(), supervisor: SUPERVISOR }, interactive.deps)).toThrow(/could not be verified/);
+  });
+});
+
+describe("arcadia keeper start: stale-lock reclaim and checkout workspace (#2464)", () => {
+  const TEN_MINUTES = 10 * 60_000;
+  // A pid that is not running on this host, so a stale lock's owner counts as dead.
+  const DEAD_PID = 999_999;
+  type Hooks = Parameters<typeof acquireLock>[2];
+
+  function staleLock(root: string, body: Record<string, unknown> = { pid: DEAD_PID, startedAt: "crashed", token: "crashed" }): string {
+    const lock = path.join(root, ".arcadia", KEEPER_LOCK_FILE);
+    writeFileSync(lock, `${JSON.stringify(body)}\n`);
+    const old = new Date(Date.now() - TEN_MINUTES);
+    utimesSync(lock, old, old);
+    return lock;
+  }
+
+  const gateOf = (root: string): string => path.join(root, ".arcadia", `${KEEPER_LOCK_FILE}.reclaim`);
+
+  function messageOf(run: () => unknown): string {
+    try {
+      run();
+    } catch (error) {
+      return (error as Error).message;
+    }
+    throw new Error("expected the call to throw");
+  }
+
+  it("reviewer's three-starter scenario: B sees the stale lock, A reclaims and proceeds, then B and C attempt: exactly one winner, and A's lock is never removed or replaced", () => {
+    const root = workspace();
+    const lock = staleLock(root);
+    const winners: Array<() => void> = [];
+    const refusals: string[] = [];
+    const attempt = (hooks: Hooks = {}): void => {
+      try { winners.push(acquireLock(root, Date.now(), hooks)); } catch (error) { refusals.push((error as Error).message); }
+    };
+    const seen: { inode?: number } = {};
+    // A rival that starts while B holds the reclaim gate, after B has seen that the lock is still A's.
+    const rival = (): void => attempt();
+    attempt({ beforeReclaim: () => { attempt(); seen.inode = statSync(lock).ino; }, beforeUnlink: rival });
+    expect(winners).toHaveLength(1);
+    expect(refusals).toHaveLength(2);
+    for (const refusal of refusals) expect(refusal).toMatch(/in progress/);
+    expect(statSync(lock).ino).toBe(seen.inode);
+    expect(existsSync(gateOf(root))).toBe(false);
+    winners[0]?.();
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it("two starters reclaiming one stale lock: the starter holding the reclaim gate wins, and a rival that tries while the gate is held refuses", () => {
+    const root = workspace();
+    const lock = staleLock(root);
+    const winners: Array<() => void> = [];
+    const refusals: string[] = [];
+    const attempt = (hooks: Hooks = {}): void => {
+      try { winners.push(acquireLock(root, Date.now(), hooks)); } catch (error) { refusals.push((error as Error).message); }
+    };
+    attempt({ afterGateAcquired: () => attempt() });
+    expect(winners).toHaveLength(1);
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatch(/in progress/);
+    expect(existsSync(lock)).toBe(true);
+    expect(existsSync(gateOf(root))).toBe(false);
+    winners[0]?.();
+    expect(existsSync(lock)).toBe(false);
+  });
+
+  it("a fresh lock that appears under the gate makes the reclaim refuse, and the fresh lock is kept", () => {
+    const root = workspace();
+    const lock = staleLock(root);
+    const rival: Array<() => void> = [];
+    const message = messageOf(() => acquireLock(root, Date.now(), {
+      beforeUnlink: () => {
+        // The stale file is replaced by a fresh lock after the stale check and before the unlink.
+        rmSync(lock);
+        rival.push(acquireLock(root, Date.now()));
+      }
+    }));
+    expect(message).toMatch(/in progress/);
+    expect(existsSync(lock)).toBe(true);
+    expect(existsSync(gateOf(root))).toBe(false);
+    rival[0]?.();
+  });
+
+  it("a live reclaim gate refuses the start and leaves the stale lock and the gate alone", () => {
+    const root = workspace();
+    const lock = staleLock(root);
+    const gate = gateOf(root);
+    writeFileSync(gate, `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`);
+    const inode = statSync(lock).ino;
+    expect(() => acquireLock(root, Date.now())).toThrow(/in progress/);
+    expect(statSync(lock).ino).toBe(inode);
+    expect(existsSync(gate)).toBe(true);
+  });
+
+  it("a gate left by a crashed reclaimer is never removed automatically, and the refusal names it for removal by hand", () => {
+    const root = workspace();
+    const lock = staleLock(root);
+    const gate = gateOf(root);
+    writeFileSync(gate, "{}\n");
+    const old = new Date(Date.now() - TEN_MINUTES);
+    utimesSync(gate, old, old);
+    const message = messageOf(() => acquireLock(root, Date.now()));
+    expect(message).toMatch(/in progress/);
+    expect(message).toContain(gate);
+    expect(message).toContain("remove it by hand");
+    expect(existsSync(gate)).toBe(true);
+    expect(existsSync(lock)).toBe(true);
+  });
+
+  it("a live owner pid always wins, even when the lock is older than the stale window", () => {
+    const root = workspace();
+    const lock = staleLock(root, { pid: process.pid, startedAt: "old", token: "live" });
+    expect(() => acquireLock(root, Date.now())).toThrow(/in progress/);
+    expect(existsSync(lock)).toBe(true);
+    expect(existsSync(gateOf(root))).toBe(false);
+  });
+
+  it("releases only a lock that carries this start's token", () => {
+    const root = workspace();
+    const release = acquireLock(root, Date.now());
+    const lock = path.join(root, ".arcadia", KEEPER_LOCK_FILE);
+    writeFileSync(lock, `${JSON.stringify({ pid: process.pid, startedAt: "other", token: "someone-else" })}\n`);
+    release();
+    expect(existsSync(lock)).toBe(true);
+  });
+
+  it("refuses a --workspace inside the primary checkout before any lock or record is written", () => {
+    const fake = fakeClaude();
+    const inside = path.join(fake.dir, "workspace");
+    mkdirSync(inside);
+    initWorkspace(inside);
+    mkdirSync(path.join(inside, ".arcadia"), { recursive: true });
+    expect(() => runKeeperStartCommand({ workspace: inside, supervisor: SUPERVISOR }, fake.deps)).toThrow(/inside the primary checkout/);
+    expect(existsSync(path.join(inside, ".arcadia", KEEPER_LOCK_FILE))).toBe(false);
+    expect(existsSync(path.join(inside, ".arcadia", KEEPER_RECORD_FILE))).toBe(false);
+    expect(fake.calls()).toEqual([]);
+  });
+
+  // Case-insensitive volumes (macOS APFS by default) only: on a case-sensitive filesystem the swapped spelling does not exist.
+  const caseInsensitive = existsSync(import.meta.dirname.toUpperCase());
+  it.skipIf(!caseInsensitive)("refuses a --workspace inside the primary checkout when the checkout is spelled in a different case", () => {
+    const fake = fakeClaude();
+    const inside = path.join(fake.dir, "workspace");
+    mkdirSync(inside);
+    initWorkspace(inside);
+    mkdirSync(path.join(inside, ".arcadia"), { recursive: true });
+    const swapped = path.join(fake.dir.toUpperCase(), "workspace");
+    expect(() => runKeeperStartCommand({ workspace: swapped, supervisor: SUPERVISOR }, fake.deps)).toThrow(/inside the primary checkout/);
+    expect(existsSync(path.join(inside, ".arcadia", KEEPER_LOCK_FILE))).toBe(false);
+    expect(fake.calls()).toEqual([]);
   });
 });
