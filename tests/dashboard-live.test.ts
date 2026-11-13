@@ -215,7 +215,8 @@ describe("live dashboard build", () => {
     const f = fixture();
     succeeded(f.build({ TEST_SLOW_STOP: "1" }));
     f.change("apps/dashboard/page.tsx");
-    succeeded(f.build());
+    // No retry: this test exists to prove the second build can reuse the first build's port. A retry would pick a fresh port and mask the regression.
+    succeeded(f.buildOnce());
     expect(f.current()).toBe(`b ${f.head()}`);
     f.clean();
   });
