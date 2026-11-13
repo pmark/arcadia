@@ -157,9 +157,13 @@ describe("start scope admission", () => {
   });
 
   it("never admits an unaccepted Plan, even with Actions that would otherwise be ready", () => {
-    const admission = admitStartScope(fixture(), "demo", "plan-b", ["omega"]);
+    const root = fixture();
+    // Point the preference at the draft so only its acceptance state can refuse the scope.
+    write(root, "PROJECT.md", projectDoc({ activePlan: "plan-b" }));
+    const admission = admitStartScope(root, "demo", "plan-b", ["omega"]);
     expect(admission.admitted).toBe(false);
     expect(admission.refusals.join("\n")).toContain("draft, not accepted");
+    expect(admission.refusals.join("\n")).not.toContain("active_plan preference");
   });
 
   it("never admits an out-of-scope Action, a held Action, or a Plan Action named twice", () => {

@@ -213,6 +213,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "start-run day-evidence": ALLOWED,
   // Read-only: resolves the operator gate per pinned Action through a read-only database handle.
   "start-run gate-check": ALLOWED,
+  "start-run readiness": exempt("Read-only document walk over the Project's Plans and Actions; no workspace database, run or activity record."),
   "start-run sign-in": guarded(
     "Claims the host's daily Claude renewal, runs the Claude CLI, publishes a diagnostic Decision to main and asks the live worker for a usage check.",
     FROM_LIVE_TERMINAL

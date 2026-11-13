@@ -102,6 +102,7 @@ function invocations(): Record<string, string[][]> {
     "ask-trail": [["ask-trail", "missing-receipt"]],
     "provider-usage": [["provider-usage", "--json"], ["provider-usage", "--claude-source", "invalid", "--json"], ["provider-usage", "--opencode-session", "ses_explicit", "--opencode-export", "unused.json", "--json"]],
     "audit host-preview": [["audit", "host-preview", "--root", path.join(root, "missing-site"), "--seconds", "1"]],
+    "start-run readiness": [["start-run", "readiness", "--project", "arcadia", "--repository", path.join(root, "missing-repo"), "--json"]],
     "production liveness-check": [["production", "liveness-check"]],
     "production idle-front": [["production", "idle-front"]],
     "coordinator budget": [["coordinator", "budget"], ["coordinator", "budget", "--session", "not a session id"]],
