@@ -15,13 +15,13 @@ actions:
     responsibility: agent
     execution: build
     effort: session
-    next_action: Queue order mutations refuse, rather than silently delete, explicit position rows for Actions the queue does not project.
+    next_action: Queue order mutations preserve, rather than silently delete, explicit position rows for Actions the queue does not project.
     expected_artifact: Evidence satisfying Agent Ask queue-arrange-keeps-hidden-positions
     clarification: clarified
     confidence: high
-    source: Agent Ask amend-batch-4-issue-references-20261113b
+    source: Agent Ask amend-action-1022-preserve-rows-20261113
     acceptance_criteria:
-      - A move that would drop a position row for a hidden Project is refused, and the row survives.
+      - A move that would drop a position row for an Action the queue does not project keeps that row, with a failing-first regression test proving the row survives the rewrite and the move still succeeds.
       - Existing action-order, dispatch, scheduling-order, advance-queue, action-settle, decision-deferral and plan-activation tests still pass.
     depends_on: []
     decisions: []
