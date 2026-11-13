@@ -18,7 +18,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask fix-tmux-long-brief-fixture-atomic-write
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-batch-3-redraft-20261113
+    source: Agent Ask amend-batch-3-file-scope-20261113b
     acceptance_criteria:
       - A failing-first regression test shows the fixture output can be observed before its JSON write completes.
       - The fixture writes to a sibling temporary path and renames it into place only after the write completes.
@@ -26,7 +26,7 @@ actions:
       - pnpm vitest run tests/system-tmux-long-command.test.ts passes.
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/2314"]
+    references: ["https://github.com/pmark/arcadia/issues/2314", "tests/system-tmux-long-command.test.ts"]
   - id: contain-dashboard-file-routes-by-real-path
     title: The dashboard file routes refuse a symlink whose real target lies outside the permitted root.
     status: open
@@ -36,7 +36,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask contain-dashboard-file-routes-by-real-path
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-batch-3-redraft-20261113
+    source: Agent Ask amend-batch-3-file-scope-20261113b
     acceptance_criteria:
       - A failing-first regression test shows a symlink inside the permitted root pointing outside it is refused with 400 by both file routes.
       - Both routes compare the canonical real path of the target against the real root before stat or readFile.
@@ -44,7 +44,7 @@ actions:
       - The dashboard route tests pass.
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/1442"]
+    references: ["https://github.com/pmark/arcadia/issues/1442", "apps/dashboard/app/api/file/[...path]/route.ts", "apps/dashboard/app/api/projects/[id]/file/[...path]/route.ts"]
   - id: bound-agent-ask-complete-teardown-retry
     title: The Agent Ask complete suite teardown retries a transient ENOTEMPTY instead of failing the shard.
     status: open
@@ -54,7 +54,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask bound-agent-ask-complete-teardown-retry
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-batch-3-redraft-20261113
+    source: Agent Ask amend-batch-3-file-scope-20261113b
     acceptance_criteria:
       - A failing-first regression test shows a transient ENOTEMPTY during teardown is retried with a bounded count.
       - The afterEach still fails on any error other than a transient ENOTEMPTY.
@@ -62,7 +62,7 @@ actions:
       - pnpm vitest run tests/agent-ask-complete.test.ts passes.
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/1329"]
+    references: ["https://github.com/pmark/arcadia/issues/1329", "tests/agent-ask-complete.test.ts"]
 questions: []
 decisions: []
 ---
