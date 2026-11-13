@@ -1,5 +1,5 @@
 import { Client, Events, GatewayIntentBits } from "discord.js";
-import { ArcadiaCli } from "./arcadia/cli.js";
+import { ArcadiaCli, resolveCliChoice } from "./arcadia/cli.js";
 import { loadConfig } from "./config.js";
 import { handleArcadiaInteraction } from "./events/interactionCreate.js";
 import { handleArcadiaMessage } from "./events/messageCreate.js";
@@ -23,6 +23,21 @@ async function main(): Promise<void> {
     workspace: config.arcadiaWorkspace,
     cliPath: config.arcadiaCliPath
   });
+  try {
+    const choice = resolveCliChoice(config.arcadiaCliPath);
+    logJson("info", {
+      msg: "arcadia cli invocation chosen",
+      kind: choice.kind,
+      command: choice.command,
+      ...(choice.kind === "tsx" ? { sourceCli: choice.sourceCli } : {}),
+      reason: choice.reason
+    });
+  } catch (error) {
+    logJson("error", {
+      msg: "arcadia cli invocation unavailable",
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 
   const client = new Client({
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]

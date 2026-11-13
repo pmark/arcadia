@@ -396,25 +396,22 @@ export class ArcadiaCli {
   }
 }
 
-export function buildCliInvocation(
-  args: string[],
+/**
+ * Which CLI the bot runs, and why. `env` is ARCADIA_CLI_PATH; `tsx` is the source
+ * CLI run through tsx, the default (a cold transpile on every call). A built dist
+ * is deliberately never preferred: dist is gitignored and not rebuilt by the
+ * service restart, so it can be older than the source.
+ */
+export type CliChoice =
+  | { kind: "env"; command: string; reason: string }
+  | { kind: "tsx"; command: string; sourceCli: string; reason: string };
+
+export function resolveCliChoice(
   cliPath: string | null,
   fileExists: (candidate: string) => boolean = existsSync
-): CliInvocation {
+): CliChoice {
   if (cliPath) {
-    return { command: cliPath, args };
-  }
-
-  // The built CLI first: running the source through tsx cold-transpiles on every
-  // call, which under load pushed poll calls past their timeout (Issue #2569).
-  const builtCli = findExisting([
-    path.resolve(import.meta.dirname, "../../../dist/src/cli.js"),
-    path.resolve(import.meta.dirname, "../../../../dist/src/cli.js"),
-    path.resolve(process.cwd(), "dist/src/cli.js")
-  ], fileExists);
-
-  if (builtCli) {
-    return { command: process.execPath, args: [builtCli, ...args] };
+    return { kind: "env", command: cliPath, reason: "ARCADIA_CLI_PATH is set" };
   }
 
   const sourceCli = findExisting([
@@ -424,10 +421,27 @@ export function buildCliInvocation(
   ], fileExists);
 
   if (sourceCli) {
-    return { command: findTsx(), args: [sourceCli, ...args] };
+    return {
+      kind: "tsx",
+      command: findTsx(),
+      sourceCli,
+      reason: "ARCADIA_CLI_PATH is unset; running the source CLI through tsx"
+    };
   }
 
   throw new Error("Unable to locate Arcadia CLI. Set ARCADIA_CLI_PATH.");
+}
+
+export function buildCliInvocation(
+  args: string[],
+  cliPath: string | null,
+  fileExists: (candidate: string) => boolean = existsSync
+): CliInvocation {
+  const choice = resolveCliChoice(cliPath, fileExists);
+  if (choice.kind === "env") {
+    return { command: choice.command, args };
+  }
+  return { command: choice.command, args: [choice.sourceCli, ...args] };
 }
 
 function parseJsonResponse<TData>(stdout: string): ArcadiaJsonSuccess<TData> {
@@ -439,19 +453,13 @@ function parseJsonResponse<TData>(stdout: string): ArcadiaJsonSuccess<TData> {
 }
 
 /**
- * The leading plain words of a command (`run show`, `orientation packet compose`),
- * for log labels. Stops at the first flag or free-text argument, so a request
- * body never ends up in a log line.
+ * The CLI verb (`status`, `review`, `orientation`, `agent-ask`) for log labels.
+ * Only the first argument: later arguments can be free text, such as an Ask
+ * request or an operator reply, and must never reach a log line.
  */
 function commandLabel(args: string[]): string {
-  const words: string[] = [];
-  for (const arg of args) {
-    if (words.length === 3 || !/^[a-z][a-z-]*$/.test(arg)) {
-      break;
-    }
-    words.push(arg);
-  }
-  return words.join(" ") || "command";
+  const verb = args[0];
+  return verb && /^[a-z][a-z-]*$/.test(verb) ? verb : "command";
 }
 
 function findExisting(paths: string[], fileExists: (candidate: string) => boolean = existsSync): string | null {

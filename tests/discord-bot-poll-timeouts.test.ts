@@ -1,6 +1,6 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { ArcadiaCli, buildCliInvocation, type ExecFileLike } from "../apps/discord-bot/src/arcadia/cli.js";
+import { ArcadiaCli, buildCliInvocation, resolveCliChoice, type ExecFileLike } from "../apps/discord-bot/src/arcadia/cli.js";
 import { loadNotificationSnapshot } from "../apps/discord-bot/src/notifications/poller.js";
 
 interface FakeCall {
@@ -130,21 +130,57 @@ describe("discord notification poll concurrency (Issue #2569 c)", () => {
   });
 });
 
-describe("discord bot CLI invocation preference (Issue #2569 b)", () => {
+describe("discord bot CLI invocation choice (Issue #2569 b, revised)", () => {
   const distCli = path.join("dist", "src", "cli.js");
+  const sourceCli = path.join("src", "cli.ts");
 
-  it("prefers the built dist CLI over tsx source when it exists", () => {
-    const invocation = buildCliInvocation(["status", "--json"], null, (candidate) => candidate.endsWith(distCli));
+  it("does not prefer a built dist CLI when ARCADIA_CLI_PATH is unset", () => {
+    // dist is gitignored and not rebuilt by the service restart, so it can be stale.
+    const invocation = buildCliInvocation(["status", "--json"], null, () => true);
 
-    expect(invocation.command).toBe(process.execPath);
-    expect(invocation.args[0].endsWith(distCli)).toBe(true);
+    expect(invocation.command).not.toBe(process.execPath);
+    expect(invocation.args[0].endsWith(distCli)).toBe(false);
+    expect(invocation.args[0].endsWith(sourceCli)).toBe(true);
     expect(invocation.args.slice(1)).toEqual(["status", "--json"]);
   });
 
-  it("still falls back to the source CLI through tsx when no dist exists", () => {
-    const invocation = buildCliInvocation(["status", "--json"], null, (candidate) => !candidate.endsWith(distCli));
+  it("keeps ARCADIA_CLI_PATH winning even when dist and source both exist", () => {
+    const invocation = buildCliInvocation(["status", "--json"], "/opt/arcadia", () => true);
 
-    expect(invocation.args[0].endsWith(path.join("src", "cli.ts"))).toBe(true);
+    expect(invocation.command).toBe("/opt/arcadia");
+    expect(invocation.args).toEqual(["status", "--json"]);
+  });
+
+  it("falls back to the source CLI through tsx when ARCADIA_CLI_PATH is unset", () => {
+    const invocation = buildCliInvocation(["status", "--json"], null, (candidate) => candidate.endsWith(sourceCli));
+
+    expect(invocation.args[0].endsWith(sourceCli)).toBe(true);
     expect(invocation.args.slice(1)).toEqual(["status", "--json"]);
+  });
+
+  it("reports at startup which CLI was chosen and why", () => {
+    const envChoice = resolveCliChoice("/opt/arcadia", () => true);
+    expect(envChoice.kind).toBe("env");
+    expect(envChoice.command).toBe("/opt/arcadia");
+    expect(envChoice.reason).toContain("ARCADIA_CLI_PATH is set");
+
+    const tsxChoice = resolveCliChoice(null, (candidate) => candidate.endsWith(sourceCli));
+    expect(tsxChoice.kind).toBe("tsx");
+    expect(tsxChoice.reason).toContain("ARCADIA_CLI_PATH is unset");
+    expect(tsxChoice.kind === "tsx" && tsxChoice.sourceCli.endsWith(sourceCli)).toBe(true);
+  });
+});
+
+describe("discord poll failure labels never carry free text (Issue #2569 a)", () => {
+  it("omits an Ask request body from a timeout message", async () => {
+    const exec: ExecFileLike = async () => {
+      throw timeoutKill();
+    };
+    const cli = new ArcadiaCli({ workspace: "/ws", cliPath: "/bin/arcadia", exec, clock: clockFrom([0, 30_000]) });
+
+    const error = await cli.ask("operator private request words", {}).catch((caught: unknown) => caught);
+
+    expect((error as Error).message).toContain("Arcadia CLI ask timed out");
+    expect((error as Error).message).not.toContain("private");
   });
 });
