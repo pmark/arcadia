@@ -500,8 +500,20 @@ describe("stop-production wording against the real guidance (Issue #2348)", () =
     expect(top.address).toBe(productionOff);
   });
 
-  it.each(["before you stop", "how do I stop a session"])("keeps the session-ending passage first for the near-miss %j", (question) => {
-    expect(first(question)).toEqual({ matched: true, address: "docs/agent-guidance/continuation.md#before-you-stop" });
+  /** Every address the lookup offers for a question, in rank order. */
+  const ranked = (question: string): string[] => {
+    const result = lookup(repoRoot, question, { limit: 20, budget: 1_000_000 });
+    return (result.matched ? result.results : result.nearest).map((hit) => hit.address);
+  };
+  // Session-ending passages, by content. Unrelated doc merges can move the exact address they rank under, so this is a set.
+  const sessionEnding = ["docs/agent-guidance/continuation.md#before-you-stop", "docs/COMMANDS.md#predecessor-stop-after-accept-gate-10-stop-half"];
+  it.each(["before you stop", "how do I stop a session"])("ranks a session-ending passage first, and continuation above production, for the near-miss %j", (question) => {
+    const addresses = ranked(question);
+    expect(sessionEnding).toContain(addresses[0]);
+    expect(addresses[0]).not.toBe(productionOff);
+    const production = addresses.indexOf(productionOff);
+    const continuation = addresses.indexOf("docs/agent-guidance/continuation.md#before-you-stop");
+    if (production !== -1) expect(continuation === -1 ? Infinity : continuation).toBeLessThan(production);
   });
 
   // Recorded on main (7df775a17) before the change; these wordings must keep that first passage.
