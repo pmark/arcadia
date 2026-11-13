@@ -8,8 +8,8 @@ import { stringify } from "yaml";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
-import { planAmendmentLauncher, validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
-import { documentState, type PlanActivationInput, type PlanAmendmentResult } from "../src/operatorActions/planAmendment.js";
+import { planAmendmentLauncher, startRunLauncher, validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
+import { documentState, runPlanAmendment, type PlanActivationInput, type PlanAmendmentResult } from "../src/operatorActions/planAmendment.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -17,7 +17,7 @@ const sourceRoot = path.resolve(import.meta.dirname, "..");
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const action = (id: string, status: string, depends_on: string[] = []) => ({ id, title: `Do ${id}`, status, responsibility: "agent", effort: "session", next_action: `Do ${id}`, expected_artifact: `${id} evidence`, clarification: "clarified", confidence: "high", acceptance_criteria: [`The ${id} receipt records a real newline.`], depends_on, decisions: [], references: [] });
 
-function fixture(options: { previousFinished?: boolean } = {}) {
+function fixture(options: { previousFinished?: boolean; startRunCard?: boolean } = {}) {
   const finished = options.previousFinished === true;
   const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-plan-activation-"));
   roots.push(root);
@@ -84,11 +84,33 @@ function fixture(options: { previousFinished?: boolean } = {}) {
   const id = "activate-new-plan";
   const descriptor = path.join(library, `${id}.json`);
   const script = path.join(library, `${id}.sh`);
-  const saveDescriptor = () => writeFileSync(descriptor, JSON.stringify({ schema: "arcadia-operator-script-v1", id, script: `${id}.sh`, title: "Hermetic activation", problem: "Prove safe activation", desired_effect: "Activate the pinned Plan", authority: { does: ["Activate this Plan"], never_does: ["Start a Session"] }, success: { effect: "Plan active", next: "Keep receipt" }, failure: { effect: "Refused", next: "Restore named precondition" }, repeatable: false, planActivation: input }, null, 2) + "\n");
+  // A START card pins its own launcher and a complete startRun contract (validated at settlement, as on the live host).
+  const startCard = {
+    kind: "grant", expires_at: "2099-01-01T00:00:00Z",
+    startRun: {
+      schema: "arcadia-start-run-v1", reviewedRevision: "a".repeat(40), executorSha256: "b".repeat(64), workspace: "martianrover",
+      project: "demo", plan: "new-plan", actions: ["next-one"], provider: "claude-code-cli", transitions: ["validation", "acceptance", "pointer", "packet_approval"],
+      concurrency: 1, packetApprovalHours: 24, intent: "Activate new-plan at next-one.", spendDecision: "0130", integrationDecision: "0058",
+      requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"],
+      requiredFiles: ["scripts/start-run.sh", "src/sessions/tmuxLauncher.ts"], production: { revision: 83, epoch: 46 }, queueRevision: 290,
+      workerLabel: "com.arcadia.local.1.worker", gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production",
+      grantedBy: "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
+      consumedHistory: [{ path: "/abs/one.consumed.json", sha256: "c".repeat(64) }]
+    }
+  };
+  const saveDescriptor = () => writeFileSync(descriptor, JSON.stringify({ schema: "arcadia-operator-script-v1", id, script: `${id}.sh`, title: "Hermetic activation", problem: "Prove safe activation", desired_effect: "Activate the pinned Plan", authority: { does: ["Activate this Plan"], never_does: ["Start a Session"] }, success: { effect: "Plan active", next: "Keep receipt" }, failure: { effect: "Refused", next: "Restore named precondition" }, repeatable: false, planActivation: input, ...(options.startRunCard ? startCard : {}) }, null, 2) + "\n");
   saveDescriptor();
-  writeFileSync(script, planAmendmentLauncher(id)); chmodSync(script, 0o755);
+  writeFileSync(script, options.startRunCard ? startRunLauncher(id) : planAmendmentLauncher(id)); chmodSync(script, 0o755);
   git("add", "."); git("commit", "-qm", "Publish reviewed envelope"); git("push", "-q", "origin", "main");
   const run = () => {
+    if (options.startRunCard) {
+      // The START-card launcher drives the same in-process runner entry point (scripts/plan-amendment-worker.ts).
+      const names = ["ARCADIA_WORKSPACE", "ARCADIA_CONFIG_PATH", "ARCADIA_OPERATOR_SCRIPT_ID", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR"];
+      const previous = names.map(name => process.env[name]);
+      Object.assign(process.env, { ARCADIA_WORKSPACE: workspace, ARCADIA_CONFIG_PATH: path.join(root, "no-host-config.json"), ARCADIA_OPERATOR_SCRIPT_ID: id, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptor });
+      try { return runPlanAmendment(descriptor); }
+      finally { names.forEach((name, i) => { if (previous[i] === undefined) delete process.env[name]; else process.env[name] = previous[i]; }); }
+    }
     const execution = spawnSync(script, ["run"], { cwd: repo, encoding: "utf8", timeout: 60_000, env: { ...process.env, ARCADIA_WORKSPACE: workspace, ARCADIA_CONFIG_PATH: path.join(root, "no-host-config.json"), ARCADIA_OPERATOR_SCRIPT_ID: id, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptor } });
     const receipt = JSON.parse(readFileSync(path.join(library, "runs/receipts", `${id}.json`), "utf8")) as PlanAmendmentResult;
     expect(execution.status, execution.stderr + execution.stdout).toBe(receipt.status === "succeeded" ? 0 : 1);
@@ -164,6 +186,29 @@ describe("Plan-activation operator action through the shared runner", () => {
     expect(fields("docs/plans/old-plan.md")).toMatchObject({ status: "complete", actions: f.oldPlan.actions });
     expect(fields("docs/plans/old-plan.md")).not.toHaveProperty("current_action");
     expect(f.git("rev-parse", "HEAD")).toBe(f.git("rev-parse", "origin/main"));
+  });
+  it("replays a settled START-card activation after one of its Actions is done, without a queue refusal (#2478)", () => {
+    const f = fixture({ startRunCard: true });
+    expect(f.run().reason).toBe("SETTLED_AND_PUBLISHED");
+    // The live non-done queue is now ["demo/next-one"], shorter than the pinned segment: the replay must still settle.
+    // Mark later-one done in the settled Plan itself, keeping the activation's own after-images.
+    const settled = documentState(readFileSync(path.join(f.repo, "docs/plans/new-plan.md"), "utf8")).fields as { actions: { id: string; status: string }[] };
+    f.writeDoc("docs/plans/new-plan.md", { ...settled, actions: settled.actions.map(a => a.id === "later-one" ? { ...a, status: "done" } : a) });
+    f.commit();
+    const replay = f.run();
+    expect(replay.reason, replay.message).toBe("REPLAY_PUBLISHED");
+    expect(f.count()).toBe(1);
+  });
+  it("refuses an unsettled START-card activation whose queueSegment differs from the live non-done Actions (#2478)", () => {
+    const f = fixture({ startRunCard: true });
+    f.writeDoc("docs/plans/new-plan.md", { ...f.newPlan, actions: f.newPlan.actions.map(a => a.id === "later-one" ? { ...a, status: "done" } : a) });
+    f.commit();
+    const result = f.noMutation("INVALID_START_RUN");
+    expect(result.message).toContain(JSON.stringify(["demo/next-one"]));
+  });
+  it("control: an unchanged unsettled START-card activation settles and publishes (#2478)", () => {
+    const f = fixture({ startRunCard: true });
+    expect(f.run().reason).toBe("SETTLED_AND_PUBLISHED");
   });
   it("refuses a different Ask: one that also amends Actions", () => {
     const f = fixture();

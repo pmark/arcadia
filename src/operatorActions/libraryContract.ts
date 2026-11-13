@@ -2,6 +2,7 @@ import path from "node:path";
 import { validatePlanActivationInput, validatePlanAmendmentInput, type PlanActivationInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
 import { dayGrantLauncher, DAY_GRANT_EXECUTOR_PATH, validateDayGrantPins, type DayGrantPins } from "./startRunDayGrant.js";
 import { startRunLauncher as sharedStartRunLauncher, StartRunPinsError, validateStartRunPins, type StartRunPins } from "./startRunPins.js";
+import { dependencyOrderedActionIds } from "../dispatch/actionOrder.js";
 import { validateWorkspaceConfigEditInput, workspaceConfigEditLauncher, type WorkspaceConfigEditInput } from "./workspaceConfigEditContract.js";
 
 export interface OperatorScriptDescriptor {
@@ -120,7 +121,18 @@ export function startRunLauncher(id: string): string {
   return sharedStartRunLauncher(id);
 }
 
-function validateStartRun(d: OperatorScriptDescriptor, id: string, script: string): void {
+/** One Action of the activated Plan as the activation queue sees it (settlement orders its non-done Actions). */
+export interface PlanQueueAction { id: string; status: string; dependsOn: string[] }
+/**
+ * The queue segment an activation settles: the Plan's non-done Actions in dependency order, using the same ordering
+ * function as activation settlement (src/ask/settlement.ts). Every caller that checks a planActivation uses this (#2478).
+ */
+export function expectedActivationSegment(project: string, planQueue: readonly PlanQueueAction[]): string[] {
+  return dependencyOrderedActionIds(planQueue.filter((action) => action.status !== "done")
+    .map((action) => ({ id: action.id, dependencies: action.dependsOn }))).map((actionId) => `${project}/${actionId}`);
+}
+
+function validateStartRun(d: OperatorScriptDescriptor, id: string, script: string, planQueue?: readonly PlanQueueAction[]): void {
   try { validateStartRunPins(d.startRun); }
   catch (error) { return fail("INVALID_START_RUN", error instanceof StartRunPinsError ? error.message : String(error)); }
   const pins = d.startRun!;
@@ -140,6 +152,14 @@ function validateStartRun(d: OperatorScriptDescriptor, id: string, script: strin
     const scoped = pins.actions.map((action) => `${pins.project}/${action}`);
     if (JSON.stringify(e.queueSegment.slice(0, scoped.length)) !== JSON.stringify(scoped)) {
       fail("INVALID_START_RUN", "The embedded planActivation queueSegment must begin with the pinned project/action list, in order.");
+    }
+    if (planQueue !== undefined) {
+      let expected: string[];
+      try { expected = expectedActivationSegment(pins.project, planQueue); }
+      catch (error) { return fail("INVALID_START_RUN", error instanceof Error ? error.message : String(error)); }
+      if (JSON.stringify(e.queueSegment) !== JSON.stringify(expected)) {
+        fail("INVALID_START_RUN", `The embedded planActivation queueSegment must equal the activation queue, the Plan's non-done Actions in dependency order: expected ${JSON.stringify(expected)}, got ${JSON.stringify(e.queueSegment)}.`);
+      }
     }
     if (!pins.requiredDecisions.includes("0157")) fail("INVALID_START_RUN", "A START card that activates its Plan must require Decision 0157.");
   }
@@ -277,7 +297,11 @@ export function assertProjectLibraryEntry(value: unknown, project: string): void
 }
 
 /** Read-only contract shared by /runs and the library-wide CI gate. */
-export function validateOperatorScriptContract(value: unknown, id: string, script: string): OperatorScriptDescriptor {
+/**
+ * `planQueue` is the activated Plan's Actions. When given, a START card's planActivation queueSegment must equal
+ * the activation queue that settlement computes from it, not merely begin with the pinned Actions (#2478).
+ */
+export function validateOperatorScriptContract(value: unknown, id: string, script: string, planQueue?: readonly PlanQueueAction[]): OperatorScriptDescriptor {
   if (!value || typeof value !== "object") fail("INVALID_OPERATOR_CONTRACT", "Operator descriptor must be an object.");
   const d = value as OperatorScriptDescriptor;
   if (!slug.test(id) || d.schema !== "arcadia-operator-script-v1" || d.id !== id || d.script !== `${id}.sh` ||
@@ -304,7 +328,7 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
     fail("INVALID_AGENT_ASK_SETTLEMENT", "A pinned settlement must also declare its agentAsk proposal, intent and targetRef.");
   }
   if (d.startRun !== undefined) {
-    validateStartRun(d, id, script);
+    validateStartRun(d, id, script, planQueue);
     return d;
   }
   if (script.includes("scripts/start-run.sh")) fail("START_RUN_RUNNER_REQUIRED", "The shared START executor requires a pinned startRun descriptor.");
