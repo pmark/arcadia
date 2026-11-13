@@ -83,7 +83,8 @@ function fakeDeps(projects: string, options: { deliver: boolean[]; inForce?: boo
     newSessionId: () => `00000000-0000-4000-8000-${String(++ids).padStart(12, "0")}`,
     ping: (message) => { fake.pings.push(message); },
     sources: () => sources,
-    startPressInProgress: () => ({ inProgress: false, detail: "none" })
+    startPressInProgress: () => ({ inProgress: false, detail: "none" }),
+    folderTrust: () => ({ trusted: true, trustedFolder: "/trusted", detail: "test trust" })
   };
   return fake;
 }

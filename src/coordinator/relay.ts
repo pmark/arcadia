@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -10,6 +10,8 @@ import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { billingUnsetArgs, spendRefusalMessage } from "../spend/spendGuard.js";
 import { systemTmux, type TmuxAdapter } from "../sessions/index.js";
 import type { CapsuleSources } from "./capsule.js";
+import { buildLaunchProof, claudeFolderTrust, defaultClaudeStatePath, observeTranscript, type FolderTrust, type LaunchProof } from "./launchProof.js";
+import { coordinatorPaths } from "./paths.js";
 import {
   COORDINATOR_ENV,
   CLAIM_LAUNCHING_FRESH_MS,
@@ -52,6 +54,8 @@ export const RELAY_LIMITS = {
   renewalsPerDay: 6,
   expiryDays: 30,
   deliveryWindowMs: 2 * 60 * 1000,
+  /** After delivery, how long the relay waits for the Session's first reply so the model it actually runs is observed. */
+  observationWindowMs: 60 * 1000,
   retryPauseMs: 60 * 1000
 } as const;
 
@@ -67,7 +71,7 @@ const ALLOWED_PERMISSION_MODES = new Set(["auto", "default"]);
 
 export type RelayRefusal =
   | "decision_pending" | "decision_not_in_force" | "role_not_allowed" | "no_custodian" | "provider_unsupported"
-  | "renewal_limit" | "sign_in" | "spend" | "capacity" | "launch_in_progress" | "repository_unresolved" | "start_in_progress";
+  | "renewal_limit" | "sign_in" | "spend" | "capacity" | "launch_in_progress" | "repository_unresolved" | "start_in_progress" | "folder_untrusted";
 
 export interface DecisionGate { inForce: boolean; reason: string }
 
@@ -85,6 +89,8 @@ export interface RelayDeps {
   newSessionId(): string;
   ping(message: string): void;
   sources(): CapsuleSources;
+  /** Whether Claude Code already trusts a folder: an unattended launch into an untrusted one stops at the trust prompt (probe P1). Required: the precondition cannot be omitted. */
+  folderTrust(directory: string): FolderTrust;
   /** Whether a START press is still running (or its record unreadable); a successor launch is refused while so. Required: the interlock cannot be omitted. */
   startPressInProgress(repoRoot: string): StartPressStatus;
 }
@@ -100,7 +106,7 @@ export interface RenewInput {
 }
 
 export type RenewResult =
-  | { outcome: "launched"; generation: number; tmuxName: string; sessionId: string; snapshotSha: string; worktree: string; attempts: number; warnings?: string[] }
+  | { outcome: "launched"; generation: number; tmuxName: string; sessionId: string; snapshotSha: string; worktree: string; attempts: number; proof: LaunchProof; proofPath: string | null; warnings?: string[] }
   | { outcome: "refused"; reason: RelayRefusal; detail: string }
   | { outcome: "failed"; attempts: number; failures: string[]; pinged: boolean; warnings?: string[] };
 
@@ -233,6 +239,15 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
   const decision = deps.decision(repoRoot, now);
   if (!decision.inForce) return refuse(RELAY_LAUNCH_DECISION_ID === null ? "decision_pending" : "decision_not_in_force", decision.reason);
 
+  // Probe P1: a fresh folder stops at "Is this a project you trust?" before the brief arrives. The successor's worktree
+  // lives under this directory, so refuse before any claim, worktree or session when Claude Code does not trust it.
+  const worktreesRoot = path.join(repoRoot, ".claude", "worktrees");
+  const trust = deps.folderTrust(worktreesRoot);
+  if (!trust.trusted) {
+    deps.ping(`Coordinator relay held ${input.role} (${input.project}): the launch folder is not trusted by Claude Code; the predecessor keeps custody. ${trust.detail}`.slice(0, 500));
+    return refuse("folder_untrusted", trust.detail);
+  }
+
   const startPress = deps.startPressInProgress(repoRoot);
   if (startPress.inProgress) return refuse("start_in_progress", startPress.unreadable ? `A START press record cannot be read (${startPress.detail}); the relay launches no successor until it is resolved.` : `A START press is still in progress (${startPress.detail}); the relay launches no successor until its run record finishes or its runner dies.`);
 
@@ -286,7 +301,27 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
     recordTranscriptPath(db, input.project, input.role, claim.generation, transcript, deps.now(), name);
     const prompt = renderResumePrompt({ project: input.project, role: input.role, generation: claim.generation, snapshotSha: claim.snapshotSha, snapshotPath: claim.snapshotPath });
     warnings.push(...(claim.warnings ?? []));
-    const launched = (attempts: number): RenewResult => ({ outcome: "launched", generation: claim.generation, tmuxName: claim.tmuxName, sessionId, snapshotSha: claim.snapshotSha, worktree, attempts, ...(warnings.length > 0 ? { warnings: [...warnings] } : {}) });
+    // The proof records what the Session shows (its transcript), never the requested values; it is written beside the generation.
+    const launched = (attempts: number): RenewResult => {
+      const proof = buildLaunchProof({
+        transport: "tmux", sessionId, brief: prompt, transcript: observeTranscript(transcript),
+        requestedModel: custodian.model, requestedEffort: claudeReasoningEffort(input.effort), now: deps.now()
+      });
+      let proofPath: string | null = null;
+      try {
+        const paths = coordinatorPaths(workspace, input.project, input.role);
+        mkdirSync(paths.root, { recursive: true, mode: 0o700 });
+        const target = path.join(paths.root, `launch-proof-g${claim.generation}.json`);
+        const temporary = `${target}.${process.pid}.tmp`;
+        writeFileSync(temporary, `${JSON.stringify(proof, null, 2)}\n`, { mode: 0o600 });
+        renameSync(temporary, target);
+        proofPath = target;
+      } catch (error) {
+        warnings.push(`The launch proof could not be written (${error instanceof Error ? error.message.slice(0, 120) : String(error).slice(0, 120)}); it is in this result only.`);
+      }
+      const all = [...warnings, ...proof.warnings];
+      return { outcome: "launched", generation: claim.generation, tmuxName: claim.tmuxName, sessionId, snapshotSha: claim.snapshotSha, worktree, attempts, proof, proofPath, ...(all.length > 0 ? { warnings: all } : {}) };
+    };
     try {
       // The generation is new, so its deterministic name existing means a foreign
       // or leftover session: refuse to reuse it and never kill what we did not start.
@@ -315,7 +350,12 @@ export function renewCoordinator(db: Database.Database, workspace: string, input
     // Delivery check (design step 4): the transcript's first user message is exactly the prompt.
     const deadline = deps.now().getTime() + RELAY_LIMITS.deliveryWindowMs;
     for (;;) {
-      if (deps.firstUserMessage(transcript) === prompt.trim()) return launched(attempt);
+      if (deps.firstUserMessage(transcript) === prompt.trim()) {
+        // Delivered. Give the Session a bounded further window to show its first reply so the model it actually runs is observed.
+        const replyDeadline = deps.now().getTime() + RELAY_LIMITS.observationWindowMs;
+        while (observeTranscript(transcript).model === null && deps.now().getTime() < replyDeadline) deps.sleep(5_000);
+        return launched(attempt);
+      }
       if (deps.now().getTime() >= deadline) break;
       deps.sleep(5_000);
     }
@@ -449,10 +489,11 @@ export function startPressInProgressIn(
   return { inProgress: false, detail: stale.length > 0 ? `no START press in progress; hard-stopped, ignored: ${stale.join(", ")}` : "no START press in progress" };
 }
 
-export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (message: string) => void; signIn: RelayDeps["signIn"]; capacity: RelayDeps["capacity"]; startPressInProgress: RelayDeps["startPressInProgress"] }): RelayDeps {
+export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (message: string) => void; signIn: RelayDeps["signIn"]; capacity: RelayDeps["capacity"]; startPressInProgress: RelayDeps["startPressInProgress"]; folderTrust?: RelayDeps["folderTrust"] }): RelayDeps {
   return {
     tmux: systemTmux,
     startPressInProgress: input.startPressInProgress,
+    folderTrust: input.folderTrust ?? ((directory) => claudeFolderTrust(directory, defaultClaudeStatePath(process.env, undefined, directory))),
     decision: (repoRoot, now) => readRelayDecision(repoRoot, now),
     signIn: input.signIn,
     capacity: input.capacity,

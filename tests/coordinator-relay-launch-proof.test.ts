@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -30,7 +31,7 @@ const sources: CapsuleSources = {
   pings: () => ({ pending: [], recent: [] }), budget: () => null
 };
 
-function harness(mode: string) {
+function harness(mode: string, options: { model?: string; effort?: string; trusted?: boolean } = {}) {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-relay-proof-")));
   roots.push(root);
   const ws = path.join(root, "workspace");
@@ -58,7 +59,8 @@ function harness(mode: string) {
       // custody variables the argv itself carries (`env VAR=... claude ...`), and no tmux server.
       launch(input) {
         const run = spawnSync(input.command, input.args, { cwd: input.cwd, encoding: "utf8", env: {
-          PATH: `${bin}:${process.env.PATH}`, FAKE_CLAUDE_MODE: mode, FAKE_CLAUDE_PROJECTS: projects, FAKE_CLAUDE_CAPTURE: capture
+          PATH: `${bin}:${process.env.PATH}`, FAKE_CLAUDE_MODE: mode, FAKE_CLAUDE_PROJECTS: projects, FAKE_CLAUDE_CAPTURE: capture,
+          ...(options.model !== undefined ? { FAKE_CLAUDE_MODEL: options.model } : {}), ...(options.effort !== undefined ? { FAKE_CLAUDE_EFFORT: options.effort } : {})
         } });
         launched.push({ name: input.name, cwd: input.cwd, command: input.command, args: input.args, status: run.status });
       },
@@ -68,6 +70,7 @@ function harness(mode: string) {
     signIn: () => ({ signedIn: true, remedy: "" }),
     capacity: () => ({ admitted: true, reason: "ok" }),
     startPressInProgress: () => ({ inProgress: false, detail: "none" }),
+    folderTrust: () => (options.trusted === false ? { trusted: false, trustedFolder: null, detail: "not trusted" } : { trusted: true, trustedFolder: "/trusted", detail: "test trust" }),
     createWorktree: (_repo, directory) => { mkdirSync(directory, { recursive: true }); },
     firstUserMessage: readFirstUserMessage,
     claudeProjectsDirectory: projects,
@@ -119,5 +122,53 @@ describe("relay launch proof fixture: the exact-match prompt delivery (#2286 gat
     h.renew();
     const row = withDatabase(h.ws, (db) => listGenerations(db, "arcadia", "rowan")).find((candidate) => candidate.generation === 2)!;
     expect(readFirstUserMessage(row.transcriptPath!) ?? "").not.toMatch(/subagent prompt|local-command-caveat/);
+  });
+});
+
+describe("relay launch proof: exact brief hash and the actual provider, model and effort (acceptance 3 of close-coordinator-relay-gates-6-9-10-11)", () => {
+  it("records the brief hash, the delivered hash and the model the Session shows, in the result and beside the generation", () => {
+    const h = harness("exact", { model: "claude-opus-4-fixture", effort: "high" });
+    const result = h.renew();
+    expect(result.outcome).toBe("launched");
+    if (result.outcome !== "launched") return;
+    const row = withDatabase(h.ws, (db) => listGenerations(db, "arcadia", "rowan")).find((candidate) => candidate.generation === 2)!;
+    const prompt = renderResumePrompt({ project: "arcadia", role: "rowan", generation: 2, snapshotSha: row.snapshotSha!, snapshotPath: row.snapshotPath! });
+    expect(result.proof.briefSha).toBe(createHash("sha256").update(prompt.trim()).digest("hex"));
+    expect(result.proof).toMatchObject({ transport: "tmux", delivered: true, deliveredSha: result.proof.briefSha, observed: { provider: "claude", model: "claude-opus-4-fixture", effort: "high" }, modelMatchesRequest: true, effortMatchesRequest: true });
+    expect(result.warnings ?? []).toEqual([]);
+    expect(JSON.parse(readFileSync(result.proofPath!, "utf8"))).toEqual(result.proof);
+  });
+
+  it("records the OBSERVED model, never the requested one: a different model is flagged, and an unobserved one stays null", () => {
+    const wrong = harness("exact", { model: "claude-haiku-5-5" }).renew();
+    expect(wrong.outcome).toBe("launched");
+    if (wrong.outcome === "launched") {
+      expect(wrong.proof.observed.model).toBe("claude-haiku-5-5");
+      expect(wrong.proof.requested.model).toBe("opus");
+      expect(wrong.proof.modelMatchesRequest).toBe(false);
+      expect(wrong.warnings?.join(" ")).toMatch(/does not correspond to the requested opus/);
+    }
+    const silent = harness("exact", { model: "none" }).renew();
+    expect(silent.outcome).toBe("launched");
+    if (silent.outcome === "launched") {
+      expect(silent.proof.observed).toEqual({ provider: "claude", model: null, effort: null });
+      expect(silent.proof.modelMatchesRequest).toBeNull();
+      expect(silent.warnings?.join(" ")).toMatch(/unobserved, not as the requested value/);
+    }
+  });
+
+  it("states an unobserved effort as unobserved rather than echoing the requested effort", () => {
+    const result = harness("exact", { model: "claude-opus-4-fixture" }).renew();
+    expect(result.outcome === "launched" && result.proof.observed.effort).toBeNull();
+    expect(result.outcome === "launched" && result.proof.requested.effort).toBe("high");
+  });
+
+  it("refuses an untrusted launch folder before any claim, worktree or session, pings once, and the predecessor keeps custody", () => {
+    const h = harness("exact", { trusted: false });
+    const result = h.renew();
+    expect(result).toMatchObject({ outcome: "refused", reason: "folder_untrusted" });
+    expect(h.launched).toEqual([]);
+    expect(h.pings).toHaveLength(1);
+    expect(withDatabase(h.ws, (db) => listGenerations(db, "arcadia", "rowan")).map((row) => [row.generation, row.status])).toEqual([[1, "custodian"]]);
   });
 });

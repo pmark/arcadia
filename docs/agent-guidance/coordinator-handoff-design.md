@@ -704,6 +704,48 @@ Failure path, with owners. Rowan, as the custodian, owns the failure:
 - If accept succeeded and the successor is not wanted, nothing marks it handed
   back (gate 10); Rowan and the operator decide.
 
+## Probe adaptations and the launch proof (acceptance 3)
+
+Probes P1 and P2 ran on 2026-11-12 under separate operator approvals (Decision
+0227 D5 answer A; result on #1929). Both passed, with two required adaptations,
+now code (`src/coordinator/launchProof.ts`) used by the relay and by
+`arcadia keeper start`:
+
+- **Trusted folder.** A fresh folder stops at "Is this a project you trust?"
+  before the brief arrives. The relay refuses (`folder_untrusted`, one ping, no
+  claim, worktree or session) unless Claude Code's `~/.claude.json` trusts the
+  worktrees directory or an ancestor; `keeper start` refuses likewise, and its
+  dry run reports the verdict. Paths are compared by realpath; a trust that
+  exists only through `/` or the home directory is refused. Inheritance from a
+  trusted parent is an assumption: if Claude does not inherit it, the check
+  passes falsely and the launch stalls at the prompt (the relay's delivery
+  check then fails the attempt). The relay and keeper launchers never write the trust
+  state (`arcadia go-broker install` can, for its own folders); the operator
+  trusts a launch folder once, interactively. The state file is
+  `$CLAUDE_CONFIG_DIR/.claude.json` when that is set, else `~/.claude.json`.
+- **`--bg` session id.** `--bg` ignores `--session-id`, so the keeper no longer
+  passes it. The real id is read from the launch output, else from
+  `claude agents --json`, whose ids are snapshotted BEFORE the launch (an
+  unreadable listing refuses the launch). Only the single NEW row in the launch
+  cwd that matches a printed token or the launch name can be the session (looked
+  up a few times over a few seconds); an old row, several new rows, or no new row
+  writes no record, is never a stop target, and the error says so. Stop is
+  `claude stop <id>`; no tmux.
+- **Exact brief.** The SHA-256 of the brief handed to the launcher is recorded
+  beside the SHA-256 of the transcript's first main-chain user message, and
+  `delivered` is true only when they are equal. The relay's own delivery check
+  is unchanged and still gates acceptance.
+- **Actual provider, model and effort.** The proof records what the launched
+  Session shows (transcript, then `claude agents --json`), never the requested
+  values; the requested values sit beside them and a mismatch is a warning.
+  An effort the host does not state is recorded as `null` (unobserved).
+
+The relay writes `launch-proof-g<N>.json` beside the generation; the keeper
+stores the proof in its launch record. This is deterministic code with fake
+`claude` tests only. The separately approved real P1/P2 re-runs through this
+code, and the real Rowan and Signal successor live proofs (acceptance 4),
+remain host steps.
+
 ## Probes to run before change 3
 
 P1 and P2 start real sessions, so they spend tokens. Each needs the operator's

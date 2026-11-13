@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -37,26 +38,53 @@ function workspace(): string {
   return root;
 }
 
-interface Fake { deps: KeeperDependencies; dir: string; calls: () => string[][]; cwds: () => string[]; setAgents: (json: string) => void }
+interface Fake { deps: KeeperDependencies; dir: string; calls: () => string[][]; cwds: () => string[]; setAgents: (json: string) => void; queueAgents: (...json: string[]) => void; setLaunchRow: (row: Record<string, unknown>) => void }
 
-/** A fake `claude` on PATH: logs each argv as JSON, prints a short id for --bg, lists what the test sets. */
-function fakeClaude(behaviour: { failBg?: boolean; failStop?: string } = {}): Fake {
+/**
+ * A fake `claude` on PATH: logs each argv as JSON, prints a short id for --bg, and models `claude agents --json`
+ * honestly: the listing starts as whatever the test sets (sessions that ALREADY exist, the pre-launch snapshot), and
+ * `--bg` then adds one NEW row (the launched keeper; override with setLaunchRow) that appears from the
+ * `agentsAfter`-th listing after the launch (default: the first).
+ */
+function fakeClaude(behaviour: { failBg?: boolean; failStop?: string; silentBg?: boolean; bgOutput?: string; agentsAfter?: number; noLaunchRow?: boolean } = {}): Fake {
   const dir = realpathSync(scratch());
   execFileSync("git", ["init", "-q", dir]);
   const log = path.join(dir, "calls.jsonl");
   const agents = path.join(dir, "agents.json");
   const cwdLog = path.join(dir, "cwds.txt");
   writeFileSync(agents, "[]");
+  const launchedFile = path.join(dir, "agents.launched.json");
+  const launchRowFile = path.join(dir, "agents.launchrow.json");
+  const queue = path.join(dir, "agents.queue.json");
+  const statePath = path.join(dir, "claude-state.json");
+  writeFileSync(statePath, JSON.stringify({ projects: { [dir]: { hasTrustDialogAccepted: true } } }));
   const script = `#!/usr/bin/env node
-const fs = require("fs");
+import fs from "node:fs";
 fs.appendFileSync(${JSON.stringify(log)}, JSON.stringify(process.argv.slice(2)) + "\\n");
 fs.appendFileSync(${JSON.stringify(cwdLog)}, fs.realpathSync(process.cwd()) + "\\n");
 const [cmd] = process.argv.slice(2);
 if (cmd === "--bg") {
   if (${behaviour.failBg === true}) { console.error("boom: not signed in"); process.exit(3); }
-  console.log("started background session abcd1234");
+  if (${behaviour.noLaunchRow !== true}) {
+    const row = fs.existsSync(${JSON.stringify(launchRowFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(launchRowFile)}, "utf8")) : { id: "abcd1234", name: "♾️ Flynn · keeper starting", cwd: fs.realpathSync(process.cwd()) };
+    const launched = fs.existsSync(${JSON.stringify(launchedFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(launchedFile)}, "utf8")) : [];
+    fs.writeFileSync(${JSON.stringify(launchedFile)}, JSON.stringify([...launched, row]));
+    fs.writeFileSync(${JSON.stringify(agents + ".post")}, "0");
+  }
+  if (${behaviour.silentBg === true}) console.log("started"); else console.log(${JSON.stringify(behaviour.bgOutput ?? "started background session abcd1234")});
 } else if (cmd === "agents") {
-  process.stdout.write(fs.readFileSync(${JSON.stringify(agents)}, "utf8"));
+  const queueFile = ${JSON.stringify(queue)};
+  const queued = fs.existsSync(queueFile) ? JSON.parse(fs.readFileSync(queueFile, "utf8")) : [];
+  if (queued.length > 0) { const next = queued.shift(); fs.writeFileSync(queueFile, JSON.stringify(queued)); process.stdout.write(next); process.exit(0); }
+  const base = JSON.parse(fs.readFileSync(${JSON.stringify(agents)}, "utf8"));
+  const launched = fs.existsSync(${JSON.stringify(launchedFile)}) ? JSON.parse(fs.readFileSync(${JSON.stringify(launchedFile)}, "utf8")) : [];
+  let rows = base;
+  if (launched.length > 0) {
+    const post = Number(fs.readFileSync(${JSON.stringify(agents + ".post")}, "utf8")) + 1;
+    fs.writeFileSync(${JSON.stringify(agents + ".post")}, String(post));
+    if (post >= ${behaviour.agentsAfter ?? 1}) rows = [...base, ...launched];
+  }
+  process.stdout.write(JSON.stringify(rows));
 } else if (cmd === "stop") {
   if (${behaviour.failStop !== undefined}) { console.error(${JSON.stringify(behaviour.failStop ?? "")}); process.exit(4); }
   console.log("stopped");
@@ -66,11 +94,14 @@ if (cmd === "--bg") {
   writeFileSync(bin, script);
   chmodSync(bin, 0o755);
   return {
-    deps: { env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}` }, cwd: dir, briefPath: BRIEF, now: () => Date.parse("2026-11-10T20:00:00.000Z"), newSessionId: () => "11111111-2222-3333-4444-555555555555" },
+    deps: { env: { ...process.env, PATH: `${dir}${path.delimiter}${process.env.PATH ?? ""}` }, cwd: dir, briefPath: BRIEF, now: () => Date.parse("2026-11-10T20:00:00.000Z"), claudeStatePath: statePath, claudeProjectsDirectory: path.join(dir, "projects"), sleep: () => undefined },
     dir,
     cwds: () => (existsSync(cwdLog) ? readFileSync(cwdLog, "utf8").trim().split("\n").filter(Boolean) : []),
     calls: () => (existsSync(log) ? readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]) : []),
-    setAgents: (json) => writeFileSync(agents, json)
+    // Replaces the whole listing from now on (sessions that exist; the keeper launched earlier is gone unless it is in `json`).
+    setAgents: (json) => { writeFileSync(agents, json); rmSync(launchedFile, { force: true }); },
+    setLaunchRow: (row) => writeFileSync(launchRowFile, JSON.stringify(row)),
+    queueAgents: (...json) => writeFileSync(queue, JSON.stringify(json))
   };
 }
 
@@ -79,10 +110,12 @@ describe("arcadia keeper start", () => {
     const root = workspace();
     const fake = fakeClaude();
     const result = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR, dryRun: true }, fake.deps).data;
-    expect(result.argv.slice(0, 11)).toEqual([
+    expect(result.argv.slice(0, 10)).toEqual([
       "claude", "--bg", "--remote-control", "momentum-keeper", "-n", "♾️ Flynn · keeper starting",
-      "--model", "sonnet", "--permission-mode", "auto", "--session-id"
+      "--model", "sonnet", "--permission-mode", "auto"
     ]);
+    // `--bg` ignores --session-id (probe P2), so none is passed.
+    expect(result.argv).not.toContain("--session-id");
     const prompt = result.argv.at(-1) as string;
     expect(prompt).toContain(`coordinator session \`${SUPERVISOR}\``);
     expect(prompt).not.toContain("{{SUPERVISOR}}");
@@ -108,7 +141,7 @@ describe("arcadia keeper start", () => {
     const record = readKeeperRecord(root);
     expect(record).toMatchObject({
       status: "running", supervisor: SUPERVISOR, remoteControlName: "momentum-keeper", model: "sonnet",
-      sessionId: "11111111-2222-3333-4444-555555555555", stopId: "abcd1234", stoppedAt: null
+      sessionId: "abcd1234", stopId: "abcd1234", stoppedAt: null
     });
     expect(record?.argv).toEqual(data.argv);
   });
@@ -126,9 +159,9 @@ describe("arcadia keeper start", () => {
     const root = workspace();
     const fake = fakeClaude();
     runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
-    fake.setAgents(JSON.stringify([{ id: "abcd1234", name: "x" }]));
     expect(() => runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps)).toThrow(/still listed/);
     expect(fake.calls().filter((call) => call[0] === "--bg")).toHaveLength(1);
+    // The first keeper is gone from the listing: the next start proceeds and finds its own new row.
     fake.setAgents("[]");
     runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
     expect(fake.calls().filter((call) => call[0] === "--bg")).toHaveLength(2);
@@ -203,7 +236,8 @@ describe("arcadia keeper start safety", () => {
     const linked = path.join(scratch(), "linked");
     execFileSync("git", ["-C", fake.dir, "worktree", "add", "-q", "-b", "task", linked]);
     runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, { ...fake.deps, cwd: linked });
-    expect(fake.cwds()).toEqual([fake.dir]);
+    // The launch and the follow-up `claude agents --json` both run in the primary checkout.
+    expect(new Set(fake.cwds())).toEqual(new Set([fake.dir]));
     expect(readKeeperRecord(root)?.status).toBe("running");
     const plain = realpathSync(scratch());
     const other = fakeClaude();
@@ -235,5 +269,175 @@ describe("arcadia keeper start safety", () => {
     expect(runKeeperStatusCommand({ workspace: root }, fake.deps).data.listed).toBe(false);
     fake.setAgents(JSON.stringify([{ id: "abcd1234" }]));
     expect(runKeeperStatusCommand({ workspace: root }, fake.deps).data.listed).toBe(true);
+  });
+});
+
+describe("arcadia keeper start: probe P1/P2 adaptations (trusted folder, real --bg session id, exact brief, observed model)", () => {
+  const FULL = "686736ac-1111-4222-8333-444455556666";
+  const NAME = "♾️ Flynn · keeper starting";
+  const row = (dir: string, extra: Record<string, unknown> = {}) => ({ id: "abcd1234", sessionId: FULL, name: NAME, cwd: dir, ...extra });
+
+  it("refuses an untrusted launch folder before launching, and says why; the dry run reports it", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    const untrusted = { ...fake.deps, claudeStatePath: path.join(fake.dir, "absent-state.json") };
+    expect(() => runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, untrusted)).toThrow(/not started.*cannot be shown to be trusted/);
+    expect(fake.calls()).toEqual([]);
+    expect(readKeeperRecord(root)).toBeNull();
+    const dry = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR, dryRun: true }, untrusted);
+    expect(dry.data.trust.trusted).toBe(false);
+    expect(renderKeeperStartSuccess(dry).join("\n")).toMatch(/A real start would refuse: .*trust/);
+  });
+
+  it("records the REAL session id from the new agents row, not one asked for, and never passes --session-id", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    fake.setLaunchRow(row(fake.dir));
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    expect(fake.calls().find((call) => call[0] === "--bg")).not.toContain("--session-id");
+    expect(readKeeperRecord(root)).toMatchObject({ sessionId: FULL, stopId: "abcd1234", trustedFolder: fake.dir });
+  });
+
+  it("snapshots the agents listing BEFORE launching (and refuses to launch when it cannot be read)", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    const order = fake.calls().map((call) => call[0]);
+    expect(order.indexOf("agents")).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf("agents")).toBeLessThan(order.indexOf("--bg"));
+    const broken = fakeClaude();
+    broken.queueAgents("not json", "not json");
+    expect(() => runKeeperStartCommand({ workspace: workspace(), supervisor: SUPERVISOR }, broken.deps)).toThrow(/could not be read before launching.*Nothing was launched/s);
+    expect(broken.calls().filter((call) => call[0] === "--bg")).toHaveLength(0);
+  });
+
+  it("never takes a STALE row as the new keeper: an old unstopped keeper with the same name and cwd is not the stop target", () => {
+    const root = workspace();
+    const fake = fakeClaude({ noLaunchRow: true });
+    fake.setAgents(JSON.stringify([{ id: "oldoldol", sessionId: "11111111-1111-4111-8111-111111111111", name: NAME, cwd: fake.dir }]));
+    expect(() => runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps)).toThrow(/could not be verified.*no record was written/);
+    expect(readKeeperRecord(root)).toBeNull();
+  });
+
+  it("never takes a printed token that matches an OLD row in the same cwd; the genuinely new row is used", () => {
+    const stale = { id: "deadbeef", name: "other keeper", cwd: "" };
+    const root = workspace();
+    const fake = fakeClaude({ bgOutput: "started deadbeef" });
+    stale.cwd = fake.dir;
+    fake.setAgents(JSON.stringify([stale]));
+    fake.setLaunchRow(row(fake.dir, { id: "feedc0de" }));
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    expect(readKeeperRecord(root)).toMatchObject({ stopId: "feedc0de" });
+    const noNew = fakeClaude({ bgOutput: "started deadbeef", noLaunchRow: true });
+    noNew.setAgents(JSON.stringify([{ ...stale, cwd: noNew.dir }]));
+    expect(() => runKeeperStartCommand({ workspace: workspace(), supervisor: SUPERVISOR }, noNew.deps)).toThrow(/deadbeef.*no new .*row.*not used as a stop target/s);
+  });
+
+  it("finds the new row when it is listed late, ignoring the stale same-name row on the earlier attempts", () => {
+    const root = workspace();
+    const fake = fakeClaude({ agentsAfter: 3 });
+    fake.setAgents(JSON.stringify([{ id: "oldoldol", name: NAME, cwd: fake.dir }]));
+    fake.setLaunchRow(row(fake.dir));
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    expect(fake.calls().filter((call) => call[0] === "agents").length).toBeGreaterThanOrEqual(4);
+    expect(readKeeperRecord(root)?.stopId).toBe("abcd1234");
+  });
+
+  it("leaves several new rows unverified and writes no record", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    fake.setLaunchRow(row(fake.dir));
+    // A second, unrelated session appears in the same cwd during the launch: ambiguous, so nothing is recorded.
+    fake.queueAgents("[]", JSON.stringify([row(fake.dir), { id: "cafebabe", name: "someone else", cwd: fake.dir }]), JSON.stringify([row(fake.dir), { id: "cafebabe", name: "someone else", cwd: fake.dir }]), JSON.stringify([row(fake.dir), { id: "cafebabe", name: "someone else", cwd: fake.dir }]), JSON.stringify([row(fake.dir), { id: "cafebabe", name: "someone else", cwd: fake.dir }]));
+    expect(() => runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps)).toThrow(/could not be verified.*no record was written/);
+    expect(readKeeperRecord(root)).toBeNull();
+  });
+
+  it("records the exact brief hash, verifies delivery against the transcript, and records the observed model (not the requested one)", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    fake.setLaunchRow(row(fake.dir, { name: "x" }));
+    const brief = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR, dryRun: true }, fake.deps).data.argv.at(-1) as string;
+    const projects = path.join(fake.dir, "projects", "slug");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(path.join(projects, `${FULL}.jsonl`), [
+      { type: "user", message: { content: brief } },
+      { type: "assistant", message: { model: "claude-haiku-5-5" } }
+    ].map((line) => JSON.stringify(line)).join("\n"));
+    const response = runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    const proof = readKeeperRecord(root)?.proof;
+    expect(proof).toMatchObject({ transport: "bg", sessionId: FULL, delivered: true, observed: { provider: "claude", model: "claude-haiku-5-5", effort: null }, requested: { model: "sonnet" }, modelMatchesRequest: false });
+    expect(proof?.briefSha).toBe(createHash("sha256").update(brief.trim()).digest("hex"));
+    expect(renderKeeperStartSuccess(response).join("\n")).toMatch(/delivered exactly.*observed model claude-haiku-5-5, effort unobserved/s);
+    expect(proof?.warnings.join(" ")).toMatch(/does not correspond to the requested sonnet/);
+  });
+
+  it("flags a brief that was not delivered as sent, and an absent transcript as unverified, without failing the launch", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    fake.setLaunchRow(row(fake.dir));
+    const projects = path.join(fake.dir, "projects", "slug");
+    mkdirSync(projects, { recursive: true });
+    writeFileSync(path.join(projects, `${FULL}.jsonl`), `${JSON.stringify({ type: "user", message: { content: "something else" } })}\n`);
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    expect(readKeeperRecord(root)?.proof).toMatchObject({ delivered: false, observed: { model: null } });
+    const bare = workspace();
+    const printedOnly = fakeClaude();
+    printedOnly.setLaunchRow({ id: "abcd1234", name: "x", cwd: printedOnly.dir });
+    runKeeperStartCommand({ workspace: bare, supervisor: SUPERVISOR }, printedOnly.deps);
+    const proof = readKeeperRecord(bare)?.proof;
+    expect(proof).toMatchObject({ delivered: false, deliveredSha: null, sessionId: null });
+    expect(proof?.warnings.join(" ")).toMatch(/no full session UUID/);
+  });
+
+  it("writes no record and says so when no new row is ever listed", () => {
+    const root = workspace();
+    const fake = fakeClaude({ silentBg: true, noLaunchRow: true });
+    expect(() => runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps)).toThrow(/could not be verified.*no record was written/);
+    expect(readKeeperRecord(root)).toBeNull();
+  });
+
+  it("does not take decoy digits in the launch output as the session id: the new row wins", () => {
+    const root = workspace();
+    const fake = fakeClaude({ bgOutput: "keeper started 20261112 at 2026-11-12 (build deadbeef)" });
+    fake.setLaunchRow(row(fake.dir));
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps);
+    expect(readKeeperRecord(root)).toMatchObject({ sessionId: FULL, stopId: "abcd1234" });
+  });
+
+  it("records nothing when the printed id has no matching new row, and names it as unverified, never a stop target", () => {
+    const root = workspace();
+    const fake = fakeClaude({ bgOutput: "started background session 20261112" });
+    fake.setLaunchRow({ id: "ffffffff", name: "someone else", cwd: "/elsewhere" });
+    expect(() => runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, fake.deps)).toThrow(/20261112.*no new .*row.*confirms.*not used as a stop target/s);
+    expect(readKeeperRecord(root)).toBeNull();
+  });
+
+  it("reads trust from CLAUDE_CONFIG_DIR in the launch environment when it is set", () => {
+    const fake = fakeClaude();
+    const configDir = path.join(fake.dir, "cfg");
+    mkdirSync(configDir, { recursive: true });
+    const { claudeStatePath: _override, ...rest } = fake.deps;
+    void _override;
+    const env = { ...fake.deps.env, CLAUDE_CONFIG_DIR: configDir };
+    // Not trusted there: the state file under CLAUDE_CONFIG_DIR does not exist, whatever ~/.claude.json says.
+    expect(() => runKeeperStartCommand({ workspace: workspace(), supervisor: SUPERVISOR }, { ...rest, env })).toThrow(new RegExp(`${configDir}/\\.claude\\.json`));
+    writeFileSync(path.join(configDir, ".claude.json"), JSON.stringify({ projects: { [fake.dir]: { hasTrustDialogAccepted: true } } }));
+    const root = workspace();
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, { ...rest, env });
+    expect(readKeeperRecord(root)?.status).toBe("running");
+  });
+
+  it("does not wait for a transcript when the host listed no full session UUID, and never records an empty id", () => {
+    const root = workspace();
+    const fake = fakeClaude();
+    fake.setLaunchRow({ id: "abcd1234", name: "x", cwd: fake.dir });
+    const sleeps: number[] = [];
+    runKeeperStartCommand({ workspace: root, supervisor: SUPERVISOR }, { ...fake.deps, sleep: (ms) => { sleeps.push(ms); } });
+    expect(sleeps).toEqual([]);
+    expect(readKeeperRecord(root)?.stopId).toBe("abcd1234");
+    const interactive = fakeClaude();
+    interactive.setLaunchRow({ name: "♾️ Flynn · keeper starting", cwd: interactive.dir });
+    expect(() => runKeeperStartCommand({ workspace: workspace(), supervisor: SUPERVISOR }, interactive.deps)).toThrow(/could not be verified/);
   });
 });

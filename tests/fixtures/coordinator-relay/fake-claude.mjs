@@ -10,6 +10,8 @@
 //   truncated        the prompt cut short (a paste that lost its tail)
 //   prefixed         text added before the prompt
 //   none             nothing is written (the session never started)
+// FAKE_CLAUDE_MODEL / FAKE_CLAUDE_EFFORT, when set, make it write a first assistant reply stating that model (and an effort),
+// as a real session does; the default replies as "claude-opus-fixture" with no effort stated. FAKE_CLAUDE_MODEL=none writes no reply.
 // It records its own argv and the coordinator custody variables it inherited (never the token value) to
 // $FAKE_CLAUDE_CAPTURE when set.
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -46,6 +48,10 @@ else if (mode === "blocks") {
   lines.push(first([{ type: "text", text: prompt.slice(0, cut) }, { type: "text", text: prompt.slice(cut) }, { type: "text", text: "<system-reminder>host context</system-reminder>" }]));
 } else if (mode === "truncated") lines.push(first(prompt.slice(0, prompt.length - 20)));
 else if (mode === "prefixed") lines.push(first(`Hello. ${prompt}`));
+const reply = process.env.FAKE_CLAUDE_MODEL ?? "claude-opus-fixture";
+if (reply !== "none" && mode !== "none") {
+  lines.push({ type: "assistant", isSidechain: false, ...(process.env.FAKE_CLAUDE_EFFORT ? { effort: process.env.FAKE_CLAUDE_EFFORT } : {}), message: { role: "assistant", model: reply, content: [{ type: "text", text: "hi" }] } });
+}
 const file = path.join(projects, slug, `${sessionId}.jsonl`);
 mkdirSync(path.dirname(file), { recursive: true });
 // Only the first main-chain user message counts for delivery; the exact mode also writes a second one to prove the rest is ignored.
