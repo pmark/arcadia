@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-12
+updated: 2026-11-13
 ---
 
 # Mission Log: Arcadia
@@ -3382,3 +3382,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "In tests/headless-provider-operator-script.test.ts, every logged-out Claude case runs with an environment that omits CLAUDE_CODE_OAUTH_TOKEN and ANTHROPIC_API_KEY even when the parent process has them set."; "A regression test in tests/headless-provider-operator-script.test.ts sets CLAUDE_CODE_OAUTH_TOKEN in the parent environment and asserts the logged-out case still skips or refuses Claude; it fails before the fix and passes after, and restores the parent environment afterwards."; "Every other test in tests/headless-provider-operator-script.test.ts passes unchanged, and apart from the settlement records Arcadia writes, the change touches only tests/headless-provider-operator-script.test.ts. Proof that the tests, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-strip-claude-login-tokens-from-logged-out-fixtures-v2-385b56be5ce9).
+
+## 2026-11-13 — Completed arcadia/add-duty-alarms-and-idle-reporting-with-guidance
+
+- **Did:** Completed Action arcadia/add-duty-alarms-and-idle-reporting-with-guidance from accepted evidence (Candidate 3e431951b799a0f8e55621c84abd87331e38c6b5).
+- **Result:** Every declared acceptance criterion was accepted as met: "Duty alarms fire once per root idle episode when the ready count is below the floor, when Off has nothing eligible, or when no custodian is live for ten minutes, and a healthy long Action is not reported as idle."; "Idle duration is recorded by cause with owner and next event, and delivery and acknowledgment are recorded separately."; "An installed revision and one real wake receipt are recorded, and aggregate #2501 performance telemetry is deferred until enough real launch receipts exist.".
+- **Next:** Next ready Action in this inactive Plan: reconcile-no-go-card-and-run-window.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-add-duty-alarms-and-idle-reporting-with-guidance-2026-11-13).

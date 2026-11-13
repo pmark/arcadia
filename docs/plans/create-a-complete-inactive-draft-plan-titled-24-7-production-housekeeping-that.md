@@ -7,7 +7,7 @@ status: draft
 milestone: Create a complete inactive draft Plan titled 24/7 production housekeeping that orders the Codex-corrected housekeeping list (priorities 0 to 8) for operator acceptance.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-12
+updated: 2026-11-13
 actions:
   - id: reconcile-no-go-card-and-run-window
     title: "Priority 0: reconcile the NO-GO production card and the open run-window projection so a held or superseded card cannot appear ready, with no press."
@@ -159,10 +159,10 @@ actions:
     references: []
   - id: add-duty-alarms-and-idle-reporting-with-guidance
     title: "Priority 8: update guidance as behavior lands and add bounded duty alarms and idle reporting to the existing timer and read model; guidance and timer authority paths need operator merge."
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: "Priority 8: update guidance as behavior lands and add bounded duty alarms and idle reporting to the existing timer and read model; guidance and timer authority paths need operator merge."
+    next_action: Completed via Agent Ask complete-add-duty-alarms-and-idle-reporting-with-guidance-2026-11-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask add-duty-alarms-and-idle-reporting-with-guidance
     clarification: clarified
     confidence: high
