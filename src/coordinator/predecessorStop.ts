@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { tmuxQueryEnv } from "../sessions/index.js";
@@ -26,8 +26,9 @@ import { listGenerations, newestLaunching, type GenerationRecord } from "./gener
  *    guessed. The outcome is `manual_stop_required` with the exact title and
  *    session id, and the operator is pinged once.
  *
- * Probes are tri-state: present, absent or unknown. Only a clean "absent" is
- * `already_stopped`; an unknown answer is `failed` and never terminal.
+ * Probes are tri-state: present, absent or unknown. A session is called absent
+ * only when two probes in a row say so (`settledTmuxState`); a present or unknown
+ * answer on either probe is never `already_stopped`, and unknown is `failed`.
  *
  * Refusals (`deferred`, nothing stopped): a START press in progress or
  * unreadable, a successor launch in flight, or an unresolved repository. A
@@ -179,6 +180,32 @@ export function systemPredecessorStopTmux(): PredecessorStopDeps["tmux"] {
   return { state: systemTmuxState, killSession: systemTmuxKill, paneIdentity: systemPaneIdentity };
 }
 
+/** Absent only when two probes in a row say so; a present or unknown answer is returned as it is. */
+function settledTmuxState(tmux: PredecessorStopDeps["tmux"], name: string): TmuxState {
+  const first = tmux.state(name);
+  return first === "absent" ? tmux.state(name) : first;
+}
+
+/**
+ * The START press interlock reads `<repo>/artifacts/generated/operator-scripts`, and a wrong root reads as "no press".
+ * So the repository must BE git's primary worktree (the first `git worktree list` entry, compared by realpath). Null for
+ * a missing path, a path that is not a checkout, a linked worktree, or a subdirectory of the primary: the stop then defers.
+ */
+export function verifiedPrimaryCheckout(candidate: string | null): string | null {
+  if (candidate === null) return null;
+  let real: string;
+  try { real = realpathSync(candidate); } catch { return null; }
+  let listing: string;
+  try {
+    listing = execFileSync("git", ["-C", real, "worktree", "list", "--porcelain"], { encoding: "utf8", timeout: 15_000, stdio: ["ignore", "pipe", "ignore"] });
+  } catch { return null; }
+  const first = listing.split("\n").find((line) => line.startsWith("worktree "));
+  if (!first) return null;
+  let primary: string;
+  try { primary = realpathSync(first.slice("worktree ".length)); } catch { return null; }
+  return primary === real ? real : null;
+}
+
 function receiptPath(root: string, generation: number): string {
   return path.join(root, `predecessor-stop-g${generation}.json`);
 }
@@ -263,10 +290,16 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
     return { ...base, outcome: fields.outcome, method: fields.predecessor.method, command: fields.command, detail, receipt: written.file, pinged, reused: false };
   };
 
+  // The predecessor and the successor can never share a session id: that would make the successor a target. Refused before anything else.
+  if (predecessor.nativeSessionId !== null && predecessor.nativeSessionId === successor.nativeSessionId) {
+    const detail = `generation ${input.predecessor} records the same session id as successor ${input.successor}; refused so the successor is never targeted`;
+    return finish({ outcome: "identity_mismatch", command: null, detail, predecessor: predecessorIdentity(predecessor, input.role, successor) }, notify("identity_mismatch", detail, `Coordinator relay refused to stop generation ${input.predecessor} (${input.project}): ${detail}. Nothing was killed.`));
+  }
+
   // Refusals: a deferral stops nothing and pings the operator, since the predecessor still holds a live identity.
   const refusal = ((): string | null => {
     if (newestLaunching(db, input.project, input.role)) return "a successor launch of this role is in flight (launching); the predecessor is not stopped during a launch";
-    if (input.repoRoot === null) return "the repository could not be resolved, so the START press interlock cannot be checked; pass --repo <primary checkout>";
+    if (input.repoRoot === null) return "the repository could not be resolved to its primary checkout, so the START press interlock cannot be checked; pass --repo <primary checkout> (a linked worktree or an unknown path is refused)";
     const press = deps.startPressInProgress(input.repoRoot);
     if (press.inProgress) return press.unreadable ? `a START press record cannot be read (${press.detail}); the predecessor is not stopped during a press` : `a START press is in progress (${press.detail}); the predecessor is not stopped during a press`;
     return null;
@@ -286,7 +319,7 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
       finish({ outcome: "failed", command: ranCommand, detail, predecessor: identity }, notify("failed", detail, `Coordinator relay FAILED to stop the predecessor ${name} (${input.project}): ${detail}`));
 
     let before: TmuxState;
-    try { before = deps.tmux.state(name); } catch (error) {
+    try { before = settledTmuxState(deps.tmux, name); } catch (error) {
       return fail(`the tmux probe for ${name} raised an error (${errorText(error)}); nothing was killed and the predecessor may still be running`, null);
     }
     if (before === "unknown") return fail(`the tmux probe for ${name} could not tell whether it is live (probe unknown); nothing was killed`, null);
@@ -312,7 +345,7 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
       return fail(`${command} failed (${errorText(error)}); the predecessor is NOT stopped`, command);
     }
     let after: TmuxState;
-    try { after = deps.tmux.state(name); } catch (error) {
+    try { after = settledTmuxState(deps.tmux, name); } catch (error) {
       return fail(`${command} ran, but the probe afterwards raised an error (${errorText(error)}); the stop is not confirmed`, command);
     }
     if (after === "present") return fail(`${command} ran, but tmux session ${name} is still live; the predecessor is NOT stopped`, command);

@@ -1931,8 +1931,9 @@ forge the proof. Neither command launches, spends or grants authority.
 ### Predecessor stop after accept (gate 10, stop half)
 
 `accept` stops the predecessor under the same relay lock as the custody transfer.
-Pass `--repo <primary checkout>` when the START press check must read a checkout
-other than the main worktree. The stop runs only when the successor is custodian
+`--repo` must be git's primary worktree itself (compared by realpath). A linked
+worktree, a subdirectory, or a path that is not a checkout defers the stop, because
+the START press check reads that checkout's operator-scripts library. The stop runs only when the successor is custodian
 and the predecessor is `handed_off` with its stand-down recorded for exactly that
 generation. Its identity is decided by recorded fields only:
 
