@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { CommandSuccess } from "../cli/response.js";
 import { createSuccess } from "../cli/response.js";
@@ -21,7 +21,7 @@ import {
 } from "../docs/types.js";
 import { applyDecisionDeferral, findAppliedDeferralReceipt, reverseDecisionDeferral, type DecisionDeferralConsequence, type DecisionReversalConsequence } from "../dispatch/decisionDeferral.js";
 import { invocationRoot } from "../cli/invocation.js";
-import { commitOnlyPaths, projectCheckoutFor, tryGit } from "../git/worktrees.js";
+import { commitOnlyPaths, projectCheckoutFor, sharesRepository, tryGit } from "../git/worktrees.js";
 import { localDateStamp } from "../utils/time.js";
 import { decisionOptionsDigest } from "../decisions/optionsDigest.js";
 
@@ -176,6 +176,69 @@ export interface DecisionApproveData {
   consequence: DecisionDeferralConsequence | null;
   /** The commit's receipt id — a deferral receipt, or a plain-answer commit token. Null on a no-op retry or a dry run. */
   receiptId: string | null;
+  /** The checkout the Decision was read from and would be written to, and the rule that chose it. */
+  checkout: ApproveCheckout;
+}
+
+/**
+ * The checkout `decision approve` writes an authority record into. Approval is
+ * the record that moves an Action, so the checkout is chosen strictly: an
+ * inherited ARCADIA_INVOKED_FROM must name an existing directory that is a
+ * checkout of the Project's registered repository, or the command refuses.
+ */
+export interface ApproveCheckout {
+  repoRoot: string;
+  registeredRepoPath: string;
+  resolvedBy: "invoked_from" | "cwd" | "registered";
+  reason: string;
+}
+
+function canonicalPath(candidate: string): string {
+  try {
+    return realpathSync(candidate);
+  } catch {
+    return path.resolve(candidate);
+  }
+}
+
+export function resolveApproveCheckout(workspacePath: string, projectIdOrSlug: string): ApproveCheckout {
+  const registeredRepoPath = canonicalPath(withDatabase(workspacePath, (db) => registeredRepoPathFromDb(db, projectIdOrSlug)));
+  const declared = process.env.ARCADIA_INVOKED_FROM?.trim();
+
+  if (!declared) {
+    const cwd = canonicalPath(process.cwd());
+    const repoRoot = projectCheckoutFor(registeredRepoPath, cwd);
+    const isWorktree = repoRoot !== registeredRepoPath;
+    return {
+      repoRoot,
+      registeredRepoPath,
+      resolvedBy: isWorktree ? "cwd" : "registered",
+      reason: isWorktree
+        ? `ARCADIA_INVOKED_FROM is unset, so the runtime directory ${cwd} is used; it is a worktree of the registered repository.`
+        : `ARCADIA_INVOKED_FROM is unset and the runtime directory ${cwd} is not a worktree of the registered repository, so the registered checkout is used.`
+    };
+  }
+
+  const invokedFrom = path.resolve(declared);
+  if (!existsSync(invokedFrom) || !statSync(invokedFrom).isDirectory()) {
+    throw validationError(`ARCADIA_INVOKED_FROM names ${invokedFrom}, which is not an existing directory; nothing was written.`, {
+      invokedFrom,
+      registeredRepoPath
+    });
+  }
+  const top = tryGit(invokedFrom, ["rev-parse", "--show-toplevel"]);
+  if (top === null || !sharesRepository(top, registeredRepoPath)) {
+    throw validationError(
+      `ARCADIA_INVOKED_FROM ${canonicalPath(invokedFrom)} is not a checkout of this Project's repository (registered ${registeredRepoPath}); nothing was written.`,
+      { invokedFrom: canonicalPath(invokedFrom), registeredRepoPath }
+    );
+  }
+  return {
+    repoRoot: canonicalPath(top),
+    registeredRepoPath,
+    resolvedBy: "invoked_from",
+    reason: `ARCADIA_INVOKED_FROM names ${canonicalPath(invokedFrom)}, a checkout of the same repository as the registered ${registeredRepoPath}.`
+  };
 }
 
 /**
@@ -281,6 +344,8 @@ export function prepareDecisionAnswer(
      * operator's actual answer can live in a successor that offers it (Issue #1940). No option effect is applied.
      */
     supersededBy?: string;
+    /** The checkout to read and write the Decision in; unset resolves the Project's checkout from the runtime directory. */
+    repoRoot?: string;
   }
 ): PreparedDecisionAnswer {
   const recorded = input.answer.trim();
@@ -300,7 +365,7 @@ export function prepareDecisionAnswer(
     throw validationError(`status must be one of: ${DECISION_DOC_STATUSES.join(", ")}`, { status });
   }
 
-  const repoRoot = resolveProjectRepoFromDb(db, input.projectIdOrSlug);
+  const repoRoot = input.repoRoot ?? resolveProjectRepoFromDb(db, input.projectIdOrSlug);
   const decisionsDir = path.join(repoRoot, "docs", "decisions");
   const absolutePath = findDecisionFile(decisionsDir, input.decisionRef);
   if (!absolutePath) {
@@ -409,11 +474,13 @@ export function prepareDecisionAnswer(
 
 export function runDecisionApproveCommand(options: DecisionApproveOptions): CommandSuccess<DecisionApproveData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const checkout = resolveApproveCheckout(workspacePath, options.project);
   // Set once the answer is prepared. An answer that is not one of a Decision's
   // offered option labels is the operator's own words, so it is preserved as
   // an Ask capture envelope after the canonical write (fail-open).
   const reply: { entityId: string | null; freeText: boolean } = { entityId: null, freeText: false };
-  const response = applyDecisionApprove(workspacePath, options, reply);
+  const outcome = applyDecisionApprove(workspacePath, options, reply, checkout.repoRoot);
+  const response: CommandSuccess<DecisionApproveData> = { ...outcome, data: { ...outcome.data, checkout } };
   if (reply.freeText && reply.entityId && response.data.applied && !options.dryRun) {
     try {
       withDatabase(workspacePath, (db) =>
@@ -437,14 +504,15 @@ export function runDecisionApproveCommand(options: DecisionApproveOptions): Comm
 function applyDecisionApprove(
   workspacePath: string,
   options: DecisionApproveOptions,
-  reply: { entityId: string | null; freeText: boolean }
-): CommandSuccess<DecisionApproveData> {
+  reply: { entityId: string | null; freeText: boolean },
+  repoRoot: string
+): CommandSuccess<Omit<DecisionApproveData, "checkout">> {
   return withDatabase(workspacePath, (db) => {
-    const repoRoot = resolveProjectRepoFromDb(db, options.project);
     // Superseding records `rejected`; an explicit other status is refused by prepareDecisionAnswer.
     const status = options.status ?? (options.supersededBy ? "rejected" : "approved");
     const prepared = prepareDecisionAnswer(db, {
       projectIdOrSlug: options.project,
+      repoRoot,
       decisionRef: options.id,
       answer: options.answer,
       status,
@@ -827,6 +895,10 @@ function resolveProjectRepo(workspacePath: string, projectIdOrSlug: string): str
  * where it lives and the answer ships in that Action's pull request.
  */
 export function resolveProjectRepoFromDb(db: Parameters<typeof getProject>[0], projectIdOrSlug: string): string {
+  return projectCheckoutFor(registeredRepoPathFromDb(db, projectIdOrSlug), invocationRoot());
+}
+
+function registeredRepoPathFromDb(db: Parameters<typeof getProject>[0], projectIdOrSlug: string): string {
   const project = getProject(db, projectIdOrSlug) ?? getProjectBySlug(db, projectIdOrSlug);
   if (!project) {
     throw projectNotFound(projectIdOrSlug);
@@ -838,7 +910,7 @@ export function resolveProjectRepoFromDb(db: Parameters<typeof getProject>[0], p
       project: projectIdOrSlug
     });
   }
-  return projectCheckoutFor(repoPath, invocationRoot());
+  return repoPath;
 }
 
 function nextDecisionId(decisionsDir: string): string {
@@ -882,11 +954,14 @@ export function renderDecisionNewSuccess(response: CommandSuccess<DecisionNewDat
 }
 
 export function renderDecisionApproveSuccess(response: CommandSuccess<DecisionApproveData>): string[] {
-  const { applied, consequence, receiptId } = response.data;
+  const { applied, consequence, receiptId, checkout } = response.data;
   const lines = [
     applied ? "Decision updated." : "Decision dry run (nothing written).",
     `Path: ${response.data.relativePath}`
   ];
+  if (!applied) {
+    lines.push(`Checkout: ${checkout.repoRoot} (${checkout.resolvedBy}). ${checkout.reason}`);
+  }
   if (consequence) {
     lines.push(
       `${applied ? "Parked" : "Would park"} Action ${consequence.actionKey}: ` +

@@ -675,6 +675,68 @@ describe("decision approve resolves the repository from the invoking directory (
     }
   });
 
+  it("launcher shape: runtime cwd is the main checkout and ARCADIA_INVOKED_FROM names the candidate", () => {
+    const { workspace, repoRoot, projectSlug, candidate } = candidateWithOpenDecision();
+    const previousInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
+    const previous = process.cwd();
+    try {
+      process.env.ARCADIA_INVOKED_FROM = candidate;
+      process.chdir(repoRoot);
+      const dryRun = runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", dryRun: true });
+      expect(dryRun.data.absolutePath).toBe(path.join(realpathSync(candidate), "docs/decisions/0001-candidate-only.md"));
+      expect(dryRun.data.checkout).toMatchObject({
+        repoRoot: realpathSync(candidate),
+        registeredRepoPath: realpathSync(repoRoot),
+        resolvedBy: "invoked_from"
+      });
+    } finally {
+      process.chdir(previous);
+      if (previousInvokedFrom === undefined) delete process.env.ARCADIA_INVOKED_FROM;
+      else process.env.ARCADIA_INVOKED_FROM = previousInvokedFrom;
+      execFileSync("git", ["worktree", "remove", "--force", candidate], { cwd: repoRoot });
+    }
+  });
+
+  it("refuses an invoked-from checkout of an unrelated repository, naming both paths", () => {
+    const { workspace, repoRoot, projectSlug, candidate } = candidateWithOpenDecision();
+    const unrelated = path.join(scratch(), "unrelated");
+    mkdirSync(unrelated, { recursive: true });
+    execFileSync("git", ["init", "-q", "-b", "main"], { cwd: unrelated });
+    const previousInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
+    const previous = process.cwd();
+    try {
+      process.env.ARCADIA_INVOKED_FROM = unrelated;
+      process.chdir(candidate);
+      expect(() => runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", dryRun: true })).toThrow(
+        new RegExp(`ARCADIA_INVOKED_FROM ${realpathSync(unrelated)} is not a checkout of this Project's repository \\(registered ${realpathSync(repoRoot)}\\)`)
+      );
+    } finally {
+      process.chdir(previous);
+      if (previousInvokedFrom === undefined) delete process.env.ARCADIA_INVOKED_FROM;
+      else process.env.ARCADIA_INVOKED_FROM = previousInvokedFrom;
+      execFileSync("git", ["worktree", "remove", "--force", candidate], { cwd: repoRoot });
+    }
+  });
+
+  it("refuses a nonexistent ARCADIA_INVOKED_FROM instead of falling back to the runtime cwd", () => {
+    const { workspace, repoRoot, projectSlug, candidate } = candidateWithOpenDecision();
+    const missing = path.join(scratch(), "does-not-exist");
+    const previousInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
+    const previous = process.cwd();
+    try {
+      process.env.ARCADIA_INVOKED_FROM = missing;
+      process.chdir(candidate);
+      expect(() => runDecisionApproveCommand({ workspace, project: projectSlug, id: "0001", answer: "Yes.", dryRun: true })).toThrow(
+        /is not an existing directory/
+      );
+    } finally {
+      process.chdir(previous);
+      if (previousInvokedFrom === undefined) delete process.env.ARCADIA_INVOKED_FROM;
+      else process.env.ARCADIA_INVOKED_FROM = previousInvokedFrom;
+      execFileSync("git", ["worktree", "remove", "--force", candidate], { cwd: repoRoot });
+    }
+  });
+
   it("falls back to process.cwd() when ARCADIA_INVOKED_FROM is unset", () => {
     const { workspace, repoRoot, projectSlug, candidate } = candidateWithOpenDecision();
     const previousInvokedFrom = process.env.ARCADIA_INVOKED_FROM;
