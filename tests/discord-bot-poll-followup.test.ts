@@ -95,7 +95,7 @@ describe("timeout backoff (Issue #2581 b)", () => {
     let launches = 0;
     const call = async (): Promise<string> => {
       launches++;
-      if (fail) throw new CliTimeoutError("review", 30_000, "killed=true");
+      if (fail) throw new CliTimeoutError("review", 90_000, "killed=true");
       return "ok";
     };
     const tick = () => runWithTimeoutBackoff(backoff, "review", log, call).catch(() => "threw");
@@ -135,7 +135,7 @@ describe("timeout backoff (Issue #2581 b)", () => {
     const error = await cli.review().catch((caught: unknown) => caught);
     expect(error).toBeInstanceOf(CliTimeoutError);
     expect((error as CliTimeoutError).label).toBe("review");
-    expect((error as Error).message).toContain("timed out after 30s");
+    expect((error as Error).message).toContain("timed out after 90s");
     expect((error as Error).message).toContain("signal=SIGTERM");
   });
 });

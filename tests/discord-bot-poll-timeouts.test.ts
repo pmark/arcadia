@@ -50,7 +50,7 @@ describe("discord poll CLI timeout messaging (Issue #2569 a)", () => {
 
     expect(error).toBeInstanceOf(Error);
     const message = (error as Error).message;
-    expect(message).toContain("timed out after 30s");
+    expect(message).toContain("timed out after 90s");
     expect(message).toContain("signal=SIGTERM");
     expect(message).toContain("exit code=null");
     expect(message).toContain("elapsed 30000 ms");
@@ -103,7 +103,21 @@ describe("discord poll per-command timeouts (Issue #2569 c)", () => {
     await cli.review();
 
     expect(calls[0].timeout).toBe(120_000);
-    expect(calls[1].timeout).toBe(30_000);
+    expect(calls[1].timeout).toBe(90_000);
+  });
+
+  it("gives the review snapshot a 90 s timeout (Issue #2581)", async () => {
+    const calls: FakeCall[] = [];
+    const exec: ExecFileLike = async (file, args, options) => {
+      calls.push({ file, args, timeout: options.timeout });
+      return { stdout: okStdout(emptyListData), stderr: "" };
+    };
+    const cli = new ArcadiaCli({ workspace: "/ws", cliPath: "/bin/arcadia", exec });
+
+    await cli.review();
+
+    expect(calls[0].args).toContain("review");
+    expect(calls[0].timeout).toBe(90_000);
   });
 });
 
