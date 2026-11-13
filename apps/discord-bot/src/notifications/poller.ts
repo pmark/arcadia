@@ -47,15 +47,46 @@ export interface NotificationEvaluation {
   nextState: NotificationState;
 }
 
+/** Most poll CLI calls in flight at once; more than this starved the CLI under load (Issue #2569). */
+export const NOTIFICATION_POLL_CONCURRENCY = 3;
+
+/**
+ * Bounds how many of the given tasks run at once. A slot is handed straight to
+ * the next waiting task, so the limit holds even when a task finishes as another
+ * one starts.
+ */
+export function createConcurrencyLimiter(maxConcurrent: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let active = 0;
+  const waiting: Array<() => void> = [];
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (active < maxConcurrent) {
+      active++;
+    } else {
+      await new Promise<void>((resolve) => waiting.push(resolve));
+    }
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) {
+        next();
+      } else {
+        active--;
+      }
+    }
+  };
+}
+
 export async function loadNotificationSnapshot(cli: ArcadiaCli): Promise<NotificationSnapshot> {
+  const limit = createConcurrencyLimiter(NOTIFICATION_POLL_CONCURRENCY);
   const [status, review, queue, runs, milestones, codex, agentAsk] = await Promise.all([
-    cli.status(),
-    cli.review(),
-    cli.queue(),
-    cli.runs(20),
-    cli.milestones("completed", 20),
-    cli.codexTasks(false),
-    cli.agentAskNotifications()
+    limit(() => cli.status()),
+    limit(() => cli.review()),
+    limit(() => cli.queue()),
+    limit(() => cli.runs(20)),
+    limit(() => cli.milestones("completed", 20)),
+    limit(() => cli.codexTasks(false)),
+    limit(() => cli.agentAskNotifications())
   ]);
 
   return {
