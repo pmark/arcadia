@@ -354,7 +354,7 @@ describe("liveness-check runs the momentum alarm on the same timer", () => {
     const root = workspace();
     const response = await runProductionLivenessTimerCommand(
       { workspace: root },
-      { liveness: { now: () => ms("17:00:00"), readProductionActive: () => false }, momentum: { readRow: async () => row(), readStartable: () => ({ readable: true, count: 3, reason: null }) } }
+      { liveness: { now: () => ms("17:00:00"), readProductionActive: () => false }, momentum: { readRow: async () => row(), readStartable: () => ({ readable: true, count: 3, reason: null }), readCustodian: () => ({ readable: true, lastLiveAt: ms("16:59:00"), reason: null }) } }
     );
     expect(response.command).toBe("production.liveness-check");
     expect(response.data.observation.kind).toBe("inactive");

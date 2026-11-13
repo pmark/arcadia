@@ -145,7 +145,11 @@ today and what is still pending.
   Off with nothing eligible) pages only with `--duty-off-alarm`, so a quiet night
   pages nobody by default. Turning the Off alarm on by default is the operator's
   decision. A recorded episode whose page never queued is paged on the next run,
-  marked as cleared if its condition has ended. A page that
+  marked as cleared if its condition has ended. While a condition cannot be
+  judged (an unreadable count or custodian), a never-queued episode waits and is
+  not paged; the cannot-judge page and its output line name the reason. Not
+  judged (Off with the flag off) carries an open episode and opens or closes
+  nothing. A page that
   opens an episode is never repeated until that episode closes, and only one
   episode is open at a time; the root condition is the first by precedence
   (custodian, then Off with nothing eligible, then ready below the floor).

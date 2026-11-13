@@ -13,7 +13,7 @@ import {
   type DutyEpisodeRecord,
   type DutyInput
 } from "../src/production/dutyAlarms.js";
-import { runProductionMomentumCheckCommand, type ProductionMomentumDependencies, type StartableCount } from "../src/commands/productionMomentum.js";
+import { renderProductionMomentumLines, runProductionMomentumCheckCommand, type ProductionMomentumDependencies, type StartableCount } from "../src/commands/productionMomentum.js";
 import type { LivenessPingInput } from "../src/commands/productionLiveness.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -401,13 +401,14 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
     expect(duties(queued)[0]?.message).toContain("production Off with nothing eligible");
   });
 
-  it("an unreadable startable count is unknown: it holds the Off alarm, and never reads as zero", async () => {
+  it("an unreadable startable count is unknown: it holds the Off alarm (no episode), surfaces as one cannot-judge page, and never reads as zero", async () => {
     const root = workspace();
     const queued: LivenessPingInput[] = [];
     const h = harness(root, queued, { dutyOffAlarm: true });
     const unreadable = { readable: false, count: null, reason: "readiness blocked" } as const;
     expect((await h.run("17:00:00", row({ desired: "inactive", ready_actions: 0 }), healthy, unreadable)).duty.ping).toBeNull();
-    expect(duties(queued)).toHaveLength(0);
+    expect(duties(queued).every((ping) => ping.message.includes("DUTY CANNOT JUDGE"))).toBe(true);
+    expect(duties(queued).some((ping) => ping.message.includes("production Off with nothing eligible"))).toBe(false);
   });
 
   it("the floor fires while Off with the Off alarm on, through the wired path, and stays quiet with it off", async () => {
@@ -432,14 +433,15 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
     await expect(h.run("17:00:00", row({ ready_actions: 2 }))).rejects.toThrow(/outbox busy/);
     const recorded = state(root).duty.open;
     expect(recorded?.delivery).toBeNull();
-    const cleared = await h.run("17:01:00", row({ ready_actions: 10 }));
+    // The first run's startable read (2) is cached for 5 minutes, so the count only changes once the cache expires.
+    const cleared = await h.run("17:06:00", row({ ready_actions: 10 }));
     expect(cleared.duty.ping).toBe("alert");
     const sent = duties(queued);
     expect(sent).toHaveLength(1);
     expect(sent[0]?.message).toContain("Cleared before this page was sent");
     expect(sent[0]?.episodeKey).toBe(recorded?.key);
     expect(state(root).duty.open).toBeNull();
-    expect(state(root).duty.closedAt).toBe(at("17:01:00"));
+    expect(state(root).duty.closedAt).toBe(at("17:06:00"));
   });
 
   it("a first observed admission is not progress: the floor pages until a real count change, then the healthy window holds it to the cap", async () => {
@@ -459,5 +461,77 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
     expect((await h.run("17:01:00", moving(1, 2))).duty.ping).toBeNull();
     // 125 minutes after the change: past the 120-minute cap, the floor pages.
     expect((await h.run("19:05:00", moving(1, 2))).duty.ping).toBe("alert");
+  });
+
+  it("an open episode is carried, not closed, while production is Off with the Off alarm off, and resumes when not Off", async () => {
+    const root = workspace();
+    const queued: LivenessPingInput[] = [];
+    const h = harness(root, queued);
+    const stale: CustodianLiveness = { readable: true, lastLiveAt: ms("16:00:00"), reason: null };
+    expect((await h.run("17:00:00", row(), stale)).duty.ping).toBe("alert");
+    // Off with default flags: the custodian condition is not judged, so the open episode is carried, never cleared.
+    expect((await h.run("17:01:00", row({ desired: "inactive", ready_actions: 0 }), stale)).duty.ping).toBeNull();
+    expect(state(root).duty.open?.cause).toBe("no_custodian");
+    // Back to not Off, condition still holding: the same episode continues, with no second page.
+    expect((await h.run("17:02:00", row(), stale)).duty.ping).toBeNull();
+    expect(duties(queued)).toHaveLength(1);
+    // The custodian is live again while not Off: the episode closes once, with its duration.
+    const back: CustodianLiveness = { readable: true, lastLiveAt: ms("17:02:30"), reason: null };
+    expect((await h.run("17:03:00", row(), back)).duty.ping).toBe("close");
+    expect(duties(queued)).toHaveLength(2);
+    expect(duties(queued)[1]?.message).toContain("DUTY cleared");
+  });
+
+  it("an unknown count is surfaced: one duty page per unknown episode, named in the output, and cleared when judgement resumes", async () => {
+    const root = workspace();
+    const queued: LivenessPingInput[] = [];
+    const h = harness(root, queued);
+    const unreadable = { readable: false, count: null, reason: "readiness blocked for martianrover: scope" } as const;
+    const first = await h.run("17:00:00", row(), healthy, unreadable);
+    expect(first.dutyUnknown).toEqual(["ready Action count is unknown: readiness blocked for martianrover: scope"]);
+    expect(renderProductionMomentumLines(first).join("\n")).toContain("readiness blocked for martianrover");
+    expect(duties(queued)).toHaveLength(1);
+    expect(duties(queued)[0]?.message).toContain("DUTY CANNOT JUDGE");
+    expect(duties(queued)[0]?.message).toContain("readiness blocked for martianrover");
+
+    const again = await h.run("17:01:00", row(), healthy, unreadable);
+    expect(again.dutyUnknown).toHaveLength(1);
+    expect(duties(queued)).toHaveLength(1);
+
+    const readable = { readable: true, count: 10, reason: null } as const;
+    expect((await h.run("17:02:00", row(), healthy, readable)).dutyUnknown).toEqual([]);
+    expect(duties(queued)).toHaveLength(2);
+    expect(duties(queued)[1]?.message).toContain("DUTY can judge again");
+  });
+
+  it("an unknown count while Off pages nothing by default, and pages with the Off alarm on", async () => {
+    const unreadable = { readable: false, count: null, reason: "readiness blocked" } as const;
+    const offQueued: LivenessPingInput[] = [];
+    const off = harness(workspace(), offQueued);
+    expect((await off.run("17:00:00", row({ desired: "inactive", ready_actions: 0 }), healthy, unreadable)).dutyUnknown).toEqual([]);
+    expect(duties(offQueued)).toHaveLength(0);
+
+    const onQueued: LivenessPingInput[] = [];
+    const on = harness(workspace(), onQueued, { dutyOffAlarm: true });
+    expect((await on.run("17:00:00", row({ desired: "inactive", ready_actions: 0 }), healthy, unreadable)).dutyUnknown.length).toBeGreaterThan(0);
+    expect(duties(onQueued)).toHaveLength(1);
+    expect(duties(onQueued)[0]?.message).toContain("DUTY CANNOT JUDGE");
+  });
+
+  it("the readiness walk runs at most once per 5 minutes: the cached count serves the runs between", async () => {
+    const root = workspace();
+    let reads = 0;
+    const deps: ProductionMomentumDependencies = {
+      queuePing: () => ({ id: "ping_cache" }),
+      readCustodian: () => healthy,
+      readStartable: () => {
+        reads += 1;
+        return { readable: true, count: 10, reason: null };
+      }
+    };
+    for (const clock of ["17:00:00", "17:01:00", "17:02:00", "17:05:00", "17:06:00"]) {
+      await runProductionMomentumCheckCommand({ workspace: root, readyFloor: 6 }, { ...deps, now: () => ms(clock), readRow: async () => ({ ...row(), ts: at(clock) }) });
+    }
+    expect(reads).toBe(2);
   });
 });

@@ -14,14 +14,20 @@ import {
   CUSTODIAN_ROLE,
   DUTY_READY_FLOOR_DEFAULT,
   DUTY_READY_FLOOR_MAX,
+  STARTABLE_CACHE_MINUTES,
   decideDuty,
+  decideUnknown,
   dutyAlertMessage,
   dutyCloseMessage,
+  dutyUnknownCloseMessage,
+  dutyUnknownMessage,
   emptyDutySlot,
   type CustodianLiveness,
   type DutyEpisodeRecord,
   type DutyInput,
-  type DutySlot
+  type DutySlot,
+  type StartableCache,
+  type UnknownEpisode
 } from "../production/dutyAlarms.js";
 import { readProductionPolicySafely } from "../production/policy.js";
 import {
@@ -143,6 +149,8 @@ export interface ProductionMomentumData {
   check: MomentumAlarmResult;
   /** The duty alarm (no custodian, Off with nothing eligible, ready below the floor); one episode at a time. */
   duty: MomentumAlarmResult;
+  /** The reasons the duty alarm cannot judge this run (empty when it judges, or while not judged). Printed on every run they hold. */
+  dutyUnknown: string[];
   thresholds: { idleMinutes: number; keeperGraceMinutes: number; readyFloor: number };
 }
 
@@ -248,6 +256,17 @@ function validAdmissions(value: unknown): value is NonNullable<DutySlot["admissi
     && (admissions.changedAt === null || (typeof admissions.changedAt === "string" && Number.isFinite(Date.parse(admissions.changedAt))));
 }
 
+function validUnknown(value: unknown): value is UnknownEpisode {
+  const episode = value as Partial<UnknownEpisode> | null | undefined;
+  return !!episode && typeof episode.key === "string" && typeof episode.startedAt === "string"
+    && Number.isFinite(Date.parse(episode.startedAt)) && Array.isArray(episode.reasons);
+}
+
+function validStartable(value: unknown): value is StartableCache {
+  const cache = value as Partial<StartableCache> | null | undefined;
+  return !!cache && typeof cache.count === "number" && typeof cache.readAt === "string" && Number.isFinite(Date.parse(cache.readAt));
+}
+
 function validDuty(value: unknown): value is DutySlot {
   if (value === undefined || value === null) return true;
   if (typeof value !== "object") return false;
@@ -277,7 +296,14 @@ function readState(workspacePath: string): { state: MomentumState; problem: stri
     const since = value.checkFailingSince ?? null;
     if (since !== null && !(typeof since === "string" && Number.isFinite(Date.parse(since)))) throw new Error("malformed checkFailingSince");
     const duty: DutySlot = value.duty
-      ? { open: value.duty.open ?? null, closedAt: value.duty.closedAt ?? null, admissions: validAdmissions(value.duty.admissions) ? value.duty.admissions : null }
+      ? {
+        open: value.duty.open ?? null,
+        closedAt: value.duty.closedAt ?? null,
+        admissions: validAdmissions(value.duty.admissions) ? value.duty.admissions : null,
+        unknown: validUnknown(value.duty.unknown) ? value.duty.unknown : null,
+        unknownClosedAt: typeof value.duty.unknownClosedAt === "string" ? value.duty.unknownClosedAt : null,
+        startable: validStartable(value.duty.startable) ? value.duty.startable : null
+      }
       : emptyDutySlot();
     return { state: { schema: MOMENTUM_STATE_SCHEMA, idle: value.idle, keeper: value.keeper, check: value.check, checkFailingSince: since, duty }, problem: null };
   } catch (error) {
@@ -415,7 +441,15 @@ export async function runProductionMomentumCheckCommand(
   // own state and outbox key, but the same queue, state file and failure handling as the other alarms.
   const dutyPrior = state.duty.open;
   const custodian = (dependencies.readCustodian ?? readCustodianLiveness)(workspacePath);
-  const startable = (dependencies.readStartable ?? readStartableCount)(workspacePath);
+  // The readiness walk reads many documents, so a successful read is reused for STARTABLE_CACHE_MINUTES.
+  const cached = state.duty.startable;
+  const cacheFresh = cached !== null && now.getTime() - Date.parse(cached.readAt) < STARTABLE_CACHE_MINUTES * 60_000;
+  const startable: StartableCount = cached !== null && cacheFresh
+    ? { readable: true, count: cached.count, reason: null }
+    : (dependencies.readStartable ?? readStartableCount)(workspacePath);
+  const startableCache: StartableCache | null = startable.readable && startable.count !== null
+    ? (cached !== null && cacheFresh ? cached : { count: startable.count, readAt: now.toISOString() })
+    : null;
   const liveAdmissions = readRow.critical_path.live_admissions;
   // The healthy-window clock restarts only on a real change in the live-admission COUNT (the read model has no
   // identities, so a swap keeps the clock running). A first observation is not progress: the clock stays null
@@ -424,10 +458,13 @@ export async function runProductionMomentumCheckCommand(
   const admissions = prior && prior.count === liveAdmissions
     ? prior
     : { count: liveAdmissions, changedAt: prior === null ? null : now.toISOString() };
+  // Every write below carries the whole duty slot, so no alarm loses another's state.
+  const dutySlot: DutySlot = { ...state.duty, admissions, startable: startableCache };
   const duty = decideDuty(dutyPrior, {
     now: now.getTime(),
     // The startable count, not `ready_actions`: blocked Actions are excluded. Unreadable is unknown (null), never zero.
     readyCount: startable.readable ? startable.count : null,
+    readyUnknownReason: startable.readable ? null : startable.reason,
     floor: readyFloor,
     production: readRow.critical_path.state === "unreadable" || readRow.critical_path.desired_state === null
       ? "unknown"
@@ -445,7 +482,7 @@ export async function runProductionMomentumCheckCommand(
     }
   } satisfies DutyInput);
   let dutyResult: MomentumAlarmResult = { ping: null, pingId: null, message: null, open: dutyPrior !== null };
-  let nextDuty: DutySlot = { open: duty.next, closedAt: state.duty.closedAt, admissions };
+  let nextDuty: DutySlot = { ...dutySlot, open: duty.next };
   if (duty.transition === "open" || duty.transition === "close") {
     const priorPingId = dutyPrior?.delivery?.pingId ?? "unqueued";
     const opening = duty.next as DutyEpisodeRecord;
@@ -454,7 +491,7 @@ export async function runProductionMomentumCheckCommand(
     if (duty.transition === "open") {
       // The episode is written before its page is queued. If the queue succeeds and a later write fails, the next
       // run finds it undelivered and queues it again under the same key, which the outbox dedupes.
-      writeState(workspacePath, { ...next, duty: { open: opening, closedAt: state.duty.closedAt, admissions } });
+      writeState(workspacePath, { ...next, duty: { ...dutySlot, open: opening } });
     }
     try {
       const pingId = queue({
@@ -469,17 +506,57 @@ export async function runProductionMomentumCheckCommand(
       }).id;
       // A page for an episode that cleared before it was sent is the whole episode: it closes at once.
       nextDuty = duty.transition === "open" && !cleared
-        ? { open: { ...opening, delivery: { pingId, queuedAt: now.toISOString() } }, closedAt: state.duty.closedAt, admissions }
-        : { open: null, closedAt: now.toISOString(), admissions };
+        ? { ...dutySlot, open: { ...opening, delivery: { pingId, queuedAt: now.toISOString() } } }
+        : { ...dutySlot, open: null, closedAt: now.toISOString() };
       dutyResult = { ping: duty.transition === "open" ? "alert" : "close", pingId, message, open: nextDuty.open !== null };
     } catch (error) {
       // A failed open keeps the recorded, undelivered episode, so the next run re-queues it under the same key;
       // a failed close keeps the open episode, so the next run retries the close.
-      nextDuty = { open: duty.transition === "open" ? opening : dutyPrior, closedAt: state.duty.closedAt, admissions };
+      nextDuty = { ...dutySlot, open: duty.transition === "open" ? opening : dutyPrior };
       failures.push(`The duty ${duty.transition === "open" ? "alarm" : "recovery"} was not queued and will be retried on the next run: ${errorText(error)}`);
     }
   }
-  next.duty = nextDuty;
+
+  // The cannot-judge alarm: one page per unknown episode, while judgement is possible. Not judged (Off, Off alarm off)
+  // carries an open one and opens or closes nothing. Its reasons are printed on every run they hold.
+  const dutyJudged = duty.evaluation.judged;
+  const unknownReasons = duty.evaluation.unknown;
+  const unknownDecision = decideUnknown(state.duty.unknown, dutyJudged, unknownReasons, now.getTime());
+  let nextUnknown: UnknownEpisode | null = unknownDecision.next;
+  let unknownClosedAt = state.duty.unknownClosedAt;
+  if (unknownDecision.transition === "open" || unknownDecision.transition === "close") {
+    const priorPingId = state.duty.unknown?.delivery?.pingId ?? "unqueued";
+    const opening = unknownDecision.next as UnknownEpisode;
+    const cleared = unknownDecision.transition === "open" && unknownDecision.cleared;
+    const message = unknownDecision.transition === "open"
+      ? dutyUnknownMessage(opening, now, cleared)
+      : dutyUnknownCloseMessage(state.duty.unknown as UnknownEpisode, priorPingId, now);
+    if (unknownDecision.transition === "open") {
+      writeState(workspacePath, { ...next, duty: { ...nextDuty, unknown: opening } });
+    }
+    try {
+      const pingId = queue({
+        workspace: workspacePath,
+        message,
+        kind: "attention",
+        link: dashboardLink(options.dashboardUrl, "/production"),
+        agent: DUTY_PING_AGENT,
+        episodeKey: unknownDecision.transition === "open" ? opening.key : closingKey(priorPingId),
+        episodeAfter: state.duty.unknownClosedAt,
+        now
+      }).id;
+      if (unknownDecision.transition === "open" && !cleared) {
+        nextUnknown = { ...opening, delivery: { pingId, queuedAt: now.toISOString() } };
+      } else {
+        nextUnknown = null;
+        unknownClosedAt = now.toISOString();
+      }
+    } catch (error) {
+      nextUnknown = unknownDecision.transition === "open" ? opening : state.duty.unknown;
+      failures.push(`The cannot-judge ${unknownDecision.transition === "open" ? "alarm" : "recovery"} was not queued and will be retried on the next run: ${errorText(error)}`);
+    }
+  }
+  next.duty = { ...nextDuty, unknown: nextUnknown, unknownClosedAt };
 
   if (stateProblem !== null || JSON.stringify(next) !== JSON.stringify(state)) writeState(workspacePath, next);
   if (stateProblem !== null) failures.push(`The momentum state file was unreadable and has been replaced: ${stateProblem}`);
@@ -498,15 +575,19 @@ export async function runProductionMomentumCheckCommand(
       keeper: keeperStep.result,
       check: checkStep.result,
       duty: dutyResult,
+      dutyUnknown: dutyJudged ? unknownReasons : [],
       thresholds: { idleMinutes, keeperGraceMinutes, readyFloor }
     }
   });
 }
 
 export function renderProductionMomentumLines(data: ProductionMomentumData, stamp = new Date().toISOString()): string[] {
-  return [data.check, data.idle, data.keeper, data.duty]
+  const lines = [data.check, data.idle, data.keeper, data.duty]
     .filter((result) => result.message !== null)
     .map((result) => `${stamp} queued ping ${result.pingId}: ${result.message}`);
+  // Printed on every run the duty alarm cannot judge, so the cause is in the output, not only in the page.
+  if (data.dutyUnknown.length > 0) lines.push(`${stamp} duty alarm cannot judge: ${data.dutyUnknown.join("; ")}`);
+  return lines;
 }
 
 export interface LivenessTimerOptions extends ProductionLivenessOptions {

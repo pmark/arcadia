@@ -1,20 +1,26 @@
 import { closingKey, fitPing, formatAge } from "./momentumWatch.js";
 
 /**
- * Duty alarms (housekeeping A8; Issue #2231 family, Momentum Keeper rules 1, 9, 10).
+ * Duty alarms (housekeeping A8; Issue #2231 family, Momentum Keeper rules 1, 8, 9, 10).
  *
  * Three supply and custody conditions page once per root idle episode, on the
  * existing momentum timer (`productionMomentum.ts`, which reads the idle-front
- * row):
+ * row and the readiness read model):
  *
  * - `no_custodian`: no coordinator custodian has been live for 10 minutes.
- * - `off_nothing_eligible`: production is Off and no scope Action is eligible.
- * - `ready_below_floor`: the ready-Action count is below the floor.
+ * - `off_nothing_eligible`: production is Off and no startable Action is eligible.
+ * - `ready_below_floor`: the startable count is below the floor.
  *
- * Pure: every input is passed in; it reads nothing, queues nothing and grants
- * nothing. The caller queues the one ping a transition asks for and records the
- * outbox id as delivery. Acknowledgment is a separate field that only a later
- * operator acknowledgment may set; nothing here sets it.
+ * While production is Off, every condition is "not judged" unless the Off alarm is on.
+ * "Not judged" never opens or closes an episode: an open one is carried.
+ *
+ * A condition that cannot be judged because a count cannot be read is an unknown. It
+ * pages once per unknown episode (`duty_unknown`) and closes when judgement resumes.
+ *
+ * Pure: every input is passed in; it reads nothing, queues nothing and grants nothing.
+ * The caller queues the one ping a transition asks for and records the outbox id as
+ * delivery. Acknowledgment is a separate field that only a later operator acknowledgment
+ * may set; nothing here sets it.
  */
 
 /** Uncalibrated (rule 1): a target the operator may change with `--ready-floor`, not a guarantee. */
@@ -23,15 +29,14 @@ export const DUTY_READY_FLOOR_MAX = 100;
 /** The alarm's silence threshold for the custodian (rule 8, "10 minutes"). */
 export const CUSTODIAN_SILENCE_MINUTES = 10;
 /**
- * The cap on the healthy-window suppression. The read model has no per-Action
- * activity clock, so "healthy" is read as: the critical path says moving, with
- * live admissions, and the live-admission count changed within this many minutes.
- * The read model carries only a count, so a swap of one admission for another
- * does not reset the clock. The cap stops a stuck moving admission from silencing the floor forever. The
- * tradeoff: a healthy Action that runs past it with no admission change pages
- * the floor once. Revisit when the read model carries per-Action activity.
+ * The cap on the healthy-window suppression. The read model carries only a live-admission
+ * COUNT, so "healthy" is read as: the critical path says moving, with live admissions, and
+ * the count changed within this many minutes. A swap of one admission for another keeps the
+ * clock running. The cap stops a stuck moving admission from silencing the floor forever.
  */
 export const HEALTHY_MAX_SILENCE_MINUTES = 120;
+/** The readiness walk reads many documents, so its result is reused for this long. */
+export const STARTABLE_CACHE_MINUTES = 5;
 /** The coordinator role whose custodian transcript is the liveness signal. */
 export const CUSTODIAN_ROLE = "rowan" as const;
 
@@ -68,14 +73,13 @@ export interface CustodianLiveness {
 
 export interface DutyInput {
   now: number;
-  /**
-   * Ready Actions that can start now, across accepted Plans (the readiness read model's `readyTotal`), so blocked
-   * Actions are excluded. Null when the readiness read cannot be made: unknown, which holds the alarms.
-   */
+  /** Startable Actions across accepted Plans (readiness `readyTotal`); null when that count cannot be read. */
   readyCount: number | null;
+  /** Why `readyCount` is null, when it is: named in the unknown, never dropped. */
+  readyUnknownReason: string | null;
   floor: number;
   production: "active" | "off" | "unknown";
-  /** Eligible Actions to start now; null when unknown. The caller passes the same startable count as `readyCount`: the read model has no separate grant check. */
+  /** Eligible Actions to start now; null when unknown. The caller passes the same startable count as `readyCount`. */
   eligibleCount: number | null;
   /** Off with nothing eligible pages only when this is on (`--duty-off-alarm`); off by default. */
   offNothingAlarm: boolean;
@@ -102,59 +106,76 @@ export interface DutyEpisodeRecord {
   acknowledgment: { acknowledgedAt: string; by: string } | null;
 }
 
+/** A cannot-judge episode: a count that could not be read, while judgement was possible. */
+export interface UnknownEpisode {
+  startedAt: string;
+  key: string;
+  /** The unknown reasons as of the last run that saw them. */
+  reasons: string[];
+  delivery: { pingId: string; queuedAt: string } | null;
+}
+
+export interface StartableCache {
+  count: number;
+  readAt: string;
+}
+
 export interface DutySlot {
   open: DutyEpisodeRecord | null;
-  /** When the last episode closed (ISO); an outbox row at or before it belongs to another episode. */
+  /** When the last duty episode closed (ISO); an outbox row at or before it belongs to another episode. */
   closedAt: string | null;
-  /**
-   * The live-admission count, and when that count last changed (ISO), for the healthy-window cap. `changedAt` is null
-   * until a real change is seen: a first observation is not evidence of progress. A swap keeps the clock running.
-   */
+  /** The live-admission count, and when that count last changed (ISO), for the healthy-window cap. Null `changedAt` means no change seen yet. */
   admissions: { count: number; changedAt: string | null } | null;
+  /** The open cannot-judge episode, if any. */
+  unknown: UnknownEpisode | null;
+  /** When the last cannot-judge episode closed (ISO). */
+  unknownClosedAt: string | null;
+  /** The last successful startable read, reused for STARTABLE_CACHE_MINUTES. */
+  startable: StartableCache | null;
 }
 
 export function emptyDutySlot(): DutySlot {
-  return { open: null, closedAt: null, admissions: null };
+  return { open: null, closedAt: null, admissions: null, unknown: null, unknownClosedAt: null, startable: null };
 }
 
 export interface DutyEvaluation {
   /** Conditions that hold now, in precedence order. */
   active: DutyCause[];
-  /** Conditions that cannot be judged this run. An unknown never closes an episode. */
+  /** Conditions that cannot be judged this run, with reasons. An unknown never closes an episode. */
   unknown: string[];
+  /** False while production is Off with the Off alarm off: nothing is judged, and no episode may open or close. */
+  judged: boolean;
 }
 
 export function evaluateDuty(input: DutyInput): DutyEvaluation {
+  const now = input.now;
+  // While Off, every condition is not judged unless the Off alarm is on (`--duty-off-alarm`). Not judged is not
+  // "clear": it never opens or closes an episode. Not Off (Active, or unreadable) is judged by default.
+  if (input.production === "off" && !input.offNothingAlarm) return { active: [], unknown: [], judged: false };
+
   const active: DutyCause[] = [];
   const unknown: string[] = [];
-  const now = input.now;
-  // While Off, every duty condition is quiet unless the Off alarm is on (`--duty-off-alarm`). Off is the normal state
-  // while START is pending, so a quiet night pages nobody by default. Not Off (Active, or unreadable) pages by default.
-  const offQuiet = input.production === "off" && !input.offNothingAlarm;
+  const withReason = (text: string) => (input.readyUnknownReason ? `${text}: ${input.readyUnknownReason}` : text);
 
-  if (!offQuiet) {
-    // Custodian: silent only from a readable record with a known last-live time.
-    if (!input.custodian.readable) unknown.push(`custodian liveness unreadable${input.custodian.reason ? `: ${input.custodian.reason}` : ""}`);
-    else if (input.custodian.lastLiveAt === null) unknown.push("no custodian has been recorded yet");
-    else if (now - input.custodian.lastLiveAt >= CUSTODIAN_SILENCE_MINUTES * 60_000) active.push("no_custodian");
-  }
+  // Custodian: silent only from a readable record with a known last-live time.
+  if (!input.custodian.readable) unknown.push(`custodian liveness unreadable${input.custodian.reason ? `: ${input.custodian.reason}` : ""}`);
+  else if (input.custodian.lastLiveAt === null) unknown.push("no custodian has been recorded yet");
+  else if (now - input.custodian.lastLiveAt >= CUSTODIAN_SILENCE_MINUTES * 60_000) active.push("no_custodian");
 
   // Off with nothing eligible: opt-in only.
   if (input.offNothingAlarm) {
     if (input.production === "unknown") unknown.push("production state is unreadable");
     else if (input.production === "off") {
-      if (input.eligibleCount === null) unknown.push("eligible Action count is unknown");
+      if (input.eligibleCount === null) unknown.push(withReason("eligible Action count is unknown"));
       else if (input.eligibleCount === 0) active.push("off_nothing_eligible");
     }
   }
 
   // Ready floor: a healthy running Action means the critical path is moving, so it is not idle supply.
-  if (!offQuiet) {
-    if (input.readyCount === null) unknown.push("ready Action count is unknown");
-    else if (input.readyCount < input.floor && !isHealthyRunning(input.running, now)) active.push("ready_below_floor");
-  }
+  if (input.readyCount === null) unknown.push(withReason("ready Action count is unknown"));
+  else if (input.readyCount < input.floor && !isHealthyRunning(input.running, now)) active.push("ready_below_floor");
 
-  return { active: PRECEDENCE.filter((cause) => active.includes(cause)), unknown };
+  return { active: PRECEDENCE.filter((cause) => active.includes(cause)), unknown, judged: true };
 }
 
 /** A running Action is healthy while the live-admission count changed within the cap (see HEALTHY_MAX_SILENCE_MINUTES). */
@@ -163,11 +184,11 @@ export function isHealthyRunning(running: DutyInput["running"], now: number): bo
 }
 
 export type DutyTransition =
-  /** A new root episode: queue one alert and record its delivery. */
+  /** A new root episode, or a recorded one still to be queued: queue one alert and record its delivery. */
   | "open"
-  /** The open episode continues (or none is open and none holds): nothing is queued. */
+  /** The open episode continues, or nothing is open and nothing holds: nothing is queued. */
   | "none"
-  /** Something cannot be judged: the open episode stays open and silent. */
+  /** Not judged or not readable: the episode is carried exactly as it is, and nothing is queued. */
   | "hold"
   /** Every condition has cleared: queue one closing line. */
   | "close";
@@ -185,6 +206,8 @@ export function decideDuty(prior: DutyEpisodeRecord | null, input: DutyInput): {
   cleared: boolean;
 } {
   const evaluation = evaluateDuty(input);
+  // Not judged never changes an episode, open or not: the episode is carried, and nothing closes or opens.
+  if (!evaluation.judged) return { transition: prior ? "hold" : "none", evaluation, next: prior, cleared: false };
   const { active, unknown } = evaluation;
   const now = new Date(input.now).toISOString();
 
@@ -229,6 +252,31 @@ export function decideDuty(prior: DutyEpisodeRecord | null, input: DutyInput): {
   return { transition: "none", evaluation, next: null, cleared: false };
 }
 
+/**
+ * The cannot-judge state table: one page per unknown episode, while judgement is possible. Not judged (Off with
+ * the Off alarm off) carries an open unknown episode and never opens or closes one.
+ */
+export function decideUnknown(prior: UnknownEpisode | null, judged: boolean, unknown: string[], now: number): {
+  transition: DutyTransition;
+  next: UnknownEpisode | null;
+  cleared: boolean;
+} {
+  if (!judged) return { transition: prior ? "hold" : "none", next: prior, cleared: false };
+  const nowIso = new Date(now).toISOString();
+  if (unknown.length > 0) {
+    if (prior && prior.delivery !== null) return { transition: "none", next: { ...prior, reasons: unknown }, cleared: false };
+    if (prior) return { transition: "open", next: { ...prior, reasons: unknown }, cleared: false };
+    return {
+      transition: "open",
+      next: { startedAt: nowIso, key: `duty_unknown since ${nowIso}`, reasons: unknown, delivery: null },
+      cleared: false
+    };
+  }
+  if (prior && prior.delivery !== null) return { transition: "close", next: null, cleared: false };
+  if (prior) return { transition: "open", next: prior, cleared: true };
+  return { transition: "none", next: null, cleared: false };
+}
+
 export function dutyLabel(cause: DutyCause): string {
   return LABEL[cause];
 }
@@ -249,4 +297,18 @@ export function dutyAlertMessage(record: DutyEpisodeRecord, now: Date, clearedBe
 export function dutyCloseMessage(open: DutyEpisodeRecord, pingId: string, now: Date): string {
   const after = formatAge(now.getTime() - Date.parse(open.startedAt));
   return `✅ DUTY cleared: ${dutyLabel(open.cause)}, ${after} after the duty alarm ${closingKey(pingId)}.`;
+}
+
+export function dutyUnknownMessage(record: UnknownEpisode, now: Date, clearedBeforeDelivery = false): string {
+  const since = formatAge(now.getTime() - Date.parse(record.startedAt));
+  return fitPing(
+    `🚨🚨🚨 DUTY CANNOT JUDGE for ${since}: ${record.reasons.join("; ")}`,
+    " The duty alarm holds its conditions until they can be read.",
+    clearedBeforeDelivery ? ` Cleared before this page was sent; ${record.key}. Nothing was started.` : ` ${record.key}. Nothing was started.`
+  );
+}
+
+export function dutyUnknownCloseMessage(open: UnknownEpisode, pingId: string, now: Date): string {
+  const after = formatAge(now.getTime() - Date.parse(open.startedAt));
+  return `✅ DUTY can judge again, ${after} after the cannot-judge alert ${closingKey(pingId)}.`;
 }

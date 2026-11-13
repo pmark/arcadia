@@ -1810,15 +1810,25 @@ alarms, each paging once through `arcadia ping` (agent `Momentum watch`, kind
     `--duty-off-alarm` on `production liveness-check`. Otherwise a quiet Off
     night pages nobody. When production is not Off (Active, or unreadable), the
     custodian and floor conditions page by default. Turning the Off alarm on by
-    default is the operator's decision.
+    default is the operator's decision. While Off with the flag off, nothing is
+    judged: an open episode is carried, neither closed nor reopened, and it
+    continues when production is not Off again.
+  - **Cannot judge.** When a count or the custodian cannot be read, the duty
+    alarm pages once per unknown episode (`🚨🚨🚨 DUTY CANNOT JUDGE`, with the
+    reason), and prints `duty alarm cannot judge: <reason>` on every timer run
+    while the reason holds. It closes with `✅ DUTY can judge again` when the
+    read recovers. A custodian with no recorded coordinator is also reported
+    this way, so a deployment without one pages once and logs the reason each
+    minute.
   - **No custodian:** no live coordinator transcript (`rowan`) for 10 minutes.
     Unknown, not silent, when no custodian is recorded or the record cannot be
     read.
   - **Ready below floor:** the startable count is below `--ready-floor`
     (default 6). The count is the readiness read model's ready Actions across
     accepted Plans (the `arcadia start-run readiness` walk), so blocked Actions
-    are not counted. It is read from the invocation checkout's documents on every
-    run. If that cannot be read, the count is unknown and holds the alarms. The
+    are not counted. It is read from the invocation checkout's documents, at most
+    once every 5 minutes; between reads the last count is used. If it cannot be
+    read, the count is unknown and the duty alarm cannot judge (see above). The
     default is uncalibrated, and it counts Actions, not batches. The operator's
     "always at least 2 batches ready" direction is not encoded yet.
     **Healthy-window limit:** a running Action suppresses the floor only while
