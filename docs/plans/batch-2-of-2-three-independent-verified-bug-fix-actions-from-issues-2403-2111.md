@@ -34,19 +34,20 @@ actions:
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the State unknown Retry in apps/dashboard/app/todo/[kind]/[...id]/page.tsx refresh the card read as well as the state, fixing Issue #2111 finding 1."
+    next_action: Make the Decision page State unknown Retry refresh the card read as well as the state, and make the failed-read e2e assertion wait for React to apply the failed render, fixing Issue 2111 findings 1 and 2.
     expected_artifact: Evidence satisfying Agent Ask retry-refreshes-card-read-on-todo-decision
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-batch-2-20261113
-    why: "When the card read is what failed, Retry calls only state.refresh, so the button does nothing useful until the next 15-second poll."
+    source: Agent Ask amend-action-2111-scope-20261113
+    why: "When the card read is what failed, the Decision Retry called only state.refresh, so the button did nothing useful until the next 15-second poll; a failed-read e2e assertion could also pass before React applied the failed render."
     acceptance_criteria:
-      - An end-to-end regression in tests/e2e/todo-decision-light.spec.ts forces the card read to fail once, clicks Retry, and asserts the card read is repeated and the card renders; it fails before the fix and passes after.
-      - Both onRetry handlers in the page call the card refresh and the state refresh, and every other test in tests/e2e/todo-decision-light.spec.ts passes unchanged.
-      - Apart from the settlement records Arcadia writes, the change touches only apps/dashboard/app/todo/[kind]/[...id]/page.tsx and tests/e2e/todo-decision-light.spec.ts. Proof that tests, lint and tsc pass comes from required CI on the pull request head.
+      - An end-to-end regression in tests/e2e/todo-decision-light.spec.ts, named Retry on a failed Decision read re-reads the card as well as the state, forces the card read to fail once, clicks Retry on the Decision page, and asserts the card read is repeated and the card renders; it fails before the fix and passes after, shown by a recorded red run or required CI on the pull request head.
+      - The Decision page State unknown Retry calls both the card refresh and the state refresh; the other-item Retry calls only the state refresh because agent asks and other to-dos have no card read; and the card hook returns a refresh that re-reads the same card URL on demand, covered by apps/dashboard/hooks/use-decision-cards.test.tsx and apps/dashboard/components/todo-decision-retry.test.tsx.
+      - In tests/e2e/todo-decision-light.spec.ts the failed-read test waits a short settle for React to apply the failed poll, then uses retrying negative checks for the nothing-can-be-pressed alert and the answer-from-the-card row control, and asserts the pinned card stays visible; every other test in that spec passes unchanged.
+      - Apart from the settlement records Arcadia writes, the change touches only apps/dashboard/app/todo/[kind]/[...id]/page.tsx, apps/dashboard/hooks/use-decision-cards.ts, the two unit test files named in the second criterion, and tests/e2e/todo-decision-light.spec.ts. Proof that tests, lint and tsc pass comes from required CI on the pull request head.
     depends_on: []
     decisions: []
-    references: ["https://github.com/pmark/arcadia/issues/2111", "apps/dashboard/app/todo/[kind]/[...id]/page.tsx"]
+    references: ["https://github.com/pmark/arcadia/issues/2111", "https://github.com/pmark/arcadia/pull/2557", "apps/dashboard/app/todo/[kind]/[...id]/page.tsx", "apps/dashboard/hooks/use-decision-cards.ts"]
   - id: bridge-added-dependencies-into-existing-worktree-trees
     title: "Make scripts/bridge-worktree-deps.mjs link dependencies missing from an already-present target tree instead of skipping the whole tree, fixing Issue #1825."
     status: open
