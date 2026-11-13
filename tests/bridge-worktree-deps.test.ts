@@ -85,6 +85,26 @@ describe("bridge-worktree-deps", () => {
       path.join(mainCheckout, "node_modules", "left-pad")
     );
   });
+
+  it("links a dependency added to main into a tree the worktree already has, instead of skipping that tree", () => {
+    const { mainCheckout, worktree } = createFixture();
+    run(worktree);
+
+    // A package added to main after the worktree was bridged (issue #1825).
+    mkdirSync(path.join(mainCheckout, "node_modules", "new-pkg"), { recursive: true });
+    writeFileSync(path.join(mainCheckout, "node_modules", "new-pkg", "index.js"), "module.exports = {};");
+
+    const output = run(worktree);
+
+    expect(output).toContain("filled  node_modules (+1 missing)");
+    expect(readlinkSync(path.join(worktree, "node_modules", "new-pkg"))).toBe(
+      path.join(mainCheckout, "node_modules", "new-pkg")
+    );
+    // Entries the worktree already had are left exactly as bridged.
+    expect(readlinkSync(path.join(worktree, "node_modules", "left-pad"))).toBe(
+      path.join(mainCheckout, "node_modules", "left-pad")
+    );
+  });
 });
 
 function run(worktree: string, helper: string = SCRIPT): string {
