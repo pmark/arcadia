@@ -129,6 +129,7 @@ import {
   KEEPER_MAX_HEARTBEAT_MINUTES,
   MOMENTUM_DEFAULT_IDLE_MINUTES
 } from "./production/momentumWatch.js";
+import { DUTY_READY_FLOOR_DEFAULT } from "./production/dutyAlarms.js";
 import { renderProductionIdleFrontSuccess, runProductionIdleFrontCommand } from "./commands/productionIdleFront.js";
 import { renderCoordinatorBudgetSuccess, runCoordinatorBudgetCommand } from "./commands/coordinatorBudget.js";
 import {
@@ -1767,8 +1768,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--stale-seconds <seconds>", `Silence that counts as stuck, outside a code review (default ${LIVENESS_DEFAULT_STALE_SECONDS})`)
       .option("--idle-minutes <minutes>", `Critical-path idle that pages while a run window is open (default ${MOMENTUM_DEFAULT_IDLE_MINUTES})`)
       .option("--keeper-grace-minutes <minutes>", `How long past its armed-until a keeper heartbeat may lapse before it pages (default ${KEEPER_DEFAULT_GRACE_MINUTES})`)
+      .option("--ready-floor <count>", `Ready Actions below which the duty alarm pages once per episode (default ${DUTY_READY_FLOOR_DEFAULT}, uncalibrated)`)
+      .option("--duty-off-alarm", "Also page once when production is Off with nothing eligible (off by default: a quiet night pages nobody)")
       .option("--dashboard-url <url>", "Dashboard base for the /production link (default ARCADIA_DASHBOARD_URL)")
-  ).action((options: { workspace: string; staleSeconds?: string; idleMinutes?: string; keeperGraceMinutes?: string; dashboardUrl?: string; json?: boolean }) =>
+  ).action((options: { workspace: string; staleSeconds?: string; idleMinutes?: string; keeperGraceMinutes?: string; readyFloor?: string; dutyOffAlarm?: boolean; dashboardUrl?: string; json?: boolean }) =>
     runCliAction("production.liveness-check", options, () => runProductionLivenessTimerCommand(options), renderProductionLivenessTimerSuccess)
   );
   addJsonOption(
