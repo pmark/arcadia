@@ -41,9 +41,10 @@ export interface FolderTrust { trusted: boolean; detail: string; trustedFolder: 
  * Claude Code's global state file for the environment a launch uses: `$CLAUDE_CONFIG_DIR/.claude.json` when
  * CLAUDE_CONFIG_DIR is set and non-empty, else `~/.claude.json`.
  */
-export const defaultClaudeStatePath = (env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string => {
+export const defaultClaudeStatePath = (env: NodeJS.ProcessEnv = process.env, home: string = homedir(), cwd: string = process.cwd()): string => {
   const configDir = env.CLAUDE_CONFIG_DIR?.trim();
-  return configDir ? path.join(configDir, ".claude.json") : path.join(home, ".claude.json");
+  // A relative CLAUDE_CONFIG_DIR is relative to the launch directory, not to wherever Arcadia happens to run.
+  return configDir ? path.join(path.resolve(cwd, configDir), ".claude.json") : path.join(home, ".claude.json");
 };
 
 function realpathOrNull(target: string): string | null {
@@ -168,6 +169,7 @@ export function agentIdSnapshot(agentsJson: string): string[] | null {
  *  - Of the new rows in this launch's cwd there must be EXACTLY ONE (several new rows are ambiguous: unverified), and
  *    it must match the launch: its id or sessionId equals or starts with a printed token, or its name is this
  *    launch's name (the keeper may retitle itself, so a printed-id match does not require the name).
+ * - If a FULL session UUID was printed, the new row must carry exactly that id or sessionId; the name never overrides it.
  * Otherwise the result is `verified: false` with a null `stopId`: the caller must not record a stop target, and the
  * printed candidate is kept only for the error message.
  */
@@ -184,7 +186,13 @@ export function discoverBackgroundSession(input: { launchOutput: string; agentsJ
   const fresh = rows.filter((candidate) => !isOld(candidate) && typeof candidate.cwd === "string" && path.resolve(candidate.cwd) === resolvedCwd);
   if (fresh.length !== 1) return unverified;
   const [row] = fresh;
-  const matchesPrinted = [row.id, row.sessionId].some((value) => typeof value === "string" && tokens.some((token) => value.toLowerCase() === token || value.toLowerCase().startsWith(token)));
+  const ids = [row.id, row.sessionId].filter((value): value is string => typeof value === "string").map((value) => value.toLowerCase());
+  const fullPrinted = [...printedText.matchAll(new RegExp(FULL_ID.source, "gi"))].map((match) => match[0].toLowerCase());
+  // A printed FULL session id is strong evidence: if one was printed, the new row must carry it, and the name never rescues a
+  // contradiction. A printed short token may be a decoy (a date, a count), so it only ever helps a match; with no full id
+  // printed, the launch name is the fallback.
+  if (fullPrinted.length > 0) return fullPrinted.some((full) => ids.includes(full)) ? verifiedSession(row) ?? unverified : unverified;
+  const matchesPrinted = ids.some((value) => tokens.some((token) => value === token || value.startsWith(token)));
   return matchesPrinted || row.name === input.name ? verifiedSession(row) ?? unverified : unverified;
 }
 

@@ -250,7 +250,7 @@ export function runKeeperStartCommand(options: KeeperStartOptions, dependencies:
   // `--bg` manages the session id and ignores --session-id (probe P2), so none is passed; the real one is discovered after launch.
   const argv = ["--bg", "--remote-control", KEEPER_REMOTE_CONTROL_NAME, "-n", name, "--model", model, "--permission-mode", "auto", prompt];
   const checkout = primaryCheckout(dependencies.cwd ?? invocationRoot());
-  const trust = claudeFolderTrust(checkout, dependencies.claudeStatePath ?? defaultClaudeStatePath(dependencies.env ?? process.env));
+  const trust = claudeFolderTrust(checkout, dependencies.claudeStatePath ?? defaultClaudeStatePath(dependencies.env ?? process.env, undefined, checkout));
   if (options.dryRun) {
     const live = liveReason(workspacePath, options, dependencies);
     return createSuccess({ command: "keeper.start", workspace: workspacePath, data: { dryRun: true, argv: ["claude", ...argv], record: null, liveKeeper: live, trust } });

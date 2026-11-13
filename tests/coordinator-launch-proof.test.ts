@@ -85,6 +85,16 @@ describe("discoverBackgroundSession (probe P2: --bg ignores --session-id; only a
     expect(find("started deadbeef", [old], ["deadbeef"])).toMatchObject({ verified: false, stopId: null, unverifiedPrintedId: "deadbeef" });
     expect(find("started deadbeef", [old, { id: "feedc0de", name: "n", cwd }], ["deadbeef"])).toMatchObject({ verified: true, stopId: "feedc0de" });
   });
+  it("a printed FULL session id must be carried by the new row: the launch name never rescues a contradiction", () => {
+    const printed = "686736ac-aaaa-4bbb-8ccc-111122223333";
+    const contradicting = { id: "f00dcafe", name: "n", cwd };
+    expect(find(`started ${printed}`, [contradicting])).toMatchObject({ verified: false, stopId: null });
+    expect(find(`started ${printed}`, [{ id: "f00dcafe", sessionId: printed.toUpperCase(), name: "renamed", cwd }])).toMatchObject({ verified: true, stopId: "f00dcafe", sessionId: printed.toUpperCase() });
+  });
+  it("a printed SHORT token is only a candidate: a row it contradicts is still taken by the launch name (it may be a decoy), and never by a different name", () => {
+    expect(find("started 686736ac", [{ id: "f00dcafe", name: "n", cwd }])).toMatchObject({ verified: true, stopId: "f00dcafe" });
+    expect(find("started 686736ac", [{ id: "f00dcafe", name: "someone else", cwd }])).toMatchObject({ verified: false, stopId: null });
+  });
   it("finds a new row that appears late: an early listing without it is unverified, the later one verifies", () => {
     const old = { id: "oldoldol", name: "n", cwd };
     expect(find("", [old], ["oldoldol"]).verified).toBe(false);
@@ -160,5 +170,6 @@ describe("observeTranscript and buildLaunchProof", () => {
     expect(defaultClaudeStatePath({ CLAUDE_CONFIG_DIR: "/cfg/claude" }, "/home/u")).toBe("/cfg/claude/.claude.json");
     expect(defaultClaudeStatePath({ CLAUDE_CONFIG_DIR: "  " }, "/home/u")).toBe("/home/u/.claude.json");
     expect(defaultClaudeStatePath({}, "/home/u")).toBe("/home/u/.claude.json");
+    expect(defaultClaudeStatePath({ CLAUDE_CONFIG_DIR: "rel/cfg" }, "/home/u", "/launch/dir")).toBe("/launch/dir/rel/cfg/.claude.json");
   });
 });

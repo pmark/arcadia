@@ -493,7 +493,7 @@ export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (m
   return {
     tmux: systemTmux,
     startPressInProgress: input.startPressInProgress,
-    folderTrust: input.folderTrust ?? ((directory) => claudeFolderTrust(directory, defaultClaudeStatePath(process.env))),
+    folderTrust: input.folderTrust ?? ((directory) => claudeFolderTrust(directory, defaultClaudeStatePath(process.env, undefined, directory))),
     decision: (repoRoot, now) => readRelayDecision(repoRoot, now),
     signIn: input.signIn,
     capacity: input.capacity,
