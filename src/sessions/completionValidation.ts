@@ -57,6 +57,18 @@ export function criteriaValidationCommands(criteria: readonly string[]): string[
  */
 export const COMPLETION_VALIDATION_TIMEOUT_MS = 900_000;
 export const COMPLETION_COMMAND_TIMEOUT_MS = 120_000;
+/**
+ * Own bound for each criteria-required command, by its command text (Issue
+ * #1765). Lint gets 240s: the separately bounded, independently reviewed C-only
+ * run passed `pnpm lint` in 127452ms under that limit, after an earlier
+ * attempt at the 120s per-command bound timed out (docs/managed-production-readiness.md).
+ * tsc keeps the 120s bound it passed in 9803ms under. Any other command keeps
+ * COMPLETION_COMMAND_TIMEOUT_MS.
+ */
+export const COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS: Readonly<Record<string, number>> = {
+  "pnpm lint": 240_000,
+  "pnpm exec tsc --noEmit": COMPLETION_COMMAND_TIMEOUT_MS,
+};
 export const MAX_NAMED_TEST_FILES = 10;
 const MAX_REPORTED_FAILURES = 10;
 const MAX_NAME_CHARS = 200;
@@ -69,6 +81,8 @@ export interface CompletionValidationOptions {
   onEvidence?: (reference: CompletionEvidenceReference) => void;
   /** Bound on the whole validation (configured commands and named tests together). */
   timeoutMs?: number;
+  /** Bound per criteria-required command, overriding COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS by command text (tests inject a short one). */
+  requiredCommandTimeoutMs?: Readonly<Record<string, number>>;
   /**
    * Tests only, never production: run the identical checks against the
    * identical materialized tree without the Seatbelt profile around them, for
@@ -414,9 +428,14 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
       + (readable.length ? `(allow file-read* ${readable.map((dir) => `(subpath ${quote(dir)})`).join(" ")}) ` : "")
       + `(allow process-exec) (allow process-fork) (allow sysctl-read) (allow signal (target same-sandbox)) (allow file-write* (subpath ${quote(scratch)}) (literal "/dev/null"))`;
     const env: NodeJS.ProcessEnv = { PATH: `${path.join(source, "node_modules", ".bin")}:${path.dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`, HOME: scratch, TMPDIR: scratch, NODE_ENV: "test", CI: "1", COREPACK_ENABLE_NETWORK: "0" };
+    // The bound a run actually hit: its own command bound, or the whole-validation bound when that is shorter.
+    type AppliedBound = { ms: number; kind: "command" | "total"; command: string };
     const run = (argv: string[], bound: number, command: string) => {
       const remaining = Math.floor(deadline - performance.now());
-      if (remaining <= 0) return { status: null, timedOut: true, error: null, output: "" };
+      const applied: AppliedBound = remaining < bound
+        ? { ms: timeoutMs, kind: "total", command }
+        : { ms: bound, kind: "command", command };
+      if (remaining <= 0) return { status: null, timedOut: true, error: null, output: "", bound: applied };
       const limit = Math.min(bound, remaining);
       rmSync(marker, { force: true });
       const confined = options.unconfinedForTests ? argv : ["/usr/bin/sandbox-exec", "-p", profile, ...argv];
@@ -429,13 +448,20 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
       const clean = (text: string) => completionEvidenceText(text.replaceAll(source, "[candidate]").replaceAll(scratch, "[scratch]").replaceAll(root, "[execution]").replaceAll(home, "[home]"));
       executions.push({ command: clean(command), argv: argv.map(clean), exitStatus: result.status, signal: result.signal, timedOut, terminalProven,
         durationMs: Math.round(performance.now() - commandStarted), error: error === null ? null : clean(error), stdout: clean(result.stdout), stderr: clean(result.stderr) });
-      return { status: result.status, timedOut, error, output: untrusted(result.stderr || result.stdout, 600) };
+      return { status: result.status, timedOut, error, output: untrusted(result.stderr || result.stdout, 600), bound: applied };
     };
-    const timedOutWhy = `the validation did not finish within ${Math.round(timeoutMs / 1000)}s.`;
+    // Names the bound the timed-out run actually hit, never the other one.
+    const seconds = (ms: number) => Math.round(ms / 1000);
+    const timedOutWhy = (bound: AppliedBound) => bound.kind === "total"
+      ? `the validation did not finish within ${seconds(bound.ms)}s, the bound on the whole validation.`
+      : `${bound.command} did not finish within ${seconds(bound.ms)}s, its own per-command bound.`;
 
     for (const command of commands) {
-      const result = run(requiredInvocations.get(command) ?? ["/bin/sh", "-c", command], COMPLETION_COMMAND_TIMEOUT_MS, command);
-      if (result.timedOut) return timeout(timedOutWhy, [`${command} (timed out)`]);
+      const bound = requiredChecks.includes(command)
+        ? options.requiredCommandTimeoutMs?.[command] ?? COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS[command] ?? COMPLETION_COMMAND_TIMEOUT_MS
+        : COMPLETION_COMMAND_TIMEOUT_MS;
+      const result = run(requiredInvocations.get(command) ?? ["/bin/sh", "-c", command], bound, command);
+      if (result.timedOut) return timeout(timedOutWhy(result.bound), [`${command} (timed out)`]);
       if (result.error) return unavailable(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
       if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.${result.output ? ` ${result.output}` : ""}`, [command]);
     }
@@ -446,7 +472,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
       for (const file of namedTests) {
         const report = path.join(scratch, `completion-node-test-${namedTests.indexOf(file)}.tap`);
         const result = run([process.execPath, "--test", "--test-reporter=tap", `--test-reporter-destination=${report}`, file], COMPLETION_VALIDATION_TIMEOUT_MS, `node --test ${file}`);
-        if (result.timedOut) return timeout(timedOutWhy, [`${file} (timed out)`]);
+        if (result.timedOut) return timeout(timedOutWhy(result.bound), [`${file} (timed out)`]);
         if (result.error) return unavailable(`the named tests could not run (${untrusted(result.error, 200)}).`);
         let tap = "";
         try { tap = readFileSync(report, "utf8"); } catch { tap = ""; }
@@ -460,7 +486,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
 
     const report = path.join(scratch, "completion-vitest-report.json");
     const result = run([process.execPath, runner, "run", ...namedTests, "--maxWorkers=2", "--reporter=json", `--outputFile.json=${report}`], COMPLETION_VALIDATION_TIMEOUT_MS, `vitest run ${namedTests.join(" ")}`);
-    if (result.timedOut) return timeout(timedOutWhy, namedTests.map((file) => `${file} (timed out)`));
+    if (result.timedOut) return timeout(timedOutWhy(result.bound), namedTests.map((file) => `${file} (timed out)`));
     if (result.error) return unavailable(`the named tests could not run (${untrusted(result.error, 200)}).`);
     let parsed: VitestReport | null = null;
     try { parsed = JSON.parse(readFileSync(report, "utf8")) as VitestReport; } catch { parsed = null; }
