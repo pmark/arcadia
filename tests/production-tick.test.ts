@@ -306,21 +306,28 @@ describe("runManagedProductionTick", () => {
       expect(probe.after).toEqual({ kind: "review_repair_gated" });
     });
 
-    // REAL DEFECT (failing-first, Decision 0223 D1): pruneStaleOperatorEscalations (src/production/tick.ts) keeps only the three
-    // review-repair kinds on a non-current Action, so the Action-local held classes the scheduler now passes over lose their hold
-    // once the pointer moves on, and the no-relaunch guard (Issue #1613) disappears. Remove `.fails` when the prune honors
-    // ACTION_LOCAL_HELD_ESCALATIONS and Action-local repair_budget_exhausted.
-    it.fails("keeps an Action-local hold on the Action the pointer moved past (Decision 0223 D1: held, not pruned)", () => {
+    // Decision 0223 D1 (Issue #2545): pruneStaleOperatorEscalations keeps the Action-local held classes on a non-current Action, so the
+    // no-relaunch guard (Issue #1613) survives the pointer moving on without an operator reset.
+    it("keeps an Action-local hold on the Action the pointer moved past (Decision 0223 D1: held, not pruned)", () => {
       const probe = pointerPastHeldProbe("completion_loopback_denied");
       expect(probe.launch).toMatchObject({ outcome: "launched", actionKey: "test-project/second-action" });
       expect(probe.after).toEqual({ kind: "completion_loopback_denied" });
     });
 
-    // Same defect for the Action-local repair budget, which no other test pins (tracked in https://github.com/pmark/arcadia/issues/2545).
-    it.fails("keeps an Action-local repair_budget_exhausted hold, with its 3/3 local counters, on the Action the pointer moved past", () => {
+    // The Action-local repair budget, with its 3/3 local counters, is held too (Issue #2545).
+    it("keeps an Action-local repair_budget_exhausted hold, with its 3/3 local counters, on the Action the pointer moved past", () => {
       const probe = pointerPastHeldProbe("repair_budget_exhausted", true);
       expect(probe.launch).toMatchObject({ outcome: "launched", actionKey: "test-project/second-action" });
       expect(probe.after).toEqual({ kind: "repair_budget_exhausted" });
+    });
+
+    // Issue #2545 negative control: a repair_budget_exhausted row with no Action-local attempts recorded has a global (or unknown)
+    // cause, which fails safe to a run-wide stop, so it is not an Action-local hold and the pointer moving on still prunes it.
+    it("prunes a global-cause repair_budget_exhausted row on the Action the pointer moved past (not a held class)", () => {
+      // The run-wide stop still applies: nothing launches. Only the stale row for the moved-past Action goes.
+      const probe = pointerPastHeldProbe("repair_budget_exhausted", false);
+      expect(probe.tmuxLaunches).toBe(0);
+      expect(probe.after).toBeUndefined();
     });
 
     it("skips an out-of-scope pointer it cannot re-point: no launch, no packet, no escalation", () => {
