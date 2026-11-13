@@ -7,10 +7,10 @@ Labels used below: **UNRETAINED** means the output came from a run whose files l
 ## Verdict
 
 - **Single unconfined production run, with a confound.** The production path with the Seatbelt profile (R1) and one production run without it (R2, which also sets `VITEST=1` to honour the unconfined seam, `completionValidation.ts:309`) both fail the same 18 named tests. R2 was run once and was not replicated. The profile is therefore not shown to be required, but this is one run, not a controlled comparison.
-- **The failure is specific to the production invocation as replicated here, with one caveat.** Hand-built replicas with the same tree, the same dependency bridge and the same owned-validation helper pass all stub tests with no profile in R5 and R7. R8 (no profile, scrubbed environment) fails one stub test, so the no-profile replicas are not uniformly clean. With the exact profile text, R3 and R9 pass 43/43. So what differs is something in the production invocation, which is not yet isolated.
+- **The failure is specific to the production invocation as replicated here, with one caveat.** Hand-built replicas with the same tree, the same dependency bridge pass all stub tests with no profile in R5, R6 and R7 (R5 and R6 go through the owned-validation helper). R8 (no profile, scrubbed environment) fails one stub test, so the no-profile replicas are not uniformly clean. With the exact profile text (R3) and with `network*` added (R9), 43/43 pass, one run each. So the difference is consistent with something in the production invocation, which is not isolated, and this is not proved.
 - **Counts:** 18 named failures = 15 stub-provider tests in `tests/headless-provider-operator-script.test.ts` + 3 `launcher fallbacks (fake mise)` tests in the same file.
 - **#2519 (loopback denial) is not shown to be the same class.** The failing reports contain zero `EPERM` lines, and the loopback path did not fire (`loopbackDenied` absent from the refusal).
-- **The 3 launcher failures: cause suspected, not established.** Their test setup puts a fake `mise` first on `PATH` (test lines 777-778), so the real mise trust store is not obviously on their path. The line `mise ERROR Config files in $TMPDIR/mise.toml are not trusted` was captured from the agent's own shell (cwd under `$TMPDIR`), not from the failing test run: the host test log (UNRETAINED) contains no `mise ERROR` line.
+- **The 3 launcher failures: cause suspected, not established.** Their test setup puts a fake `mise` first on `PATH` (the fake is created at test lines 777-778 and prepended to `PATH` in `launch()` at line 782), so the real mise trust store is not obviously on their path. The line `mise ERROR Config files in $TMPDIR/mise.toml are not trusted` was captured from the agent's own shell (cwd under `$TMPDIR`), not from the failing test run: the host test log (UNRETAINED) contains no `mise ERROR` line.
 - **#2520 is merged** (PR #2520, "Hold loopback-denied named tests as unavailable (Option C of #2519)", merged 2026-11-12, merge commit `1c8ddb1a9`). It is the origin of the current `LOOPBACK_DENIED` classifier (`src/sessions/completionValidation.ts:289`). It was not changed here.
 
 ## How pre-acceptance runs (code facts)
@@ -36,7 +36,7 @@ Labels used below: **UNRETAINED** means the output came from a run whose files l
 | # | Run (same test file, same code head) | Result | Stub-provider tests (15) |
 |---|---|---|---|
 | R0 | Host, unsandboxed, `vitest run tests/headless-provider-operator-script.test.ts` (UNRETAINED) | 40 pass, 3 fail (the launcher tests) | all pass |
-| R1 | Production `validateCompletionCandidate` under the profile (no `VITEST`). UNRETAINED. Three such runs were refused. The **keep run** is one whose validator copy had its final scratch cleanup disabled, so its `completion-vitest-report.json` survived; its report lists 18 failures. The **evidence run** set `evidenceBinding`, so the execution record was written; its record lists 18 failures. The first run's listing was truncated at 10 | refused, vitest exit 1; `loopbackDenied` absent, `hostFault` false | 15 fail |
+| R1 | Production `validateCompletionCandidate` under the profile (no `VITEST`). UNRETAINED. Three such runs were refused. The **keep run** is one whose validator copy had its final cleanup (`completionValidation.ts:498`) disabled, so `completion-vitest-report.json` (written to `<root>/scratch`) survived; its report lists 18 failures. The **evidence run** set `evidenceBinding`, so the execution record was written; its record lists 18 failures. The first run's listing was truncated at 10 | refused, vitest exit 1; `loopbackDenied` absent, `hostFault` false | 15 fail |
 | R2 | Production call with `VITEST=1`, so the unconfined seam is honoured. Single run. UNRETAINED; its report lists 18 failures | refused, same 18 failures | 15 fail |
 | R3 | Hand-built replica: exact profile text, exact env, `git archive HEAD` tree, bridged deps, direct spawn (UNRETAINED) | 43/43 pass | all pass |
 | R4 | R3 with scratch under the host `$TMPDIR` (UNRETAINED) | 40 pass, 3 fail (= R0) | all pass |
@@ -85,11 +85,11 @@ Launcher tests (3, `describe("launcher fallbacks (fake mise)")` from line 768):
 
 | # | Explanation | Verdict | Evidence |
 |---|---|---|---|
-| E1 | The profile denies a read, exec or write the stub providers need (HOME/config, temp, PATH) | Not shown, one unreplicated run | R2 (single, with `VITEST=1`) fails with no profile. R3 and R9 pass under the exact profile text in replicas, not in the production path. |
+| E1 | The profile denies a read, exec or write the stub providers need (HOME/config, temp, PATH) | Not shown, one unreplicated run | R2 (single, with `VITEST=1`) fails with no profile. R3 passes under the exact profile text, in a replica, not in the production path. |
 | E2 | Loopback denial, the same class as #2519 | Not shown to apply to these 15 | Zero `EPERM` lines in the unretained reports. The classifier did not fire. |
-| E3 | Network guard | Not shown | R9 passes with `network*` allowed, but R9 is a replica, not the production path. |
+| E3 | Network guard | Not shown | R3 already passes with the exact profile, which has no network rule, so R9 (adds `network*`) gives no evidence on the network guard. Both are replicas, not the production path. |
 | E4 | mise trust (untrusted `$TMPDIR/mise.toml`) | SUSPECTED for the 3 launcher tests only | The captured line came from the agent shell, not the test run. Those tests put a fake `mise` first on `PATH`. R0 reproduces the same 3. The 15 stub tests pass on host. |
-| E5 | The production invocation differs from the replicas | Supported as the locus; the step is not isolated | R1 and R2 fail. R3 to R7 pass with the same tree, the same bridge and the same helper (R8 fails one stub test). |
+| E5 | The production invocation differs from the replicas | Consistent with the evidence; not proved, and the step is not isolated | R1 and R2 fail. R3 to R7 pass with the same tree and a bridge (R5 and R6 also use the helper; R8 fails one stub test). These are single runs of replicas. |
 | E6 | Timing or load flakiness | Not supported by the runs made | The two R1 runs with listed failure sets (keep run, evidence run) and the one R2 run list the same 18 tests. R3 and R9 each pass 43/43 in a single run, so this is not a repeated-run test of flakiness. |
 
 ## What remains unproved
@@ -102,7 +102,7 @@ Launcher tests (3, `describe("launcher fallbacks (fake mise)")` from line 768):
 
 ## Suggested next proving steps (no fix proposed)
 
-- **Keeping receipts.** `keep: true` alone does not work. The harness's base directory is registered in the `directories` list by `temp()` (test lines 47-49, and line 75 in `harness`), and the `afterEach` at test line 46 removes everything in that list. The only route stated here is (b): in a scratch copy of the test file, copy each `directories` entry to a scratch folder before the `afterEach` removes it, then run the production path unconfined with `VITEST=1`. Route (b) is not run. Passing a `tempBase` outside `directories` is an alternative that is also untested.
+- **Keeping receipts.** `keep: true` alone does not work. The harness's base directory is registered in the `directories` list by `temp()` (test lines 47-49, and line 75 in `harness`), and the `afterEach` at test line 46 removes everything in that list. The only route stated here is (b): in a scratch copy of the test file, copy each `directories` entry to a scratch folder before the `afterEach` removes it, then run the production path unconfined with `VITEST=1`. Route (b) is not run. Changing `tempBase` alone would not work: `harness()` also registers the run directory (line 76) in `directories`.
 - Run the production path unconfined a second time, and bisect one change at a time: first remove the `node --version` pre-run, then move the `workspace` argument.
 - For the launcher tests, check whether the real mise is ever invoked on their path (the fake one is first on `PATH`).
 - Keep the #2520 classifier unchanged. Any change must not accept `AssertionError` or a generic exit-1.
@@ -126,7 +126,7 @@ console.log(JSON.stringify(r, null, 2));
 - R1: `node --import tsx driver.mts <WS>` from an unsandboxed shell, without `VITEST`.
 - R2: `VITEST=1 node --import tsx driver.mts <WS>`, also unsandboxed.
 - R0: `node scripts/bridge-worktree-deps.mjs`, then `node node_modules/vitest/vitest.mjs run tests/headless-provider-operator-script.test.ts --reporter=json --outputFile.json=<SCRATCH>/host.json` from the worktree.
-- Zero-EPERM check: `grep -c 'EPERM\|Operation not permitted' <SCRATCH>/completion-vitest-report.json`. That JSON file is the one the validator writes into its scratch root. It survives only in the keep-run copy of the validator, whose final cleanup was disabled. In the unmodified validator the scratch root is removed when the run finishes.
+- Zero-EPERM check: `grep -c 'EPERM\|Operation not permitted' <SCRATCH>/completion-vitest-report.json`. That JSON file is written by the validator to `<root>/scratch` (line 461). The unmodified validator removes `<root>` only when `terminalProven` is set (line 498), so whether the file survives an unmodified run was not tested here. It survived in the keep run because that copy's cleanup was disabled.
 - Tree comparison: `diff -rq --exclude=node_modules --exclude=scratch <production source> <replica source> | grep -v 'Directory loop'`.
 - Replicas R3 to R9: one vitest command per variant, `node node_modules/vitest/vitest.mjs run tests/headless-provider-operator-script.test.ts --maxWorkers=2 --reporter=json --outputFile.json=<report>`, in a source tree from `git archive HEAD`, with `HOME` and `TMPDIR` set to a scratch folder, `PATH` as in the Env bullet, and the profile or no profile as listed.
 
