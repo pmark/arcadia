@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -15,7 +15,9 @@ import {
   recordStandDown
 } from "../src/coordinator/generations.js";
 import {
+  interlockRepository,
   stopPredecessorAfterAccept,
+  stopPressInterlock,
   verifiedPrimaryCheckout,
   type ClaudeStopResult,
   type PredecessorStopDeps,
@@ -237,5 +239,89 @@ describe("PR 2543 review: the bg_stop_id migration on an existing workspace", ()
     expect(columns).toContain("stood_down_for");
     expect(listGenerations(db, PROJECT, ROLE)).toEqual([]);
     db.close();
+  });
+});
+
+describe("PR 2543 round 4: the interlock repository is the invocation's own primary checkout", () => {
+  function tempBase(): string {
+    const base = mkdtempSync(path.join(tmpdir(), "arcadia-round4-"));
+    roots.push(base);
+    return base;
+  }
+
+  function gitClone(base: string, name: string): string {
+    const dir = path.join(base, name);
+    mkdirSync(dir);
+    execFileSync("git", ["init", "-q", dir], { stdio: "ignore" });
+    git(["-C", dir, "commit", "-q", "--allow-empty", "-m", "init"]);
+    return dir;
+  }
+
+  it("another clone's primary, passed as --repo, defers the stop (the old rule accepted it)", () => {
+    const base = tempBase();
+    const mine = gitClone(base, "mine");
+    const other = gitClone(base, "other");
+    const invocationPrimary = verifiedPrimaryCheckout(mine);
+    expect(verifiedPrimaryCheckout(other)).toBe(realpathSync(other));
+    expect(interlockRepository(other, invocationPrimary)).toBeNull();
+    const ws = fresh();
+    relayPredecessorThenAccept(ws);
+    const fake = tmuxSeq(["present"]);
+    const { stopDeps } = depsWith(fake.tmux);
+    expect(stop(ws, stopDeps, interlockRepository(other, invocationPrimary)).outcome).toBe("deferred");
+    expect(fake.killed).toEqual([]);
+  });
+
+  it("the invocation's own primary resolves, by default and when given explicitly", () => {
+    const mine = gitClone(tempBase(), "mine");
+    const invocationPrimary = verifiedPrimaryCheckout(mine);
+    expect(invocationPrimary).toBe(realpathSync(mine));
+    expect(interlockRepository(undefined, invocationPrimary)).toBe(invocationPrimary);
+    expect(interlockRepository(mine, invocationPrimary)).toBe(invocationPrimary);
+  });
+
+  it("a symlink, a trailing slash, and a relative path to the same primary resolve equal", () => {
+    const base = tempBase();
+    const mine = gitClone(base, "mine");
+    const invocationPrimary = verifiedPrimaryCheckout(mine);
+    const link = path.join(base, "link");
+    symlinkSync(mine, link);
+    expect(interlockRepository(link, invocationPrimary)).toBe(invocationPrimary);
+    expect(interlockRepository(`${mine}/`, invocationPrimary)).toBe(invocationPrimary);
+    expect(interlockRepository(path.relative(process.cwd(), mine), invocationPrimary)).toBe(invocationPrimary);
+  });
+
+  it("a subdirectory of the primary, a linked worktree, and a bogus path all defer", () => {
+    const base = tempBase();
+    const mine = gitClone(base, "mine");
+    const invocationPrimary = verifiedPrimaryCheckout(mine);
+    const sub = path.join(mine, "sub");
+    mkdirSync(sub);
+    expect(interlockRepository(sub, invocationPrimary)).toBeNull();
+    const linked = path.join(base, "linked");
+    git(["-C", mine, "worktree", "add", "-q", "-b", "linked-branch", linked]);
+    expect(interlockRepository(linked, invocationPrimary)).toBeNull();
+    expect(interlockRepository(path.join(base, "nope"), invocationPrimary)).toBeNull();
+  });
+
+  it("no invocation primary means no interlock repository, even for an explicit path", () => {
+    const mine = gitClone(tempBase(), "mine");
+    expect(interlockRepository(mine, null)).toBeNull();
+    expect(interlockRepository(undefined, null)).toBeNull();
+  });
+
+  it("a missing operator-scripts library is unknown and defers the stop; an existing one reads as no press", () => {
+    const base = tempBase();
+    const noLibrary = gitClone(base, "nolib");
+    const withLibrary = gitClone(base, "lib");
+    mkdirSync(path.join(withLibrary, "artifacts", "generated", "operator-scripts"), { recursive: true });
+    expect(stopPressInterlock(noLibrary)).toMatchObject({ inProgress: true, unreadable: true });
+    expect(stopPressInterlock(withLibrary).inProgress).toBe(false);
+    const ws = fresh();
+    relayPredecessorThenAccept(ws);
+    const fake = tmuxSeq(["present"]);
+    const { stopDeps } = depsWith(fake.tmux);
+    expect(stop(ws, { ...stopDeps, startPressInProgress: stopPressInterlock }, noLibrary).outcome).toBe("deferred");
+    expect(fake.killed).toEqual([]);
   });
 });

@@ -47,7 +47,7 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
-import { runPredecessorStopAfterAccept, systemClaudeStop, systemPredecessorStopTmux, verifiedPrimaryCheckout, type AfterAcceptStop, type PredecessorStopDeps } from "../coordinator/predecessorStop.js";
+import { interlockRepository, runPredecessorStopAfterAccept, stopPressInterlock, systemClaudeStop, systemPredecessorStopTmux, verifiedPrimaryCheckout, type AfterAcceptStop, type PredecessorStopDeps } from "../coordinator/predecessorStop.js";
 import { RELAY_ROLES, renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult, type StartPressStatus } from "../coordinator/relay.js";
 import { observeProviderCapacity } from "../codingAgents/capacity.js";
 import { checkProviderSignIn } from "../codingAgents/signIn.js";
@@ -286,7 +286,7 @@ export function runCoordinatorAcceptCommand(options: Scope & { generation: numbe
     // Custody has moved above. A throw from the stop is reported in the result and never fails the accept.
     const after: AfterAcceptStop = result.handedOff === null ? { stop: null, error: null } : runPredecessorStopAfterAccept(db, {
       workspace: workspacePath, project: options.project, role: options.role,
-      successor: options.generation, predecessor: result.handedOff, repoRoot: verifiedPrimaryCheckout(mainWorktreeRoot(options.repo))
+      successor: options.generation, predecessor: result.handedOff, repoRoot: interlockRepository(options.repo, verifiedPrimaryCheckout(mainWorktreeRoot()))
     }, options.stopDeps ?? systemPredecessorStopDeps(db));
     return { ...result, snapshotSha: options.snapshotSha, predecessorStop: after.stop, predecessorStopError: after.error };
   }));
@@ -298,7 +298,7 @@ function systemPredecessorStopDeps(db: Database.Database): PredecessorStopDeps {
   return {
     tmux: systemPredecessorStopTmux(),
     claudeStop: systemClaudeStop,
-    startPressInProgress: relayStartPressInterlock,
+    startPressInProgress: stopPressInterlock,
     ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
     now: () => new Date()
   };

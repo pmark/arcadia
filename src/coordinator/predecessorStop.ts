@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFil
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { tmuxQueryEnv } from "../sessions/index.js";
-import type { StartPressStatus } from "./relay.js";
+import { startPressInProgressIn, type StartPressStatus } from "./relay.js";
 import { coordinatorPaths } from "./paths.js";
 import { listGenerations, newestLaunching, type GenerationRecord } from "./generations.js";
 
@@ -206,6 +206,29 @@ export function verifiedPrimaryCheckout(candidate: string | null): string | null
   return primary === real ? real : null;
 }
 
+/**
+ * The repository the START press interlock may read. It must be the invocation's own primary checkout
+ * (`invocationPrimary`, resolved from where the CLI runs), or an explicit path that resolves to that same checkout.
+ * Another clone's primary, a linked worktree, or an unresolvable path yields null, and the stop defers.
+ * (A generation records no repository at launch, so the invocation's primary is the only accepted root.)
+ */
+export function interlockRepository(explicit: string | undefined, invocationPrimary: string | null): string | null {
+  if (invocationPrimary === null) return null;
+  const resolved = explicit === undefined ? invocationPrimary : verifiedPrimaryCheckout(explicit);
+  return resolved !== null && resolved === invocationPrimary ? resolved : null;
+}
+
+/**
+ * The stop path's START interlock. A missing operator-scripts library is unknown (unreadable), never "no press":
+ * startPressInProgressIn reads a missing directory as no press, which is only safe for a checkout that has none.
+ * The shared reader is unchanged for other callers (renew uses it too; see the PR body).
+ */
+export function stopPressInterlock(repo: string): StartPressStatus {
+  const library = path.join(repo, "artifacts", "generated", "operator-scripts");
+  if (!existsSync(library)) return { inProgress: true, unreadable: true, detail: `${library} does not exist, so the START press state cannot be read` };
+  return startPressInProgressIn(library);
+}
+
 function receiptPath(root: string, generation: number): string {
   return path.join(root, `predecessor-stop-g${generation}.json`);
 }
@@ -299,7 +322,7 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
   // Refusals: a deferral stops nothing and pings the operator, since the predecessor still holds a live identity.
   const refusal = ((): string | null => {
     if (newestLaunching(db, input.project, input.role)) return "a successor launch of this role is in flight (launching); the predecessor is not stopped during a launch";
-    if (input.repoRoot === null) return "the repository could not be resolved to its primary checkout, so the START press interlock cannot be checked; pass --repo <primary checkout> (a linked worktree or an unknown path is refused)";
+    if (input.repoRoot === null) return "the repository could not be resolved to this invocation's own primary checkout, so the START press interlock cannot be checked; --repo must be that checkout (another clone, a linked worktree, or an unknown path is refused)";
     const press = deps.startPressInProgress(input.repoRoot);
     if (press.inProgress) return press.unreadable ? `a START press record cannot be read (${press.detail}); the predecessor is not stopped during a press` : `a START press is in progress (${press.detail}); the predecessor is not stopped during a press`;
     return null;
