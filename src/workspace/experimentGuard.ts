@@ -160,6 +160,8 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "coordinator verify": ALLOWED,
   "coordinator relay-sessions": ALLOWED,
   "coordinator accept": ALLOWED,
+  "coordinator register": ALLOWED,
+  "coordinator stand-down": ALLOWED,
   "coordinator renew": guarded(
     "Launches a real coordinator session in tmux; an experiment workspace never launches a live successor.",
     "Run it from the live workspace once the relay Decision is on main."

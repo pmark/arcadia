@@ -1895,6 +1895,38 @@ See `docs/agent-guidance/coordinator-handoff-design.md`, "START and the relay's
 tmux sessions". A live session is tolerated only if it also runs the row's
 recorded `--session-id`, which START checks itself.
 
+## Coordinator Registration And Stand-Down (#2500, Decision 0227 A)
+
+```bash
+pnpm arcadia coordinator register --project <slug> --role <rowan|signal> --challenge
+pnpm arcadia coordinator register --project <slug> --role <rowan|signal> --confirm <nonce> --session-id <id> --tier <light|standard|heavy> --identity "<label>" [--correct]
+pnpm arcadia coordinator stand-down --project <slug> --role <role> --successor <n> [--challenge | --confirm <nonce> --session-id <id>]
+```
+
+`register` records a Claude Code coordinator as the generation-1 custodian,
+bound to a verified Session (Decision 0227 A's reviewed first-registration and
+correction route). `--challenge` prints a one-time nonce (10 minutes). Run it
+inside the Session being registered: Claude Code writes the command output into
+that Session's own transcript, and `--confirm` finds
+`~/.claude/projects/*/<session-id>.jsonl`, requires the nonce in it, requires the
+transcript to have been written within 10 minutes, and records the provider
+(`claude`) and model **the transcript names**, not a caller-supplied value. The
+session id is `CLAUDE_CODE_SESSION_ID` in that Session. Tier and identity are
+declared and checked only for shape. A second registration is refused;
+`--correct` repeats the same proof and is refused for a relay-launched custodian
+(it moves only through `accept`), while a successor is launching, and while a
+different recorded Session is still live (it must correct itself or end first).
+The previous values go to the generations log.
+
+`stand-down` is the predecessor's own record that it yields to launching
+generation N; `accept` refuses (`predecessor_not_stood_down`) until the current
+custodian has recorded it for exactly that generation. A relay-launched custodian
+proves itself with its custody token. A registered desktop custodian uses the
+same challenge, and the Session must be the one recorded in its row. It records
+only; the predecessor stops itself afterwards, and nothing here stops a pane.
+Not a cryptographic bind: a process that can write the transcript directory can
+forge the proof. Neither command launches, spends or grants authority.
+
 ## Check A Design Record Or Field Guide
 
 ```bash
