@@ -332,6 +332,28 @@ describe("arcadia tidy — safety invariants", () => {
     expect(run(root, ["worktree", "list"])).toContain(tree);
   });
 
+  it("reports a detached worktree's real unmerged commit count, never 0", () => {
+    const root = repo();
+    const target = path.join(root, "..", `${path.basename(root)}-detached-two`);
+    run(root, ["worktree", "add", "-q", "--detach", target, "main"]);
+    temporary.push(target);
+    const tree = realpathSync(target);
+    writeFileSync(path.join(tree, "a.txt"), "a\n", "utf8");
+    run(tree, ["add", "-A"]);
+    run(tree, ["commit", "-q", "-m", "a"]);
+    writeFileSync(path.join(tree, "b.txt"), "b\n", "utf8");
+    run(tree, ["add", "-A"]);
+    run(tree, ["commit", "-q", "-m", "b"]);
+
+    const result = data(runTidyCommand({ repo: root }));
+    const entry = result.worktrees.find((w) => w.path === tree);
+
+    expect(entry?.verdict).toBe("unmerged");
+    expect(entry?.ahead).toBe(2);
+    expect(result.needsAttention.join("\n")).toContain("2 unmerged commits");
+    expect(result.needsAttention.join("\n")).not.toContain("0 unmerged commits");
+  });
+
   it("protects the primary worktree and the base branch", () => {
     const root = repo();
 
