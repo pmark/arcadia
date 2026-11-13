@@ -8,7 +8,7 @@ import { invocationRoot } from "../cli/invocation.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { readWakeFiles } from "./productionIdleFront.js";
-import { buildLaunchProof, claudeFolderTrust, defaultClaudeStatePath, discoverBackgroundSession, observeTranscript, type FolderTrust, type LaunchProof } from "../coordinator/launchProof.js";
+import { buildLaunchProof, claudeFolderTrust, defaultClaudeStatePath, agentIdSnapshot, discoverBackgroundSession, observeTranscript, type FolderTrust, type LaunchProof } from "../coordinator/launchProof.js";
 import { findSessionTranscript } from "../coordinator/sessionIdentity.js";
 import { KEEPER_HEARTBEAT_FILE, KEEPER_ROLE } from "../production/momentumWatch.js";
 
@@ -189,11 +189,11 @@ function listsSession(record: KeeperRecord, dependencies: KeeperDependencies): {
   let rows: unknown;
   try { rows = JSON.parse(result.stdout || "[]"); } catch { return { listed: null, error: "claude agents --json printed no JSON" }; }
   if (!Array.isArray(rows)) return { listed: null, error: "claude agents --json did not print an array" };
-  // Exact field matches only: a substring would let an unrelated session's name or id keep a dead keeper "listed".
+  // Exact id matches only (never the name, which is the constant launch name an older keeper can share): a substring or a name would let an unrelated session keep a dead keeper "listed".
   const matches = (row: unknown): boolean => {
     if (!row || typeof row !== "object") return false;
     const fields = row as Record<string, unknown>;
-    return fields.id === record.stopId || fields.sessionId === record.sessionId || fields.sessionId === record.stopId || fields.name === record.name;
+    return fields.id === record.stopId || fields.sessionId === record.sessionId || fields.sessionId === record.stopId;
   };
   return { listed: rows.some(matches), error: null };
 }
@@ -250,7 +250,7 @@ export function runKeeperStartCommand(options: KeeperStartOptions, dependencies:
   // `--bg` manages the session id and ignores --session-id (probe P2), so none is passed; the real one is discovered after launch.
   const argv = ["--bg", "--remote-control", KEEPER_REMOTE_CONTROL_NAME, "-n", name, "--model", model, "--permission-mode", "auto", prompt];
   const checkout = primaryCheckout(dependencies.cwd ?? invocationRoot());
-  const trust = claudeFolderTrust(checkout, dependencies.claudeStatePath ?? defaultClaudeStatePath());
+  const trust = claudeFolderTrust(checkout, dependencies.claudeStatePath ?? defaultClaudeStatePath(dependencies.env ?? process.env));
   if (options.dryRun) {
     const live = liveReason(workspacePath, options, dependencies);
     return createSuccess({ command: "keeper.start", workspace: workspacePath, data: { dryRun: true, argv: ["claude", ...argv], record: null, liveKeeper: live, trust } });
@@ -275,30 +275,38 @@ function launchLocked(
   const live = liveReason(workspacePath, options, dependencies);
   if (live !== null) throw validationError(`A Momentum Keeper is already live: ${live}. Run \`arcadia keeper status\`, or \`arcadia keeper stop\` first.`);
 
+  // Snapshot the ids already listed BEFORE launching: only a row that appears afterwards can be this keeper, so an older
+  // or foreign session (including an unstopped keeper with the same launch name) can never become the stop target. If the
+  // listing cannot be read, nothing is launched: the new session could not be told apart from an old one.
+  const before = claude(["agents", "--json"], dependencies, checkout);
+  const preexisting = before.ok ? agentIdSnapshot(before.stdout) : null;
+  if (preexisting === null) throw validationError(`The keeper was not started: \`claude agents --json\` could not be read before launching${before.ok ? " (not a JSON array)" : ` (${before.error})`}, so a new session could not be told apart from an existing one. Nothing was launched.`, { reason: "agents_unreadable" });
+
   const launched = claude(argv, dependencies, checkout);
   if (!launched.ok) throw validationError(`The keeper did not start and no record was written: ${launched.error}`);
   // The id is accepted only through `claude agents --json` (launch output is free text, so a printed token is a candidate);
   // --bg ignores --session-id, so the one we might ask for is never used. A freshly launched session may not be listed
   // yet: retry a few times over a few seconds.
   const sleep = dependencies.sleep ?? ((ms: number) => { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms); });
-  let discovered = discoverBackgroundSession({ launchOutput: launched.stdout, agentsJson: null, name, cwd: checkout });
+  let discovered = discoverBackgroundSession({ launchOutput: launched.stdout, agentsJson: null, name, cwd: checkout, preexisting });
   let listError = "";
   for (let attempt = 0; attempt < KEEPER_LOOKUP_ATTEMPTS; attempt += 1) {
     if (attempt > 0) sleep(KEEPER_LOOKUP_PAUSE_MS);
     const listing = claude(["agents", "--json"], dependencies, checkout);
     listError = listing.ok ? "" : ` (${listing.error})`;
     if (!listing.ok) continue;
-    discovered = discoverBackgroundSession({ launchOutput: launched.stdout, agentsJson: listing.stdout, name, cwd: checkout });
+    discovered = discoverBackgroundSession({ launchOutput: launched.stdout, agentsJson: listing.stdout, name, cwd: checkout, preexisting });
     if (discovered.verified) break;
   }
-  if (!discovered.verified || discovered.stopId === null) {
-    const candidate = discovered.unverifiedPrintedId === null ? "" : ` The launch output contained ${discovered.unverifiedPrintedId}, which no \`claude agents --json\` row in ${checkout} confirms, so it is not used as a stop target.`;
+  if (!discovered.verified || discovered.stopId === null || discovered.stopId === "") {
+    const candidate = discovered.unverifiedPrintedId === null ? "" : ` The launch output contained ${discovered.unverifiedPrintedId}, which no new \`claude agents --json\` row in ${checkout} confirms, so it is not used as a stop target.`;
     throw validationError(`The keeper may be running, but its session could not be verified against \`claude agents --json\`${listError}, so no record was written.${candidate} Inspect \`claude agents\` and stop it by hand if listed.`, { reason: "session_id_undiscovered" });
   }
   // Bounded wait for the transcript to show the delivered brief and the model's first reply; deterministic file reads only.
   const projects = dependencies.claudeProjectsDirectory ?? path.join(homedir(), ".claude", "projects");
   let transcript = { deliveredSha: null as string | null, model: null as string | null, effort: null as string | null };
-  for (let poll = 0; poll < KEEPER_POLLS; poll += 1) {
+  // Without a full session UUID there is no transcript to find, so there is nothing to wait for.
+  for (let poll = 0; discovered.sessionId !== null && poll < KEEPER_POLLS; poll += 1) {
     const file = discovered.sessionId === null ? null : findSessionTranscript(projects, discovered.sessionId);
     if (file !== null) transcript = observeTranscript(file);
     if (transcript.deliveredSha !== null && transcript.model !== null) break;

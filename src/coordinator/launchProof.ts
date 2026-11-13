@@ -37,7 +37,14 @@ export function sha256(text: string): string {
 
 export interface FolderTrust { trusted: boolean; detail: string; trustedFolder: string | null }
 
-export const defaultClaudeStatePath = (home: string = homedir()): string => path.join(home, ".claude.json");
+/**
+ * Claude Code's global state file for the environment a launch uses: `$CLAUDE_CONFIG_DIR/.claude.json` when
+ * CLAUDE_CONFIG_DIR is set and non-empty, else `~/.claude.json`.
+ */
+export const defaultClaudeStatePath = (env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string => {
+  const configDir = env.CLAUDE_CONFIG_DIR?.trim();
+  return configDir ? path.join(configDir, ".claude.json") : path.join(home, ".claude.json");
+};
 
 function realpathOrNull(target: string): string | null {
   try { return realpathSync(target); } catch { return null; }
@@ -95,7 +102,7 @@ export function claudeFolderTrust(folder: string, statePath: string = defaultCla
   }
   return {
     trusted: false, trustedFolder: null,
-    detail: `${resolved} is not a folder Claude Code trusts: an unattended session there stops at "Is this a project you trust?" and never receives its brief. Launch only into an already-trusted folder, or have the operator trust it once interactively; Arcadia never writes the trust state itself.`
+    detail: `${resolved} is not a folder Claude Code trusts: an unattended session there stops at "Is this a project you trust?" and never receives its brief. Launch only into an already-trusted folder, or have the operator trust it once interactively; the relay and keeper launchers never write the trust state.`
   };
 }
 
@@ -137,38 +144,48 @@ export function parseAgentRows(json: string): AgentRow[] | null {
 
 function verifiedSession(row: AgentRow): BackgroundSession | null {
   const sessionId = [text(row.sessionId), text(row.id)].find((value) => value !== null && FULL_ID.test(value)) ?? null;
+  // A row with no usable background-session id (an interactive row, say) is never a session: the keeper must not record an empty id.
   const stopId = text(row.id) ?? sessionId;
-  if (stopId === null) return null;
+  if (stopId === null || stopId === "") return null;
   return { verified: true, stopId, sessionId, unverifiedPrintedId: null, source: "agents-json", cwd: text(row.cwd), model: text(row.model), effort: text(row.effort) ?? text(row.reasoningEffort) };
+}
+
+/** Every id and sessionId (lower-cased) in a `claude agents --json` listing, or null when it cannot be read. Taken BEFORE a launch. */
+export function agentIdSnapshot(agentsJson: string): string[] | null {
+  const rows = parseAgentRows(agentsJson);
+  if (rows === null) return null;
+  return rows.flatMap((row) => [row.id, row.sessionId]).filter((value): value is string => typeof value === "string" && value !== "").map((value) => value.toLowerCase());
 }
 
 /**
  * The real session of a `claude --bg` launch. `--bg` prints "--bg manages the session id; ignoring --session-id" and
  * assigns its own id (P2: pinned `a63607ad...` ignored, host chose `686736ac...`), so the id we asked for is never
- * recorded. Launch output is free text: any 8-hex token in it (a date such as 20261112, a count, a version) is only a
- * CANDIDATE. An id is accepted only through `claude agents --json`:
- *  1. a row in this launch's cwd whose id or sessionId equals or starts with a printed token; else
- *  2. the single row with this launch's exact name and cwd (the keeper may retitle itself, so a printed-id match does
- *     not require the name; the name match is the fallback for output that printed nothing usable).
+ * recorded. Launch output is free text and an agents row can belong to an older or foreign session, so an id is
+ * accepted only through `claude agents --json` and only from a row that is NEW:
+ *  - `preexisting` is the snapshot (`agentIdSnapshot`) of every id in the listing taken before the launch; a row whose
+ *    id or sessionId is in it is never a candidate, whatever its name, cwd or the printed output (a stale keeper with
+ *    the same constant launch name, or a printed token that equals an old row's id, cannot become the stop target).
+ *  - Of the new rows in this launch's cwd there must be EXACTLY ONE (several new rows are ambiguous: unverified), and
+ *    it must match the launch: its id or sessionId equals or starts with a printed token, or its name is this
+ *    launch's name (the keeper may retitle itself, so a printed-id match does not require the name).
  * Otherwise the result is `verified: false` with a null `stopId`: the caller must not record a stop target, and the
  * printed candidate is kept only for the error message.
  */
-export function discoverBackgroundSession(input: { launchOutput: string; agentsJson: string | null; name: string; cwd: string }): BackgroundSession {
+export function discoverBackgroundSession(input: { launchOutput: string; agentsJson: string | null; name: string; cwd: string; preexisting: readonly string[] }): BackgroundSession {
   const rows = input.agentsJson === null ? null : parseAgentRows(input.agentsJson);
   // The ignored-session-id notice itself contains no id; strip it so a hex word in it can never be read as one.
   const printedText = input.launchOutput.split("\n").filter((line) => !/ignoring --session-id/i.test(line)).join("\n");
   const tokens = [...printedText.matchAll(new RegExp(FULL_ID.source, "gi")), ...printedText.matchAll(new RegExp(SHORT_ID.source, "gi"))].map((match) => match[0].toLowerCase());
   const unverified: BackgroundSession = { verified: false, stopId: null, sessionId: null, unverifiedPrintedId: tokens[0] ?? null, source: "unverified", cwd: null, model: null, effort: null };
   if (rows === null) return unverified;
+  const old = new Set(input.preexisting.map((value) => value.toLowerCase()));
+  const isOld = (row: AgentRow): boolean => [row.id, row.sessionId].some((value) => typeof value === "string" && old.has(value.toLowerCase()));
   const resolvedCwd = path.resolve(input.cwd);
-  const inCwd = rows.filter((candidate) => typeof candidate.cwd === "string" && path.resolve(candidate.cwd) === resolvedCwd);
-  const printedMatches = inCwd.filter((candidate) => [candidate.id, candidate.sessionId].some((value) => typeof value === "string" && tokens.some((token) => value.toLowerCase() === token || value.toLowerCase().startsWith(token))));
-  if (printedMatches.length === 1) return verifiedSession(printedMatches[0]) ?? unverified;
-  if (printedMatches.length === 0) {
-    const named = inCwd.filter((candidate) => candidate.name === input.name);
-    if (named.length === 1) return verifiedSession(named[0]) ?? unverified;
-  }
-  return unverified;
+  const fresh = rows.filter((candidate) => !isOld(candidate) && typeof candidate.cwd === "string" && path.resolve(candidate.cwd) === resolvedCwd);
+  if (fresh.length !== 1) return unverified;
+  const [row] = fresh;
+  const matchesPrinted = [row.id, row.sessionId].some((value) => typeof value === "string" && tokens.some((token) => value.toLowerCase() === token || value.toLowerCase().startsWith(token)));
+  return matchesPrinted || row.name === input.name ? verifiedSession(row) ?? unverified : unverified;
 }
 
 // ---------------------------------------------------------------------------
@@ -227,11 +244,17 @@ export interface LaunchProof {
   recordedAt: string;
 }
 
-/** A requested alias (`opus`, `sonnet`) matches an observed full id that contains it; an exact id matches itself. */
+/**
+ * A requested alias (no digits: `opus`, `sonnet`) matches an observed id that has it as a whole `-` segment
+ * (`claude-opus-4-1`). A requested full id (it has digits) matches itself or its dated form (`-YYYYMMDD`): so
+ * `claude-sonnet-4-5` matches `claude-sonnet-4-5-20250929` and never `claude-sonnet-4-50`.
+ */
 export function modelMatches(requested: string, observed: string): boolean {
   const want = requested.toLowerCase().replace(/\[.*\]$/, "");
   const have = observed.toLowerCase();
-  return have === want || have.includes(want);
+  if (have === want) return true;
+  if (!/\d/.test(want)) return have.split(/[-.:]/).includes(want);
+  return have.startsWith(`${want}-`) && /^\d{8}$/.test(have.slice(want.length + 1));
 }
 
 export function buildLaunchProof(input: {

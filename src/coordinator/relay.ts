@@ -10,7 +10,7 @@ import type { ProviderSignInStatus } from "../codingAgents/signIn.js";
 import { billingUnsetArgs, spendRefusalMessage } from "../spend/spendGuard.js";
 import { systemTmux, type TmuxAdapter } from "../sessions/index.js";
 import type { CapsuleSources } from "./capsule.js";
-import { buildLaunchProof, claudeFolderTrust, observeTranscript, type FolderTrust, type LaunchProof } from "./launchProof.js";
+import { buildLaunchProof, claudeFolderTrust, defaultClaudeStatePath, observeTranscript, type FolderTrust, type LaunchProof } from "./launchProof.js";
 import { coordinatorPaths } from "./paths.js";
 import {
   COORDINATOR_ENV,
@@ -493,7 +493,7 @@ export function systemRelayDeps(input: { sources: () => CapsuleSources; ping: (m
   return {
     tmux: systemTmux,
     startPressInProgress: input.startPressInProgress,
-    folderTrust: input.folderTrust ?? ((directory) => claudeFolderTrust(directory)),
+    folderTrust: input.folderTrust ?? ((directory) => claudeFolderTrust(directory, defaultClaudeStatePath(process.env))),
     decision: (repoRoot, now) => readRelayDecision(repoRoot, now),
     signIn: input.signIn,
     capacity: input.capacity,

@@ -719,14 +719,17 @@ now code (`src/coordinator/launchProof.ts`) used by the relay and by
   exists only through `/` or the home directory is refused. Inheritance from a
   trusted parent is an assumption: if Claude does not inherit it, the check
   passes falsely and the launch stalls at the prompt (the relay's delivery
-  check then fails the attempt). Arcadia never writes the trust state; the
-  operator trusts a folder once, interactively.
+  check then fails the attempt). The relay and keeper launchers never write the trust
+  state (`arcadia go-broker install` can, for its own folders); the operator
+  trusts a launch folder once, interactively. The state file is
+  `$CLAUDE_CONFIG_DIR/.claude.json` when that is set, else `~/.claude.json`.
 - **`--bg` session id.** `--bg` ignores `--session-id`, so the keeper no longer
   passes it. The real id is read from the launch output, else from
-  `claude agents --json`: a printed token is only a candidate, accepted only when
-  a row in the launch cwd matches it, else the single row with the launch's
-  exact name and cwd (looked up a few times over a few seconds). An id no row
-  confirms writes no record, is never a stop target, and the error says so. Stop is
+  `claude agents --json`, whose ids are snapshotted BEFORE the launch (an
+  unreadable listing refuses the launch). Only the single NEW row in the launch
+  cwd that matches a printed token or the launch name can be the session (looked
+  up a few times over a few seconds); an old row, several new rows, or no new row
+  writes no record, is never a stop target, and the error says so. Stop is
   `claude stop <id>`; no tmux.
 - **Exact brief.** The SHA-256 of the brief handed to the launcher is recorded
   beside the SHA-256 of the transcript's first main-chain user message, and

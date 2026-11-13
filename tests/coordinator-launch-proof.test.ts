@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { buildLaunchProof, claudeFolderTrust, discoverBackgroundSession, modelMatches, observeTranscript, sha256 } from "../src/coordinator/launchProof.js";
+import { agentIdSnapshot, buildLaunchProof, claudeFolderTrust, defaultClaudeStatePath, discoverBackgroundSession, modelMatches, observeTranscript, sha256 } from "../src/coordinator/launchProof.js";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -57,31 +57,54 @@ describe("claudeFolderTrust (probe P1: a fresh folder hits the trust prompt)", (
   });
 });
 
-describe("discoverBackgroundSession (probe P2: --bg ignores --session-id; launch output is only a candidate)", () => {
+describe("discoverBackgroundSession (probe P2: --bg ignores --session-id; only a NEW agents row can be the session)", () => {
   const cwd = "/work/repo";
   const uuid = "686736ac-1111-4222-8333-444455556666";
-  it("accepts a printed id only when an agents row in this cwd matches it, and resolves the full id and model", () => {
-    const rows = JSON.stringify([{ id: "686736ac", sessionId: uuid, name: "renamed since", cwd, model: "claude-haiku-5-5", effort: "low" }]);
+  const find = (launchOutput: string, rows: unknown[] | null, preexisting: string[] = [], name = "n") =>
+    discoverBackgroundSession({ launchOutput, agentsJson: rows === null ? null : JSON.stringify(rows), name, cwd, preexisting });
+  it("snapshots every id and sessionId, lower-cased, and refuses an unreadable listing", () => {
+    expect(agentIdSnapshot(JSON.stringify([{ id: "ABCD1234", sessionId: uuid }, { name: "no id" }]))).toEqual(["abcd1234", uuid]);
+    expect(agentIdSnapshot("nope")).toBeNull();
+  });
+  it("accepts a printed id only when it matches the single new row in this cwd, and resolves the full id and model", () => {
+    const rows = [{ id: "686736ac", sessionId: uuid, name: "renamed since", cwd, model: "claude-haiku-5-5", effort: "low" }];
     const out = "--bg manages the session id; ignoring --session-id a63607ad\nstarted background session 686736ac";
-    expect(discoverBackgroundSession({ launchOutput: out, agentsJson: rows, name: "n", cwd })).toMatchObject({ verified: true, stopId: "686736ac", sessionId: uuid, model: "claude-haiku-5-5", effort: "low" });
+    expect(find(out, rows)).toMatchObject({ verified: true, stopId: "686736ac", sessionId: uuid, model: "claude-haiku-5-5", effort: "low" });
   });
-  it("ignores decoy 8-hex tokens (a date, a hex word) and takes the unique name+cwd row instead", () => {
-    const rows = JSON.stringify([{ id: uuid, name: "n", cwd }, { id: "ffffffff", name: "n", cwd: "/other" }]);
-    const found = discoverBackgroundSession({ launchOutput: "started 20261112 build deadbeef", agentsJson: rows, name: "n", cwd });
-    expect(found).toMatchObject({ verified: true, stopId: uuid, sessionId: uuid, source: "agents-json" });
+  it("ignores decoy 8-hex tokens (a date, a hex word) and takes the single new row with the launch's name", () => {
+    expect(find("started 20261112 build deadbeef", [{ id: uuid, name: "n", cwd }, { id: "ffffffff", name: "n", cwd: "/other" }])).toMatchObject({ verified: true, stopId: uuid, sessionId: uuid });
   });
-  it("does not let a decoy token match a row in another cwd", () => {
-    const rows = JSON.stringify([{ id: "20261112", name: "n", cwd: "/other" }]);
-    expect(discoverBackgroundSession({ launchOutput: "20261112", agentsJson: rows, name: "n", cwd })).toMatchObject({ verified: false, stopId: null, unverifiedPrintedId: "20261112" });
+  it("never takes a stale row: an old same-name row alone is unverified (reproduced: stopId oldoldol)", () => {
+    const old = { id: "oldoldol", sessionId: uuid, name: "n", cwd };
+    expect(find("started", [old], ["oldoldol"])).toMatchObject({ verified: false, stopId: null });
+    // Matched by sessionId too, in either case.
+    expect(find("started", [old], [uuid.toUpperCase()])).toMatchObject({ verified: false, stopId: null });
   });
-  it("is unverified, with a null stopId, for an id with no matching row, two matching rows, bad JSON, no listing, or the notice only", () => {
-    const none = discoverBackgroundSession({ launchOutput: "started 20261112", agentsJson: "[]", name: "n", cwd });
-    expect(none).toMatchObject({ verified: false, stopId: null, sessionId: null, unverifiedPrintedId: "20261112" });
-    const two = JSON.stringify([{ id: "aaaaaaaa", name: "n", cwd }, { id: "bbbbbbbb", name: "n", cwd }]);
-    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: two, name: "n", cwd }).verified).toBe(false);
-    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: "nope", name: "n", cwd }).verified).toBe(false);
-    expect(discoverBackgroundSession({ launchOutput: "started 686736ac", agentsJson: null, name: "n", cwd })).toMatchObject({ verified: false, stopId: null, unverifiedPrintedId: "686736ac" });
-    expect(discoverBackgroundSession({ launchOutput: "--bg manages the session id; ignoring --session-id deadbeef", agentsJson: null, name: "n", cwd })).toMatchObject({ verified: false, unverifiedPrintedId: null });
+  it("never takes a printed token that matches an OLD row (reproduced: stopId deadbeef); the new row is used, or nothing", () => {
+    const old = { id: "deadbeef", name: "other keeper", cwd };
+    expect(find("started deadbeef", [old], ["deadbeef"])).toMatchObject({ verified: false, stopId: null, unverifiedPrintedId: "deadbeef" });
+    expect(find("started deadbeef", [old, { id: "feedc0de", name: "n", cwd }], ["deadbeef"])).toMatchObject({ verified: true, stopId: "feedc0de" });
+  });
+  it("finds a new row that appears late: an early listing without it is unverified, the later one verifies", () => {
+    const old = { id: "oldoldol", name: "n", cwd };
+    expect(find("", [old], ["oldoldol"]).verified).toBe(false);
+    expect(find("", [old, { id: "newnewne", name: "n", cwd }], ["oldoldol"])).toMatchObject({ verified: true, stopId: "newnewne" });
+  });
+  it("rejects a matching new row that has no usable session id (an interactive row), never returning an empty stopId", () => {
+    expect(find("", [{ name: "n", cwd }])).toMatchObject({ verified: false, stopId: null });
+    expect(find("", [{ id: "", sessionId: "", name: "n", cwd }])).toMatchObject({ verified: false, stopId: null });
+  });
+  it("leaves several new rows in the cwd unverified, even if one matches the name or the printed token", () => {
+    const rows = [{ id: "aaaaaaaa", name: "n", cwd }, { id: "bbbbbbbb", name: "other", cwd }];
+    expect(find("started aaaaaaaa", rows)).toMatchObject({ verified: false, stopId: null });
+    expect(find("", rows)).toMatchObject({ verified: false, stopId: null });
+  });
+  it("is unverified for a new row that matches neither the printed id nor the name, a new row in another cwd, bad JSON, no listing, or the notice only", () => {
+    expect(find("started 20261112", [{ id: "ffffffff", name: "someone else", cwd }])).toMatchObject({ verified: false, stopId: null, unverifiedPrintedId: "20261112" });
+    expect(find("20261112", [{ id: "20261112", name: "n", cwd: "/other" }])).toMatchObject({ verified: false, stopId: null });
+    expect(discoverBackgroundSession({ launchOutput: "", agentsJson: "nope", name: "n", cwd, preexisting: [] }).verified).toBe(false);
+    expect(find("started 686736ac", null)).toMatchObject({ verified: false, stopId: null, unverifiedPrintedId: "686736ac" });
+    expect(find("--bg manages the session id; ignoring --session-id deadbeef", null)).toMatchObject({ verified: false, unverifiedPrintedId: null });
   });
 });
 
@@ -124,5 +147,18 @@ describe("observeTranscript and buildLaunchProof", () => {
     expect(modelMatches("opus", "claude-opus-4-1")).toBe(true);
     expect(modelMatches("sonnet", "claude-haiku-5-5")).toBe(false);
     expect(modelMatches("opus[1m]", "claude-opus-4-1")).toBe(true);
+  });
+  it("matches a full id only by equality or its dated form, never by a longer lookalike", () => {
+    expect(modelMatches("claude-sonnet-4-5", "claude-sonnet-4-5")).toBe(true);
+    expect(modelMatches("claude-sonnet-4-5", "claude-sonnet-4-5-20250929")).toBe(true);
+    expect(modelMatches("claude-sonnet-4-5", "claude-sonnet-4-50")).toBe(false);
+    expect(modelMatches("claude-sonnet-4-5", "claude-sonnet-4-5-20250929-extra")).toBe(false);
+    // An alias is a whole segment, not a substring.
+    expect(modelMatches("opus", "claude-opusish-1")).toBe(false);
+  });
+  it("resolves the Claude state file from CLAUDE_CONFIG_DIR when set, else the home directory", () => {
+    expect(defaultClaudeStatePath({ CLAUDE_CONFIG_DIR: "/cfg/claude" }, "/home/u")).toBe("/cfg/claude/.claude.json");
+    expect(defaultClaudeStatePath({ CLAUDE_CONFIG_DIR: "  " }, "/home/u")).toBe("/home/u/.claude.json");
+    expect(defaultClaudeStatePath({}, "/home/u")).toBe("/home/u/.claude.json");
   });
 });
