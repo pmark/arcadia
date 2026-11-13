@@ -1,5 +1,5 @@
 import { execFileSync, spawn, spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
@@ -17,6 +17,7 @@ import {
   formatTable,
   opencodeSessionConfig,
   parseProviderList,
+  prepareExperimentConfig,
   preservationBlockedEvidence,
   type HostPreserve,
   renderFixtureFiles,
@@ -155,6 +156,24 @@ describe("test-headless-provider-single-action library entry", () => {
     expect(script).not.toMatch(/martianrover/);
     expect(script).not.toMatch(/export\s+ARCADIA_WORKSPACE/);
     expect(script).not.toMatch(/ARCADIA_WORKSPACE=/);
+  });
+});
+
+describe("experiment config setup (copied files are read-only)", () => {
+  it("makes every copied config file writable before recording the build profile, so the 0444 copies do not raise EACCES", () => {
+    const workspace = temp("exp-config-");
+    const config = path.join(workspace, "config");
+    mkdirSync(config, { recursive: true });
+    const registries = ["coding-agent-profiles.json", "provider-adapters.json", "ask-rules.json", "intent-registry.json", "template-registry.json"];
+    for (const name of registries) {
+      writeFileSync(path.join(config, name), JSON.stringify(name === "coding-agent-profiles.json" ? { defaults: { build: "old" } } : {}, null, 2) + "\n");
+      chmodSync(path.join(config, name), 0o444);
+    }
+    expect(() => prepareExperimentConfig(workspace, "build-codex")).not.toThrow();
+    expect(JSON.parse(readFileSync(path.join(config, "coding-agent-profiles.json"), "utf8")).defaults.build).toBe("build-codex");
+    for (const name of registries) expect(readFileSync(path.join(config, name), "utf8")).toContain("{");
+    for (const name of registries) expect(readdirSync(config)).toContain(name);
+    for (const name of registries) expect(statSync(path.join(config, name)).mode & 0o200).toBe(0o200);
   });
 });
 
