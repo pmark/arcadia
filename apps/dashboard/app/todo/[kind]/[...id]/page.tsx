@@ -100,7 +100,7 @@ function DecisionItem({ target }: { target: Target }) {
             error={state.error ?? (cards.readFailed ? "this Decision could not be read." : null)}
             note={state.note}
             hasLoaded={state.hasLoaded && cards.loaded && !cards.readFailed}
-            onRetry={() => void state.refresh()}
+            onRetry={() => { void cards.refresh(); void state.refresh(); }}
             readingLabel={slow ? "Still reading this Decision. Your tap was received; this read is slow right now." : "Reading this Decision..."}
           />
         )}
