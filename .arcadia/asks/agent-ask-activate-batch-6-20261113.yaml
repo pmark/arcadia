@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-batch-6-20261113
+project: arcadia
+intent: plan
+target_ref: plan/draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with
+requested_authority: propose
+desired_result: Activate the batch 6 test-stability Plan; the burn-down Plan is set aside with its unfinished work preserved.
+rationale: "Operator menu answer 5A: batch 6, verified by Rowan 13 per Decision 0229 in Signal 10 transcript 67f5e9a4-65f4-490c-8bde-6b77f7a9e20d, line 3371, uuid bcf40e11-09da-49b3-b71a-a8605cd7bbb2, user-role plain string '5A: batch 6' at 2026-11-13T22:56:34.547Z (menu: activate batch 6 (tests-only) and build its three fixes one at a time; the burn-down Plan is set aside, its open Action being the same fix as batch 6's port fix). Activation grants no production START: production stays Off. Batch 6 Actions are test-only and served serially."
