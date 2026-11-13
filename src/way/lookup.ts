@@ -652,7 +652,14 @@ const TRIGGER_BOOST = 1.2;
  * passages first. Such a question also counts "production" and "off" as
  * terms, and a passage that says "production Off" in order is boosted.
  */
-const STOP_PRODUCTION_WORDING: readonly RegExp[] = [/\bstop\b.*\b(?:everything|production)\b/, /\bhalt\b.*\bproduction\b/, /\b(?:turn|shut|switch)\b.*\boff\b/, /\boff\b.*\bbutton\b/];
+// The object of a turn, shut or switch off must be production or everything, so "turn off notifications" keeps its base answer.
+const STOP_PRODUCTION_WORDING: readonly RegExp[] = [
+  /\bstop\b.*\b(?:everything|production)\b/,
+  /\bhalt\b.*\bproduction\b/,
+  /\b(?:turn|shut|switch)\s+(?:\w+\s+)?(?:production|everything)\s+off\b/,
+  /\b(?:turn|shut|switch)\s+off\s+(?:the\s+)?(?:production|everything)\b/,
+  /\boff\s+(?:the\s+)?button\b/
+];
 const PRODUCTION_OFF: readonly [string, string] = ["production", "off"];
 const PRODUCTION_OFF_BOOST = 1.5;
 

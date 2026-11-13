@@ -487,7 +487,14 @@ describe("stop-production wording against the real guidance (Issue #2348)", () =
     return { matched: result.matched, address: (result.matched ? result.results : result.nearest)[0]?.address };
   };
 
-  it.each(["how do I stop everything", "turn production off", "where is the off button"])("returns the production Off guidance first for %j", (question) => {
+  it.each([
+    "how do I stop everything",
+    "turn production off",
+    "where is the off button",
+    "stop everything",
+    "turn off production",
+    "what happens when I stop production"
+  ])("returns the production Off guidance first for %j", (question) => {
     const top = first(question);
     expect(top.matched).toBe(true);
     expect(top.address).toBe(productionOff);
@@ -495,6 +502,20 @@ describe("stop-production wording against the real guidance (Issue #2348)", () =
 
   it.each(["before you stop", "how do I stop a session"])("keeps the session-ending passage first for the near-miss %j", (question) => {
     expect(first(question)).toEqual({ matched: true, address: "docs/agent-guidance/continuation.md#before-you-stop" });
+  });
+
+  // Recorded on main (7df775a17) before the change; these wordings must keep that first passage.
+  const provider = "START_HERE.md#provider-capacity-gates-every-admission-unless-you-turn-the-gate-off";
+  const mergeOnGreen = "docs/agent-guidance/pull-requests.md#merge-on-green";
+  it.each([
+    ["turn off notifications", { matched: false, address: provider }],
+    ["how do I turn off the dashboard", { matched: true, address: provider }],
+    ["turn off the gate", { matched: true, address: provider }],
+    ["switch off discord", { matched: true, address: productionOff }],
+    ["switch off auto merge", { matched: false, address: mergeOnGreen }],
+    ["turn off auto-merge", { matched: false, address: mergeOnGreen }]
+  ])("keeps the base first passage for non-production %j", (question, expected) => {
+    expect(first(question)).toEqual(expected);
   });
 
   it("never offers the production Off guidance first for a question about ending a session", () => {
