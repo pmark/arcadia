@@ -645,6 +645,29 @@ const K1 = 1.2;
 const B = 0.75;
 const TRIGGER_BOOST = 1.2;
 
+/**
+ * Operator wording for turning production Off, or stopping everything (Issue
+ * #2348). The production Off guidance says "to stop everything" and "turning
+ * production Off", but the words "stop" and "off" alone rank session-ending
+ * passages first. Such a question also counts "production" and "off" as
+ * terms, and a passage that says "production Off" in order is boosted.
+ */
+const STOP_PRODUCTION_WORDING: readonly RegExp[] = [/\bstop\b.*\b(?:everything|production)\b/, /\bhalt\b.*\bproduction\b/, /\b(?:turn|shut|switch)\b.*\boff\b/, /\boff\b.*\bbutton\b/];
+const PRODUCTION_OFF: readonly [string, string] = ["production", "off"];
+const PRODUCTION_OFF_BOOST = 1.5;
+
+/** True when the question asks how to stop production, turn it Off, or stop everything. */
+export function asksToStopProduction(question: string): boolean {
+  const lowered = question.toLowerCase();
+  return STOP_PRODUCTION_WORDING.some((pattern) => pattern.test(lowered));
+}
+
+/** True when the chunk reads "production Off" as two adjacent words after stopword removal. */
+function holdsProductionOff(entry: IndexedPassage, chunk: Chunk): boolean {
+  const tokens = tokenize(joinUnits(entry.units, chunk.from, chunk.to));
+  return tokens.some((token, position) => token === PRODUCTION_OFF[0] && tokens[position + 1] === PRODUCTION_OFF[1]);
+}
+
 export interface RankedPassage {
   passageIndex: number;
   /** Chunk of the passage that scored best. */
@@ -676,11 +699,14 @@ function matchingTriggerPaths(triggers: TriggerEntry[], questionTerms: Set<strin
  * Rank passages for a question by their best chunk. A chunk's score is BM25
  * over weighted fields (body, heading, parent headings, path, `keys:`),
  * scaled by how much of the question's weight the chunk covers, then raised
- * for files whose guidance-index trigger matches. Ties break by address.
+ * for files whose guidance-index trigger matches, and for stop-production
+ * wording, for chunks that say "production Off". Ties break by address.
  */
 export function rank(index: WayIndex, question: string, triggers: TriggerEntry[] = []): { ranked: RankedPassage[]; terms: string[] } {
   const chunkCount = index.chunks.length;
-  const distinct = [...new Set(tokenize(question.slice(0, MAX_QUESTION_CHARS)))];
+  const stopping = asksToStopProduction(question);
+  const asked = [...new Set(tokenize(question.slice(0, MAX_QUESTION_CHARS)))];
+  const distinct = stopping ? [...new Set([...asked, ...PRODUCTION_OFF])] : asked;
   const idf = (term: string): number => {
     const frequency = index.postings.get(term)?.length ?? 0;
     return Math.log(1 + (chunkCount - frequency + 0.5) / (frequency + 0.5));
@@ -706,6 +732,7 @@ export function rank(index: WayIndex, question: string, triggers: TriggerEntry[]
     const coverage = totalIdf > 0 ? entry.matched / totalIdf : 0;
     let score = entry.score * (0.4 + 0.6 * coverage);
     if (boosted.has(index.passages[chunk.passageIndex].passage.path)) score *= TRIGGER_BOOST;
+    if (stopping && holdsProductionOff(index.passages[chunk.passageIndex], chunk)) score *= PRODUCTION_OFF_BOOST;
     const current = best.get(chunk.passageIndex);
     if (!current || score > current.score || (score === current.score && chunkIndex < current.chunkIndex)) {
       const headingTerms = weighted.filter((item) => index.passages[chunk.passageIndex].headingTerms.has(item.term)).length;

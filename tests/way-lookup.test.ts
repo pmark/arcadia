@@ -478,3 +478,30 @@ describe("against the real guidance", () => {
     );
   });
 });
+
+describe("stop-production wording against the real guidance (Issue #2348)", () => {
+  const productionOff = "START_HERE.md#managed-production-the-standing-authorization";
+  /** The first address the lookup offers: the matched results when it answers, otherwise the nearest passages. */
+  const first = (question: string): { matched: boolean; address: string | undefined } => {
+    const result = lookup(repoRoot, question, { limit: 3, budget: 100_000 });
+    return { matched: result.matched, address: (result.matched ? result.results : result.nearest)[0]?.address };
+  };
+
+  it.each(["how do I stop everything", "turn production off", "where is the off button"])("returns the production Off guidance first for %j", (question) => {
+    const top = first(question);
+    expect(top.matched).toBe(true);
+    expect(top.address).toBe(productionOff);
+  });
+
+  it.each(["before you stop", "how do I stop a session"])("keeps the session-ending passage first for the near-miss %j", (question) => {
+    expect(first(question)).toEqual({ matched: true, address: "docs/agent-guidance/continuation.md#before-you-stop" });
+  });
+
+  it("never offers the production Off guidance first for a question about ending a session", () => {
+    expect(first("how do I end my session").address?.startsWith("START_HERE.md#managed-production")).toBe(false);
+  });
+
+  it("still says the Way does not clearly answer gibberish", () => {
+    expect(first("asdfgh qwzx plork").matched).toBe(false);
+  });
+});
