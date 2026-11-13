@@ -78,5 +78,5 @@ export function useDecisionCards<Meta = unknown>({ url = "/api/decision-card" }:
   );
 
   const merged = [...views, ...kept.filter((item) => !views.some((view) => view.card.id === item.card.id))];
-  return { views: merged, refused, pendingId, outcomes, press, loaded: read.loaded, readFailed: read.failed, decision: read.decision, lastDecision: read.lastDecision };
+  return { views: merged, refused, pendingId, outcomes, press, refresh, loaded: read.loaded, readFailed: read.failed, decision: read.decision, lastDecision: read.lastDecision };
 }

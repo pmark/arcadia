@@ -1,6 +1,9 @@
 import type Database from "better-sqlite3";
 import { equal, fieldsMatch, hash, pinnedFieldsMatch, Refusal, refuse, validatePlanActivationInput, validatePlanAmendmentInput, type PlanActivationInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
 import { withinPlanAmendmentRunner } from "./operatorExecution.js";
+import { expectedActivationSegment } from "./libraryContract.js";
+import { readPlanQueue } from "./planQueue.js";
+
 import { claimRunnerLock } from "./runnerLock.js";
 export type { PlanActivationInput, PlanAmendmentInput } from "./planAmendmentContract.js";
 import { execFileSync } from "node:child_process";
@@ -17,6 +20,15 @@ import { runAgentAskSettleCommand } from "../commands/agentAsk.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withDatabase } from "../db/connection.js";
 import { getProjectBySlug, getProjectMetadata } from "../db/repositories.js";
+
+/** The live activation queue for a Plan, or a refusal when the Plan cannot be read (fail closed, #2478). */
+function liveActivationSegment(repoRoot: string, project: string, plan: string): string[] {
+  try { return expectedActivationSegment(project, readPlanQueue(repoRoot, project, plan)); }
+  catch (error) {
+    return refuse("INVALID_CONTRACT", error instanceof Error ? error.message : String(error),
+      `Check that the activated Plan exists and parses at docs/plans/${plan}.md in this checkout, then retry; do not edit the pinned segment.`);
+  }
+}
 
 export interface PlanAmendmentResult {
   schema: "arcadia-plan-amendment-receipt-v1";
@@ -192,15 +204,28 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
       // Preview decides which, and both paths then validate the exact document effects.
       const e = activation.envelope;
       const previousPlan = documentState(readFileSync(path.join(repo, `docs/plans/${e.previousPlan}.md`), "utf8"));
+      let settled = false;
       try {
         pinnedFieldsMatch(project.fields, e.projectBefore, "Project");
         pinnedFieldsMatch(currentPlan.fields, e.planBefore, "Plan");
         pinnedFieldsMatch(previousPlan.fields, e.previousPlanBefore, "Previous Plan");
       } catch (error) {
-        try { activationSettled(repo, activation); } catch { throw error; }
+        try { activationSettled(repo, activation); settled = true; } catch { throw error; }
       }
       const actions = Array.isArray(currentPlan.fields.actions) ? currentPlan.fields.actions as Record<string, unknown>[] : [];
       pinnedFieldsMatch(actions.find((action) => action.id === e.action) ?? {}, e.actionUnchanged, "First Action");
+      // Not yet settled: the queue this activation will settle is the live Plan's non-done Actions in settlement's order,
+      // checked before any preview or write; an unreadable Plan refuses (fail closed). A START card reports INVALID_START_RUN (#2478).
+      // A settled activation is a replay: its Plan's Actions have moved on (a done Action shrinks the live queue), so the
+      // pinned segment is not compared with the live queue again.
+      if (!settled) {
+        const expectedSegment = liveActivationSegment(repo, e.project, e.plan);
+        if (JSON.stringify(e.queueSegment) !== JSON.stringify(expectedSegment)) {
+          refuse("startRun" in descriptor ? "INVALID_START_RUN" : "INVALID_CONTRACT",
+            `The planActivation queueSegment must equal the activation queue ${JSON.stringify(expectedSegment)}, but it is ${JSON.stringify(e.queueSegment)}.`,
+            "Re-prepare the card from the Plan's current Actions; do not edit the pinned segment.");
+        }
+      }
     } else {
       const e = amendment!.envelope;
       equal(normalized.actions.length, 1, "ANOTHER_PROPOSAL", "Ask Action count");

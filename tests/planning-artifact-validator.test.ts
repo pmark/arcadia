@@ -121,6 +121,14 @@ describe("implementation claim detection ignores disclaimers and plan-file write
     "I changed no repository files and updated the plan file.",
     "I read the launcher, then wrote the plan file.",
     "Phase 2, then add the assertion and replace the stale comment.",
+    // #1976: unchanged behaviour, not a regression (passes on main and #1972).
+    "besides that I patched src/a.ts",
+    // #1976 review round 2: new false positives from the did/do/does rule must not come back.
+    "Open question: does update the schema in the planner, then review it.",
+    "Then do update the docs in the planning folder.",
+    "Scope: do update the README after the plan is accepted.",
+    "I changed no files to save time.",
+    "I did not modify src/cli.ts.",
     // Participles used as adjectives after a split are not claims (live planning artifacts).
     "- Reject changed request content and changed resolution; display current facts.",
     "- Any change to authority: a versioned decision, updated constitution and migration notes."
@@ -140,6 +148,18 @@ describe("implementation claim detection ignores disclaimers and plan-file write
     "I modified the plan file at src/cli.ts",
     "I updated the planning doc in src/planner.ts",
     "I changed nothing other than tests/system-tmux-long-command.test.ts.",
+    // #1976 review round 2: a "." with no space after it still ends a sentence.
+    "I changed no files.I modified src/cli.ts.",
+    // #1976 review round 2: first-person did-claims, `patched`, `save` before a path with an article, DID MODIFY without separator.
+    "I did modify src/cli.ts.",
+    "I patched src/cli.ts.",
+    "I changed no files save for src/cli.ts",
+    "I changed no files save the src/cli.ts",
+    "I changed no files DID MODIFY src/cli.ts",
+    // #1976 residual bypasses: did/do/does before the verb, base verb forms, `save` as an exception, `..` in the plan path.
+    "I modified no tests but did modify src/cli.ts.",
+    "I changed no files save src/cli.ts",
+    "I updated the plan file at plans/../src/cli.ts",
     "I edited the launcher.",
     "Then fixed src/cli.ts and fixed tests/cli.test.ts.",
     "I updated only the plan file and then modified src/cli.ts.",

@@ -47,7 +47,9 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
+import { interlockRepository, registeredPrimaryCheckout, runPredecessorStopAfterAccept, stopPressInterlock, systemClaudeStop, systemPredecessorStopTmux, verifiedPrimaryCheckout, type AfterAcceptStop, type PredecessorStopDeps } from "../coordinator/predecessorStop.js";
 import { RELAY_ROLES, renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult, type StartPressStatus } from "../coordinator/relay.js";
+import { PEER_WATCH_PROVIDER_IDS } from "../agentWatch/classify.js";
 import { observeProviderCapacity } from "../codingAgents/capacity.js";
 import { checkProviderSignIn } from "../codingAgents/signIn.js";
 import { loadPhase3Registries, validatePhase3Registries } from "../intent/registries.js";
@@ -265,10 +267,14 @@ export function renderCoordinatorVerifySuccess(response: CommandSuccess<VerifyRe
   ];
 }
 
-export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string; warnings?: string[] }
+export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string; warnings?: string[]; predecessorStop: AfterAcceptStop["stop"]; predecessorStopError: AfterAcceptStop["error"] }
 
-/** `arcadia coordinator accept --generation N --snapshot-sha <sha>`: the custody transfer (design step 5). */
-export function runCoordinatorAcceptCommand(options: Scope & { generation: number; snapshotSha: string; now?: Date; env?: NodeJS.ProcessEnv }): CommandSuccess<CoordinatorAcceptData> {
+/**
+ * `arcadia coordinator accept --generation N --snapshot-sha <sha>`: the custody transfer (design step 5). After the
+ * transfer it stops the handed-off predecessor by its exact recorded identity (gate 10, the stop half), still under the
+ * relay lock so a renew cannot launch between the check and the stop.
+ */
+export function runCoordinatorAcceptCommand(options: Scope & { generation: number; snapshotSha: string; now?: Date; env?: NodeJS.ProcessEnv; repo?: string; stopDeps?: PredecessorStopDeps }): CommandSuccess<CoordinatorAcceptData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const now = options.now ?? new Date();
   const paths = coordinatorPaths(workspacePath, options.project, options.role);
@@ -278,15 +284,38 @@ export function runCoordinatorAcceptCommand(options: Scope & { generation: numbe
       throw validationError(`accept is run by the incoming generation ${options.generation} itself, with its own coordinator identity.`, { reason: "accept_identity" });
     }
     const result = acceptGeneration(db, paths, admission.generation, now);
-    return { ...result, snapshotSha: options.snapshotSha };
+    // Custody has moved above. A throw from the stop is reported in the result and never fails the accept.
+    const after: AfterAcceptStop = result.handedOff === null ? { stop: null, error: null } : runPredecessorStopAfterAccept(db, {
+      workspace: workspacePath, project: options.project, role: options.role,
+      successor: options.generation, predecessor: result.handedOff,
+      repoRoot: interlockRepository(options.repo, verifiedPrimaryCheckout(mainWorktreeRoot()), registeredPrimaryCheckout(db, options.project))
+    }, options.stopDeps ?? systemPredecessorStopDeps(db));
+    return { ...result, snapshotSha: options.snapshotSha, predecessorStop: after.stop, predecessorStopError: after.error };
   }));
   return createSuccess({ command: "coordinator.accept", workspace: workspacePath, data });
 }
 
+/** The real host dependencies of the predecessor stop: exact tmux and `claude stop`, the START interlock, and the operator ping. */
+function systemPredecessorStopDeps(db: Database.Database): PredecessorStopDeps {
+  return {
+    tmux: systemPredecessorStopTmux(),
+    claudeStop: systemClaudeStop,
+    startPressInProgress: stopPressInterlock,
+    ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
+    now: () => new Date()
+  };
+}
+
 export function renderCoordinatorAcceptSuccess(response: CommandSuccess<CoordinatorAcceptData>): string[] {
   const { data } = response;
+  const stop = data.predecessorStop;
+  const stopLine = stop === null
+    ? []
+    : [`Predecessor generation ${stop.predecessor}: ${stop.outcome}${stop.reused ? " (earlier receipt)" : ""}. ${stop.detail}${stop.receipt ? ` Receipt: ${stop.receipt}` : ""}`];
   return [
     `Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`,
+    ...stopLine,
+    ...(data.predecessorStopError ? [`warning: ${data.predecessorStopError.reason}: ${data.predecessorStopError.detail}`] : []),
     ...(data.warnings ?? []).map((warning) => `warning: ${warning}`)
   ];
 }
@@ -299,6 +328,29 @@ export function renderCoordinatorAcceptSuccess(response: CommandSuccess<Coordina
 /** The START-press interlock `renew` passes to the relay: the primary checkout's operator-scripts library. */
 export const relayStartPressInterlock = (repo: string): StartPressStatus => startPressInProgressIn(path.join(repo, "artifacts", "generated", "operator-scripts"));
 
+/**
+ * The relay's capacity gate for a custodian provider, read from the workspace's real capacity registry. The provider
+ * is the custodian row's name (`claude`), looked up by its registry id.
+ */
+export function relayCapacityGate(workspacePath: string): (provider: string) => { admitted: boolean; reason: string } {
+  return (provider) => {
+    const registries = loadPhase3Registries(workspacePath);
+    validatePhase3Registries(registries);
+    const unmeteredProvider = unmeteredProviderSelector(loadWorkspaceConfig(getWorkspacePaths(workspacePath).configFile).codingAgent);
+    const providerId = capacityProviderId(provider);
+    const decision = providerId === null ? undefined : observeProviderCapacity(registries.codingAgents.profiles, { now: new Date(), unmeteredProvider }).providers.find((entry) => entry.providerId === providerId);
+    return decision ? { admitted: decision.admitted, reason: decision.reason } : { admitted: false, reason: `No capacity reading for ${provider}.` };
+  };
+}
+
+/**
+ * The capacity and sign-in registry id of a custodian provider name (`claude` is `claude-code-cli`), from the one
+ * canonical map that capacity receipts and agent_sessions already use. Null for a name with no registry id.
+ */
+export function capacityProviderId(provider: string): string | null {
+  return Object.prototype.hasOwnProperty.call(PEER_WATCH_PROVIDER_IDS, provider) ? PEER_WATCH_PROVIDER_IDS[provider as keyof typeof PEER_WATCH_PROVIDER_IDS] : null;
+}
+
 export function runCoordinatorRenewCommand(options: Scope & { repo?: string; effort?: string; env?: NodeJS.ProcessEnv; deps?: RelayDeps }): CommandSuccess<RenewResult> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = mainWorktreeRoot(options.repo);
@@ -307,15 +359,10 @@ export function runCoordinatorRenewCommand(options: Scope & { repo?: string; eff
     const deps = options.deps ?? systemRelayDeps({
       sources: () => defaultCapsuleSources({ db, repoRoot: repoRoot ?? repositoryRoot(), project: options.project, paths: coordinatorPaths(workspacePath, options.project, options.role), now: new Date() }),
       ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
-      signIn: (provider) => checkProviderSignIn(provider, workspacePath),
+      // The sign-in check compares registry ids (`claude-code-cli`); a short name matched nothing and skipped the check.
+      signIn: (provider) => checkProviderSignIn(capacityProviderId(provider) ?? provider, workspacePath),
       startPressInProgress: relayStartPressInterlock,
-      capacity: (provider) => {
-        const registries = loadPhase3Registries(workspacePath);
-        validatePhase3Registries(registries);
-        const unmeteredProvider = unmeteredProviderSelector(loadWorkspaceConfig(getWorkspacePaths(workspacePath).configFile).codingAgent);
-        const decision = observeProviderCapacity(registries.codingAgents.profiles, { now: new Date(), unmeteredProvider }).providers.find((entry) => entry.providerId === provider);
-        return decision ? { admitted: decision.admitted, reason: decision.reason } : { admitted: false, reason: `No capacity reading for ${provider}.` };
-      }
+      capacity: relayCapacityGate(workspacePath)
     });
     return renewCoordinator(db, workspacePath, { project: options.project, role: options.role, repoRoot, effort: options.effort ?? "e3_deep" }, deps);
   });

@@ -267,8 +267,36 @@ test("a failed read says so and offers nothing to press, and the next read bring
     // A later failed poll keeps the pinned card: a press is still checked by the server, and nothing moves to the row's control.
     failing = true;
     await page.waitForResponse(response => new URL(response.url()).pathname === "/api/todo-item/decision" && response.status() === 503, { timeout: 30_000 });
-    await expect(page.getByRole("button", { name: /Defer entirely/ })).toBeVisible();
+    // Let React apply that failed poll before judging the screen; the negative checks retry, so a late render is still caught.
+    await page.waitForTimeout(500);
+    await expect(page.getByRole("alert").filter({ hasText: "so nothing can be pressed yet" })).toHaveCount(0);
     await expect(page.getByText("Answer from the to-do card")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Defer entirely/ })).toBeVisible();
+  });
+});
+
+test("Retry on a failed Decision read re-reads the card as well as the state", async ({ page }, testInfo) => {
+  test.setTimeout(120_000);
+  await withServer(testInfo, async url => {
+    let cardReads = 0;
+    await page.route("**/api/**", route => {
+      const endpoint = new URL(route.request().url()).pathname;
+      if (route.request().method() !== "GET") return route.abort();
+      // The list is complete but lacks this row, so only the card can show the Decision: the State unknown view and its Retry.
+      if (endpoint === "/api/todo-item") return route.fulfill({ json: { source: "todo", note: null, approvals: [] } });
+      if (endpoint === "/api/todo-item/decision") {
+        cardReads += 1;
+        if (cardReads === 1) return route.fulfill({ status: 503, json: { error: "This Decision could not be read.", reason: "decision_unreadable" } });
+        return route.fulfill({ json: { cards: [view()], refused: [], decision: meta } });
+      }
+      return route.abort();
+    });
+    await page.goto(`${url}/todo/decision/site/0003`);
+    await expect(page.getByRole("region", { name: "State unknown" })).toBeVisible();
+    expect(cardReads).toBe(1);
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByRole("button", { name: /Defer entirely/ })).toBeVisible();
+    expect(cardReads).toBeGreaterThanOrEqual(2);
   });
 });
 

@@ -28,7 +28,7 @@ today and what is still pending.
   accepted Plans, blocked ones excluded) is below the floor (default 6,
   `arcadia production liveness-check --ready-floor`). The floor counts Actions,
   not batches, and the default is uncalibrated. The operator's "always at least
-  2 batches ready" direction is not encoded. While production is Off the floor
+  2 batches ready" direction is not encoded. While production is not Active the floor
   is not judged unless the Off alarm is on. A running Action suppresses it only
   while the live-admission count changed within 120 minutes. The read model
   carries a count, not identities, so a swap keeps the clock running.
@@ -141,8 +141,8 @@ today and what is still pending.
 - **Prevents:** silent stalls of the kind that ran for about 15 hours on 11-11.
 - **Today:** the existing momentum alarm runs only inside a run window. The duty
   alarm also pages, once per episode, when no custodian has been live for 10
-  minutes. While production is Off, every duty condition (custodian, floor, and
-  Off with nothing eligible) pages only with `--duty-off-alarm`, so a quiet night
+  minutes. While production is not Active, every duty condition (custodian, floor,
+  and nothing eligible) pages only with `--duty-off-alarm`, so a quiet night
   pages nobody by default. Turning the Off alarm on by default is the operator's
   decision. A recorded episode whose page never queued is paged on the next run,
   marked as cleared if its condition has ended. While a condition cannot be
@@ -183,6 +183,9 @@ today and what is still pending.
 - **Today:** the existing gates, unchanged. Review rejects any housekeeping PR
   that relaxes one without a Decision.
 - **Pending:** none. This rule is already in force.
+- **NOT IN FORCE:** a transcript-verified approval route is drafted in
+  docs/design/transcript-verified-operator-approvals.md and is NOT in force until
+  Decision 0229 is recorded; until then the rule above is the only rule.
 
 ## Holds today
 

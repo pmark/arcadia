@@ -81,6 +81,8 @@ export function ensureCoordinatorGenerationsTable(db: Database.Database): void {
   const have = new Set((db.prepare("PRAGMA table_info(coordinator_generations)").all() as Array<{ name: string }>).map((column) => column.name));
   if (!have.has("stood_down_at")) db.exec("ALTER TABLE coordinator_generations ADD COLUMN stood_down_at TEXT");
   if (!have.has("stood_down_for")) db.exec("ALTER TABLE coordinator_generations ADD COLUMN stood_down_for INTEGER");
+  // The `claude --bg` id `claude stop` takes, recorded by a background launch (gate 10). Nothing writes it today: the relay launches in tmux.
+  if (!have.has("bg_stop_id")) db.exec("ALTER TABLE coordinator_generations ADD COLUMN bg_stop_id TEXT");
 }
 
 interface Row {
@@ -90,7 +92,7 @@ interface Row {
   brief_path: string | null; brief_sha: string | null; snapshot_path: string | null; snapshot_sha: string | null;
   token_hash: string | null; verified_sha: string | null; verified_at: string | null; failure_reason: string | null;
   created_at: string; updated_at: string; accepted_at: string | null;
-  stood_down_at: string | null; stood_down_for: number | null;
+  stood_down_at: string | null; stood_down_for: number | null; bg_stop_id: string | null;
 }
 
 export interface GenerationRecord {
@@ -104,6 +106,8 @@ export interface GenerationRecord {
   createdAt: string; updatedAt: string; acceptedAt: string | null;
   /** When this custodian recorded its stand-down, and for which successor generation (null until it does). */
   stoodDownAt: string | null; stoodDownFor: number | null;
+  /** The `claude --bg` id a background launch recorded (`claude stop` takes it); null for tmux and desktop generations. */
+  backgroundStopId: string | null;
 }
 
 function toRecord(row: Row): GenerationRecord {
@@ -115,7 +119,8 @@ function toRecord(row: Row): GenerationRecord {
     relayLaunched: row.token_hash !== null,
     verifiedSha: row.verified_sha, verifiedAt: row.verified_at, failureReason: row.failure_reason,
     createdAt: row.created_at, updatedAt: row.updated_at, acceptedAt: row.accepted_at,
-    stoodDownAt: row.stood_down_at ?? null, stoodDownFor: row.stood_down_for ?? null
+    stoodDownAt: row.stood_down_at ?? null, stoodDownFor: row.stood_down_for ?? null,
+    backgroundStopId: row.bg_stop_id ?? null
   };
 }
 

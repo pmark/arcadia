@@ -3788,9 +3788,9 @@ The same timer run also has a **duty** alarm (agent `Duty alarm`). It sends one 
 
 - **No coordinator custodian live for 10 minutes.**
 - **Ready Actions below the floor of 6** (`--ready-floor`). The count is the Actions that can start now across accepted Plans, so blocked Actions are not counted. The floor counts Actions, not batches, and 6 is not yet calibrated. The operator's "always at least 2 batches ready" direction is not encoded yet.
-- **Production Off with nothing eligible**, which only pages with `--duty-off-alarm`.
+- **Nothing eligible while production is not Active**, which only pages with `--duty-off-alarm`.
 
-While production is **Off**, every duty condition pages only with `--duty-off-alarm`, so a quiet night pages nobody by default. When production is not Off, the custodian and floor conditions page by default. Turning the Off alarm on by default is your decision.
+While production is not Active, every duty condition pages only with `--duty-off-alarm`, so a quiet night pages nobody by default. Otherwise the custodian and floor conditions page by default. Turning the Off alarm on by default is your decision.
 
 A running Action suppresses the floor only while the live-admission **count** changed within the last 120 minutes. The read model carries a count, not identities, so swapping one admission for another does not restart the clock. If a count or the custodian cannot be read, the duty alarm cannot judge that condition. It then sends one `🚨🚨🚨 DUTY CANNOT JUDGE` ping with the reason, and prints `duty alarm cannot judge: <reason>` on every timer run while the reason holds. It sends one `✅ DUTY can judge again` line when the read recovers. While production is Off, this page follows the same rule as the other conditions: nothing is judged unless `--duty-off-alarm` is on. An open duty episode is carried through an Off period and is not closed by it. A successful readiness read is reused for up to 5 minutes. A failed read is retried on every timer run, so a broken read is not hidden by the cache.
 

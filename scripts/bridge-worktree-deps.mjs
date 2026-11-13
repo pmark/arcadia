@@ -167,47 +167,75 @@ function linkOrRetarget(mainEntry, worktreeEntry, memberPaths, mainCheckout, wor
 /** pnpm's own module-resolution metadata inside a `node_modules` tree -- the only dotfiles safe to bridge. Anything else starting with `.` is a tool-owned cache (`.vite`, `.vite-temp`, ...) that must be left for the worktree's own tools to create fresh, never inherited from the main checkout. */
 const PNPM_METADATA_ENTRIES = new Set([".bin", ".pnpm", ".modules.yaml", ".pnpm-workspace-state-v1.json"]);
 
-/** Bridge one tree one level deeper (and one level into each `@scope` directory) so a workspace self-reference inside it can be retargeted at the worktree instead of inherited from the main checkout. */
+/**
+ * Bridge one tree one level deeper (and one level into each `@scope` directory) so a workspace self-reference inside it can be retargeted at the worktree instead of inherited from the main checkout.
+ * Only entries `target` does not already have are linked, so this also fills a tree the worktree already had with dependencies added to main since. Returns how many entries it linked.
+ */
 function bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted) {
-  mkdirSync(target, { recursive: true });
+  let added = 0;
   for (const entry of readdirSync(tree, { withFileTypes: true })) {
     if (entry.name.startsWith(".") && !PNPM_METADATA_ENTRIES.has(entry.name)) continue;
     const mainEntry = path.join(tree, entry.name);
     const worktreeEntry = path.join(target, entry.name);
     if (entry.name.startsWith("@")) {
+      const existingScope = lstatSync(worktreeEntry, { throwIfNoEntry: false });
+      if (existingScope && !existingScope.isDirectory()) continue;
       mkdirSync(worktreeEntry, { recursive: true });
       for (const scoped of readdirSync(mainEntry, { withFileTypes: true })) {
-        linkOrRetarget(path.join(mainEntry, scoped.name), path.join(worktreeEntry, scoped.name), memberPaths, mainCheckout, worktree, retargeted);
+        const scopedEntry = path.join(worktreeEntry, scoped.name);
+        if (lstatSync(scopedEntry, { throwIfNoEntry: false })) continue;
+        linkOrRetarget(path.join(mainEntry, scoped.name), scopedEntry, memberPaths, mainCheckout, worktree, retargeted);
+        added += 1;
       }
     } else {
+      if (lstatSync(worktreeEntry, { throwIfNoEntry: false })) continue;
       linkOrRetarget(mainEntry, worktreeEntry, memberPaths, mainCheckout, worktree, retargeted);
+      added += 1;
     }
   }
+  return added;
 }
 
 const memberPaths = workspaceMemberPaths(mainCheckout);
 const linked = [];
+const filled = [];
 const skipped = [];
 const retargeted = [];
 for (const tree of trees) {
   const relative = path.relative(mainCheckout, tree);
   const target = path.join(worktree, relative);
-  if (existsSync(target) || lstatSync(target, { throwIfNoEntry: false })) {
+  const existing = lstatSync(target, { throwIfNoEntry: false });
+  if (!existing) {
+    mkdirSync(target, { recursive: true });
+    bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted);
+    linked.push(relative);
+    continue;
+  }
+  // A symlink or file in the worktree is left exactly as it is.
+  if (!existing.isDirectory()) {
     skipped.push(relative);
     continue;
   }
-  mkdirSync(path.dirname(target), { recursive: true });
-  bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted);
-  linked.push(relative);
+  // A real tree the worktree already has: link only the dependencies it is missing.
+  const added = bridgeTreeWorkspaceAware(tree, target, memberPaths, mainCheckout, worktree, retargeted);
+  if (added > 0) filled.push({ relative, added });
+  else skipped.push(relative);
 }
 
+const addedEntries = filled.reduce((total, { added }) => total + added, 0);
 console.log(`Worktree:      ${worktree}`);
 console.log(`Main checkout: ${mainCheckout}`);
 for (const relative of linked) console.log(`  linked  ${relative}`);
+for (const { relative, added } of filled) console.log(`  filled  ${relative} (+${added} missing)`);
 for (const relative of skipped) console.log(`  present ${relative}`);
 for (const relative of retargeted) console.log(`  retargeted at worktree  ${relative}`);
-console.log(
-  linked.length === 0
-    ? "Already bridged; nothing to do."
-    : `Bridged ${linked.length} dependency tree${linked.length === 1 ? "" : "s"}.`
-);
+if (linked.length === 0 && addedEntries === 0) {
+  console.log("Already bridged; nothing to do.");
+} else {
+  if (linked.length > 0) {
+    console.log(`Bridged ${linked.length} dependency tree${linked.length === 1 ? "" : "s"}.`);
+  }
+  if (addedEntries > 0) {
+    console.log(`Linked ${addedEntries} missing dependenc${addedEntries === 1 ? "y" : "ies"} into existing trees.`);
+  }
+}

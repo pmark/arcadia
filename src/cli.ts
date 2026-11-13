@@ -1412,7 +1412,8 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .description("Take custody as the incoming generation after a passing verify on the same sha within 10 minutes; the predecessor becomes handed_off. Custody-guarded")
     .requiredOption("--generation <n>", "The incoming generation", (value: string) => Number(value))
     .requiredOption("--snapshot-sha <sha>", "The sha the launch prompt pinned")
-  ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha: string; json?: boolean }) =>
+    .option("--repo <path>", "Primary checkout whose operator-scripts library the START press check reads (default: the main worktree)", resolveInvocationPath)
+  ).action((options: { workspace: string; project: string; role: string; generation: number; snapshotSha: string; repo?: string; json?: boolean }) =>
     runCliAction("coordinator.accept", options, () => runCoordinatorAcceptCommand({ ...options, env: process.env }), renderCoordinatorAcceptSuccess)
   );
   coordinatorScope(coordinator.command("register")
