@@ -47,6 +47,7 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
+import { interlockRepository, registeredPrimaryCheckout, runPredecessorStopAfterAccept, stopPressInterlock, systemClaudeStop, systemPredecessorStopTmux, verifiedPrimaryCheckout, type AfterAcceptStop, type PredecessorStopDeps } from "../coordinator/predecessorStop.js";
 import { RELAY_ROLES, renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult, type StartPressStatus } from "../coordinator/relay.js";
 import { observeProviderCapacity } from "../codingAgents/capacity.js";
 import { checkProviderSignIn } from "../codingAgents/signIn.js";
@@ -265,10 +266,14 @@ export function renderCoordinatorVerifySuccess(response: CommandSuccess<VerifyRe
   ];
 }
 
-export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string; warnings?: string[] }
+export interface CoordinatorAcceptData { custodian: number; handedOff: number | null; snapshotSha: string; warnings?: string[]; predecessorStop: AfterAcceptStop["stop"]; predecessorStopError: AfterAcceptStop["error"] }
 
-/** `arcadia coordinator accept --generation N --snapshot-sha <sha>`: the custody transfer (design step 5). */
-export function runCoordinatorAcceptCommand(options: Scope & { generation: number; snapshotSha: string; now?: Date; env?: NodeJS.ProcessEnv }): CommandSuccess<CoordinatorAcceptData> {
+/**
+ * `arcadia coordinator accept --generation N --snapshot-sha <sha>`: the custody transfer (design step 5). After the
+ * transfer it stops the handed-off predecessor by its exact recorded identity (gate 10, the stop half), still under the
+ * relay lock so a renew cannot launch between the check and the stop.
+ */
+export function runCoordinatorAcceptCommand(options: Scope & { generation: number; snapshotSha: string; now?: Date; env?: NodeJS.ProcessEnv; repo?: string; stopDeps?: PredecessorStopDeps }): CommandSuccess<CoordinatorAcceptData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const now = options.now ?? new Date();
   const paths = coordinatorPaths(workspacePath, options.project, options.role);
@@ -278,15 +283,38 @@ export function runCoordinatorAcceptCommand(options: Scope & { generation: numbe
       throw validationError(`accept is run by the incoming generation ${options.generation} itself, with its own coordinator identity.`, { reason: "accept_identity" });
     }
     const result = acceptGeneration(db, paths, admission.generation, now);
-    return { ...result, snapshotSha: options.snapshotSha };
+    // Custody has moved above. A throw from the stop is reported in the result and never fails the accept.
+    const after: AfterAcceptStop = result.handedOff === null ? { stop: null, error: null } : runPredecessorStopAfterAccept(db, {
+      workspace: workspacePath, project: options.project, role: options.role,
+      successor: options.generation, predecessor: result.handedOff,
+      repoRoot: interlockRepository(options.repo, verifiedPrimaryCheckout(mainWorktreeRoot()), registeredPrimaryCheckout(db, options.project))
+    }, options.stopDeps ?? systemPredecessorStopDeps(db));
+    return { ...result, snapshotSha: options.snapshotSha, predecessorStop: after.stop, predecessorStopError: after.error };
   }));
   return createSuccess({ command: "coordinator.accept", workspace: workspacePath, data });
 }
 
+/** The real host dependencies of the predecessor stop: exact tmux and `claude stop`, the START interlock, and the operator ping. */
+function systemPredecessorStopDeps(db: Database.Database): PredecessorStopDeps {
+  return {
+    tmux: systemPredecessorStopTmux(),
+    claudeStop: systemClaudeStop,
+    startPressInProgress: stopPressInterlock,
+    ping: (message) => { queueOperatorPing(db, { message, kind: "attention", agent: "coordinator-relay" }); },
+    now: () => new Date()
+  };
+}
+
 export function renderCoordinatorAcceptSuccess(response: CommandSuccess<CoordinatorAcceptData>): string[] {
   const { data } = response;
+  const stop = data.predecessorStop;
+  const stopLine = stop === null
+    ? []
+    : [`Predecessor generation ${stop.predecessor}: ${stop.outcome}${stop.reused ? " (earlier receipt)" : ""}. ${stop.detail}${stop.receipt ? ` Receipt: ${stop.receipt}` : ""}`];
   return [
     `Generation ${data.custodian} is now custodian${data.handedOff ? `; generation ${data.handedOff} is handed_off and fenced from the guarded coordinator and ping commands` : ""}.`,
+    ...stopLine,
+    ...(data.predecessorStopError ? [`warning: ${data.predecessorStopError.reason}: ${data.predecessorStopError.detail}`] : []),
     ...(data.warnings ?? []).map((warning) => `warning: ${warning}`)
   ];
 }

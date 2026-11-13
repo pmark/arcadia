@@ -1923,9 +1923,55 @@ generation N; `accept` refuses (`predecessor_not_stood_down`) until the current
 custodian has recorded it for exactly that generation. A relay-launched custodian
 proves itself with its custody token. A registered desktop custodian uses the
 same challenge, and the Session must be the one recorded in its row. It records
-only; the predecessor stops itself afterwards, and nothing here stops a pane.
+only. After `accept` succeeds, the relay stops the handed-off predecessor by its
+exact recorded identity (next subsection), so the predecessor need not stop itself.
 Not a cryptographic bind: a process that can write the transcript directory can
 forge the proof. Neither command launches, spends or grants authority.
+
+### Predecessor stop after accept (gate 10, stop half)
+
+`accept` stops the predecessor under the same relay lock as the custody transfer.
+The START press interlock is bound to the Project's registered primary checkout
+(`project_metadata.repo_path` for the Project's slug, the same registration planning
+promotion and plan activation read), not to where the command runs. The stop reads
+that checkout only when the registration is a primary worktree and the checkout
+that the command runs in, or an explicit `--repo`, resolves by realpath to the same
+checkout. Running `accept` from another clone's primary, or passing another clone
+or a linked worktree as `--repo`, defers the stop as `interlock_repository_unbound`.
+A Project with no registered checkout, or a registered path that is missing or not
+a primary worktree, defers too. A missing operator-scripts library, or one without
+`runs/operator`, is unknown and defers on this path; the shared reader used by
+`renew` still reads a missing directory as no press (unchanged here). The stop runs only when the successor is custodian
+and the predecessor is `handed_off` with its stand-down recorded for exactly that
+generation. Its identity is decided by recorded fields only:
+
+- `tmux`: a relay-launched predecessor (it holds a custody token) whose recorded
+  tmux name is exactly `arcadia-coord-<role>-g<N>` for its own generation. Runs
+  `tmux kill-session -t =<name>`, then checks `has-session`. A session still live
+  is `failed`, never `stopped`.
+- `bg`: a relay-launched predecessor with a recorded `claude --bg` id (`bg_stop_id`,
+  and no tmux name). Runs `claude stop <id>`. An id equal to the successor's is refused.
+- `desktop` or unrecorded: never stopped. The outcome is `manual_stop_required`, with
+  the exact title and session id, and one ping. Nothing is guessed.
+
+Each run writes `predecessor-stop-g<N>.json` beside the generations log (schema
+`arcadia-coordinator-predecessor-stop-v1`): predecessor and successor identity, the
+exact command, the outcome, the detail and start and finish times.
+
+| Outcome | Meaning | Terminal? |
+| --- | --- | --- |
+| `stopped` | The exact session or background id was stopped. | yes |
+| `already_stopped` | No live tmux session of that name, or `claude` no longer knows the id. | yes |
+| `manual_stop_required` | Desktop or unrecorded identity; the operator ends it by hand. Pinged once. | yes |
+| `failed` | The stop was attempted and did not take. Pinged loudly. Custody is unaffected. | no (a re-run tries again) |
+| `deferred` | Refused: a START press is running or unreadable, a launch of the role is in flight, or the repository is unresolved. Nothing is stopped. Pinged. | no |
+
+A re-run after a terminal outcome reports the receipt (`reused: true`), runs
+nothing and pings nothing. Still open: a live proof with a real tmux pane or
+`claude` session; desktop predecessors are never stopped automatically; nothing in
+the relay writes `bg_stop_id` yet (the relay launches in tmux); and a `deferred` or
+`failed` stop has no command that re-runs it on its own. It waits for a later
+accept or a manual stop by the identity in its receipt.
 
 ## Check A Design Record Or Field Guide
 
