@@ -24,13 +24,14 @@ today and what is still pending.
 - **Prevents:** production idling because one START covered one Plan and nothing
   else was ready.
 - **Today:** the keeper restocks through Asks. The duty alarm on the momentum
-  timer pages once per episode when the ready count is below the floor (default
-  6, `arcadia production liveness-check --ready-floor`). The floor counts
-  Actions, not batches, and the default is uncalibrated. It is not judged while
-  Off unless the Off alarm is on. It stays quiet while a running Action is
-  healthy: the critical path is moving and its live admissions changed within
-  120 minutes. The read model has no per-Action clock, so a stuck admission
-  pages after that cap.
+  timer pages once per episode when the startable count (ready Actions across
+  accepted Plans, blocked ones excluded) is below the floor (default 6,
+  `arcadia production liveness-check --ready-floor`). The floor counts Actions,
+  not batches, and the default is uncalibrated. The operator's "always at least
+  2 batches ready" direction is not encoded. While production is Off the floor
+  is not judged unless the Off alarm is on. A running Action suppresses it only
+  while the live-admission count changed within 120 minutes. The read model
+  carries a count, not identities, so a swap keeps the clock running.
 - **Pending:** a read-only ready-work command with reasons, and calibration of
   the floor from observed throughput.
 
@@ -140,9 +141,11 @@ today and what is still pending.
 - **Prevents:** silent stalls of the kind that ran for about 15 hours on 11-11.
 - **Today:** the existing momentum alarm runs only inside a run window. The duty
   alarm also pages, once per episode, when no custodian has been live for 10
-  minutes. The Off-with-nothing-eligible page is opt-in (`--duty-off-alarm`), so
-  a quiet night pages nobody by default; turning it on by default is the
-  operator's decision. A page that
+  minutes. While production is Off, every duty condition (custodian, floor, and
+  Off with nothing eligible) pages only with `--duty-off-alarm`, so a quiet night
+  pages nobody by default. Turning the Off alarm on by default is the operator's
+  decision. A recorded episode whose page never queued is paged on the next run,
+  marked as cleared if its condition has ended. A page that
   opens an episode is never repeated until that episode closes, and only one
   episode is open at a time; the root condition is the first by precedence
   (custodian, then Off with nothing eligible, then ready below the floor).

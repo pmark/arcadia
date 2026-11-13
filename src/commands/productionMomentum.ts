@@ -4,6 +4,8 @@ import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { resolveAcceptedReadiness } from "../docs/dispatch.js";
+import { repositoryRoot } from "./coordinator.js";
 import { currentCustodian } from "../coordinator/generations.js";
 import { findSessionTranscript } from "../coordinator/sessionIdentity.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
@@ -109,6 +111,15 @@ export interface ProductionMomentumDependencies {
   queuePing?: (input: LivenessPingInput) => { id: string };
   /** Test seam: the custodian's liveness; defaults to the coordinator's own transcript signal. */
   readCustodian?: (workspacePath: string) => CustodianLiveness;
+  /** Test seam: the startable count (ready Actions across accepted Plans); defaults to the readiness read model. */
+  readStartable?: (workspacePath: string) => StartableCount;
+}
+
+/** Ready Actions that can start now: the readiness read model's `readyTotal` for the production scope's Projects. */
+export interface StartableCount {
+  readable: boolean;
+  count: number | null;
+  reason: string | null;
 }
 
 /** The momentum state plus the duty slot; a state file written before duty alarms reads as an empty duty slot. */
@@ -154,6 +165,36 @@ export function parseKeeperGraceMinutes(value: number | string | undefined): num
 
 export function parseReadyFloor(value: number | string | undefined): number {
   return wholeMinutes(value, DUTY_READY_FLOOR_DEFAULT, 1, DUTY_READY_FLOOR_MAX, "--ready-floor");
+}
+
+/**
+ * Startable Actions, read-only: the accepted Plans' ready Actions for each Project in the
+ * production scope, from the same readiness walk `arcadia start-run readiness` uses. Blocked
+ * Actions are not counted. Any failure, including a Project blocker, is unknown (count null),
+ * which holds the duty alarms. The repository is the invocation checkout (the coordinator's
+ * rule); it is read on every timer run, from documents only.
+ */
+export function readStartableCount(workspacePath: string, repoRoot: () => string = repositoryRoot): StartableCount {
+  try {
+    const projects = withReadOnlyDatabase(workspacePath, (db) => {
+      const read = readProductionPolicySafely(db);
+      if (read.status !== "ok") throw new Error(read.reason);
+      return read.policy.scope?.projects ?? [];
+    });
+    if (projects.length === 0) return { readable: false, count: null, reason: "no Project in the production scope" };
+    const root = repoRoot();
+    let total = 0;
+    for (const project of projects) {
+      const readiness = resolveAcceptedReadiness(root, project);
+      if (readiness.blockers.length > 0) {
+        return { readable: false, count: null, reason: `readiness blocked for ${project}: ${readiness.blockers.map((blocker) => blocker.field).join(", ")}` };
+      }
+      total += readiness.readyTotal;
+    }
+    return { readable: true, count: total, reason: null };
+  } catch (error) {
+    return { readable: false, count: null, reason: errorText(error) };
+  }
 }
 
 /**
@@ -203,7 +244,8 @@ function emptyState(): MomentumState {
 
 function validAdmissions(value: unknown): value is NonNullable<DutySlot["admissions"]> {
   const admissions = value as Partial<NonNullable<DutySlot["admissions"]>> | null | undefined;
-  return !!admissions && typeof admissions.count === "number" && typeof admissions.changedAt === "string" && Number.isFinite(Date.parse(admissions.changedAt));
+  return !!admissions && typeof admissions.count === "number"
+    && (admissions.changedAt === null || (typeof admissions.changedAt === "string" && Number.isFinite(Date.parse(admissions.changedAt))));
 }
 
 function validDuty(value: unknown): value is DutySlot {
@@ -373,25 +415,33 @@ export async function runProductionMomentumCheckCommand(
   // own state and outbox key, but the same queue, state file and failure handling as the other alarms.
   const dutyPrior = state.duty.open;
   const custodian = (dependencies.readCustodian ?? readCustodianLiveness)(workspacePath);
+  const startable = (dependencies.readStartable ?? readStartableCount)(workspacePath);
   const liveAdmissions = readRow.critical_path.live_admissions;
-  // When the live-admission set last changed: the healthy window is capped from there (HEALTHY_MAX_SILENCE_MINUTES).
-  const admissions = state.duty.admissions && state.duty.admissions.count === liveAdmissions
-    ? state.duty.admissions
-    : { count: liveAdmissions, changedAt: now.toISOString() };
+  // The healthy-window clock restarts only on a real change in the live-admission COUNT (the read model has no
+  // identities, so a swap keeps the clock running). A first observation is not progress: the clock stays null
+  // until a change is seen. Merges and settlements are not carried by the row, so they do not restart it.
+  const prior = state.duty.admissions;
+  const admissions = prior && prior.count === liveAdmissions
+    ? prior
+    : { count: liveAdmissions, changedAt: prior === null ? null : now.toISOString() };
   const duty = decideDuty(dutyPrior, {
     now: now.getTime(),
-    readyCount: readRow.ready_actions,
+    // The startable count, not `ready_actions`: blocked Actions are excluded. Unreadable is unknown (null), never zero.
+    readyCount: startable.readable ? startable.count : null,
     floor: readyFloor,
     production: readRow.critical_path.state === "unreadable" || readRow.critical_path.desired_state === null
       ? "unknown"
       : readRow.critical_path.desired_state === "active" ? "active" : "off",
-    eligibleCount: readRow.ready_actions,
+    eligibleCount: startable.readable ? startable.count : null,
     offNothingAlarm: options.dutyOffAlarm === true,
     custodian,
     running: {
       count: liveAdmissions,
-      // The read model has no per-Action activity clock; "moving with admissions" is the signal, capped by the change time.
-      lastActivityAt: readRow.critical_path.state === "moving" && liveAdmissions > 0 ? Date.parse(admissions.changedAt) : null
+      // A null clock (no observed count change yet) means no progress is established, so the healthy suppression does not apply.
+      // While it applies, isHealthyRunning caps it at HEALTHY_MAX_SILENCE_MINUTES.
+      lastActivityAt: readRow.critical_path.state === "moving" && liveAdmissions > 0 && admissions.changedAt !== null
+        ? Date.parse(admissions.changedAt)
+        : null
     }
   } satisfies DutyInput);
   let dutyResult: MomentumAlarmResult = { ping: null, pingId: null, message: null, open: dutyPrior !== null };
@@ -399,7 +449,8 @@ export async function runProductionMomentumCheckCommand(
   if (duty.transition === "open" || duty.transition === "close") {
     const priorPingId = dutyPrior?.delivery?.pingId ?? "unqueued";
     const opening = duty.next as DutyEpisodeRecord;
-    const message = duty.transition === "open" ? dutyAlertMessage(opening, now) : dutyCloseMessage(dutyPrior as DutyEpisodeRecord, priorPingId, now);
+    const cleared = duty.transition === "open" && duty.cleared;
+    const message = duty.transition === "open" ? dutyAlertMessage(opening, now, cleared) : dutyCloseMessage(dutyPrior as DutyEpisodeRecord, priorPingId, now);
     if (duty.transition === "open") {
       // The episode is written before its page is queued. If the queue succeeds and a later write fails, the next
       // run finds it undelivered and queues it again under the same key, which the outbox dedupes.
@@ -416,7 +467,8 @@ export async function runProductionMomentumCheckCommand(
         episodeAfter: state.duty.closedAt,
         now
       }).id;
-      nextDuty = duty.transition === "open"
+      // A page for an episode that cleared before it was sent is the whole episode: it closes at once.
+      nextDuty = duty.transition === "open" && !cleared
         ? { open: { ...opening, delivery: { pingId, queuedAt: now.toISOString() } }, closedAt: state.duty.closedAt, admissions }
         : { open: null, closedAt: now.toISOString(), admissions };
       dutyResult = { ping: duty.transition === "open" ? "alert" : "close", pingId, message, open: nextDuty.open !== null };

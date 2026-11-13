@@ -25,8 +25,9 @@ export const CUSTODIAN_SILENCE_MINUTES = 10;
 /**
  * The cap on the healthy-window suppression. The read model has no per-Action
  * activity clock, so "healthy" is read as: the critical path says moving, with
- * live admissions, and the live-admission set changed within this many minutes.
- * The cap stops a stuck moving admission from silencing the floor forever. The
+ * live admissions, and the live-admission count changed within this many minutes.
+ * The read model carries only a count, so a swap of one admission for another
+ * does not reset the clock. The cap stops a stuck moving admission from silencing the floor forever. The
  * tradeoff: a healthy Action that runs past it with no admission change pages
  * the floor once. Revisit when the read model carries per-Action activity.
  */
@@ -67,16 +68,19 @@ export interface CustodianLiveness {
 
 export interface DutyInput {
   now: number;
-  /** Scope Actions not yet merged (`ready_actions`); null when no scope is known. */
+  /**
+   * Ready Actions that can start now, across accepted Plans (the readiness read model's `readyTotal`), so blocked
+   * Actions are excluded. Null when the readiness read cannot be made: unknown, which holds the alarms.
+   */
   readyCount: number | null;
   floor: number;
   production: "active" | "off" | "unknown";
-  /** Eligible Actions to start now; null when unknown. The read model has no grant check, so the caller passes the ready count. */
+  /** Eligible Actions to start now; null when unknown. The caller passes the same startable count as `readyCount`: the read model has no separate grant check. */
   eligibleCount: number | null;
   /** Off with nothing eligible pages only when this is on (`--duty-off-alarm`); off by default. */
   offNothingAlarm: boolean;
   custodian: CustodianLiveness;
-  /** Running Actions (live admissions), and when the live-admission set last changed (epoch ms; null when not moving). */
+  /** Running Actions (live admission count), and when that count last changed (epoch ms; null when not moving). */
   running: { count: number; lastActivityAt: number | null };
 }
 
@@ -102,8 +106,11 @@ export interface DutySlot {
   open: DutyEpisodeRecord | null;
   /** When the last episode closed (ISO); an outbox row at or before it belongs to another episode. */
   closedAt: string | null;
-  /** The live-admission count and when it last changed (ISO), for the healthy-window cap. */
-  admissions: { count: number; changedAt: string } | null;
+  /**
+   * The live-admission count, and when that count last changed (ISO), for the healthy-window cap. `changedAt` is null
+   * until a real change is seen: a first observation is not evidence of progress. A swap keeps the clock running.
+   */
+  admissions: { count: number; changedAt: string | null } | null;
 }
 
 export function emptyDutySlot(): DutySlot {
@@ -121,13 +128,18 @@ export function evaluateDuty(input: DutyInput): DutyEvaluation {
   const active: DutyCause[] = [];
   const unknown: string[] = [];
   const now = input.now;
+  // While Off, every duty condition is quiet unless the Off alarm is on (`--duty-off-alarm`). Off is the normal state
+  // while START is pending, so a quiet night pages nobody by default. Not Off (Active, or unreadable) pages by default.
+  const offQuiet = input.production === "off" && !input.offNothingAlarm;
 
-  // Custodian: silent only from a readable record with a known last-live time.
-  if (!input.custodian.readable) unknown.push(`custodian liveness unreadable${input.custodian.reason ? `: ${input.custodian.reason}` : ""}`);
-  else if (input.custodian.lastLiveAt === null) unknown.push("no custodian has been recorded yet");
-  else if (now - input.custodian.lastLiveAt >= CUSTODIAN_SILENCE_MINUTES * 60_000) active.push("no_custodian");
+  if (!offQuiet) {
+    // Custodian: silent only from a readable record with a known last-live time.
+    if (!input.custodian.readable) unknown.push(`custodian liveness unreadable${input.custodian.reason ? `: ${input.custodian.reason}` : ""}`);
+    else if (input.custodian.lastLiveAt === null) unknown.push("no custodian has been recorded yet");
+    else if (now - input.custodian.lastLiveAt >= CUSTODIAN_SILENCE_MINUTES * 60_000) active.push("no_custodian");
+  }
 
-  // Off with nothing eligible: opt-in. Off is the normal state while START is pending, so by default a quiet night pages nobody.
+  // Off with nothing eligible: opt-in only.
   if (input.offNothingAlarm) {
     if (input.production === "unknown") unknown.push("production state is unreadable");
     else if (input.production === "off") {
@@ -137,8 +149,6 @@ export function evaluateDuty(input: DutyInput): DutyEvaluation {
   }
 
   // Ready floor: a healthy running Action means the critical path is moving, so it is not idle supply.
-  // While Off, a short scope is the normal wait for START, so the floor pages only with the Off alarm on: a quiet night pages nobody by default.
-  const offQuiet = input.production === "off" && !input.offNothingAlarm;
   if (!offQuiet) {
     if (input.readyCount === null) unknown.push("ready Action count is unknown");
     else if (input.readyCount < input.floor && !isHealthyRunning(input.running, now)) active.push("ready_below_floor");
@@ -147,7 +157,7 @@ export function evaluateDuty(input: DutyInput): DutyEvaluation {
   return { active: PRECEDENCE.filter((cause) => active.includes(cause)), unknown };
 }
 
-/** A running Action is healthy while its live-admission set changed within the cap (see HEALTHY_MAX_SILENCE_MINUTES). */
+/** A running Action is healthy while the live-admission count changed within the cap (see HEALTHY_MAX_SILENCE_MINUTES). */
 export function isHealthyRunning(running: DutyInput["running"], now: number): boolean {
   return running.count > 0 && running.lastActivityAt !== null && now - running.lastActivityAt < HEALTHY_MAX_SILENCE_MINUTES * 60_000;
 }
@@ -171,6 +181,8 @@ export function decideDuty(prior: DutyEpisodeRecord | null, input: DutyInput): {
   transition: DutyTransition;
   evaluation: DutyEvaluation;
   next: DutyEpisodeRecord | null;
+  /** True on an `open` for an episode whose condition has already cleared: its page says so, and it is closed at once. */
+  cleared: boolean;
 } {
   const evaluation = evaluateDuty(input);
   const { active, unknown } = evaluation;
@@ -180,13 +192,13 @@ export function decideDuty(prior: DutyEpisodeRecord | null, input: DutyInput): {
     if (prior && prior.delivery !== null) {
       const contributing = [...new Set<DutyCause>([...prior.contributing, ...active])];
       const changed = contributing.length !== prior.contributing.length;
-      return { transition: "none", evaluation, next: changed ? { ...prior, contributing } : prior };
+      return { transition: "none", evaluation, next: changed ? { ...prior, contributing } : prior, cleared: false };
     }
     if (prior) {
       // Recorded but never queued (the queue or the delivery write failed): queue it again under the same key,
       // so the outbox recognises the retry and no second episode is minted.
       const contributing = [...new Set<DutyCause>([...prior.contributing, ...active])];
-      return { transition: "open", evaluation, next: { ...prior, contributing } };
+      return { transition: "open", evaluation, next: { ...prior, contributing }, cleared: false };
     }
     const root = active[0];
     const startedAt = root === "no_custodian" && input.custodian.lastLiveAt !== null
@@ -204,14 +216,17 @@ export function decideDuty(prior: DutyEpisodeRecord | null, input: DutyInput): {
         nextEvent: NEXT_EVENT[root],
         delivery: null,
         acknowledgment: null
-      }
+      },
+      cleared: false
     };
   }
-  if (unknown.length > 0) return { transition: prior ? "hold" : "none", evaluation, next: prior };
-  // A record that was never queued clears silently: nobody was paged, so there is nothing to close.
-  return prior && prior.delivery !== null
-    ? { transition: "close", evaluation, next: null }
-    : { transition: "none", evaluation, next: null };
+  // A condition that cannot be judged waits: a recorded, undelivered episode is not paged until it can be.
+  if (unknown.length > 0) return { transition: prior ? "hold" : "none", evaluation, next: prior, cleared: false };
+  if (prior && prior.delivery !== null) return { transition: "close", evaluation, next: null, cleared: false };
+  // A recorded episode that was never queued is still paged once, even if its condition has already cleared (for
+  // example after a crash between the state write and the queue), so the start is never silently lost. The page says so.
+  if (prior) return { transition: "open", evaluation, next: prior, cleared: true };
+  return { transition: "none", evaluation, next: null, cleared: false };
 }
 
 export function dutyLabel(cause: DutyCause): string {
@@ -219,13 +234,15 @@ export function dutyLabel(cause: DutyCause): string {
 }
 
 /** Fixed for the whole episode (the key carries the root start), so the outbox recognises a retry. */
-export function dutyAlertMessage(record: DutyEpisodeRecord, now: Date): string {
+export function dutyAlertMessage(record: DutyEpisodeRecord, now: Date, clearedBeforeDelivery = false): string {
   const since = formatAge(now.getTime() - Date.parse(record.startedAt));
   const others = record.contributing.filter((cause) => cause !== record.cause).map(dutyLabel);
   return fitPing(
     `🚨🚨🚨 DUTY: ${dutyLabel(record.cause)} for ${since} — owner: ${record.owner} — next event: ${record.nextEvent}.`,
     others.length > 0 ? ` Also holding: ${others.join(", ")}.` : "",
-    ` Since ${record.startedAt}; ${record.key}. Nothing was started.`
+    clearedBeforeDelivery
+      ? ` Cleared before this page was sent; ${record.key}. Nothing was started.`
+      : ` Since ${record.startedAt}; ${record.key}. Nothing was started.`
   );
 }
 
