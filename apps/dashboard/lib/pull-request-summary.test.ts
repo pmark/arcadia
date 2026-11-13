@@ -47,7 +47,7 @@ describe("PR TLDR service", () => {
     const request = buildPrSummaryRequest(source);
     expect(request).toMatchObject({ capability: "text.generate", execution: "cloud-required", executionTarget: "cloud", profile: "fast", executionPolicy: { allowPaidUsage: true, maxRetries: 1 } });
     expect(request).not.toHaveProperty("model");
-    const config = loadIntelligenceConfig({ ARCADIA_LITELLM_LOCAL_TEXT_ROUTE: "local-fixture", ARCADIA_LITELLM_CLOUD_TEXT_ROUTE: "arcadia-cloud-text", ARCADIA_CODEX_TEXT_ROUTE: "codex-fixture" });
+    const config = loadIntelligenceConfig({ NODE_ENV: "test", ARCADIA_LITELLM_LOCAL_TEXT_ROUTE: "local-fixture", ARCADIA_LITELLM_CLOUD_TEXT_ROUTE: "arcadia-cloud-text", ARCADIA_CODEX_TEXT_ROUTE: "codex-fixture" });
     // Decision 0213 A (standing no-spend) withdrew 0126: the default allowlist is empty and the paid PR TLDR route is refused.
     expect(config.approvedPaidUsageDecisionIds).toEqual([]);
     expect(config.routes.find((route) => route.id === "arcadia.text.generate.cloud.fast")?.paidUsageDecision).toBe("0126");
@@ -58,7 +58,7 @@ describe("PR TLDR service", () => {
     expect(resolveIntelligenceRoute(request, config.routes, { allowPaidUsage: false, approvedPaidUsageDecisions })).toMatchObject({ ok: false, code: "paid_usage_not_allowed" });
     // Without the approved Decision allowlist the paid route is refused by default.
     expect(resolveIntelligenceRoute(request, config.routes, request.executionPolicy)).toMatchObject({ ok: false, code: "paid_usage_not_allowed" });
-    expect(resolveIntelligenceRoute(request, loadIntelligenceConfig({}).routes, request.executionPolicy)).toMatchObject({ ok: false });
+    expect(resolveIntelligenceRoute(request, loadIntelligenceConfig({ NODE_ENV: "test" }).routes, request.executionPolicy)).toMatchObject({ ok: false });
   });
 
   it("keeps the v1 source hash but never loads or retries a legacy local job", async () => {

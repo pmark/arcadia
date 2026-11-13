@@ -68,7 +68,8 @@ describe("POST /api/operator-script", () => {
     chmodSync(script, 0o755);
 
     const result = spawnSync(process.execPath, ["-e", operatorScriptRunnerSource, script, state], {
-      env: { ...process.env, NODE_ENV: "dashboard-runtime", NEXT_RUNTIME: "nodejs", __NEXT_PRIVATE_TEST: "present" }
+      // The marker is deliberately outside NodeJS.ProcessEnv["NODE_ENV"]; the test proves it is not forwarded.
+      env: { ...process.env, NODE_ENV: "dashboard-runtime" as unknown as NodeJS.ProcessEnv["NODE_ENV"], NEXT_RUNTIME: "nodejs", __NEXT_PRIVATE_TEST: "present" }
     });
 
     expect(result.status).toBe(0);

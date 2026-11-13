@@ -10,7 +10,7 @@ vi.mock("react", async importOriginal => {
 
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { acceptRefreshedSummary, fetchJsonBounded, observeSummaryJob, PullRequestAudio, SummaryObservationTimeoutError, summaryActionForStage } from "./pull-request-audio";
+import { acceptRefreshedSummary, fetchJsonBounded, observeSummaryJob, PullRequestAudio, summaryActionForStage } from "./pull-request-audio";
 
 describe("PullRequestAudio", () => {
   it("offers an actionable summary/listen load without remote reads or disabled playback", () => {
@@ -73,7 +73,7 @@ describe("PullRequestAudio", () => {
     vi.useFakeTimers();
     const running = { id: "summary-running", status: "running" } as never;
     const observed = observeSummaryJob(running, { fetchJob: () => new Promise(() => {}), timeoutMs: 100, pollIntervalMs: 10 });
-    const assertion = expect(observed).rejects.toMatchObject<SummaryObservationTimeoutError>({ job: running });
+    const assertion = expect(observed).rejects.toMatchObject({ job: running });
     await vi.advanceTimersByTimeAsync(100);
     await assertion;
   });
