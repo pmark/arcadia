@@ -272,6 +272,29 @@ describe("runManagedProductionTick", () => {
       expect(withReadOnlyDatabase(fixture.workspace, (db) => listOperatorEscalations(db))).toEqual([]);
     });
 
+    // REAL DEFECT (failing-first, Decision 0223 D1): pruneStaleOperatorEscalations (src/production/tick.ts) keeps only the three
+    // review-repair kinds on a non-current Action. The Action-local held classes the scheduler now passes over are pruned once the
+    // pointer has moved on, so the hold, and with it the no-relaunch guard, silently disappears. Control: the same test with
+    // review_repair_gated passes. Remove the `.fails` when the prune honors ACTION_LOCAL_HELD_ESCALATIONS and repair_budget_exhausted-local.
+    it.fails("keeps an Action-local hold on the Action the pointer moved past (Decision 0223 D1: held, not pruned)", () => {
+      const fixture = preparedFixture({ secondAction: true, skipPacket: true });
+      const tmux = new FakeTmux();
+      activateActions(fixture, ["test-project/define-contract", "test-project/second-action"]);
+      withDatabase(fixture.workspace, (db) => db.prepare(
+        `INSERT INTO production_operator_escalations (action_key, kind, message, remedy, first_detected_at, last_seen_at)
+           VALUES ('test-project/define-contract', 'completion_loopback_denied', 'held', 'operator resets it', ?, ?)`
+      ).run(fixture.now.toISOString(), fixture.now.toISOString()));
+
+      const { launch } = tickOnce(fixture, tmux);
+
+      // The pointer moves past the held Action and launches the independent one.
+      expect(launch).toMatchObject({ outcome: "launched", actionKey: "test-project/second-action" });
+      // The held Action keeps its escalation row: nothing but an operator reset may release it.
+      expect(withReadOnlyDatabase(fixture.workspace, (db) => db.prepare(
+        "SELECT kind FROM production_operator_escalations WHERE action_key = 'test-project/define-contract'"
+      ).get())).toEqual({ kind: "completion_loopback_denied" });
+    });
+
     it("skips an out-of-scope pointer it cannot re-point: no launch, no packet, no escalation", () => {
       const fixture = preparedFixture({ skipPacket: true });
       const tmux = new FakeTmux();
