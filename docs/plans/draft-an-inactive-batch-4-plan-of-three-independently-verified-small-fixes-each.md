@@ -19,13 +19,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask queue-arrange-keeps-hidden-positions
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-batch-4-20261113
+    source: Agent Ask amend-batch-4-issue-references-20261113b
     acceptance_criteria:
       - A move that would drop a position row for a hidden Project is refused, and the row survives.
       - Existing action-order, dispatch, scheduling-order, advance-queue, action-settle, decision-deferral and plan-activation tests still pass.
     depends_on: []
     decisions: []
-    references: []
+    references: ["https://github.com/pmark/arcadia/issues/1022"]
   - id: tidy-detached-worktree-ahead-count
     title: Tidy reports a detached worktree's real unmerged commit count instead of 0 unmerged commits.
     status: open
@@ -36,13 +36,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask tidy-detached-worktree-ahead-count
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-batch-4-20261113
+    source: Agent Ask amend-batch-4-issue-references-20261113b
     acceptance_criteria:
       - A detached worktree with two unmerged commits is reported as 2 unmerged commits, never 0.
       - tests/tidy-command.test.ts and tests/tidy-conservation.test.ts pass.
     depends_on: []
     decisions: []
-    references: []
+    references: ["https://github.com/pmark/arcadia/issues/1827"]
   - id: dashboard-noemit-test-typings
     title: The dashboard noEmit typecheck passes by repairing four existing test files' typings, without weakening the production type check.
     status: open
@@ -53,13 +53,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask dashboard-noemit-test-typings
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-batch-4-20261113
+    source: Agent Ask amend-batch-4-issue-references-20261113b
     acceptance_criteria:
       - node node_modules/typescript/bin/tsc -p apps/dashboard/tsconfig.json --noEmit exits 0 on the candidate.
       - The affected dashboard tests still pass.
     depends_on: []
     decisions: []
-    references: []
+    references: ["https://github.com/pmark/arcadia/issues/1395"]
 questions: []
 decisions: []
 ---
