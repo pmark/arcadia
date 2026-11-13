@@ -48,10 +48,16 @@ export async function allocateLoopbackPortPool(size = DEFAULT_POOL_SIZE): Promis
   } finally {
     await Promise.all(held.map((server) => new Promise<void>((resolve) => server.close(() => resolve()))));
   }
-  return { ports: [...ports].sort((a, b) => a - b) };
+  const pool: LoopbackPortPool = Object.freeze({ ports: Object.freeze([...ports].sort((a, b) => a - b)) });
+  ISSUED.add(pool);
+  return pool;
 }
 
+/** Pools issued by `allocateLoopbackPortPool`. A caller cannot hand-write ports (for example a host service port such as 3020 or 8000) into the profile. */
+const ISSUED = new WeakSet<object>();
+
 function checked(pool: LoopbackPortPool): number[] {
+  if (!ISSUED.has(pool)) throw new Error("port pool was not issued by allocateLoopbackPortPool");
   if (!pool.ports.length) throw new Error("empty port pool");
   for (const port of pool.ports) if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error(`invalid pool port ${port}`);
   return [...pool.ports];
@@ -62,6 +68,12 @@ function checked(pool: LoopbackPortPool): number[] {
  * inbound and outbound on `localhost:<pool port>`. Append it to the existing
  * profile; it never contains a wildcard port or host, `network*`, or
  * `network-outbound` to a non-pool port, and it loosens nothing else.
+ *
+ * Seatbelt accepts only `*` or `localhost` as the host, so each rule matches the
+ * port on EVERY local address: 127.0.0.1, ::1 and, for bind, the wildcards
+ * 0.0.0.0 and [::] (a LAN-reachable listener). Outbound to a pool port on ::1
+ * is likewise allowed. Only 127.0.0.2 and non-pool ports stay denied. The
+ * exposure is therefore confined to the pool ports, not to loopback IPv4 only.
  */
 export function loopbackProfileClauses(pool: LoopbackPortPool): string {
   const ports = checked(pool);
@@ -86,9 +98,9 @@ export function writeLoopbackShim(dir: string): string {
 
 /**
  * Node-only convenience, inherited by child Node processes through
- * NODE_OPTIONS: `server.listen(0[, host])` and host-less `listen(port)` become a
- * listen on the first free pool port, on 127.0.0.1 (a wildcard bind is not in
- * the profile). Concurrent processes share the pool, so on EADDRINUSE the shim
+ * NODE_OPTIONS: only a `listen` whose port is 0 or omitted (with no host or a
+ * loopback host) is remapped, onto a pool port on 127.0.0.1. A nonzero port is
+ * never remapped. Concurrent processes share the pool, so on EADDRINUSE the shim
  * quietly tries the next pool port. An explicit port outside the pool is left
  * alone and fails with EPERM from Seatbelt, which is the point.
  */

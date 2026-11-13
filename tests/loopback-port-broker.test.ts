@@ -55,9 +55,14 @@ describe.skipIf(!applicable)("loopback port broker prototype (#2521)", () => {
     pool = await allocateLoopbackPortPool(8);
     shim = writeLoopbackShim(scratch);
     // The unrelated host service: outside the sandbox, on a random port.
-    decoy = createServer((socket) => { decoyHits += 1; socket.end("host-secret"); });
-    await new Promise<void>((resolve) => decoy.listen(0, "127.0.0.1", resolve));
-    decoyPort = (decoy.address() as { port: number }).port;
+    // Never let the random decoy land on a pool port (that port is allowed by design).
+    for (;;) {
+      decoy = createServer((socket) => { decoyHits += 1; socket.end("host-secret"); });
+      await new Promise<void>((resolve) => decoy.listen(0, "127.0.0.1", resolve));
+      decoyPort = (decoy.address() as { port: number }).port;
+      if (!pool.ports.includes(decoyPort)) break;
+      await new Promise<void>((resolve) => decoy.close(() => resolve()));
+    }
   });
   afterAll(() => { decoy?.close(); if (scratch) rmSync(scratch, { recursive: true, force: true }); });
 
@@ -89,11 +94,28 @@ describe.skipIf(!applicable)("loopback port broker prototype (#2521)", () => {
   });
 
   it("(2b) an explicit bind outside the pool is denied too", () => {
-    const outside = 1024 + ((decoyPort + 7) % 60000);
+    let outside = 1024 + ((decoyPort + 7) % 60000);
+    while (pool.ports.includes(outside) || outside === decoyPort) outside += 1;
     const script2 = path.join(scratch, "bind-outside.cjs");
     writeFileSync(script2, `require("node:net").createServer().on("error", (e) => console.log("BIND_ERR " + e.code)).listen(${outside}, "127.0.0.1", () => console.log("BOUND"));`);
     const result = spawnSync(SANDBOX_EXEC, ["-p", confined(), process.execPath, script2], { encoding: "utf8", timeout: 20_000, env: { PATH: "/usr/bin:/bin" } });
     expect(result.stdout.trim()).toBe("BIND_ERR EPERM");
+  });
+
+  it("pins the real address scope: pool ports are open on every local address (0.0.0.0, [::], ::1), 127.0.0.2 is not", () => {
+    // Seatbelt accepts only `*` or `localhost` as host, so no tighter filter exists. This documents the pool-race exposure.
+    const probe = path.join(scratch, "addr.cjs");
+    writeFileSync(probe, `const net = require("node:net"); const [mode, host, port] = process.argv.slice(2);
+const done = (l) => { console.log(l); process.exit(0); };
+if (mode === "bind") { const s = net.createServer(); s.on("error", (e) => done("ERR " + e.code)); s.listen(Number(port), host, () => done("BOUND")); }
+else { const c = net.connect(Number(port), host); c.on("connect", () => done("CONNECTED")); c.on("error", (e) => done("ERR " + e.code)); }`);
+    const probeRun = (...args: string[]) => spawnSync(SANDBOX_EXEC, ["-p", confined(), process.execPath, probe, ...args], { encoding: "utf8", timeout: 20_000, env: { PATH: "/usr/bin:/bin" } }).stdout.trim();
+    const port = String(pool.ports[0]);
+    for (const host of ["127.0.0.1", "0.0.0.0", "::", "::1"]) expect(probeRun("bind", host, port), host).toBe("BOUND");
+    expect(probeRun("bind", "127.0.0.2", port)).toBe("ERR EPERM");
+    // Outbound to a pool port on ::1 is allowed (nothing listens, so refused rather than denied).
+    expect(probeRun("connect", "::1", port)).toBe("ERR ECONNREFUSED");
+    expect(probeRun("connect", "::1", String(decoyPort))).toBe("ERR EPERM");
   });
 
   it("(1b) two servers in one confined process both get distinct pool ports (shim retries on EADDRINUSE)", () => {
@@ -108,16 +130,27 @@ for (let i = 0; i < 2; i++) { const s = net.createServer(); s.on("error", (e) =>
     expect(pool.ports).toContain(Number(match![2]));
   });
 
+});
+
+describe("loopback profile clauses (pure, run everywhere)", () => {
+  let pool: LoopbackPortPool;
+  beforeAll(async () => { pool = await allocateLoopbackPortPool(8); });
+
   it("(3) the added profile text is only pool-port network rules and the base profile is untouched", () => {
     const clauses = loopbackProfileClauses(pool);
-    expect(confined().startsWith(BASE_PROFILE)).toBe(true);
+    expect(`${BASE_PROFILE} ${loopbackProfileClauses(pool)}`.startsWith(BASE_PROFILE)).toBe(true);
     const rules = clauses.match(/\(allow [a-z-]+/g);
     expect(rules).toEqual(["(allow network-bind", "(allow network-inbound", "(allow network-outbound"]);
     const ports = [...clauses.matchAll(/"localhost:(\d+)"/g)].map((m) => Number(m[1]));
     expect(new Set(ports)).toEqual(new Set(pool.ports));
     expect(clauses).not.toMatch(/\*|network\*|"[^"]*:\*"|0\.0\.0\.0|file-|process-|mach-|system-|default/);
-    expect(() => loopbackProfileClauses({ ports: [] })).toThrow();
-    expect(() => loopbackProfileClauses({ ports: [80] })).toThrow();
+  });
+
+  it("refuses pools the broker did not issue, including host service ports and malformed ports", () => {
+    for (const ports of [[], [80], [3000], [3020], [8000], [1.5], [70000], [-1], [Number.NaN]]) {
+      expect(() => loopbackProfileClauses({ ports }), JSON.stringify(ports)).toThrow();
+    }
+    expect(() => loopbackProfileClauses({ ports: [...pool.ports] })).toThrow(/not issued/);
   });
 });
 

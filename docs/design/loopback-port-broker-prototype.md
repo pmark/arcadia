@@ -56,7 +56,17 @@ cannot apply a profile).
   them) or re-verify before and after the run.
 - Node-only shim. Non-Node processes that bind port 0 still get EPERM.
 - `localhost` name resolution under `deny default` is not covered; use 127.0.0.1.
-- IPv6 and wildcard binds are not allowed; the shim forces 127.0.0.1.
+- Seatbelt accepts only `*` or `localhost` as the host (`127.0.0.1:PORT` and
+  `ip4` forms are profile errors), so no tighter filter exists. Verified on the
+  host: with the appended rules a confined process CAN bind `0.0.0.0:<pool port>`
+  and `[::]:<pool port>` (a LAN-reachable listener) and `::1:<pool port>`, and
+  can connect out to a pool port on `::1`. Only 127.0.0.2 and non-pool ports are
+  denied. Consequence for the pool race: a host service that comes up on a pool
+  port on any address, `[::1]` included, is reachable; the exposure is pool ports
+  on all local addresses, not IPv4 loopback only. The shim forces 127.0.0.1 for
+  its own listens but is not a boundary.
+- The pool is opaque: only pools issued by `allocateLoopbackPortPool` are
+  accepted, so a host service port cannot be written into the profile.
 - Tests that fix a literal port (for example 3020) are denied unless that port
   is in the pool, which is deliberately never done for host service ports.
 - Pool size bounds the number of simultaneous listeners (default 16).
