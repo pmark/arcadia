@@ -1800,9 +1800,25 @@ alarms, each paging once through `arcadia ping` (agent `Momentum watch`, kind
 
 - **Run window.** Open while production is Active, and while it is Off with at
   least one scope Action (active or retained) not merged. Closed when Off with
-  nothing waiting, so a finished run or a quiet night pages nobody. Unknown
-  while production is unreadable: an open alarm holds and nothing new opens;
-  the worker check already pages an unreadable policy.
+  nothing waiting, so this alarm pages nobody on a finished run or a quiet
+  night. Unknown while production is unreadable: an open alarm holds and
+  nothing new opens; the worker check already pages an unreadable policy.
+- **Duty.** Three conditions page once per root idle episode (agent `Duty
+  alarm`), and only one episode is open at a time. Root precedence is custodian,
+  then Off with nothing eligible, then ready below the floor.
+  - **No custodian:** no live coordinator transcript (`rowan`) for 10 minutes.
+    Unknown, not silent, when no custodian is recorded or the record cannot be
+    read.
+  - **Ready below floor:** the ready-Action count is below `--ready-floor`
+    (default 6). The default is uncalibrated, and it counts Actions, not
+    batches. Suppressed while a running Action is healthy: the critical path
+    moves and its live admissions changed within 120 minutes. Past that, a stuck
+    admission pages. While Off, this condition is not judged by default.
+  - **Off with nothing eligible:** off by default. Pass `--duty-off-alarm` on
+    `production liveness-check` to page it, so a quiet Off night pages nobody.
+    Enabling it by default is the operator's decision.
+  - Each page's close line reports the episode's duration. Delivery (the outbox
+    row) is recorded in the state file. Acknowledgment is not captured yet.
 - **Idle.** `idle_minutes` at or above `--idle-minutes` (default 20, minimum
   5) in an open window pages `🚨🚨🚨 MOMENTUM: critical path idle <n> min —
   cause: <waiting on operator | no route | no ready work | unknown> — <remedy>`,
@@ -1822,6 +1838,13 @@ alarms, each paging once through `arcadia ping` (agent `Momentum watch`, kind
   reading again`. The other alarms hold meanwhile. When the cause is the ping
   database itself, the page cannot be queued and shows only in `pnpm logs
   liveness` and the exit code, as with the worker alarm.
+
+The duty thresholds are set with `--ready-floor <n>` and `--duty-off-alarm`
+on a manual run; the timer uses the defaults (floor 6, Off alarm off):
+
+```bash
+pnpm arcadia production liveness-check --ready-floor 6 --duty-off-alarm
+```
 
 State lives in `<workspace>/.arcadia/momentum-watch.json`; an unreadable file
 restarts both episodes, and the ping outbox's episode key stops a retry from

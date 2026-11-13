@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { IDLE_FRONT_ROW_SCHEMA, type IdleFrontRow } from "../src/production/idleFront.js";
 import {
   CUSTODIAN_SILENCE_MINUTES,
+  HEALTHY_MAX_SILENCE_MINUTES,
   decideDuty,
   dutyAlertMessage,
   evaluateDuty,
@@ -26,7 +27,7 @@ const ms = (clock: string) => Date.parse(at(clock));
 const healthy: CustodianLiveness = { readable: true, lastLiveAt: ms("16:59:00"), reason: null };
 const noRunning = { count: 0, lastActivityAt: null };
 
-/** A healthy base: Active, 10 ready (above the floor), a live custodian, nothing running. Each test overrides one thing. */
+/** A healthy base: Active, 10 ready (above the floor), a live custodian, nothing running, Off alarm on. Each test overrides one thing. */
 function input(overrides: Partial<DutyInput> = {}): DutyInput {
   return {
     now: ms("17:00:00"),
@@ -34,6 +35,7 @@ function input(overrides: Partial<DutyInput> = {}): DutyInput {
     floor: 6,
     production: "active",
     eligibleCount: 10,
+    offNothingAlarm: true,
     custodian: healthy,
     running: noRunning,
     ...overrides
@@ -42,14 +44,15 @@ function input(overrides: Partial<DutyInput> = {}): DutyInput {
 
 describe("decideDuty: once per root idle episode", () => {
   it("opens one episode on the first bad run, stays silent while it persists, and closes only when every condition clears", () => {
-    const low = input({ readyCount: 2 });
-    const first = decideDuty(null, low);
+    const first = decideDuty(null, input({ readyCount: 2 }));
     expect(first.transition).toBe("open");
     expect(first.next?.cause).toBe("ready_below_floor");
 
-    const second = decideDuty(first.next, input({ readyCount: 1, now: ms("17:01:00") }));
+    // The runner delivers it, so the record carries delivery before the next run.
+    const delivered: DutyEpisodeRecord = { ...(first.next as DutyEpisodeRecord), delivery: { pingId: "p1", queuedAt: at("17:00:00") } };
+    const second = decideDuty(delivered, input({ readyCount: 1, now: ms("17:01:00") }));
     expect(second.transition).toBe("none");
-    expect(second.next).toBe(first.next);
+    expect(second.next).toBe(delivered);
 
     const third = decideDuty(second.next, input({ readyCount: 3, now: ms("17:02:00") }));
     expect(third.transition).toBe("none");
@@ -60,7 +63,7 @@ describe("decideDuty: once per root idle episode", () => {
   });
 
   it("opens a fresh episode after a close, with a new key", () => {
-    const open = decideDuty(null, input({ readyCount: 2 })).next as DutyEpisodeRecord;
+    const open: DutyEpisodeRecord = { ...(decideDuty(null, input({ readyCount: 2 })).next as DutyEpisodeRecord), delivery: { pingId: "p1", queuedAt: at("17:00:00") } };
     const closed = decideDuty(open, input({ readyCount: 8, now: ms("17:03:00") }));
     expect(closed.transition).toBe("close");
     const again = decideDuty(null, input({ readyCount: 2, now: ms("17:10:00") }));
@@ -68,8 +71,23 @@ describe("decideDuty: once per root idle episode", () => {
     expect(again.next?.key).not.toBe(open.key);
   });
 
+  it("an episode recorded but never delivered is queued again under the same key, never a new one", () => {
+    const recorded = decideDuty(null, input({ readyCount: 2 })).next as DutyEpisodeRecord;
+    const retried = decideDuty(recorded, input({ readyCount: 2, now: ms("17:01:00") }));
+    expect(retried.transition).toBe("open");
+    expect(retried.next?.key).toBe(recorded.key);
+    expect(retried.next?.startedAt).toBe(recorded.startedAt);
+  });
+
+  it("an undelivered episode whose condition has cleared is dropped silently, with no close line", () => {
+    const recorded = decideDuty(null, input({ readyCount: 2 })).next as DutyEpisodeRecord;
+    const cleared = decideDuty(recorded, input({ readyCount: 10, now: ms("17:01:00") }));
+    expect(cleared.transition).toBe("none");
+    expect(cleared.next).toBeNull();
+  });
+
   it("an unknown never closes an open episode, and never opens one", () => {
-    const open = decideDuty(null, input({ readyCount: 2 })).next as DutyEpisodeRecord;
+    const open: DutyEpisodeRecord = { ...(decideDuty(null, input({ readyCount: 2 })).next as DutyEpisodeRecord), delivery: { pingId: "p1", queuedAt: at("17:00:00") } };
     const held = decideDuty(open, input({ readyCount: null, now: ms("17:01:00") }));
     expect(held.transition).toBe("hold");
     expect(held.next).toBe(open);
@@ -78,26 +96,36 @@ describe("decideDuty: once per root idle episode", () => {
 });
 
 describe("the conditions", () => {
-  it("a healthy long-running Action with recent activity is not idle, however long it has run", () => {
-    // Below the floor, but the critical path is moving: the supply alarm stays quiet.
-    const longRunning = input({ readyCount: 2, running: { count: 1, lastActivityAt: ms("16:58:00") } });
+  it("a healthy long-running Action with recent admission change is not idle, however long it has run", () => {
+    // Below the floor, but the critical path is moving and its admissions changed 10 minutes ago: the supply alarm stays quiet.
+    const longRunning = input({ readyCount: 2, running: { count: 1, lastActivityAt: ms("16:50:00") } });
     expect(decideDuty(null, longRunning).transition).toBe("none");
     expect(evaluateDuty(longRunning).active).toEqual([]);
   });
 
-  it("the same below-floor supply pages once activity has gone quiet past the healthy window", () => {
-    const stalled = input({ readyCount: 2, running: { count: 1, lastActivityAt: ms("16:30:00") } });
-    expect(decideDuty(null, stalled).transition).toBe("open");
+  it("the healthy window is capped: a stuck admission past the cap pages the floor, and not before", () => {
+    const within = input({ readyCount: 2, running: { count: 1, lastActivityAt: ms("17:00:00") - (HEALTHY_MAX_SILENCE_MINUTES - 1) * 60_000 } });
+    expect(decideDuty(null, within).transition).toBe("none");
+    const past = input({ readyCount: 2, running: { count: 1, lastActivityAt: ms("17:00:00") - (HEALTHY_MAX_SILENCE_MINUTES + 1) * 60_000 } });
+    expect(decideDuty(null, past).transition).toBe("open");
   });
 
-  it("production Off with nothing eligible opens the duty alarm; with the eligible count unknown it holds", () => {
+  it("production Off with nothing eligible opens the duty alarm when enabled; with the eligible count unknown it holds", () => {
     const off = decideDuty(null, input({ production: "off", eligibleCount: 0, readyCount: 0 }));
     expect(off.transition).toBe("open");
     expect(off.next?.cause).toBe("off_nothing_eligible");
     expect(off.next?.owner).toContain("operator");
     expect(decideDuty(null, input({ production: "off", eligibleCount: null, readyCount: null })).transition).toBe("none");
-    expect(decideDuty(null, input({ production: "off", eligibleCount: 3, readyCount: 3 })).transition).toBe("open");
     expect(decideDuty(null, input({ production: "off", eligibleCount: 3, readyCount: 3 })).next?.cause).toBe("ready_below_floor");
+  });
+
+  it("production Off with nothing eligible pages nobody by default (the flag is off), and the floor is not judged while Off", () => {
+    const quietNight = decideDuty(null, input({ production: "off", eligibleCount: 0, readyCount: 0, offNothingAlarm: false }));
+    expect(quietNight.transition).toBe("none");
+    expect(quietNight.evaluation.active).toEqual([]);
+    expect(quietNight.evaluation.unknown).toEqual([]);
+    // A short scope while Off is the normal wait for START, so it is not a floor page by default either.
+    expect(decideDuty(null, input({ production: "off", eligibleCount: 3, readyCount: 3, offNothingAlarm: false })).transition).toBe("none");
   });
 
   it("no custodian for ten minutes pages, but not at nine", () => {
@@ -130,7 +158,8 @@ describe("the conditions", () => {
     expect(opened.next?.cause).toBe("no_custodian");
     expect(opened.next?.contributing).toEqual(["no_custodian", "off_nothing_eligible", "ready_below_floor"]);
     // A later run where only the root remains keeps the episode and its root.
-    const narrowed = decideDuty(opened.next, input({ custodian: { readable: true, lastLiveAt: ms("16:00:00"), reason: null }, readyCount: 10 }));
+    const delivered = { ...(opened.next as DutyEpisodeRecord), delivery: { pingId: "p1", queuedAt: at("17:00:00") } };
+    const narrowed = decideDuty(delivered, input({ custodian: { readable: true, lastLiveAt: ms("16:00:00"), reason: null }, readyCount: 10 }));
     expect(narrowed.transition).toBe("none");
     expect(narrowed.next?.cause).toBe("no_custodian");
   });
@@ -178,8 +207,8 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
     };
   }
 
-  /** Every queued ping goes in `queued`; the keeper alarm also pages these Active fixtures, so duty assertions use `duties`. */
-  function harness(root: string, queued: LivenessPingInput[], options: { failNext?: boolean } = {}) {
+  /** Every queued ping goes in `queued`; the keeper alarm also pages these Active fixtures, so duty assertions use the duty agent. */
+  function harness(root: string, queued: LivenessPingInput[], options: { failNext?: boolean; dutyOffAlarm?: boolean } = {}) {
     let failNext = options.failNext ?? false;
     const deps: ProductionMomentumDependencies = {
       queuePing: (input) => {
@@ -194,28 +223,27 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
     return {
       run: (clock: string, current: IdleFrontRow, custodian: CustodianLiveness = healthy) =>
         runProductionMomentumCheckCommand(
-          { workspace: root, readyFloor: 6 },
+          { workspace: root, readyFloor: 6, dutyOffAlarm: options.dutyOffAlarm ?? false },
           { ...deps, now: () => ms(clock), readRow: async () => ({ ...current, ts: at(clock) }), readCustodian: () => custodian }
-        ).then((response) => response.data),
-      failNext: () => { failNext = true; }
+        ).then((response) => response.data)
     };
   }
 
+  const duties = (queued: LivenessPingInput[]) => queued.filter((ping) => ping.agent === "Duty alarm");
   const state = (root: string) => JSON.parse(readFileSync(path.join(root, ".arcadia", "momentum-watch.json"), "utf8")) as { duty: { open: DutyEpisodeRecord | null; closedAt: string | null } };
 
-  it("pages once for an Off run with nothing eligible, records delivery and leaves acknowledgment empty, then closes with one line", async () => {
+  it("with --duty-off-alarm, pages once for an Off run with nothing eligible, records delivery and leaves acknowledgment empty, then closes with one line", async () => {
     const root = workspace();
     const queued: LivenessPingInput[] = [];
-    const h = harness(root, queued);
+    const h = harness(root, queued, { dutyOffAlarm: true });
     const off = row({ desired: "inactive", ready_actions: 0 });
 
     const first = await h.run("17:00:00", off);
     expect(first.duty.ping).toBe("alert");
     expect((await h.run("17:01:00", off)).duty.ping).toBeNull();
     expect((await h.run("17:02:00", off)).duty.ping).toBeNull();
-    const duties = queued.filter((ping) => ping.agent === "Duty alarm");
-    expect(duties).toHaveLength(1);
-    expect(duties[0]?.message).toContain("production Off with nothing eligible");
+    expect(duties(queued)).toHaveLength(1);
+    expect(duties(queued)[0]?.message).toContain("production Off with nothing eligible");
 
     const open = state(root).duty.open;
     expect(open?.cause).toBe("off_nothing_eligible");
@@ -224,11 +252,19 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
 
     const closed = await h.run("17:05:00", row({ ready_actions: 10 }));
     expect(closed.duty.ping).toBe("close");
-    const after = queued.filter((ping) => ping.agent === "Duty alarm");
-    expect(after).toHaveLength(2);
-    expect(after[1]?.message).toMatch(new RegExp(`^✅ DUTY cleared: production Off with nothing eligible, 5 min after the duty alarm \\(${first.duty.pingId}\\)`));
+    expect(duties(queued)).toHaveLength(2);
+    expect(duties(queued)[1]?.message).toMatch(new RegExp(`^✅ DUTY cleared: production Off with nothing eligible, 5 min after the duty alarm \\(${first.duty.pingId}\\)`));
     expect(state(root).duty.open).toBeNull();
     expect(state(root).duty.closedAt).toBe(at("17:05:00"));
+  });
+
+  it("by default, a quiet Off night pages no duty alarm at all", async () => {
+    const root = workspace();
+    const queued: LivenessPingInput[] = [];
+    const h = harness(root, queued);
+    expect((await h.run("17:00:00", row({ desired: "inactive", ready_actions: 0 }))).duty.ping).toBeNull();
+    expect(duties(queued)).toHaveLength(0);
+    expect(state(root).duty.open).toBeNull();
   });
 
   it("pages no custodian at ten minutes of silence but not at nine, and keeps the ping for the same episode", async () => {
@@ -240,31 +276,71 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
     const ten: CustodianLiveness = { readable: true, lastLiveAt: ms("16:50:00"), reason: null };
     expect((await h.run("17:00:00", row(), ten)).duty.ping).toBe("alert");
     expect((await h.run("17:01:00", row(), ten)).duty.ping).toBeNull();
-    const duties = queued.filter((ping) => ping.agent === "Duty alarm");
-    expect(duties).toHaveLength(1);
-    expect(duties[0]?.message).toContain("no custodian live");
+    expect(duties(queued)).toHaveLength(1);
+    expect(duties(queued)[0]?.message).toContain("no custodian live");
   });
 
-  it("a failed queue leaves the episode unopened, so the next run queues it", async () => {
+  it("a failed queue keeps the recorded, undelivered episode, so the next run queues it under the same key", async () => {
     const root = workspace();
     const queued: LivenessPingInput[] = [];
     const h = harness(root, queued, { failNext: true });
     const low = row({ ready_actions: 2 });
     await expect(h.run("17:00:00", low)).rejects.toThrow(/duty alarm was not queued and will be retried.*outbox busy/);
-    expect(state(root).duty.open).toBeNull();
+    const recorded = state(root).duty.open;
+    expect(recorded?.delivery).toBeNull();
     expect((await h.run("17:01:00", low)).duty.ping).toBe("alert");
-    expect(queued.filter((ping) => ping.agent === "Duty alarm")).toHaveLength(1);
+    const sent = duties(queued);
+    expect(sent).toHaveLength(1);
+    expect(state(root).duty.open?.key).toBe(recorded?.key);
+  });
+
+  it("a page queued whose delivery write then fails is queued again under the same key, never minted as a new episode", async () => {
+    const root = workspace();
+    const statePath = path.join(root, ".arcadia", "momentum-watch.json");
+    const queued: LivenessPingInput[] = [];
+    let breakOnce = true;
+    let savedBeforeQueue = "";
+    const deps: ProductionMomentumDependencies = {
+      queuePing: (input) => {
+        queued.push(input);
+        if (input.agent === "Duty alarm" && breakOnce) {
+          // Simulate the delivery write failing: the state file cannot be replaced after the page is queued.
+          breakOnce = false;
+          savedBeforeQueue = readFileSync(statePath, "utf8");
+          rmSync(statePath);
+          mkdirSync(statePath);
+        }
+        return { id: `ping_${queued.length}` };
+      }
+    };
+    const run = (clock: string) => runProductionMomentumCheckCommand(
+      { workspace: root, readyFloor: 6 },
+      { ...deps, now: () => ms(clock), readRow: async () => ({ ...row({ ready_actions: 2 }), ts: at(clock) }), readCustodian: () => healthy }
+    );
+
+    await expect(run("17:00:00")).rejects.toThrow();
+    // The episode was on disk before its page was queued, undelivered.
+    expect(JSON.parse(savedBeforeQueue).duty.open.delivery).toBeNull();
+    // The fault clears, and the state the pre-queue write persisted is still there.
+    rmSync(statePath, { recursive: true, force: true });
+    writeFileSync(statePath, savedBeforeQueue);
+
+    const second = (await run("17:01:00")).data;
+    expect(second.duty.ping).toBe("alert");
+    const sent = duties(queued);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]?.episodeKey).toBe(sent[0]?.episodeKey);
+    expect(state(root).duty.open?.delivery).not.toBeNull();
   });
 
   it("an existing state file with no duty slot still reads, as an empty duty slot", async () => {
     const root = workspace();
     const queued: LivenessPingInput[] = [];
-    const h = harness(root, queued);
+    const h = harness(root, queued, { dutyOffAlarm: true });
     // A state file from before duty alarms: the other alarms' slots only.
-    mkdirSync(path.join(root, ".arcadia"), { recursive: true });
     const legacy = { schema: "arcadia-momentum-watch-v2", idle: { open: null, closedAt: null }, keeper: { open: null, closedAt: null }, check: { open: null, closedAt: null }, checkFailingSince: null };
     writeFileSync(path.join(root, ".arcadia", "momentum-watch.json"), JSON.stringify(legacy));
     expect((await h.run("17:00:00", row({ ready_actions: 10 }))).duty.ping).toBeNull();
-    expect(queued.filter((ping) => ping.agent === "Duty alarm")).toHaveLength(0);
+    expect(duties(queued)).toHaveLength(0);
   });
 });

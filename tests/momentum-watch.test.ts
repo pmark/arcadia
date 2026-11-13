@@ -271,7 +271,7 @@ describe("the keeper alarm, end to end through the ping outbox", () => {
     expect(quiet.keeper.ping).toBeNull();
     expect(quiet.idle.ping).toBeNull();
     expect(pending(root)).toHaveLength(0);
-    // The duty alarm records its own Off-with-nothing episode in the same state file; the idle and keeper slots stay empty.
+    // The duty alarm's Off-with-nothing condition is opt-in, so a quiet Off night writes no duty episode.
     expect(stateOf(root).idle.open).toBeNull();
     expect(stateOf(root).keeper.open).toBeNull();
     await run(root, "17:01:00", moving());

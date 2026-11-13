@@ -22,8 +22,15 @@ export const DUTY_READY_FLOOR_DEFAULT = 6;
 export const DUTY_READY_FLOOR_MAX = 100;
 /** The alarm's silence threshold for the custodian (rule 8, "10 minutes"). */
 export const CUSTODIAN_SILENCE_MINUTES = 10;
-/** A running Action whose last activity is this recent is healthy, however long it has run (rule 9). */
-export const HEALTHY_ACTIVITY_MINUTES = 20;
+/**
+ * The cap on the healthy-window suppression. The read model has no per-Action
+ * activity clock, so "healthy" is read as: the critical path says moving, with
+ * live admissions, and the live-admission set changed within this many minutes.
+ * The cap stops a stuck moving admission from silencing the floor forever. The
+ * tradeoff: a healthy Action that runs past it with no admission change pages
+ * the floor once. Revisit when the read model carries per-Action activity.
+ */
+export const HEALTHY_MAX_SILENCE_MINUTES = 120;
 /** The coordinator role whose custodian transcript is the liveness signal. */
 export const CUSTODIAN_ROLE = "rowan" as const;
 
@@ -66,8 +73,10 @@ export interface DutyInput {
   production: "active" | "off" | "unknown";
   /** Eligible Actions to start now; null when unknown. The read model has no grant check, so the caller passes the ready count. */
   eligibleCount: number | null;
+  /** Off with nothing eligible pages only when this is on (`--duty-off-alarm`); off by default. */
+  offNothingAlarm: boolean;
   custodian: CustodianLiveness;
-  /** Running Actions (live admissions) and when any of them last showed activity (epoch ms), null when unknown. */
+  /** Running Actions (live admissions), and when the live-admission set last changed (epoch ms; null when not moving). */
   running: { count: number; lastActivityAt: number | null };
 }
 
@@ -93,10 +102,12 @@ export interface DutySlot {
   open: DutyEpisodeRecord | null;
   /** When the last episode closed (ISO); an outbox row at or before it belongs to another episode. */
   closedAt: string | null;
+  /** The live-admission count and when it last changed (ISO), for the healthy-window cap. */
+  admissions: { count: number; changedAt: string } | null;
 }
 
 export function emptyDutySlot(): DutySlot {
-  return { open: null, closedAt: null };
+  return { open: null, closedAt: null, admissions: null };
 }
 
 export interface DutyEvaluation {
@@ -116,23 +127,29 @@ export function evaluateDuty(input: DutyInput): DutyEvaluation {
   else if (input.custodian.lastLiveAt === null) unknown.push("no custodian has been recorded yet");
   else if (now - input.custodian.lastLiveAt >= CUSTODIAN_SILENCE_MINUTES * 60_000) active.push("no_custodian");
 
-  // Off with nothing eligible: Off is known, and the eligible count is known and zero.
-  if (input.production === "unknown") unknown.push("production state is unreadable");
-  else if (input.production === "off") {
-    if (input.eligibleCount === null) unknown.push("eligible Action count is unknown");
-    else if (input.eligibleCount === 0) active.push("off_nothing_eligible");
+  // Off with nothing eligible: opt-in. Off is the normal state while START is pending, so by default a quiet night pages nobody.
+  if (input.offNothingAlarm) {
+    if (input.production === "unknown") unknown.push("production state is unreadable");
+    else if (input.production === "off") {
+      if (input.eligibleCount === null) unknown.push("eligible Action count is unknown");
+      else if (input.eligibleCount === 0) active.push("off_nothing_eligible");
+    }
   }
 
   // Ready floor: a healthy running Action means the critical path is moving, so it is not idle supply.
-  if (input.readyCount === null) unknown.push("ready Action count is unknown");
-  else if (input.readyCount < input.floor && !isHealthyRunning(input.running, now)) active.push("ready_below_floor");
+  // While Off, a short scope is the normal wait for START, so the floor pages only with the Off alarm on: a quiet night pages nobody by default.
+  const offQuiet = input.production === "off" && !input.offNothingAlarm;
+  if (!offQuiet) {
+    if (input.readyCount === null) unknown.push("ready Action count is unknown");
+    else if (input.readyCount < input.floor && !isHealthyRunning(input.running, now)) active.push("ready_below_floor");
+  }
 
   return { active: PRECEDENCE.filter((cause) => active.includes(cause)), unknown };
 }
 
-/** A running Action whose last activity is recent is healthy, however long it has been running. */
+/** A running Action is healthy while its live-admission set changed within the cap (see HEALTHY_MAX_SILENCE_MINUTES). */
 export function isHealthyRunning(running: DutyInput["running"], now: number): boolean {
-  return running.count > 0 && running.lastActivityAt !== null && now - running.lastActivityAt < HEALTHY_ACTIVITY_MINUTES * 60_000;
+  return running.count > 0 && running.lastActivityAt !== null && now - running.lastActivityAt < HEALTHY_MAX_SILENCE_MINUTES * 60_000;
 }
 
 export type DutyTransition =
@@ -160,10 +177,16 @@ export function decideDuty(prior: DutyEpisodeRecord | null, input: DutyInput): {
   const now = new Date(input.now).toISOString();
 
   if (active.length > 0) {
-    if (prior) {
+    if (prior && prior.delivery !== null) {
       const contributing = [...new Set<DutyCause>([...prior.contributing, ...active])];
       const changed = contributing.length !== prior.contributing.length;
       return { transition: "none", evaluation, next: changed ? { ...prior, contributing } : prior };
+    }
+    if (prior) {
+      // Recorded but never queued (the queue or the delivery write failed): queue it again under the same key,
+      // so the outbox recognises the retry and no second episode is minted.
+      const contributing = [...new Set<DutyCause>([...prior.contributing, ...active])];
+      return { transition: "open", evaluation, next: { ...prior, contributing } };
     }
     const root = active[0];
     const startedAt = root === "no_custodian" && input.custodian.lastLiveAt !== null
@@ -185,7 +208,8 @@ export function decideDuty(prior: DutyEpisodeRecord | null, input: DutyInput): {
     };
   }
   if (unknown.length > 0) return { transition: prior ? "hold" : "none", evaluation, next: prior };
-  return prior
+  // A record that was never queued clears silently: nobody was paged, so there is nothing to close.
+  return prior && prior.delivery !== null
     ? { transition: "close", evaluation, next: null }
     : { transition: "none", evaluation, next: null };
 }
