@@ -10,6 +10,7 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
+import { admitStartScope, resolveAcceptedReadiness, type AcceptedReadinessResolution, type StartScopeAdmission } from "../docs/dispatch.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
 import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
 import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, DAY_GRANT_EXECUTOR_PATH, findContinueDecision, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
@@ -470,6 +471,46 @@ export function runStartRunGateCheckCommand(options: StartRunGateCheckOptions): 
     resolveOperatorGate({ db, repoRoot, projectSlug: options.project, selectedActionId: action }).blocking
       .map((item) => ({ action, kind: item.kind, id: item.id, title: item.title, settleCommand: item.settleCommand }))));
   return createSuccess({ command: "start-run.gate-check", workspace: workspacePath, data: { project: options.project, actions: options.actions, blocking } });
+}
+
+export interface StartRunReadinessOptions { project: string; repository?: string; plan?: string; actions?: string[] }
+export interface StartRunReadinessData {
+  readiness: AcceptedReadinessResolution;
+  /** Present only when `--plan` and `--action` were given: the same derivation a start scope must pass. */
+  admission: StartScopeAdmission | null;
+}
+
+/**
+ * `arcadia start-run readiness`: read-only. Lists every ready Action across the Project's accepted (active) Plans,
+ * a reason for each other unfinished Action, and the shortfall against the two-Action batch minimum. With `--plan`
+ * and `--action`, it also reports whether that scope would be admitted now. It proposes and grants nothing.
+ */
+export function runStartRunReadinessCommand(options: StartRunReadinessOptions): CommandSuccess<StartRunReadinessData> {
+  if (!slug.test(options.project)) throw validationError("--project must be a Project slug.");
+  const repoRoot = realpathSync(path.resolve(options.repository ?? process.cwd()));
+  const readiness = resolveAcceptedReadiness(repoRoot, options.project);
+  let admission: StartScopeAdmission | null = null;
+  if (options.plan !== undefined || options.actions !== undefined) {
+    if (!options.plan || !slug.test(options.plan)) throw validationError("An admission check needs --plan <Plan slug>.");
+    if (!options.actions?.length) throw validationError("An admission check needs at least one --action.");
+    admission = admitStartScope(repoRoot, options.project, options.plan, options.actions);
+  }
+  return createSuccess({ command: "start-run.readiness", data: { readiness, admission } });
+}
+
+export function renderStartRunReadinessSuccess(response: CommandSuccess<StartRunReadinessData>): string[] {
+  const { readiness, admission } = response.data;
+  const lines = [readiness.statement, `Ready Actions across accepted Plans: ${readiness.readyTotal}. Active preference: ${readiness.activePlan ?? "unset"}.`];
+  for (const plan of readiness.plans) {
+    lines.push(`${plan.accepted ? "ACCEPTED" : "NOT ACCEPTED"} ${plan.planSlug} (${plan.planStatus}), ready ${plan.readyCount}`);
+    if (!plan.accepted) continue;
+    for (const action of plan.actions) lines.push(`  ${action.ready ? "READY" : "held"} ${action.actionId}: ${action.reason}`);
+  }
+  if (admission) {
+    if (admission.admitted) lines.push(`Admitted (proposal only, grants nothing): ${admission.planSlug} ${admission.actionIds.join(", ")}`);
+    else lines.push(...admission.refusals.map((refusal) => `Refused: ${refusal}`));
+  }
+  return lines;
 }
 
 export function renderStartRunPinsSuccess(response: CommandSuccess<StartRunPinsData>): string[] {
