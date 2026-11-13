@@ -1826,9 +1826,10 @@ alarms, each paging once through `arcadia ping` (agent `Momentum watch`, kind
   - **Ready below floor:** the startable count is below `--ready-floor`
     (default 6). The count is the readiness read model's ready Actions across
     accepted Plans (the `arcadia start-run readiness` walk), so blocked Actions
-    are not counted. It is read from the invocation checkout's documents, at most
-    once every 5 minutes; between reads the last count is used. If it cannot be
-    read, the count is unknown and the duty alarm cannot judge (see above). The
+    are not counted. It is read from the invocation checkout's documents. A
+    successful read is reused for up to 5 minutes; a failed read is retried on
+    every timer run. If it cannot be read, the count is unknown and the duty
+    alarm cannot judge (see above). The
     default is uncalibrated, and it counts Actions, not batches. The operator's
     "always at least 2 batches ready" direction is not encoded yet.
     **Healthy-window limit:** a running Action suppresses the floor only while

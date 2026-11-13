@@ -482,6 +482,23 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
     expect(duties(queued)[1]?.message).toContain("DUTY cleared");
   });
 
+  it("a custodian that returns during Off neither closes the open episode nor pages; it closes once when judgement resumes", async () => {
+    const root = workspace();
+    const queued: LivenessPingInput[] = [];
+    const h = harness(root, queued);
+    const stale: CustodianLiveness = { readable: true, lastLiveAt: ms("16:00:00"), reason: null };
+    expect((await h.run("17:00:00", row(), stale)).duty.ping).toBe("alert");
+    // The custodian is live again, but production is Off and not judged: nothing closes, nothing pages.
+    const live: CustodianLiveness = { readable: true, lastLiveAt: ms("17:01:30"), reason: null };
+    expect((await h.run("17:02:00", row({ desired: "inactive", ready_actions: 0 }), live)).duty.ping).toBeNull();
+    expect(state(root).duty.open?.cause).toBe("no_custodian");
+    expect(duties(queued)).toHaveLength(1);
+    // Judgement resumes (not Off): the episode closes once.
+    expect((await h.run("17:03:00", row(), live)).duty.ping).toBe("close");
+    expect(duties(queued)).toHaveLength(2);
+    expect(duties(queued)[1]?.message).toContain("DUTY cleared");
+  });
+
   it("an unknown count is surfaced: one duty page per unknown episode, named in the output, and cleared when judgement resumes", async () => {
     const root = workspace();
     const queued: LivenessPingInput[] = [];
