@@ -19,5 +19,5 @@
 - title: "Build once, run on any agent: A practical guide to agent skills"
   publisher: GitHub
   url: https://github.blog/ai-and-ml/github-copilot/build-once-run-on-any-agent-a-practical-guide-to-agent-skills/
-  relevance: GitHub’s examples inform how Arcadia documents shared skills, verifies the work they produce, and could test the same workflow in three agent clients.
+  relevance: The Field Note compares GitHub’s examples with Arcadia’s shared skills and independent review, and proposes a three-client workflow test.
   posts: [one-skill-three-coding-agents]
