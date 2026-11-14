@@ -11,11 +11,11 @@ updated: 2026-11-14
 actions:
   - id: refuse-service-restart-from-linked-worktree
     title: Make scripts/services.sh refuse restart and stop from a linked git worktree, so a non-main checkout cannot replace the live launchd label set.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Make scripts/services.sh refuse restart and stop from a linked git worktree, so a non-main checkout cannot replace the live launchd label set.
+    next_action: Completed via Agent Ask complete-refuse-service-restart-from-linked-worktree-2026-11-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask refuse-service-restart-from-linked-worktree
     clarification: clarified
     confidence: high
@@ -73,7 +73,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2631", "src/commands/tidy.ts", "src/git/worktrees.ts", "tests/tidy-command.test.ts"]
 questions: []
 decisions: []
-current_action: refuse-service-restart-from-linked-worktree
+current_action: probe-tailnet-press-path-read-only
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
