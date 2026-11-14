@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-batch-9-20261114b
+project: arcadia
+intent: plan
+target_ref: plan/draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first
+requested_authority: propose
+desired_result: Activate batch 9, the three Actions for Issues 2629, 2626 and 2630; Plan 3 returns to draft with its six done pins preserved and its 14 open pins unchanged; re-activating it later needs --action pin-dashboard-base-url.
+rationale: "Operator menu answer 9A (batch 9 accepted as drafted) and the operator's instruction to get the new bugs worked in, relayed by Signal 11 from its transcript 6c227f6b-bd31-45d1-9ff0-edc572715a8a on 2026-11-14; activation is the operator's own tap on a published runner action, and Signal 11 verifies the words under Decision 0229 before that tap. Batch 9 is the critical path for the next START card: the park Issue (Decision 0223 A), replay of per-run START cards (Route A) and a deterministic merge-freeze check. Activation grants no production START: production stays Off. Batch 10 is activated only after batch 9 completes."
