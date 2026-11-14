@@ -3865,8 +3865,10 @@ dashboard: a pre-built release of a **git tag**, served by `next start` on port
 never touches it.
 
 - **URL:** `https://arcadia-1.alpine-rattlesnake.ts.net/` with no port,
-  through `tailscale serve` (or `http://127.0.0.1:3030` on the Mac). The
-  demo binds 127.0.0.1 only, so the direct `:3030` Tailnet URL does not work.
+  through the HTTPS `tailscale serve` entry on 443 (step 5 of
+  `scripts/release.sh install-plan`), or `http://127.0.0.1:3030` on the Mac.
+  That entry is required: the demo binds 127.0.0.1 only, so without it no
+  Tailnet URL reaches the demo, and the direct `:3030` Tailnet URL never does.
 - **What serves it:** the `com.arcadia.demo.dashboard` LaunchAgent (KeepAlive)
   runs `next start` from `/Users/pmark/Dev/MR/Arcadia/releases/current`, a
   symlink to the active tag. It sets `ARCADIA_DASHBOARD_CLI=built`, so every
@@ -3923,6 +3925,15 @@ CONSTITUTION.md reserves for an explicit Decision. Until it is answered nothing
 is installed; `scripts/release.sh install-plan` prints the exact plists and the
 `launchctl` and `tailscale` commands for you to run, followed by the undo
 commands.
+
+**Upgrading an installed demo agent.** `deploy` and `nightly` only kickstart
+the agent and never rewrite its plist, so an agent installed while the demo
+bound every interface (`-H 0.0.0.0`) keeps that binding. Rewrite it with the
+plist from `scripts/release.sh install-plan` and reload it, bootout first:
+`launchctl bootout gui/$(id -u)/com.arcadia.demo.dashboard`, write the plist,
+then `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.arcadia.demo.dashboard.plist`.
+`lsof -nP -iTCP:3030 -sTCP:LISTEN` should then show `127.0.0.1:3030`, not
+`*:3030`.
 
 ## Compact agent instructions
 
