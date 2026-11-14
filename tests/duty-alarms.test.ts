@@ -1,9 +1,10 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { IDLE_FRONT_ROW_SCHEMA, type IdleFrontRow } from "../src/production/idleFront.js";
 import {
+  CUSTODIAN_ROLE,
   CUSTODIAN_SILENCE_MINUTES,
   HEALTHY_MAX_SILENCE_MINUTES,
   decideDuty,
@@ -13,7 +14,8 @@ import {
   type DutyEpisodeRecord,
   type DutyInput
 } from "../src/production/dutyAlarms.js";
-import { readStartableCount, renderProductionMomentumLines, runProductionMomentumCheckCommand, type ProductionMomentumDependencies, type StartableCount } from "../src/commands/productionMomentum.js";
+import { ensureCoordinatorGenerationsTable } from "../src/coordinator/generations.js";
+import { readCustodianLiveness, readStartableCount, renderProductionMomentumLines, runProductionMomentumCheckCommand, type ProductionMomentumDependencies, type StartableCount } from "../src/commands/productionMomentum.js";
 import type { LivenessPingInput } from "../src/commands/productionLiveness.js";
 import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -611,6 +613,58 @@ describe("the duty alarm through the momentum runner, with the ping queue inject
       const read = readStartableCount(root, () => repoWith("open"));
       expect(read.readable).toBe(false);
       expect(read.count).toBeNull();
+    });
+  });
+
+  describe("the real custodian read while production is Off", () => {
+    const SESSION = "11111111-2222-4333-8444-555555555555";
+
+    /** The policy as `arcadia production deactivate` leaves it, plus a recorded rowan custodian with a live transcript. */
+    function setOffWithCustodian(root: string, retained: boolean): string {
+      const projects = mkdtempSync(path.join(tmpdir(), "arcadia-duty-projects-"));
+      roots.push(projects);
+      mkdirSync(path.join(projects, "-demo"), { recursive: true });
+      writeFileSync(path.join(projects, "-demo", `${SESSION}.jsonl`), "{}\n");
+      withDatabase(root, (db) => {
+        ensureCoordinatorGenerationsTable(db);
+        db.prepare("UPDATE production_policy SET desired_state = 'inactive', scope_json = NULL, authority_json = NULL").run();
+        if (retained) {
+          db.prepare(`INSERT INTO production_inactive_configuration
+              (id, configuration_revision, fingerprint, saved_at_policy_revision, source_epoch, source_authority_request_id, scope_json, not_carried_json, saved_at)
+            VALUES ('workspace', 1, 'test', 1, 1, NULL, ?, '[]', ?)`).run(JSON.stringify({ projects: ["demo"], plans: [], actions: [], providers: [] }), at("16:00:00"));
+        }
+        db.prepare(`INSERT INTO coordinator_generations (project, role, generation, status, provider, model, tier, identity,
+            native_session_id, transcript_path, created_at, updated_at, accepted_at)
+          VALUES ('demo', ?, 1, 'custodian', 'claude', 'claude-haiku-5-5', 'light', 'test', ?, NULL, ?, ?, ?)`).run(CUSTODIAN_ROLE, SESSION, at("16:00:00"), at("16:00:00"), at("16:00:00"));
+      });
+      return projects;
+    }
+
+    it("a recorded custodian is readable while Off, from the retained configuration: no unknown, and the live transcript is read", () => {
+      const root = workspace();
+      const projects = setOffWithCustodian(root, true);
+      const read = readCustodianLiveness(root, projects);
+      expect(read.readable).toBe(true);
+      expect(read.lastLiveAt).toBe(statSync(path.join(projects, "-demo", `${SESSION}.jsonl`)).mtimeMs);
+    });
+
+    it("with no retained configuration while Off, the custodian stays unknown, never readable-but-never-recorded", () => {
+      const root = workspace();
+      const projects = setOffWithCustodian(root, false);
+      const read = readCustodianLiveness(root, projects);
+      expect(read.readable).toBe(false);
+      expect(read.lastLiveAt).toBeNull();
+    });
+
+    it("a present production scope reads the custodian as before", () => {
+      const root = workspace();
+      const projects = setOffWithCustodian(root, false);
+      withDatabase(root, (db) => {
+        db.prepare("UPDATE production_policy SET desired_state = 'active', scope_json = ?").run(JSON.stringify({ projects: ["demo"], plans: [], actions: [], providers: [] }));
+      });
+      const read = readCustodianLiveness(root, projects);
+      expect(read.readable).toBe(true);
+      expect(read.lastLiveAt).toBe(statSync(path.join(projects, "-demo", `${SESSION}.jsonl`)).mtimeMs);
     });
   });
 

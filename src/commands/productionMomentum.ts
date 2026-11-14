@@ -219,8 +219,16 @@ export function readCustodianLiveness(workspacePath: string, projectsDirectory =
     return withReadOnlyDatabase(workspacePath, (db) => {
       const read = readProductionPolicySafely(db);
       if (read.status !== "ok") return { readable: false, lastLiveAt: null, reason: read.reason };
+      // Off clears the policy scope but retains the reviewed configuration; its Projects are the production scope.
+      let projects: string[];
+      if (read.policy.desiredState === "active") projects = read.policy.scope?.projects ?? [];
+      else {
+        const retained = readInactiveConfiguration(db);
+        if (!retained) return { readable: false, lastLiveAt: null, reason: "no retained production configuration to read the custodian from" };
+        projects = retained.scope.projects;
+      }
       let newest: number | null = null;
-      for (const project of read.policy.scope?.projects ?? []) {
+      for (const project of projects) {
         const custodian = currentCustodian(db, project, CUSTODIAN_ROLE);
         if (!custodian?.nativeSessionId) continue;
         const transcript = findSessionTranscript(projectsDirectory, custodian.nativeSessionId);
