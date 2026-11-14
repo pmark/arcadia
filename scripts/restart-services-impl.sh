@@ -441,8 +441,15 @@ is_self_or_ancestor() {
   return 1
 }
 
+# Only listeners a loopback bind collides with: loopback or every interface. A `tailscale serve --http=<port>`
+# entry listens on the Tailnet address with the same port number and proxies to 127.0.0.1:<port>; it shares
+# the number without owning the port, so it is neither a conflict nor a straggler.
 listener_pids() {
-  lsof -nP -t -iTCP:"$1" -sTCP:LISTEN 2>/dev/null | sort -u || true
+  lsof -nP -iTCP:"$1" -sTCP:LISTEN -Fpn 2>/dev/null | awk '
+    /^p/ { pid = substr($0, 2) }
+    /^n/ { addr = substr($0, 2); sub(/:[0-9]+$/, "", addr)
+           if (addr == "*" || addr == "127.0.0.1" || addr == "[::1]" || addr == "0.0.0.0" || addr == "[::]" || addr == "localhost") print pid }
+  ' | sort -u || true
 }
 
 port_conflict_pid() {
