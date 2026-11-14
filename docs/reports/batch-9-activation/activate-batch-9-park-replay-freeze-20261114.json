@@ -1,0 +1,111 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-batch-9-park-replay-freeze-20261114",
+  "title": "Activate batch 9 (park Issue, START-card replay, merge-freeze check) at the park-Issue Action; Plan 3 returns to draft",
+  "script": "activate-batch-9-park-replay-freeze-20261114.sh",
+  "repeatable": false,
+  "problem": "Batch 9, the three Actions that gate the next START card (Issues 2629, 2626, 2630), is an inactive draft Plan; PROJECT still points at Plan 3 (test pins) at pin-dashboard-base-url.",
+  "desired_effect": "Activate batch 9 at file-github-issue-when-action-parked, standard / medium, and place this Project queue segment at the top. Plan 3 returns to draft with its 6 done and 14 open pins unchanged; re-activating it later needs --action pin-dashboard-base-url. Plan activation only.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-batch-9-park-replay-freeze-20261114.sh run",
+  "authority": {
+    "does": [
+      "Fresh-preview the exact pinned proposal, validate the before/after images through the existing shared runner, then apply that fingerprint.",
+      "Set Project/Plan pointers and standard / medium pins; preserve all Action contents and every other Project relative queue order.",
+      "Append one Mission Log entry, archive the Ask and publish only the canonical settlement commit by normal push; retain receipts."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, production policy, service restart, install or merge.",
+      "Never increases concurrency or grants spend/credentials/merge authority; never changes Action status, criteria or responsibility.",
+      "Never force-pushes, publishes unrelated commits or treats generating this action as approval."
+    ]
+  },
+  "success": {
+    "effect": "Batch 9 is active at file-github-issue-when-action-parked, standard / medium; Plan 3 is a draft with its pins intact; settlement published.",
+    "next": "Continue through normal governed Action/Session admission. This is not a Session launch or production START; production stays Off. To resume Plan 3 later, draft a plan-intent Ask targeting plan/record-run-unattended-test-pins-20261113-part-3 and activate it with --action pin-dashboard-base-url."
+  },
+  "failure": {
+    "effect": "Refuses before mutation on drift; preserves any canonical local settlement on publication failure.",
+    "next": "Read the receipt; re-review stale pins, or retry publication of the existing settlement without another apply."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "9c6854e5313d90b959809991d081c5cacaa458e8"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-batch-9-20261114b.yaml",
+      "sha256": "287bb59c006024dab4c5765b11c941fb5d786812a01856cd33891abe7d4a20ec",
+      "proposal": "activate-batch-9-20261114b"
+    },
+    "settlement": {
+      "requestId": "activate-batch-9-20261114b",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "file-github-issue-when-action-parked",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first",
+      "previousPlan": "record-run-unattended-test-pins-20261113-part-3",
+      "action": "file-github-issue-when-action-parked",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "record-run-unattended-test-pins-20261113-part-3",
+        "current_action": "pin-dashboard-base-url",
+        "milestone": "Record run unattended test pins 20261113 part 3"
+      },
+      "projectAfter": {
+        "active_plan": "draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first",
+        "current_action": "file-github-issue-when-action-parked",
+        "milestone": "Draft an inactive batch 9 Plan of three verified small fixes with failing-first tests (park Issue, replay startRun cards, START merge-freeze check)"
+      },
+      "planBefore": {
+        "slug": "draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Draft an inactive batch 9 Plan of three verified small fixes with failing-first tests (park Issue, replay startRun cards, START merge-freeze check)"
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "file-github-issue-when-action-parked",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "record-run-unattended-test-pins-20261113-part-3",
+        "project": "arcadia",
+        "status": "active",
+        "current_action": "pin-dashboard-base-url"
+      },
+      "previousPlanAfter": {
+        "status": "draft",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "file-github-issue-when-action-parked",
+        "title": "Record a GitHub Issue with a revival trigger when the tick parks an Action on an Action-local repair_budget_exhausted hold.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/file-github-issue-when-action-parked",
+        "arcadia/replay-card-reads-start-run-descriptor",
+        "arcadia/add-merge-check-for-waiting-start-card"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
