@@ -5,9 +5,9 @@
   "description": "Local mobile-first dashboard adapter for Arcadia.",
   "type": "module",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0 -p 3020",
+    "dev": "next dev -H 127.0.0.1 -p 3020",
     "build": "next build",
-    "start": "next start -H 0.0.0.0 -p 3020"
+    "start": "next start -H 127.0.0.1 -p 3020"
   },
   "dependencies": {
     "@pmark/arcadia": "workspace:*",
