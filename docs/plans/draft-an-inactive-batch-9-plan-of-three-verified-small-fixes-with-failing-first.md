@@ -11,11 +11,11 @@ updated: 2026-11-14
 actions:
   - id: file-github-issue-when-action-parked
     title: Record a GitHub Issue with a revival trigger when the tick parks an Action on an Action-local repair_budget_exhausted hold.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Record a GitHub Issue with a revival trigger when the tick parks an Action on an Action-local repair_budget_exhausted hold.
+    next_action: Completed via Agent Ask complete-file-github-issue-when-action-parked-2026-11-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask file-github-issue-when-action-parked
     clarification: clarified
     confidence: high
@@ -72,7 +72,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2630", "https://github.com/pmark/arcadia/issues/2104", "src/workMonitoring/runWindow.ts", "src/commands/workMonitor.ts", "docs/agent-guidance/rehearsal-freeze-window.md"]
 questions: []
 decisions: []
-current_action: file-github-issue-when-action-parked
+current_action: replay-card-reads-start-run-descriptor
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
