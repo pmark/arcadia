@@ -30,11 +30,11 @@ actions:
     references: []
   - id: pin-work-classification-queue
     title: Pin that work classifications route to the requires_review, blocked or work queue, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that work classifications route to the requires_review, blocked or work queue, with a new test file.
+    next_action: Completed via Agent Ask complete-pin-work-classification-queue-2026-11-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-work-classification-queue
     clarification: clarified
     confidence: high
@@ -405,7 +405,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-work-classification-queue
+current_action: pin-operator-surface-membership
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
