@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with
 project: arcadia
-status: active
+status: complete
 milestone: Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -50,11 +50,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2504", "tests/dashboard-live.test.ts", "scripts/dashboard-build.sh"]
   - id: harden-start-run-executor-calls-log-reader
     title: Make the start-run test's calls.log reader tolerate a partial last line.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Make the start-run test's calls.log reader tolerate a partial last line.
+    next_action: Completed via Agent Ask complete-harden-start-run-executor-calls-log-reader-2026-11-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask harden-start-run-executor-calls-log-reader
     clarification: clarified
     confidence: high
@@ -69,7 +69,6 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2026", "tests/start-run-executor.test.ts"]
 questions: []
 decisions: []
-current_action: harden-start-run-executor-calls-log-reader
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
