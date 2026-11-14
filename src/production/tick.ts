@@ -23,7 +23,7 @@ import { markCaughtUpWorkerMerges } from "./workerMerge.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { isActionLocalHeldKind, type RepairBudgetCause, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
+import { isActionLocalHeldKind, recordRepairBudgetParkIssues, type RepairBudgetCause, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
 import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_ESCALATION_EXITS, SIGN_IN_ESCALATION_MS, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
@@ -2492,6 +2492,10 @@ export function runManagedProductionTick(
     // An integration-refusal episode ends whenever this tick has no refused
     // handoff to log (it integrated, nothing is pending, or production is Off
     // or out of scope), so a later recurrence is logged once again.
+    // Issue #2629 (Decision 0223 A): an Action parked on an Action-local repair_budget_exhausted hold records one
+    // GitHub Issue naming its revival trigger. Outside every transaction callback; a failure only logs.
+    recordRepairBudgetParkIssues(db, { projectSlug: project.slug, repoRoot, now, log, runCommand: options.review?.runCommand });
+
     // A terminal guard's refusal is escalated once while production is On for
     // this Project, and cleared when the candidate passes its guards or
     // integrates, when nothing is pending, or when production is Off.
