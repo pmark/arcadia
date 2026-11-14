@@ -3438,3 +3438,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A failing-first test shows an Off-cleared policy scope yields readable custodian liveness instead of a CANNOT JUDGE episode, and a present scope behaves as before."; "The first implementation step confirms whether readProductionPolicy throws on a cleared scope and the fix handles that path."; "Existing tests pass unmodified, and pnpm vitest run tests/duty-alarms.test.ts passes.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-fix-off-alarm-custodian-liveness-scope-2026-11-13).
+
+## 2026-11-14 — Completed arcadia/quote-flow-indicator-leading-yaml-scalars
+
+- **Did:** Completed Action arcadia/quote-flow-indicator-leading-yaml-scalars from accepted evidence (Candidate c75df1c3ebdd4254bf8369f0f67b6765c719bf76).
+- **Result:** Every declared acceptance criterion was accepted as met: "A failing-first test shows values with those leading characters come back quoted and round-trip, and plain values are unchanged."; "Existing tests pass unmodified, and pnpm vitest run tests/pin-yaml-scalar-quoting.test.ts passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-quote-flow-indicator-leading-yaml-scalars-2026-11-13).
