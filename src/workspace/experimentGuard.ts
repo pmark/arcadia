@@ -358,6 +358,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "artifact update": ALLOWED,
   "artifact validate-planning": ALLOWED,
   "work monitor": ALLOWED,
+  "work merge-check": ALLOWED,
   "work reservations": exempt("Reads all unexpired handoff reservations through a read-only database; no recovery, custody mutation or activity recording."),
   "work prs": ALLOWED,
   "work list": ALLOWED,
