@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Draft an inactive batch 10 Plan of three verified small reliability fixes with failing-first tests (service restart main-checkout guard, Tailnet press-path probe, tidy test determinism)
 active_plan: draft-an-inactive-batch-10-plan-of-three-verified-small-reliability-fixes-with
 updated: 2026-11-14
-current_action: probe-tailnet-press-path-read-only
+current_action: make-tidy-detached-worktree-test-hermetic
 ---
 
 # Arcadia
