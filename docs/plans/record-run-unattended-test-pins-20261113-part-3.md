@@ -49,11 +49,11 @@ actions:
     references: []
   - id: pin-operator-surface-membership
     title: Pin that the cli, dashboard and discord surfaces count as operator-touched and claude and automation do not, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the cli, dashboard and discord surfaces count as operator-touched and claude and automation do not, with a new test file.
+    next_action: Completed via Agent Ask complete-pin-operator-surface-membership-2026-11-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-operator-surface-membership
     clarification: clarified
     confidence: high
@@ -405,7 +405,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-operator-surface-membership
+current_action: pin-encouragement-format
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
