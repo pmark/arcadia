@@ -31,11 +31,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2575", "tests/coordinator-relay.test.ts", "src/operatorActions/operatorExecution.ts", "src/coordinator/relay.ts"]
   - id: dashboard-live-allocate-free-smoke-port
     title: Pick a verified-free smoke port in the dashboard-live test fixture instead of a random one.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pick a verified-free smoke port in the dashboard-live test fixture instead of a random one.
+    next_action: Completed via Agent Ask complete-dashboard-live-allocate-free-smoke-port-2026-11-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask dashboard-live-allocate-free-smoke-port
     clarification: clarified
     confidence: high
@@ -69,7 +69,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2026", "tests/start-run-executor.test.ts"]
 questions: []
 decisions: []
-current_action: dashboard-live-allocate-free-smoke-port
+current_action: harden-start-run-executor-calls-log-reader
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
