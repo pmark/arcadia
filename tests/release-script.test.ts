@@ -744,7 +744,8 @@ describe("scripts/release.sh (Issue #1116)", () => {
     expect(out).toContain("<key>Label</key><string>com.arcadia.demo.nightly</string>");
     expect(out).toContain("<key>KeepAlive</key><true/>");
     expect(out).toContain("<string>/Users/pmark/Dev/MR/Arcadia/releases/current/apps/dashboard/node_modules/next/dist/bin/next</string>");
-    expect(out).toMatch(/<string>start<\/string>\s*<string>-H<\/string>\s*<string>0\.0\.0\.0<\/string>\s*<string>-p<\/string>\s*<string>3030<\/string>/);
+    expect(out).toMatch(/<string>start<\/string>\s*<string>-H<\/string>\s*<string>127\.0\.0\.1<\/string>\s*<string>-p<\/string>\s*<string>3030<\/string>/);
+    expect(out).not.toContain("0.0.0.0");
     expect(out).toContain("<key>ARCADIA_WORKSPACE</key><string>/Users/pmark/Dev/MR/Arcadia/workspaces/martianrover</string>");
     expect(out).toContain("<key>ARCADIA_DASHBOARD_CLI</key><string>built</string>");
     expect(out).toContain("<key>StartCalendarInterval</key>");

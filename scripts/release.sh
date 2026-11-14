@@ -717,7 +717,7 @@ cmd_install_plan() {
 # the nightly job and the Tailscale entry is a deployment and needs an explicit
 # operator Decision (CONSTITUTION.md); cutting a release tag is part of it.
 #
-# Demo server  : $LABEL, next start -H 0.0.0.0 -p $DEMO_PORT, from $CURRENT
+# Demo server  : $LABEL, next start -H 127.0.0.1 -p $DEMO_PORT, from $CURRENT
 # Workspace    : $WORKSPACE (shared with the development dashboard)
 # Nightly job  : $NIGHTLY_LABEL at 04:00, runs: $nightly_script nightly (the script inside the serving release)
 # Releases dir : $RELEASES
@@ -748,7 +748,7 @@ cat > "$agents/$LABEL.plist" <<'PLIST'
     <string>$(xml_escape "$next_entry")</string>
     <string>start</string>
     <string>-H</string>
-    <string>0.0.0.0</string>
+    <string>127.0.0.1</string>
     <string>-p</string>
     <string>$DEMO_PORT</string>
   </array>
