@@ -1,0 +1,111 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-batch-5-three-small-fixes-plan-20261113",
+  "title": "Activate the batch 5 small-fixes Plan at the duty-alarm Off-scope fix",
+  "script": "activate-batch-5-three-small-fixes-plan-20261113.sh",
+  "repeatable": false,
+  "problem": "The batch 5 small-fixes Plan is an inactive draft; PROJECT still points at the finished batch 6 Plan, so no Action is selected.",
+  "desired_effect": "Activate the batch 5 small-fixes Plan at fix-off-alarm-custodian-liveness-scope, standard / medium; keep the finished batch 6 Plan at status complete and place this Project queue segment at the top. Plan activation only.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-batch-5-three-small-fixes-plan-20261113.sh run",
+  "authority": {
+    "does": [
+      "Fresh-preview the exact pinned proposal, validate the before/after images through the existing shared runner, then apply that fingerprint.",
+      "Set Project/Plan pointers and standard / medium pins; preserve all Action contents and every other Project relative queue order.",
+      "Append one Mission Log entry, archive the Ask and publish only the canonical settlement commit by normal push; retain receipts."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, production policy, service restart, install or merge.",
+      "Never increases concurrency or grants spend/credentials/merge authority; never changes Action status, criteria or responsibility.",
+      "Never force-pushes, publishes unrelated commits or treats generating this action as approval."
+    ]
+  },
+  "success": {
+    "effect": "The batch 5 small-fixes Plan is active at fix-off-alarm-custodian-liveness-scope, standard / medium; the batch 6 Plan stays complete; settlement published.",
+    "next": "Continue through normal governed Action/Session admission. This is not a Session launch or production START; each Action's PR stays the operator's merge."
+  },
+  "failure": {
+    "effect": "Refuses before mutation on drift; preserves any canonical local settlement on publication failure.",
+    "next": "Read the receipt; re-review stale pins, or retry publication of the existing settlement without another apply."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "0a728a4028563da7464a6f90ed9bf2740da992c0"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-batch-5-20261113.yaml",
+      "sha256": "4728aef2da6afb9c4b06a416e4e22a71af489cb92ae689b20488c16c83c94e8f",
+      "proposal": "activate-batch-5-20261113"
+    },
+    "settlement": {
+      "requestId": "activate-batch-5-20261113",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "fix-off-alarm-custodian-liveness-scope",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each",
+      "previousPlan": "draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with",
+      "action": "fix-off-alarm-custodian-liveness-scope",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with",
+        "current_action": null,
+        "milestone": "Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises"
+      },
+      "projectAfter": {
+        "active_plan": "draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each",
+        "current_action": "fix-off-alarm-custodian-liveness-scope",
+        "milestone": "Draft an inactive batch 5 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification."
+      },
+      "planBefore": {
+        "slug": "draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Draft an inactive batch 5 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification."
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "fix-off-alarm-custodian-liveness-scope",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with",
+        "project": "arcadia",
+        "status": "complete",
+        "current_action": null
+      },
+      "previousPlanAfter": {
+        "status": "complete",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "fix-off-alarm-custodian-liveness-scope",
+        "title": "readCustodianLiveness reads the retained configuration when production is not active, so --duty-off-alarm no longer yields a persistent CANNOT JUDGE episode.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/fix-off-alarm-custodian-liveness-scope",
+        "arcadia/quote-flow-indicator-leading-yaml-scalars",
+        "arcadia/tidy-detached-count-tolerates-unreadable-head"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
