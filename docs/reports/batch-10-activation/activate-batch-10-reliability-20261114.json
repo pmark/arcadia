@@ -1,0 +1,111 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-batch-10-reliability-20261114",
+  "title": "Activate batch 10 (service-restart worktree guard, read-only Tailnet press-path probe, hermetic tidy test) at the service-restart guard Action; batch 9 stays complete, Plan 3 stays draft",
+  "script": "activate-batch-10-reliability-20261114.sh",
+  "repeatable": false,
+  "problem": "Batch 10, the three reliability Actions for Issues 2632, 2633 and 2631 that harden the next START press, is an inactive draft Plan; batch 9 is complete and PROJECT still names it with no current Action.",
+  "desired_effect": "Activate batch 10 at refuse-service-restart-from-linked-worktree, standard / medium, and place this Project queue segment at the top: the three batch 10 Actions in Plan order. Batch 9 stays complete; Plan 3 stays a draft with its 6 done and 14 open pins unchanged. Plan activation only.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-batch-10-reliability-20261114.sh run",
+  "authority": {
+    "does": [
+      "Fresh-preview the exact pinned proposal, validate the before/after images through the existing shared runner, then apply that fingerprint.",
+      "Set Project/Plan pointers and standard / medium pins; preserve all Action contents and every other Project relative queue order.",
+      "Append one Mission Log entry, archive the Ask and publish only the canonical settlement commit by normal push; retain receipts."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, production policy, service restart, install or merge.",
+      "Never increases concurrency or grants spend/credentials/merge authority; never changes Action status, criteria or responsibility.",
+      "Never force-pushes, publishes unrelated commits or treats generating this action as approval."
+    ]
+  },
+  "success": {
+    "effect": "Batch 10 is active at refuse-service-restart-from-linked-worktree, standard / medium; batch 9 stays complete; Plan 3 stays a draft; settlement published.",
+    "next": "Continue through normal governed Action/Session admission. This is not a Session launch or production START; production stays Off. To resume Plan 3 later, draft a plan-intent Ask targeting plan/record-run-unattended-test-pins-20261113-part-3 and activate it with --action pin-dashboard-base-url (finish or deliberately park batch 10 first)."
+  },
+  "failure": {
+    "effect": "Refuses before mutation on drift; preserves any canonical local settlement on publication failure.",
+    "next": "Read the receipt; re-review stale pins, or retry publication of the existing settlement without another apply."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "815c69ac8a29d305e2c7b667d9080fc65f0c24a7"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-batch-10-20261114b.yaml",
+      "sha256": "fe9371f483d2129c2b643d926f40f6f3bb4ef42c37c2f8ea0dc49491c2da5183",
+      "proposal": "activate-batch-10-20261114b"
+    },
+    "settlement": {
+      "requestId": "activate-batch-10-20261114b",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "refuse-service-restart-from-linked-worktree",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "draft-an-inactive-batch-10-plan-of-three-verified-small-reliability-fixes-with",
+      "previousPlan": "draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first",
+      "action": "refuse-service-restart-from-linked-worktree",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first",
+        "current_action": null,
+        "milestone": "Draft an inactive batch 9 Plan of three verified small fixes with failing-first tests (park Issue, replay startRun cards, START merge-freeze check)"
+      },
+      "projectAfter": {
+        "active_plan": "draft-an-inactive-batch-10-plan-of-three-verified-small-reliability-fixes-with",
+        "current_action": "refuse-service-restart-from-linked-worktree",
+        "milestone": "Draft an inactive batch 10 Plan of three verified small reliability fixes with failing-first tests (service restart main-checkout guard, Tailnet press-path probe, tidy test determinism)"
+      },
+      "planBefore": {
+        "slug": "draft-an-inactive-batch-10-plan-of-three-verified-small-reliability-fixes-with",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Draft an inactive batch 10 Plan of three verified small reliability fixes with failing-first tests (service restart main-checkout guard, Tailnet press-path probe, tidy test determinism)"
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "refuse-service-restart-from-linked-worktree",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first",
+        "project": "arcadia",
+        "status": "complete",
+        "current_action": null
+      },
+      "previousPlanAfter": {
+        "status": "complete",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "refuse-service-restart-from-linked-worktree",
+        "title": "Make scripts/services.sh refuse restart and stop from a linked git worktree, so a non-main checkout cannot replace the live launchd label set.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/refuse-service-restart-from-linked-worktree",
+        "arcadia/probe-tailnet-press-path-read-only",
+        "arcadia/make-tidy-detached-worktree-test-hermetic"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
