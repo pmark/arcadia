@@ -68,11 +68,11 @@ actions:
     references: []
   - id: pin-encouragement-format
     title: Pin that an encouragement line is shown bare or quoted with its attribution, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that an encouragement line is shown bare or quoted with its attribution, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-encouragement-format-6a46eb6856d4; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-encouragement-format
     clarification: clarified
     confidence: high
@@ -405,7 +405,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-encouragement-format
+current_action: pin-missing-done-condition-question
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
