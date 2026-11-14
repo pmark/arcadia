@@ -515,7 +515,8 @@ describe("startPressInProgressIn (START interlock detector)", () => {
     const lib = library();
     const state = path.join(lib, "run.json");
     const script = path.join(lib, "card.sh");
-    writeFileSync(script, `#!/bin/sh\ncp "${state}" "${lib}/seen.json"\necho $$ > "${lib}/child.pid"\n`);
+    // The runner records {status, pid} first and adds childPid after spawn(), so wait (bounded) for childPid before sampling.
+    writeFileSync(script, `#!/bin/sh\ni=0\nwhile ! grep -q '"childPid"' "${state}" 2>/dev/null && [ "$i" -lt 100 ]; do sleep 0.1; i=$((i+1)); done\ncp "${state}" "${lib}/seen.json"\necho $$ > "${lib}/child.pid"\n`);
     chmodSync(script, 0o755);
     const result = spawnSync(process.execPath, ["-e", operatorScriptRunnerSource, script, state]);
     expect(result.status).toBe(0);
