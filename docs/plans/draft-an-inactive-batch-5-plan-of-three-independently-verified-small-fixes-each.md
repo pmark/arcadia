@@ -30,11 +30,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2561", "src/commands/productionMomentum.ts", "tests/duty-alarms.test.ts"]
   - id: quote-flow-indicator-leading-yaml-scalars
     title: yamlScalar quotes values that start with a comma, right bracket or right brace so a settled Plan round-trips.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: yamlScalar quotes values that start with a comma, right bracket or right brace so a settled Plan round-trips.
+    next_action: Completed via Agent Ask complete-quote-flow-indicator-leading-yaml-scalars-2026-11-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask quote-flow-indicator-leading-yaml-scalars
     clarification: clarified
     confidence: high
@@ -66,7 +66,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2567", "src/commands/tidy.ts", "src/git/worktrees.ts", "tests/tidy-command.test.ts"]
 questions: []
 decisions: []
-current_action: quote-flow-indicator-leading-yaml-scalars
+current_action: tidy-detached-count-tolerates-unreadable-head
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
