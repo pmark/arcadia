@@ -9,7 +9,6 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Draft an inactive batch 5 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification.
 active_plan: draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each
 updated: 2026-11-14
-current_action: tidy-detached-count-tolerates-unreadable-head
 ---
 
 # Arcadia

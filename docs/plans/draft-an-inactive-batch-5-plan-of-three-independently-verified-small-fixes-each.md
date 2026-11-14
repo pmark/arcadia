@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each
 project: arcadia
-status: active
+status: complete
 milestone: Draft an inactive batch 5 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification.
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -48,11 +48,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2562", "src/docs/frontmatter.ts", "tests/pin-yaml-scalar-quoting.test.ts"]
   - id: tidy-detached-count-tolerates-unreadable-head
     title: Tidy reports a named per-worktree verdict for a detached worktree whose head is unreadable instead of aborting the whole run.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Tidy reports a named per-worktree verdict for a detached worktree whose head is unreadable instead of aborting the whole run.
+    next_action: Completed via Agent Ask complete-tidy-detached-count-unreadable-head-b-2026-11-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask tidy-detached-count-tolerates-unreadable-head
     clarification: clarified
     confidence: high
@@ -66,7 +66,6 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2567", "src/commands/tidy.ts", "src/git/worktrees.ts", "tests/tidy-command.test.ts"]
 questions: []
 decisions: []
-current_action: tidy-detached-count-tolerates-unreadable-head
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
