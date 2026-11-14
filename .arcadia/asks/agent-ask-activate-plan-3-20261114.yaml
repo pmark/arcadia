@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-plan-3-20261114
+project: arcadia
+intent: plan
+target_ref: plan/record-run-unattended-test-pins-20261113-part-3
+requested_authority: propose
+desired_result: Activate Plan 3, the 20 test-pin Actions; the finished batch 5 Plan stays complete.
+rationale: "Operator menu answer 11A, verified by Rowan 14 per Decision 0229 in Signal 10 transcript 67f5e9a4-65f4-490c-8bde-6b77f7a9e20d, line 5665, uuid e206f464-e6f2-4f26-9a2a-013e66106959, user-role content block 1 (block 0 is a system-reminder), text '9A 10A 11A', 2026-11-14T05:57:28.653Z (9:57 PM PST); item 11A = activate Plan 3 and Ellis drafts batches 7 and 8. Activation grants no production START: production stays Off. Plan 3 Actions are test pins served serially. Decision 0232 option A, answered by the same words, lets the coordinator press this runner action once its descriptor is merged and the Ask is on main."
