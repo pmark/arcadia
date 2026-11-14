@@ -18,6 +18,7 @@ import {
   isInside,
   isPatchEquivalent,
   listWorktrees,
+  type WorktreeRecord,
   liveProcessCwds,
   mergedPullRequests,
   resolveBaseBranch,
@@ -123,7 +124,7 @@ export interface TidyWorktree {
   branch: string | null;
   verdict: TidyVerdict;
   reason: string;
-  /** Commits on this branch that the base branch does not have. */
+  /** Commits on this branch that the base branch does not have. `-1` when the count could not be read (see `reason`). */
   ahead: number;
   /** Whether a remote-tracking branch exists, so unmerged work is not necessarily lost. */
   pushed: boolean;
@@ -264,9 +265,18 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
         ? withDatabase(workspacePath, (db) => worktreeProtections(db, controlWorktree, worktrees, now))
         : withReadOnlyDatabase(workspacePath, (db) => worktreeProtections(db, controlWorktree, worktrees, now)))
     : new Map<string, WorktreeProtection>();
-  const assessed: TidyWorktree[] = worktrees.map((record) => assessWorktree({
-    record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protections, liveCwds, now, livenessGraceMs
-  }));
+  const assessed: TidyWorktree[] = worktrees.map((record) => {
+    try {
+      return assessWorktree({
+        record, repoRoot, comparisonBase, controlWorktree, here, prMergeCommits, protections, liveCwds, now, livenessGraceMs
+      });
+    } catch (error) {
+      // Only a detached head can be unreadable here. Reporting it as unmerged
+      // keeps it unremovable while the other worktrees still get their verdicts.
+      if (record.branch !== null) throw error;
+      return unreadableDetachedWorktree(record, error);
+    }
+  });
 
   const claimedByWorktree = new Set(
     assessed.map((entry) => entry.branch).filter((branch): branch is string => branch !== null)
@@ -808,6 +818,26 @@ export function getWorktreeProtection(
 }
 
 /**
+ * Fail-closed verdict for a detached worktree whose head cannot be read (a
+ * corrupt or missing object). It is `unmerged`, so it is never removable, and
+ * its commit count is unknown (`-1`) rather than a misleading `0`.
+ */
+function unreadableDetachedWorktree(record: WorktreeRecord, error: unknown): TidyWorktree {
+  const cause = (error instanceof Error ? error.message : String(error)).split("\n")[0];
+  return {
+    path: record.path,
+    branch: null,
+    verdict: "unmerged",
+    reason: `Detached head ${record.head.slice(0, 8) || "(unknown)"} is unreadable; commit count unreadable, so it is kept (${cause}).`,
+    ahead: -1,
+    pushed: false,
+    uncommitted: [],
+    mergeProof: null,
+    retired: false
+  };
+}
+
+/**
  * The things that could lose work, stated as instructions rather than statuses.
  *
  * This is the part the operator actually asked for: not a tidier repository,
@@ -822,7 +852,11 @@ function collectAttention(worktrees: TidyWorktree[], branches: TidyBranch[]): st
     );
   }
 
-  for (const entry of worktrees.filter((candidate) => candidate.verdict === "unmerged" && !candidate.pushed)) {
+  for (const entry of worktrees.filter((candidate) => candidate.verdict === "unmerged" && !candidate.pushed && candidate.ahead < 0)) {
+    attention.push(`${entry.path} is detached with an unreadable head: ${entry.reason} Inspect it by hand; tidy will never remove it.`);
+  }
+
+  for (const entry of worktrees.filter((candidate) => candidate.verdict === "unmerged" && !candidate.pushed && candidate.ahead >= 0)) {
     attention.push(
       `${entry.path}${entry.branch ? ` (${entry.branch})` : ""} has ${entry.ahead} unmerged commit${entry.ahead === 1 ? "" : "s"} and no remote copy. This is the only copy.`
     );

@@ -354,6 +354,33 @@ describe("arcadia tidy — safety invariants", () => {
     expect(result.needsAttention.join("\n")).not.toContain("0 unmerged commits");
   });
 
+  it("reports an unreadable detached head as a named unmerged verdict without aborting the run", () => {
+    const root = repo();
+    commitOn(root, "feature/clean", "clean.txt");
+    const mergedTarget = path.join(root, "..", `${path.basename(root)}-merged-peer`);
+    run(root, ["worktree", "add", "-q", "--detach", mergedTarget, "main"]);
+    temporary.push(mergedTarget);
+    const merged = realpathSync(mergedTarget);
+    run(root, ["worktree", "add", "-q", "--detach", path.join(root, "..", `${path.basename(root)}-corrupt`), "main"]);
+    const corrupt = realpathSync(path.join(root, "..", `${path.basename(root)}-corrupt`));
+    temporary.push(corrupt);
+    const gitDir = path.resolve(corrupt, run(corrupt, ["rev-parse", "--git-dir"]).trim());
+    // A well-formed object id that no object store holds: the head is unreadable.
+    writeFileSync(path.join(gitDir, "HEAD"), `${"1".repeat(40)}\n`, "utf8");
+    const other = worktreeOn(root, "feature/clean", "branch-peer");
+
+    const result = data(runTidyCommand({ repo: root }));
+    const corruptEntry = result.worktrees.find((w) => w.path === corrupt);
+
+    expect(corruptEntry?.verdict).toBe("unmerged");
+    expect(corruptEntry?.ahead).toBe(-1);
+    expect(corruptEntry?.reason).toMatch(/commit count unreadable/);
+    expect(result.worktrees.find((w) => w.path === merged)?.verdict).toBe("detached");
+    expect(result.worktrees.find((w) => w.path === other)?.verdict).toBe("unmerged");
+    expect(result.worktrees.find((w) => w.path === root)?.verdict).toBe("protected");
+    expect(result.needsAttention.join("\n")).toContain("commit count unreadable");
+  });
+
   it("protects the primary worktree and the base branch", () => {
     const root = repo();
 
