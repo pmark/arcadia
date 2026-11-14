@@ -821,7 +821,7 @@ tailscale serve --bg --https=443 http://127.0.0.1:$DEMO_PORT
 
 # --- Upgrading an existing install ---------------------------------------------------
 # deploy and nightly only kickstart the agent; they never rewrite its plist. An agent
-# installed before the demo bound 127.0.0.1 keeps -H 0.0.0.0 until you rewrite it with
+# installed before the demo bound 127.0.0.1 keeps listening on every interface until you rewrite it with
 # step 3's plist and reload it, bootout first:
 #   launchctl bootout "gui/$uid_cmd/$LABEL"
 #   (step 3's cat > ... PLIST block)
