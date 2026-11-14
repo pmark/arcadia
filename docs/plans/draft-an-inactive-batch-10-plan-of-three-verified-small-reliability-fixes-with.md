@@ -32,11 +32,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2632", "https://github.com/pmark/arcadia/pull/2627", "scripts/services.sh", "scripts/restart-services-impl.sh", "tests/services-script.test.ts"]
   - id: probe-tailnet-press-path-read-only
     title: Add a read-only press-path probe that reaches the real Host/Origin check through the Tailnet URL and reports accept or refuse without pressing anything.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Add a read-only press-path probe that reaches the real Host/Origin check through the Tailnet URL and reports accept or refuse without pressing anything.
+    next_action: Completed via Agent Ask complete-probe-tailnet-press-path-read-only-2026-11-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask probe-tailnet-press-path-read-only
     clarification: clarified
     confidence: high
@@ -73,7 +73,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2631", "src/commands/tidy.ts", "src/git/worktrees.ts", "tests/tidy-command.test.ts"]
 questions: []
 decisions: []
-current_action: probe-tailnet-press-path-read-only
+current_action: make-tidy-detached-worktree-test-hermetic
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
