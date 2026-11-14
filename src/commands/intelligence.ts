@@ -123,7 +123,7 @@ export function runIntelligenceServeCommand(options: IntelligenceServeOptions): 
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
 
-  server.listen(port, () => {
+  server.listen(port, "127.0.0.1", () => {
     const enabledRouteCount = config.routes.filter((route) => route.enabled).length;
     process.stdout.write(
       `Arcadia Intelligence listening on http://127.0.0.1:${port} ` +
