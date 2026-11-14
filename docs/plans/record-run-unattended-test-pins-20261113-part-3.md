@@ -88,11 +88,11 @@ actions:
     references: []
   - id: pin-missing-done-condition-question
     title: Pin the question asked when a next action has no done-condition, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the question asked when a next action has no done-condition, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-missing-done-condition-question-86a85866a75c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-missing-done-condition-question
     clarification: clarified
     confidence: high
@@ -405,7 +405,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-missing-done-condition-question
+current_action: pin-handoff-eligibility
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
