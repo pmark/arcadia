@@ -9,7 +9,6 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises
 active_plan: draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with
 updated: 2026-11-14
-current_action: harden-start-run-executor-calls-log-reader
 ---
 
 # Arcadia
