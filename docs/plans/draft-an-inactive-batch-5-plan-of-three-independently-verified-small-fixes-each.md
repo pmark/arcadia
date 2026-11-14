@@ -11,11 +11,11 @@ updated: 2026-11-14
 actions:
   - id: fix-off-alarm-custodian-liveness-scope
     title: readCustodianLiveness reads the retained configuration when production is not active, so --duty-off-alarm no longer yields a persistent CANNOT JUDGE episode.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: readCustodianLiveness reads the retained configuration when production is not active, so --duty-off-alarm no longer yields a persistent CANNOT JUDGE episode.
+    next_action: Completed via Agent Ask complete-fix-off-alarm-custodian-liveness-scope-2026-11-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask fix-off-alarm-custodian-liveness-scope
     clarification: clarified
     confidence: high
@@ -66,7 +66,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2567", "src/commands/tidy.ts", "src/git/worktrees.ts", "tests/tidy-command.test.ts"]
 questions: []
 decisions: []
-current_action: fix-off-alarm-custodian-liveness-scope
+current_action: quote-flow-indicator-leading-yaml-scalars
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
