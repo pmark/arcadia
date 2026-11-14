@@ -3431,3 +3431,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Operator-settled Plan transition. Previous Plan draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with keeps status complete with completion state preserved. Operator menu answer 8A, verified by Rowan 14 per Decision 0229 in Signal 10 transcript 67f5e9a4-65f4-490c-8bde-6b77f7a9e20d, line 4622, uuid c9787eeb-75a7-4a75-9775-5a960ce73584, user-role content block 1 (block 0 is a system-reminder), text '8A, Signal starts Rowan 14', 2026-11-14T02:04:55.144Z (6:04 PM PST). Menu item: 8A (recommended) batch 5, three bug fixes (#2580: duty alarm CANNOT JUDGE while production is Off #2561, yamlScalar flow indicators #2562, tidy unreadable head #2567). Activation grants no production START: production stays Off. Batch 5 Actions are built serially.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-11-14 — Completed arcadia/fix-off-alarm-custodian-liveness-scope
+
+- **Did:** Completed Action arcadia/fix-off-alarm-custodian-liveness-scope from accepted evidence (Candidate d26d2e28e89a71a5e25c52ae69cfc78204a95f61).
+- **Result:** Every declared acceptance criterion was accepted as met: "A failing-first test shows an Off-cleared policy scope yields readable custodian liveness instead of a CANNOT JUDGE episode, and a present scope behaves as before."; "The first implementation step confirms whether readProductionPolicy throws on a cleared scope and the fix handles that path."; "Existing tests pass unmodified, and pnpm vitest run tests/duty-alarms.test.ts passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-fix-off-alarm-custodian-liveness-scope-2026-11-13).
