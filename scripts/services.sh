@@ -59,8 +59,11 @@ fi
 # ARCADIA_ALLOW_NONMAIN_CHECKOUT=<reason> overrides it, and the reason is printed.
 # If git cannot decide, proceed with a warning rather than block a recovery restart.
 if [[ "$ACTION" != "status" ]]; then
-  GIT_DIR_ABS="$(git -C "$REPO" rev-parse --absolute-git-dir 2>/dev/null)" || GIT_DIR_ABS=""
-  GIT_COMMON_ABS="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || GIT_COMMON_ABS=""
+  # Probe this script's own checkout: drop inherited repository variables (GIT_DIR and friends would
+  # point git at another repository) and avoid --path-format (git < 2.31 echoes it back).
+  GIT_DIR_ABS="$(env -u GIT_DIR -u GIT_COMMON_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$REPO" rev-parse --absolute-git-dir 2>/dev/null)" || GIT_DIR_ABS=""
+  GIT_COMMON_ABS="$(env -u GIT_DIR -u GIT_COMMON_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$REPO" rev-parse --git-common-dir 2>/dev/null)" || GIT_COMMON_ABS=""
+  if [[ -n "$GIT_COMMON_ABS" && "$GIT_COMMON_ABS" != /* ]]; then GIT_COMMON_ABS="$REPO/$GIT_COMMON_ABS"; fi
   if [[ -z "$GIT_DIR_ABS" || -z "$GIT_COMMON_ABS" ]]; then
     echo "warning: git cannot tell whether $REPO is the main checkout or a linked worktree; proceeding with services.$ACTION." >&2
   elif [[ "$(cd "$GIT_DIR_ABS" && pwd -P)" != "$(cd "$GIT_COMMON_ABS" && pwd -P)" ]]; then

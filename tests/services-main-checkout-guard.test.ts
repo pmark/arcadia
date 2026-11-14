@@ -53,6 +53,8 @@ function fixture() {
   writeFileSync(calls, "");
   const bin = path.join(root, "bin");
   mkdirSync(bin);
+  writeFileSync(path.join(bin, "uname"), "#!/usr/bin/env bash\necho Darwin\n");
+  chmodSync(path.join(bin, "uname"), 0o755);
   for (const name of ["launchctl", "pnpm"]) {
     writeFileSync(path.join(bin, name), `#!/usr/bin/env bash\necho "${name} $*" >> "${calls}"\nexit 0\n`);
     chmodSync(path.join(bin, name), 0o755);
@@ -71,6 +73,7 @@ function fixture() {
       ...extraEnv
     };
     delete env.ARCADIA_WORKSPACE;
+    for (const name of ["GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"]) if (!(name in extraEnv)) delete env[name];
     if (!("ARCADIA_ALLOW_NONMAIN_CHECKOUT" in extraEnv)) delete env.ARCADIA_ALLOW_NONMAIN_CHECKOUT;
     return spawnSync("bash", [script, action], { encoding: "utf8", cwd: path.dirname(path.dirname(script)), env });
   };
@@ -97,6 +100,13 @@ describe("services.sh main-checkout guard (Issue #2632)", () => {
       expect(f.called().filter((line) => line.startsWith("launchctl"))).toEqual([]);
     });
   }
+
+  it("still refuses a linked worktree when GIT_DIR points at the main checkout's repository", () => {
+    const f = fixture();
+    const result = f.run(f.worktreeScript, "restart", { GIT_DIR: path.join(f.main, ".git") });
+    expect(result.status, result.stderr).toBe(3);
+    expect(f.called()).toEqual([]);
+  });
 
   it("never refuses status from a linked worktree", () => {
     const f = fixture();
