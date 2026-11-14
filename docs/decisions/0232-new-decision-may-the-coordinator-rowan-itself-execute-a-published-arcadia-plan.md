@@ -4,7 +4,7 @@ type: decision
 id: "0232"
 slug: new-decision-may-the-coordinator-rowan-itself-execute-a-published-arcadia-plan
 project: arcadia
-status: open
+status: approved
 question: "New Decision: may the coordinator (Rowan) itself execute a published arcadia-plan-activation-v1 runner action, instead of waiting for an operator tap, once the operator has chosen that Plan in his own verified words?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with
-updated: 2026-11-14
+updated: 2026-11-13
+answer: "A: Rowan may execute a published arcadia-plan-activation-v1 action when (1) the operator's choice of that exact Plan is verified per Decision 0229 and cited in the activation Ask, (2) the descriptor merged on gate (independent PASS on the current head, checks green, CLEAN) and its published bytes equal the merged blob, (3) production is Off and the press activates a Plan only (never START, production activation, day grants, spend or credentials), and (4) Signal verifies the receipt and the resulting main commit afterwards and reports it to the operator."
+decided: 2026-11-13
 ---
 
 # Decision 0232: New Decision: may the coordinator (Rowan) itself execute a published arcadia-plan-activation-v1 runner action, instead of waiting for an operator tap, once the operator has chosen that Plan in his own verified words?
