@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-batch-5-20261113
+project: arcadia
+intent: plan
+target_ref: plan/draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each
+requested_authority: propose
+desired_result: Activate the batch 5 Plan of three verified small fixes; the finished batch 6 Plan stays complete.
+rationale: "Operator menu answer 8A, verified by Rowan 14 per Decision 0229 in Signal 10 transcript 67f5e9a4-65f4-490c-8bde-6b77f7a9e20d, line 4622, uuid c9787eeb-75a7-4a75-9775-5a960ce73584, user-role content block 1 (block 0 is a system-reminder), text '8A, Signal starts Rowan 14', 2026-11-14T02:04:55.144Z (6:04 PM PST). Menu item: 8A (recommended) batch 5, three bug fixes (#2580: duty alarm CANNOT JUDGE while production is Off #2561, yamlScalar flow indicators #2562, tidy unreadable head #2567). Activation grants no production START: production stays Off. Batch 5 Actions are built serially."
