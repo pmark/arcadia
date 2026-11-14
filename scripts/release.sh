@@ -717,7 +717,7 @@ cmd_install_plan() {
 # the nightly job and the Tailscale entry is a deployment and needs an explicit
 # operator Decision (CONSTITUTION.md); cutting a release tag is part of it.
 #
-# Demo server  : $LABEL, next start -H 0.0.0.0 -p $DEMO_PORT, from $CURRENT
+# Demo server  : $LABEL, next start -H 127.0.0.1 -p $DEMO_PORT, from $CURRENT
 # Workspace    : $WORKSPACE (shared with the development dashboard)
 # Nightly job  : $NIGHTLY_LABEL at 04:00, runs: $nightly_script nightly (the script inside the serving release)
 # Releases dir : $RELEASES
@@ -748,7 +748,7 @@ cat > "$agents/$LABEL.plist" <<'PLIST'
     <string>$(xml_escape "$next_entry")</string>
     <string>start</string>
     <string>-H</string>
-    <string>0.0.0.0</string>
+    <string>127.0.0.1</string>
     <string>-p</string>
     <string>$DEMO_PORT</string>
   </array>
@@ -814,9 +814,19 @@ cat > "$agents/$NIGHTLY_LABEL.plist" <<'PLIST'
 PLIST
 launchctl bootstrap "gui/$uid_cmd" "$agents/$NIGHTLY_LABEL.plist"
 
-# --- 5. Optional: a Tailscale name without a port ----------------------------------------
-# http://<tailnet-host>:$DEMO_PORT already works. This adds https://<tailnet-host>/ on 443.
+# --- 5. Required: the Tailscale entry -------------------------------------------------------
+# The demo binds 127.0.0.1 only, so this is the only way to reach it from the tailnet:
+# https://<tailnet-host>/ on 443. http://<tailnet-host>:$DEMO_PORT does not work.
 tailscale serve --bg --https=443 http://127.0.0.1:$DEMO_PORT
+
+# --- Upgrading an existing install ---------------------------------------------------
+# deploy and nightly only kickstart the agent; they never rewrite its plist. An agent
+# installed before the demo bound 127.0.0.1 keeps listening on every interface until you rewrite it with
+# step 3's plist and reload it, bootout first:
+#   launchctl bootout "gui/$uid_cmd/$LABEL"
+#   (step 3's cat > ... PLIST block)
+#   launchctl bootstrap "gui/$uid_cmd" "$agents/$LABEL.plist"
+#   lsof -nP -iTCP:$DEMO_PORT -sTCP:LISTEN   # expect 127.0.0.1:$DEMO_PORT, not *:$DEMO_PORT
 
 # --- Verify -----------------------------------------------------------------------
 $script status

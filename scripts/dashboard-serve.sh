@@ -29,7 +29,7 @@ fi
 cd "$DASHBOARD"
 
 if [[ "${ARCADIA_DASHBOARD_MODE:-build}" == "dev" || -f "$LIVE/use-next-dev" ]]; then
-  exec node "$NEXT" dev -H 0.0.0.0 -p "$PORT"
+  exec node "$NEXT" dev -H 127.0.0.1 -p "$PORT"
 fi
 
 slot=""
@@ -44,6 +44,6 @@ fi
 
 if [[ -n "$slot" && -f "$LIVE/$slot/BUILD_ID" ]]; then
   export ARCADIA_DASHBOARD_DIST=".live/$slot"
-  exec node "$NEXT" start -H 0.0.0.0 -p "$PORT"
+  exec node "$NEXT" start -H 127.0.0.1 -p "$PORT"
 fi
-exec node "$NEXT" dev -H 0.0.0.0 -p "$PORT"
+exec node "$NEXT" dev -H 127.0.0.1 -p "$PORT"

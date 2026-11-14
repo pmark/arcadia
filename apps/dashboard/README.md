@@ -51,13 +51,15 @@ Start the dashboard:
 pnpm --filter arcadia-dashboard dev
 ```
 
-The dev server binds to all local interfaces:
+The dev server binds to loopback only:
 
 ```text
-http://0.0.0.0:3020
+http://127.0.0.1:3020
 ```
 
-Use your computer's LAN IP address from a phone on the same network.
+From a phone or another device on the tailnet, use the Tailnet URL. A
+`tailscale serve --bg --http=3020 http://127.0.0.1:3020` entry forwards it to
+loopback; the dashboard is not reachable from the LAN.
 
 ## Data Source
 

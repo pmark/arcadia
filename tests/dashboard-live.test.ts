@@ -57,7 +57,8 @@ if (cmd === "build") {
   if (process.env.TEST_FAIL_BUILD) process.exit(1);
   fs.mkdirSync(process.env.ARCADIA_DASHBOARD_DIST, { recursive: true });
   fs.writeFileSync(path.join(process.env.ARCADIA_DASHBOARD_DIST, "BUILD_ID"), "id");
-} else if (cmd === "start" && rest.includes("127.0.0.1")) {
+} else if (cmd === "start" && rest[rest.indexOf("-p") + 1] === process.env.ARCADIA_DASHBOARD_SMOKE_PORT) {
+  // Only the build check's smoke start serves; dashboard-serve.sh's own start (also on 127.0.0.1) exits at once.
   if (process.env.TEST_FAIL_START) process.exit(1);
   http.createServer((req, res) => { if (process.env.TEST_FAIL_ROUTE && req.url.startsWith("/api/")) res.statusCode = 500; res.end("ok"); }).listen(Number(rest[rest.indexOf("-p") + 1]), "127.0.0.1");
   // A real server takes a while to stop under load, and keeps answering until it has.
