@@ -107,11 +107,11 @@ actions:
     references: []
   - id: pin-handoff-eligibility
     title: Pin that only a coding-agent verdict on a captured work item is eligible for handoff, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that only a coding-agent verdict on a captured work item is eligible for handoff, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-handoff-eligibility-90519d527665; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-handoff-eligibility
     clarification: clarified
     confidence: high
@@ -405,7 +405,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-handoff-eligibility
+current_action: pin-dashboard-base-url
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
