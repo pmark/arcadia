@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Record run unattended test pins 20261113 part 3
 active_plan: record-run-unattended-test-pins-20261113-part-3
 updated: 2026-11-14
-current_action: pin-encouragement-format
+current_action: pin-missing-done-condition-question
 ---
 
 # Arcadia
