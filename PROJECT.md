@@ -6,9 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Burn down three verified test-only bug Issues in unattended serial production.
-active_plan: burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production
-updated: 2026-11-13
+milestone: Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises
+active_plan: draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with
+updated: 2026-11-14
+current_action: stabilize-coordinator-relay-pid-record-snapshot
 ---
 
 # Arcadia

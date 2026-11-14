@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # Mission Log: Arcadia
@@ -3396,3 +3396,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/dashboard-live.test.ts no longer computes its smoke port from Math.random; it obtains each port by listening on port 0, reading the assigned port and closing that listener before passing the port to the dashboard script and stand-in server."; "In every test except the collision cases that deliberately reuse an occupied port, a bind that fails with EADDRINUSE obtains a fresh OS-assigned port and retries, at most three attempts in all, before the test fails; the deliberate collision cases still use the occupied port unchanged."; "Every test in tests/dashboard-live.test.ts passes, including those collision cases."; "Apart from the settlement records Arcadia writes, the change touches only tests/dashboard-live.test.ts. Proof that the tests, lint and tsc pass comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Plan complete; every Action is done.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-pick-dashboard-live-smoke-port-from-the-os-2026-11-13).
+
+## 2026-11-14 — Agent Ask activate-batch-6-20261113
+
+- **Did:** Activated draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with at stabilize-coordinator-relay-pid-record-snapshot.
+- **Result:** Operator-settled Plan transition. Previous Plan burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production keeps status complete with completion state preserved. Operator menu answer 5A: batch 6, verified by Rowan 13 per Decision 0229 in Signal 10 transcript 67f5e9a4-65f4-490c-8bde-6b77f7a9e20d, line 3371, uuid bcf40e11-09da-49b3-b71a-a8605cd7bbb2, user-role plain string '5A: batch 6' at 2026-11-13T22:56:34.547Z (menu: activate batch 6 (tests-only) and build its three fixes one at a time; the burn-down Plan is set aside, its open Action being the same fix as batch 6's port fix). Activation grants no production START: production stays Off. Batch 6 Actions are test-only and served serially.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

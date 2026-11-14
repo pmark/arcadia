@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with
 project: arcadia
-status: draft
+status: active
 milestone: Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-13
+updated: 2026-11-14
 actions:
   - id: stabilize-coordinator-relay-pid-record-snapshot
     title: Make the runner pid-record test sample after childPid lands so it stops racing the writer.
@@ -69,6 +69,9 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2026", "tests/start-run-executor.test.ts"]
 questions: []
 decisions: []
+current_action: stabilize-coordinator-relay-pid-record-snapshot
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises
