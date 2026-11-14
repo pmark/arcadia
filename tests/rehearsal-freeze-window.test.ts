@@ -489,6 +489,8 @@ describe.skipIf(os.platform() !== "darwin")("scripts/services.sh restart|stop in
         ARCADIA_WORKSPACE: workspace,
         ARCADIA_RESTART_SCRIPT: impl,
         ARCADIA_RESTART_RETRY_DELAY: "0",
+        // Issue #2632: this runs the real services.sh, which may sit in a linked worktree.
+        ARCADIA_ALLOW_NONMAIN_CHECKOUT: "test runs the real script from any checkout",
         ARCADIA_FREEZE_OVERRIDE: "",
         ...env
       }

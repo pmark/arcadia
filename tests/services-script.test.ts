@@ -54,6 +54,8 @@ function runRestart(impl: string, attempts: string, extraEnv: Record<string, str
       HOME: tempDir("arcadia-services-home-"),
       // The dashboard warm-up is covered by its own test.
       ARCADIA_DASHBOARD_WARM: "0",
+      // Issue #2632: these tests run the real services.sh, which may sit in a linked worktree.
+      ARCADIA_ALLOW_NONMAIN_CHECKOUT: "services-script test runs the real script from any checkout",
       ...extraEnv
     }
   });

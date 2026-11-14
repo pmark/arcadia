@@ -51,6 +51,30 @@ if [[ "$ACTION" != "status" && -n "${ARCADIA_WORKSPACE:-}" ]]; then
   fi
 fi
 
+# Issue #2632: REPO is this script's own checkout and the restart implementation
+# hashes that path into the com.arcadia.local.<cksum>.* launchd labels, so a
+# restart from a linked git worktree loads a second label set and unloads or
+# orphans the live one. Refuse restart and stop there (status stays read-only).
+# The guard lives here, not in the hash-pinned restart implementation.
+# ARCADIA_ALLOW_NONMAIN_CHECKOUT=<reason> overrides it, and the reason is printed.
+# If git cannot decide, proceed with a warning rather than block a recovery restart.
+if [[ "$ACTION" != "status" ]]; then
+  GIT_DIR_ABS="$(git -C "$REPO" rev-parse --absolute-git-dir 2>/dev/null)" || GIT_DIR_ABS=""
+  GIT_COMMON_ABS="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || GIT_COMMON_ABS=""
+  if [[ -z "$GIT_DIR_ABS" || -z "$GIT_COMMON_ABS" ]]; then
+    echo "warning: git cannot tell whether $REPO is the main checkout or a linked worktree; proceeding with services.$ACTION." >&2
+  elif [[ "$(cd "$GIT_DIR_ABS" && pwd -P)" != "$(cd "$GIT_COMMON_ABS" && pwd -P)" ]]; then
+    MAIN_CHECKOUT="$(dirname "$(cd "$GIT_COMMON_ABS" && pwd -P)")"
+    if [[ -n "${ARCADIA_ALLOW_NONMAIN_CHECKOUT:-}" ]]; then
+      echo "warning: services.$ACTION from linked worktree $REPO (main checkout: $MAIN_CHECKOUT) allowed by ARCADIA_ALLOW_NONMAIN_CHECKOUT=$ARCADIA_ALLOW_NONMAIN_CHECKOUT" >&2
+    else
+      echo "Refused: $REPO is a linked git worktree, and services.$ACTION from it would replace the live launchd label set (labels are hashed from the checkout path)." >&2
+      echo "Run it from the main checkout instead: $MAIN_CHECKOUT/scripts/services.sh $ACTION. Read-only: scripts/services.sh status. Override only with ARCADIA_ALLOW_NONMAIN_CHECKOUT=<reason>." >&2
+      exit 3
+    fi
+  fi
+fi
+
 if [[ "$(uname -s)" != "Darwin" ]]; then
   # Honest refusal rather than a confusing launchctl error. The contract is
   # portable; this particular implementation is not, which is exactly why the

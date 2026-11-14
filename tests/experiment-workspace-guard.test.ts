@@ -387,7 +387,7 @@ describe("guarded operations outside the CLI", () => {
     const run = (action: string, workspace = experiment, cwd = root) => spawnSync("bash", [script, action], {
       encoding: "utf8",
       cwd,
-      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, ARCADIA_WORKSPACE: workspace, ARCADIA_RESTART_SCRIPT: impl }
+      env: { ...process.env, PATH: `${bin}:${process.env.PATH ?? ""}`, ARCADIA_WORKSPACE: workspace, ARCADIA_RESTART_SCRIPT: impl, ARCADIA_ALLOW_NONMAIN_CHECKOUT: "test runs the real script from any checkout" }
     });
     for (const action of ["restart", "stop"]) {
       const result = run(action);
