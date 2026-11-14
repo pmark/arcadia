@@ -45,15 +45,17 @@ const CONTINUE_ID = "0187";
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 /**
  * Parses calls.log text, one JSON object per line. The fake binary appends while this suite may read, so a read can
- * catch the final line half-written; an unparseable FINAL line is skipped. An unparseable earlier line still throws.
+ * catch the final line half-written; an unparseable final line is skipped ONLY when it is unterminated (no newline
+ * after it). A malformed newline-terminated line, or any unparseable earlier line, still throws.
  */
 function parseCallLog<T>(text: string): T[] {
-  const lines = text.trim().split("\n").filter(Boolean);
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  const unterminatedTail = !/\n\s*$/.test(text);
   return lines.flatMap((line, index) => {
     try {
       return [JSON.parse(line) as T];
     } catch (error) {
-      if (index === lines.length - 1) return [];
+      if (index === lines.length - 1 && unterminatedTail) return [];
       throw error;
     }
   });
@@ -462,6 +464,11 @@ describe("start-run executor: calls.log reader (#2026)", () => {
     const complete = JSON.stringify({ tool: "arcadia", args: ["production", "activate"] });
     const truncated = '{"tool":"arcadia","args":["production';
     expect(parseCallLog<{ tool: string; args: string[] }>(`${complete}\n${truncated}`)).toEqual([{ tool: "arcadia", args: ["production", "activate"] }]);
+  });
+
+  it("still throws on a malformed final line that is newline-terminated", () => {
+    const complete = JSON.stringify({ tool: "arcadia", args: ["go-broker", "ensure"] });
+    expect(() => parseCallLog(`${complete}\n{"tool":"arcadia","args":["production\n`)).toThrow(SyntaxError);
   });
 
   it("still throws on a malformed earlier line", () => {
