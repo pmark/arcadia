@@ -932,3 +932,88 @@ describe("the replay's spend seam applies only to simulated executors", () => {
     expect(replaySpendCheck("real", now)).toBeUndefined();
   });
 });
+
+/** A per-run START card descriptor's startRun block (StartRunPins shape, Decisions 0156/0157), built inline: real descriptors live in the gitignored artifacts/ library. */
+function startRunPinsFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schema: "arcadia-start-run-v1",
+    reviewedRevision: "f".repeat(40),
+    executorSha256: "a".repeat(64),
+    workspace: "martianrover",
+    project: "arcadia",
+    plan: "fixture-plan",
+    actions: ["pin-first", "pin-second", "pin-third"],
+    provider: "claude-code-cli",
+    transitions: ["validation", "acceptance", "pointer", "packet_approval"],
+    concurrency: 1,
+    packetApprovalHours: 6,
+    intent: "Fixture START intent.",
+    spendDecision: "0130",
+    integrationDecision: "0058",
+    requiredDecisions: ["0130", "0058", "0141", "0143", "0156", "0157", "0161"],
+    requiredFiles: ["scripts/start-run.sh"],
+    production: { revision: 12, epoch: 3 },
+    queueRevision: 40,
+    workerLabel: "com.arcadia.martianrover.worker",
+    gateCardId: "gate-card",
+    offId: "off-card",
+    grantedBy: "operator",
+    consumedHistory: [{ path: "/tmp/receipt.json", sha256: "b".repeat(64) }],
+    ...overrides
+  };
+}
+
+describe("cardGrantReceipt for a per-run START card (Issue #2626)", () => {
+  let dir: string;
+  const launcher = '#!/usr/bin/env bash\nset -euo pipefail\nexec "$(pwd)/scripts/start-run.sh" "${1:-run}" "$(pwd)/card.json"\n';
+  const write = (id: string, descriptor: Record<string, unknown>) => {
+    writeFileSync(path.join(dir, `${id}.sh`), launcher);
+    writeFileSync(path.join(dir, `${id}.json`), JSON.stringify({ id, kind: "grant", expires_at: "2026-11-14T21:34:38Z", ...descriptor }));
+  };
+
+  beforeAll(() => { dir = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-startrun-card-"))); });
+  afterAll(() => { rmSync(dir, { recursive: true, force: true }); });
+
+  it("builds the activation scope from the startRun block with expiry from packetApprovalHours", () => {
+    write("start-fixture", { startRun: startRunPinsFixture() });
+    const receipt = cardGrantReceipt("start-fixture", "2026-11-14T10:00:00.000Z", dir);
+    expect(receipt.source).toBe("card-descriptor");
+    expect(receipt.scope).toEqual({
+      intent: "Fixture START intent.",
+      projects: ["arcadia"],
+      plans: ["arcadia/fixture-plan"],
+      actions: ["arcadia/pin-first", "arcadia/pin-second", "arcadia/pin-third"],
+      providers: ["claude-code-cli"],
+      maxConcurrentSessions: 1,
+      mechanicalTransitions: ["validation", "acceptance", "pointer", "packet_approval"],
+      remotePreservation: true,
+      integrationGrant: { decisionRef: "0058", expiresAt: "2026-11-14T16:00:00.000Z", mergeThroughPullRequest: true },
+      packetApprovalExpiresAt: "2026-11-14T16:00:00.000Z"
+    });
+    expect(receipt.authority).toMatchObject({ decisionRef: "0130", grantedBy: "production-replay" });
+  });
+
+  it("refuses a malformed or incomplete startRun block with a named reason", () => {
+    write("start-badhours", { startRun: startRunPinsFixture({ packetApprovalHours: 99 }) });
+    expect(() => cardGrantReceipt("start-badhours", "2026-11-14T10:00:00Z", dir)).toThrow(/startRun block is not a valid START card pin set: startRun\.packetApprovalHours/);
+    const { project: _project, ...missing } = startRunPinsFixture();
+    write("start-missing", { startRun: missing });
+    expect(() => cardGrantReceipt("start-missing", "2026-11-14T10:00:00Z", dir)).toThrow(/not a valid START card pin set/);
+    write("start-null", { startRun: null });
+    expect(() => cardGrantReceipt("start-null", "2026-11-14T10:00:00Z", dir)).toThrow(/not a valid START card pin set/);
+  });
+
+  it("refuses a card past its descriptor expires_at, or with none", () => {
+    write("start-expired", { startRun: startRunPinsFixture() });
+    expect(() => cardGrantReceipt("start-expired", "2026-11-14T21:34:38Z", dir)).toThrow(/expired at 2026-11-14T21:34:38Z/);
+    write("start-noexpiry", { startRun: startRunPinsFixture(), expires_at: undefined });
+    expect(() => cardGrantReceipt("start-noexpiry", "2026-11-14T10:00:00Z", dir)).toThrow(/no valid expires_at/);
+  });
+
+  it("refuses a non-grant kind even with a startRun block, and a grant with neither startRun nor script pins", () => {
+    write("start-restore", { kind: "restore", startRun: startRunPinsFixture() });
+    expect(() => cardGrantReceipt("start-restore", "2026-11-14T10:00:00Z", dir)).toThrow(/only a grant card/);
+    write("start-nopins", {});
+    expect(() => cardGrantReceipt("start-nopins", "2026-11-14T10:00:00Z", dir)).toThrow(/does not pin PROJECT/);
+  });
+});
