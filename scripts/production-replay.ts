@@ -69,6 +69,7 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
 import { bridgeCompletionDependencies } from "../src/sessions/completionValidation.js";
+import { StartRunPinsError, validateStartRunPins } from "../src/operatorActions/startRunPins.js";
 import { CODE_REVIEW_PR_CRITERIA, QA_PR_REVIEW_CRITERIA } from "../src/qa/reviewCriteria.js";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -432,6 +433,46 @@ function cardScriptFields(script: string): { values: Record<string, string>; act
 }
 
 /**
+ * The scope a per-run START card would activate, read from the `startRun` block of its descriptor and validated with the
+ * executor's own strict `validateStartRunPins`. Mirrors the activation arguments of scripts/start-run.sh (P6): the Plan,
+ * the pinned Actions in order, the provider, concurrency 1, the transitions, the intent, remote preservation, and a packet
+ * approval and merge-through-pull-request integration grant that expire `packetApprovalHours` after `now`. The card's own
+ * expiry is the descriptor's top-level `expires_at`. None of the card's preconditions are checked.
+ */
+function startRunCardReceipt(card: string, now: string, descriptor: { expires_at?: string; startRun?: unknown }): GrantReceipt {
+  let pins: ReturnType<typeof validateStartRunPins>;
+  try {
+    pins = validateStartRunPins(descriptor.startRun);
+  } catch (error) {
+    if (error instanceof StartRunPinsError) throw new Error(`Card ${card}: its startRun block is not a valid START card pin set: ${error.message}`, { cause: error });
+    throw error;
+  }
+  const expiresRaw = descriptor.expires_at;
+  const expires = typeof expiresRaw === "string" ? Date.parse(expiresRaw) : Number.NaN;
+  if (Number.isNaN(expires)) throw new Error(`Card ${card}: its descriptor carries no valid expires_at, which the START executor requires.`);
+  if (new Date(now).getTime() >= expires) throw new Error(`Card ${card} expired at ${String(expiresRaw)}; the card itself would refuse ("ask for a fresh card").`);
+  const expiresAt = new Date(new Date(now).getTime() + pins.packetApprovalHours * 3_600_000).toISOString();
+  return {
+    requestId: `${card}-card-descriptor`,
+    createdAt: now,
+    scope: {
+      intent: pins.intent,
+      projects: [pins.project],
+      plans: [`${pins.project}/${pins.plan}`],
+      actions: pins.actions.map((id) => `${pins.project}/${id}`),
+      providers: [pins.provider],
+      maxConcurrentSessions: pins.concurrency,
+      mechanicalTransitions: [...pins.transitions],
+      remotePreservation: true,
+      integrationGrant: { decisionRef: pins.integrationDecision, expiresAt, mergeThroughPullRequest: true },
+      packetApprovalExpiresAt: expiresAt
+    },
+    authority: { grantedAt: now, decisionRef: pins.spendDecision, grantedBy: "production-replay" },
+    source: "card-descriptor"
+  };
+}
+
+/**
  * The scope a card's press would activate, read from its script's pinned
  * fields (the descriptor JSON only carries prose). Expiries are `now` plus the
  * card's packet-approval hours, as the card computes them at press time.
@@ -443,9 +484,12 @@ export function cardGrantReceipt(card: string, now: string, cardDir?: string): G
   const scriptFile = path.join(dir, `${card}.sh`);
   const descriptorFile = path.join(dir, `${card}.json`);
   if (!existsSync(scriptFile) || !existsSync(descriptorFile)) throw new Error(`Card ${card}: ${card}.sh and ${card}.json must both exist in ${dir}.`);
-  const descriptor = JSON.parse(readFileSync(descriptorFile, "utf8")) as { id?: string; kind?: string };
+  const descriptor = JSON.parse(readFileSync(descriptorFile, "utf8")) as { id?: string; kind?: string; expires_at?: string; startRun?: unknown };
   if (descriptor.id !== card) throw new Error(`Card ${card}: its descriptor names id "${descriptor.id}".`);
   if (descriptor.kind !== "grant") throw new Error(`Card ${card} is a "${descriptor.kind}" card; only a grant card activates production.`);
+  // A per-run START card (Decisions 0156/0157) pins everything in its descriptor's startRun block; its launcher script is a
+  // short exec of scripts/start-run.sh with no script pins, so the old-style parser below would refuse it. Read-only branch.
+  if (descriptor.startRun !== undefined) return startRunCardReceipt(card, now, descriptor);
   const { values, actions, code: allCode } = cardScriptFields(readFileSync(scriptFile, "utf8"));
   // Flags count only on the card's real invocation: `ARGS=(...)`/`ARGS+=(...)` lines and `production preview|activate` lines.
   const code = allCode.split("\n").filter((line) => /^\s*ARGS\+?=\(/.test(line) || /\bproduction\s+(preview|activate)\b/.test(line)).join("\n");
@@ -1193,7 +1237,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     if (options.card) {
       receipt = cardGrantReceipt(options.card, options.now ?? new Date().toISOString(), options.cardDir);
       print(`Activation built from card descriptor ${options.card}, not a press receipt: its pinned scope is activated as a press would, but none of the card's own preconditions (Decisions, capacity gate, sign-in, release) were checked.`);
-      fidelity.push(`ACTIVATION BUILT FROM CARD DESCRIPTOR ${options.card}, NOT A PRESS RECEIPT: scope read from the card's script; expiries are the replay clock plus the card's hours; the card's preconditions were not run.`);
+      fidelity.push(`ACTIVATION BUILT FROM CARD DESCRIPTOR ${options.card}, NOT A PRESS RECEIPT: scope read from the card's script pins or its descriptor's startRun block; expiries are the replay clock plus the card's hours; the card's preconditions were not run.`);
     } else {
       receipt = latestGrantReceipt(databaseFile, options.grant!);
       print(`Grant receipt: ${receipt.requestId} (${receipt.createdAt})`);
