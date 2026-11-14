@@ -142,6 +142,9 @@ helpful, reliable writing and clear discovery paths, without keyword stuffing
 or ranking guarantees. Confirm relevant facts with Mira, Vida, Ellis or the
 responsible source owner; unresolved gaps return to Rowan.
 
+When the operator supplies an article for a blog, use the
+[blog source intake procedure](blog-source-intake.md).
+
 Editorial responsibility includes preparing requested social copy linking to
 Clara's hosted material, but ownership grants no publishing permission.
 [Decision 0120](../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)
