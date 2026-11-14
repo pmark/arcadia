@@ -4,6 +4,8 @@ import type { PlanActionDoc } from "../docs/types.js";
 import { isAncestor, isPatchEquivalent, resolveBaseBranch } from "../git/worktrees.js";
 import { canonicalPath, getSession, type AgentSession } from "../sessions/index.js";
 import { developedForSupersededInput } from "../sessions/roleLineage.js";
+import { runHostCommand, type QaPrReviewDependencies } from "../qa/prReview.js";
+import { redactSecrets } from "../sessions/validationEvidence.js";
 import { REVIEW_REPAIR_ESCALATIONS, REVIEW_REPAIR_ROUNDS_EXHAUSTED } from "./reviewRepair.js";
 
 /**
@@ -289,4 +291,132 @@ export function latestCandidateSettlementCommit(db: Database.Database, session: 
     }
   } catch { /* the remedy then names no settlement commit */ }
   return null;
+}
+
+/** At most this many `gh issue create` attempts per park episode, one per tick (issue #2629). */
+export const MAX_PARK_ISSUE_ATTEMPTS = 3;
+const parkIssueMarker = (actionKey: string, episode: string) => `repair-budget-parked:${actionKey}:${episode}`;
+
+function ensureRepairParkIssueTable(db: Database.Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS production_repair_park_issues (
+      action_key TEXT NOT NULL,
+      episode TEXT NOT NULL,
+      issue_url TEXT,
+      issue_attempts INTEGER NOT NULL DEFAULT 0,
+      issue_last_attempt_at TEXT,
+      issue_error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (action_key, episode)
+    );
+  `);
+}
+
+const oneLinePark = (text: string, limit = 600) => {
+  const flat = redactSecrets(text).replace(/\p{Cc}+/gu, " ").replace(/\s+/g, " ").trim().replaceAll("@", "@​");
+  return flat.length <= limit ? flat : `${flat.slice(0, limit)}...`;
+};
+
+/**
+ * Issue #2629 (Decision 0223 A): a parked Action records a GitHub Issue naming its
+ * revival trigger. For each Action of the Project held by an open
+ * `repair_budget_exhausted` row whose recorded cause is Action-local, file ONE Issue
+ * per park episode (the escalation's `first_detected_at`) through the injected runner.
+ * Persisted per (Action, episode) so a later tick files nothing; an attempt that failed
+ * is retried at most once per tick and {@link MAX_PARK_ISSUE_ATTEMPTS} in all, after a
+ * body-marker search so a crash after filing adopts the Issue instead of duplicating it.
+ * Never files for a global-cause exhaustion, another kind, or an Action with no open
+ * hold. A failure only logs: the park outcome, counters, escalation and tick result are
+ * untouched. Must be called outside any database transaction callback. Never throws.
+ */
+export function recordRepairBudgetParkIssues(db: Database.Database, input: {
+  projectSlug: string; repoRoot: string; now: Date; log?: (message: string) => void;
+  runCommand?: QaPrReviewDependencies["runCommand"];
+  /** Injectable Plan check (tests); defaults to the real checked-in Plan read. */
+  actionStillOpen?: (repoRoot: string, projectSlug: string, actionKey: string) => boolean;
+}): void {
+  try {
+    const rows = db.prepare("SELECT action_key, message, first_detected_at FROM production_operator_escalations WHERE kind = ? AND substr(action_key, 1, ?) = ?")
+      .all(REPAIR_BUDGET_EXHAUSTED_KIND, input.projectSlug.length + 1, `${input.projectSlug}/`) as Array<{ action_key: string; message: string; first_detected_at: string }>;
+    for (const row of rows) {
+      if (!repairBudgetCauseIsActionLocal(db, row.action_key)) continue;
+      // The cheap persisted guards run first inside fileParkIssue; the Plan read (doc discovery) only when an attempt is due.
+      fileParkIssue(db, { ...input, actionKey: row.action_key, episode: row.first_detected_at, message: row.message,
+        isOpen: () => (input.actionStillOpen ?? actionStillOpen)(input.repoRoot, input.projectSlug, row.action_key) });
+    }
+  } catch (thrown) {
+    input.log?.(`Recording repair-budget park Issues for ${input.projectSlug} failed: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
+  }
+}
+
+/** Whether the checked-in Plan still lists the Action as open or in progress. Fails closed (false) when it cannot be read. */
+function actionStillOpen(repoRoot: string, projectSlug: string, actionKey: string): boolean {
+  const actionId = actionKey.slice(projectSlug.length + 1);
+  try {
+    const statuses = discoverDocs(repoRoot).docs.flatMap((doc) => doc.type === "plan" && doc.project === projectSlug
+      ? doc.actions.filter((entry) => entry.id === actionId).map((entry) => entry.status) : []);
+    return statuses.length > 0 && statuses.every((status) => status === "open" || status === "in_progress");
+  } catch { return false; }
+}
+
+function fileParkIssue(db: Database.Database, input: {
+  actionKey: string; episode: string; message: string; repoRoot: string; now: Date; log?: (message: string) => void;
+  runCommand?: QaPrReviewDependencies["runCommand"];
+  isOpen: () => boolean;
+}): void {
+  const { actionKey, episode } = input;
+  ensureRepairParkIssueTable(db);
+  const at = input.now.toISOString();
+  const read = () => db.prepare("SELECT issue_url, issue_attempts, issue_last_attempt_at FROM production_repair_park_issues WHERE action_key = ? AND episode = ?").get(actionKey, episode) as
+    { issue_url: string | null; issue_attempts: number; issue_last_attempt_at: string | null } | undefined;
+  const settled = (r: ReturnType<typeof read>) => r !== undefined && (r.issue_url !== null || r.issue_attempts >= MAX_PARK_ISSUE_ATTEMPTS || r.issue_last_attempt_at === at);
+  // Cheap guards first: a recorded Issue, exhausted attempts or this tick's attempt end here, before any doc discovery or gh call.
+  if (settled(read())) return;
+  // A stale row for an Action that is done, gone or no longer open in the checked-in Plan is not a park.
+  if (!input.isOpen()) return;
+  db.prepare("INSERT INTO production_repair_park_issues (action_key, episode, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(action_key, episode) DO NOTHING").run(actionKey, episode, at, at);
+  const row = read()!;
+  db.prepare("UPDATE production_repair_park_issues SET issue_attempts = issue_attempts + 1, issue_last_attempt_at = ?, updated_at = ? WHERE action_key = ? AND episode = ?").run(at, at, actionKey, episode);
+  let url: string | null = null;
+  let error: string | null = null;
+  try {
+    const run = input.runCommand ?? runHostCommand;
+    // The repository is resolved from the Project's checkout through the same runner; unresolved is a bounded failed attempt.
+    const resolved = run({ command: "gh", args: ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], cwd: input.repoRoot, timeoutMs: 30_000 });
+    const repo = resolved.status === 0 ? resolved.stdout.trim() : "";
+    if (!repo) throw new Error(`no GitHub repository could be resolved from the Project's checkout: ${resolved.error ?? (resolved.stderr.trim() || "gh repo view returned nothing")}`);
+    const marker = parkIssueMarker(actionKey, episode);
+    let existing: string | null = null;
+    if (row.issue_attempts >= 1) {
+      const found = run({ command: "gh", args: ["issue", "list", "--repo", repo, "--state", "all", "--search", `"${marker}" in:body`, "--json", "number,url,body", "--limit", "5"], cwd: input.repoRoot, timeoutMs: 30_000 });
+      if (found.status !== 0) throw new Error(`could not check for an existing Issue: ${found.error ?? (found.stderr.trim() || `gh issue list exit ${String(found.status)}`)}`);
+      let listed: Array<{ url?: unknown; body?: unknown }>;
+      try { listed = JSON.parse(found.stdout || "[]") as typeof listed; } catch { throw new Error("could not check for an existing Issue: unreadable gh issue list output"); }
+      const match = Array.isArray(listed) ? listed.find((entry) => typeof entry?.url === "string" && typeof entry.body === "string" && entry.body.includes(`<!-- ${marker} -->`)) : undefined;
+      existing = typeof match?.url === "string" ? match.url : null;
+    }
+    if (existing !== null) url = existing;
+    else {
+      const remedy = `arcadia production reset-repair-budget ${actionKey}`;
+      const body = [
+        `Arcadia parked \`${actionKey}\` on an Action-local \`repair_budget_exhausted\` hold (Decision 0223 A): its repair budget is spent, its candidate and counters are kept, and the run continues past it.`,
+        "",
+        `- **Action:** \`${actionKey}\``,
+        `- **Failure:** ${oneLinePark(input.message)}`,
+        `- **Park began:** ${episode}`,
+        `- **Revival trigger:** repair the underlying problem, then run \`${remedy}\`; the Action is eligible again only after that reset.`,
+        "",
+        `<!-- ${marker} -->`
+      ].join("\n");
+      const result = run({ command: "gh", args: ["issue", "create", "--repo", repo, "--title", `Action parked on repair_budget_exhausted: ${actionKey}`, "--body", body], cwd: input.repoRoot, timeoutMs: 30_000 });
+      if (result.status === 0) url = result.stdout.trim().split("\n").at(-1)?.trim() || "(filed; GitHub returned no URL)";
+      else error = result.error ?? (result.stderr.trim() || `exit ${String(result.status)}`);
+    }
+  } catch (thrown) {
+    error = thrown instanceof Error ? thrown.message : String(thrown);
+  }
+  db.prepare("UPDATE production_repair_park_issues SET issue_url = ?, issue_error = ?, updated_at = ? WHERE action_key = ? AND episode = ?").run(url, error, at, actionKey, episode);
+  if (error !== null) input.log?.(`Filing the Issue for the parked ${actionKey} failed (attempt ${row.issue_attempts + 1} of ${MAX_PARK_ISSUE_ATTEMPTS}); the park is unchanged: ${error}`);
+  else input.log?.(`Filed ${url} for the parked ${actionKey}; revival trigger: arcadia production reset-repair-budget ${actionKey}.`);
 }

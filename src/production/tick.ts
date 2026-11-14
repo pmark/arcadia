@@ -23,7 +23,7 @@ import { markCaughtUpWorkerMerges } from "./workerMerge.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { isActionLocalHeldKind, type RepairBudgetCause, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
+import { isActionLocalHeldKind, recordRepairBudgetParkIssues, type RepairBudgetCause, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
 import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_ESCALATION_EXITS, SIGN_IN_ESCALATION_MS, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
@@ -2489,6 +2489,11 @@ export function runManagedProductionTick(
       const held = handoff !== null && reconciled.length === 0 ? outOfScopePointerHold(db, { repoRoot, projectSlug: project.slug, now, log }) : null;
       launch = { attempted: false, outcome: "skipped", reason: held ?? launchSkipReason({ reconciledCount: reconciled.length, refusal, sessionId: handoffSessionId }), actionKey: null };
     }
+    // Issue #2629 (Decision 0223 A): an Action parked on an Action-local repair_budget_exhausted hold records one
+    // GitHub Issue naming its revival trigger. Outside every transaction callback; a failure only logs.
+    // Only while the tick may act on this Project (production On and the Project in the Active scope): never while Off.
+    if (mayLaunch) recordRepairBudgetParkIssues(db, { projectSlug: project.slug, repoRoot, now, log, runCommand: options.review?.runCommand });
+
     // An integration-refusal episode ends whenever this tick has no refused
     // handoff to log (it integrated, nothing is pending, or production is Off
     // or out of scope), so a later recurrence is logged once again.
