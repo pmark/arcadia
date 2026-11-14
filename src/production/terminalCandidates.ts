@@ -339,11 +339,23 @@ export function recordRepairBudgetParkIssues(db: Database.Database, input: {
       .all(REPAIR_BUDGET_EXHAUSTED_KIND, input.projectSlug.length + 1, `${input.projectSlug}/`) as Array<{ action_key: string; message: string; first_detected_at: string }>;
     for (const row of rows) {
       if (!repairBudgetCauseIsActionLocal(db, row.action_key)) continue;
+      // A stale row for an Action that is done, gone or no longer open in the checked-in Plan is not a park.
+      if (!actionStillOpen(input.repoRoot, input.projectSlug, row.action_key)) continue;
       fileParkIssue(db, { ...input, actionKey: row.action_key, episode: row.first_detected_at, message: row.message });
     }
   } catch (thrown) {
     input.log?.(`Recording repair-budget park Issues for ${input.projectSlug} failed: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
   }
+}
+
+/** Whether the checked-in Plan still lists the Action as open or in progress. Fails closed (false) when it cannot be read. */
+function actionStillOpen(repoRoot: string, projectSlug: string, actionKey: string): boolean {
+  const actionId = actionKey.slice(projectSlug.length + 1);
+  try {
+    const statuses = discoverDocs(repoRoot).docs.flatMap((doc) => doc.type === "plan" && doc.project === projectSlug
+      ? doc.actions.filter((entry) => entry.id === actionId).map((entry) => entry.status) : []);
+    return statuses.length > 0 && statuses.every((status) => status === "open" || status === "in_progress");
+  } catch { return false; }
 }
 
 function fileParkIssue(db: Database.Database, input: {
@@ -362,10 +374,14 @@ function fileParkIssue(db: Database.Database, input: {
   let error: string | null = null;
   try {
     const run = input.runCommand ?? runHostCommand;
+    // The repository is resolved from the Project's checkout through the same runner; unresolved is a bounded failed attempt.
+    const resolved = run({ command: "gh", args: ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], cwd: input.repoRoot, timeoutMs: 30_000 });
+    const repo = resolved.status === 0 ? resolved.stdout.trim() : "";
+    if (!repo) throw new Error(`no GitHub repository could be resolved from the Project's checkout: ${resolved.error ?? (resolved.stderr.trim() || "gh repo view returned nothing")}`);
     const marker = parkIssueMarker(actionKey, episode);
     let existing: string | null = null;
     if (row.issue_attempts >= 1) {
-      const found = run({ command: "gh", args: ["issue", "list", "--state", "all", "--search", `"${marker}" in:body`, "--json", "number,url,body", "--limit", "5"], cwd: input.repoRoot, timeoutMs: 30_000 });
+      const found = run({ command: "gh", args: ["issue", "list", "--repo", repo, "--state", "all", "--search", `"${marker}" in:body`, "--json", "number,url,body", "--limit", "5"], cwd: input.repoRoot, timeoutMs: 30_000 });
       if (found.status !== 0) throw new Error(`could not check for an existing Issue: ${found.error ?? (found.stderr.trim() || `gh issue list exit ${String(found.status)}`)}`);
       let listed: Array<{ url?: unknown; body?: unknown }>;
       try { listed = JSON.parse(found.stdout || "[]") as typeof listed; } catch { throw new Error("could not check for an existing Issue: unreadable gh issue list output"); }
@@ -385,7 +401,7 @@ function fileParkIssue(db: Database.Database, input: {
         "",
         `<!-- ${marker} -->`
       ].join("\n");
-      const result = run({ command: "gh", args: ["issue", "create", "--title", `Action parked on repair_budget_exhausted: ${actionKey}`, "--body", body], cwd: input.repoRoot, timeoutMs: 30_000 });
+      const result = run({ command: "gh", args: ["issue", "create", "--repo", repo, "--title", `Action parked on repair_budget_exhausted: ${actionKey}`, "--body", body], cwd: input.repoRoot, timeoutMs: 30_000 });
       if (result.status === 0) url = result.stdout.trim().split("\n").at(-1)?.trim() || "(filed; GitHub returned no URL)";
       else error = result.error ?? (result.stderr.trim() || `exit ${String(result.status)}`);
     }
