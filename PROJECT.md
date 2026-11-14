@@ -6,9 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Draft an inactive batch 5 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification.
-active_plan: draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each
+milestone: Record run unattended test pins 20261113 part 3
+active_plan: record-run-unattended-test-pins-20261113-part-3
 updated: 2026-11-14
+current_action: pin-requires-review-value
 ---
 
 # Arcadia

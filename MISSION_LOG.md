@@ -3452,3 +3452,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A failing-first test shows a detached worktree with an unreadable head yields a named per-worktree verdict, the run completes, and other worktrees keep their verdicts."; "Existing tests pass unmodified, and pnpm vitest run tests/tidy-command.test.ts passes.".
 - **Next:** Plan complete; every Action is done.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-tidy-detached-count-unreadable-head-b-2026-11-13).
+
+## 2026-11-14 — Agent Ask activate-plan-3-20261114
+
+- **Did:** Activated record-run-unattended-test-pins-20261113-part-3 at pin-requires-review-value.
+- **Result:** Operator-settled Plan transition. Previous Plan draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each keeps status complete with completion state preserved. Operator menu answer 11A, verified by Rowan 14 per Decision 0229 in Signal 10 transcript 67f5e9a4-65f4-490c-8bde-6b77f7a9e20d, line 5665, uuid e206f464-e6f2-4f26-9a2a-013e66106959, user-role content block 1 (block 0 is a system-reminder), text '9A 10A 11A', 2026-11-14T05:57:28.653Z (9:57 PM PST); item 11A = activate Plan 3 and Ellis drafts batches 7 and 8. Activation grants no production START: production stays Off. Plan 3 Actions are test pins served serially. Decision 0232 option A, answered by the same words, lets the coordinator press this runner action once its descriptor is merged and the Ask is on main.
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

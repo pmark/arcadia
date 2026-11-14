@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: record-run-unattended-test-pins-20261113-part-3
 project: arcadia
-status: draft
+status: active
 milestone: Record run unattended test pins 20261113 part 3
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-13
+updated: 2026-11-14
 actions:
   - id: pin-requires-review-value
     title: Pin that only the exact requires_review value counts as requiring review, with a new test file.
@@ -405,6 +405,9 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: pin-requires-review-value
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Record run unattended test pins 20261113 part 3
