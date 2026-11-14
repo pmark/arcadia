@@ -31,11 +31,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2629", "src/production/tick.ts", "src/production/terminalCandidates.ts", "src/production/independentReview.ts"]
   - id: replay-card-reads-start-run-descriptor
     title: Make production-replay --card read the startRun block of a per-run START card descriptor instead of old-style script pins.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Make production-replay --card read the startRun block of a per-run START card descriptor instead of old-style script pins.
+    next_action: Completed via Agent Ask complete-replay-card-reads-start-run-descriptor-2026-11-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask replay-card-reads-start-run-descriptor
     clarification: clarified
     confidence: high
@@ -72,7 +72,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2630", "https://github.com/pmark/arcadia/issues/2104", "src/workMonitoring/runWindow.ts", "src/commands/workMonitor.ts", "docs/agent-guidance/rehearsal-freeze-window.md"]
 questions: []
 decisions: []
-current_action: replay-card-reads-start-run-descriptor
+current_action: add-merge-check-for-waiting-start-card
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
