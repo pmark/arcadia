@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-batch-10-20261114
+project: arcadia
+intent: plan
+target_ref: plan/draft-an-inactive-batch-10-plan-of-three-verified-small-reliability-fixes-with
+requested_authority: propose
+desired_result: Activate batch 10, the three reliability Actions for Issues 2632, 2633 and 2631 (service-restart main-checkout guard, read-only Tailnet press-path probe, hermetic tidy detached-worktree test), after batch 9 completes; Plan 3 stays a draft with its six done pins preserved and its 14 open pins unchanged.
+rationale: "Operator direction recorded in the batch 9 activation (batch 10 is activated only after batch 9 completes) and Signal 11's instruction on 2026-11-14 to prepare batch 10's activation by the usual route, relayed from Signal 11's transcript 6c227f6b-bd31-45d1-9ff0-edc572715a8a; Signal 11 verifies the operator's words under Decision 0229 before the tap, and the tap on the published runner action is the operator's own consent. Batch 9 completed in the Action 3 settlement; the three batch 10 Actions harden the next START press (a worktree must not replace the live launchd label set, the press path needs a read-only probe, one tidy test is nondeterministic). Activation grants no production START: production stays Off."
