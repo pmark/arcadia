@@ -2,7 +2,7 @@ import { spawn, spawnSync, type SpawnSyncReturns } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const scripts = path.resolve(__dirname, "..", "scripts");
 const roots: string[] = [];
@@ -418,6 +418,22 @@ describe("live dashboard build", () => {
     expect(result.stdout).toContain("already in use");
     expect(f.current()).toBeNull();
     f.clean();
+  });
+
+  it("does not derive the smoke port from Math.random (Issue #2504)", () => {
+    const spy = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    // The port the old random scheme would have chosen: 40_000 + Math.floor(0.5 * 20_000).
+    const held = spawn(process.execPath, ["-e", `require("http").createServer((_, r) => r.end("x")).listen(50000, "127.0.0.1")`]);
+    try {
+      spawnSync("sleep", ["1"]);
+      const f = fixture();
+      expect(f.env.ARCADIA_DASHBOARD_SMOKE_PORT).not.toBe("50000");
+      expect(Number(f.env.ARCADIA_DASHBOARD_SMOKE_PORT)).toBeGreaterThan(0);
+      f.clean();
+    } finally {
+      held.kill();
+      spy.mockRestore();
+    }
   });
 
   it("runs one build at a time", () => {
