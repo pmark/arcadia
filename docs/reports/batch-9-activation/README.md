@@ -1,0 +1,11 @@
+# Batch 9 (park Issue, START-card replay, merge-freeze check) activation preparation
+
+Review snapshots of a shared-runner `arcadia-plan-activation-v1` action, not another runner. After review and merge, the live ignored library (`artifacts/generated/operator-scripts/`) receives these exact bytes. Generating, describing or publishing them activates nothing.
+
+- **Operator words (relayed, to be verified by Signal 11 under Decision 0229 before the tap):** menu answer 9A (batch 9 accepted as drafted, then settled in #2660) and "Please triage the new bugs and get them worked in." (Signal 11 transcript `6c227f6b-bd31-45d1-9ff0-edc572715a8a`). The tap itself is the operator's consent.
+- **The press:** selects `file-github-issue-when-action-parked` (Issue 2629) at standard / medium and places this Project's queue segment at the top: the three batch 9 Actions, in Plan order. It appends one Mission Log entry, archives the Ask `activate-batch-9-20261114b` (sha256 `287bb59c006024dab4c5765b11c941fb5d786812a01856cd33891abe7d4a20ec`, merged in #2662) and pushes the canonical settlement commit.
+- **Plan 3 returns to draft (reversible).** Its 6 done pins stay done and its 14 open pins are unchanged; they leave the queue behind batch 9 because the Project's segment is replaced. The pointer (`pin-dashboard-base-url`) is not kept while Plan 3 is a draft.
+- **To resume Plan 3 later:** draft a plan-intent Ask with `target_ref: plan/record-run-unattended-test-pins-20261113-part-3` and no Action amendments, then preview activation with `--activate --action pin-dashboard-base-url --model standard --effort medium --top` (omit `--responsibility`) and apply it with that exact fingerprint. Batch 9 then returns to draft in the same way, so finish or deliberately park batch 9 first.
+- **Contract:** passes `validateOperatorScriptContract` through `check-operator-scripts`; the `.sh` equals `planAmendmentLauncher(id)`. No dry-run exists, so the live press is the first run; it refuses before mutation on drift. The read-only settle preview that matches this descriptor shows 3 queue entries after activation for this Project.
+- **What it never does:** start a Session, Run or production policy; raise concurrency; grant spend, credentials or merge authority.
+- **Production:** observed Off. This is no future grant. Batch 10 activation comes after batch 9 completes.
