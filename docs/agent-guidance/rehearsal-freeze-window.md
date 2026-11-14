@@ -29,9 +29,6 @@ the press refuse. `arcadia work monitor` prints `Run window: OPEN` (and
 `runWindow` in `--json`) while production is Active or a card that is not
 consumed or expired pins the local origin/main, naming the card and its
 `expires_at`. While a card waits, hold merges until it is consumed or expires.
-Run `arcadia work merge-check` immediately before any merge to main: it is read-only, prints
-`No START card is waiting` or the refusal (card, pinned revision, expiry), and exits 1 only on a
-refusal, including when the window cannot be read. Active production alone stays advisory.
 While production is Active, the rules below apply. It is a signal only: it
 blocks nothing, and `UNKNOWN` means a source could not be read.
 
