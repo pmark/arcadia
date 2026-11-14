@@ -43,6 +43,23 @@ const PIN_COMMIT = "0".repeat(40);
 /** The number the continue-after-fix Decision landed on when written; the executor finds it by its slug alone. */
 const CONTINUE_ID = "0187";
 const sha = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
+/**
+ * Parses calls.log text, one JSON object per line. The fake binary appends while this suite may read, so a read can
+ * catch the final line half-written; an unparseable final line is skipped ONLY when it is unterminated (no newline
+ * after it). A malformed newline-terminated line, or any unparseable earlier line, still throws.
+ */
+function parseCallLog<T>(text: string): T[] {
+  const lines = text.split("\n").filter((line) => line.trim() !== "");
+  const unterminatedTail = !/\n\s*$/.test(text);
+  return lines.flatMap((line, index) => {
+    try {
+      return [JSON.parse(line) as T];
+    } catch (error) {
+      if (index === lines.length - 1 && unterminatedTail) return [];
+      throw error;
+    }
+  });
+}
 
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
@@ -405,7 +422,7 @@ esac`);
     for (const [key, value] of Object.entries(overrides)) { if (value === undefined) delete base[key]; else base[key] = value; }
     return base;
   };
-  const calls = () => (existsSync(path.join(root, "calls.log")) ? readFileSync(path.join(root, "calls.log"), "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as { tool: string; args: string[]; cwd?: string; operatorId?: string | null }) : []);
+  const calls = () => (existsSync(path.join(root, "calls.log")) ? parseCallLog<{ tool: string; args: string[]; cwd?: string; operatorId?: string | null }>(readFileSync(path.join(root, "calls.log"), "utf8")) : []);
   const readState = () => JSON.parse(readFileSync(path.join(root, "state.json"), "utf8")) as Record<string, any>;
   const runDirs = () => (existsSync(path.join(library, "runs", ID)) ? readdirSync(path.join(library, "runs", ID)).sort() : []);
   function run(mode: "run" | "preflight" | "--describe" = "run", overrides: Record<string, string | undefined> = {}, actions = mode === "run") {
@@ -441,6 +458,24 @@ function expectRefusedClean(b: Box, result: ReturnType<Box["run"]>, phase: strin
   expect(b.mutating()).toEqual([]);
   expect(b.head()).toBe(headBefore);
 }
+
+describe("start-run executor: calls.log reader (#2026)", () => {
+  it("skips a truncated final line that a read caught mid-append", () => {
+    const complete = JSON.stringify({ tool: "arcadia", args: ["production", "activate"] });
+    const truncated = '{"tool":"arcadia","args":["production';
+    expect(parseCallLog<{ tool: string; args: string[] }>(`${complete}\n${truncated}`)).toEqual([{ tool: "arcadia", args: ["production", "activate"] }]);
+  });
+
+  it("still throws on a malformed final line that is newline-terminated", () => {
+    const complete = JSON.stringify({ tool: "arcadia", args: ["go-broker", "ensure"] });
+    expect(() => parseCallLog(`${complete}\n{"tool":"arcadia","args":["production\n`)).toThrow(SyntaxError);
+  });
+
+  it("still throws on a malformed earlier line", () => {
+    const complete = JSON.stringify({ tool: "arcadia", args: ["go-broker", "ensure"] });
+    expect(() => parseCallLog(`{"tool":"arcadia","args":[\n${complete}\n`)).toThrow(SyntaxError);
+  });
+});
 
 describe("start-run executor: shape", () => {
   it("is executable, parses, and keeps its whole body inside functions ending in `main`", () => {
