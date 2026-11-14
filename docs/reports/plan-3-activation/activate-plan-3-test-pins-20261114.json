@@ -1,0 +1,128 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-plan-3-test-pins-20261114",
+  "title": "Activate Plan 3 (20 test pins) at the requires_review pin",
+  "script": "activate-plan-3-test-pins-20261114.sh",
+  "repeatable": false,
+  "problem": "Plan 3, the 20 test-pin Actions, is an inactive draft; PROJECT still points at the finished batch 5 Plan, so no Action is selected.",
+  "desired_effect": "Activate Plan 3 at pin-requires-review-value, standard / medium; keep the finished batch 5 Plan at status complete and place this Project queue segment at the top. Plan activation only.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-plan-3-test-pins-20261114.sh run",
+  "authority": {
+    "does": [
+      "Fresh-preview the exact pinned proposal, validate the before/after images through the existing shared runner, then apply that fingerprint.",
+      "Set Project/Plan pointers and standard / medium pins; preserve all Action contents and every other Project relative queue order.",
+      "Append one Mission Log entry, archive the Ask and publish only the canonical settlement commit by normal push; retain receipts."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, production policy, service restart, install or merge.",
+      "Never increases concurrency or grants spend/credentials/merge authority; never changes Action status, criteria or responsibility.",
+      "Never force-pushes, publishes unrelated commits or treats generating this action as approval."
+    ]
+  },
+  "success": {
+    "effect": "Plan 3 is active at pin-requires-review-value, standard / medium; the batch 5 Plan stays complete; settlement published.",
+    "next": "Continue through normal governed Action/Session admission. This is not a Session launch or production START; each Action's PR stays the operator's merge."
+  },
+  "failure": {
+    "effect": "Refuses before mutation on drift; preserves any canonical local settlement on publication failure.",
+    "next": "Read the receipt; re-review stale pins, or retry publication of the existing settlement without another apply."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "40a76f8d74388d8e1437cec916627826d3650791"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-plan-3-20261114.yaml",
+      "sha256": "a8ed5fbb96e5db989c006ee646422c0402a3595d944f3eb4e03aef8ff76babec",
+      "proposal": "activate-plan-3-20261114"
+    },
+    "settlement": {
+      "requestId": "activate-plan-3-20261114",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "pin-requires-review-value",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "record-run-unattended-test-pins-20261113-part-3",
+      "previousPlan": "draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each",
+      "action": "pin-requires-review-value",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each",
+        "current_action": null,
+        "milestone": "Draft an inactive batch 5 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification."
+      },
+      "projectAfter": {
+        "active_plan": "record-run-unattended-test-pins-20261113-part-3",
+        "current_action": "pin-requires-review-value",
+        "milestone": "Record run unattended test pins 20261113 part 3"
+      },
+      "planBefore": {
+        "slug": "record-run-unattended-test-pins-20261113-part-3",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Record run unattended test pins 20261113 part 3"
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "pin-requires-review-value",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each",
+        "project": "arcadia",
+        "status": "complete",
+        "current_action": null
+      },
+      "previousPlanAfter": {
+        "status": "complete",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "pin-requires-review-value",
+        "title": "Pin that only the exact requires_review value counts as requiring review, with a new test file.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/pin-requires-review-value",
+        "arcadia/pin-work-classification-queue",
+        "arcadia/pin-operator-surface-membership",
+        "arcadia/pin-encouragement-format",
+        "arcadia/pin-missing-done-condition-question",
+        "arcadia/pin-handoff-eligibility",
+        "arcadia/pin-dashboard-base-url",
+        "arcadia/pin-safe-text-collapse",
+        "arcadia/pin-design-is-date",
+        "arcadia/pin-design-one-of",
+        "arcadia/pin-design-text-value",
+        "arcadia/pin-design-list-items",
+        "arcadia/pin-design-is-object",
+        "arcadia/pin-design-require-text",
+        "arcadia/pin-design-require-enum",
+        "arcadia/pin-urgency-level-thresholds",
+        "arcadia/pin-coding-agent-label-fallback",
+        "arcadia/pin-days-until-due",
+        "arcadia/pin-leak-unverifiable-reason",
+        "arcadia/pin-model-tier-of"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
