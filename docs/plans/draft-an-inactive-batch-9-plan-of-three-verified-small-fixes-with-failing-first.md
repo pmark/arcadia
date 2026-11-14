@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first
 project: arcadia
-status: draft
+status: active
 milestone: Draft an inactive batch 9 Plan of three verified small fixes with failing-first tests (park Issue, replay startRun cards, START merge-freeze check)
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -72,6 +72,9 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2630", "https://github.com/pmark/arcadia/issues/2104", "src/workMonitoring/runWindow.ts", "src/commands/workMonitor.ts", "docs/agent-guidance/rehearsal-freeze-window.md"]
 questions: []
 decisions: []
+current_action: file-github-issue-when-action-parked
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Draft an inactive batch 9 Plan of three verified small fixes with failing-first tests (park Issue, replay startRun cards, START merge-freeze check)
