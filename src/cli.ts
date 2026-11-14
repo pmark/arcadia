@@ -610,7 +610,7 @@ import {
   runWorkSeedZeroPromptRehearsalPacketsCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
-import { renderWorkMonitorSuccess, runWorkMonitorCommand } from "./commands/workMonitor.js";
+import { renderWorkMergeCheckSuccess, renderWorkMonitorSuccess, runWorkMergeCheckCommand, runWorkMonitorCommand } from "./commands/workMonitor.js";
 import { renderWorkReservationsSuccess, runWorkReservationsCommand } from "./commands/workReservations.js";
 import { renderWorkPullRequestsSuccess, runWorkPullRequestsCommand } from "./commands/workPullRequests.js";
 import {
@@ -3838,6 +3838,23 @@ Allowed only while Production is Off. The candidate worktree stays on disk, unto
         includePullRequests: options.pullRequests
       }),
       renderWorkMonitorSuccess
+    )
+  );
+  addJsonOption(
+    work
+      .command("merge-check")
+      .description("Read-only: refuse (exit 1) while an unheld START card waits on the pinned origin/main, or the window is unreadable; run immediately before any merge to main")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; json?: boolean }) =>
+    runCliAction(
+      "work.merge-check",
+      options,
+      () => {
+        const response = runWorkMergeCheckCommand({ workspace: options.workspace });
+        if (response.data.refused) process.exitCode = 1;
+        return response;
+      },
+      renderWorkMergeCheckSuccess
     )
   );
   addJsonOption(
