@@ -9,7 +9,6 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Draft an inactive batch 9 Plan of three verified small fixes with failing-first tests (park Issue, replay startRun cards, START merge-freeze check)
 active_plan: draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first
 updated: 2026-11-14
-current_action: add-merge-check-for-waiting-start-card
 ---
 
 # Arcadia

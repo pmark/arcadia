@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first
 project: arcadia
-status: active
+status: complete
 milestone: Draft an inactive batch 9 Plan of three verified small fixes with failing-first tests (park Issue, replay startRun cards, START merge-freeze check)
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -51,11 +51,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2626", "scripts/production-replay.ts", "tests/production-replay.test.ts", "src/operatorActions/startRunPins.ts"]
   - id: add-merge-check-for-waiting-start-card
     title: Add a deterministic arcadia work merge-check that refuses while an unheld START card is waiting on a pinned main revision.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Add a deterministic arcadia work merge-check that refuses while an unheld START card is waiting on a pinned main revision.
+    next_action: Completed via Agent Ask complete-add-merge-check-for-waiting-start-card-2026-11-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask add-merge-check-for-waiting-start-card
     clarification: clarified
     confidence: high
@@ -72,7 +72,6 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2630", "https://github.com/pmark/arcadia/issues/2104", "src/workMonitoring/runWindow.ts", "src/commands/workMonitor.ts", "docs/agent-guidance/rehearsal-freeze-window.md"]
 questions: []
 decisions: []
-current_action: add-merge-check-for-waiting-start-card
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
