@@ -3772,8 +3772,8 @@ After you sign in following a laptop restart, Arcadia's managed launch agents st
   accumulated blockers/Decisions, and the strongest coding-agent handoff
   opportunity before presenting today's normal orientation slate.
 
-The Dashboard binds to local interfaces for this operator-only workflow, so a
-phone can reach it over the LAN or Tailscale. If the Projects card and the
+The Dashboard binds to 127.0.0.1 only; a phone reaches it over Tailscale,
+through a `tailscale serve --http=3020` entry, never over the LAN. If the Projects card and the
 repository's docket ever disagree, refresh the page: the card selects the
 most recently updated open Action, while the repository remains authoritative
 for the full control record.
@@ -3864,10 +3864,9 @@ dashboard: a pre-built release of a **git tag**, served by `next start` on port
 **3030**, reading the same `martianrover` workspace. `scripts/services.sh restart`
 never touches it.
 
-- **URL:** `http://arcadia-1.alpine-rattlesnake.ts.net:3030` (or
-  `http://127.0.0.1:3030` on the Mac). Optionally
-  `https://arcadia-1.alpine-rattlesnake.ts.net/` with no port, through
-  `tailscale serve`.
+- **URL:** `https://arcadia-1.alpine-rattlesnake.ts.net/` with no port,
+  through `tailscale serve` (or `http://127.0.0.1:3030` on the Mac). The
+  demo binds 127.0.0.1 only, so the direct `:3030` Tailnet URL does not work.
 - **What serves it:** the `com.arcadia.demo.dashboard` LaunchAgent (KeepAlive)
   runs `next start` from `/Users/pmark/Dev/MR/Arcadia/releases/current`, a
   symlink to the active tag. It sets `ARCADIA_DASHBOARD_CLI=built`, so every
