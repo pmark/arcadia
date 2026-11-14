@@ -30,6 +30,8 @@ export interface RunWindowReason {
   detail: string;
   /** Card only: false when the press would refuse at preflight P2 because the pinned worker job has no running PID (Issue #2179). */
   pressable?: boolean;
+  /** Card only: the full origin/main revision the card pins. */
+  revision?: string;
 }
 
 export interface RunWindow {
@@ -214,6 +216,7 @@ function waitingReason(card: { id: string; expiresAt: string; workerLabel: strin
     subject: card.id,
     until: card.expiresAt,
     pressable: !down,
+    revision: origin,
     detail: down
       ? `START card ${card.id} is not pressable: worker ${card.workerLabel} has no running PID, so preflight P2 would refuse (see arcadia worker status and worker.log for a lost lock); it is pinned to origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
       : `START card ${card.id} is ready to press at origin/main ${origin.slice(0, 12)} and expires ${card.expiresAt}`
@@ -234,6 +237,33 @@ export function formatRunWindowLines(window: RunWindow): string[] {
   for (const item of window.held) lines.push(`- ${item}.`);
   for (const item of window.unknown) lines.push(`- Also unknown: ${item}.`);
   return lines;
+}
+
+/** A named refusal to merge to main, from `mergeFreezeRefusal`. */
+export interface MergeFreezeRefusal {
+  code: "start_card_waiting" | "run_window_unknown";
+  message: string;
+  /** Waiting unheld cards: id, pinned revision and expiry. Empty for an unknown window. */
+  cards: Array<{ id: string; reviewedRevision: string; expiresAt: string }>;
+}
+
+/**
+ * Pure merge check over an observed window. Refuses only for (a) an unheld, unexpired, unconsumed START card pinned to the
+ * local origin/main, or (b) a window it cannot read (fail closed: a hidden card is worse than a stopped merge).
+ * A window opened only by managed production Active stays advisory (Issue #2104); a governed-held card never refuses.
+ * It reads nothing, writes nothing and grants no authority.
+ */
+export function mergeFreezeRefusal(window: RunWindow): MergeFreezeRefusal | null {
+  const waiting = window.reasons.filter((reason) => reason.kind === "start_card_waiting");
+  if (waiting.length > 0) {
+    const cards = waiting.map((reason) => ({ id: reason.subject, reviewedRevision: reason.revision ?? "unknown", expiresAt: reason.until ?? "unknown" }));
+    const named = cards.map((card) => `${card.id} (pinned to origin/main ${card.reviewedRevision.slice(0, 12)}, expires ${card.expiresAt})`).join("; ");
+    return { code: "start_card_waiting", message: `Do not merge to main: START card ${named} is waiting and a merge would make its press refuse. Wait for it to be consumed or to expire, or hold it with arcadia start-run hold.`, cards };
+  }
+  if (window.state === "unknown" || window.unknown.length > 0) {
+    return { code: "run_window_unknown", message: `Do not merge to main: the run window could not be read (${window.unknown.join("; ") || "state unknown"}), so a waiting START card may be hidden.`, cards: [] };
+  }
+  return null;
 }
 
 /**

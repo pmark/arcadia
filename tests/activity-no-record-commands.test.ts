@@ -173,6 +173,7 @@ function invocations(): Record<string, string[][]> {
     "operator-task decline": [["operator-task", "decline", "no-such-task", "--because", "not needed", "--operator", "--repo", repo]],
     "ask report": [["ask", "report"], ["ask", "report", "--since", "1h"], ["ask", "report", "--since", "not-a-time"]],
     "work reservations": [["work", "reservations"], ["work", "reservations", "--workspace", live]],
+    "work merge-check": [["work", "merge-check"], ["work", "merge-check", "--workspace", live]],
     todo: [["todo"], ["todo", "--stale"], ["todo", "--all", "--project", "no-such-project"]],
     journey: [["journey", "demo/some-action"], ["journey", "demo/some-action", "--json"], ["journey", "demo/current"], ["journey", "demo/plan:current"]],
     "go-context": [["go-context"], ["go-context", "--project", "no-such-project"], ["go-context", "--workspace", path.join(root, "missing-workspace")]],
@@ -278,7 +279,7 @@ describe("commands that read no workspace state record no activity", () => {
       for (const args of runs) {
         const { liveOpens, recorded } = await observe(args);
         expect(recorded, args.join(" ")).toEqual([]);
-        if ((["ask show", "ask-trail"].includes(key) && !args.includes("--workspace")) || key === "workspace leak-check" || (key === "timeline" && !args.includes("nobody")) || key === "todo" || key === "journey" || (key === "go-context" && !args.includes("--workspace")) || key === "work reservations" || (key === "ask report" && !args.includes("not-a-time")) || key === "production liveness-check" || key === "production idle-front") {
+        if ((["ask show", "ask-trail"].includes(key) && !args.includes("--workspace")) || key === "workspace leak-check" || (key === "timeline" && !args.includes("nobody")) || key === "todo" || key === "journey" || (key === "go-context" && !args.includes("--workspace")) || key === "work reservations" || key === "work merge-check" || (key === "ask report" && !args.includes("not-a-time")) || key === "production liveness-check" || key === "production idle-front") {
           // The leak check's, the timeline's, the journey's, the Ask report's and the to-do view's purpose is to
           // observe the live database, which they do only read-only; none opens
           // it to record itself.

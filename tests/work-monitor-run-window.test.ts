@@ -1,11 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { renderWorkMonitorSuccess } from "../src/commands/workMonitor.js";
+import { renderWorkMergeCheckSuccess, renderWorkMonitorSuccess, runWorkMergeCheckCommand } from "../src/commands/workMonitor.js";
 import { withDatabase } from "../src/db/connection.js";
 import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
-import { formatRunWindowLines, holdStartCard, observeRunWindow, type RunWindowDeps, unholdStartCard } from "../src/workMonitoring/runWindow.js";
+import { formatRunWindowLines, holdStartCard, mergeFreezeRefusal, observeRunWindow, type RunWindowDeps, unholdStartCard } from "../src/workMonitoring/runWindow.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const MAIN = "a".repeat(40);
@@ -242,5 +244,86 @@ describe("work monitor run window held START cards", () => {
     expect(() => holdStartCard(library, "start-run-a", { ...input, evidence: "../etc/passwd" }, NOW)).toThrow(/evidence/);
     expect(() => holdStartCard(library, "start-run-a", { ...input, evidence: "missing.md" }, NOW)).toThrow(/does not exist/);
     expect(() => holdStartCard(library, "start-run-a", { ...input, reason: "  " }, NOW)).toThrow(/reason/);
+  });
+
+  describe("merge freeze check", () => {
+    const writeHold = (id: string) => writeFileSync(path.join(library, `${id}.held.json`), JSON.stringify({
+      schema: "arcadia-card-held-v1", id, reason: "operator hold", evidence: "docs/x.md", heldAt: NOW.toISOString(), heldBy: "tester"
+    }));
+
+    it("returns null for a closed window", () => {
+      expect(mergeFreezeRefusal(observe())).toBeNull();
+    });
+
+    it("returns null when only managed production Active opens the window (advisory, Issue 2104)", () => {
+      const scope = normalizeProductionScope({
+        intent: "Merge check fixture.", projects: ["fixture"], plans: ["fixture/rehearsal"], actions: ["fixture/one"],
+        providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: []
+      });
+      withDatabase(workspace, (db) => activateProduction(db, {
+        requestId: "merge-check-activate", scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator"
+      }));
+      const window = observe();
+      expect(window.state).toBe("open");
+      expect(mergeFreezeRefusal(window)).toBeNull();
+    });
+
+    it("names the card, pinned revision and expiry for a waiting START card", () => {
+      card("start-run-waiting", { expires_at: "2026-11-05T01:02:03.000Z" });
+      const refusal = mergeFreezeRefusal(observe());
+      expect(refusal?.code).toBe("start_card_waiting");
+      expect(refusal?.cards).toEqual([{ id: "start-run-waiting", reviewedRevision: MAIN, expiresAt: "2026-11-05T01:02:03.000Z" }]);
+      expect(refusal?.message).toContain("start-run-waiting");
+      expect(refusal?.message).toContain(MAIN.slice(0, 12));
+      expect(refusal?.message).toContain("2026-11-05T01:02:03.000Z");
+    });
+
+    it("returns null for a card held by its governed marker, but still refuses an unheld one beside it", () => {
+      card("start-run-held");
+      writeHold("start-run-held");
+      expect(mergeFreezeRefusal(observe())).toBeNull();
+      card("start-run-other");
+      expect(mergeFreezeRefusal(observe())?.cards.map((item) => item.id)).toEqual(["start-run-other"]);
+    });
+
+    it("refuses when the window state is unknown (fail closed), including a hidden card behind Active production", () => {
+      const unknown = observe(deps({ libraryDir: () => path.join(library, "missing") }));
+      expect(unknown.state).toBe("unknown");
+      expect(mergeFreezeRefusal(unknown)?.code).toBe("run_window_unknown");
+      expect(mergeFreezeRefusal({ state: "open", reasons: [{ kind: "production_active", subject: "p", until: null, detail: "d" }], unknown: ["library unreadable"], held: [], observedAt: NOW.toISOString() })?.code).toBe("run_window_unknown");
+    });
+
+    it("the command reports refusal vs clear, read-only, with the injected window source", () => {
+      const before = readdirSync(library).sort();
+      const clear = runWorkMergeCheckCommand({ workspace, runWindowDeps: deps() });
+      expect(clear.data.refused).toBe(false);
+      expect(renderWorkMergeCheckSuccess(clear)).toEqual(["No START card is waiting"]);
+
+      card("start-run-waiting");
+      const refused = runWorkMergeCheckCommand({ workspace, runWindowDeps: deps() });
+      expect(refused.data).toMatchObject({ refused: true, refusal: { code: "start_card_waiting" } });
+      expect(renderWorkMergeCheckSuccess(refused)[0]).toMatch(/^MERGE REFUSED \(start_card_waiting\).*start-run-waiting/);
+      expect(readdirSync(library).sort()).toEqual([...before, "start-run-waiting.json"].sort());
+    });
+
+    it("the CLI exits 1 only when it refuses, 0 when clear", () => {
+      const repo = path.join(path.dirname(workspace), "repo");
+      mkdirSync(repo);
+      const vcs = (...args: string[]) => spawnSync("git", args, { cwd: repo, encoding: "utf8" });
+      vcs("init", "-q");
+      vcs("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "x");
+      const head = vcs("rev-parse", "HEAD").stdout.trim();
+      vcs("update-ref", "refs/remotes/origin/main", head);
+      const run = () => spawnSync(process.execPath, ["--import", pathToFileURL(path.resolve("node_modules/tsx/dist/esm/index.mjs")).href, path.resolve("src/cli.ts"), "work", "merge-check", "--workspace", workspace, "--json"], {
+        cwd: repo, encoding: "utf8", env: { ...process.env, ARCADIA_OPERATOR_SCRIPT_LIBRARY: library }
+      });
+      const clear = run();
+      expect(clear.status, clear.stdout + clear.stderr).toBe(0);
+      expect(JSON.parse(clear.stdout).data.refused).toBe(false);
+      card("start-run-waiting", { reviewedRevision: head, expires_at: "2099-01-01T00:00:00.000Z" }); // real clock in the subprocess
+      const refused = run();
+      expect(refused.status).toBe(1);
+      expect(JSON.parse(refused.stdout).data.refusal.cards[0]).toMatchObject({ id: "start-run-waiting", reviewedRevision: head });
+    }, 60_000);
   });
 });

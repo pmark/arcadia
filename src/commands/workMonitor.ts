@@ -7,7 +7,7 @@ import { openReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { sharesRepository } from "../git/worktrees.js";
 import { formatWorkingCopySafetyLines, scanProjectWorkingCopies } from "../workMonitoring/scanner.js";
-import { defaultRunWindowDeps, formatRunWindowLines, observeRunWindow, type RunWindow, type RunWindowDeps } from "../workMonitoring/runWindow.js";
+import { defaultRunWindowDeps, formatRunWindowLines, mergeFreezeRefusal, observeRunWindow, type MergeFreezeRefusal, type RunWindow, type RunWindowDeps } from "../workMonitoring/runWindow.js";
 import type { WorkMonitorProject, WorkMonitorSnapshot } from "../workMonitoring/types.js";
 
 export interface WorkMonitorCommandData {
@@ -109,4 +109,34 @@ export function renderWorkMonitorSuccess(response: CommandSuccess<WorkMonitorCom
     }));
   }
   return lines;
+}
+
+export interface WorkMergeCheckData {
+  /** True only when mergeFreezeRefusal refused; the CLI exits non-zero exactly then. */
+  refused: boolean;
+  refusal: MergeFreezeRefusal | null;
+  runWindow: RunWindow;
+}
+
+/** Read-only: observes the run window and applies the pure merge-freeze check. Writes nothing and grants no authority. */
+export function runWorkMergeCheckCommand(options: {
+  workspace: string;
+  /** Test seam for the run-window sources. */
+  runWindowDeps?: RunWindowDeps;
+}): CommandSuccess<WorkMergeCheckData> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const db = openReadOnlyDatabase(workspacePath);
+  try {
+    const runWindow = observeRunWindow(db, options.runWindowDeps ?? defaultRunWindowDeps(process.cwd()));
+    const refusal = mergeFreezeRefusal(runWindow);
+    return createSuccess({ command: "work.merge-check", workspace: workspacePath, data: { refused: refusal !== null, refusal, runWindow } });
+  } finally {
+    db.close();
+  }
+}
+
+export function renderWorkMergeCheckSuccess(response: CommandSuccess<WorkMergeCheckData>): string[] {
+  const { refusal, runWindow } = response.data;
+  if (refusal) return [`MERGE REFUSED (${refusal.code}): ${refusal.message}`];
+  return ["No START card is waiting", ...runWindow.held.map((item) => `- ${item}.`)];
 }
