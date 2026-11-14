@@ -2489,14 +2489,14 @@ export function runManagedProductionTick(
       const held = handoff !== null && reconciled.length === 0 ? outOfScopePointerHold(db, { repoRoot, projectSlug: project.slug, now, log }) : null;
       launch = { attempted: false, outcome: "skipped", reason: held ?? launchSkipReason({ reconciledCount: reconciled.length, refusal, sessionId: handoffSessionId }), actionKey: null };
     }
-    // An integration-refusal episode ends whenever this tick has no refused
-    // handoff to log (it integrated, nothing is pending, or production is Off
-    // or out of scope), so a later recurrence is logged once again.
     // Issue #2629 (Decision 0223 A): an Action parked on an Action-local repair_budget_exhausted hold records one
     // GitHub Issue naming its revival trigger. Outside every transaction callback; a failure only logs.
     // Only while the tick may act on this Project (production On and the Project in the Active scope): never while Off.
     if (mayLaunch) recordRepairBudgetParkIssues(db, { projectSlug: project.slug, repoRoot, now, log, runCommand: options.review?.runCommand });
 
+    // An integration-refusal episode ends whenever this tick has no refused
+    // handoff to log (it integrated, nothing is pending, or production is Off
+    // or out of scope), so a later recurrence is logged once again.
     // A terminal guard's refusal is escalated once while production is On for
     // this Project, and cleared when the candidate passes its guards or
     // integrates, when nothing is pending, or when production is Off.

@@ -197,6 +197,30 @@ describe("Issue #2629: an Action-local repair-budget park records one GitHub Iss
     expect(park.creates()).toHaveLength(1);
   }, SCENARIO_TIMEOUT_MS);
 
+  it("does no doc discovery and no gh calls on later ticks once the Issue is recorded or attempts are exhausted", () => {
+    for (const failFiling of [false, true]) {
+      const park = parkWorld(`park-records-issue-cheap-${failFiling ? "exhausted" : "recorded"}`, { localAttempts: 3, failFiling });
+      let planReads = 0;
+      let tick = 0;
+      const sweep = () => {
+        tick += 1;
+        withDatabase(park.w.workspace, (db) => recordRepairBudgetParkIssues(db, {
+          projectSlug: park.w.projectSlug, repoRoot: park.w.repo, now: new Date(park.w.now.getTime() + tick * 60_000), runCommand: park.runner,
+          actionStillOpen: () => { planReads += 1; return true; }
+        }));
+      };
+      // Drive to the settled state: one successful Issue, or the 3 bounded failed attempts.
+      for (let i = 0; i < 4; i += 1) sweep();
+      const readsSettled = planReads;
+      const callsSettled = park.ghCalls.length;
+      expect(readsSettled).toBe(failFiling ? 3 : 1);
+      for (let i = 0; i < 5; i += 1) sweep();
+      expect(planReads).toBe(readsSettled);
+      expect(park.ghCalls).toHaveLength(callsSettled);
+      world?.dispose(); isolation?.restore();
+    }
+  }, SCENARIO_TIMEOUT_MS);
+
   it("files nothing for a global-cause exhaustion", () => {
     const park = parkWorld("park-records-issue-global", { localAttempts: 0 });
     park.w.ticks(3);

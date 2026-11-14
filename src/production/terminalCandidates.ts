@@ -333,15 +333,17 @@ const oneLinePark = (text: string, limit = 600) => {
 export function recordRepairBudgetParkIssues(db: Database.Database, input: {
   projectSlug: string; repoRoot: string; now: Date; log?: (message: string) => void;
   runCommand?: QaPrReviewDependencies["runCommand"];
+  /** Injectable Plan check (tests); defaults to the real checked-in Plan read. */
+  actionStillOpen?: (repoRoot: string, projectSlug: string, actionKey: string) => boolean;
 }): void {
   try {
     const rows = db.prepare("SELECT action_key, message, first_detected_at FROM production_operator_escalations WHERE kind = ? AND substr(action_key, 1, ?) = ?")
       .all(REPAIR_BUDGET_EXHAUSTED_KIND, input.projectSlug.length + 1, `${input.projectSlug}/`) as Array<{ action_key: string; message: string; first_detected_at: string }>;
     for (const row of rows) {
       if (!repairBudgetCauseIsActionLocal(db, row.action_key)) continue;
-      // A stale row for an Action that is done, gone or no longer open in the checked-in Plan is not a park.
-      if (!actionStillOpen(input.repoRoot, input.projectSlug, row.action_key)) continue;
-      fileParkIssue(db, { ...input, actionKey: row.action_key, episode: row.first_detected_at, message: row.message });
+      // The cheap persisted guards run first inside fileParkIssue; the Plan read (doc discovery) only when an attempt is due.
+      fileParkIssue(db, { ...input, actionKey: row.action_key, episode: row.first_detected_at, message: row.message,
+        isOpen: () => (input.actionStillOpen ?? actionStillOpen)(input.repoRoot, input.projectSlug, row.action_key) });
     }
   } catch (thrown) {
     input.log?.(`Recording repair-budget park Issues for ${input.projectSlug} failed: ${thrown instanceof Error ? thrown.message : String(thrown)}`);
@@ -361,14 +363,20 @@ function actionStillOpen(repoRoot: string, projectSlug: string, actionKey: strin
 function fileParkIssue(db: Database.Database, input: {
   actionKey: string; episode: string; message: string; repoRoot: string; now: Date; log?: (message: string) => void;
   runCommand?: QaPrReviewDependencies["runCommand"];
+  isOpen: () => boolean;
 }): void {
   const { actionKey, episode } = input;
   ensureRepairParkIssueTable(db);
   const at = input.now.toISOString();
+  const read = () => db.prepare("SELECT issue_url, issue_attempts, issue_last_attempt_at FROM production_repair_park_issues WHERE action_key = ? AND episode = ?").get(actionKey, episode) as
+    { issue_url: string | null; issue_attempts: number; issue_last_attempt_at: string | null } | undefined;
+  const settled = (r: ReturnType<typeof read>) => r !== undefined && (r.issue_url !== null || r.issue_attempts >= MAX_PARK_ISSUE_ATTEMPTS || r.issue_last_attempt_at === at);
+  // Cheap guards first: a recorded Issue, exhausted attempts or this tick's attempt end here, before any doc discovery or gh call.
+  if (settled(read())) return;
+  // A stale row for an Action that is done, gone or no longer open in the checked-in Plan is not a park.
+  if (!input.isOpen()) return;
   db.prepare("INSERT INTO production_repair_park_issues (action_key, episode, created_at, updated_at) VALUES (?, ?, ?, ?) ON CONFLICT(action_key, episode) DO NOTHING").run(actionKey, episode, at, at);
-  const row = db.prepare("SELECT issue_url, issue_attempts, issue_last_attempt_at FROM production_repair_park_issues WHERE action_key = ? AND episode = ?").get(actionKey, episode) as
-    { issue_url: string | null; issue_attempts: number; issue_last_attempt_at: string | null };
-  if (row.issue_url !== null || row.issue_attempts >= MAX_PARK_ISSUE_ATTEMPTS || row.issue_last_attempt_at === at) return;
+  const row = read()!;
   db.prepare("UPDATE production_repair_park_issues SET issue_attempts = issue_attempts + 1, issue_last_attempt_at = ?, updated_at = ? WHERE action_key = ? AND episode = ?").run(at, at, actionKey, episode);
   let url: string | null = null;
   let error: string | null = null;
