@@ -11,11 +11,11 @@ updated: 2026-11-14
 actions:
   - id: stabilize-coordinator-relay-pid-record-snapshot
     title: Make the runner pid-record test sample after childPid lands so it stops racing the writer.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Make the runner pid-record test sample after childPid lands so it stops racing the writer.
+    next_action: Completed via Agent Ask complete-stabilize-coordinator-relay-pid-record-snapshot-2026-11-13; no further action.
     expected_artifact: Evidence satisfying Agent Ask stabilize-coordinator-relay-pid-record-snapshot
     clarification: clarified
     confidence: high
@@ -69,7 +69,7 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2026", "tests/start-run-executor.test.ts"]
 questions: []
 decisions: []
-current_action: stabilize-coordinator-relay-pid-record-snapshot
+current_action: dashboard-live-allocate-free-smoke-port
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
