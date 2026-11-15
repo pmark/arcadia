@@ -1,0 +1,12 @@
+# Plan 3 resume (14 open unattended test pins) activation preparation
+
+Review snapshots of a shared-runner `arcadia-plan-activation-v1` action, not another runner. After review and merge, the live ignored library (`artifacts/generated/operator-scripts/`) receives these exact bytes. Generating, describing or publishing them activates nothing.
+
+- **Operator words (relayed, to be verified by Signal under Decision 0229 before the tap):** the operator's activation order recorded by Signal 11 and Rowan 16: the attention-loop Plan finishes, then Plan 3 (START pins), then batches 11 and 12. The attention-loop Plan completed in #2700. The Ask `activate-plan-3-resume-20261114` (merged in #2684, sha256 `20c04aaeec196b947790265649f0c5d4605de6e2c2dae7552d2c791c31d5cfd5`) is a proposal only; the tap is the operator's consent.
+- **The press:** activates `record-run-unattended-test-pins-20261113-part-3` at `pin-dashboard-base-url`, standard / medium, and places this Project's queue segment at the top: the 14 open pins in Plan order. It appends one Mission Log entry, archives the Ask and pushes the canonical settlement commit.
+- **What the tap does to the attention-loop Plan:** nothing to its content. It stays `complete`; PROJECT.md moves from it (no current Action) to Plan 3.
+- **What the tap does to Plan 3:** it becomes active; its 6 done pins stay done and its 14 open pins are unchanged.
+- **What the tap does to batches 11 and 12:** nothing. They stay inactive drafts until the operator activates them later.
+- **Contract:** passes `validateOperatorScriptContract` through `check-operator-scripts` (checked on a copy of these two files: 1 checked, 0 failures); the `.sh` equals `planAmendmentLauncher(id)`. No dry-run exists, so the live press is the first run; it refuses before mutation on drift (`BASE_NOT_SYNCHRONIZED` means the main checkout lagged origin/main: fast-forward it and re-verify). The read-only settle preview from the main checkout at base `bfb6b9af7` shows the 14 queue entries, fingerprint `8067928a5fed06c3596d2d6a98fce15ef1855df2fea87e5af821ef710758f657`, receipt `asksettle_a458c7e22f1a4831b2`; the descriptor never embeds a fingerprint (the runner previews fresh). `reviewedBase` pins that base; if main moves before the press, the descriptor must be re-based.
+- **What it never does:** start a Session, Run or production policy; raise concurrency; grant spend, credentials or merge authority.
+- **Production:** observed Off. This is no future grant and no START.
