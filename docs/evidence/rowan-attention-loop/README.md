@@ -47,6 +47,15 @@ temporary workspaces were used instead.
 | Claude Code | `.claude/skills/arcadia-role` → `../../.agents/skills/arcadia-role` | Filesystem: the symlink resolves. Native: this Claude Code session lists `arcadia-role` as an available skill, loaded from the main checkout. |
 | PPN, the adopting Project | `platform/.agents/skills/arcadia-role` (a **copy** dated 2026-11-06) and `.claude/skills/arcadia-role` (a symlink to it) | **Stale.** PPN will not see this section until the skill is reinstalled there. The personal `~/.agents/skills/arcadia-role` also pins a source from 2026-10-16. This is gap G5. |
 
+Adopter fixture (2026-11-15): `tests/arcadia-role-adopter-discovery.test.ts` builds a
+disposable adopting Project with the current skill installed the supported way.
+`inspectAgentSkills` reports no problems, and both discovery paths carry the team
+briefing and the round-trip commands. Repository check:
+`node --import tsx scripts/check-agent-skills.ts` → `problems: []` for codex,
+claude and opencode. This is filesystem discovery only: no Codex or OpenCode
+session was started. PPN's real copy still differs from main by 41 added lines
+(Issue #2686).
+
 Unsupported host behavior: nothing in any of the three hosts wakes an idle chat
 when mail arrives. Claude Code's background sessions and scheduled wakeups exist,
 but Arcadia does not wire mail to them. See G3.
@@ -61,6 +70,22 @@ but Arcadia does not wire mail to them. See G3.
 | G4 | **No authorized test operator surface.** `DISCORD_PING_CHANNELS` has no test alias, so an attended rehearsal with real presentation would page the operator's real channel. | `apps/discord-bot/README.md:28`; the installed bot environment has no ping-channel map | Operator decision (presented with this PR). |
 | G5 | **Skill distribution is stale.** Adopters and the personal scope carry old copies of `arcadia-role`. | See the discovery table above | [Issue #2686](https://github.com/pmark/arcadia/issues/2686): a reinstall route through the existing skill installer. |
 | G6 | **No hermetic multi-Project production test.** No tick test puts two in-scope Projects together, blocks one, and shows the other is still admitted. This candidate proves isolation only at the attention layer. | Survey of `tests/production-tick.test.ts` and `tests/managed-production-policy.test.ts` | Included in proposal `agentask_c99a2cd347ad0b62b9`. |
+
+## Idle coordinator wake: installed-host evidence (criterion 3)
+
+- **Arcadia: no wake.** The installed broker
+  (`~/.local/share/arcadia/go-broker/releases/6ff679ba…/dist/src`) runs
+  `production liveness-check` every 60 s. That command has **0** references to
+  native mail. No production, worker or liveness source reads mail. A blocker
+  sent to an idle Rowan therefore waits in `native-mail overdue` and pages no
+  one. Reproduce it with the G3 row below. The follow-up is proposal
+  `agentask_8cb7d47cb80d86acbb`.
+- **Claude Code host: peer messages do wake an idle session (observed).** On
+  2026-11-15 this coordinator session was idle after ending its turn. A
+  cross-session message from Signal 11 (`SendMessage` to its
+  `/tmp/cc-socks` socket) started a new turn without any operator input. Arcadia
+  does not route mail through this channel. Codex and OpenCode have no
+  equivalent observed here.
 
 Not exercised here: a live restart or handoff with a pending request. The
 replay covers custody continuity on the mail side. Coordinator `accept` and
