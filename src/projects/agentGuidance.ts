@@ -161,6 +161,16 @@ export function guidanceResourcesForTarget(repoRoot: string, readSource: (file: 
       const boundary = `\n> This Project does not deliver ${[...missingSkills].join(", ")} or its runtime dependencies. The linked source is a reviewed snapshot for reference. Do not run those workflows here; use the configured Arcadia source checkout with its skills and runtime available. This reference grants no authority.\n`;
       content = content.replace(/^(#[^\n]*\n)/, `$1${boundary}`);
     }
+    if (resource.path === "docs/scout/CONTINUE.md" && !(committed.has(".agents/skills/arcadia-studio-scout/SKILL.md") && existsSync(path.join(repoRoot, ".agents/skills/arcadia-studio-scout/SKILL.md")))) {
+      changed = true;
+      content = content.replace(/^(#[^\n]*\n)/, "$1\n> This Project does not deliver the Scout entrypoint or its runtime. Do not run this workflow here; continue it in the configured Arcadia source checkout with the required skill and runtime. This guidance grants no authority.\n");
+    }
+    if (resource.path === "docs/managed-documents.md" && !(committed.has("OPERATOR_CONTEXT.md") && existsSync(path.join(repoRoot, "OPERATOR_CONTEXT.md")))) {
+      const adjusted = content.replace("[`OPERATOR_CONTEXT.md`](../OPERATOR_CONTEXT.md)", "Operator context (not supplied in this Project; consult its own records)");
+      if (adjusted === content) throw validationError("Operator-context guidance changed; review its adopter fallback before propagation.");
+      changed = true;
+      content = adjusted;
+    }
     if (!missingSignalSkill || resource.path !== "docs/agent-guidance/signal.md") return { ...resource, content };
     const adjusted = content.replace("handoff names the next Signal. Codex and OpenCode discover the skill in\n`.agents/skills/`. Claude Code uses the checked-in `.claude/skills/arcadia-signal`\nsymlink.", "handoff names the next Signal. This Project does not deliver the Signal skill\nor its runtime dependencies. Do not run Signal here: start or resume it in the\nconfigured Arcadia source checkout with its skill and runtime available. The\nlinked source is a reviewed snapshot for reference, not an installation or authority.");
     if (adjusted === content) throw validationError("Signal discovery guidance changed; review its adopter fallback before propagation.");

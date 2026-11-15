@@ -42,6 +42,10 @@ describe("computeWayPropagationPlan", () => {
     expect(signal).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/\.agents\/skills\/arcadia-signal\/SKILL\.md/);
     expect(signal).toContain("Do not run Signal here");
     expect(relay).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/\.agents\/skills\/arcadia-relay\/SKILL\.md/);
+    expect(readFileSync(path.join(repo, "docs/scout/CONTINUE.md"), "utf8")).toContain("Do not run this workflow here");
+    const managed = readFileSync(path.join(repo, "docs/managed-documents.md"), "utf8");
+    expect(managed).toContain("Operator context (not supplied in this Project; consult its own records)");
+    expect(managed).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/docs\/AGENT_ORIENTATION\.md/);
     const entries = guidanceEntries(readFileSync(path.join(repo, GUIDANCE_INDEX), "utf8"), readFileSync(path.join(repo, GUIDANCE_FINGERPRINTS), "utf8"));
     for (const entry of entries) expect(guidanceFingerprint(readFileSync(path.join(repo, entry.path), "utf8"))).toBe(entry.sha256);
     expect(computeWayPropagationPlan(repo).changes).toEqual([]);
@@ -99,7 +103,7 @@ describe("computeWayPropagationPlan", () => {
       expect(createHash("sha256").update(readFileSync(path.join(repoRoot, file))).digest("hex"), `refresh the source reference for ${file}`).toBe(hash);
     }
     const delivered = new Set(index.entries.map((entry) => entry.path));
-    const local = new Set(["AGENTS.md", "CONSTITUTION.md", "MISSION_LOG.md", "OPERATOR_CONTEXT.md", "START_HERE.md", "docs/AGENT_ORIENTATION.md", "docs/COMMANDS.md"]);
+    const local = new Set(["AGENTS.md", "CONSTITUTION.md", "MISSION_LOG.md", "OPERATOR_CONTEXT.md", "START_HERE.md"]);
     for (const entry of index.entries) {
       const text = readFileSync(path.join(repoRoot, entry.path), "utf8");
       for (const match of text.matchAll(/\]\(([^\s)#]+)(?:#[^\s)]*)?\)/g)) {
