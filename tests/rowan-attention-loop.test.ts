@@ -105,6 +105,18 @@ describe("Rowan attention loop: two workers, one operator request", () => {
     });
   });
 
+  it("worker text naming another mail's episode key cannot suppress that mail's page", () => {
+    const ws = workspace();
+    withDatabase(ws, (db) => {
+      const target = sendMailMessage(db, workerMail("worker-a", "target", BLOCKER)).message;
+      const spoof = sendMailMessage(db, workerMail("worker-b", "spoof", { ...BLOCKER, evidence: `see ${attentionEpisodeKey(target.id)}` })).message;
+      for (const id of [spoof.id, target.id]) acknowledgeMailMessage(db, { ...SCOPE, messageId: id, actor: "rowan" });
+      expect(relayAttention(db, { ...SCOPE, messageId: spoof.id, actor: "rowan" }).outcome).toBe("relayed");
+      expect(relayAttention(db, { ...SCOPE, messageId: target.id, actor: "rowan" }).outcome).toBe("relayed");
+      expect((db.prepare("SELECT COUNT(*) AS n FROM operator_pings").get() as { n: number }).n).toBe(2);
+    });
+  });
+
   it("refuses an unacknowledged, stale or incomplete blocker", () => {
     const ws = workspace();
     withDatabase(ws, (db) => {

@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { writeTransaction } from "../db/connection.js";
 import { queueOperatorPing, type OperatorPing } from "../ping/operatorPing.js";
 import { assertRecipientScope, getMailMessage, type MailMessageRow, type RecipientScope } from "./store.js";
 
@@ -133,35 +134,42 @@ export function relayAttention(db: Database.Database, input: RelayAttentionInput
   }
   const summary = text(message.body.summary) ?? "Worker blocker";
   const key = attentionEpisodeKey(message.id);
-  const body = `${summary} — do: ${readyAction}; consequence: ${consequence}; evidence: ${evidence}`;
+  // Worker text can never carry an episode key, so it cannot suppress another message's page.
+  const body = `${summary} — do: ${readyAction}; consequence: ${consequence}; evidence: ${evidence}`.replaceAll("[attn:", "(attn:");
   const suffix = ` ${key}`;
-  const earlier = db.prepare("SELECT id FROM operator_pings WHERE instr(message, ?) > 0 ORDER BY created_at LIMIT 1").get(key) as
-    | { id: string }
-    | undefined;
-  if (earlier) {
-    const ping = db.prepare("SELECT * FROM operator_pings WHERE id = ?").get(earlier.id) as Record<string, string | null>;
-    const prior: OperatorPing = {
-      id: ping.id!, message: ping.message!, kind: ping.kind as OperatorPing["kind"], channel: ping.channel, link: ping.link,
-      todoKey: ping.todo_key ?? null, agent: ping.agent, status: ping.status as OperatorPing["status"],
-      discordMessageId: ping.discord_message_id, createdAt: ping.created_at!, sentAt: ping.sent_at
+  // Check and insert under one write lock, so two actors relaying at once still queue one ping.
+  return writeTransaction(db, () => {
+    const prior = relayedPing(db, message.id);
+    if (prior) return { messageId: message.id, significance, outcome: "duplicate" as const, ping: prior, timing: timingFor(message, prior) };
+    const queued = queueOperatorPing(db, {
+      message: `${body.slice(0, 500 - suffix.length)}${suffix}`,
+      kind: "attention",
+      channel: input.channel ?? null,
+      link: input.link ?? null,
+      agent: input.actor,
+      episodeKey: key,
+      now
+    });
+    return {
+      messageId: message.id,
+      significance,
+      outcome: queued.deduplicated ? ("duplicate" as const) : ("relayed" as const),
+      ping: queued.ping,
+      timing: timingFor(message, queued.ping)
     };
-    return { messageId: message.id, significance, outcome: "duplicate", ping: prior, timing: timingFor(message, prior) };
-  }
-  const queued = queueOperatorPing(db, {
-    message: `${body.slice(0, 500 - suffix.length)}${suffix}`,
-    kind: "attention",
-    channel: input.channel ?? null,
-    link: input.link ?? null,
-    agent: input.actor,
-    episodeKey: key,
-    now
   });
+}
+
+/** The ping an earlier relay queued for this mail: its message ends with the episode key, which only the relay appends. */
+function relayedPing(db: Database.Database, messageId: string): OperatorPing | null {
+  const key = attentionEpisodeKey(messageId);
+  const row = db.prepare("SELECT * FROM operator_pings WHERE substr(message, -length(?)) = ? ORDER BY created_at LIMIT 1")
+    .get(key, key) as Record<string, string | null> | undefined;
+  if (!row) return null;
   return {
-    messageId: message.id,
-    significance,
-    outcome: queued.deduplicated ? "duplicate" : "relayed",
-    ping: queued.ping,
-    timing: timingFor(message, queued.ping)
+    id: row.id!, message: row.message!, kind: row.kind as OperatorPing["kind"], channel: row.channel, link: row.link,
+    todoKey: row.todo_key ?? null, agent: row.agent, status: row.status as OperatorPing["status"],
+    discordMessageId: row.discord_message_id, createdAt: row.created_at!, sentAt: row.sent_at
   };
 }
 
@@ -169,9 +177,7 @@ export function relayAttention(db: Database.Database, input: RelayAttentionInput
 export function attentionTiming(db: Database.Database, messageId: string): AttentionTiming {
   const message = getMailMessage(db, messageId);
   if (!message?.acknowledgedAt) throw validationError("No acknowledged mail with that id.", { messageId });
-  const row = db.prepare(`SELECT created_at, sent_at FROM operator_pings WHERE instr(message, ?) > 0 ORDER BY created_at LIMIT 1`)
-    .get(attentionEpisodeKey(messageId)) as { created_at: string; sent_at: string | null } | undefined;
-  return timingFor(message, row ? { createdAt: row.created_at, sentAt: row.sent_at } : null);
+  return timingFor(message, relayedPing(db, messageId));
 }
 
 function timingFor(message: MailMessageRow, ping: Pick<OperatorPing, "createdAt" | "sentAt"> | null): AttentionTiming {
