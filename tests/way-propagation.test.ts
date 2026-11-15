@@ -1,6 +1,7 @@
 import { AGENTS_SECTION_END, AGENTS_SECTION_START, readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,7 +11,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { runWayPropagation, type CommandResult, type CommandRunner } from "../src/projects/wayPropagate.js";
-import { GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, guidanceEntries, guidanceFingerprint, renderGuidanceIndex } from "../src/projects/agentGuidance.js";
+import { GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, guidanceEntries, guidanceFingerprint, guidanceResourcesForTarget, renderGuidanceIndex, verifyGuidanceSourceRevision } from "../src/projects/agentGuidance.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalConstitution = readFileSync(path.join(repoRoot, "CONSTITUTION.md"), "utf8");
@@ -33,6 +34,102 @@ function writeCurrentAdoption(repo: string): void {
 }
 
 describe("computeWayPropagationPlan", () => {
+  it("delivers missing source-owned guidance with immutable references and matching fingerprints", () => {
+    const repo = tempRepo();
+    writeCurrentAdoption(repo);
+    const signal = readFileSync(path.join(repo, "docs/agent-guidance/signal.md"), "utf8");
+    const relay = readFileSync(path.join(repo, "docs/relay-driven-operations.md"), "utf8");
+    expect(signal).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/\.agents\/skills\/arcadia-signal\/SKILL\.md/);
+    expect(signal).toContain("Do not run Signal here");
+    expect(relay).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/\.agents\/skills\/arcadia-relay\/SKILL\.md/);
+    expect(readFileSync(path.join(repo, "docs/scout/CONTINUE.md"), "utf8")).toContain("Do not run this workflow here");
+    const managed = readFileSync(path.join(repo, "docs/managed-documents.md"), "utf8");
+    expect(managed).toContain("Operator context (not supplied in this Project; consult its own records)");
+    expect(managed).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/docs\/AGENT_ORIENTATION\.md/);
+    const entries = guidanceEntries(readFileSync(path.join(repo, GUIDANCE_INDEX), "utf8"), readFileSync(path.join(repo, GUIDANCE_FINGERPRINTS), "utf8"));
+    for (const entry of entries) expect(guidanceFingerprint(readFileSync(path.join(repo, entry.path), "utf8"))).toBe(entry.sha256);
+    expect(computeWayPropagationPlan(repo).changes).toEqual([]);
+  });
+
+  it("preserves a locally installed skill and fails closed if a pinned source changes", () => {
+    const repo = tempRepo();
+    const local = path.join(repo, ".agents/skills/arcadia-signal/SKILL.md");
+    mkdirSync(path.dirname(local), { recursive: true });
+    writeFileSync(local, "local skill\n");
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["add", ".agents/skills/arcadia-signal/SKILL.md"], { cwd: repo });
+    execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "fixture"], { cwd: repo });
+    writeCurrentAdoption(repo);
+    expect(readFileSync(path.join(repo, "docs/agent-guidance/signal.md"), "utf8")).toContain("../../.agents/skills/arcadia-signal/SKILL.md");
+    const read = (file: string) => file === ".agents/skills/arcadia-relay/SKILL.md" ? "changed" : existsSync(path.join(repoRoot, file)) ? readFileSync(path.join(repoRoot, file), "utf8") : null;
+    expect(() => guidanceResourcesForTarget(repo, read)).toThrow(/Source reference .*arcadia-relay.*changed or is missing/);
+  });
+
+  it("does not rely on untracked or staged skills that propagation will not commit", () => {
+    const repo = tempRepo();
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "--allow-empty", "-qm", "fixture"], { cwd: repo });
+    const local = path.join(repo, ".agents/skills/arcadia-signal/SKILL.md");
+    mkdirSync(path.dirname(local), { recursive: true });
+    writeFileSync(local, "uncommitted skill\n");
+    for (const staged of [false, true]) {
+      if (staged) execFileSync("git", ["add", ".agents/skills/arcadia-signal/SKILL.md"], { cwd: repo });
+      const read = (file: string) => existsSync(path.join(repoRoot, file)) ? readFileSync(path.join(repoRoot, file), "utf8") : null;
+      const signal = guidanceResourcesForTarget(repo, read).find((resource) => resource.path === "docs/agent-guidance/signal.md")!.content;
+      expect(signal).toContain("Do not run Signal here");
+      expect(signal).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/\.agents\/skills\/arcadia-signal\/SKILL\.md/);
+    }
+  });
+
+  it("does not rely on committed skill symlinks whose targets may be absent", () => {
+    const repo = tempRepo();
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    const local = path.join(repo, ".agents/skills/arcadia-signal/SKILL.md");
+    mkdirSync(path.dirname(local), { recursive: true });
+    writeFileSync(path.join(repo, "untracked-skill.md"), "private local skill\n");
+    symlinkSync("../../../untracked-skill.md", local);
+    execFileSync("git", ["add", ".agents/skills/arcadia-signal/SKILL.md"], { cwd: repo });
+    execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "fixture"], { cwd: repo });
+    const read = (file: string) => existsSync(path.join(repoRoot, file)) ? readFileSync(path.join(repoRoot, file), "utf8") : null;
+    const signal = guidanceResourcesForTarget(repo, read).find((resource) => resource.path === "docs/agent-guidance/signal.md")!.content;
+    expect(signal).toContain("Do not run Signal here");
+    expect(signal).toContain("github.com/pmark/arcadia/blob/");
+  });
+
+  it("classifies source-only links so new dependencies cannot silently escape delivery", () => {
+    const index = JSON.parse(readFileSync(path.join(repoRoot, GUIDANCE_INDEX), "utf8")) as { entries: Array<{ path: string }> };
+    const manifest = JSON.parse(readFileSync(path.join(repoRoot, "docs/agent-guidance/source-references.json"), "utf8")) as { files: Record<string, string> };
+    for (const [file, hash] of Object.entries(manifest.files)) {
+      expect(createHash("sha256").update(readFileSync(path.join(repoRoot, file))).digest("hex"), `refresh the source reference for ${file}`).toBe(hash);
+    }
+    const delivered = new Set(index.entries.map((entry) => entry.path));
+    const local = new Set(["AGENTS.md", "CONSTITUTION.md", "MISSION_LOG.md", "OPERATOR_CONTEXT.md", "START_HERE.md"]);
+    for (const entry of index.entries) {
+      const text = readFileSync(path.join(repoRoot, entry.path), "utf8");
+      for (const match of text.matchAll(/\]\(([^\s)#]+)(?:#[^\s)]*)?\)/g)) {
+        const link = match[1];
+        if (/^(?:[a-z]+:|\/|#)/i.test(link)) continue;
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(entry.path), link));
+        if (delivered.has(target) || local.has(target)) continue;
+        expect(existsSync(path.join(repoRoot, target)), `${entry.path} -> ${target} is missing from source`).toBe(true);
+        expect(Object.hasOwn(manifest.files, target), `${entry.path} -> ${target} needs source or target-local classification`).toBe(true);
+      }
+    }
+  });
+
+  it("verifies source pins against the declared commit, including missing and mismatched revisions", () => {
+    const repo = tempRepo();
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    mkdirSync(path.join(repo, "docs"));
+    writeFileSync(path.join(repo, "docs/reference.md"), "reviewed\n");
+    execFileSync("git", ["add", "docs/reference.md"], { cwd: repo });
+    execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "fixture"], { cwd: repo });
+    const revision = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+    const hash = createHash("sha256").update("reviewed\n").digest("hex");
+    expect(() => verifyGuidanceSourceRevision(repo, { revision, files: { "docs/reference.md": hash } })).not.toThrow();
+    expect(() => verifyGuidanceSourceRevision(repo, { revision, files: { "docs/reference.md": "0".repeat(64) } })).toThrow(/does not match/);
+    expect(() => verifyGuidanceSourceRevision(repo, { revision: "0".repeat(40), files: { "docs/reference.md": hash } })).toThrow(/unavailable/);
+  });
   it("reports no changes for a repository that is already current", () => {
     const repo = tempRepo();
     writeCurrentAdoption(repo);

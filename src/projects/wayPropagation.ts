@@ -1,4 +1,4 @@
-import { GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, assertGuidanceTarget, guidanceEntries, guidanceFingerprint, guidanceResources, inspectGuidanceDelivery, loadGuidanceEntries, renderGuidanceFingerprints, renderGuidanceIndex } from "./agentGuidance.js";
+import { GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, assertGuidanceTarget, guidanceEntries, guidanceFingerprint, guidanceResourcesForTarget, inspectGuidanceDelivery, loadGuidanceEntries, renderGuidanceFingerprints, renderGuidanceIndex } from "./agentGuidance.js";
 import { validationError } from "../cli/errors.js";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -126,7 +126,7 @@ export function computeWayPropagationPlan(
     }
   }
 
-  for (const resource of guidanceResources(readAdoptedFile)) {
+  for (const resource of guidanceResourcesForTarget(repoPath, readAdoptedFile)) {
     const existing = readIfExists(path.join(repoPath, resource.path));
     try {
       const desired = adoptGuidanceResource(resource, existing);
