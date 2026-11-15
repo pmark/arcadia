@@ -267,11 +267,11 @@ actions:
     references: []
   - id: pin-design-require-text
     title: Pin that the required-text check records a blank-field problem and returns the value otherwise, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the required-text check records a blank-field problem and returns the value otherwise, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-design-require-text-cdd6cf8b710b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-design-require-text
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-design-require-text
+current_action: pin-design-require-enum
 ---
 
 # Record run unattended test pins 20261113 part 3
