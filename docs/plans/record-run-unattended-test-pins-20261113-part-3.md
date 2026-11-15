@@ -307,11 +307,11 @@ actions:
     references: []
   - id: pin-urgency-level-thresholds
     title: Pin the urgency score cut-offs at 0.75 and 0.4, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the urgency score cut-offs at 0.75 and 0.4, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-urgency-level-thresholds-bb9a599f272e; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-urgency-level-thresholds
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-urgency-level-thresholds
+current_action: pin-coding-agent-label-fallback
 ---
 
 # Record run unattended test pins 20261113 part 3
