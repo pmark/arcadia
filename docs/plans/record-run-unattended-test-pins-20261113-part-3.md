@@ -167,11 +167,11 @@ actions:
     references: []
   - id: pin-design-is-date
     title: Pin that a design date is a real calendar date written as YYYY-MM-DD, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a design date is a real calendar date written as YYYY-MM-DD, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-design-is-date-eb433e419d1a; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-design-is-date
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-design-is-date
+current_action: pin-design-one-of
 ---
 
 # Record run unattended test pins 20261113 part 3
