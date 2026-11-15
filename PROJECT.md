@@ -8,8 +8,7 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Draft an inactive batch 10 Plan of three verified small reliability fixes with failing-first tests (service restart main-checkout guard, Tailnet press-path probe, tidy test determinism)
 active_plan: draft-an-inactive-batch-10-plan-of-three-verified-small-reliability-fixes-with
-updated: 2026-11-14
-current_action: make-tidy-detached-worktree-test-hermetic
+updated: 2026-11-15
 ---
 
 # Arcadia

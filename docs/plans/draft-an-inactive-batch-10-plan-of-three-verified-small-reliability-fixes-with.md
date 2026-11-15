@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-batch-10-plan-of-three-verified-small-reliability-fixes-with
 project: arcadia
-status: active
+status: complete
 milestone: Draft an inactive batch 10 Plan of three verified small reliability fixes with failing-first tests (service restart main-checkout guard, Tailnet press-path probe, tidy test determinism)
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-14
+updated: 2026-11-15
 actions:
   - id: refuse-service-restart-from-linked-worktree
     title: Make scripts/services.sh refuse restart and stop from a linked git worktree, so a non-main checkout cannot replace the live launchd label set.
@@ -53,11 +53,11 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2633", "src/operatorActions/startRunDayGrant.ts", "apps/dashboard/app/api/operator-script/route.ts", "apps/dashboard/lib/originGuard.ts"]
   - id: make-tidy-detached-worktree-test-hermetic
     title: Make the tidy detached-worktree unmerged-count test deterministic by injecting the live-process scan and reporting the protecting reason on failure.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Make the tidy detached-worktree unmerged-count test deterministic by injecting the live-process scan and reporting the protecting reason on failure.
+    next_action: Completed via Agent Ask complete-make-tidy-detached-worktree-test-hermetic-2026-11-14; no further action.
     expected_artifact: Evidence satisfying Agent Ask make-tidy-detached-worktree-test-hermetic
     clarification: clarified
     confidence: high
@@ -73,7 +73,6 @@ actions:
     references: ["https://github.com/pmark/arcadia/issues/2631", "src/commands/tidy.ts", "src/git/worktrees.ts", "tests/tidy-command.test.ts"]
 questions: []
 decisions: []
-current_action: make-tidy-detached-worktree-test-hermetic
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
