@@ -1,0 +1,109 @@
+agent_ask: v1
+request_id: ellis-host-coordinators-20261115c
+project: arcadia
+intent: plan
+requested_authority: propose
+desired_result: Draft an inactive Plan of seven bounded Actions that host the coordinators (Rowan, then Signal and Flynn) as Arcadia-launched tmux sessions under the relay, with one live handoff and one worker-merged source change as proof
+rationale: "Operator picked 'A: Merged Plan' (2026-11-15) after independent planner (Ellis) and critic (Nadia) answers to how to reach autonomous production using Arcadia-hosted tmux sessions, worktrees, reviewed integration and the Signal/Flynn/Rowan orchestration. Creates an INACTIVE draft Plan only: no active_plan pointer, queue, dispatch, production, Decision or approval changes; Plan 3's remaining pins finish first under the Decision 0173 day grant and this Plan must not be activated by this Ask. Evidence (read-only): relay code exists (src/coordinator/relay.ts launches via tmux, verifies the first prompt, kills stale panes) but Decision 0191 makes real launch conditional on probes P1 and P2 and docs/agent-guidance/coordinator-handoff-design.md 'Operator Decision needed' (relay-launch standing order A/B/C) is prepared, not settled; Rowan-to-Rowan handoff is manual (docs/managed-production-readiness.md 2026-11-09 update; PR #2338 delivers no automatic handoff; Issue #2697 open); scripts/wait-for-event.sh wakes only the session that started it, and proposal agentask_8cb7d47cb80d86acbb (gap G3) is the idle-wake gap; Issue #2273 makes the final batch read as failed in start-run day-evidence; isWorkerMergeSafePath (src/production/workerMerge.ts) already admits unclassified src/** under Decision 0214 A but only test-only pins have been merged unattended. Inference, not proven: a tmux CLI session with Remote Control can replace Desktop sessions for coordinators (the handoff design lists this as an open uncertainty; P1/P2 are the proof). Every operator-held gate is a named Decision or approval, never an Action's own authority: P1 and P2 each need their own operator approval; the relay-launch standing order, a Signal/Flynn supervision Decision, any widening of the worker merge allowlist, day-grant renewal, START, spend and credentials stay with the operator. Deferred with revival triggers: batch 11 (Way auto-propagation, draft-an-inactive-batch-11 Plan) until the first source-changing worker merge in the last Action lands; batch 12 (Field Notes writers) until a hosted Rowan has an idle lane; unified concurrency coordination Plan until the last Action passes; no new test pins unless a new guard needs coverage."
+acceptance:
+  - "An inactive draft Plan holds the seven Actions below in this order, and no active pointer, queue, production policy or Decision changes on registration."
+actions:
+  - id: fix-tmux-codex-start-alert-and-meter-reviews
+    desired_result: "Fix or explain the 'tmux could not start the Codex Session' red alert with a reproducing test, bound alert re-fires, and record reviewer tokens and wall time per verdict."
+    why: "A recurring false or unexplained red alert and unmetered reviews are the cheapest failure modes to retire before hosting more sessions in tmux."
+    execution: build
+    dependencies: []
+    references:
+      - src/production/redAlerts.ts
+      - src/production/redAlertDiagnosis.ts
+      - src/production/independentReview.ts
+      - src/sessions/launch.ts
+    acceptance:
+      - "Confirm the cause in code and in the recorded alert before editing; if the premise is false, stop and report. A failing-first test reproduces the tmux start failure path (injected tmux adapter) and shows either the corrected behaviour or an alert whose text names the actual cause."
+      - "A test shows an unchanged red alert episode fires once per episode (stable dedupe key) and replays add no ping."
+      - "Each independent-review verdict records reviewer tokens and wall time in its existing receipt, shown by a test; no schema is hand-edited and no new ping kind is added."
+      - "Focused vitest for the touched suites, lint and tsc pass; the PR description lists any authority-path edits."
+  - id: settle-relay-probes-and-launch-decision
+    desired_result: "Prepare and run relay probes P1 and P2 only under the operator's own per-probe approval, record their receipts, and present the relay-launch standing order (A yes pinned, B ask first, C no launches) as an Agent Ask proposal Decision."
+    why: "Decision 0191 makes real relay launch conditional on P1 and P2, and the standing order is the one new authority hosted Rowan needs."
+    execution: build
+    dependencies: []
+    references:
+      - docs/agent-guidance/coordinator-handoff-design.md
+      - docs/decisions/0191-authorize-one-start-card-worker-claude-usage-diagnostic-2026-11-07-f9415ce1.md
+      - src/coordinator/relay.ts
+    acceptance:
+      - "Probe plans for P1 and P2 are written with exact commands, bounds and expected receipts, and each waits for the operator's own approval in his chat or on a durable surface; no agent self-approves and no launch occurs without it."
+      - "After approval, P1 and P2 receipts are recorded in the repository evidence path, including whether a CLI session with --remote-control is visible and messageable; a failure is preserved and reported, not retried past its bound."
+      - "A Decision with options A, B and C and a consequence per option is submitted through an Agent Ask proposal; the Action stays blocked, not complete, until the operator answers."
+  - id: idle-wake-for-hosted-rowan
+    desired_result: "Implement the idle-coordinator wake from proposal agentask_8cb7d47cb80d86acbb so that a hosted Rowan resumes on a PR merge or a production state change."
+    why: "scripts/wait-for-event.sh wakes only the session that started it; an idle hosted coordinator needs an Arcadia-side wake."
+    execution: build
+    dependencies: []
+    references:
+      - scripts/wait-for-event.sh
+      - src/coordinator/relay.ts
+      - src/production/idleFront.ts
+      - src/sessions/launch.ts
+    acceptance:
+      - "Read proposal agentask_8cb7d47cb80d86acbb and confirm gap G3 in code before editing; if the premise is false, stop and report."
+      - "A failing-first test with an injected tmux adapter shows an idle registered coordinator receives exactly one wake message when a watched PR leaves OPEN or production state changes, a non-custodian or standby never receives it, and replays add none."
+      - "The wake runs from the existing timer or tick, never inline in a way that can starve the heartbeat, and a send failure only logs and alerts once."
+      - "Focused vitest, lint and tsc pass."
+  - id: fix-day-evidence-and-carry-day-grant
+    desired_result: "Fix Issue #2273 so a Plan's last-Action merge reads as done in `arcadia start-run day-evidence`, and make an existing Decision 0173 day grant reach a successor Rowan generation without retyped approval."
+    why: "The last batch read as failed and Rowan 2 to Rowan 3 needed the operator to retype approval; both are avoidable operator touches."
+    execution: build
+    dependencies: []
+    references:
+      - docs/decisions/0173-decide-what-authority-rowan-holds-for-a-day-at-a-time-over-unattended-work-on.md
+      - docs/decisions/0200-decide-how-a-day-approval-under-decision-0173-reaches-a-rowan-that-takes-over.md
+      - docs/managed-production-readiness.md
+    acceptance:
+      - "Confirm #2273 in code and in `start-run day-evidence` output before editing; if the premise is false, stop and report."
+      - "A failing-first test shows a final batch whose last merge landed and which leaves no current_action reads scopeComplete true, while a batch with an unmerged Action still reads incomplete."
+      - "The grant-carry change only lets a verified successor custodian read the approval Decision 0200 already recorded; it never creates, extends or renews a grant, and a test shows an expired or unrecorded grant is refused. If Decision 0200 does not permit the change, the Action stops and submits a proposal Decision instead."
+      - "Focused vitest, lint and tsc pass; authority-path edits are listed in the PR description."
+  - id: prove-live-hosted-rowan-handoff
+    desired_result: "Observe one live Rowan-to-Rowan handoff through the relay with pending native mail and record the evidence, closing Issue #2697."
+    why: "Handoff is the failure that forces operator touches today; one observed live transfer is the proof the hosted model needs."
+    execution: build
+    dependencies:
+      - settle-relay-probes-and-launch-decision
+    references:
+      - docs/agent-guidance/coordinator-handoff-design.md
+      - src/coordinator/relay.ts
+      - docs/evidence/rowan-attention-loop/README.md
+    acceptance:
+      - "Runs only after the operator's answer to the relay-launch Decision from the probes Action permits launching; otherwise the Action stops and reports the missing approval."
+      - "With native mail pending, a successor Rowan is launched in tmux by the relay, its first prompt delivery is verified, custody transfers, the predecessor stops, and the successor does not double-acknowledge its predecessor's mail; each step is a receipt in the evidence file."
+      - "A failure is preserved with its receipt and reported with the exact boundary; Issue #2697 is closed only with the evidence."
+  - id: host-signal-and-flynn-under-the-relay
+    desired_result: "Register Signal and Flynn as relay roles hosted in tmux, so each survives a context renewal, only after the operator answers a supervision Decision."
+    why: "Signal is the operator's single contact and is still a Desktop session whose starts are often refused; hosting it removes that dependency."
+    execution: build
+    dependencies:
+      - prove-live-hosted-rowan-handoff
+    references:
+      - docs/agent-guidance/signal.md
+      - docs/agent-guidance/coordinator-handoff-design.md
+      - src/coordinator/relay.ts
+    acceptance:
+      - "A Decision naming who supervises whom and whether Signal and Flynn are hosted under the relay exists on main with an operator answer (answered_at recorded) before the first commit of this Action's branch; `arcadia decision show <id>` and `git log` prove the order."
+      - "After approval, a test shows Signal and Flynn register as relay roles with separate custody rows and one renewal each in a fixture; START tolerance still refuses any unregistered session."
+      - "One live renewal of each is recorded as evidence, with the Rowan custody rules unchanged."
+  - id: worker-merge-one-source-action-with-main-moving
+    desired_result: "Run one small source-changing Action (unclassified src/**) through production at concurrency one, merged by the worker at exact-head review while main moves during the run."
+    why: "Only test-only pins have been merged unattended; this is the smallest proof of the next envelope under Decision 0214 A."
+    execution: build
+    dependencies:
+      - prove-live-hosted-rowan-handoff
+    references:
+      - src/production/workerMerge.ts
+      - docs/decisions/0214-which-merge-route-should-unattended-production-s-worker-use-for-candidate-pull.md
+      - docs/managed-production-readiness.md
+    acceptance:
+      - "The chosen Action changes only src/** paths isWorkerMergeSafePath accepts, touches no gate-enforcing module, and its Plan card is approved by the operator or under a valid day grant; the allowlist is not widened."
+      - "A worker merge at the reviewed head lands with at least one unrelated commit on main during the run, and the run record lists every operator touch."
+      - "Any refusal is preserved with its code; this Action does not widen concurrency, merge rules or spend."
