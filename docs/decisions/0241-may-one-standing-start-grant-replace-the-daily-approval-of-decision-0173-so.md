@@ -1,0 +1,43 @@
+---
+arcadia: v1
+type: decision
+id: "0241"
+slug: may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so
+project: arcadia
+status: open
+question: May one standing START grant replace the daily approval of Decision 0173, so that unattended production on the Plan you chose continues without a daily press or your words in any chat?
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: A. Standing grant for each Plan you choose
+options:
+  - label: A. Standing grant for each Plan you choose
+    consequence: "You press one standing-grant card on /actions. It has no 24-hour end. It covers the Plan you activated and each later Plan you choose in your own verified words (Decisions 0229 and 0232). Arcadia then mints and presses every successor START card itself at concurrency one, up to 12 Actions per card, with no words in any chat. After a clean batch the per-card check is the deterministic replay and preflight; an independent pre-mortem is required only after a failed batch. It ends on your STOP card, your own Off, a revoke card or a refused host permission. You are still asked for: choosing or activating a Plan, every Decision, a merge that carries a Decision or changes authority, spend, credentials, paid fallback, deploy or publish, and a second failed batch on the same cause. Risk: a wrongly prepared card runs before you see it, bounded by concurrency one, exact-head review before every worker merge and the failed-batch stop of Decisions 0181 and 0187. No Constitution change. The AGENTS.md line Production stays Off pending separate START approval is reworded to name this grant as that approval."
+    recommended: true
+  - label: B. Standing grant across Plans
+    consequence: Everything in A, and when a Plan completes Rowan activates the next accepted draft Plan in recorded order. No touch between Plans. You no longer choose what runs next; you are told afterwards.
+    recommended: false
+  - label: C. Weekly grant
+    consequence: Decision 0173 stays as it is except that one press lasts 7 days instead of 24 hours, and Rowan presses under the receipt without your words. One press a week. Smallest change. Every card still waits for a live Rowan and an independent pre-mortem, so a gap between batches can still wait on a session.
+    recommended: false
+  - label: D. Keep the daily grant, fix the defects only
+    consequence: One press a day stays. Rowan stops asking for words in its chat and a malformed Off id no longer ends your day. The daily press and the overnight wait remain.
+    recommended: false
+confidence: high
+plan: record-run-unattended-test-pins-20261113-part-3
+updated: 2026-11-15
+---
+
+# Decision 0241: May one standing START grant replace the daily approval of Decision 0173, so that unattended production on the Plan you chose continues without a daily press or your words in any chat?
+
+## Options
+
+- **A. Standing grant for each Plan you choose** (recommended): You press one standing-grant card on /actions. It has no 24-hour end. It covers the Plan you activated and each later Plan you choose in your own verified words (Decisions 0229 and 0232). Arcadia then mints and presses every successor START card itself at concurrency one, up to 12 Actions per card, with no words in any chat. After a clean batch the per-card check is the deterministic replay and preflight; an independent pre-mortem is required only after a failed batch. It ends on your STOP card, your own Off, a revoke card or a refused host permission. You are still asked for: choosing or activating a Plan, every Decision, a merge that carries a Decision or changes authority, spend, credentials, paid fallback, deploy or publish, and a second failed batch on the same cause. Risk: a wrongly prepared card runs before you see it, bounded by concurrency one, exact-head review before every worker merge and the failed-batch stop of Decisions 0181 and 0187. No Constitution change. The AGENTS.md line Production stays Off pending separate START approval is reworded to name this grant as that approval.
+- **B. Standing grant across Plans**: Everything in A, and when a Plan completes Rowan activates the next accepted draft Plan in recorded order. No touch between Plans. You no longer choose what runs next; you are told afterwards.
+- **C. Weekly grant**: Decision 0173 stays as it is except that one press lasts 7 days instead of 24 hours, and Rowan presses under the receipt without your words. One press a week. Smallest change. Every card still waits for a live Rowan and an independent pre-mortem, so a gap between batches can still wait on a session.
+- **D. Keep the daily grant, fix the defects only**: One press a day stays. Rowan stops asking for words in its chat and a malformed Off id no longer ends your day. The daily press and the overnight wait remain.
+
+## Rationale
+
+Operator, 2026-11-15 11:45 AM PST: 'I don't know why I have to approve every day the exact same thing. I just want the system to move forward on its own and ask me when it needs decisive action from me, period.' On 2026-11-15 the operator pressed or pasted about seven times for 15 test pins that all merged at exact-head review. Evidence (read-only): Decision 0173 A fixes the grant at '24 hours from that approval, never self-renewing', enforced by DAY_GRANT_WINDOW_MS in src/operatorActions/startRunDayGrant.ts; Rowan 17 declined a permitted press because an uncommitted start prompt said never press START, although docs/agent-guidance/operator-actions.md and Decision 0200 A already allow it; an Off with request id `.-plan3-pins-13-15-complete-20261115` was read as an operator Off at startRunDayGrant.ts:441 and ended day-grant-20261115a; a card minted at 12:40 AM expired at 8:26 AM unpressed; cards carried three Actions although src/operatorActions/startRunPins.ts admits 12. Constitution: its Authority section requires 'an explicit Decision' for production access and says 'Carrying out a decision already made is not a second decision', so a standing Decision satisfies it and no amendment is needed; Decision 0173's rationale reserves a Constitution change only for authority over Decisions, which no option here grants. Ellis (planner) recommends A. If A or B is answered, this re-decides Decision 0173's 24-hour window and its pre-mortem before every press after a clean batch, and widens Decision 0163's delegated press to a host timer; Decisions 0181 and 0187 (failed-batch stop and continue after a merged fix), 0060 and 0080 (merge gate), 0182, 0229 and 0232 stand. This draft grants nothing: only the operator's answer can, and the code that uses it is built separately in reviewed pull requests under Plan Ask ellis-standing-autonomy-20261115d. Inference, not proven: a host-timer press avoids the host permission refusal that Decision 0200 describes.
+
+Proposed by Agent Ask ellis-standing-grant-decision-20261115b.
