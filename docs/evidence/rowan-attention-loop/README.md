@@ -18,6 +18,7 @@ prevent the readiness claim. Two of them need an operator decision.
 | **Observed unattended (live host)** | Host-originated operator pings reach Discord with no coordinator chat active. The `liveness-check` launchd job (every 60 s, installed broker `6ff679ba`) queued four context-handoff pings about the PPN Rowan. The Discord adapter presented them 3.4 s to 11.6 s later: `ping_56484e3c98464e0899` (20:20:23Z → 20:20:29Z), `ping_c32ba1286bd84dd295` (00:03:26Z → 00:03:30Z), `ping_dcd8850c0c414e28a3` (00:14:24Z → 00:14:32Z) and `ping_48bf7a3c47a740ab82` (00:29:35Z → 00:29:46Z). Zero of 23 pings since 2026-11-14 are pending. | `liveness-check.out.log`; `operator_pings`, read with `sqlite3 -readonly` |
 | **Observed (live host), negative** | Workers have never used the worker → Rowan leg live: the live `native_mail_messages` table has 0 rows. | `sqlite3 -readonly` |
 | **Attended rehearsal (real CLI, synthetic actors)** | Two fictional workers, `worker-nagel` (a significant result) and `worker-ellis` (a blocker with a ready action, consequence and evidence), mail `rowan-1`. Rowan reads its inbox, acknowledges both and relays both. One ping is queued; the result goes to the digest. A replay returns `duplicate`. Timings: emitted 00:38:37.005Z, acknowledged +7.0 s, queued +15.1 s, presented +18.6 s. Target 60 s: **met**. Most of this time is about 3.5 s of CLI start-up per command. | [attended-cli-rehearsal-receipt.json](attended-cli-rehearsal-receipt.json); `tests/rowan-attention-loop-cli.test.ts` |
+| **Real presentation (operator-approved, 2026-11-15)** | One ping labelled "[REHEARSAL]" (`ping_8dd4f674221d48ee8a`, sent with `arcadia ping send --kind attention`) was queued at 05:16:33.036Z and presented on Discord at 05:16:35.305Z, **2.3 s** later. Combined with the rehearsal's 15.1 s from emission to queue, the **composite** end-to-end time is **17.4 s against the 60 s target**. The worker-to-queue leg is still the rehearsal: no live native mail was written. | [real-presentation-receipt.json](real-presentation-receipt.json) |
 | **Simulated** | Presentation in the rehearsal is `markOperatorPingSent` in a disposable test workspace. No message reached a real operator surface, because no authorized *test* channel exists (gap G4). | same |
 | **Replay (hermetic)** | Duplicate relays, a retry by a second actor and a re-sent worker request never page twice. An unacknowledged, incomplete or expired blocker is refused. Undispatched and unacknowledged mail shows as overdue past 60 s, then as stale. A successor generation or a standby cannot acknowledge or relay its predecessor's mail, and the pending request stays visible. One project's overdue blocker neither hides nor delays another project's relay. | `tests/rowan-attention-loop.test.ts` (7 cases, including key-spoofing worker text). The relay checks for an earlier ping and inserts under one write lock, so two actors relaying at once still queue one ping. |
 
@@ -47,6 +48,15 @@ temporary workspaces were used instead.
 | Claude Code | `.claude/skills/arcadia-role` → `../../.agents/skills/arcadia-role` | Filesystem: the symlink resolves. Native: this Claude Code session lists `arcadia-role` as an available skill, loaded from the main checkout. |
 | PPN, the adopting Project | `platform/.agents/skills/arcadia-role` (a **copy** dated 2026-11-06) and `.claude/skills/arcadia-role` (a symlink to it) | **Stale.** PPN will not see this section until the skill is reinstalled there. The personal `~/.agents/skills/arcadia-role` also pins a source from 2026-10-16. This is gap G5. |
 
+Adopter fixture (2026-11-15): `tests/arcadia-role-adopter-discovery.test.ts` builds a
+disposable adopting Project with the current skill installed the supported way.
+`inspectAgentSkills` reports no problems, and both discovery paths carry the team
+briefing and the round-trip commands. Repository check:
+`node --import tsx scripts/check-agent-skills.ts` → `problems: []` for codex,
+claude and opencode. This is filesystem discovery only: no Codex or OpenCode
+session was started. PPN's real copy still differs from main by 41 added lines
+(Issue #2686).
+
 Unsupported host behavior: nothing in any of the three hosts wakes an idle chat
 when mail arrives. Claude Code's background sessions and scheduled wakeups exist,
 but Arcadia does not wire mail to them. See G3.
@@ -58,9 +68,25 @@ but Arcadia does not wire mail to them. See G3.
 | G1 | **Concurrency is capped at 1 globally.** `resolveConcurrencyGate` (`src/production/policy.ts:1411`) forces `effectiveMaxConcurrentSessions = 1` while `bootstrap-managed-production-to-build-flight-deck/prove-concurrent-ready-set-admission` is `open`. Two Projects cannot run at once. | Read the Action's status in `docs/plans/bootstrap-managed-production-to-build-flight-deck.md:2104` | Prove that existing Action. It is already in the governed queue. |
 | G2 | **The cap is global, not one team per Project.** `countLiveAdmissions` (`policy.ts:1737`) has no project filter. Even with the gate open, nothing enforces "one work owner per Project" at admission. | `countLiveAdmissions` source | Proposal `agentask_c99a2cd347ad0b62b9`: a per-Project live-admission limit of 1 under a global cap. |
 | G3 | **No idle-coordinator wake.** A blocker mailed to a Rowan whose chat is idle waits in `native-mail overdue` and pages nobody. The only unattended pager (`liveness-check`) reads worker liveness and coordinator context budgets, not mail. | `native-mail send` a blocker to an absent recipient, wait 60 s, then run `native-mail overdue`: the blocker is listed and no ping is queued | Proposal `agentask_8cb7d47cb80d86acbb`: `liveness-check` pages once per overdue blocker episode, reusing the `[attn:<id>]` key so a later relay does not page again. |
-| G4 | **No authorized test operator surface.** `DISCORD_PING_CHANNELS` has no test alias, so an attended rehearsal with real presentation would page the operator's real channel. | `apps/discord-bot/README.md:28`; the installed bot environment has no ping-channel map | Operator decision (presented with this PR). |
+| G4 | **No authorized test operator surface.** `DISCORD_PING_CHANNELS` has no test alias, so an attended rehearsal with real presentation would page the operator's real channel. | `apps/discord-bot/README.md:28`; the installed bot environment has no ping-channel map | Resolved: the operator chose B (one labelled ping in the main channel). The real ping was sent and timed. A dedicated rehearsal channel is still the quieter long-term option. |
 | G5 | **Skill distribution is stale.** Adopters and the personal scope carry old copies of `arcadia-role`. | See the discovery table above | [Issue #2686](https://github.com/pmark/arcadia/issues/2686): a reinstall route through the existing skill installer. |
 | G6 | **No hermetic multi-Project production test.** No tick test puts two in-scope Projects together, blocks one, and shows the other is still admitted. This candidate proves isolation only at the attention layer. | Survey of `tests/production-tick.test.ts` and `tests/managed-production-policy.test.ts` | Included in proposal `agentask_c99a2cd347ad0b62b9`. |
+
+## Idle coordinator wake: installed-host evidence (criterion 3)
+
+- **Arcadia: no wake.** The installed broker
+  (`~/.local/share/arcadia/go-broker/releases/6ff679ba…/dist/src`) runs
+  `production liveness-check` every 60 s. That command has **0** references to
+  native mail. No production, worker or liveness source reads mail. A blocker
+  sent to an idle Rowan therefore waits in `native-mail overdue` and pages no
+  one. Reproduce it with the G3 row below. The follow-up is proposal
+  `agentask_8cb7d47cb80d86acbb`.
+- **Claude Code host: peer messages do wake an idle session (observed).** On
+  2026-11-15 this coordinator session was idle after ending its turn. A
+  cross-session message from Signal 11 (`SendMessage` to its
+  `/tmp/cc-socks` socket) started a new turn without any operator input. Arcadia
+  does not route mail through this channel. Codex and OpenCode have no
+  equivalent observed here.
 
 Not exercised here: a live restart or handoff with a pending request. The
 replay covers custody continuity on the mail side. Coordinator `accept` and

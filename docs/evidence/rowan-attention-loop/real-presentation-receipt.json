@@ -1,0 +1,18 @@
+{
+  "schema": "arcadia-rowan-attention-presentation-v1",
+  "mode": "real presentation of one labelled synthetic blocker; operator approved option B (Signal 11 picker, confirmed in the author's own chat 2026-11-15)",
+  "route": "arcadia ping send --kind attention (live workspace martianrover) -> Discord adapter",
+  "pingId": "ping_8dd4f674221d48ee8a",
+  "discordMessageId": "1571393455069069424",
+  "queuedAt": "2026-11-15T05:16:33.036Z",
+  "presentedAt": "2026-11-15T05:16:35.305Z",
+  "queuedToPresentedMs": 2269,
+  "composedEndToEnd": {
+    "emittedToQueuedMsFromAttendedRehearsal": 15147,
+    "queuedToPresentedMsReal": 2269,
+    "totalMs": 17416,
+    "targetMs": 60000,
+    "note": "Composite: the worker->Rowan->queue leg is the attended CLI rehearsal in a disposable workspace; only the queue->Discord leg is real. No live native mail was written."
+  },
+  "readBack": "sqlite3 -readonly operator_pings, polled every 5 s"
+}
