@@ -1,5 +1,6 @@
 # Articles for Arcadia Mission Control
 
+- [One contact, three agents](2026-11-14-one-contact-three-agents.md) — how the operator describes working with Signal, Flynn and Rowan, every claim labelled observed, operator-stated or direction.
 - [What’s an eval? Start with a lesson you should have found](2026-11-09-whats-an-eval.md) — a beginner-friendly draft on repeatable checks, with a proposed lesson-search example.
 
 `docs/articles/` captures topics and detailed source material primarily for AI
