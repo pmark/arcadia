@@ -1,4 +1,4 @@
-import { guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
+import { guidanceResourcesForTarget, inspectGuidanceDelivery } from "./agentGuidance.js";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -144,7 +144,7 @@ function readIfExists(filePath: string): string | null {
 function compareGuidanceResources(repoPath: string): WayFileDriftStatus {
   try {
     let status: WayFileDriftStatus = "match";
-    for (const resource of guidanceResources(readAdoptedFile)) {
+    for (const resource of guidanceResourcesForTarget(repoPath, readAdoptedFile)) {
       const actual = readIfExists(path.join(repoPath, resource.path));
       if (actual === null) return "missing";
       if (adoptGuidanceResource(resource, actual) !== actual) status = "differs";

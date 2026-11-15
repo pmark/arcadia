@@ -117,6 +117,54 @@ export function guidanceResources(readSource: (file: string) => string | null): 
     .map((file) => ({ path: file, content: fixed.get(file) ?? requireSource(file) }));
 }
 
+/** Adapt explicitly source-owned links when an adopter does not ship the target.
+ * The manifest pins a reviewed source revision and hashes; a changed dependency
+ * requires a refreshed pin instead of silently linking to stale guidance. */
+export function guidanceResourcesForTarget(repoRoot: string, readSource: (file: string) => string | null): GuidanceResource[] {
+  const resources = guidanceResources(readSource);
+  const raw = readSource("docs/agent-guidance/source-references.json");
+  if (!raw) throw validationError("Missing source-reference manifest; repair Arcadia's guidance source before adoption.");
+  let manifest: { revision: string; files: Record<string, string> };
+  try { manifest = JSON.parse(raw) as typeof manifest; }
+  catch { throw validationError("Invalid source-reference manifest."); }
+  if (!/^[a-f0-9]{40}$/.test(manifest.revision) || !manifest.files || typeof manifest.files !== "object") throw validationError("Invalid source-reference manifest.");
+  const delivered = new Set(resources.map((resource) => resource.path));
+  let changed = false;
+  const adapted = resources.map((resource) => {
+    if (!resource.path.endsWith(".md")) return resource;
+    let missingSignalSkill = false;
+    const content = resource.content.replace(/\]\(([^\s)#]+)(#[^\s)]*)?\)/g, (match, link: string, fragment: string | undefined) => {
+      if (/^(?:[a-z]+:|\/|#)/i.test(link)) return match;
+      const target = path.posix.normalize(path.posix.join(path.posix.dirname(resource.path), link));
+      const expected = Object.hasOwn(manifest.files, target) ? manifest.files[target] : undefined;
+      if (!expected || delivered.has(target) || existsSync(path.join(repoRoot, target))) return match;
+      const source = readSource(target);
+      if (!/^[a-f0-9]{64}$/.test(expected) || !source || createHash("sha256").update(source).digest("hex") !== expected) {
+        throw validationError(`Source reference ${target} changed or is missing; refresh the reviewed source-reference pin before propagation.`);
+      }
+      changed = true;
+      if (target === ".agents/skills/arcadia-signal/SKILL.md") missingSignalSkill = true;
+      return `](https://github.com/pmark/arcadia/blob/${manifest.revision}/${target}${fragment ?? ""})`;
+    });
+    if (!missingSignalSkill || resource.path !== "docs/agent-guidance/signal.md") return { ...resource, content };
+    const adjusted = content.replace("handoff names the next Signal. Codex and OpenCode discover the skill in\n`.agents/skills/`. Claude Code uses the checked-in `.claude/skills/arcadia-signal`\nsymlink.", "handoff names the next Signal. Read the linked source when the skill is not\ninstalled locally. Native skill discovery requires a separately installed skill;\nreading it grants no authority.");
+    if (adjusted === content) throw validationError("Signal discovery guidance changed; review its adopter fallback before propagation.");
+    return { ...resource, content: adjusted };
+  });
+  if (!changed) return adapted;
+  const index = adapted.find((resource) => resource.path === GUIDANCE_INDEX)!;
+  const fingerprints = adapted.find((resource) => resource.path === GUIDANCE_FINGERPRINTS);
+  const entries = guidanceEntries(index.content, fingerprints?.content ?? null);
+  const hashes = Object.fromEntries(entries.map((entry) => [entry.id, guidanceFingerprint(adapted.find((resource) => resource.path === entry.path)!.content)]));
+  if (fingerprints) fingerprints.content = renderGuidanceFingerprints(hashes);
+  else {
+    const parsed = JSON.parse(index.content) as { entries: Array<{ id: string; sha256: string }> };
+    for (const entry of parsed.entries) entry.sha256 = hashes[entry.id];
+    index.content = renderGuidanceIndex(parsed);
+  }
+  return adapted;
+}
+
 export function guidanceFingerprint(text: string): string {
   const body = /<!-- ARCADIA_CONTEXT_START -->\n([\s\S]*?)\n<!-- ARCADIA_CONTEXT_END -->/.exec(text)?.[1] ?? text;
   return createHash("sha256").update(body.trim()).digest("hex");

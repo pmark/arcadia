@@ -347,7 +347,8 @@ describe("compact Way instruction delivery", () => {
     }
     expect(guidanceResources((relative) => existsSync(path.join(canonicalRoot, relative)) ? file(canonicalRoot, relative) : null).map((resource) => resource.path))
       .toEqual(expect.arrayContaining([GUIDANCE_INDEX, GUIDANCE_FINGERPRINTS]));
-    expect(file(adopted(), GUIDANCE_FINGERPRINTS)).toBe(file(canonicalRoot, GUIDANCE_FINGERPRINTS));
+    const target = adopted();
+    for (const entry of entriesOf(target)) expect(guidanceFingerprint(file(target, entry.path))).toBe(entry.sha256);
   });
 
   it("refuses a stale, missing, orphaned or ambiguous fingerprint", () => {
@@ -373,15 +374,16 @@ describe("compact Way instruction delivery", () => {
     expect(() => guidanceEntries(mixed)).toThrow(/every entry or none/);
 
     const root = adopted();
+    const adoptedEntries = entriesOf(root);
     put(root, GUIDANCE_FINGERPRINTS, stale);
     expect(audit(root).problems).toContain("Stale mandatory guidance: docs/agent-guidance/pull-requests.md. Refresh adoption before its operation.");
     expect(() => renderGuidanceRetrieval(root)).toThrow(/Stale mandatory guidance/);
     rmSync(path.join(root, GUIDANCE_FINGERPRINTS));
     expect(audit(root).problems).toContainEqual(expect.stringContaining(`Missing mandatory guidance: ${GUIDANCE_FINGERPRINTS}`));
     // A legacy adopter keeps working with its inline fingerprints, and a stale inline one still fails.
-    put(root, GUIDANCE_INDEX, legacy);
+    put(root, GUIDANCE_INDEX, JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: adoptedEntries }));
     expect(audit(root).problems).toEqual([]);
-    put(root, GUIDANCE_INDEX, JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: legacyEntries.map((entry) => entry.id === "learning" ? { ...entry, sha256: "0".repeat(64) } : entry) }));
+    put(root, GUIDANCE_INDEX, JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: adoptedEntries.map((entry) => entry.id === "learning" ? { ...entry, sha256: "0".repeat(64) } : entry) }));
     expect(audit(root).problems).toContain("Stale mandatory guidance: docs/agent-guidance/learning.md. Refresh adoption before its operation.");
   });
 

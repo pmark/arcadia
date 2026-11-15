@@ -1,5 +1,6 @@
 import { AGENTS_SECTION_END, AGENTS_SECTION_START, readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -10,7 +11,7 @@ import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { runWayPropagation, type CommandResult, type CommandRunner } from "../src/projects/wayPropagate.js";
-import { GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, guidanceEntries, guidanceFingerprint, renderGuidanceIndex } from "../src/projects/agentGuidance.js";
+import { GUIDANCE_FINGERPRINTS, GUIDANCE_INDEX, guidanceEntries, guidanceFingerprint, guidanceResourcesForTarget, renderGuidanceIndex } from "../src/projects/agentGuidance.js";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const canonicalConstitution = readFileSync(path.join(repoRoot, "CONSTITUTION.md"), "utf8");
@@ -33,6 +34,49 @@ function writeCurrentAdoption(repo: string): void {
 }
 
 describe("computeWayPropagationPlan", () => {
+  it("delivers missing source-owned guidance with immutable references and matching fingerprints", () => {
+    const repo = tempRepo();
+    writeCurrentAdoption(repo);
+    const signal = readFileSync(path.join(repo, "docs/agent-guidance/signal.md"), "utf8");
+    const relay = readFileSync(path.join(repo, "docs/relay-driven-operations.md"), "utf8");
+    expect(signal).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/\.agents\/skills\/arcadia-signal\/SKILL\.md/);
+    expect(signal).toContain("Native skill discovery requires a separately installed skill");
+    expect(relay).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/\.agents\/skills\/arcadia-relay\/SKILL\.md/);
+    const entries = guidanceEntries(readFileSync(path.join(repo, GUIDANCE_INDEX), "utf8"), readFileSync(path.join(repo, GUIDANCE_FINGERPRINTS), "utf8"));
+    for (const entry of entries) expect(guidanceFingerprint(readFileSync(path.join(repo, entry.path), "utf8"))).toBe(entry.sha256);
+    expect(computeWayPropagationPlan(repo).changes).toEqual([]);
+  });
+
+  it("preserves a locally installed skill and fails closed if a pinned source changes", () => {
+    const repo = tempRepo();
+    const local = path.join(repo, ".agents/skills/arcadia-signal/SKILL.md");
+    mkdirSync(path.dirname(local), { recursive: true });
+    writeFileSync(local, "local skill\n");
+    writeCurrentAdoption(repo);
+    expect(readFileSync(path.join(repo, "docs/agent-guidance/signal.md"), "utf8")).toContain("../../.agents/skills/arcadia-signal/SKILL.md");
+    const read = (file: string) => file === ".agents/skills/arcadia-relay/SKILL.md" ? "changed" : existsSync(path.join(repoRoot, file)) ? readFileSync(path.join(repoRoot, file), "utf8") : null;
+    expect(() => guidanceResourcesForTarget(repo, read)).toThrow(/Source reference .*arcadia-relay.*changed or is missing/);
+  });
+
+  it("classifies source-only links so new dependencies cannot silently escape delivery", () => {
+    const index = JSON.parse(readFileSync(path.join(repoRoot, GUIDANCE_INDEX), "utf8")) as { entries: Array<{ path: string }> };
+    const manifest = JSON.parse(readFileSync(path.join(repoRoot, "docs/agent-guidance/source-references.json"), "utf8")) as { files: Record<string, string> };
+    for (const [file, hash] of Object.entries(manifest.files)) {
+      expect(createHash("sha256").update(readFileSync(path.join(repoRoot, file))).digest("hex"), `refresh the source reference for ${file}`).toBe(hash);
+    }
+    const delivered = new Set(index.entries.map((entry) => entry.path));
+    const local = new Set(["AGENTS.md", "CONSTITUTION.md", "MISSION_LOG.md", "OPERATOR_CONTEXT.md", "START_HERE.md", "docs/AGENT_ORIENTATION.md", "docs/COMMANDS.md"]);
+    for (const entry of index.entries) {
+      const text = readFileSync(path.join(repoRoot, entry.path), "utf8");
+      for (const match of text.matchAll(/\]\(([^\s)#]+)(?:#[^\s)]*)?\)/g)) {
+        const link = match[1];
+        if (/^(?:[a-z]+:|\/|#)/i.test(link)) continue;
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(entry.path), link));
+        if (!existsSync(path.join(repoRoot, target)) || delivered.has(target) || local.has(target)) continue;
+        expect(Object.hasOwn(manifest.files, target), `${entry.path} -> ${target} needs source or target-local classification`).toBe(true);
+      }
+    }
+  });
   it("reports no changes for a repository that is already current", () => {
     const repo = tempRepo();
     writeCurrentAdoption(repo);

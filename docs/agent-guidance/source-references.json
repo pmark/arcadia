@@ -1,0 +1,29 @@
+{
+  "revision": "ee71bda98504c0ba7a070468e909c15bb93f5167",
+  "files": {
+    ".agents/skills/arcadia-design/SKILL.md": "37fed7099f77d43fef3f1a69f3ea1ce8a8448593b10495ab913d5a789e4d27e6",
+    ".agents/skills/arcadia-hacker/SKILL.md": "b91ec2dd3d0870d36ef7b66679605de3948a9337a1fc9692997032126fcc6d1f",
+    ".agents/skills/arcadia-process-critic/SKILL.md": "d83b74e771791a463062a374227190bd41d2d39b7f47c247008c482d4ed9d2e8",
+    ".agents/skills/arcadia-relay/SKILL.md": "51d81c050a995a939ab919e927e0f6ff243fea8fce5494a1e60c50437db9f9aa",
+    ".agents/skills/arcadia-release-investigator/SKILL.md": "22718d4524ee7dfedd9004f7fa8094c5ebcbe1b645dd183c67b901443c661fba",
+    ".agents/skills/arcadia-role/SKILL.md": "36ef4109efd84c928b0fd0a12c811e1e526c83e713ba531925358c81e998492e",
+    ".agents/skills/arcadia-signal/SKILL.md": "3e53d8d860a7451c0ebe1aeb9a74012ca2774155504c465612900f12846cd8c1",
+    ".agents/skills/arcadia-supervisor/SKILL.md": "3e6f0df13aed6c54f171390a781944a81dfa91f65ca78cdd5d2b26f2cfc36d81",
+    "docs/arcadia-semantics.md": "9c40f76a5e7a965ff9f47981cf6e1561488dec13800dee229e9f1f2d16c224d5",
+    "docs/articles/README.md": "aa2a8688bb66e3bd37f2cbf0e75ee1d0b49749e14d57f8fb02744ba0eacabf4d",
+    "docs/behavioral-testing.md": "9fa5bfe63ad4c2a4d7c42ab7b9625040804fd617f01cfda8826ff8f55a062ff8",
+    "docs/decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md": "794d9f01ffdb14d9ba0f7f54bee50a4872a533ae8d8c08d7151729ebbd8e2422",
+    "docs/decisions/0128-record-the-operator-authorized-bounded-luna-hello-world-attempt-bug-repair.md": "f4072b04d9500f2c2711aaa84b68db2a92449e1dd528dd9c4097c338e654a9ce",
+    "docs/design/relay/brief.md": "f46d8bb9984324dea74fe8fd835be36590200567a2eabf9505f93a82bd1550b3",
+    "docs/model-selection.md": "f920bfd586418f11e4d509a8650392c07a0ab927cefb4b5d772515ac4376d8da",
+    "docs/plans/ask-queues-approved-work-or-admits-bounded-independent-sessions-without.md": "9bf293d6875c8f6b78ffe3432603372072ae119d822c742fa6868376e35adce5",
+    "docs/plans/execute-one-approved-named-run-safely-with-production-off.md": "a29df835aba9099812717c28e9fcb35fd2f7a47841257600bd90a9b2e01c8c23",
+    "docs/plans/relay-use-drives-planned-work-that-production-performs.md": "d94d8b4153cfe09f14eef4d261d3e93d1fce0c4d9b3b5d28de0cf7837f3e0cd5",
+    "docs/reports/approved-run-infrastructure-plan-2026-10-16.md": "d9b23ef8f6556649966c725b2fd05301fa898e05379fe45bb25f7a3fbf8e0411",
+    "docs/reports/handoffs/20261016T0752Z-approved-run-infrastructure-release-manager-20261016.md": "75184f9ccbb2b353a5704222b8a4f1b05ce94cbe5d3cf3272e87c63f55ea8b39",
+    "docs/reports/scout-bounded-loop-2026-10-13.md": "5b0267411a07a78efb5265108e88586e709a5c11623322a59ac302a44ac781ac",
+    "docs/reports/scout-isolation-preflight-2026-10-13.md": "e6f7505efb9c664667130107b5ac95a8242d7dc1fcc4a53111fa844150a66cd3",
+    "docs/reports/scout-replacement-scope-2026-10-13.md": "238da741462fadd3960d619604823e5d52b724ae4b1f135207dc86113c385585",
+    "docs/strategy/field-notes-production.md": "b9c5e635eeaf8558c6532939598dc9010a3c1460e55350b44f0cf0bb9756c570"
+  }
+}

@@ -26,7 +26,7 @@ import type { PlanDoc, ProjectDoc } from "../docs/types.js";
 import { nowIso } from "../utils/time.js";
 import { seedControlDocuments, type SeedControlDocumentsResult } from "./controlDocuments.js";
 
-import { assertBootstrapBudget, assertGuidanceTarget, guidanceResources, inspectGuidanceDelivery } from "./agentGuidance.js";
+import { assertBootstrapBudget, assertGuidanceTarget, guidanceResourcesForTarget, inspectGuidanceDelivery } from "./agentGuidance.js";
 
 export const ARCADIA_CONTEXT_DIR = ".arcadia";
 export const AGENT_CONTEXT_POLICY_FILE = "AGENT_CONTEXT_POLICY.md";
@@ -167,7 +167,7 @@ export function setupArcadiaProjectContext(input: {
 }): SetupProjectContextResult {
   const resolved = resolveSetupTarget(input);
   const context = inspectRepository(resolved.repoPath, resolved.metadata);
-  const resources = guidanceResources(readAdoptedFile);
+  const resources = guidanceResourcesForTarget(resolved.repoPath, readAdoptedFile);
   const preparedResources = resources.map((resource) => {
     const target = path.join(resolved.repoPath, resource.path);
     assertGuidanceTarget(resolved.repoPath, resource.path);
