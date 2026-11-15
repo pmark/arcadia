@@ -207,11 +207,11 @@ actions:
     references: []
   - id: pin-design-text-value
     title: Pin that the design text helper returns non-blank strings unchanged and null otherwise, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the design text helper returns non-blank strings unchanged and null otherwise, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-design-text-value-d0e9a64bf9cb; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-design-text-value
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-design-text-value
+current_action: pin-design-list-items
 ---
 
 # Record run unattended test pins 20261113 part 3
