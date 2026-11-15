@@ -133,7 +133,10 @@ export function guidanceResourcesForTarget(repoRoot: string, readSource: (file: 
   // Only a committed target will survive a clean checkout of the generated PR.
   // Untracked, ignored and merely staged files must not make its links local.
   let committed = new Set<string>();
-  try { committed = new Set(execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", "HEAD"], { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\0").filter(Boolean)); }
+  try {
+    const entries = execFileSync("git", ["ls-tree", "-r", "-z", "HEAD"], { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\0");
+    committed = new Set(entries.map((entry) => /^100(?:644|755) blob [a-f0-9]+\t([\s\S]+)$/.exec(entry)?.[1]).filter((entry): entry is string => !!entry));
+  }
   catch { /* A non-Git target has no proven committed dependencies. */ }
   let changed = false;
   const adapted = resources.map((resource) => {

@@ -1,7 +1,7 @@
 import { AGENTS_SECTION_END, AGENTS_SECTION_START, readAgentsContextBlock, setupArcadiaProjectContext } from "../src/projects/contextSetup.js";
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,6 +75,21 @@ describe("computeWayPropagationPlan", () => {
       expect(signal).toContain("Do not run Signal here");
       expect(signal).toMatch(/github\.com\/pmark\/arcadia\/blob\/[a-f0-9]{40}\/\.agents\/skills\/arcadia-signal\/SKILL\.md/);
     }
+  });
+
+  it("does not rely on committed skill symlinks whose targets may be absent", () => {
+    const repo = tempRepo();
+    execFileSync("git", ["init", "-q"], { cwd: repo });
+    const local = path.join(repo, ".agents/skills/arcadia-signal/SKILL.md");
+    mkdirSync(path.dirname(local), { recursive: true });
+    writeFileSync(path.join(repo, "untracked-skill.md"), "private local skill\n");
+    symlinkSync("../../../untracked-skill.md", local);
+    execFileSync("git", ["add", ".agents/skills/arcadia-signal/SKILL.md"], { cwd: repo });
+    execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.test", "commit", "-qm", "fixture"], { cwd: repo });
+    const read = (file: string) => existsSync(path.join(repoRoot, file)) ? readFileSync(path.join(repoRoot, file), "utf8") : null;
+    const signal = guidanceResourcesForTarget(repo, read).find((resource) => resource.path === "docs/agent-guidance/signal.md")!.content;
+    expect(signal).toContain("Do not run Signal here");
+    expect(signal).toContain("github.com/pmark/arcadia/blob/");
   });
 
   it("classifies source-only links so new dependencies cannot silently escape delivery", () => {
