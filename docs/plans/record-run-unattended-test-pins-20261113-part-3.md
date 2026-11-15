@@ -247,11 +247,11 @@ actions:
     references: []
   - id: pin-design-is-object
     title: Pin that the design object check accepts plain objects and rejects null, arrays and scalars, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the design object check accepts plain objects and rejects null, arrays and scalars, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-design-is-object-561f1db8cdf0; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-design-is-object
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-design-is-object
+current_action: pin-design-require-text
 ---
 
 # Record run unattended test pins 20261113 part 3
