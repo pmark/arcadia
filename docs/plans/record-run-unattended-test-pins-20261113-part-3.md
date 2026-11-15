@@ -127,11 +127,11 @@ actions:
     references: []
   - id: pin-dashboard-base-url
     title: Pin that the dashboard base URL keeps only trimmed http or https origins, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the dashboard base URL keeps only trimmed http or https origins, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-dashboard-base-url-84e947b275b3; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-dashboard-base-url
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-dashboard-base-url
+current_action: pin-safe-text-collapse
 ---
 
 # Record run unattended test pins 20261113 part 3
