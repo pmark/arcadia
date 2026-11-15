@@ -365,11 +365,11 @@ actions:
     references: []
   - id: pin-leak-unverifiable-reason
     title: Pin the reason a leak check snapshot is reported as unverifiable, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the reason a leak check snapshot is reported as unverifiable, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-leak-unverifiable-reason-9f330827ed3c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-leak-unverifiable-reason
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-leak-unverifiable-reason
+current_action: pin-model-tier-of
 ---
 
 # Record run unattended test pins 20261113 part 3
