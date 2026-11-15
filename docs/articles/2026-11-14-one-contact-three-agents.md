@@ -33,11 +33,11 @@ Nothing in the repository records PPN usage of this team. That part is the opera
 
 **Rowan is not tied to one coding agent.** The profile applies "whether it runs in Codex, Claude Code or OpenCode" (observed: `docs/arcadia-semantics.md:165-166`). Other runtimes such as Antigravity are explicitly unsupported today (observed: `docs/plans/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions.md:94`). "Any coding agent" is the direction, not the present.
 
-**Rowan branches out into sub-agents.** Decision 0114 lets a top-level Lead request a planner, plan-critic, implementer or researcher one level down; delegates never delegate (observed: `docs/agent-guidance/session-roles-and-briefs.md:29-32`). Rowan resolves each launch's identity, model and effort with `arcadia role brief`, starts on the cheapest tier and gives the helper its brief (observed: `docs/agent-guidance/helper-launch.md:8-30`). The helper reports to Rowan, which is the single contact for the sessions it supervises (operator-stated; consistent with `AGENTS.md:45-47`, where helpers never message the operator). Reviewers and QA are separate sessions, not Rowan's children (observed: `session-roles-and-briefs.md:33-34`, `:279-282`).
+**Rowan branches out into sub-agents.** Decision 0114 lets a top-level Lead request a planner, plan-critic, implementer or researcher one level down; delegates never delegate (observed: `docs/agent-guidance/session-roles-and-briefs.md:29-32`). Rowan resolves each launch's identity, model and effort with `arcadia role brief`, starts on the cheapest tier and gives the helper its brief (observed: `docs/agent-guidance/helper-launch.md:8-30`). The helper reports to Rowan, which is the single contact for the sessions it supervises (operator-stated; consistent with `AGENTS.md:45-47`, where helpers never message the operator). Reviewers and QA are separate sessions, not Rowan's children (observed: `session-roles-and-briefs.md:31-32`, `:279-282`).
 
 **Flynn is Rowan's helper.** Flynn, the Momentum Keeper, is a supervisor-class helper under Rowan. It finds where the critical path is idle, proposes one route to its supervising session, and never merges, spends, touches credentials or messages the operator (observed: `session-roles-and-briefs.md:165-186`). So the operator talks to Signal and Rowan; Flynn reports to Rowan.
 
-**Not every session runs in tmux.** Rowan and Signal successor sessions launch through Arcadia's tmux launcher, with proof that the first prompt arrived (observed: `src/coordinator/relay.ts:26-31`). Flynn runs as a background Claude session (`claude --bg --remote-control`) and never uses tmux (observed: `session-roles-and-briefs.md:194-199`). Production workers use their own launch path.
+**Not every session runs in tmux.** Rowan and Signal successor sessions launch through Arcadia's tmux launcher, with proof that the first prompt arrived (observed: `src/coordinator/relay.ts:26-31`, `:49` where `RELAY_ROLES` is rowan and signal, and `:229`). The launch runs because Decision 0191, "may arcadia's deterministic relay launch successor coordinator sessions", is approved with answer A (`docs/decisions/0191-may-arcadia-s-deterministic-relay-launch-successor-coordinator-sessions-signal.md:25`). Flynn runs as a background Claude session (`claude --bg --remote-control`) and never uses tmux (observed: `session-roles-and-briefs.md:194-199`). Production workers use their own launch path.
 
 ## Where the operator's picture runs ahead
 
@@ -63,12 +63,12 @@ Two gaps are submitted as proposals: Relay's role relative to Signal and the sin
 | 7 | Rowan resolves identity, model and effort per helper launch | Observed | `helper-launch.md:8-30` |
 | 8 | Rowan is the single contact for its sub-agents | Operator-stated | Consistent with `AGENTS.md:45-47` (helpers never message the operator) |
 | 9 | Flynn is Rowan's helper and never messages the operator | Observed | `session-roles-and-briefs.md:165-186` |
-| 10 | Rowan/Signal successors launch via tmux with first-prompt proof | Observed | `src/coordinator/relay.ts:26-31` |
+| 10 | Rowan/Signal successors launch via tmux with first-prompt proof | Observed | `src/coordinator/relay.ts:26-31`, `:49`, `:229`; Decision 0191 approved, answer A (`docs/decisions/0191-may-arcadia-s-deterministic-relay-launch-successor-coordinator-sessions-signal.md:25`) |
 | 11 | Flynn runs as a background Claude session and never uses tmux | Observed | `session-roles-and-briefs.md:194-199` |
 | 12 | Relay is designed, not built; absorbs Signal | Observed | `relay-mode.md:6`; `AGENTS.md:44-45` |
 | 13 | Relay could watch over all three | Direction | Operator hope; the design says absorb, not watch |
 | 14 | Relay routing: rules, local model (probed), frontier | Observed | `decision-interface.md:10-16` |
 | 15 | Any coding agent, not just three | Direction | Not current fact |
-| 16 | Concurrent Actions | Direction | Unproven (`unify-interactive-...md`, "prove-shared-enrollment-at-concurrency-one") |
+| 16 | Concurrent Actions | Direction | Unproven (`docs/plans/unify-interactive-and-unattended-coordination-with-safe-concurrent-actions.md:12`, `:44`, "prove-shared-enrollment-at-concurrency-one") |
 | 17 | Production Off pending START | Observed | `AGENTS.md:27` |
 | 18 | Repository will reflect the operator's picture | Direction | Operator hope |
