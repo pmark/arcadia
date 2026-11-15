@@ -4,7 +4,7 @@ type: decision
 id: "0234"
 slug: amend-decision-0120-may-the-field-notes-writers-flynn-the-chronicler-and-clara
 project: arcadia
-status: open
+status: approved
 question: "Amend Decision 0120: may the Field Notes writers Flynn (the Chronicler) and Clara publish automatically to one combined Field Notes feed on GitHub Pages, each post in its writer's own Iris-designed style, with Flynn posting up to four digests a day?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: prove-the-rowan-supervisor-attention-loop
-updated: 2026-11-15
+updated: 2026-11-14
+answer: "A: Field Notes on GitHub Pages becomes the destination for automatic multi-writer publishing"
+decided: 2026-11-14
 ---
 
 # Decision 0234: Amend Decision 0120: may the Field Notes writers Flynn (the Chronicler) and Clara publish automatically to one combined Field Notes feed on GitHub Pages, each post in its writer's own Iris-designed style, with Flynn posting up to four digests a day?
