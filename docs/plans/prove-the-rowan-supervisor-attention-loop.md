@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: prove-the-rowan-supervisor-attention-loop
 project: arcadia
-status: draft
+status: active
 milestone: Prove the Rowan supervisor attention loop
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -29,6 +29,9 @@ actions:
     references: ["docs/agent-guidance/session-roles-and-briefs.md", "docs/agent-guidance/coordinator-handoff-design.md", "docs/agent-guidance/native-mail-checkpoints.md", "docs/plans/operator-attention-routing.md", "docs/relay-driven-operations.md", "https://github.com/pmark/arcadia/issues/1708", "docs/agent-guidance/signal.md", "docs/arcadia-semantics.md"]
 questions: []
 decisions: []
+current_action: prove-rowan-supervisor-attention-loop
+recommended_model: gpt-5.6-terra
+recommended_reasoning_effort: medium
 ---
 
 # Prove the Rowan supervisor attention loop
