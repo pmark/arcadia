@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: record-run-unattended-test-pins-20261113-part-3
 project: arcadia
-status: active
+status: complete
 milestone: Record run unattended test pins 20261113 part 3
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -385,11 +385,11 @@ actions:
     references: []
   - id: pin-model-tier-of
     title: Pin that a model maps back to the tier whose binding for the agent names it, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a model maps back to the tier whose binding for the agent names it, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-model-tier-of-39a3d7ba352e; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-model-tier-of
     clarification: clarified
     confidence: high
@@ -407,7 +407,6 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-model-tier-of
 ---
 
 # Record run unattended test pins 20261113 part 3
