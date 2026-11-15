@@ -5,7 +5,7 @@ Delivery update: the React sky and routing scaffold subsequently merged in [PR #
 - Specification: docs/design/arcadia-conversational-workspace.md.
 - Source: the operator's requests and feedback in this session, beginning with the spatial hierarchy and continuing through conversational UI, concept generation, Mission Control sky integration, identity feedback, and the request for a final session design document.
 - Destination: the operator clarified that the design specification belongs in docs/design and the companion article belongs in docs/articles.
-- Assets: three generated concept images and the supplied logo reference, copied into docs/design/assets/arcadia-conversational-workspace/ so the document does not depend on temporary attachment paths.
+- Assets: three generated concept images and the supplied logo reference, kept in assets/arcadia-conversational-workspace/ so the document does not depend on temporary attachment paths (an earlier byte-identical copy under docs/design/assets/ was removed to keep the tracked tree under its cap; see Issue #2689).
 - Generation: built-in image generation; images are illustrative raster concepts. The three source prompts are recorded in this conversation's tool calls.
 
 ## Claims and limits

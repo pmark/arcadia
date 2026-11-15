@@ -32,7 +32,7 @@ Saved as a repository article draft at the operator's requested destination. Sit
 
 The operator clarified that this session produces two artifacts: the conversational article here, and the product design specification in docs/design/arcadia-conversational-workspace.md. The article now also captures the subsequent conversation about multimedia messaging, contextual views, the Mission Control sky, and a simpler identity. These remain proposed capabilities and design preferences.
 
-The article includes the four-view proposed MVP concept at ../design/assets/arcadia-conversational-workspace/concept-04-mvp-four-views.png. Its fictional story illustrates intended capture, proposal review, draft review, and navigation; it does not establish shipped functionality.
+The article includes the four-view proposed MVP concept at assets/arcadia-conversational-workspace/concept-04-mvp-four-views.png (repository root). Its fictional story illustrates intended capture, proposal review, draft review, and navigation; it does not establish shipped functionality.
 
 The mobile concept and cross-device discussion were added after the operator requested an iPhone navigation view and expressed a VR/AR/XR portability ambition. The illustration is hypothetical and does not establish device support. Asset: assets/arcadia-conversational-workspace/concept-05-iphone-navigation.png.
 
