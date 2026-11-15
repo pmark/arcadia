@@ -6,6 +6,12 @@ settlement carried by PR #2685). Derived 2026-11-14/15 (all times UTC; Pacific
 is UTC−8). This is evidence, not authority. Production stayed **Off** throughout
 (policy revision 131, epoch 70, zero live admissions, observed 00:32:05Z).
 
+**Queue-admission receipts.** The Plan was created by `agent-ask settle --apply`
+receipt `asksettle_025ff497286241a9a0` (commit `09fd6692a`). The Action was
+admitted to the queue, with this Project's queue segment replaced and the Action
+selected, by receipt `asksettle_13cb4b8400ac4b918b` (commit `79dc0e282`, queue
+revision 315, position 0). Both settlement commits are carried by PR #2685.
+
 **Verdict: Arcadia is not 100% ready for unattended, concurrent, cross-project
 Production.** This candidate builds and proves the attention loop's missing
 pieces in replay and in an attended CLI rehearsal. Five gaps below still
