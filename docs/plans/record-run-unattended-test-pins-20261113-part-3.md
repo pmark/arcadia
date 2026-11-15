@@ -147,11 +147,11 @@ actions:
     references: []
   - id: pin-safe-text-collapse
     title: Pin that safe text collapses whitespace, truncates to the limit and reads non-strings as empty, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that safe text collapses whitespace, truncates to the limit and reads non-strings as empty, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-safe-text-collapse-88d832bc1420; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-safe-text-collapse
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-safe-text-collapse
+current_action: pin-design-is-date
 ---
 
 # Record run unattended test pins 20261113 part 3
