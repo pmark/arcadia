@@ -4,7 +4,7 @@ type: decision
 id: "0241"
 slug: may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so
 project: arcadia
-status: open
+status: approved
 question: May one standing START grant replace the daily approval of Decision 0173, so that unattended production on the Plan you chose continues without a daily press or your words in any chat?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -28,6 +28,8 @@ options:
 confidence: high
 plan: record-run-unattended-test-pins-20261113-part-3
 updated: 2026-11-15
+answer: E. Standing grant over your approved work queue
+decided: 2026-11-15
 ---
 
 # Decision 0241: May one standing START grant replace the daily approval of Decision 0173, so that unattended production on the Plan you chose continues without a daily press or your words in any chat?
