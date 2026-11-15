@@ -25,6 +25,11 @@ jobs:
       - run: mise exec -- pnpm lint
       - name: Validate default agent instruction delivery
         run: mise exec -- pnpm check:agent-guidance
+      - name: Verify pinned guidance source revision
+        run: |
+          revision=$(mise exec -- node -e 'const r = require("./docs/agent-guidance/source-references.json").revision; if (!/^[a-f0-9]{40}$/.test(r)) process.exit(1); process.stdout.write(r)')
+          git fetch --no-tags --depth=1 origin "$revision"
+          mise exec -- node --import tsx scripts/check-guidance-source-references.ts
       - name: Validate every generated operator action
         run: mise exec -- pnpm check:operator-scripts
       - name: Validate the session ledger

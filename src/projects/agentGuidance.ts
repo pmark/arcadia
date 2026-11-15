@@ -2,6 +2,7 @@ import { existsSync, lstatSync, readFileSync, realpathSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { validationError } from "../cli/errors.js";
 
 export const GUIDANCE_INDEX = "docs/agent-guidance/index.json";
@@ -129,25 +130,36 @@ export function guidanceResourcesForTarget(repoRoot: string, readSource: (file: 
   catch { throw validationError("Invalid source-reference manifest."); }
   if (!/^[a-f0-9]{40}$/.test(manifest.revision) || !manifest.files || typeof manifest.files !== "object") throw validationError("Invalid source-reference manifest.");
   const delivered = new Set(resources.map((resource) => resource.path));
+  // Only a committed target will survive a clean checkout of the generated PR.
+  // Untracked, ignored and merely staged files must not make its links local.
+  let committed = new Set<string>();
+  try { committed = new Set(execFileSync("git", ["ls-tree", "-r", "--name-only", "-z", "HEAD"], { cwd: repoRoot, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).split("\0").filter(Boolean)); }
+  catch { /* A non-Git target has no proven committed dependencies. */ }
   let changed = false;
   const adapted = resources.map((resource) => {
     if (!resource.path.endsWith(".md")) return resource;
     let missingSignalSkill = false;
-    const content = resource.content.replace(/\]\(([^\s)#]+)(#[^\s)]*)?\)/g, (match, link: string, fragment: string | undefined) => {
+    const missingSkills = new Set<string>();
+    let content = resource.content.replace(/\]\(([^\s)#]+)(#[^\s)]*)?\)/g, (match, link: string, fragment: string | undefined) => {
       if (/^(?:[a-z]+:|\/|#)/i.test(link)) return match;
       const target = path.posix.normalize(path.posix.join(path.posix.dirname(resource.path), link));
       const expected = Object.hasOwn(manifest.files, target) ? manifest.files[target] : undefined;
-      if (!expected || delivered.has(target) || existsSync(path.join(repoRoot, target))) return match;
+      if (!expected || delivered.has(target) || (committed.has(target) && existsSync(path.join(repoRoot, target)))) return match;
       const source = readSource(target);
       if (!/^[a-f0-9]{64}$/.test(expected) || !source || createHash("sha256").update(source).digest("hex") !== expected) {
         throw validationError(`Source reference ${target} changed or is missing; refresh the reviewed source-reference pin before propagation.`);
       }
       changed = true;
       if (target === ".agents/skills/arcadia-signal/SKILL.md") missingSignalSkill = true;
+      if (target.startsWith(".agents/skills/")) missingSkills.add(target.split("/")[2]);
       return `](https://github.com/pmark/arcadia/blob/${manifest.revision}/${target}${fragment ?? ""})`;
     });
+    if (missingSkills.size) {
+      const boundary = `\n> This Project does not deliver ${[...missingSkills].join(", ")} or its runtime dependencies. The linked source is a reviewed snapshot for reference. Do not run those workflows here; use the configured Arcadia source checkout with its skills and runtime available. This reference grants no authority.\n`;
+      content = content.replace(/^(#[^\n]*\n)/, `$1${boundary}`);
+    }
     if (!missingSignalSkill || resource.path !== "docs/agent-guidance/signal.md") return { ...resource, content };
-    const adjusted = content.replace("handoff names the next Signal. Codex and OpenCode discover the skill in\n`.agents/skills/`. Claude Code uses the checked-in `.claude/skills/arcadia-signal`\nsymlink.", "handoff names the next Signal. Read the linked source when the skill is not\ninstalled locally. Native skill discovery requires a separately installed skill;\nreading it grants no authority.");
+    const adjusted = content.replace("handoff names the next Signal. Codex and OpenCode discover the skill in\n`.agents/skills/`. Claude Code uses the checked-in `.claude/skills/arcadia-signal`\nsymlink.", "handoff names the next Signal. This Project does not deliver the Signal skill\nor its runtime dependencies. Do not run Signal here: start or resume it in the\nconfigured Arcadia source checkout with its skill and runtime available. The\nlinked source is a reviewed snapshot for reference, not an installation or authority.");
     if (adjusted === content) throw validationError("Signal discovery guidance changed; review its adopter fallback before propagation.");
     return { ...resource, content: adjusted };
   });
@@ -163,6 +175,18 @@ export function guidanceResourcesForTarget(repoRoot: string, readSource: (file: 
     index.content = renderGuidanceIndex(parsed);
   }
   return adapted;
+}
+
+/** CI and release validation prove the pin against Git, not just this checkout. */
+export function verifyGuidanceSourceRevision(repoRoot: string, manifest: { revision: string; files: Record<string, string> }): void {
+  if (!/^[a-f0-9]{40}$/.test(manifest.revision) || !manifest.files || typeof manifest.files !== "object") throw validationError("Invalid source-reference manifest.");
+  for (const [file, expected] of Object.entries(manifest.files)) {
+    if (!/^(?:docs\/|\.agents\/skills\/)[a-zA-Z0-9._/-]+$/.test(file) || file.split("/").includes("..") || !/^[a-f0-9]{64}$/.test(expected)) throw validationError(`Invalid source reference: ${file}`);
+    let bytes: Buffer;
+    try { bytes = execFileSync("git", ["show", `${manifest.revision}:${file}`], { cwd: repoRoot, stdio: ["ignore", "pipe", "ignore"] }); }
+    catch { throw validationError(`Pinned source revision or file is unavailable: ${manifest.revision}:${file}`); }
+    if (createHash("sha256").update(bytes).digest("hex") !== expected) throw validationError(`Pinned source revision does not match ${file}.`);
+  }
 }
 
 export function guidanceFingerprint(text: string): string {
