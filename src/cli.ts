@@ -40,6 +40,12 @@ import {
   runNativeMailInboxCommand,
   runNativeMailReportCommand,
   runNativeMailStatusCommand,
+  runNativeMailOverdueCommand,
+  renderNativeMailOverdueSuccess,
+  runNativeMailRelayCommand,
+  renderNativeMailRelaySuccess,
+  runNativeMailTimingCommand,
+  renderNativeMailTimingSuccess,
   runNativeMailConsumeCommand,
   runNativeMailRecipientStateCommand,
   type NativeMailConsumeOptions,
@@ -50,7 +56,10 @@ import {
   type NativeMailSendOptions,
   type NativeMailInboxOptions,
   type NativeMailReportOptions,
-  type NativeMailStatusOptions
+  type NativeMailStatusOptions,
+  type NativeMailOverdueOptions,
+  type NativeMailRelayOptions,
+  type NativeMailTimingOptions
 } from "./commands/nativeMail.js";
 import { renderHostAuditPreviewSuccess, runHostAuditPreviewCommand } from "./commands/auditPreview.js";
 import { renderAskRuleTestSuccess, runAskRuleTestCommand } from "./commands/askRule.js";
@@ -1577,6 +1586,35 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: NativeMailStatusOptions & { json?: boolean }) =>
     runCliAction("native-mail.status", options, () => runNativeMailStatusCommand(options), renderNativeMailStatusSuccess)
+  );
+  addJsonOption(nativeMail.command("overdue")
+    .description("Read-only: unacknowledged mail older than the ack window, across recipients and generations, so a successor sees what is pending (undispatched, unacknowledged or stale)")
+    .option("--project-slug <slug>", "Limit to one Project")
+    .option("--ack-within-seconds <n>", "Acknowledgment window in seconds (default 60)")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: NativeMailOverdueOptions & { json?: boolean }) =>
+    runCliAction("native-mail.overdue", options, () => runNativeMailOverdueCommand(options), renderNativeMailOverdueSuccess)
+  );
+  addJsonOption(nativeMail.command("relay")
+    .description("Relay one acknowledged worker request to the operator through the ping outbox: only a blocker with readyAction, consequence and evidence pings; results and progress stay in the digest; a replay never pings twice")
+    .requiredOption("--message-id <id>", "Acknowledged request mail id")
+    .requiredOption("--project-slug <slug>", "Project slug")
+    .requiredOption("--plan-slug <slug>", "Plan slug")
+    .requiredOption("--recipient-incarnation <id>", "This coordinator's incarnation id")
+    .requiredOption("--recipient-generation <id>", "This coordinator's generation")
+    .requiredOption("--actor <identity>", "Resolved coordinator identity relaying")
+    .option("--channel <alias>", "Ping channel alias")
+    .option("--link <url>", "Link for the operator")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: NativeMailRelayOptions & { json?: boolean }) =>
+    runCliAction("native-mail.relay", options, () => runNativeMailRelayCommand(options), renderNativeMailRelaySuccess)
+  );
+  addJsonOption(nativeMail.command("timing")
+    .description("Read-only: emitted, acknowledged, queued and presented UTC times for one relayed mail")
+    .requiredOption("--message-id <id>", "Mail message id")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: NativeMailTimingOptions & { json?: boolean }) =>
+    runCliAction("native-mail.timing", options, () => runNativeMailTimingCommand(options), renderNativeMailTimingSuccess)
   );
 
   const action = program.command("action").description("Operate on governed Actions");
