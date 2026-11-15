@@ -345,11 +345,11 @@ actions:
     references: []
   - id: pin-days-until-due
     title: Pin the signed fractional days until an orientation entry is due, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the signed fractional days until an orientation entry is due, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-days-until-due-2668c210d720; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-days-until-due
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-days-until-due
+current_action: pin-leak-unverifiable-reason
 ---
 
 # Record run unattended test pins 20261113 part 3
