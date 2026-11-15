@@ -1,0 +1,8 @@
+agent_ask: v1
+request_id: activate-standing-autonomy-20261115b
+project: arcadia
+intent: plan
+target_ref: plan/draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
+requested_authority: propose
+desired_result: Activate the standing-autonomy Plan at decide-standing-start-grant, now that Plan 3 is complete; its nine Actions (the original five plus Mira's four card-integrity Actions, merged in #2729) stay as drafted and the finished Plan 3 stays complete.
+rationale: "Operator order, 2026-11-15 about 12:50 PM PST (relayed by Signal 12 from its transcript 9e11e0ee-1924-478f-b8a6-4efd537a92dc): 'Yes, autonomy first', so the standing-autonomy Plan runs before the host-the-coordinators Plan. Signal verifies the operator's words under Decision 0229 before the tap, and the tap on the published runner action is the operator's own consent; this Ask only proposes. Activation grants no production START and answers no Decision: production stays Off. Action 1 submits the standing-grant Decision (Decision 0241, since answered E on 2026-11-15 and merged in #2728); the option E grant is not live until the card-integrity Actions are built. Supersedes the stale card activate-standing-autonomy-20261115, which named five Actions."
