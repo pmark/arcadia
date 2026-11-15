@@ -9,7 +9,6 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Prove the Rowan supervisor attention loop
 active_plan: prove-the-rowan-supervisor-attention-loop
 updated: 2026-11-15
-current_action: prove-rowan-supervisor-attention-loop
 ---
 
 # Arcadia

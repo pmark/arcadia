@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: prove-the-rowan-supervisor-attention-loop
 project: arcadia
-status: active
+status: complete
 milestone: Prove the Rowan supervisor attention loop
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -11,10 +11,10 @@ updated: 2026-11-15
 actions:
   - id: prove-rowan-supervisor-attention-loop
     title: Implement and demonstrate one inspectable worker-to-Rowan-to-operator attention round trip with portable Arcadia onboarding and explicit coordinator custody.
-    status: open
+    status: done
     responsibility: agent
     effort: session
-    next_action: Implement and demonstrate one inspectable worker-to-Rowan-to-operator attention round trip with portable Arcadia onboarding and explicit coordinator custody.
+    next_action: Completed via Agent Ask complete-prove-rowan-supervisor-attention-loop-2026-11-15; no further action.
     expected_artifact: Evidence satisfying Agent Ask prove-rowan-supervisor-attention-loop
     clarification: clarified
     confidence: high
@@ -29,7 +29,6 @@ actions:
     references: ["docs/agent-guidance/session-roles-and-briefs.md", "docs/agent-guidance/coordinator-handoff-design.md", "docs/agent-guidance/native-mail-checkpoints.md", "docs/plans/operator-attention-routing.md", "docs/relay-driven-operations.md", "https://github.com/pmark/arcadia/issues/1708", "docs/agent-guidance/signal.md", "docs/arcadia-semantics.md"]
 questions: []
 decisions: []
-current_action: prove-rowan-supervisor-attention-loop
 recommended_model: gpt-5.6-terra
 recommended_reasoning_effort: medium
 ---
