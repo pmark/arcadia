@@ -173,6 +173,11 @@ export interface TidyCommandData {
 
 export interface TidyCommandOptions {
   repo?: string;
+  /**
+   * Test seam, not exposed by the CLI: replaces the real `lsof` cwd scan of
+   * the host at both read sites. Defaults to `liveProcessCwds`.
+   */
+  liveProcessCwds?: () => Set<string> | null;
   workspace?: string;
   /** Without this nothing is changed, whatever the verdicts say. */
   apply?: boolean;
@@ -255,7 +260,8 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
   const prMergeCommits = new Map<string, PrMergeRecord>(
     (prMerges ?? []).map((entry) => [entry.headBranch, { sha: entry.mergeCommitSha, headRefOid: entry.headRefOid, number: entry.number }])
   );
-  const liveCwds = liveProcessCwds();
+  const readLiveCwds = options.liveProcessCwds ?? liveProcessCwds;
+  const liveCwds = readLiveCwds();
 
   const protectionSchemaAvailable = workspacePath
     ? withReadOnlyDatabase(workspacePath, (db) => hasWorktreeReservationTable(db))
@@ -304,7 +310,7 @@ export function runTidyCommand(options: TidyCommandOptions = {}): CommandSuccess
       const currentWorktrees = listWorktrees(repoRoot);
       const currentByPath = new Map(currentWorktrees.map((record) => [pathKey(record.path), record]));
       const currentProtections = worktreeProtections(db, controlWorktree, currentWorktrees, now);
-      const currentLiveCwds = liveProcessCwds();
+      const currentLiveCwds = readLiveCwds();
       for (const entry of assessed) {
         if (entry.verdict !== "merged" && entry.verdict !== "missing" && entry.verdict !== "detached") continue;
         const record = currentByPath.get(pathKey(entry.path)) ?? { path: entry.path, head: "", branch: entry.branch ? `refs/heads/${entry.branch}` : null };

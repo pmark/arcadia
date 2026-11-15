@@ -345,13 +345,30 @@ describe("arcadia tidy — safety invariants", () => {
     run(tree, ["add", "-A"]);
     run(tree, ["commit", "-q", "-m", "b"]);
 
-    const result = data(runTidyCommand({ repo: root }));
+    const result = data(runTidyCommand({ repo: root, liveProcessCwds: () => new Set() }));
     const entry = result.worktrees.find((w) => w.path === tree);
 
-    expect(entry?.verdict).toBe("unmerged");
+    expect(entry?.verdict, `verdict reason: ${entry?.reason}`).toBe("unmerged");
     expect(entry?.ahead).toBe(2);
     expect(result.needsAttention.join("\n")).toContain("2 unmerged commits");
     expect(result.needsAttention.join("\n")).not.toContain("0 unmerged commits");
+  });
+
+  it("protects a detached worktree whose directory a live process holds, naming the reason", () => {
+    const root = repo();
+    const target = path.join(root, "..", `${path.basename(root)}-detached-live`);
+    run(root, ["worktree", "add", "-q", "--detach", target, "main"]);
+    temporary.push(target);
+    const tree = realpathSync(target);
+    writeFileSync(path.join(tree, "a.txt"), "a\n", "utf8");
+    run(tree, ["add", "-A"]);
+    run(tree, ["commit", "-q", "-m", "a"]);
+
+    const result = data(runTidyCommand({ repo: root, liveProcessCwds: () => new Set([tree]) }));
+    const entry = result.worktrees.find((w) => w.path === tree);
+
+    expect(entry?.verdict).toBe("protected");
+    expect(entry?.reason).toBe("A running process has this worktree (or a directory inside it) as its current directory.");
   });
 
   it("reports an unreadable detached head as a named unmerged verdict without aborting the run", () => {
@@ -369,10 +386,10 @@ describe("arcadia tidy — safety invariants", () => {
     writeFileSync(path.join(gitDir, "HEAD"), `${"1".repeat(40)}\n`, "utf8");
     const other = worktreeOn(root, "feature/clean", "branch-peer");
 
-    const result = data(runTidyCommand({ repo: root }));
+    const result = data(runTidyCommand({ repo: root, liveProcessCwds: () => new Set() }));
     const corruptEntry = result.worktrees.find((w) => w.path === corrupt);
 
-    expect(corruptEntry?.verdict).toBe("unmerged");
+    expect(corruptEntry?.verdict, `verdict reason: ${corruptEntry?.reason}`).toBe("unmerged");
     expect(corruptEntry?.ahead).toBe(-1);
     expect(corruptEntry?.reason).toMatch(/commit count unreadable/);
     expect(result.worktrees.find((w) => w.path === merged)?.verdict).toBe("detached");
