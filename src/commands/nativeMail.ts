@@ -20,6 +20,15 @@ import {
   type MailStatusView
 } from "../nativeMail/store.js";
 import { observeDirectionQa } from "../ask/directionVerification.js";
+import {
+  ATTENTION_DEFAULT_ACK_WITHIN_MS,
+  attentionTiming,
+  listOverdueAttention,
+  relayAttention,
+  type AttentionTiming,
+  type OverdueAttention,
+  type RelayAttentionResult
+} from "../nativeMail/attention.js";
 
 function parseJsonOption(label: string, raw: string | undefined): Record<string, unknown> {
   if (!raw) return {};
@@ -280,5 +289,88 @@ export function renderNativeMailStatusSuccess(response: CommandSuccess<MailStatu
     `Explicitly acknowledged: ${explicitlyAcknowledged}${message.acknowledgedAt ? ` by ${message.acknowledgedBy} at ${message.acknowledgedAt}` : ""}`,
     `Self-reported result: ${selfReportedResult ? JSON.stringify(selfReportedResult) : "none"}`,
     `Independently checked effect receipt: ${independentlyCheckedEffect ? JSON.stringify(independentlyCheckedEffect) : "none"}`
+  ];
+}
+
+export interface NativeMailOverdueOptions {
+  workspace: string;
+  projectSlug?: string;
+  ackWithinSeconds?: string;
+}
+
+export function runNativeMailOverdueCommand(options: NativeMailOverdueOptions): CommandSuccess<{ ackWithinMs: number; overdue: OverdueAttention[] }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const seconds = options.ackWithinSeconds === undefined ? ATTENTION_DEFAULT_ACK_WITHIN_MS / 1000 : Number(options.ackWithinSeconds);
+  if (!Number.isFinite(seconds) || seconds < 0) throw validationError("--ack-within-seconds must be a non-negative number.");
+  const ackWithinMs = Math.round(seconds * 1000);
+  const overdue = withReadOnlyDatabase(workspacePath, (db: Database.Database) =>
+    listOverdueAttention(db, { projectSlug: options.projectSlug, ackWithinMs }));
+  return createSuccess({ command: "native-mail.overdue", workspace: workspacePath, data: { ackWithinMs, overdue } });
+}
+
+export function renderNativeMailOverdueSuccess(response: CommandSuccess<{ ackWithinMs: number; overdue: OverdueAttention[] }>): string[] {
+  const { overdue, ackWithinMs } = response.data;
+  if (overdue.length === 0) return [`No mail overdue past ${ackWithinMs / 1000}s.`];
+  return [
+    `${overdue.length} mail overdue past ${ackWithinMs / 1000}s:`,
+    ...overdue.map((item) => `- ${item.messageId} · ${item.state} · ${item.significance ?? "unclassified"} · ${item.projectSlug} · ${item.sender} → ${item.recipient}/${item.recipientGeneration} · ${Math.round(item.ageMs / 1000)}s`)
+  ];
+}
+
+export interface NativeMailRelayOptions {
+  workspace: string;
+  messageId: string;
+  projectSlug: string;
+  planSlug: string;
+  recipientIncarnation: string;
+  recipientGeneration: string;
+  actor: string;
+  channel?: string;
+  link?: string;
+}
+
+export function runNativeMailRelayCommand(options: NativeMailRelayOptions): CommandSuccess<RelayAttentionResult> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const data = withDatabase(workspacePath, (db: Database.Database) => relayAttention(db, {
+    messageId: options.messageId,
+    projectSlug: options.projectSlug,
+    planSlug: options.planSlug,
+    recipientSessionIncarnation: options.recipientIncarnation,
+    recipientGeneration: options.recipientGeneration,
+    actor: options.actor,
+    channel: options.channel ?? null,
+    link: options.link ?? null
+  }));
+  return createSuccess({ command: "native-mail.relay", workspace: workspacePath, data });
+}
+
+export function renderNativeMailRelaySuccess(response: CommandSuccess<RelayAttentionResult>): string[] {
+  const { outcome, significance, ping, timing } = response.data;
+  const lead = outcome === "digest"
+    ? `No ping: a ${significance} goes to the coordinator's digest, not the operator.`
+    : outcome === "duplicate" ? `Already relayed as ${ping!.id}; nothing new queued.` : `Queued operator ping ${ping!.id}.`;
+  return [lead, ...renderTiming(timing)];
+}
+
+export interface NativeMailTimingOptions {
+  workspace: string;
+  messageId: string;
+}
+
+export function runNativeMailTimingCommand(options: NativeMailTimingOptions): CommandSuccess<AttentionTiming> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const data = withReadOnlyDatabase(workspacePath, (db: Database.Database) => attentionTiming(db, options.messageId));
+  return createSuccess({ command: "native-mail.timing", workspace: workspacePath, data });
+}
+
+export function renderNativeMailTimingSuccess(response: CommandSuccess<AttentionTiming>): string[] {
+  return renderTiming(response.data);
+}
+
+function renderTiming(timing: AttentionTiming): string[] {
+  const ms = (value: number | null) => (value === null ? "—" : `${(value / 1000).toFixed(1)}s`);
+  return [
+    `Emitted ${timing.emittedAt} · acknowledged ${timing.acknowledgedAt} (+${ms(timing.emittedToAcknowledgedMs)})`,
+    `Queued ${timing.queuedAt ?? "—"} (+${ms(timing.emittedToQueuedMs)}) · presented ${timing.presentedAt ?? "not yet"} (+${ms(timing.emittedToPresentedMs)})`
   ];
 }

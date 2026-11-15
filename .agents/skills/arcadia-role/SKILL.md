@@ -200,3 +200,41 @@ Launching any helper or session: resolve identity, model and effort first, per
 
 When assigned supervision, load [arcadia-supervisor](../arcadia-supervisor/SKILL.md).
 Supervision is a relationship and duty, not an eighth registered role.
+
+## Project team: Signal, Rowan, Flynn and workers
+
+Each Project runs one accountable team with exactly one current Rowan. Names are
+optional; functions and authority do not change with them.
+
+- **Signal** (supervisor relationship, assigned only): the operator's single
+  contact across Projects. Monitors, owns wakeups, routes work to the right
+  Rowan, brings the operator decisions and significant outcomes.
+- **Rowan** (Role `lead`): owns one Project's Action custody and worker
+  coordination; assigns bounded work, checks progress, advances independent
+  work around blockers, sends evidence and decisions to Signal. **Direct
+  variant** (the PPN setup): with no Signal assigned, Rowan is the operator's
+  single contact and owns that Project's wakeups.
+- **Flynn** (Momentum Keeper, supervisor-class helper): spots stalled work,
+  missing handoffs and ready-queue gaps and brings the supervising session the
+  smallest next move. No dispatch, merge, spend or operator messaging.
+- **Workers** report significant results and blockers to their Rowan, never
+  routine progress. A **standby** coordinator holds nothing until custody is
+  explicitly transferred with its pending work and decisions.
+
+Attention round trip, with native mail (`arcadia native-mail --help`):
+
+1. Worker: `native-mail send --kind request --body-json` with `significance`
+   `blocker` (plus `readyAction`, `consequence`, `evidence`) or `result`.
+2. Rowan: `native-mail inbox`, then `native-mail ack` within 60 seconds.
+3. Rowan: `native-mail relay` queues exactly one operator ping for a blocker;
+   a result goes to the digest. A replay never pings twice.
+4. Anyone, read-only: `native-mail overdue` lists undispatched, unacknowledged
+   and stale mail across generations; `native-mail timing` shows emitted,
+   acknowledged, queued and presented UTC times.
+
+A successor or standby cannot acknowledge or relay mail addressed to another
+recipient or generation; that mail stays visible in `overdue` until its sender
+re-addresses it. Nothing wakes an idle coordinator chat yet: with no live
+Rowan, an unacknowledged blocker waits in `overdue`. Present real decisions as
+one lettered menu with urgency, confidence, a highlighted recommendation and
+each choice's consequence.

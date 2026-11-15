@@ -1,0 +1,18 @@
+{
+  "schema": "arcadia-rowan-attention-rehearsal-v1",
+  "mode": "attended CLI rehearsal; synthetic workers; presentation simulated (no real operator surface)",
+  "wallClockMs": 30436,
+  "blockerTiming": {
+    "emittedAt": "2026-11-15T00:38:37.005Z",
+    "acknowledgedAt": "2026-11-15T00:38:43.965Z",
+    "queuedAt": "2026-11-15T00:38:52.152Z",
+    "presentedAt": "2026-11-15T00:38:55.585Z",
+    "emittedToAcknowledgedMs": 6960,
+    "emittedToQueuedMs": 15147,
+    "emittedToPresentedMs": 18580
+  },
+  "operatorPingsQueued": 1,
+  "replayOutcome": "duplicate",
+  "resultOutcome": "digest",
+  "targetMs": 60000
+}
