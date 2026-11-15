@@ -187,11 +187,11 @@ actions:
     references: []
   - id: pin-design-one-of
     title: Pin that the one-of check accepts only a string from the allowed list, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the one-of check accepts only a string from the allowed list, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-design-one-of-53c282c669db; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-design-one-of
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-design-one-of
+current_action: pin-design-text-value
 ---
 
 # Record run unattended test pins 20261113 part 3
