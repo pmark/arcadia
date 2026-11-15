@@ -15,7 +15,7 @@ import { inspectAgentSkills } from "../scripts/check-agent-skills.js";
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
-const SOURCE = path.resolve(".agents/skills/arcadia-role");
+const SOURCE = path.resolve(import.meta.dirname, "../.agents/skills/arcadia-role");
 
 function adopter(): string {
   const root = mkdtempSync(path.join(os.tmpdir(), "arcadia-adopter-"));
@@ -35,7 +35,7 @@ describe("arcadia-role team briefing in an adopting Project", () => {
     for (const discovery of [".agents/skills", ".claude/skills"]) {
       const skill = readFileSync(path.join(root, discovery, "arcadia-role/SKILL.md"), "utf8");
       expect(skill).toContain("## Project team: Signal, Rowan, Flynn and workers");
-      expect(skill).toContain("**Direct\n  variant**");
+      expect(skill).toMatch(/\*\*Direct\s+variant\*\*/);
       expect(skill).toMatch(/native-mail relay/);
       expect(skill).toMatch(/native-mail overdue/);
       expect(skill).toMatch(/standby/);
