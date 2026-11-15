@@ -1,0 +1,117 @@
+{
+  "schema": "arcadia-operator-script-v1",
+  "id": "activate-standing-autonomy-20261115b",
+  "title": "Activate the standing-autonomy Plan (nine Actions: five that replace the daily START approval with one standing grant, four that make every card computed from main) at decide-standing-start-grant; Plan 3 stays complete",
+  "script": "activate-standing-autonomy-20261115b.sh",
+  "repeatable": false,
+  "problem": "The standing-autonomy Plan is an inactive draft with nine Actions; Plan 3 is complete and PROJECT still names it with no current Action. The operator ordered autonomy first (\"Yes, autonomy first\", 2026-11-15 about 12:50 PM PST, relayed by Signal 12).",
+  "desired_effect": "Activate the standing-autonomy Plan at decide-standing-start-grant, standard / medium, and place this Project queue segment at the top: its nine Actions in Plan order. Plan 3 stays complete. Plan activation only: it opens no production run and answers no Decision.",
+  "operator_command": "artifacts/generated/operator-scripts/activate-standing-autonomy-20261115b.sh run",
+  "authority": {
+    "does": [
+      "Fresh-preview the exact pinned proposal, validate the before/after images through the existing shared runner, then apply that fingerprint.",
+      "Set Project/Plan pointers and standard / medium pins; preserve all Action contents and every other Project relative queue order.",
+      "Append one Mission Log entry, archive the Ask and publish only the canonical settlement commit by normal push; retain receipts."
+    ],
+    "never_does": [
+      "Never starts a Session, Run, production policy, service restart, install or merge.",
+      "Never increases concurrency or grants spend/credentials/merge authority; never changes Action status, criteria or responsibility.",
+      "Never force-pushes, publishes unrelated commits or treats generating this action as approval."
+    ]
+  },
+  "success": {
+    "effect": "The standing-autonomy Plan is active at decide-standing-start-grant, standard / medium; Plan 3 stays complete; settlement published.",
+    "next": "Continue through normal governed Action/Session admission. This is not a Session launch or production START; production stays Off. Action 1 waits on the operator's answer to the standing-grant Decision (Decision 0241, answered E and merged); the grant is not live until the card-integrity Actions are built."
+  },
+  "failure": {
+    "effect": "Refuses before mutation on drift; preserves any canonical local settlement on publication failure.",
+    "next": "Read the receipt; re-review stale pins, or retry publication of the existing settlement without another apply."
+  },
+  "planActivation": {
+    "schema": "arcadia-plan-activation-v1",
+    "checkout": {
+      "path": "/Users/pmark/Dev/MR/Arcadia/arcadia",
+      "origin": "https://github.com/pmark/arcadia.git",
+      "branch": "main",
+      "reviewedBase": "6ef107e909465faa928849eaa3a1e34d411894fa"
+    },
+    "ask": {
+      "path": ".arcadia/asks/agent-ask-activate-standing-autonomy-20261115b.yaml",
+      "sha256": "4c1f74f396b5a2e488e82c1eaa1b8ebc92a3fb834388020f8734713f797c000e",
+      "proposal": "activate-standing-autonomy-20261115b"
+    },
+    "settlement": {
+      "requestId": "activate-standing-autonomy-20261115b",
+      "disposition": "accepted",
+      "operator": true,
+      "activate": true,
+      "action": "decide-standing-start-grant",
+      "model": "standard",
+      "effort": "medium",
+      "placement": "top"
+    },
+    "envelope": {
+      "project": "arcadia",
+      "plan": "draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start",
+      "previousPlan": "record-run-unattended-test-pins-20261113-part-3",
+      "action": "decide-standing-start-grant",
+      "log": "MISSION_LOG.md",
+      "projectBefore": {
+        "slug": "arcadia",
+        "active_plan": "record-run-unattended-test-pins-20261113-part-3",
+        "current_action": null,
+        "milestone": "Record run unattended test pins 20261113 part 3"
+      },
+      "projectAfter": {
+        "active_plan": "draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start",
+        "current_action": "decide-standing-start-grant",
+        "milestone": "Draft an inactive Plan of five bounded Actions that replace the daily START approval with one standing grant the operator presses once, so production on the chosen Plan moves on its own and asks the operator only for decisive action"
+      },
+      "planBefore": {
+        "slug": "draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start",
+        "project": "arcadia",
+        "status": "draft",
+        "current_action": null,
+        "milestone": "Draft an inactive Plan of five bounded Actions that replace the daily START approval with one standing grant the operator presses once, so production on the chosen Plan moves on its own and asks the operator only for decisive action"
+      },
+      "planAfter": {
+        "status": "active",
+        "current_action": "decide-standing-start-grant",
+        "recommended_model": "standard",
+        "recommended_reasoning_effort": "medium"
+      },
+      "previousPlanBefore": {
+        "slug": "record-run-unattended-test-pins-20261113-part-3",
+        "project": "arcadia",
+        "status": "complete",
+        "current_action": null
+      },
+      "previousPlanAfter": {
+        "status": "complete",
+        "current_action": null
+      },
+      "actionUnchanged": {
+        "id": "decide-standing-start-grant",
+        "title": "Submit one operator Decision that replaces the daily approval of Decision 0173 with a standing START grant, with the four lettered options recorded here, and stay blocked until the operator answers.",
+        "status": "open",
+        "responsibility": "agent",
+        "clarification": "clarified"
+      },
+      "queueSegment": [
+        "arcadia/decide-standing-start-grant",
+        "arcadia/guard-rowan-off-request-id",
+        "arcadia/verify-standing-grant-receipt",
+        "arcadia/read-the-grant-in-rowan-and-signal-guidance",
+        "arcadia/derive-start-card-from-main",
+        "arcadia/refuse-press-unless-card-rederives",
+        "arcadia/bind-replay-and-authority-scope-to-the-derived-card",
+        "arcadia/press-successor-cards-from-the-host-timer",
+        "arcadia/prove-card-integrity-against-recorded-defects"
+      ]
+    },
+    "publication": {
+      "remote": "origin",
+      "branch": "main"
+    }
+  }
+}
