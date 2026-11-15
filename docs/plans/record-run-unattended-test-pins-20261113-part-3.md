@@ -326,11 +326,11 @@ actions:
     references: []
   - id: pin-coding-agent-label-fallback
     title: Pin that a coding agent without a provider label is shown by its profile name, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a coding agent without a provider label is shown by its profile name, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-coding-agent-label-fallback-852e6b924434; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-coding-agent-label-fallback
     clarification: clarified
     confidence: high
@@ -407,7 +407,7 @@ questions: []
 decisions: []
 recommended_model: standard
 recommended_reasoning_effort: medium
-current_action: pin-coding-agent-label-fallback
+current_action: pin-days-until-due
 ---
 
 # Record run unattended test pins 20261113 part 3
