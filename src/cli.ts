@@ -1964,9 +1964,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .command("deactivate")
       .description("Switch managed production Off: stop new admissions, let committed work finish")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-      .requiredOption("--request-id <id>", "Idempotency key for this revocation")
+      .option("--request-id <id>", "Idempotency key for this revocation (starts with a letter or digit)")
+      .option("--rowan-off <slug>", "Rowan's own Off: records the request id rowan-off-<slug>; the only route for it")
       .option("--reason <text>", "Why production was switched Off")
-  ).action((options: { workspace: string; requestId: string; reason?: string; json?: boolean }) =>
+  ).action((options: { workspace: string; requestId?: string; rowanOff?: string; reason?: string; json?: boolean }) =>
     runCliAction("production.deactivate", options, () => runProductionDeactivateCommand(options), renderProductionTransitionSuccess)
   );
   addJsonOption(

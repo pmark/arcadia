@@ -325,6 +325,11 @@ pinned descriptor, so per-card review is small.
   that day, so a successor presses once without new words. If the host refuses that
   press, Decisions 0163 and 0173 end the day's delegation: the successor does not
   retry or route around it, and the operator approves a new day.
+  Rowan's own Off is `arcadia production deactivate --rowan-off <slug>`, the only
+  route for it: the CLI records the request id `rowan-off-<slug>`, which the day-grant
+  check accepts. A hand-typed `--request-id` for it is a mislabel risk; a malformed one
+  is refused (`MALFORMED_REQUEST_ID`), and any other Off ends the day with
+  `DAY_ENDED_BY_OPERATOR`.
   Only a press counts. Nothing can verify a chat message, and a record Rowan wrote
   about one would be self-attesting. The runner refuses a day-grant press unless its
   `Origin` matches its `Host` at a non-loopback address, with no delegated marker,

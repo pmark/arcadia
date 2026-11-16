@@ -334,13 +334,6 @@ A pending (unsettled) Agent Ask proposal naming the selected Action makes `resol
 Run 4's Plan says `updated: 2026-10-05`, so a reset on a later UTC day bumps the date line; the run-5 tests prove that bump (and the reopening of a `done` record) with the real docs sync. Pin the records' `updated_at` before such a test so it stays valid on any later day.
 From run 6 on, do not clone a run-N set: write `artifacts/generated/operator-scripts/rehearsal-chain/params/<run-id>.json`, render with `scripts/render-rehearsal-chain-operator-scripts.ts`, and preview the reset with `--dry-run` (runbook section 5). The chain reset refuses a pending fixture proposal instead of settling it. In its jq, `all($ids[]; ...)` rebinds `.` to each id: bind the document first (`.x as $changes | all($ids[]; ...)`), or every check silently compares against a string (`Cannot index string`).
 
-## Rehearsal G6 receipt voided, or G8 refused "launch this action through /runs or from an interactive host terminal"
-
-keys: rehearsal, G6, G7, G8, preflight voided, arcadiaHead, brokerRevision, freeze, non-interactive, TTY, Terminal panel, launch_context
-
-G7 accepts a G6 receipt only while `arcadiaHead` equals main now and `brokerRevision` the installed broker now: any push to Arcadia main (even a governed settle commit) or reinstall/restart (an accidental G8 press) between G6 and the G7 press voids it. Run 2's G6 was rerun twice for that; push nothing from G6 until the press.
-G8 refuses at `launch_context` when stdin is not a TTY and no `/runs` context is set, so an agent's or script's shell cannot run it; run it from the Terminal panel or `/runs`. That refusal runs no Arcadia command, and the run-3, run-4 and run-5 resets ignore such receipts when they look for the previous run's terminal Off.
-
 ## Reproduce a rehearsal defect offline before a live run
 
 keys: fast rehearsal, fast-rehearsal, production replay, production-replay, live state, re-run, RE-RUN, harness, live run, rehearsal loop, scripted executor, fake gh, it.fails, expected failure, Issue 987, Issue 989, long chain, nine-Action, Grant expiry, operator launch, olauth, Launch, /production, preview-launch, planning_required, build_packet_approval_pending, work plan, haiku, light tier, OAuth expired, failed_execution, incomplete_resumable, agent-ask draft, completion recipe, fixture reset, request id used, run 8, services restart, ARCADIA_WORKSPACE, self-approval, approval queue, retire-handoff, unpreservable candidate, stalled Action, 2490
@@ -385,3 +378,9 @@ The full pre-press gate, supervision cadence and operator-communication rules ar
 - A keeper handing off: the successor's first heartbeat closes the alarm; nothing to delete. Ending the keeper on purpose while a window is open pages the operator, which is intended.
 - The timer runs a go-broker release, not the checkout, so a change here is live only after a services restart installs a release with it (a production gap; Rowan or the operator). Until then a manual `production liveness-check` from the checkout pages for real; it shares the timer's state files, so the timer never repeats a page it sent.
 - **Coordinator budget (#2242).** The same run pages `👆 HANDOFF PREPARE` / `👆👆 HANDOFF DUE` / `👆👆👆 HANDOFF OVERDUE` once per line per ⭐/🚦 session, and `context unmeasured` when it cannot read one (`docs/COMMANDS.md`, "Coordinator Context Budget"); `arcadia coordinator budget` is the read-only view. An `unmeasured: no registered context window for model X` page means a new Claude model needs a row in `CLAUDE_CONTEXT_WINDOWS` (`src/coordinators/budget.ts`), registered only with status-line or >80%-occupancy evidence; never guess one. Tests never read real sessions: `defaultBudgetSources` returns nulls under VITEST.
+
+## A Rowan Off id came out as `.-...` and ended the day (rg -r is --replace)
+
+keys: rowan-off, deactivate, request-id, DAY_ENDED_BY_OPERATOR, rg -r, replace, malformed request id, MALFORMED_REQUEST_ID
+
+`rg -r` is `--replace`, not recursive: a command that fed it a pattern printed it as `^.-`, and that text was pasted as the Off request id (`.-plan3-pins-13-15-complete-20261115`). The day-grant check accepts only `rowan-off-<slug>` (`ROWAN_OFF_REQUEST`), so the day ended with `DAY_ENDED_BY_OPERATOR`. Rowan runs `arcadia production deactivate --rowan-off <slug>`, which composes the id; `--request-id` now refuses an id that does not start with a letter or digit (`MALFORMED_REQUEST_ID`). Never type the id by hand (2026-11-15).

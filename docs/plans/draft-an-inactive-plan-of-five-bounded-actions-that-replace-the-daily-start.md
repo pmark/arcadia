@@ -33,11 +33,11 @@ actions:
     references: ["CONSTITUTION.md", "docs/agents-context.md", "docs/decisions/0173-decide-what-authority-rowan-holds-for-a-day-at-a-time-over-unattended-work-on.md", "docs/decisions/0200-decide-how-a-day-approval-under-decision-0173-reaches-a-rowan-that-takes-over.md", "docs/decisions/0232-new-decision-may-the-coordinator-rowan-itself-execute-a-published-arcadia-plan.md"]
   - id: guard-rowan-off-request-id
     title: "Make Rowan's own Off impossible to mislabel: the CLI composes the rowan-off id, and a malformed request id is refused before production policy changes."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make Rowan's own Off impossible to mislabel: the CLI composes the rowan-off id, and a malformed request id is refused before production policy changes."
+    next_action: Completed via Agent Ask auto-settle-arcadia-guard-rowan-off-request-id-b0c87a1dcb33; no further action.
     expected_artifact: Evidence satisfying Agent Ask guard-rowan-off-request-id
     clarification: clarified
     confidence: high
@@ -215,7 +215,7 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: guard-rowan-off-request-id
+current_action: verify-standing-grant-receipt
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
