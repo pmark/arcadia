@@ -37,6 +37,13 @@
       "scriptSha256": "fd4ce635a1cdc8c35f3441990a2065d21d5b36d966ddcba4cb6e80b06ae1d51b",
       "outcome": "succeeded 2026-09-20, one-shot, state retained",
       "reason": "Settled complete-approval-must-apply-or-refuse-2026-09-20-v2 before declarations existed; adding one would rewrite ignored local bytes a pull request cannot ship for an action that already succeeded."
+    },
+    {
+      "id": "activate-standing-autonomy-20261115",
+      "descriptorSha256": "5382941a6782e19f1ed56d3e1ea78b7ea832df276921701858d9d1fcddf571ee",
+      "scriptSha256": "5e5fec027839ce55b4cb5db94b07ab84a47e5836d312c3c32ff649a2595f7572",
+      "outcome": "never run, no run state; operator choice not executed -- superseded by activate-standing-autonomy-20261115b",
+      "reason": "Names a five-Action queueSegment and reviewedBase 92a5b72c1, but the standing-autonomy Plan has nine Actions since #2729 and Decision 0241 is answered E (#2728); the runner would refuse it (planAmendment.ts queueSegment check). Retired so /actions does not list a card that cannot run; the rebuilt card is activate-standing-autonomy-20261115b."
     }
   ]
 }

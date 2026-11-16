@@ -172,14 +172,15 @@ describe("Legacy library entries retire only through the exact-hash manifest", (
     expect(parse([{ ...entry, scriptSha256: "B".repeat(64) }])).toThrow("exactly");
     expect(parse([{ ...entry, extra: true }])).toThrow("exactly");
   });
-  it("ships exactly the five pinned legacy retirements", () => {
+  it("ships exactly the six pinned legacy retirements", () => {
     const shipped = JSON.parse(readFileSync(path.join(root, "src/operatorActions/legacyRetirements.json"), "utf8")) as { retirements: { id: string }[] };
     const entries = parseRetirementManifest(shipped);
     expect([...entries.keys()].sort()).toEqual([
       "accept-narrow-managed-session-preservation-actions-2026-09-30-v3", "accept-worker-recovery-completion-2026-09-20",
+      "activate-standing-autonomy-20261115",
       "preview-terminal-integration-recovery-2026-10-01", "remove-superseded-branches-and-worktree-2026-09-27",
       "settle-complete-approval-must-apply-or-refuse-2026-09-20"]);
-    expect(shipped.retirements).toHaveLength(5);
+    expect(shipped.retirements).toHaveLength(6);
     for (const e of entries.values()) expect(`${e.id}${e.descriptorSha256}${e.scriptSha256}`).not.toMatch(/[*?[\]{}]/);
   });
 });
