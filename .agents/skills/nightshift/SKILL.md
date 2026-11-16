@@ -43,6 +43,9 @@ messaging where available, else a GitHub comment on the coordination Issue or
 1. `git fetch origin`; mint the card on the current `origin/main` tip
    (`arcadia start-run pins … --day-grant-from <card>/<run>` per operator-actions.md, or
    the derived card once Decision 0241's card-integrity Actions ship).
+   Pin ONLY Actions whose production preview state is `ready`: P6 in
+   `scripts/start-run.sh` refuses any other state, after sign-in and the allowance are
+   spent. Dependency-chained Actions go into later cards.
 2. Main CI green on that exact sha: `gh api repos/pmark/arcadia/commits/<sha>/check-runs`,
    every expected check present and `completed`/`success`.
 3. `arcadia start-run gate-check --project arcadia --action <id>…` lists nothing
@@ -94,9 +97,12 @@ Failure: fix inside authority, re-run from the failed item; never press past a N
 
 ### 5. Gap discipline (production Off only)
 
-1. Merge only with production Off: `gh pr merge <n> --merge --match-head-commit <sha>`,
+1. Merge only with production Off: `gh pr merge <n> <method> --match-head-commit <sha>`,
    where `<sha>` carries an "Independent review, head <sha>: PASS" comment, every
-   check completed green, and merge state CLEAN.
+   check completed green, and merge state CLEAN. Use the method
+   `docs/agent-guidance/pull-requests.md` ("Merge on green") requires; it names
+   `--squash`, while the 2026-11-15 gap merges used `--merge` and main shows merge
+   commits. This skill adds no rule of its own; always pin `--match-head-commit`.
 2. Merge everything that moves main before minting the next card, or after its run:
    a card pinned to an older main refuses `BASE_NOT_SYNCHRONIZED`.
 3. Check main CI on the new tip before the next card (two green PRs can still clash).
@@ -106,8 +112,12 @@ Failure: fix inside authority, re-run from the failed item; never press past a N
 ### 6. Governance hygiene
 
 - A stale superseded Agent Ask proposal idles a run (`operator_gate_pending`). Find it
-  with the replay or `start-run gate-check`; close it as rejected in the operator's
-  words (`arcadia review reject <id> --feedback "<operator words>"`).
+  with the replay or `start-run gate-check`. With the operator's own words to reject
+  it, settle it from the main checkout (`docs/agent-guidance/agent-asks.md`, "settle it
+  by its original request id"): `arcadia agent-ask settle --proposal <id> --request-id settle-<id> --disposition rejected`
+  (preview; prints a fingerprint), then the same command with `--preview <fingerprint> --apply`.
+  If the host refuses it (for example as another agent's Ask), the step goes to the
+  operator with a link; never route around it.
 - Decision numbers collide: `ls docs/decisions/` on `origin/main` before opening one.
 - An operator's free-text answer becomes a new option in his words, read back and
   confirmed before it is recorded (Decision 0241 E).
@@ -134,7 +144,8 @@ Failure: fix inside authority, re-run from the failed item; never press past a N
 
 ## Before every START
 
-1. `git fetch origin`; card on origin/main; main CI green on that sha.
+1. `git fetch origin`; card on origin/main; main CI green on that sha; every pinned
+   Action's preview state is `ready` (no dependency inside the card).
 2. `arcadia production status`: Off, no live admission, no open red alert.
 3. `start-run gate-check` empty; `start-run readiness` admits; replay reaches launch.
 4. `<card>.sh preflight` OK; pre-mortem PASS posted; expiry covers the operator's waking window.
