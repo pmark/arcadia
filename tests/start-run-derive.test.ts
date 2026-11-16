@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runStartRunDeriveCommand } from "../src/commands/startRunDerive.js";
-import type { StartRunPinsDeps } from "../src/commands/startRun.js";
+import { START_RUN_DEFAULTS, type StartRunPinsDeps } from "../src/commands/startRun.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import { STANDING_SLUG } from "../src/operatorActions/startRunDayGrant.js";
@@ -39,7 +39,7 @@ function world(options: { scenario?: DayScenario; actions?: Array<{ id: string; 
   const now = options.now ?? NOW;
   const scenario = options.scenario ?? { label: "", code: "" };
   const written = writeDayScenario(library, { ...scenario, approval: { standing: true, ...scenario.approval } }, now);
-  for (const card of ["enable-capacity-gate-20261017", STOP_ID]) writeFileSync(path.join(library, `${card}.json`), "{}");
+  for (const card of [START_RUN_DEFAULTS.gateCardId, START_RUN_DEFAULTS.offId, STOP_ID]) writeFileSync(path.join(library, `${card}.json`), "{}");
   const actions = options.actions ?? [{ id: "one", status: "open" }, { id: "two", status: "open" }, { id: "three", status: "open", depends_on: ["two"] }];
   const files: Record<string, string> = {
     "scripts/start-run.sh": EXECUTOR, "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "y",
@@ -89,7 +89,8 @@ describe("arcadia start-run derive: derivation", () => {
     // `three` depends on `two`, which is not done: it is not ready, and nothing after it is taken.
     expect(data.card).toMatchObject({ plan: DAY_PLAN, actions: ["one", "two"] });
     expect(data.card!.descriptor.startRun).toMatchObject({ plan: DAY_PLAN, actions: ["one", "two"], concurrency: 1, provider: "claude-code-cli" });
-    expect(derive(world({ actions: [{ id: "one", status: "done" }, { id: "two", status: "open" }, { id: "three", status: "open", depends_on: ["one"] }] })).card!.actions).toEqual(["two", "three"]);
+    // The governed queue holds unfinished Actions only, so the finished `one` is not in it.
+    expect(derive(world({ actions: [{ id: "one", status: "done" }, { id: "two", status: "open" }, { id: "three", status: "open", depends_on: ["one"] }], queue: ["two", "three"] })).card!.actions).toEqual(["two", "three"]);
     // Queue order, not Plan order, and a Plan Action below an unready one is left out.
     expect(derive(world({ queue: ["two", "one", "three"] })).card!.actions).toEqual(["two", "one"]);
     expect(derive(world({ queue: ["one", "other-plan-action", "two"] })).card!.actions).toEqual(["one"]);
