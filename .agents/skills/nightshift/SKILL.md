@@ -79,15 +79,25 @@ Failure: fix inside authority, re-run from the failed item; never press past a N
 
 1. Confirm `arcadia production status` reads Active, then arm
    `scripts/wait-for-event.sh production` in the background (armed earlier, it exits at once).
-   Add `pr <repo> <n>…` for pinned PRs; prove one real read (`WATCHING`) first.
-2. Wake on worker merge, escalation, 30 minutes without a new merge or worker-log
-   line, or Off. At each wake: production status, open PRs, `arcadia ping pending`,
-   worker log tail; re-arm before idling.
+   Add `pr <repo> <n>…` for pinned PRs. `WATCHING` prints before the first read, so
+   it is no proof: run one successful `gh pr view <n> -R <repo>` in the same context
+   (unsandboxed) before idling.
+2. Bound every wait: `WAIT_TIMEOUT=600` (the playbook's 10-minute fallback cadence;
+   the default is 6 h). Wake on worker merge, escalation, Off or TIMEOUT. At each wake:
+   production status, open PRs, `arcadia ping pending`, worker log tail; 30 minutes
+   without a new merge or worker-log line is a stall to investigate. Re-arm before idling.
 3. One Discord alert per day-grant press (Decision 0173). Routine events stay silent.
 
 ### 4. Off and accounting (Rowan)
 
-1. Scope complete or stuck: `arcadia production deactivate --request-id rowan-off-<slug> --reason "<why>"`.
+1. Routine completion: first confirm `arcadia start-run day-evidence` shows this
+   activation's `scopeComplete` (merged ≥ 1, escalated 0; written by the tick as
+   `managed_production.scope_complete`). An Off before it reads as a failed batch
+   (`isFailedBatch` in `src/operatorActions/startRunDayGrant.ts`) and later delegated
+   cards refuse `FAILED_BATCH`. All merged but no record: report that gap to the
+   operator before the Off. A stuck or failed run is the separate path: Off now, and
+   the next card needs a merged fix (Decisions 0181, 0187). Either way:
+   `arcadia production deactivate --request-id rowan-off-<slug> --reason "<why>"`.
    `<slug>` matches `ROWAN_OFF_REQUEST` in `src/operatorActions/startRunDayGrant.ts`
    (`rowan-off-` then lowercase words joined by `-`). Any other id ends the day: the
    2026-11-15 `.-…` id came from `rg -r`, which is `--replace`, not recursion.
