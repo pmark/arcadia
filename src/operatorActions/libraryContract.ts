@@ -351,11 +351,11 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
     validateDayGrant(d, id, script);
     return d;
   }
-  if (script.includes(DAY_GRANT_EXECUTOR_PATH)) fail("DAY_GRANT_RUNNER_REQUIRED", "The shared day-grant executor requires a pinned dayGrant descriptor.");
   if (d.standingGrant !== undefined) {
     validateStandingGrant(d, id, script);
     return d;
   }
+  if (script.includes(DAY_GRANT_EXECUTOR_PATH)) fail("DAY_GRANT_RUNNER_REQUIRED", "The shared day-grant executor requires a pinned dayGrant descriptor.");
   if (script.includes(STANDING_GRANT_EXECUTOR_PATH)) fail("STANDING_GRANT_RUNNER_REQUIRED", "The shared standing-grant executor requires a pinned standingGrant descriptor.");
   if (d.workspaceConfigEdit !== undefined) {
     if (d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined || d.agentAskRejections !== undefined) {

@@ -230,7 +230,7 @@ export function validateStandingGrantPins(value: unknown): StandingGrantPins {
   const p = value as StandingGrantPins;
   if (!exactKeys(p, STANDING_GRANT_KEYS)) refuse("INVALID_STANDING_GRANT", `standingGrant needs exactly ${STANDING_GRANT_KEYS.join(", ")}.`);
   if (p.schema !== "arcadia-standing-grant-v1") refuse("INVALID_STANDING_GRANT", "standingGrant.schema must be arcadia-standing-grant-v1.");
-  if (p.decision !== STANDING_GRANT_DECISION) refuse("INVALID_STANDING_GRANT", `standingGrant.decision must be ${STANDING_GRANT_DECISION}.`);
+  if (p.decision !== STANDING_GRANT_DECISION) refuse("INVALID_STANDING_GRANT", `standingGrant.decision must be ${String(STANDING_GRANT_DECISION)}.`);
   if (typeof p.executorSha256 !== "string" || !sha256Hex.test(p.executorSha256)) refuse("INVALID_STANDING_GRANT", "standingGrant.executorSha256 must be 64 lowercase hex.");
   if (typeof p.project !== "string" || !slug.test(p.project) || typeof p.plan !== "string" || !slug.test(p.plan)) refuse("INVALID_STANDING_GRANT", "standingGrant.project and plan must be slugs.");
   if (p.provider !== "claude-code-cli") refuse("INVALID_STANDING_GRANT", "standingGrant.provider must be claude-code-cli.");
@@ -265,7 +265,7 @@ export function assertStandingDecision(source: StandingDecisionSource | undefine
   if (!source) return refuse("STANDING_DECISION_UNREADABLE", "the standing-grant Decision cannot be read on the pinned main, so no standing grant is open");
   const found = findStandingDecision(source.paths);
   if ("problem" in found) return refuse("STANDING_DECISION_UNREADABLE", `the standing-grant Decision cannot be read on the pinned main: ${found.problem}`);
-  let content = "";
+  let content: string;
   try { content = source.read(found.file); } catch { return refuse("STANDING_DECISION_UNREADABLE", `${found.file} cannot be read on the pinned main`); }
   if (!isStandingGrantAnswered(content, found.id)) refuse(`DECISION_${found.id}_NOT_ANSWERED`, `Decision ${found.id} (${found.file}) is not answered A, B or E on the pinned main; a standing grant stays closed until the operator answers it`);
   return found.id;
@@ -711,7 +711,7 @@ function latestStandingApproval(library: string): { card: string; run: string; p
       const record = readJson<PressRecord>(path.join(dir, "run.json"));
       const at = Date.parse(String(record?.startedAt));
       if (record?.status !== "succeeded" || record.press !== undefined || record.browserPress !== true || !Number.isFinite(at)) continue;
-      let run = "";
+      let run: string;
       try { run = readFileSync(path.join(dir, GRANTS.standing.claimed), "utf8").trim(); } catch { continue; }
       if (!runIdPattern.test(run) || (latest && latest.at >= at)) continue;
       latest = { card, run, plan: typeof pins.plan === "string" ? pins.plan : null, at };
