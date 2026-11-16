@@ -101,11 +101,11 @@ actions:
     references: ["src/production/tick.ts", "src/production/dutyAlarms.ts", "src/operatorActions/startRunPins.ts", "scripts/start-run.sh", "scripts/production-replay.ts", "docs/agent-guidance/operator-actions.md"]
   - id: read-the-grant-in-rowan-and-signal-guidance
     title: Rowan's and Signal's skills, start prompts and ping rules read press authority from the grant receipt, and Signal pings the operator only for the decisive items the Decision lists.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Rowan's and Signal's skills, start prompts and ping rules read press authority from the grant receipt, and Signal pings the operator only for the decisive items the Decision lists.
+    next_action: Completed via Agent Ask auto-settle-arcadia-read-the-grant-in-rowan-and-signal-guidance-07b1ea8a60df; no further action.
     expected_artifact: Evidence satisfying Agent Ask read-the-grant-in-rowan-and-signal-guidance
     clarification: clarified
     confidence: high
@@ -215,7 +215,7 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: read-the-grant-in-rowan-and-signal-guidance
+current_action: derive-start-card-from-main
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
