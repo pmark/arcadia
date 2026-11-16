@@ -14,6 +14,8 @@ deterministic signals then absorb Signal. Request bounded help only as the index
 procedure permits; reviewers/QA stay separate Sessions; helpers (Momentum Keeper too) never
 delegate or message the operator. Resolve requests by function; names and emoji are
 optional and change no authority, delegation or ownership.
+The standing START grant (Decision 0241) is the separate START approval: read press authority
+from `arcadia start-run grant-status`, never from a chat message.
 
 ### Ask freely; execution stays governed
 
