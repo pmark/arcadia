@@ -215,7 +215,7 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: read-the-grant-in-rowan-and-signal-guidance
+current_action: derive-start-card-from-main
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
