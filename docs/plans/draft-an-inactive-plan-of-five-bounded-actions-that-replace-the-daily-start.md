@@ -123,11 +123,11 @@ actions:
     references: [".agents/skills/arcadia-signal/SKILL.md", ".claude/skills/arcadia-signal/SKILL.md", ".agents/skills/arcadia-release-manager/SKILL.md", ".claude/skills/arcadia-release-manager/SKILL.md", "docs/agent-guidance/operator-actions.md", "docs/agent-guidance/coordinator-handoff-design.md", "docs/agents-context.md"]
   - id: derive-start-card-from-main
     title: Add one pure function and a read-only command `arcadia start-run derive` that compute the whole standing-grant START card (descriptor, launcher and reviewed manifest bytes) from origin main, the governed queue, the production policy, the open standing-grant receipt and fixed constants, with no agent-supplied field.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Add one pure function and a read-only command `arcadia start-run derive` that compute the whole standing-grant START card (descriptor, launcher and reviewed manifest bytes) from origin main, the governed queue, the production policy, the open standing-grant receipt and fixed constants, with no agent-supplied field.
+    next_action: Completed via Agent Ask auto-settle-arcadia-derive-start-card-from-main-657e3b2c2339; no further action.
     expected_artifact: Evidence satisfying Agent Ask derive-start-card-from-main
     clarification: clarified
     confidence: high
@@ -215,7 +215,7 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: derive-start-card-from-main
+current_action: read-the-grant-in-rowan-and-signal-guidance
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
