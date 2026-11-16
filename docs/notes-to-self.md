@@ -385,3 +385,9 @@ The full pre-press gate, supervision cadence and operator-communication rules ar
 - A keeper handing off: the successor's first heartbeat closes the alarm; nothing to delete. Ending the keeper on purpose while a window is open pages the operator, which is intended.
 - The timer runs a go-broker release, not the checkout, so a change here is live only after a services restart installs a release with it (a production gap; Rowan or the operator). Until then a manual `production liveness-check` from the checkout pages for real; it shares the timer's state files, so the timer never repeats a page it sent.
 - **Coordinator budget (#2242).** The same run pages `👆 HANDOFF PREPARE` / `👆👆 HANDOFF DUE` / `👆👆👆 HANDOFF OVERDUE` once per line per ⭐/🚦 session, and `context unmeasured` when it cannot read one (`docs/COMMANDS.md`, "Coordinator Context Budget"); `arcadia coordinator budget` is the read-only view. An `unmeasured: no registered context window for model X` page means a new Claude model needs a row in `CLAUDE_CONTEXT_WINDOWS` (`src/coordinators/budget.ts`), registered only with status-line or >80%-occupancy evidence; never guess one. Tests never read real sessions: `defaultBudgetSources` returns nulls under VITEST.
+
+## A Rowan Off id came out as `.-...` and ended the day (rg -r is --replace)
+
+keys: rowan-off, deactivate, request-id, DAY_ENDED_BY_OPERATOR, rg -r, replace, malformed request id, MALFORMED_REQUEST_ID
+
+`rg -r` is `--replace`, not recursive: a command that fed it a pattern printed it as `^.-`, and that text was pasted as the Off request id (`.-plan3-pins-13-15-complete-20261115`). The day-grant check accepts only `rowan-off-<slug>` (`ROWAN_OFF_REQUEST`), so the day ended with `DAY_ENDED_BY_OPERATOR`. Rowan runs `arcadia production deactivate --rowan-off <slug>`, which composes the id; `--request-id` now refuses an id that does not start with a letter or digit (`MALFORMED_REQUEST_ID`). Never type the id by hand (2026-11-15).

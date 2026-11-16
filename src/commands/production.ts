@@ -117,8 +117,43 @@ export interface ProductionActivateOptions extends ProductionPreviewOptions {
 
 export interface ProductionDeactivateOptions {
   workspace: string;
-  requestId: string;
+  requestId?: string;
+  /** Rowan's own Off: the CLI composes the request id `rowan-off-<slug>` so the day-grant check recognises it. */
+  rowanOff?: string;
   reason?: string;
+}
+
+/** A request id starts with a letter or digit; punctuation-led ids (a mangled `rg -r` pattern) are never real ones. */
+const WELL_FORMED_REQUEST_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
+const ROWAN_OFF_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+function resolveDeactivationRequestId(options: ProductionDeactivateOptions): string {
+  const explicit = options.requestId?.trim();
+  const slug = options.rowanOff?.trim();
+  if (explicit && slug) {
+    throw validationError("Give either --request-id or --rowan-off, not both.", { field: "requestId" });
+  }
+  if (slug) {
+    if (!ROWAN_OFF_SLUG.test(slug)) {
+      throw validationError("--rowan-off takes a lowercase slug of letters, digits and single hyphens.", {
+        field: "rowanOff",
+        reason: "MALFORMED_ROWAN_OFF_SLUG"
+      });
+    }
+    return `rowan-off-${slug}`;
+  }
+  if (!explicit) {
+    throw validationError("Deactivation needs a --request-id (or --rowan-off <slug>) so a replay is recognised.", {
+      field: "requestId"
+    });
+  }
+  if (!WELL_FORMED_REQUEST_ID.test(explicit)) {
+    throw validationError(
+      `Request id ${JSON.stringify(explicit)} is malformed: it must start with a letter or digit. Rowan's own Off uses --rowan-off <slug>.`,
+      { field: "requestId", reason: "MALFORMED_REQUEST_ID" }
+    );
+  }
+  return explicit;
 }
 
 export interface ProductionReactivatePreviewOptions {
@@ -495,14 +530,10 @@ export function runProductionDeactivateCommand(
   options: ProductionDeactivateOptions
 ): CommandSuccess<ProductionTransitionData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
-  if (!options.requestId?.trim()) {
-    throw validationError("Deactivation needs a --request-id so a replay is recognised.", {
-      field: "requestId"
-    });
-  }
+  const requestId = resolveDeactivationRequestId(options);
 
   const result = withDatabase(workspacePath, (db) =>
-    deactivateProduction(db, { requestId: options.requestId.trim(), reason: options.reason })
+    deactivateProduction(db, { requestId, reason: options.reason })
   );
 
   const warnings: string[] = [];
