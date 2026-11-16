@@ -562,6 +562,7 @@
   "tests/stale-repair-escalation.test.ts": 3.1,
   "tests/standard-harness-guidance.test.ts": 0.0,
   "tests/start-run-day-grant.test.ts": 7.1,
+  "tests/start-run-standing-grant.test.ts": 7.1,
   "tests/start-run-delegation.test.ts": 0.1,
   "tests/start-run-executor.test.ts": 416.1,
   "tests/start-run-pins.test.ts": 0.4,
