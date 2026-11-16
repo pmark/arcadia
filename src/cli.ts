@@ -80,7 +80,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
-import { renderStartRunPinsSuccess, renderStartRunReadinessSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunReadinessCommand, runStartRunDayPinsCommand, runStartRunGateCheckCommand, runStartRunHoldCommand, runStartRunPinsCommand, runStartRunSignInCommand, runStartRunUnholdCommand } from "./commands/startRun.js";
+import { renderStartRunPinsSuccess, renderStartRunReadinessSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunGrantStatusCommand, runStartRunStandingPinsCommand,runStartRunReadinessCommand, runStartRunDayPinsCommand, runStartRunGateCheckCommand, runStartRunHoldCommand, runStartRunPinsCommand, runStartRunSignInCommand, runStartRunUnholdCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
   renderPingPendingSuccess,
@@ -1270,6 +1270,20 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
   ).action((options: { plan: string; expiresHours: string; repository?: string; json?: boolean }) =>
     runCliAction("start-run.day-pins", options, () => runStartRunDayPinsCommand(options), (response) => JSON.stringify(response.data, null, 2).split("\n")));
+  addJsonOption(startRun.command("standing-pins")
+    .description("Decision 0241: print the pins of one standing-grant card for the operator to press; writes nothing and grants nothing")
+    .requiredOption("--plan <slug>", "The active Plan the grant would cover")
+    .requiredOption("--expires-hours <n>", "Hours until the card expires unpressed (at most 24)")
+    .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
+  ).action((options: { plan: string; expiresHours: string; repository?: string; json?: boolean }) =>
+    runCliAction("start-run.standing-pins", options, () => runStartRunStandingPinsCommand(options), (response) => JSON.stringify(response.data, null, 2).split("\n")));
+  addJsonOption(startRun.command("grant-status")
+    .description("Decision 0241: whether the standing START grant is open, its Plan, approval run and what ended it; read-only")
+    .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .option("--library <path>", "Operator-script library (default: the main checkout's library)")
+  ).action((options: { repository?: string; workspace?: string; library?: string; json?: boolean }) =>
+    runCliAction("start-run.grant-status", options, () => runStartRunGrantStatusCommand(options), (response) => JSON.stringify(response.data, null, 2).split("\n")));
   addJsonOption(startRun.command("day-evidence")
     .description("Decision 0173: print production's policy transitions and admitted Sessions since Decision 0170; read-only")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())

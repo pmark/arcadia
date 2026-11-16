@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import { DAY_GRANT_DECISION, StartRunDelegationError } from "./startRunDelegation.js";
 
 /**
@@ -84,6 +85,37 @@ export interface DayGrantPins {
   spendDecision: string;
 }
 export const DAY_GRANT_KEYS = ["concurrency", "decision", "executorSha256", "plan", "project", "provider", "schema", "spendDecision"];
+
+/**
+ * The standing grant (Decision 0241, options A, B and E): the operator's one press of a standing-grant card on /actions, with
+ * no 24-hour end. It is checked beside the day grant, by the same chain, and refuses unless Decision 0241 is answered A, B or E
+ * on the pinned main. The Decision is found by its slug alone, never by a number (see CONTINUE_SLUG). The grant ends on an
+ * operator STOP card, an operator-issued Off or a press of the revoke card, never on Rowan's own Off (`ROWAN_OFF_REQUEST`).
+ */
+export const STANDING_GRANT_DECISION = "0241";
+export const STANDING_SLUG = "may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so";
+export const STANDING_ANSWERS = ["A. Standing grant", "B. Standing grant", "E. Standing grant"] as const;
+export const STANDING_GRANT_EXECUTOR_PATH = "scripts/standing-grant.sh";
+/** The operator's revoke card: a press of any card of this family at or after the approval ends the grant. */
+export const REVOKE_CARD = /^revoke-standing-grant(?:-|$)/;
+export interface StandingGrantPins {
+  schema: "arcadia-standing-grant-v1";
+  decision: typeof STANDING_GRANT_DECISION;
+  executorSha256: string;
+  project: string;
+  /** The Plan the operator chose; a START card of any other Plan is refused. */
+  plan: string;
+  provider: "claude-code-cli";
+  concurrency: 1;
+  spendDecision: string;
+}
+export const STANDING_GRANT_KEYS = DAY_GRANT_KEYS;
+export type GrantKind = "day" | "standing";
+/** What differs between the two grants' files: their receipt schema, descriptor block, claim marker and pins check. */
+const GRANTS = {
+  day: { receiptSchema: "arcadia-day-grant-receipt-v1", block: "dayGrant", claimed: "day-grant.claimed", label: "day-grant" },
+  standing: { receiptSchema: "arcadia-standing-grant-receipt-v1", block: "standingGrant", claimed: "standing-grant.claimed", label: "standing-grant" }
+} as const;
 
 export type DayGrantClearance =
   /** `cause`: the cause the fix addresses. Required, and equal to the named cause, when it clears a failed batch (Decision 0187). */
@@ -194,6 +226,51 @@ export function validateDayGrantPins(value: unknown): DayGrantPins {
   return p;
 }
 
+export function validateStandingGrantPins(value: unknown): StandingGrantPins {
+  const p = value as StandingGrantPins;
+  if (!exactKeys(p, STANDING_GRANT_KEYS)) refuse("INVALID_STANDING_GRANT", `standingGrant needs exactly ${STANDING_GRANT_KEYS.join(", ")}.`);
+  if (p.schema !== "arcadia-standing-grant-v1") refuse("INVALID_STANDING_GRANT", "standingGrant.schema must be arcadia-standing-grant-v1.");
+  if (p.decision !== STANDING_GRANT_DECISION) refuse("INVALID_STANDING_GRANT", `standingGrant.decision must be ${String(STANDING_GRANT_DECISION)}.`);
+  if (typeof p.executorSha256 !== "string" || !sha256Hex.test(p.executorSha256)) refuse("INVALID_STANDING_GRANT", "standingGrant.executorSha256 must be 64 lowercase hex.");
+  if (typeof p.project !== "string" || !slug.test(p.project) || typeof p.plan !== "string" || !slug.test(p.plan)) refuse("INVALID_STANDING_GRANT", "standingGrant.project and plan must be slugs.");
+  if (p.provider !== "claude-code-cli") refuse("INVALID_STANDING_GRANT", "standingGrant.provider must be claude-code-cli.");
+  if (p.concurrency !== 1) refuse("INVALID_STANDING_GRANT", "standingGrant.concurrency must be 1.");
+  if (typeof p.spendDecision !== "string" || !/^\d{4}$/.test(p.spendDecision)) refuse("INVALID_STANDING_GRANT", "standingGrant.spendDecision must be a four-digit Decision id.");
+  return p;
+}
+
+/** The one record with STANDING_SLUG among `docs/decisions/` paths, or a reason it cannot be told apart (as findContinueDecision). */
+export function findStandingDecision(paths: string[]): { file: string; id: string } | { problem: string } {
+  const matches = paths.filter((entry) => /^docs\/decisions\/\d{4}-[^/]+\.md$/.test(entry) && entry.slice("docs/decisions/0000-".length, -".md".length) === STANDING_SLUG);
+  if (matches.length === 0) return { problem: `no Decision record has the slug ${STANDING_SLUG}` };
+  if (matches.length > 1) return { problem: `${matches.length} Decision records share the slug ${STANDING_SLUG} (${matches.join(", ")})` };
+  return { file: matches[0], id: matches[0].slice("docs/decisions/".length, "docs/decisions/0000".length) };
+}
+
+/** Whether a Decision's frontmatter (never its body, which quotes every option) is approved with option A, B or E. */
+export function isStandingGrantAnswered(content: string, id: string): boolean {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
+  if (!match) return false;
+  let fields: Record<string, unknown> | null;
+  try { fields = parseYaml(match[1]) as Record<string, unknown> | null; } catch { return false; }
+  const answer = fields?.answer;
+  return !!fields && String(fields.id) === id && fields.status === "approved" && typeof answer === "string" && STANDING_ANSWERS.some((option) => answer.startsWith(option));
+}
+
+/** The Decisions on the pinned main: their `docs/decisions/` paths and a reader of one of them. */
+export interface StandingDecisionSource { paths: string[]; read: (file: string) => string }
+
+/** Refuses unless the standing-grant Decision is answered A, B or E on the pinned main; the code names the Decision. Returns its id. */
+export function assertStandingDecision(source: StandingDecisionSource | undefined): string {
+  if (!source) return refuse("STANDING_DECISION_UNREADABLE", "the standing-grant Decision cannot be read on the pinned main, so no standing grant is open");
+  const found = findStandingDecision(source.paths);
+  if ("problem" in found) return refuse("STANDING_DECISION_UNREADABLE", `the standing-grant Decision cannot be read on the pinned main: ${found.problem}`);
+  let content: string;
+  try { content = source.read(found.file); } catch { return refuse("STANDING_DECISION_UNREADABLE", `${found.file} cannot be read on the pinned main`); }
+  if (!isStandingGrantAnswered(content, found.id)) refuse(`DECISION_${found.id}_NOT_ANSWERED`, `Decision ${found.id} (${found.file}) is not answered A, B or E on the pinned main; a standing grant stays closed until the operator answers it`);
+  return found.id;
+}
+
 export function validateDayGrantDelegation(value: unknown): DayGrantDelegation {
   const d = value as DayGrantDelegation;
   if (!exactKeys(d, DAY_GRANT_DELEGATION_KEYS)) refuse("INVALID_DELEGATION", `startRun.delegation needs exactly ${DAY_GRANT_DELEGATION_KEYS.join(", ")}.`);
@@ -264,13 +341,22 @@ interface ApprovalReceipt { schema?: string; id?: string; runId?: string; mode?:
 interface PressRecord { schema?: string; scriptId?: string; runId?: string; status?: string; startedAt?: string; press?: unknown; browserPress?: unknown }
 interface StartReceipt { id?: string; runId?: string; mode?: string; outcome?: string; reason?: string; phase?: string; allowanceConsumed?: boolean; offCleanup?: string; record?: { operatorRunId?: string } }
 
-export interface DayGrantWindow { opensAt: string; closesAt: string; closesAtMs: number; opensAtMs: number; baselineRevision: number; pins: DayGrantPins; receiptSha256: string; pressSha256: string }
+/** The exact launcher of a standing-grant card; every pin lives in its descriptor. */
+export function standingGrantLauncher(id: string): string {
+  if (!slug.test(id)) refuse("INVALID_STANDING_GRANT", "Operator action id must be a lowercase slug.");
+  return dayGrantLauncher(id).replace(DAY_GRANT_EXECUTOR_PATH, STANDING_GRANT_EXECUTOR_PATH);
+}
+
+/** `closesAt` is null and `closesAtMs` infinite for a standing grant, which has no window. */
+export interface DayGrantWindow { opensAt: string; closesAt: string | null; closesAtMs: number; opensAtMs: number; baselineRevision: number; pins: DayGrantPins; receiptSha256: string; pressSha256: string }
 
 /**
  * The approval itself, from the library: its receipt and press record unchanged, a press through the runner by a browser
  * request with no delegated marker, consumed by this very run, with a window of exactly 24 hours from the press.
  */
-export function inspectDayApproval(library: string, card: string, run: string, receiptSha: string | null, pressSha: string | null, now: Date, offId: string): DayGrantWindow {
+export function inspectDayApproval(library: string, card: string, run: string, receiptSha: string | null, pressSha: string | null, now: Date, offId: string, kind: GrantKind = "day"): DayGrantWindow {
+  const grant = GRANTS[kind];
+  const validatePins = kind === "day" ? validateDayGrantPins : validateStandingGrantPins;
   if (!slug.test(card) || !runIdPattern.test(run)) refuse("INVALID_DELEGATION", "the approval card or run id is malformed");
   const receiptPath = path.join(library, "runs", card, run, "receipt.json");
   if (!existsSync(receiptPath)) refuse("APPROVAL_MISSING", `the approval receipt ${receiptPath} does not exist`);
@@ -280,11 +366,11 @@ export function inspectDayApproval(library: string, card: string, run: string, r
   let receipt: ApprovalReceipt;
   try { receipt = JSON.parse(receiptBytes.toString("utf8")) as ApprovalReceipt; } catch { return refuse("APPROVAL_NOT_PRESSED", "the approval receipt is unreadable"); }
   const pressId = receipt.record?.operatorRunId;
-  if (receipt.schema !== "arcadia-day-grant-receipt-v1" || receipt.id !== card || receipt.runId !== run || receipt.mode !== "run" || receipt.outcome !== "approved" || receipt.allowanceConsumed !== true || typeof pressId !== "string") {
-    refuse("APPROVAL_NOT_PRESSED", "the approval is not a consumed, approved /actions press of a day-grant card");
+  if (receipt.schema !== grant.receiptSchema || receipt.id !== card || receipt.runId !== run || receipt.mode !== "run" || receipt.outcome !== "approved" || receipt.allowanceConsumed !== true || typeof pressId !== "string") {
+    refuse("APPROVAL_NOT_PRESSED", `the approval is not a consumed, approved /actions press of a ${grant.label} card`);
   }
   const consumed = readJson<{ state?: string; requestId?: string; runId?: string }>(path.join(library, `${card}.consumed.json`));
-  if (consumed?.state !== "CONSUMED" || consumed.requestId !== card || consumed.runId !== run) refuse("APPROVAL_NOT_PRESSED", "the day-grant card's one-shot marker does not name this run");
+  if (consumed?.state !== "CONSUMED" || consumed.requestId !== card || consumed.runId !== run) refuse("APPROVAL_NOT_PRESSED", `the ${grant.label} card's one-shot marker does not name this run`);
   const pressDir = path.join(library, "runs", "operator", card, String(pressId));
   const pressPath = path.join(pressDir, "run.json");
   if (!existsSync(pressPath)) refuse("APPROVAL_NOT_OPERATOR", "the approval has no /actions press record");
@@ -293,24 +379,28 @@ export function inspectDayApproval(library: string, card: string, run: string, r
   if (pressSha !== null && pressSha256 !== pressSha) refuse("APPROVAL_CHANGED", "the approval press record changed since this card was pinned");
   const press = readJson<PressRecord>(pressPath);
   if (press?.schema !== "arcadia-operator-script-run-v1" || press.scriptId !== card || press.runId !== pressId || press.status !== "succeeded") refuse("APPROVAL_NOT_OPERATOR", "the approval press record is not this card's finished /actions press");
-  if (press!.press !== undefined) refuse("APPROVAL_NOT_OPERATOR", "a delegated press never counts as the operator's day approval");
+  if (press!.press !== undefined) refuse("APPROVAL_NOT_OPERATOR", `a delegated press never counts as the operator's ${kind === "day" ? "day" : "standing"} approval`);
   if (press!.browserPress !== true) refuse("APPROVAL_NOT_OPERATOR", "the approval was not pressed from the /actions page in a browser");
   let claimed = "";
-  try { claimed = readFileSync(path.join(pressDir, "day-grant.claimed"), "utf8").trim(); } catch { /* checked below */ }
+  try { claimed = readFileSync(path.join(pressDir, grant.claimed), "utf8").trim(); } catch { /* checked below */ }
   if (claimed !== run) refuse("APPROVAL_NOT_OPERATOR", "the approval press record was not claimed by this run");
-  const pins = readJson<{ dayGrant?: unknown }>(path.join(pressDir, "descriptor.json"))?.dayGrant;
-  let validPins: DayGrantPins;
-  try { validPins = validateDayGrantPins(pins); } catch { return refuse("APPROVAL_NOT_OPERATOR", "the approval press did not run a day-grant card"); }
+  const pins = readJson<Record<string, unknown>>(path.join(pressDir, "descriptor.json"))?.[grant.block];
+  let validPins: DayGrantPins | StandingGrantPins;
+  try { validPins = validatePins(pins); } catch { return refuse("APPROVAL_NOT_OPERATOR", `the approval press did not run a ${grant.label} card`); }
   // The press snapshot is not hashed, the receipt is: what the operator approved is what the pinned receipt recorded.
   const recorded = receipt.record!;
   if (recorded.project !== validPins.project || recorded.plan !== validPins.plan || recorded.provider !== validPins.provider || recorded.spendDecision !== validPins.spendDecision) {
-    refuse("APPROVAL_CHANGED", "the approval press's day-grant block is not the Project, Plan, provider and spend Decision its receipt recorded");
+    refuse("APPROVAL_CHANGED", `the approval press's ${grant.label} block is not the Project, Plan, provider and spend Decision its receipt recorded`);
   }
   const opensAtMs = Date.parse(String(press!.startedAt));
   if (!Number.isFinite(opensAtMs)) refuse("APPROVAL_NOT_OPERATOR", "the approval press has no readable start time");
-  const closesAtMs = opensAtMs + DAY_GRANT_WINDOW_MS;
-  if (receipt.record!.pressStartedAt !== press!.startedAt || Date.parse(String(receipt.record!.windowClosesAt)) !== closesAtMs) refuse("APPROVAL_CHANGED", "the approval receipt's window is not exactly 24 hours from the press");
-  if (now.getTime() >= closesAtMs) refuse("WINDOW_EXPIRED", `the day approved at ${press!.startedAt} ended at ${new Date(closesAtMs).toISOString()}; it never renews itself`);
+  // A standing grant has no window: it is open until something ends it, however long ago the press was.
+  const closesAtMs = kind === "day" ? opensAtMs + DAY_GRANT_WINDOW_MS : Number.POSITIVE_INFINITY;
+  if (receipt.record!.pressStartedAt !== press!.startedAt) refuse("APPROVAL_CHANGED", "the approval receipt's press time is not the press record's");
+  if (kind === "day") {
+    if (Date.parse(String(receipt.record!.windowClosesAt)) !== closesAtMs) refuse("APPROVAL_CHANGED", "the approval receipt's window is not exactly 24 hours from the press");
+    if (now.getTime() >= closesAtMs) refuse("WINDOW_EXPIRED", `the day approved at ${press!.startedAt} ended at ${new Date(closesAtMs).toISOString()}; it never renews itself`);
+  } else if (receipt.record!.windowClosesAt !== undefined) refuse("APPROVAL_CHANGED", "a standing-grant receipt records no window end");
   if (now.getTime() < opensAtMs) refuse("WINDOW_EXPIRED", "the approval press is in the future");
   const baselineRevision = receipt.record!.policyRevisionAtApproval;
   if (!Number.isInteger(baselineRevision)) refuse("APPROVAL_NOT_PRESSED", "the approval receipt records no policy revision");
@@ -319,16 +409,18 @@ export function inspectDayApproval(library: string, card: string, run: string, r
   for (const other of listDirectory(path.join(library, "runs", "operator"))) {
     for (const otherPress of listDirectory(path.join(library, "runs", "operator", other))) {
       const dir = path.join(library, "runs", "operator", other, otherPress);
-      if (!readJson<{ dayGrant?: unknown }>(path.join(dir, "descriptor.json"))?.dayGrant) continue;
+      if (!readJson<Record<string, unknown>>(path.join(dir, "descriptor.json"))?.[grant.block]) continue;
       const record = readJson<PressRecord>(path.join(dir, "run.json"));
-      if (record?.status === "succeeded" && record.press === undefined && record.browserPress === true && existsSync(path.join(dir, "day-grant.claimed")) && Date.parse(String(record.startedAt)) > opensAtMs) {
-        refuse("APPROVAL_SUPERSEDED", `the operator approved a later day with ${other}/${otherPress}; a card names the latest approval`);
+      if (record?.status === "succeeded" && record.press === undefined && record.browserPress === true && existsSync(path.join(dir, grant.claimed)) && Date.parse(String(record.startedAt)) > opensAtMs) {
+        refuse("APPROVAL_SUPERSEDED", `the operator approved a later ${kind === "day" ? "day" : "standing grant"} with ${other}/${otherPress}; a card names the latest approval`);
       }
     }
   }
   // Any press of the STOP card since the approval ends the day; one before it does not, so a later approval opens a new day.
+  // A standing grant also ends on a press of the revoke card.
   for (const stopCard of listDirectory(path.join(library, "runs", "operator"))) {
-    if (stopCard !== offId && !STOP_CARD.test(stopCard)) continue;
+    const revoke = kind === "standing" && REVOKE_CARD.test(stopCard);
+    if (stopCard !== offId && !STOP_CARD.test(stopCard) && !revoke) continue;
     for (const stopPress of listDirectory(path.join(library, "runs", "operator", stopCard))) {
       const dir = path.join(library, "runs", "operator", stopCard, stopPress);
       if (!statSync(dir).isDirectory()) continue;
@@ -336,10 +428,16 @@ export function inspectDayApproval(library: string, card: string, run: string, r
       if (time !== null && time < Date.parse(ATTEMPT_COUNT_EARLIEST)) continue;
       const startedAt = Date.parse(String(readJson<PressRecord>(path.join(dir, "run.json"))?.startedAt));
       if (!Number.isFinite(startedAt)) refuse("PRESS_UNREADABLE", `the press record ${stopCard}/${stopPress} cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator`);
-      if (startedAt >= opensAtMs) refuse("DAY_ENDED_BY_OPERATOR", `the STOP card ${stopCard} was pressed at ${new Date(startedAt).toISOString()}: an operator STOP ends the day, even with production already Off`);
+      if (startedAt < opensAtMs) continue;
+      if (revoke) refuse("GRANT_REVOKED", `the revoke card ${stopCard} was pressed at ${new Date(startedAt).toISOString()}: the standing grant is revoked`);
+      if (kind === "standing") refuse("GRANT_ENDED_BY_STOP", `the STOP card ${stopCard} was pressed at ${new Date(startedAt).toISOString()}: an operator STOP ends the standing grant, even with production already Off`);
+      refuse("DAY_ENDED_BY_OPERATOR", `the STOP card ${stopCard} was pressed at ${new Date(startedAt).toISOString()}: an operator STOP ends the day, even with production already Off`);
     }
   }
-  return { opensAt: String(press!.startedAt), closesAt: new Date(closesAtMs).toISOString(), opensAtMs, closesAtMs, baselineRevision: baselineRevision as number, pins: validPins, receiptSha256, pressSha256 };
+  return {
+    opensAt: String(press!.startedAt), closesAt: kind === "day" ? new Date(closesAtMs).toISOString() : null, opensAtMs, closesAtMs, baselineRevision: baselineRevision as number,
+    pins: validPins as DayGrantPins, receiptSha256, pressSha256
+  };
 }
 
 /** A press id's own timestamp (the runner names each press by it), or null for an id that carries none. */
@@ -431,7 +529,7 @@ function isExecutorOff(requestId: string, cards: Iterable<string>, library: stri
 }
 
 /** Production's moves since the approval, each one this chain's or Rowan's own. Throws for anything else. */
-function checkProductionChain(evidence: DayEvidence, window: DayGrantWindow, library: string, pinnedRevision: number | null): number {
+function checkProductionChain(evidence: DayEvidence, window: DayGrantWindow, library: string, pinnedRevision: number | null, kind: GrantKind = "day"): number {
   const pressedCards = new Set(listDirectory(path.join(library, "runs", "operator")).filter((card) => listDirectory(path.join(library, "runs", "operator", card)).some((press) => !!readJson<{ startRun?: unknown }>(path.join(library, "runs", "operator", card, press, "descriptor.json"))?.startRun)));
   let revision = window.baselineRevision;
   for (const t of [...evidence.transitions].filter((x) => x.revisionBefore >= window.baselineRevision).sort((a, b) => a.revisionBefore - b.revisionBefore)) {
@@ -439,7 +537,7 @@ function checkProductionChain(evidence: DayEvidence, window: DayGrantWindow, lib
     if (t.transition === "activate") {
       if (!pressedCards.has(t.requestId)) refuse("PRODUCTION_CHANGED", `production was activated by ${t.requestId}, which is no pressed START card`);
     } else if (!ROWAN_OFF_REQUEST.test(t.requestId) && !isExecutorOff(t.requestId, pressedCards, library)) {
-      refuse("DAY_ENDED_BY_OPERATOR", `production was turned Off by ${t.requestId}, not by this chain or Rowan: an operator STOP or operator-issued Off ends the day`);
+      refuse(kind === "day" ? "DAY_ENDED_BY_OPERATOR" : "GRANT_ENDED_BY_OFF", `production was turned Off by ${t.requestId}, not by this chain or Rowan: an operator STOP or operator-issued Off ends the ${kind === "day" ? "day" : "standing grant"}`);
     }
     revision = t.revisionAfter;
   }
@@ -504,6 +602,9 @@ export interface InspectDayGrantInput {
   /** The card's named cause; undefined computes the chain before Rowan has named one. */
   previous?: DayGrantPrevious | null;
   attempt?: number;
+  /** Which grant the approval is: the 24-hour day grant (default) or the standing grant, which also needs `standingDecision`. */
+  grant?: GrantKind;
+  standingDecision?: StandingDecisionSource;
 }
 
 /**
@@ -511,12 +612,14 @@ export interface InspectDayGrantInput {
  * StartRunDelegationError. Decision 0181 stops at one failed batch within this day's window; refused re-presses count within it too.
  */
 export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain {
-  const window = inspectDayApproval(input.library, input.approvalCard, input.approvalRun, input.approvalReceiptSha256, input.approvalPressSha256, input.now, input.scope.offId);
+  const kind = input.grant ?? "day";
+  if (kind === "standing") assertStandingDecision(input.standingDecision);
+  const window = inspectDayApproval(input.library, input.approvalCard, input.approvalRun, input.approvalReceiptSha256, input.approvalPressSha256, input.now, input.scope.offId, kind);
   const { scope } = input;
   if (scope.project !== window.pins.project || scope.plan !== window.pins.plan || scope.provider !== window.pins.provider || scope.concurrency !== window.pins.concurrency || scope.spendDecision !== window.pins.spendDecision) {
     refuse("SCOPE_NOT_APPROVED", `this card's scope (${scope.project}/${scope.plan}, ${scope.provider}, concurrency ${scope.concurrency}, spend Decision ${scope.spendDecision}) is not the Plan, provider and spend Decision the operator approved`);
   }
-  const revision = checkProductionChain(input.evidence, window, input.library, input.policyRevision);
+  const revision = checkProductionChain(input.evidence, window, input.library, input.policyRevision, kind);
   // Attempts are still numbered as Decision 0170 counted them: every activation that admitted a Session, a dashboard
   // reactivation included. Decision 0181 lifted the cap; the number only pins the card to the record it was prepared on.
   const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
@@ -579,4 +682,63 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
   }
   if (input.attempt !== undefined && input.attempt !== attemptsSoFar + 1) refuse("ATTEMPT_MISMATCH", `this card is pinned as attempt ${input.attempt}, but ${attemptsSoFar} attempts already admitted a Session`);
   return { window, attemptsSoFar, failedBatchesToday: failed.length, clearedFailures, rePressesToday, latest: latestSummary, revision };
+}
+
+/** What ended a standing grant: the operator's STOP card, an Off the operator issued, or the revoke card. */
+export type StandingGrantEnd = "stop-card" | "operator-off" | "revoke-card";
+const END_OF: Record<string, StandingGrantEnd> = { GRANT_ENDED_BY_STOP: "stop-card", GRANT_ENDED_BY_OFF: "operator-off", GRANT_REVOKED: "revoke-card" };
+
+/** `arcadia start-run grant-status`: whether a standing grant is open, read from the same files and the same chain as the check. */
+export interface StandingGrantStatus {
+  open: boolean;
+  plan: string | null;
+  approvalCard: string | null;
+  approvalRun: string | null;
+  endedBy: StandingGrantEnd | null;
+  /** Why it is not open when nothing ended it: the refusal code and message, or null while open. */
+  reason: { code: string; message: string } | null;
+}
+
+/** The operator's latest standing-grant press in the library: its card, its executor run (read from the claim marker) and its Plan. */
+function latestStandingApproval(library: string): { card: string; run: string; plan: string | null } | null {
+  const operatorRuns = path.join(library, "runs", "operator");
+  let latest: { card: string; run: string; plan: string | null; at: number } | null = null;
+  for (const card of listDirectory(operatorRuns)) {
+    for (const pressId of listDirectory(path.join(operatorRuns, card))) {
+      const dir = path.join(operatorRuns, card, pressId);
+      const pins = readJson<Record<string, unknown>>(path.join(dir, "descriptor.json"))?.standingGrant as { plan?: unknown } | undefined;
+      if (!pins) continue;
+      const record = readJson<PressRecord>(path.join(dir, "run.json"));
+      const at = Date.parse(String(record?.startedAt));
+      if (record?.status !== "succeeded" || record.press !== undefined || record.browserPress !== true || !Number.isFinite(at)) continue;
+      let run: string;
+      try { run = readFileSync(path.join(dir, GRANTS.standing.claimed), "utf8").trim(); } catch { continue; }
+      if (!runIdPattern.test(run) || (latest && latest.at >= at)) continue;
+      latest = { card, run, plan: typeof pins.plan === "string" ? pins.plan : null, at };
+    }
+  }
+  return latest;
+}
+
+/**
+ * Read-only, mutating nothing: the standing grant is open when the operator's latest press of a standing-grant card is a valid
+ * approval (a consumed, browser press with no delegated marker), Decision 0241 is answered A, B or E on the pinned main, and
+ * nothing has ended it: no operator STOP card, no revoke card and no Off other than Rowan's own or an executor's.
+ */
+export function standingGrantStatus(input: { library: string; now: Date; evidence: DayEvidence; offId: string; standingDecision?: StandingDecisionSource }): StandingGrantStatus {
+  const closed = (reason: StandingGrantStatus["reason"], approval: { card: string; run: string; plan: string | null } | null, endedBy: StandingGrantEnd | null = null): StandingGrantStatus =>
+    ({ open: false, plan: approval?.plan ?? null, approvalCard: approval?.card ?? null, approvalRun: approval?.run ?? null, endedBy, reason });
+  let approval: ReturnType<typeof latestStandingApproval>;
+  try { approval = latestStandingApproval(input.library); }
+  catch (error) { if (error instanceof StartRunDelegationError) return closed({ code: error.code, message: error.message }, null); throw error; }
+  if (!approval) return closed({ code: "NO_STANDING_GRANT", message: "no standing-grant card has been pressed from /actions" }, null);
+  try {
+    assertStandingDecision(input.standingDecision);
+    const window = inspectDayApproval(input.library, approval.card, approval.run, null, null, input.now, input.offId, "standing");
+    checkProductionChain(input.evidence, window, input.library, null, "standing");
+    return { open: true, plan: window.pins.plan, approvalCard: approval.card, approvalRun: approval.run, endedBy: null, reason: null };
+  } catch (error) {
+    if (!(error instanceof StartRunDelegationError)) throw error;
+    return closed({ code: error.code, message: error.message }, approval, END_OF[error.code] ?? null);
+  }
 }

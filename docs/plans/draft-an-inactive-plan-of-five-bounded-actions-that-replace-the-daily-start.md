@@ -55,11 +55,11 @@ actions:
     references: ["src/operatorActions/startRunDayGrant.ts", "src/production/policy.ts", "scripts/start-run.sh", "docs/agent-guidance/operator-actions.md", "docs/notes-to-self.md"]
   - id: verify-standing-grant-receipt
     title: Add a standing-grant card and its read-only check beside the day grant, with no 24-hour window, refused unless the standing-grant Decision is answered A or B on the pinned main.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Add a standing-grant card and its read-only check beside the day grant, with no 24-hour window, refused unless the standing-grant Decision is answered A, B or E on the pinned main.
+    next_action: Completed via Agent Ask auto-settle-arcadia-verify-standing-grant-receipt-327ca5dcc54d; no further action.
     expected_artifact: Evidence satisfying Agent Ask verify-standing-grant-receipt
     clarification: clarified
     confidence: high
@@ -215,7 +215,7 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: verify-standing-grant-receipt
+current_action: read-the-grant-in-rowan-and-signal-guidance
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

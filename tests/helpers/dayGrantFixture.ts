@@ -20,7 +20,13 @@ export const dayGrantPins = (overrides: Record<string, unknown> = {}) => ({
   schema: "arcadia-day-grant-v1", decision: "0173", executorSha256: "e".repeat(64), project: "arcadia", plan: DAY_PLAN, provider: "claude-code-cli", concurrency: 1, spendDecision: "0130", ...overrides
 });
 
+export const standingGrantPins = (overrides: Record<string, unknown> = {}) => ({
+  schema: "arcadia-standing-grant-v1", decision: "0241", executorSha256: "e".repeat(64), project: "arcadia", plan: DAY_PLAN, provider: "claude-code-cli", concurrency: 1, spendDecision: "0130", ...overrides
+});
+
 export interface ApprovalSpec {
+  /** Write a Decision 0241 standing-grant approval instead of a day grant: its receipt, descriptor block and claim marker, and no window. */
+  standing?: boolean;
   card?: string;
   run?: string;
   press?: string;
@@ -46,12 +52,14 @@ export function writeDayApproval(library: string, spec: ApprovalSpec): ApprovalF
   const pressDir = path.join(library, "runs", "operator", card, press);
   const receiptPath = path.join(library, "runs", card, run, "receipt.json");
   const pressPath = path.join(pressDir, "run.json");
-  const pins = dayGrantPins(spec.pins);
+  const standing = spec.standing === true;
+  const makePins = standing ? standingGrantPins : dayGrantPins;
+  const pins = makePins(spec.pins);
   mkdirSync(path.dirname(receiptPath), { recursive: true });
   const receipt = JSON.stringify({
-    schema: "arcadia-day-grant-receipt-v1", id: card, runId: run, mode: "run", startedAt: pressedAt, outcome: "approved", allowanceConsumed: true, reason: "",
+    schema: standing ? "arcadia-standing-grant-receipt-v1" : "arcadia-day-grant-receipt-v1", id: card, runId: run, mode: "run", startedAt: pressedAt, outcome: "approved", allowanceConsumed: true, reason: "",
     record: {
-      operatorRunId: press, pressStartedAt: pressedAt, windowClosesAt: iso(spec.pressedAt + 24 * 60 * MINUTE), policyRevisionAtApproval: spec.baseline ?? 83,
+      operatorRunId: press, pressStartedAt: pressedAt, ...(standing ? {} : { windowClosesAt: iso(spec.pressedAt + 24 * 60 * MINUTE) }), policyRevisionAtApproval: spec.baseline ?? 83,
       project: pins.project, plan: pins.plan, provider: pins.provider, spendDecision: pins.spendDecision, ...spec.record
     }, ...spec.receipt
   });
@@ -66,8 +74,8 @@ export function writeDayApproval(library: string, spec: ApprovalSpec): ApprovalF
       ...(spec.delegated ? { press: { kind: "delegated", agent: "rowan", decision: "0173", originatingRun: "x/y" } } : {})
     });
     writeFileSync(pressPath, pressBytes);
-    writeFileSync(path.join(pressDir, "descriptor.json"), JSON.stringify({ dayGrant: dayGrantPins(spec.pins) }));
-    if (!spec.noClaim) writeFileSync(path.join(pressDir, "day-grant.claimed"), `${run}\n`);
+    writeFileSync(path.join(pressDir, "descriptor.json"), JSON.stringify(standing ? { standingGrant: makePins(spec.pins) } : { dayGrant: makePins(spec.pins) }));
+    if (!spec.noClaim) writeFileSync(path.join(pressDir, standing ? "standing-grant.claimed" : "day-grant.claimed"), `${run}\n`);
   }
   return { card, run, receiptPath, pressPath, receiptSha256: sha(receipt), pressSha256: sha(pressBytes) };
 }

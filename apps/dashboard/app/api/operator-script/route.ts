@@ -280,9 +280,11 @@ export async function POST(request: Request) {
     }
     // Decision 0173: a day approval is the operator's press on the /actions page at the Tailnet address. A scripted POST
     // or a browser on this host at a loopback address cannot make one. This stops accidents, not an agent set on forging it.
-    const browserPress = descriptor.dayGrant !== undefined && isOperatorBrowserPress({ origin: request.headers.get("origin"), host: request.headers.get("host") });
-    if (descriptor.dayGrant !== undefined && !browserPress) {
-      return NextResponse.json({ error: "A day-grant card is pressed by the operator on the /actions page, in a browser at the Tailnet address.", reason: "DAY_GRANT_BROWSER_PRESS_REQUIRED" }, { status: 409 });
+    // Decision 0241: a standing-grant card needs the same proof.
+    const grantCard = descriptor.dayGrant !== undefined || descriptor.standingGrant !== undefined;
+    const browserPress = grantCard && isOperatorBrowserPress({ origin: request.headers.get("origin"), host: request.headers.get("host") });
+    if (grantCard && !browserPress) {
+      return NextResponse.json({ error: `A ${descriptor.standingGrant !== undefined ? "standing-grant" : "day-grant"} card is pressed by the operator on the /actions page, in a browser at the Tailnet address.`, reason: "DAY_GRANT_BROWSER_PRESS_REQUIRED" }, { status: 409 });
     }
     const state = await loadState(id);
     const receipt = await loadOperatorScriptReceipt(entry.stateLibrary, entry.id);

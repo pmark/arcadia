@@ -13,7 +13,7 @@ import { buildAgentQueue } from "../dispatch/queue.js";
 import { admitStartScope, resolveAcceptedReadiness, type AcceptedReadinessResolution, type StartScopeAdmission } from "../docs/dispatch.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
 import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
-import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, DAY_GRANT_EXECUTOR_PATH, findContinueDecision, inspectDayGrantChain, validateDayGrantPins, validateDayGrantPrevious, type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
+import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, DAY_GRANT_EXECUTOR_PATH, STANDING_GRANT_DECISION, STANDING_GRANT_EXECUTOR_PATH, assertStandingDecision, findContinueDecision, inspectDayGrantChain, standingGrantStatus, validateDayGrantPins, validateDayGrantPrevious, validateStandingGrantPins, type StandingGrantPins, type StandingGrantStatus,type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
 import { readDayGrantEvidence } from "../production/policy.js";
@@ -425,6 +425,65 @@ export function runStartRunDayPinsCommand(options: StartRunDayPinsOptions, deps:
 export function runStartRunDayEvidenceCommand(options: { workspace?: string }): CommandSuccess<DayEvidence> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   return createSuccess({ command: "start-run.day-evidence", workspace: workspacePath, data: withReadOnlyDatabase(workspacePath, (db) => readDayGrantEvidence(db, ATTEMPT_COUNT_EARLIEST)) });
+}
+
+export interface StartRunGrantStatusOptions { repository?: string; workspace?: string; library?: string }
+
+/**
+ * `arcadia start-run grant-status`: whether the standing grant (Decision 0241) is open. Read-only: it reads the library, the
+ * production record and the Decision at origin main (a fresh `ls-remote`, then `git show`), and writes nothing and grants nothing.
+ * Press authority is read from this, not from any chat message.
+ */
+export function runStartRunGrantStatusCommand(options: StartRunGrantStatusOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): CommandSuccess<StandingGrantStatus> {
+  let toplevel: string;
+  try { toplevel = realpathSync(options.repository ?? text(deps.git(process.cwd(), ["rev-parse", "--show-toplevel"])).trim()); }
+  catch { throw validationError("Run this inside the Arcadia repository or pass --repository."); }
+  const originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? "";
+  if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
+  const paths = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").filter(Boolean);
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const status = standingGrantStatus({
+    library: options.library ?? path.join(mainCheckout(toplevel, deps), "artifacts", "generated", "operator-scripts"), now: deps.now(), offId: START_RUN_DEFAULTS.offId,
+    evidence: (deps.dayEvidence ?? realStartRunPinsDeps.dayEvidence!)(workspacePath),
+    standingDecision: { paths, read: (file) => text(deps.git(toplevel, ["show", `${originMain}:${file}`])) }
+  });
+  return createSuccess({ command: "start-run.grant-status", workspace: workspacePath, data: status });
+}
+
+export interface StartRunStandingPinsOptions { plan: string; expiresHours: string | number; repository?: string }
+export interface StartRunStandingPinsData { standingGrant: StandingGrantPins; expires_at: string }
+
+/**
+ * `arcadia start-run standing-pins`: the pins of one standing-grant card, for the operator to press. It writes nothing and grants
+ * nothing, and refuses unless Decision 0241 is answered A, B or E at origin main. `expires_at` bounds only how long the card may
+ * wait unpressed; a pressed grant has no end of its own.
+ */
+export function buildStartRunStandingPins(options: StartRunStandingPinsOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): StartRunStandingPinsData {
+  if (!slug.test(options.plan)) throw validationError("--plan must be a Plan slug.");
+  const hours = Number(options.expiresHours);
+  if (!Number.isFinite(hours) || hours <= 0 || hours > 24) throw validationError("--expires-hours must be greater than 0 and at most 24.");
+  let toplevel: string;
+  try { toplevel = realpathSync(options.repository ?? text(deps.git(process.cwd(), ["rev-parse", "--show-toplevel"])).trim()); }
+  catch { throw validationError("Run this inside the Arcadia repository or pass --repository."); }
+  const originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? "";
+  if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
+  const show = (file: string): Buffer => {
+    try { return deps.git(toplevel, ["show", `${originMain}:${file}`]); }
+    catch { throw validationError(`${file} is not readable at origin main ${originMain}; fetch origin (git fetch origin main) or merge it first.`); }
+  };
+  try { assertStandingDecision({ paths: text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").filter(Boolean), read: (file) => text(show(file)) }); }
+  catch (error) { throw validationError(error instanceof Error ? error.message : String(error)); }
+  const plan = frontmatter(text(show(`docs/plans/${options.plan}.md`)), `Plan ${options.plan}`);
+  if (plan.status !== "active" || frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan !== options.plan) throw validationError(`Plan ${options.plan} is not the Project's active Plan at origin main.`);
+  const standingGrant = validateStandingGrantPins({
+    schema: "arcadia-standing-grant-v1", decision: STANDING_GRANT_DECISION, executorSha256: sha256(show(STANDING_GRANT_EXECUTOR_PATH)), project: String(plan.project ?? ""), plan: options.plan,
+    provider: START_RUN_DEFAULTS.provider, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision
+  });
+  return { standingGrant, expires_at: new Date(deps.now().getTime() + hours * 3_600_000).toISOString().replace(/\.\d{3}Z$/, "Z") };
+}
+
+export function runStartRunStandingPinsCommand(options: StartRunStandingPinsOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): CommandSuccess<StartRunStandingPinsData> {
+  return createSuccess({ command: "start-run.standing-pins", data: buildStartRunStandingPins(options, deps) });
 }
 
 export interface StartRunHoldOptions { card: string; reason: string; evidence: string; by?: string; repository?: string; library?: string }

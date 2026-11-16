@@ -1,6 +1,6 @@
 import path from "node:path";
 import { validatePlanActivationInput, validatePlanAmendmentInput, type PlanActivationInput, type PlanAmendmentInput } from "./planAmendmentContract.js";
-import { dayGrantLauncher, DAY_GRANT_EXECUTOR_PATH, validateDayGrantPins, type DayGrantPins } from "./startRunDayGrant.js";
+import { dayGrantLauncher, standingGrantLauncher, DAY_GRANT_EXECUTOR_PATH, STANDING_GRANT_EXECUTOR_PATH, validateDayGrantPins, validateStandingGrantPins, type DayGrantPins, type StandingGrantPins } from "./startRunDayGrant.js";
 import { startRunLauncher as sharedStartRunLauncher, StartRunPinsError, validateStartRunPins, type StartRunPins } from "./startRunPins.js";
 import { dependencyOrderedActionIds } from "../dispatch/actionOrder.js";
 import { validateWorkspaceConfigEditInput, workspaceConfigEditLauncher, type WorkspaceConfigEditInput } from "./workspaceConfigEditContract.js";
@@ -46,6 +46,8 @@ export interface OperatorScriptDescriptor {
    * nothing else. It runs only through the shared executor scripts/day-grant.sh via `dayGrantLauncher`.
    */
   dayGrant?: DayGrantPins;
+  /** A standing-grant card (Decision 0241): a day-grant card with no 24-hour end; it runs only through scripts/standing-grant.sh via `standingGrantLauncher`. */
+  standingGrant?: StandingGrantPins;
   agentAsk?: { proposal: string; intent: string; targetRef: string | null };
   /** A pinned one-shot removal of one allowlisted workspace-config field; it runs only through the shared worker launcher. */
   workspaceConfigEdit?: WorkspaceConfigEditInput;
@@ -138,7 +140,7 @@ function validateStartRun(d: OperatorScriptDescriptor, id: string, script: strin
   const pins = d.startRun!;
   if (d.kind !== "grant" || d.repeatable === true || !d.expires_at || d.next_after !== undefined || d.completionSupplement !== undefined ||
       d.planAmendment !== undefined || d.agentAsk !== undefined || d.agentAskSettlement !== undefined || d.agentAskRejections !== undefined ||
-      d.workspaceConfigEdit !== undefined || d.dayGrant !== undefined) {
+      d.workspaceConfigEdit !== undefined || d.dayGrant !== undefined || d.standingGrant !== undefined) {
     fail("INVALID_START_RUN", "A START card is a one-shot kind \"grant\" with an expires_at and no other capability; only planActivation may sit beside startRun.");
   }
   if (d.project !== undefined && d.project !== pins.project) fail("INVALID_START_RUN", "A START card's project must equal startRun.project.");
@@ -169,13 +171,26 @@ function validateStartRun(d: OperatorScriptDescriptor, id: string, script: strin
 function validateDayGrant(d: OperatorScriptDescriptor, id: string, script: string): void {
   try { validateDayGrantPins(d.dayGrant); }
   catch (error) { return fail("INVALID_DAY_GRANT", error instanceof Error ? error.message : String(error)); }
-  if (d.kind !== "grant" || d.repeatable === true || !d.expires_at || d.next_after !== undefined || d.completionSupplement !== undefined || d.startRun !== undefined ||
+  if (d.kind !== "grant" || d.repeatable === true || !d.expires_at || d.next_after !== undefined || d.completionSupplement !== undefined || d.startRun !== undefined || d.standingGrant !== undefined ||
       d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined || d.agentAskSettlement !== undefined || d.agentAskRejections !== undefined ||
       d.workspaceConfigEdit !== undefined) {
     fail("INVALID_DAY_GRANT", "A day-grant card is a one-shot kind \"grant\" with an expires_at and no other capability.");
   }
   if (d.project !== undefined && d.project !== d.dayGrant!.project) fail("INVALID_DAY_GRANT", "A day-grant card's project must equal dayGrant.project.");
   if (script.replace(/\r\n/g, "\n") !== dayGrantLauncher(id)) fail("DAY_GRANT_RUNNER_REQUIRED", "A day-grant card script must be exactly the shared day-grant launcher; bespoke commands are refused.");
+}
+
+/** `expires_at` bounds only how long the card may wait unpressed; a pressed standing grant has no end of its own. */
+function validateStandingGrant(d: OperatorScriptDescriptor, id: string, script: string): void {
+  try { validateStandingGrantPins(d.standingGrant); }
+  catch (error) { return fail("INVALID_STANDING_GRANT", error instanceof Error ? error.message : String(error)); }
+  if (d.kind !== "grant" || d.repeatable === true || !d.expires_at || d.next_after !== undefined || d.completionSupplement !== undefined || d.startRun !== undefined || d.dayGrant !== undefined ||
+      d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined || d.agentAskSettlement !== undefined || d.agentAskRejections !== undefined ||
+      d.workspaceConfigEdit !== undefined) {
+    fail("INVALID_STANDING_GRANT", "A standing-grant card is a one-shot kind \"grant\" with an expires_at and no other capability.");
+  }
+  if (d.project !== undefined && d.project !== d.standingGrant!.project) fail("INVALID_STANDING_GRANT", "A standing-grant card's project must equal standingGrant.project.");
+  if (script.replace(/\r\n/g, "\n") !== standingGrantLauncher(id)) fail("STANDING_GRANT_RUNNER_REQUIRED", "A standing-grant card script must be exactly the shared standing-grant launcher; bespoke commands are refused.");
 }
 
 export interface AgentAskSettlementPin {
@@ -288,8 +303,8 @@ const isIsoInstant = (v: unknown): boolean => typeof v === "string" && /^\d{4}-\
 export function assertProjectLibraryEntry(value: unknown, project: string): void {
   const d = (value && typeof value === "object" ? value : {}) as Partial<OperatorScriptDescriptor>;
   if (d.project !== project) fail("UNPUBLISHED_PROJECT_ENTRY", `This entry does not declare project "${project}", so it is not published to /actions.`);
-  if (d.completionSupplement !== undefined || d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.startRun !== undefined || d.dayGrant !== undefined || d.next_after !== undefined) {
-    fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry cannot use planAmendment, planActivation, workspaceConfigEdit, startRun, dayGrant or next_after; those runners and hints exist only in Arcadia's library.");
+  if (d.completionSupplement !== undefined || d.planAmendment !== undefined || d.planActivation !== undefined || d.workspaceConfigEdit !== undefined || d.startRun !== undefined || d.dayGrant !== undefined || d.standingGrant !== undefined || d.next_after !== undefined) {
+    fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry cannot use planAmendment, planActivation, workspaceConfigEdit, startRun, dayGrant, standingGrant or next_after; those runners and hints exist only in Arcadia's library.");
   }
   if (d.agentAskRejections !== undefined || (d.agentAsk !== undefined && d.agentAskSettlement === undefined)) {
     fail("UNSUPPORTED_PROJECT_ENTRY", "A Project library entry settles an Agent Ask only through a pinned agentAskSettlement (arcadia operator-action settle-ask); a plain agentAsk scope or agentAskRejections is refused there.");
@@ -336,7 +351,12 @@ export function validateOperatorScriptContract(value: unknown, id: string, scrip
     validateDayGrant(d, id, script);
     return d;
   }
+  if (d.standingGrant !== undefined) {
+    validateStandingGrant(d, id, script);
+    return d;
+  }
   if (script.includes(DAY_GRANT_EXECUTOR_PATH)) fail("DAY_GRANT_RUNNER_REQUIRED", "The shared day-grant executor requires a pinned dayGrant descriptor.");
+  if (script.includes(STANDING_GRANT_EXECUTOR_PATH)) fail("STANDING_GRANT_RUNNER_REQUIRED", "The shared standing-grant executor requires a pinned standingGrant descriptor.");
   if (d.workspaceConfigEdit !== undefined) {
     if (d.planAmendment !== undefined || d.planActivation !== undefined || d.agentAsk !== undefined || d.agentAskRejections !== undefined) {
       fail("INVALID_OPERATOR_CONTRACT", "A workspace-config edit cannot be combined with a settlement scope.");
