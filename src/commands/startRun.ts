@@ -126,7 +126,7 @@ const isContinueAnswered = (content: string, id: string): boolean => {
 };
 const text = (buffer: Buffer): string => buffer.toString("utf8");
 const sha256 = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
-function frontmatter(content: string, label: string): Record<string, unknown> {
+export function frontmatter(content: string, label: string): Record<string, unknown> {
   const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(content);
   if (!match) throw validationError(`${label} has no frontmatter.`);
   return parseYaml(match[1]) as Record<string, unknown>;
@@ -169,7 +169,7 @@ export function startRunCriteriaFindings(action: StartRunPlanAction): { errors: 
 }
 
 /** The main checkout of the repository (ignored host files such as consumed markers live there, not in a worktree). */
-function mainCheckout(repository: string, deps: StartRunPinsDeps): string {
+export function mainCheckout(repository: string, deps: StartRunPinsDeps): string {
   try {
     const common = text(deps.git(repository, ["rev-parse", "--path-format=absolute", "--git-common-dir"])).trim();
     return path.basename(common) === ".git" ? path.dirname(common) : repository;

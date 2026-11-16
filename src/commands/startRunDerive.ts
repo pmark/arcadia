@@ -1,0 +1,113 @@
+import { realpathSync } from "node:fs";
+import path from "node:path";
+import { validationError } from "../cli/errors.js";
+import { createSuccess, type CommandSuccess } from "../cli/response.js";
+import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { START_RUN_EXECUTOR_PATH } from "../operatorActions/startRunPins.js";
+import { inspectDayGrantChain, standingGrantStatus } from "../operatorActions/startRunDayGrant.js";
+import { StartRunDelegationError } from "../operatorActions/startRunDelegation.js";
+import { DERIVED_PROVIDER, deriveStartCard, refuse, type DeriveInput, type DeriveResult } from "../operatorActions/startRunDerive.js";
+import { START_RUN_DEFAULTS, frontmatter, mainCheckout, realStartRunPinsDeps, startRunCriteriaFindings, type StartRunPinsDeps } from "./startRun.js";
+import { createHash } from "node:crypto";
+
+/** The options `start-run derive` accepts: where to read, never what to derive. */
+export interface StartRunDeriveOptions { repository?: string; workspace?: string; library?: string; json?: boolean; unknownArguments?: string[] }
+export interface StartRunDeriveData {
+  derived: boolean;
+  /** The named reason nothing was derived, or null. */
+  reason: string | null;
+  message: string | null;
+  card: Extract<DeriveResult, { ok: true }>["card"] | null;
+  observations: { originMain: string | null; queueRevision: number | null; production: { revision: number; epoch: number } | null };
+}
+
+const text = (buffer: Buffer): string => buffer.toString("utf8");
+const sha256 = (value: Buffer): string => createHash("sha256").update(value).digest("hex");
+
+/**
+ * `arcadia start-run derive`: the whole standing-grant START card (descriptor, launcher, reviewed manifest) computed from origin
+ * main, the governed queue, the production policy and the open standing-grant receipt. Read-only: it reads the library, the
+ * workspace database and origin main, writes nothing and grants nothing. No option names the Plan, Actions, count, provider,
+ * concurrency, expiry, cause, Decision or card id; an unknown option is refused by name.
+ */
+export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): CommandSuccess<StartRunDeriveData> {
+  if (options.unknownArguments?.length) {
+    throw validationError(`DERIVE_OPTION_REFUSED: start-run derive derives every field and accepts no ${options.unknownArguments.filter((arg) => arg.startsWith("-")).join(", ") || "argument"}; only --repository, --workspace, --library and --json are read.`, { code: "DERIVE_OPTION_REFUSED" });
+  }
+  let toplevel: string;
+  try { toplevel = realpathSync(options.repository ?? text(deps.git(process.cwd(), ["rev-parse", "--show-toplevel"])).trim()); }
+  catch { throw validationError("Run this inside the Arcadia repository or pass --repository."); }
+  const originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? "";
+  if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
+  const show = (file: string): Buffer => {
+    try { return deps.git(toplevel, ["show", `${originMain}:${file}`]); }
+    catch { throw validationError(`${file} is not readable at origin main ${originMain}; fetch origin (git fetch origin main) or merge it first.`); }
+  };
+  const decisionFiles = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").filter(Boolean);
+  const standingDecision = { paths: decisionFiles, read: (file: string) => text(show(file)) };
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const library = options.library ?? path.join(mainCheckout(toplevel, deps), "artifacts", "generated", "operator-scripts");
+  const now = deps.now();
+  const evidence = (deps.dayEvidence ?? realStartRunPinsDeps.dayEvidence!)(workspacePath);
+  const done = (result: DeriveResult, queueRevision: number | null, production: { revision: number; epoch: number } | null): CommandSuccess<StartRunDeriveData> =>
+    createSuccess({
+      command: "start-run.derive", workspace: workspacePath,
+      data: {
+        derived: result.ok, reason: result.ok ? null : result.reason, message: result.ok ? null : result.message, card: result.ok ? result.card : null,
+        observations: { originMain, queueRevision, production }
+      },
+      warnings: result.ok ? [] : [`${result.reason}: ${result.message}`]
+    });
+
+  const grant = standingGrantStatus({ library, now, evidence, offId: START_RUN_DEFAULTS.offId, standingDecision });
+  if (!grant.open || !grant.plan || !grant.approvalCard || !grant.approvalRun) return done(refuse("GRANT_NOT_OPEN", grant.reason ? `${grant.reason.code}: ${grant.reason.message}` : "no standing grant is open"), null, null);
+
+  const planFile = frontmatter(text(show(`docs/plans/${grant.plan}.md`)), `Plan ${grant.plan}`);
+  const project = String(planFile.project ?? "");
+  const planActions = (Array.isArray(planFile.actions) ? planFile.actions : []) as Array<{ id?: string; status?: string; depends_on?: unknown; next_action?: string; acceptance_criteria?: unknown[] }>;
+  const production = deps.production(options.workspace);
+  const queue = deps.queue(production.workspacePath);
+  const productionPins = { revision: production.revision, epoch: production.epoch };
+
+  let chain: ReturnType<typeof inspectDayGrantChain>;
+  try {
+    chain = inspectDayGrantChain({
+      library, approvalCard: grant.approvalCard, approvalRun: grant.approvalRun, approvalReceiptSha256: null, approvalPressSha256: null, now, evidence,
+      policyRevision: production.revision, excludePress: null, grant: "standing", standingDecision,
+      scope: { project, plan: grant.plan, provider: DERIVED_PROVIDER, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision, offId: START_RUN_DEFAULTS.offId }
+    });
+  } catch (error) {
+    if (!(error instanceof StartRunDelegationError)) throw error;
+    return done(refuse("CHAIN_REFUSED", `${error.code}: ${error.message}`), queue.revision, productionPins);
+  }
+
+  const labels = deps.launchctlList().split("\n").map((line) => line.trim().split(/\s+/).pop() ?? "").filter((label) => /^com\.arcadia\.local\.[A-Za-z0-9._-]+\.worker$/.test(label));
+  if (labels.length !== 1) throw validationError(`Expected exactly one com.arcadia.local.*.worker launchd job, found ${labels.length}; no worker label was guessed.`);
+  const entries = new Set(deps.listFiles(library));
+  for (const card of [START_RUN_DEFAULTS.gateCardId, START_RUN_DEFAULTS.offId]) {
+    if (!entries.has(`${card}.json`)) throw validationError(`Operator card ${card} is not in the library ${library}; nothing was derived.`);
+  }
+  for (const file of START_RUN_DEFAULTS.requiredFiles) show(file);
+  const receipts = [
+    ...deps.listFiles(library).filter((file) => file.endsWith(".consumed.json")).map((file) => path.join(library, file)),
+    ...deps.listFiles(path.join(library, "runs", "markers")).filter((file) => file.endsWith(".consumed")).map((file) => path.join(library, "runs", "markers", file))
+  ].sort();
+
+  const input: DeriveInput = {
+    originMain, now, executorSha256: sha256(show(START_RUN_EXECUTOR_PATH)), workspace: path.basename(production.workspacePath), workerLabel: labels[0],
+    gateCardId: START_RUN_DEFAULTS.gateCardId, offId: START_RUN_DEFAULTS.offId, grant,
+    plan: {
+      slug: grant.plan, project, status: String(planFile.status ?? ""),
+      isProjectActivePlan: frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan === grant.plan,
+      actions: planActions.filter((action): action is { id: string } & typeof action => typeof action.id === "string").map((action) => ({
+        id: action.id, status: String(action.status ?? ""), dependsOn: Array.isArray(action.depends_on) ? action.depends_on.map(String) : [],
+        criteriaErrors: startRunCriteriaFindings(action).errors
+      }))
+    },
+    production: { desiredState: production.desiredState, liveAdmissions: production.liveAdmissions, ...productionPins },
+    queue: { revision: queue.revision, orderValid: queue.orderValid, unpositionedCount: queue.unpositionedCount, keys: queue.ordered.map((entry) => entry.orderKey ?? "") },
+    chain: { receiptSha256: chain.window.receiptSha256, pressSha256: chain.window.pressSha256, attemptsSoFar: chain.attemptsSoFar, latest: chain.latest },
+    consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) }))
+  };
+  return done(deriveStartCard(input), queue.revision, productionPins);
+}

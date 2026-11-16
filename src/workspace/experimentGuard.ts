@@ -215,6 +215,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "start-run day-pins": ALLOWED,
   "start-run standing-pins": ALLOWED,
   "start-run grant-status": ALLOWED,
+  "start-run derive": ALLOWED,
   "start-run day-evidence": ALLOWED,
   // Read-only: resolves the operator gate per pinned Action through a read-only database handle.
   "start-run gate-check": ALLOWED,
