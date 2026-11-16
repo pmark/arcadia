@@ -28,7 +28,7 @@ and its [production run playbook](../arcadia-release-manager/references/producti
 | Presses START | never | only under the authority in step 2 |
 | Merges | only PRs the operator names in Signal's own chat | gap merges under Decision 0182 C and step 5 |
 
-Signal's "never press START" is Signal's rule. Never copy it into a Rowan brief: on
+Signal's own no-press rule is Signal's alone. Never copy it into a Rowan brief: on
 2026-11-15 it made a Rowan refuse a press its day grant covered.
 
 Provider tools are optional. Wakes: Claude Code `run_in_background`, or any host's
