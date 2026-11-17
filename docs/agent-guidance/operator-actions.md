@@ -411,6 +411,31 @@ pinned descriptor, so per-card review is small.
   Decision or names an authority path in its `references`, records it as the one
   operator item (`OPERATOR_ITEM_FIRST` when it is first), and leaves the
   worker-merge authority gate (`candidateChangeGate`) unchanged.
+- **Residual risks of a derived card, and what bounds each (Decision 0241).**
+  `tests/start-card-integrity.test.ts` replays each START card defect recorded on
+  2026-11-15 against the derived-card path: a card left 8 hours cannot exist (the
+  card lives 10 minutes and the press re-derives it); an Off with request id
+  `.-plan3-pins-13-15-complete-20261115` is refused; a hand-edited pin is refused
+  with `CARD_NOT_DERIVED`; a standing-grant press after a clean batch needs no
+  hand-written pre-mortem pointer, and after a failed batch is refused without one.
+  `pnpm check:start-card-deriver` fails when the deriver's exported function gains
+  a parameter or input field outside main's revision, Plan frontmatter, queue,
+  production policy, receipts and clock, or when `START_RUN_KEYS` and the keys the
+  deriver computes differ. What stays, and its bound:
+  - **The content of an approved Plan:** bounded by the operator's queue approval
+    and exact-head independent review before every merge.
+  - **A defect in the deriver or the executor:** bounded by this suite, the
+    property test in `tests/start-run-derive.test.ts` and the operator-held merge
+    of those files (`classifyAuthorityPaths` classifies the deriver module,
+    `scripts/start-run.sh`, `src/operatorActions/startRunPins.ts` and
+    `scripts/production-replay.ts`, so none merges on a worker merge).
+  - **A run that differs from its replay:** bounded by concurrency one and the
+    failed-batch stop of Decisions 0181 and 0187.
+  - **A host or credential fault:** bounded by preflight P2 and P4.
+
+  Operator-pressed cards under Decisions 0156 and 0157 are still prepared by an
+  agent and reviewed before the operator presses them; the deriver changes only the
+  standing-grant card.
 - **Pre-mortem before every START card (operator, 2026-11-01).** Before minting
   or pinging any START card (operator or delegated successor), run one
   independent, read-only pre-mortem with the
