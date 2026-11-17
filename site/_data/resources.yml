@@ -15,3 +15,9 @@
   url: https://metr.org/blog/2026-02-24-uplift-update/
   relevance: METR’s discussion of who and what gets measured informed why the Field Note examines specific Arcadia runs before drawing conclusions about speed.
   posts: [what-arcadia-checks-before-an-agent-starts]
+
+- title: "Build once, run on any agent: A practical guide to agent skills"
+  publisher: GitHub
+  url: https://github.blog/ai-and-ml/github-copilot/build-once-run-on-any-agent-a-practical-guide-to-agent-skills/
+  relevance: The Field Note compares GitHub’s examples with Arcadia’s shared skills and independent review, and proposes a three-client workflow test.
+  posts: [one-skill-three-coding-agents]
