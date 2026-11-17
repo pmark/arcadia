@@ -64,7 +64,7 @@ function rewriteLinks(body, dir) {
 }
 
 // Decision 0120 gate: only an approved Field Note whose claims receipt records an
-// independent PASS is published. Anything else (draft, reviewed, withdrawn, no
+// independent PASS and the critic's editorial APPROVE is published. Anything else (draft, reviewed, withdrawn, no
 // receipt) is skipped, so setting `status: withdrawn` and merging unpublishes.
 function field(front, key) {
   const all = [...front.matchAll(new RegExp(`^${key}:\\s*(.*)$`, "gm"))];
@@ -84,6 +84,20 @@ function reviewVerdict(receiptText) {
   }
   return verdict;
 }
+// Editorial gate: the critic's approval is recorded in the receipt's "## Editorial review" section
+// as a line "- Editorial verdict: APPROVE". Only that exact verdict publishes; the last one wins.
+function editorialVerdict(receiptText) {
+  const lines = receiptText.replace(/\r\n/g, "\n").split("\n");
+  const start = lines.indexOf("## Editorial review");
+  if (start < 0) return "";
+  let verdict = "";
+  for (const line of lines.slice(start + 1)) {
+    if (/^## /.test(line)) break;
+    const m = /^- Editorial verdict:\s*([A-Z]+)\b/.exec(line);
+    if (m) verdict = m[1];
+  }
+  return verdict;
+}
 function publicationRefusal(name, front) {
   if (field(front, "status") !== "approved") return `status is "${field(front, "status") || "missing"}", not approved`;
   if (!/^(ship|essay)$/.test(field(front, "type"))) return "type is not ship or essay";
@@ -93,7 +107,9 @@ function publicationRefusal(name, front) {
   if (!/^docs\/articles\/receipts\/[\w.-]+\.md$/.test(receipt)) return "no claims receipt path";
   const receiptPath = path.join(repoRoot, receipt);
   if (!existsSync(receiptPath)) return `receipt ${receipt} is missing`;
-  if (reviewVerdict(readFileSync(receiptPath, "utf8")) !== "PASS") return "receipt's Independent review records no final PASS";
+  const receiptText = readFileSync(receiptPath, "utf8");
+  if (reviewVerdict(receiptText) !== "PASS") return "receipt's Independent review records no final PASS";
+  if (editorialVerdict(receiptText) !== "APPROVE") return "receipt's Editorial review records no APPROVE";
   return "";
 }
 
