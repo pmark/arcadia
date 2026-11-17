@@ -380,6 +380,22 @@ pinned descriptor, so per-card review is small.
   manifest `reviewed/<id>.json` (`sh`, `json`, `executor` sha256). A change to
   `scripts/start-run.sh` is reviewed once and invalidates the hash in every older
   card, which then refuses.
+- **The host timer presses the successor card (`--successor-press`).** While a
+  standing grant is open, `arcadia production liveness-check --successor-press`
+  (the existing timer; no agent session, no model call) issues Rowan's own Off at
+  scope complete (`production deactivate --rowan-off successor-press-scope-complete`,
+  which does not end the grant), then, only when production is Off, the previous
+  batch reads clean, main's checks are green and no card hold exists, mints the
+  derived card (at most 12 Actions, queue order), runs its replay and preflight,
+  records the replay receipt path as the manifest's `premortem`, and presses it as
+  Rowan's delegated press in the same run. Otherwise it records one named skip
+  (`PRODUCTION_NOT_OFF`, `BATCH_NOT_CLEAN`, `MAIN_CHECKS_NOT_GREEN`, `CARD_HELD`,
+  `NOTHING_READY`) and presses nothing. After a failed batch it refuses
+  (`FAILED_BATCH_NEEDS_FIX`) until `<library>/clearances/<card>--<press run>.json`
+  records `{cause, premortem, fix:{pullRequest, commit, reproduction}}` (recorded,
+  not machine-proved). Any refusal pings once with its code and ends the step for
+  that grant (`<workspace>/.arcadia/successor-press.json`); a replay of the step
+  adds no press and no ping. The flag is opt-in on the timer's plist.
 - **A replay receipt is a prediction bound to one card, not proof of the run's
   result.** `pnpm production-replay --source-workspace <workspace> --card <id>`
   writes `<library>/replays/<id>.json` for a START card: the descriptor's sha256,

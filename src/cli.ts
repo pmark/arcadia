@@ -1836,8 +1836,9 @@ the fingerprint hashes them, so any change between preview and apply is refused.
       .option("--keeper-grace-minutes <minutes>", `How long past its armed-until a keeper heartbeat may lapse before it pages (default ${KEEPER_DEFAULT_GRACE_MINUTES})`)
       .option("--ready-floor <count>", `Ready Actions below which the duty alarm pages once per episode (default ${DUTY_READY_FLOOR_DEFAULT}, uncalibrated)`)
       .option("--duty-off-alarm", "Also page once when production is Off with nothing eligible (off by default: a quiet night pages nobody)")
+      .option("--successor-press", "While a standing grant is open, also mint, check and press the next START card after each clean batch (a refusal pages once and ends the step for that grant)")
       .option("--dashboard-url <url>", "Dashboard base for the /production link (default ARCADIA_DASHBOARD_URL)")
-  ).action((options: { workspace: string; staleSeconds?: string; idleMinutes?: string; keeperGraceMinutes?: string; readyFloor?: string; dutyOffAlarm?: boolean; dashboardUrl?: string; json?: boolean }) =>
+  ).action((options: { workspace: string; staleSeconds?: string; idleMinutes?: string; keeperGraceMinutes?: string; readyFloor?: string; dutyOffAlarm?: boolean; successorPress?: boolean; dashboardUrl?: string; json?: boolean }) =>
     runCliAction("production.liveness-check", options, () => runProductionLivenessTimerCommand(options), renderProductionLivenessTimerSuccess)
   );
   addJsonOption(

@@ -72,6 +72,7 @@ import {
   type CoordinatorBudgetDependencies
 } from "./coordinatorBudget.js";
 import { runPingSendCommand } from "./ping.js";
+import { renderSuccessorLines, runProductionSuccessorCommand, type ProductionSuccessorData, type ProductionSuccessorDependencies } from "./productionSuccessor.js";
 import { readWakeFiles, runProductionIdleFrontCommand } from "./productionIdleFront.js";
 import {
   dashboardLink,
@@ -615,9 +616,13 @@ export interface LivenessTimerOptions extends ProductionLivenessOptions {
   keeperGraceMinutes?: number | string;
   readyFloor?: number | string;
   dutyOffAlarm?: boolean;
+  /** `--successor-press`: while a standing grant is open, also mint, check and press the next START card after each clean batch. */
+  successorPress?: boolean;
 }
 
 export interface LivenessTimerData extends ProductionLivenessData {
+  /** The successor-press step's outcome; null when the step is not enabled or failed this run. */
+  successor?: ProductionSuccessorData | null;
   /** null when the momentum alarm failed this run; the failure is thrown after every check ran. */
   momentum: ProductionMomentumData | null;
   /** The coordinator context budget (#2242); null when it failed this run. */
@@ -633,7 +638,7 @@ export interface LivenessTimerData extends ProductionLivenessData {
  */
 export async function runProductionLivenessTimerCommand(
   options: LivenessTimerOptions,
-  dependencies: { liveness?: ProductionLivenessDependencies; momentum?: ProductionMomentumDependencies; budget?: CoordinatorBudgetDependencies } = {}
+  dependencies: { liveness?: ProductionLivenessDependencies; momentum?: ProductionMomentumDependencies; budget?: CoordinatorBudgetDependencies; successor?: ProductionSuccessorDependencies } = {}
 ): Promise<CommandSuccess<LivenessTimerData>> {
   // Refuse bad thresholds before either check runs, so a bad flag never half-runs the timer.
   parseIdleMinutes(options.idleMinutes);
@@ -666,6 +671,18 @@ export async function runProductionLivenessTimerCommand(
   } catch (error) {
     failures.push(`Coordinator budget: ${errorText(error)}`);
   }
+  // The successor press runs last on the same timer run, never inside an agent session. Its own refusal is a page, not a failure.
+  let successor: CommandSuccess<ProductionSuccessorData> | null = null;
+  if (options.successorPress === true) {
+    try {
+      successor = runProductionSuccessorCommand(
+        { workspace: liveness?.workspace ?? options.workspace, dashboardUrl: options.dashboardUrl },
+        { ...(dependencies.liveness?.now ? { now: dependencies.liveness.now } : {}), ...dependencies.successor }
+      );
+    } catch (error) {
+      failures.push(`Successor press: ${errorText(error)}`);
+    }
+  }
   if (failures.length > 0) {
     // The worker check's own error, unchanged, when it is the only news.
     if (livenessError !== null && failures.length === 1
@@ -676,7 +693,8 @@ export async function runProductionLivenessTimerCommand(
     const queued = [
       ...(liveness ? renderProductionLivenessCheckSuccess(liveness) : []),
       ...(momentum ? renderProductionMomentumLines(momentum.data) : []),
-      ...(budget ? renderCoordinatorBudgetCheckLines(budget.data) : [])
+      ...(budget ? renderCoordinatorBudgetCheckLines(budget.data) : []),
+      ...(successor ? renderSuccessorLines(successor.data) : [])
     ];
     throw validationError([...failures, ...queued].join(" | "));
   }
@@ -684,7 +702,7 @@ export async function runProductionLivenessTimerCommand(
   return createSuccess({
     command: "production.liveness-check",
     workspace: base.workspace,
-    data: { ...base.data, momentum: momentum?.data ?? null, coordinatorBudget: budget?.data ?? null }
+    data: { ...base.data, momentum: momentum?.data ?? null, coordinatorBudget: budget?.data ?? null, successor: successor?.data ?? null }
   });
 }
 
@@ -694,7 +712,8 @@ export function renderProductionLivenessTimerSuccess(response: CommandSuccess<Li
   return [
     ...renderProductionLivenessCheckSuccess(response),
     ...(response.data.momentum ? renderProductionMomentumLines(response.data.momentum, stamp) : []),
-    ...(response.data.coordinatorBudget ? renderCoordinatorBudgetCheckLines(response.data.coordinatorBudget, stamp) : [])
+    ...(response.data.coordinatorBudget ? renderCoordinatorBudgetCheckLines(response.data.coordinatorBudget, stamp) : []),
+    ...(response.data.successor ? renderSuccessorLines(response.data.successor, stamp) : [])
   ];
 }
 
