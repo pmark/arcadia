@@ -3,14 +3,15 @@ layout: default
 ---
 {% assign wslug = page.writer | default: 'arcadia' %}
 {% assign w = site.data.writers[wslug] %}
-<article class="post-body" data-writer="{{ wslug }}">
+{% assign hw = false %}{% if page.writer and w and wslug != 'arcadia' %}{% assign hw = true %}{% endif %}
+<article class="post-body" data-writer="{{ wslug | escape }}">
   <a class="back-article" href="{{ '/' | relative_url }}">← All Field Notes</a>
-  {% if page.writer and w %}<p class="wr-kicker"><span aria-hidden="true">{{ w.kicker_emoji }}</span> {{ w.name }} · {{ w.series }}</p>{% endif %}
+  {% if hw %}<p class="wr-kicker"><span aria-hidden="true">{{ w.kicker_emoji }}</span> {{ w.name }} · {{ w.series }}</p>{% endif %}
   <h1>{{ page.title | escape }}</h1>
   {% include topic-links.html tags=page.tags %}
-  <p class="meta"><time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%-d %B %Y" }}</time>{% if page.writer and w %} &middot; <a class="wr-byline" href="{{ '/authors/' | append: wslug | append: '/' | relative_url }}"><span class="wr-glyph" aria-hidden="true">{{ w.glyph }}</span> {{ w.name }}, {{ w.role }}</a>{% elsif page.author %} &middot; {{ page.author | escape }}{% endif %}{% if page.claims_receipt %} &middot; <a class="wr-receipt" href="https://github.com/pmark/arcadia/blob/main/{{ page.claims_receipt }}">{% if w.receipt_emoji %}<span aria-hidden="true">{{ w.receipt_emoji }}</span> {% endif %}Receipt</a>{% endif %}{% if page.status == "draft" %} &middot; <span class="badge">draft source article</span>{% endif %}</p>
+  <p class="meta"><time datetime="{{ page.date | date_to_xmlschema }}">{{ page.date | date: "%-d %B %Y" }}</time>{% if hw %} &middot; <a class="wr-byline" href="{{ '/authors/' | append: wslug | append: '/' | relative_url }}"><span class="wr-glyph" aria-hidden="true">{{ w.glyph }}</span> {{ w.name }}, {{ w.role }}</a>{% elsif page.author %} &middot; {{ page.author | escape }}{% endif %}{% if hw and page.claims_receipt %} &middot; <a class="wr-receipt" href="https://github.com/pmark/arcadia/blob/main/{{ page.claims_receipt | escape }}">{% if w.receipt_emoji %}<span aria-hidden="true">{{ w.receipt_emoji }}</span> {% endif %}Receipt</a>{% endif %}{% if page.status == "draft" %} &middot; <span class="badge">draft source article</span>{% endif %}</p>
   {{ content }}
-  {% if page.operator_suggestion and w %}
+  {% if hw and page.operator_suggestion %}
   <section class="wr-closing" aria-label="{{ w.suggestion_label }}">
     <p class="wr-label"><span aria-hidden="true">{{ w.suggestion_emoji }}</span> {{ w.suggestion_label }}</p>
     <p>{{ page.operator_suggestion | escape }}</p>

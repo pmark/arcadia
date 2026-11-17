@@ -18,9 +18,9 @@ canyon: true
 <ul class="posts" aria-label="Field Notes dispatches">
 {% for post in site.posts %}
   {% assign rw = post.writer | default: 'arcadia' %}
-  <li data-writer="{{ rw }}">
+  <li data-writer="{{ rw | escape }}">
     <article>
-      <p class="field-label">{% if forloop.first %}Latest dispatch · {% endif %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %B %Y" }}</time>{% if post.writer %}{% assign rwd = site.data.writers[rw] %} · <a class="wr-chip" href="{{ '/authors/' | append: rw | append: '/' | relative_url }}"><span aria-hidden="true">{{ rwd.glyph }}</span> {{ rwd.name }}</a>{% endif %}</p>
+      <p class="field-label">{% if forloop.first %}Latest dispatch · {% endif %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %B %Y" }}</time>{% assign rwd = site.data.writers[rw] %}{% if post.writer and rwd and rw != 'arcadia' %} · <a class="wr-chip" href="{{ '/authors/' | append: rw | append: '/' | relative_url }}"><span aria-hidden="true">{{ rwd.glyph }}</span> {{ rwd.name }}</a>{% endif %}</p>
       <h2><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a></h2>
       {% if post.summary %}<p>{{ post.summary | escape }}</p>{% endif %}
       {% include topic-links.html tags=post.tags %}

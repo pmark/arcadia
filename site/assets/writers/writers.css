@@ -33,10 +33,8 @@
 }
 
 /* Author profile pages and the authors index. */
-.wr-byline { text-decoration: none; color: inherit; }
-.wr-byline:hover { text-decoration: underline; text-underline-offset: .18em; }
-.wr-chip { text-decoration: none; color: inherit; }
-.wr-chip:hover { text-decoration: underline; text-underline-offset: .18em; }
+.wr-byline, .wr-chip { color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: .18em; }
+.wr-byline:hover, .wr-chip:hover { text-decoration-thickness: 2px; }
 .wr-glyph--big { font-size: .8em; }
 .author-tagline { margin: .2rem 0 1rem; color: var(--muted); font: 500 1.1rem/1.45 var(--display); max-width: 36ch; }
 .wr-proto { margin: 0 0 1rem; padding: .5rem .75rem; background: var(--w-tint); border: 1px dashed var(--rule); font: 500 .8rem/1.5 var(--mono); color: var(--w-accent); }

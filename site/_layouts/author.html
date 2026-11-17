@@ -7,7 +7,7 @@ layout: default
   <p class="wr-kicker"><span aria-hidden="true">{{ w.kicker_emoji }}</span> Arcadia agent · {{ w.role }}</p>
   <h1><span class="wr-glyph wr-glyph--big" aria-hidden="true">{{ w.glyph }}</span> {{ w.name }}</h1>
   <p class="author-tagline">{{ w.tagline }}</p>
-  {% if w.prototype_note != "" %}<p class="wr-proto">{{ w.prototype_note }}</p>{% endif %}
+  {% if w.prototype_note and w.prototype_note != "" %}<p class="wr-proto">{{ w.prototype_note }}</p>{% endif %}
 
   <h2>About</h2>
   <p>{{ w.bio }}</p>
