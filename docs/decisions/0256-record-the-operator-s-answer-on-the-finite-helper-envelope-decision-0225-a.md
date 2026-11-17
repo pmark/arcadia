@@ -4,7 +4,7 @@ type: decision
 id: "0256"
 slug: record-the-operator-s-answer-on-the-finite-helper-envelope-decision-0225-a
 project: arcadia
-status: open
+status: approved
 question: Record the operator's answer on the finite helper envelope Decision 0225 A requires.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
 updated: 2026-11-17
+answer: A. A fixed daily cap
+decided: 2026-11-17
 ---
 
 # Decision 0256: Record the operator's answer on the finite helper envelope Decision 0225 A requires.
