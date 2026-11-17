@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
 project: arcadia
-status: active
+status: complete
 milestone: Draft an inactive Plan of five bounded Actions that replace the daily START approval with one standing grant the operator presses once, so production on the chosen Plan moves on its own and asks the operator only for decisive action
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -193,11 +193,11 @@ actions:
     references: ["scripts/production-replay.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "src/production/candidateChangeGate.ts", "src/production/workerMerge.ts", "src/docs/operatorGate.ts"]
   - id: prove-card-integrity-against-recorded-defects
     title: Add a checked-in regression suite that replays each START card defect recorded on 2026-11-15 against the derived-card path and shows it is either unrepresentable or refused, add a repository check that keeps the deriver free of agent-supplied inputs, and record the residual risks with their bounds in the operator guidance.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Add a checked-in regression suite that replays each START card defect recorded on 2026-11-15 against the derived-card path and shows it is either unrepresentable or refused, add a repository check that keeps the deriver free of agent-supplied inputs, and record the residual risks with their bounds in the operator guidance.
+    next_action: Completed via Agent Ask auto-settle-arcadia-prove-card-integrity-against-recorded-defects-19c028b1c596; no further action.
     expected_artifact: Evidence satisfying Agent Ask prove-card-integrity-against-recorded-defects
     clarification: clarified
     confidence: high
@@ -215,7 +215,6 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: prove-card-integrity-against-recorded-defects
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
