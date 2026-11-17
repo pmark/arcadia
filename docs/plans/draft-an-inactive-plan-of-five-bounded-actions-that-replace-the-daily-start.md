@@ -170,11 +170,11 @@ actions:
     references: ["scripts/start-run.sh", "src/operatorActions/startRunPins.ts", "src/operatorActions/startRunDayGrant.ts", "src/operatorActions/operatorExecution.ts", "docs/agent-guidance/operator-actions.md"]
   - id: bind-replay-and-authority-scope-to-the-derived-card
     title: "Make the pre-press replay a proof about this exact card, and keep Actions that need the operator out of a derived card: the press refuses unless a replay receipt names the card's descriptor sha256 and its pinned revisions and predicts a launch for every pinned Action, and the deriver stops the card before any Action that cites an open Decision or names an authority path."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Make the pre-press replay a proof about this exact card, and keep Actions that need the operator out of a derived card: the press refuses unless a replay receipt names the card's descriptor sha256 and its pinned revisions and predicts a launch for every pinned Action, and the deriver stops the card before any Action that cites an open Decision or names an authority path."
+    next_action: Completed via Agent Ask auto-settle-arcadia-bind-replay-and-authority-scope-to-the-derived-card-e0ce62bd0c07; no further action.
     expected_artifact: Evidence satisfying Agent Ask bind-replay-and-authority-scope-to-the-derived-card
     clarification: clarified
     confidence: high
@@ -215,7 +215,7 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: bind-replay-and-authority-scope-to-the-derived-card
+current_action: press-successor-cards-from-the-host-timer
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
