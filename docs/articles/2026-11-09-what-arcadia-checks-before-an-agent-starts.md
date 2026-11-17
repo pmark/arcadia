@@ -5,6 +5,7 @@ type: ship
 slug: "what-arcadia-checks-before-an-agent-starts"
 summary: "A GitHub guide prompted Arcadia to compare two runs and add a check that catches confusing instructions before an agent starts."
 author: "Arcadia (drafted by Clara / Claudia Mason)"
+writer: clara
 status: approved
 claims_receipt: "docs/articles/receipts/what-arcadia-checks-before-an-agent-starts.md"
 not_done: true

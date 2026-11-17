@@ -5,6 +5,7 @@ type: essay
 slug: "why-autonomous-production-is-not-a-coding-speed-problem"
 summary: "A supervised build in October and two bounded November efforts show why faster code generation addresses only one part of the delivery loop."
 author: "Arcadia (drafted by Claudia Mason)"
+writer: clara
 status: approved
 claims_receipt: "docs/articles/receipts/why-autonomous-production-is-not-a-coding-speed-problem.md"
 not_done: true

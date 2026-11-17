@@ -5,6 +5,7 @@ type: essay
 slug: "how-an-idea-becomes-governed-work"
 summary: "A preview receipt, a separate activation, and revision-bound completion evidence give agents room to propose work while keeping the queue deliberate."
 author: "Arcadia (drafted by Claudia Atlas)"
+writer: clara
 status: approved
 claims_receipt: "docs/articles/receipts/how-an-idea-becomes-governed-work.md"
 not_done: true
