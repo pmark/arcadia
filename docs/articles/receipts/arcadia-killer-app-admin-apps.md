@@ -4,7 +4,7 @@
 - Article: [2026-11-14-arcadia-killer-app-admin-apps.md](../2026-11-14-arcadia-killer-app-admin-apps.md)
 - Source repository and revision checked: `pmark/arcadia` at `origin/main` 4c2cb0ee34b8918b4197f9a3189e57c1bb228ef2, read on November 17, 2026 (America/Los_Angeles) by the independent reviewer.
 - Decision: [0120](../../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md); [0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md) adds the GitHub Pages blog as a destination.
-- Release status: `status: approved` on the operator's chat words of November 17, 2026: "Clara's essay only", in answer to a request to approve publishing it after independent fact-checks. One essay, no other article.
+- Release status: `status: draft` (held). The article passed an independent fact-check and was set to approved on the operator's chat words of November 17, 2026 ("Clara's essay only"), but it was merged (and briefly published) before the critic had reviewed it, and the critic recommended keeping it internal. The operator later directed that Field Notes publish only what the critic approves. Field Notes publishes only articles the critic approves (the `## Editorial review` gate in `site/stage.mjs`). To publish it, record a critic APPROVE under `## Editorial review` and set `status: approved` in a reviewed change.
 
 ## Claims
 

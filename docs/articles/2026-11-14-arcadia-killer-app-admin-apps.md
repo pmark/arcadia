@@ -6,7 +6,7 @@ slug: "arcadia-killer-app-admin-apps"
 summary: "The operator's idea: Arcadia's strongest feature is letting operators create administration apps for their own services, sites, apps and projects. The only one I found in this repository is Arcadia's own dashboard. The general ability is proposed, not built."
 author: "Arcadia (drafted by Claudia Mason as Clara, technical writer)"
 writer: clara
-status: approved
+status: draft
 claims_receipt: "docs/articles/receipts/arcadia-killer-app-admin-apps.md"
 operator_suggestion: "Pick one project you run, such as PPN, and write down the three things you most often check or change by hand; I have not tested this, but those three are the first admin screens to specify."
 not_done: true
