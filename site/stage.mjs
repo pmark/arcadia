@@ -85,18 +85,24 @@ function reviewVerdict(receiptText) {
   return verdict;
 }
 // Editorial gate: the critic's approval is recorded in the receipt's "## Editorial review" section
-// as a line "- Editorial verdict: APPROVE". Only that exact verdict publishes; the last one wins.
+// as a line "- Editorial verdict: APPROVE" (optionally followed by "; ..." or ", ..."). Fails closed: exactly one
+// such section outside code fences, the last "- Editorial verdict:" line in it decides, and any other value refuses.
 function editorialVerdict(receiptText) {
-  const lines = receiptText.replace(/\r\n/g, "\n").split("\n");
-  const start = lines.indexOf("## Editorial review");
-  if (start < 0) return "";
-  let verdict = "";
-  for (const line of lines.slice(start + 1)) {
-    if (/^## /.test(line)) break;
-    const m = /^- Editorial verdict:\s*([A-Z]+)\b/.exec(line);
-    if (m) verdict = m[1];
+  let fenced = false;
+  let inSection = false;
+  let sections = 0;
+  let value = "";
+  for (const line of receiptText.replace(/\r\n/g, "\n").split("\n")) {
+    if (/^\s*(```|~~~)/.test(line)) { fenced = !fenced; continue; }
+    if (fenced) continue;
+    if (line === "## Editorial review") { sections++; inSection = true; continue; }
+    if (/^## /.test(line)) { inSection = false; continue; }
+    if (!inSection) continue;
+    const m = /^- Editorial verdict:\s*(.*?)\s*$/.exec(line);
+    if (m) value = m[1];
   }
-  return verdict;
+  if (sections !== 1) return "";
+  return /^APPROVE(?:[;,]|$)/.test(value) ? "APPROVE" : value || "";
 }
 function publicationRefusal(name, front) {
   if (field(front, "status") !== "approved") return `status is "${field(front, "status") || "missing"}", not approved`;
