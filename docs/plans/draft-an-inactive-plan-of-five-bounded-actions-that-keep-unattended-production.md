@@ -19,14 +19,15 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask retry-successor-press-when-main-moves
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-next-batch-f-keep-the-loop-alive-20261117b
+    source: Agent Ask ellis-amend-plan-f-review-findings-20261117
     why: "Since #2765 a merge during the up-to-40-minute replay and preflight window ends the unattended loop for the whole grant and pings; the operator wants to merge freely."
     acceptance_criteria:
-      - A failing-first test shows that a main move between derive and press (origin-moved or CARD_NOT_DERIVED at replay, preflight or press) retires the card with a receipt naming the old and new main revisions, does not end the step, and leads to a fresh derivation at the new main on a later tick.
+      - A failing-first test shows that a main move between derive and press retires the card with a receipt naming the old and new main revisions, does not end the step, and leads to a fresh derivation at the new main on a later tick.
+      - A refusal (origin-moved, or CARD_NOT_DERIVED at replay, preflight or press) is retryable only when the card's pinned main revision differs from origin main read at the failing check. A CARD_NOT_DERIVED with an unchanged main (for example a differing field or NO_READY_ACTIONS) keeps today's sticky end; tests cover both cases.
       - Consecutive main-moved retries are bounded by a named constant. Exceeding it ends the step with exactly one ping naming the cause; a test covers both sides of the bound.
       - Every other refusal code keeps today's sticky behavior, shown by the existing successor-press tests passing unchanged.
       - A derived card's lifetime is at least the replay timeout plus the preflight timeout, enforced by a test that fails if either constant changes without the other.
-      - The freeze guidance (rehearsal-freeze-window.md and operator-actions.md) says that while a standing grant is open, a merge to main delays the next press by at most one derivation and voids nothing. The work merge-check message stops telling the operator not to merge for a timer-derived card.
+      - The freeze guidance (rehearsal-freeze-window.md and operator-actions.md) states the retry bound's value and says that while a standing grant is open a merge to main voids nothing and delays the next press by at most that many derivations, after which the step ends with one ping. The work merge-check message stops telling the operator not to merge for a timer-derived card.
     depends_on: []
     decisions: []
     references: ["src/production/successorPress.ts", "src/commands/productionSuccessor.ts", "src/operatorActions/startRunDerive.ts", "scripts/start-run.sh", "docs/agent-guidance/rehearsal-freeze-window.md", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
@@ -83,13 +84,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask queue-approved-plans-and-start-the-next
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-next-batch-f-keep-the-loop-alive-20261117b
+    source: Agent Ask ellis-amend-plan-f-review-findings-20261117
     why: "Decision 0241 E: the operator stacks Plans on the work queue and expects Arcadia to work through each. Today no record holds that stack and the timer stops at scope complete."
     acceptance_criteria:
       - A checked-in Plan-queue record per Project lists approved Plan slugs in order. Only a settled Agent Ask carrying the operator's approval can add, remove or reorder entries; a test shows any other write path is refused.
       - A read-only command prints the Plan queue with each Plan's status and readiness. A Plan is ready when every remaining Action has observable acceptance and none cites an open Decision or names an authority path the deriver stops at. Tests cover a ready Plan and two not-ready ones.
+      - The deriver (src/operatorActions/startRunDerive.ts) accepts a Plan under an open standing grant only if it is the grant's pinned Plan or the Project's active Plan and an entry of the approved Plan-queue record at the same origin main revision. Any other Plan refuses with a named code, and the grant's end conditions are unchanged. Tests cover the pinned Plan, a queued activated Plan, and an active Plan missing from the record.
       - At scope complete with an open standing grant, the timer activates the next ready queued Plan through the governed pointer transition and derives its first card on a later tick. A not-ready next Plan, or an empty queue, turns production Off with exactly one ping naming the reason. Tests cover all three.
-      - The derived card for a newly activated Plan passes the existing derive, replay and press checks unchanged; the card-integrity suite from prove-card-integrity-against-recorded-defects still passes.
+      - The derived card for a newly activated Plan passes the existing replay and press checks; the card-integrity suite from prove-card-integrity-against-recorded-defects still passes, extended with a fixture for a queued-Plan card.
       - Plan let-the-operator-change-what-production-queues-from-the-production-project records, through a governed amendment, that its single-Project ordering is delivered here and that its multi-Project preference Actions remain, with a revival trigger.
     depends_on: [retry-successor-press-when-main-moves]
     decisions: []
@@ -104,11 +106,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask allocate-decision-numbers-on-main-and-refuse-duplicates
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-next-batch-f-keep-the-loop-alive-20261117b
+    source: Agent Ask ellis-amend-plan-f-review-findings-20261117
     why: "Operator, 2026-11-17: 'This needs to never happen again.' Collisions recurred on 0240 and 0250, and every START press now mints a Decision on main."
     acceptance_criteria:
       - A test reproduces the 0250 race (an Ask settle candidate chooses N while a START sign-in mints N on main) and shows the second writer receives N+1 or refuses. No two Decision files on main share an id.
       - A required CI check fails a pull request that adds a docs/decisions file whose id already exists on its base, naming both files. The four historical pairs are grandfathered by an explicit list, and a test shows a fifth pair fails.
+      - Every Arcadia merge path (the worker merge and the operator batch-merge card) re-runs the duplicate check against current origin main immediately before merging and refuses on a duplicate. A test with two pull requests that each add id N against the same base shows the second is refused after the first merges.
+      - A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.
       - START sign-in usage-check Decisions take their id at the moment they are written to main, from origin main, and a test shows a concurrent open PR's Decision does not block or collide with them.
       - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
     depends_on: []

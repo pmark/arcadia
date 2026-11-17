@@ -19,12 +19,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask workspace-plan-picker-list
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-next-batch-g-workspace-plan-picker-20261117
+    source: Agent Ask ellis-amend-plan-g-review-findings-20261117
     why: "Fifty-three not-yet-active Arcadia Plans in one unsorted list, some done and some duplicated, make choosing work a chat task today."
     acceptance_criteria:
       - A picker route under /workspace lists Plans across all registered Projects, with filters for status (draft, proposed, active, complete, superseded), Project and progress, and sorts by last update, progress and queue position. A component test covers each filter and sort.
       - A Plan whose Actions are all done or deferred while its status is draft or proposed is flagged 'done but not closed'. A test uses guard-against-paid-usage and record-run-unattended-test-pins-20261107.
-      - Likely duplicates are flagged by a deterministic text-similarity rule over title and milestone, with the rule and threshold in one named function and its unit test. A fixture shows the Plans named in this Plan's rationale flagged as one cluster.
+      - Likely duplicates are flagged by a deterministic text-similarity rule over title and milestone, with the rule and threshold in one named function and its unit test. A fixture built from Arcadia's Plans shows the rule flags the pair let-the-operator-change-what-production-queues-from-the-production-project and ask-queues-approved-work-or-admits-bounded-independent-sessions-without, and the pair add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans and i-can-see-every-project-s-plans-and-actions-understand-what-is-selected-and. The same fixture shows guard-against-paid-usage and record-run-unattended-test-pins-20261107 are not flagged as duplicates of each other. The test prints each flagged pair's score.
       - The proposed status is displayed and filtered rather than dropped, and nextPlanSelector either handles it or names it in a test as excluded from selection.
       - The picker's first paint makes no model call and no CLI call per Plan. A test asserts a single /api/plans read, and a phone-width screenshot is attached to the PR.
     depends_on: []
@@ -40,15 +40,15 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask workspace-plan-picker-actions
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-next-batch-g-workspace-plan-picker-20261117
+    source: Agent Ask ellis-amend-plan-g-review-findings-20261117
     why: "The operator wants to curate, archive, annotate, request changes and prioritize existing Plans from the Workspace; today each is a sentence typed into the generic Ask box and carried by Rowan."
     acceptance_criteria:
       - Queue next composes the Plan-queue Ask defined by Action queue-approved-plans-and-start-the-next and shows the resulting order before submission. Its settlement still needs the operator's approval, and a test shows the button alone changes no queue.
       - Archive composes a Plan status change to superseded or complete with a required reason. Archived Plans are hidden by default, shown under a filter, and can be restored by the same route. Tests cover archive, filter and restore previews.
-      - Annotate records free text as an Ask targeting plan/<slug>. The Plan page lists every Ask targeting that Plan, newest first, with its state (previewed, pending, settled). A test shows an annotation appearing without any new store.
-      - Request change composes a Plan-amendment Ask preview targeting plan/<slug> from the operator's words and shows the preview's effects before submission.
+      - Annotate records free text as an Ask whose project is the Plan's Project and whose target_ref is plan/<slug>. The Plan page lists every Ask matching both that Project and that slug, newest first, with its state (previewed, pending, settled). A test shows an annotation appearing without any new store, and a test with two Projects that share a Plan slug shows each page lists only its own Project's Asks.
+      - Request change composes a Plan-amendment Ask preview, carrying the Plan's Project and targeting plan/<slug>, from the operator's words and shows the preview's effects before submission.
       - Every action shows its consequence in one sentence before it runs, and none settles its own Ask. A test asserts no route under the picker calls agent-ask settle --apply.
-      - Preview proposal agentask_47c04d11c94047bc95 is settled as absorbed by this Plan, and Action production-card-queue-controls in Plan let-the-operator-change-what-production-queues-from-the-production-project records through a governed amendment which part is delivered here.
+      - Preview proposal agentask_47c04d11c94047bc95 is recorded as absorbed by this Plan, with its receipt id cited in this Action's completion evidence, and Action production-card-queue-controls in Plan let-the-operator-change-what-production-queues-from-the-production-project records through a governed amendment which part is delivered here.
     depends_on: [workspace-plan-picker-list]
     decisions: []
     references: ["apps/dashboard/components/workspace/workspace-ask.tsx", "apps/dashboard/app/api/ask", "apps/dashboard/lib/arcadia-cli.ts", "src/ask/agentAsk.ts", "src/operatorActions/planQueue.ts", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
