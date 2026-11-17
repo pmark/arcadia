@@ -19,7 +19,8 @@ import { DAY_CARD, DAY_RUN, dayScenarios, fixed, mergedFix, OLD_FIX_COMMIT, pres
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const fixtures = path.join(repoRoot, "tests", "fixtures", "start-run");
 const EXECUTOR_SOURCE = readFileSync(path.join(repoRoot, "scripts", "start-run.sh"), "utf8");
-const ID = "start-run-fixture-20261101";
+const FIXTURE_ID = "start-run-fixture-20261101";
+const ID = FIXTURE_ID;
 const PLAN = "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider";
 const PREVIOUS = "enable-bounded-local-native-release-manager-coordination-with-durable-addressed";
 const ACTIONS = ["claude-worker-launch-replay", "claude-capacity-evidence", "first-supervised-claude-run"];
@@ -141,10 +142,13 @@ interface BoxOptions {
   /** Whether a process of the registry's native session id (--session-id) runs under the relay pane (default true). */
   relayProcess?: boolean;
   config?: unknown;
+  /** The card's id (default the fixture's); a `standing-start-` id makes it a standing-grant card (Decision 0241). */
+  cardId?: string;
   state?: (state: Record<string, any>) => void;
 }
 
 function box(options: BoxOptions = {}) {
+  const ID = options.cardId ?? FIXTURE_ID;  // the card's id for this box; outside box, ID is the fixture's
   const root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "arcadia-start-run-")));
   directories.push(root);
   const origin = path.join(root, "origin.git");
@@ -982,6 +986,53 @@ describe("start-run executor: an ordinary operator press stays exactly as it was
   it("still refuses an ordinary card carrying a delegated press record", () => {
     const b = box({ pressMarker: "forge" });
     expectRefusedClean(b, b.run(), "P0", /only a Decision 0163 delegated card may carry a delegated press record/, b.head());
+  });
+});
+
+describe("start-run executor: a standing-grant card is refused unless it re-derives (Decision 0241)", () => {
+  const FIRST = dayScenarios(Date.now())[0];
+  const STANDING = "standing-start-fixture0001";
+  const derives = (b: ReturnType<typeof box>) => b.calls().filter((call) => call.args.slice(0, 2).join(" ") === "start-run derive");
+  const withVerdicts = (verdicts: Array<string[] | null>) => (s: Record<string, any>) => { s.derive = { verdicts }; };
+  it("asks the deriver to verify this card on disk, once in P0, and passes a card that re-derives", () => {
+    const b = box({ dayGrant: FIRST, cardId: STANDING, state: withVerdicts([null]) });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(derives(b)).toHaveLength(1);
+    expect(derives(b)[0].args).toEqual(expect.arrayContaining(["--verify-card", path.join(b.library, `${STANDING}.json`), "--library", b.library]));
+    expect(result.receipt!.record.cardRederivedP0).toBe(true);
+  });
+  it("refuses in P0 with CARD_NOT_DERIVED naming the differing field, before anything is consumed", () => {
+    const b = box({ dayGrant: FIRST, cardId: STANDING, state: withVerdicts([["startRun.delegation", "expires_at"]]) });
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run("preflight"), "P0", /^CARD_NOT_DERIVED: \(P0\).*differing field: startRun\.delegation, expires_at/, headBefore);
+    expect(existsSync(path.join(b.library, "runs", "day-grant"))).toBe(false);
+  });
+  it("refuses a hand-written card whose approval is a standing-grant receipt, whatever its id", () => {
+    const b = box({ dayGrant: { ...FIRST, approval: { ...FIRST.approval, standing: true } }, state: withVerdicts([["manifest"]]) });
+    expectRefusedClean(b, b.run("preflight"), "P0", /^CARD_NOT_DERIVED: \(P0\).*differing field: manifest/, b.head());
+    expect(derives(b)).toHaveLength(1);
+  });
+  it("re-derives again in P3 before the allowance is consumed, and refuses a card swapped between the two", () => {
+    const b = box({ dayGrant: FIRST, cardId: STANDING, state: withVerdicts([null, null, ["title"]]) });
+    expect(b.run("preflight").status).toBe(0);
+    const headBefore = b.head();
+    const result = b.run();
+    expect(derives(b)).toHaveLength(3);
+    expectRefusedClean(b, result, "P3", /^CARD_NOT_DERIVED: \(P3\).*differing field: title/, headBefore);
+    expect(existsSync(path.join(b.library, "runs", "day-grant", `${DAY_CARD}--${DAY_RUN}`, "after-first.claimed"))).toBe(false);
+  }, 120_000);
+  it("refuses when the fresh derivation cannot run", () => {
+    const b = box({ dayGrant: FIRST, cardId: STANDING, state: (s) => { s.derive = { fail: true }; } });
+    expectRefusedClean(b, b.run("preflight"), "P0", /^CARD_NOT_DERIVED: \(P0\)/, b.head());
+  });
+  it("leaves operator-pressed cards (Decisions 0156, 0157) and day-grant cards (Decision 0173) without a derivation", () => {
+    const ordinary = box();
+    expect(ordinary.run("preflight").status).toBe(0);
+    expect(derives(ordinary)).toHaveLength(0);
+    const day = box({ dayGrant: FIRST });
+    expect(day.run("preflight").status).toBe(0);
+    expect(derives(day)).toHaveLength(0);
   });
 });
 

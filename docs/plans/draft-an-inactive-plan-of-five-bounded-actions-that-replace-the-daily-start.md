@@ -7,7 +7,7 @@ status: active
 milestone: Draft an inactive Plan of five bounded Actions that replace the daily START approval with one standing grant the operator presses once, so production on the chosen Plan moves on its own and asks the operator only for decisive action
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-16
+updated: 2026-11-17
 actions:
   - id: decide-standing-start-grant
     title: Submit one operator Decision that replaces the daily approval of Decision 0173 with a standing START grant, with the four lettered options recorded here, and stay blocked until the operator answers.
@@ -147,11 +147,11 @@ actions:
     references: ["src/commands/startRun.ts", "src/operatorActions/startRunPins.ts", "src/operatorActions/libraryContract.ts", "src/docs/dispatch.ts", "docs/agent-guidance/operator-actions.md"]
   - id: refuse-press-unless-card-rederives
     title: Make scripts/start-run.sh refuse a standing-grant press unless the card on disk is byte-identical to a fresh derivation, checked at P0 and again immediately before the one-shot allowance is consumed, so a hand-written or hand-edited standing-grant card can never run.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Make scripts/start-run.sh refuse a standing-grant press unless the card on disk is byte-identical to a fresh derivation, checked at P0 and again immediately before the one-shot allowance is consumed, so a hand-written or hand-edited standing-grant card can never run.
+    next_action: Completed via Agent Ask auto-settle-arcadia-refuse-press-unless-card-rederives-5da1008422e6; no further action.
     expected_artifact: Evidence satisfying Agent Ask refuse-press-unless-card-rederives
     clarification: clarified
     confidence: high
@@ -215,7 +215,7 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: refuse-press-unless-card-rederives
+current_action: bind-replay-and-authority-scope-to-the-derived-card
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

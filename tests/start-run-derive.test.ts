@@ -8,7 +8,7 @@ import { START_RUN_DEFAULTS, type StartRunPinsDeps } from "../src/commands/start
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import { STANDING_SLUG } from "../src/operatorActions/startRunDayGrant.js";
-import { validateStartRunPins, startRunLauncher } from "../src/operatorActions/startRunPins.js";
+import { START_RUN_KEYS, validateStartRunPins, startRunLauncher } from "../src/operatorActions/startRunPins.js";
 import {
   DERIVED_CARD_ID_PREFIX, DERIVED_CARD_LIFETIME_MS, DERIVED_CARD_MAX_ACTIONS, deriveStartCard, type DeriveInput, type DerivePlanAction
 } from "../src/operatorActions/startRunDerive.js";
@@ -156,6 +156,105 @@ describe("arcadia start-run derive: derivation", () => {
     const before = w.before();
     expect(derive(w).derived).toBe(true);
     expect(w.before()).toEqual(before);
+  });
+});
+
+describe("arcadia start-run derive --verify-card: the press-time CARD_NOT_DERIVED check (Decision 0241)", () => {
+  /** Writes the derived card's three files into the library, as a press would find them. */
+  const writeCard = (w: World, edit: (files: { descriptor: Record<string, any>; launcher: string; manifest: string }) => void = () => undefined) => {
+    const card = derive(w).card!;
+    const files = { descriptor: JSON.parse(card.descriptorBytes) as Record<string, any>, launcher: card.launcher, manifest: card.manifestBytes };
+    edit(files);
+    mkdirSync(path.join(w.library, "reviewed"), { recursive: true });
+    writeFileSync(path.join(w.library, `${card.id}.json`), `${JSON.stringify(files.descriptor, null, 2)}\n`);
+    writeFileSync(path.join(w.library, `${card.id}.sh`), files.launcher);
+    writeFileSync(path.join(w.library, "reviewed", `${card.id}.json`), files.manifest);
+    return { card, descriptorPath: path.join(w.library, `${card.id}.json`) };
+  };
+  const verify = (w: World, descriptorPath: string, deps: StartRunPinsDeps = w.deps) =>
+    runStartRunDeriveCommand({ repository: w.repository, workspace: w.workspace, library: w.library, verifyCard: descriptorPath }, deps).data.verification!;
+
+  it("verifies an untouched derived card", () => {
+    const w = world();
+    const { card, descriptorPath } = writeCard(w);
+    expect(verify(w, descriptorPath)).toEqual({ verified: true, code: null, differs: [], derivedCardId: card.id });
+  });
+
+  it("verifies a card pressed minutes after its derivation, at the card's own minute", () => {
+    const w = world();
+    const { descriptorPath } = writeCard(w);
+    expect(verify(w, descriptorPath, { ...w.deps, now: () => new Date(NOW + 8 * MINUTE) }).verified).toBe(true);
+  });
+
+  const MUTATIONS: Array<[string, (files: { descriptor: Record<string, any>; launcher: string; manifest: string }) => void, string]> = [
+    ...START_RUN_KEYS.map((key): [string, (files: { descriptor: Record<string, any> }) => void, string] => [`startRun.${key}`, ({ descriptor }) => { descriptor.startRun[key] = { mutated: key }; }, `startRun.${key}`]),
+    ["startRun.delegation", ({ descriptor }) => { descriptor.startRun.delegation = { ...descriptor.startRun.delegation, attempt: 99 }; }, "startRun.delegation"],
+    ["expires_at", ({ descriptor }) => { descriptor.expires_at = "2099-01-01T00:00:00Z"; }, "expires_at"],
+    ["title", ({ descriptor }) => { descriptor.title = "Start everything"; }, "title"],
+    ["launcher", (files) => { files.launcher += "\ncurl evil\n"; }, "launcher"],
+    ["manifest", (files) => { files.manifest = files.manifest.replace(/[0-9a-f]/, (c) => (c === "0" ? "1" : "0")); }, "manifest"],
+    ["an extra startRun key", ({ descriptor }) => { descriptor.startRun.planActivation = { slug: "x" }; }, "startRun.planActivation"],
+    ["an extra descriptor key", ({ descriptor }) => { descriptor.standingGrant = {}; }, "standingGrant"],
+    ["a narrower Action list", ({ descriptor }) => { descriptor.startRun.actions = descriptor.startRun.actions.slice(0, 1); }, "startRun.actions"],
+    ["the id", ({ descriptor }) => { descriptor.id = `${descriptor.id}-b`; }, "id"]
+  ];
+  it.each(MUTATIONS)("refuses with CARD_NOT_DERIVED, naming the field, when %s is changed on an otherwise derived card", (_label, edit, field) => {
+    const w = world();
+    const { card, descriptorPath } = writeCard(w, edit);
+    const before = w.before();
+    const result = verify(w, descriptorPath);
+    expect(result).toMatchObject({ verified: false, code: "CARD_NOT_DERIVED", derivedCardId: card.id });
+    expect(result.differs).toContain(field);
+    expect(w.before()).toEqual(before);
+  });
+
+  it("refuses a hand-written manifest that names the standing grant in its delegation block but was never derived", () => {
+    const w = world();
+    const { descriptorPath } = writeCard(w, ({ descriptor }) => { descriptor.startRun.delegation.approvalRun = "20260101T000000Z-1"; });
+    expect(verify(w, descriptorPath)).toMatchObject({ verified: false, code: "CARD_NOT_DERIVED", differs: expect.arrayContaining(["startRun.delegation"]) });
+  });
+
+  it("refuses a card whose file bytes differ only in formatting", () => {
+    const w = world();
+    const { card, descriptorPath } = writeCard(w);
+    writeFileSync(descriptorPath, JSON.stringify(JSON.parse(card.descriptorBytes)));
+    expect(verify(w, descriptorPath)).toMatchObject({ verified: false, differs: ["descriptor.bytes"] });
+  });
+
+  it("refuses a missing card file and an unreadable descriptor", () => {
+    const w = world();
+    const { card, descriptorPath } = writeCard(w);
+    rmSync(path.join(w.library, "reviewed", `${card.id}.json`));
+    expect(verify(w, descriptorPath).differs).toEqual(["manifest"]);
+    writeFileSync(descriptorPath, "not json");
+    expect(verify(w, descriptorPath).differs).toContain("descriptor");
+  });
+
+  const rederived: Array<[string, (w: World) => StartRunPinsDeps | void, string]> = [
+    ["origin main moves", (w) => ({ ...w.deps, git: (repo, args) => (args[0] === "ls-remote" ? Buffer.from(`${"b".repeat(40)}\trefs/heads/main\n`) : w.deps.git(repo, args)) }), "startRun.reviewedRevision"],
+    ["the queue revision changes", (w) => ({ ...w.deps, queue: (workspace) => ({ ...w.deps.queue(workspace), revision: 291 }) }), "startRun.queueRevision"],
+    ["the production revision changes", (w) => ({ ...w.deps, production: (workspace) => ({ ...w.deps.production(workspace), revision: w.deps.production(workspace).revision + 1 }) }), "startRun.production|derivation"],
+    ["the receipt set changes", (w) => { writeFileSync(path.join(w.library, "another-card.consumed.json"), "{}"); }, "startRun.consumedHistory"]
+  ];
+  it.each(rederived)("refuses a derived card after %s between derivation and press, and consumes no allowance", (_label, change, field) => {
+    const w = world();
+    const { card, descriptorPath } = writeCard(w);
+    const deps = change(w) ?? w.deps;
+    const result = verify(w, descriptorPath, deps);
+    expect(result).toMatchObject({ verified: false, code: "CARD_NOT_DERIVED" });
+    expect(result.differs.join("|")).toMatch(new RegExp(field));
+    expect(readdirSync(w.library)).not.toContain(`${card.id}.consumed.json`);
+  });
+
+  it("refuses when nothing can be derived any more, naming the derivation refusal", () => {
+    const w = world();
+    const { descriptorPath } = writeCard(w);
+    const noReady = { ...w.deps, queue: (workspace: string) => ({ ...w.deps.queue(workspace), ordered: [] }) };
+    expect(verify(w, descriptorPath, noReady)).toMatchObject({ verified: false, code: "CARD_NOT_DERIVED", derivedCardId: null, differs: [expect.stringContaining("NO_READY_ACTIONS")] });
+  });
+
+  it("is a real command option, and still derives nothing typed", () => {
+    expect(() => runStartRunDeriveCommand({ verifyCard: "x.json", unknownArguments: ["--plan", "x"] })).toThrow(/DERIVE_OPTION_REFUSED/);
   });
 });
 
