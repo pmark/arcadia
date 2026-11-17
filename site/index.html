@@ -11,14 +11,16 @@ canyon: true
     <a class="start-link" href="https://arcadiamissioncontrol.com/#workflow">How Arcadia works <span aria-hidden="true">↗</span></a>
     <a class="start-link" href="{{ '/tags/' | relative_url }}">Browse topics <span aria-hidden="true">↗</span></a>
     <a class="start-link" href="{{ '/resources/' | relative_url }}">Resources <span aria-hidden="true">↗</span></a>
+    <a class="start-link" href="{{ '/authors/' | relative_url }}">Meet the authors <span aria-hidden="true">↗</span></a>
   </div>
 </div>
 {% if site.posts.size > 0 %}
 <ul class="posts" aria-label="Field Notes dispatches">
 {% for post in site.posts %}
-  <li>
+  {% assign rw = post.writer | default: 'arcadia' %}
+  <li data-writer="{{ rw }}">
     <article>
-      <p class="field-label">{% if forloop.first %}Latest dispatch · {% endif %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %B %Y" }}</time></p>
+      <p class="field-label">{% if forloop.first %}Latest dispatch · {% endif %}<time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %B %Y" }}</time>{% if post.writer %}{% assign rwd = site.data.writers[rw] %} · <a class="wr-chip" href="{{ '/authors/' | append: rw | append: '/' | relative_url }}"><span aria-hidden="true">{{ rwd.glyph }}</span> {{ rwd.name }}</a>{% endif %}</p>
       <h2><a href="{{ post.url | relative_url }}">{{ post.title | escape }}</a></h2>
       {% if post.summary %}<p>{{ post.summary | escape }}</p>{% endif %}
       {% include topic-links.html tags=post.tags %}

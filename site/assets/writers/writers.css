@@ -1,0 +1,60 @@
+/* PROTOTYPE shared writer styles (Flynn, 2026-11-16). Only site tokens from style.css; no colour or font literals.
+   A writer file sets the --w-* slots; these classes follow. Mirrors Iris's token contract (rev 2). */
+[data-writer] { --w-edge: var(--brand); --w-accent: var(--label); --w-tint: color-mix(in srgb, var(--brand) 8%, var(--bg)); }
+
+.post-body[data-writer]:not([data-writer="arcadia"]) { border-left: 3px solid var(--w-edge); }
+.canyon-page .posts li[data-writer]:not([data-writer="arcadia"]) { border-left: 3px solid var(--w-edge); }
+
+.wr-kicker { margin: .5rem 0 0; font: 600 .75rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .09em; color: var(--w-accent); }
+.wr-byline { font-family: var(--display); font-weight: 600; }
+.wr-glyph { color: var(--w-edge); font-weight: 700; margin-right: .15em; }
+.wr-receipt { font: 500 .8rem/1.4 var(--mono); }
+.wr-chip { font-family: var(--mono); text-transform: none; letter-spacing: .02em; }
+.wr-chip span { color: var(--w-edge); font-weight: 700; }
+
+/* Haiku: a three-line blockquote with the writer's edge as its bar. */
+.post-body blockquote.wr-haiku { margin: 1.4rem 0; padding: .7rem 0 .7rem 1.1rem; border-left: 3px solid var(--w-edge); background: none; color: var(--fg); font: 600 clamp(1.1rem, 3.6vw, 1.35rem)/1.45 var(--display); }
+.post-body blockquote.wr-haiku p { margin: 0; }
+
+/* Labelled parts: a mono label, then plain prose. */
+.post-body p.wr-landed strong:first-child, .post-body p.wr-update strong:first-child, .post-body p.wr-notdone strong:first-child {
+  font: 600 .74rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--w-accent);
+}
+.post-body p.wr-update { border-left: 1px solid var(--rule); padding-left: .8rem; }
+.post-body p.wr-notdone { color: var(--muted); font-size: .94rem; }
+
+/* Closing suggestion for operators, rendered from front matter. */
+.wr-closing { margin: 2rem 0 0; padding: .9rem 1rem .5rem; background: var(--w-tint); border-left: 3px solid var(--w-edge); border-bottom: 1px solid var(--rule); }
+.wr-closing .wr-label { margin: 0 0 .35rem; font: 600 .74rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .14em; color: var(--w-accent); }
+.wr-closing p:last-child { margin-top: 0; }
+
+@media (forced-colors: active) {
+  .post-body[data-writer], .wr-closing, .post-body blockquote.wr-haiku { border-color: CanvasText; background: Canvas; }
+}
+
+/* Author profile pages and the authors index. */
+.wr-byline { text-decoration: none; color: inherit; }
+.wr-byline:hover { text-decoration: underline; text-underline-offset: .18em; }
+.wr-chip { text-decoration: none; color: inherit; }
+.wr-chip:hover { text-decoration: underline; text-underline-offset: .18em; }
+.wr-glyph--big { font-size: .8em; }
+.author-tagline { margin: .2rem 0 1rem; color: var(--muted); font: 500 1.1rem/1.45 var(--display); max-width: 36ch; }
+.wr-proto { margin: 0 0 1rem; padding: .5rem .75rem; background: var(--w-tint); border: 1px dashed var(--rule); font: 500 .8rem/1.5 var(--mono); color: var(--w-accent); }
+.author-page h2, .authors-index h2 { font-family: var(--display); }
+.author-page h2 { margin: 1.8rem 0 .4rem; font-size: 1.15rem; }
+.wr-list, .wr-posts, .wr-emoji { padding-left: 1.1rem; margin: .3rem 0; }
+.wr-emoji { list-style: none; padding-left: 0; display: grid; gap: .35rem; }
+.wr-emoji-mark { display: inline-block; min-width: 1.6rem; }
+.wr-emoji-means { color: var(--muted); font-size: .92rem; }
+.wr-controls { margin: .3rem 0; display: grid; gap: .2rem; }
+.wr-controls dt { font: 600 .74rem/1.5 var(--mono); text-transform: uppercase; letter-spacing: .12em; color: var(--w-accent); margin-top: .7rem; }
+.wr-controls dd { margin: 0; }
+.wr-posts { list-style: none; padding-left: 0; display: grid; gap: .8rem; }
+.wr-posts time { font: 500 .78rem/1.5 var(--mono); color: var(--muted); display: block; }
+.wr-post-summary { color: var(--muted); font-size: .92rem; }
+.wr-feed { margin: 1rem 0 0; font: 500 .85rem/1.4 var(--mono); }
+.wr-agent-note { margin-top: 2rem; padding-top: .8rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
+.wr-authors { list-style: none; padding: 0; margin: 1.2rem 0; display: grid; gap: 1.2rem; }
+.wr-authors li { padding: 1rem 1.1rem; border: 1px solid var(--rule); border-left: 3px solid var(--w-edge); border-radius: .5rem; }
+.wr-authors h2 { margin: .2rem 0; font-size: 1.4rem; }
+.wr-authors p { margin: .2rem 0; }

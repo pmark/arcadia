@@ -1,0 +1,6 @@
+/* PROTOTYPE draft of site/assets/writers/clara.css (Flynn, 2026-11-17), from Clara's identity file: cool pair, site tokens only. */
+[data-writer="clara"] {
+  --w-accent: var(--link);
+  --w-edge: var(--explore);
+  --w-tint: color-mix(in srgb, var(--explore) 9%, var(--bg));
+}
