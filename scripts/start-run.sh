@@ -227,6 +227,29 @@ on_signal() {  # REF:L141
 check_expiry() {  # REF:L163, L362
   node -e 'process.exit(Date.now() < Date.parse(process.argv[1]) ? 0 : 1)' "$CARD_EXPIRES_AT" || refuse "$1"
 }
+# Decision 0241: a standing-grant card is never trusted as written. It runs only when the card on disk (descriptor, launcher and
+# reviewed manifest) is byte-identical to a fresh `arcadia start-run derive` for the current origin main, queue, production policy
+# and receipts, so a hand-written, hand-edited or stale card refuses. Checked in P0 and again in P3 just before the allowance is
+# consumed. A card counts as a standing-grant card by its derived id or by an approval receipt of the standing-grant schema; the
+# operator-pressed cards of Decisions 0156 and 0157 and the day-grant cards of Decision 0173 are not, and are untouched.
+is_standing_grant_card() {
+  local receipt
+  [[ "$ID" == standing-start-* ]] && return 0
+  [[ "$DELEGATION_DECISION" == 0173 ]] || return 1
+  receipt="$LIBRARY_DIR/runs/$(jq -r '.approvalCard // ""' <<<"$DELEGATION")/$(jq -r '.approvalRun // ""' <<<"$DELEGATION")/receipt.json"
+  [[ -f "$receipt" ]] && jq -e '.schema == "arcadia-standing-grant-receipt-v1"' "$receipt" >/dev/null 2>&1
+}
+check_card_rederived() {  # $1: P0 or P3
+  local out
+  is_standing_grant_card || return 0
+  out="$(arcadia start-run derive --verify-card "$DESCRIPTOR" --library "$LIBRARY_DIR" --repository "$ARCADIA_REPO" --json)" \
+    || refuse "CARD_NOT_DERIVED: ($1) the fresh derivation could not run, so the card cannot be shown to be derived; no allowance consumed"
+  jq -e '.ok == true and (.data.verification.verified | type == "boolean")' <<<"$out" >/dev/null \
+    || refuse "CARD_NOT_DERIVED: ($1) the fresh derivation returned no verdict on this card; no allowance consumed"
+  jq -e '.data.verification.verified == true' <<<"$out" >/dev/null \
+    || refuse "CARD_NOT_DERIVED: ($1) this card is not what the deriver returns for the current state (derived id $(jq -r '.data.verification.derivedCardId // "none"' <<<"$out")); differing field: $(jq -r '.data.verification.differs | join(", ")' <<<"$out"); no allowance consumed"
+  rec "cardRederived$1" true
+}
 check_preserved_history() {  # REF:L158, L364
   node -e 'const f=require("fs"),c=require("crypto");for(const x of JSON.parse(process.argv[1]))if(c.createHash("sha256").update(f.readFileSync(x.path)).digest("hex")!==x.sha256)throw Error("preserved receipt/authority drift")' "$(pin_json consumedHistory)" || refuse "consumed history or authority receipt changed"
 }
@@ -660,6 +683,7 @@ phase_p0() {
   [[ ! -e "$ATTEMPT_FILE" ]] || refuse "the one-shot START allowance is consumed; never retry or reset"  # REF:L162
   check_expiry "this card expired at $CARD_EXPIRES_AT; ask for a fresh card"
   rec_str cardExpiresAt "$CARD_EXPIRES_AT"
+  check_card_rederived P0
   check_delegation
   if [[ "$MODE" == run && "$DELEGATION_DECISION" == 0173 ]]; then
     rec_str authority "Rowan's delegated press of this START card from /actions under Decision 0173, within the operator's day approval $(jq -r '.approvalCard + "/" + .approvalRun' <<<"$DELEGATION") (the run's activation touch), open until $DAY_WINDOW_CLOSES; attempt $(jq -r '.attempt' <<<"$DELEGATION") (numbered since Decision 0170) if it admits a Session, under Decision 0181, which stops for the operator after a failed batch; never recorded as the operator's press"
@@ -910,6 +934,7 @@ phase_p3() {
   check_origin_is_pin
   [[ "$(git_repo rev-parse HEAD)" == "$HEAD_BEFORE" ]] || refuse "main moved between the preconditions and the allowance"
   check_day_window "the day ended during the preflight; no allowance consumed"
+  check_card_rederived P3
   # Decision 0163: one card per attempt of the chain, claimed exclusively together with the allowance (a refusal before
   # here consumed nothing and leaves the attempt free for the next card).
   local attempt_claim=""

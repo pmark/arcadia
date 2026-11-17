@@ -89,6 +89,16 @@ switch (key2) {
   case "production status":
     ok({ read: { status: "ok", policy: { desiredState: state.production.desiredState, revision: state.production.revision, epoch: state.production.epoch, authority: state.production.authority ?? null } }, liveAdmissions: state.production.liveAdmissions });
     break;
+  case "start-run derive": {
+    // The press-time re-derivation (--verify-card): state.derive.verdicts holds one verdict per call, the last one repeating; each is
+    // null (the card is what the deriver returns) or the differing fields. The real comparison is tested in start-run-derive.test.ts.
+    if (state.derive?.fail) { process.stderr.write("the derivation could not run\n"); process.exit(1); }
+    const verdicts = state.derive?.verdicts ?? [null];
+    const differs = verdicts.length > 1 ? verdicts.shift() : verdicts[0];
+    save();
+    ok({ derived: true, verification: { verified: differs === null, code: differs === null ? null : "CARD_NOT_DERIVED", differs: differs ?? [], derivedCardId: "standing-start-derived" } });
+    break;
+  }
   case "start-run day-evidence":
     if (state.dayEvidence === "unavailable") { process.stderr.write("the workspace database could not be read\n"); process.exit(1); }
     ok(state.dayEvidence ?? { transitions: [], activations: [] });

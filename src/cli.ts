@@ -1290,9 +1290,10 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
     .option("--library <path>", "Operator-script library (default: the main checkout's library)")
+    .option("--verify-card <descriptor>", "Compare this card on disk with the derivation, byte for byte, and name each differing field (the press-time CARD_NOT_DERIVED check)")
     .allowUnknownOption()
     .allowExcessArguments()
-  ).action((options: { repository?: string; workspace?: string; library?: string; json?: boolean }, command: Command) =>
+  ).action((options: { repository?: string; workspace?: string; library?: string; verifyCard?: string; json?: boolean }, command: Command) =>
     runCliAction("start-run.derive", options, () => runStartRunDeriveCommand({ ...options, unknownArguments: command.args }), (response) => JSON.stringify(response.data, null, 2).split("\n")));
   addJsonOption(startRun.command("day-evidence")
     .description("Decision 0173: print production's policy transitions and admitted Sessions since Decision 0170; read-only")

@@ -1,4 +1,4 @@
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
@@ -6,18 +6,20 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { START_RUN_EXECUTOR_PATH } from "../operatorActions/startRunPins.js";
 import { inspectDayGrantChain, standingGrantStatus } from "../operatorActions/startRunDayGrant.js";
 import { StartRunDelegationError } from "../operatorActions/startRunDelegation.js";
-import { DERIVED_PROVIDER, deriveStartCard, refuse, type DeriveInput, type DeriveResult } from "../operatorActions/startRunDerive.js";
+import { DERIVED_CARD_LIFETIME_MS, DERIVED_PROVIDER, deriveStartCard, refuse, verifyDerivedCard, type CardVerification, type DeriveInput, type DeriveResult } from "../operatorActions/startRunDerive.js";
 import { START_RUN_DEFAULTS, frontmatter, mainCheckout, realStartRunPinsDeps, startRunCriteriaFindings, type StartRunPinsDeps } from "./startRun.js";
 import { createHash } from "node:crypto";
 
 /** The options `start-run derive` accepts: where to read, never what to derive. */
-export interface StartRunDeriveOptions { repository?: string; workspace?: string; library?: string; json?: boolean; unknownArguments?: string[] }
+export interface StartRunDeriveOptions { repository?: string; workspace?: string; library?: string; verifyCard?: string; json?: boolean; unknownArguments?: string[] }
 export interface StartRunDeriveData {
   derived: boolean;
   /** The named reason nothing was derived, or null. */
   reason: string | null;
   message: string | null;
   card: Extract<DeriveResult, { ok: true }>["card"] | null;
+  /** Only with `--verify-card`: the card on disk against this derivation (the press-time check of scripts/start-run.sh). */
+  verification?: CardVerification;
   observations: { originMain: string | null; queueRevision: number | null; production: { revision: number; epoch: number } | null };
 }
 
@@ -49,11 +51,27 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
   const library = options.library ?? path.join(mainCheckout(toplevel, deps), "artifacts", "generated", "operator-scripts");
   const now = deps.now();
   const evidence = (deps.dayEvidence ?? realStartRunPinsDeps.dayEvidence!)(workspacePath);
+  // `--verify-card <descriptor>` names the card to compare, never a value to derive. The minute is the card's own, taken only when
+  // it is a whole minute already reached: a later or unaligned expiry derives at the real clock and so differs in id and expires_at.
+  const readOrNull = (file: string): string | null => { try { return readFileSync(file, "utf8"); } catch { return null; } };
+  const cardOnDisk = options.verifyCard === undefined ? { descriptor: null, launcher: null, manifest: null } : {
+    descriptor: readOrNull(options.verifyCard), launcher: readOrNull(options.verifyCard.replace(/\.json$/, ".sh")),
+    manifest: readOrNull(path.join(path.dirname(options.verifyCard), "reviewed", path.basename(options.verifyCard)))
+  };
+  let deriveAt = now;
+  if (cardOnDisk.descriptor !== null) {
+    try {
+      const expires = Date.parse(String((JSON.parse(cardOnDisk.descriptor) as { expires_at?: unknown }).expires_at));
+      const minute = expires - DERIVED_CARD_LIFETIME_MS;
+      if (Number.isFinite(expires) && minute % 60_000 === 0 && minute <= now.getTime()) deriveAt = new Date(minute);
+    } catch { /* the descriptor is named as differing */ }
+  }
   const done = (result: DeriveResult, queueRevision: number | null, production: { revision: number; epoch: number } | null): CommandSuccess<StartRunDeriveData> =>
     createSuccess({
       command: "start-run.derive", workspace: workspacePath,
       data: {
-        derived: result.ok, reason: result.ok ? null : result.reason, message: result.ok ? null : result.message, card: result.ok ? result.card : null,
+        derived: result.ok,
+        ...(options.verifyCard === undefined ? {} : { verification: verifyDerivedCard(result, cardOnDisk) }), reason: result.ok ? null : result.reason, message: result.ok ? null : result.message, card: result.ok ? result.card : null,
         observations: { originMain, queueRevision, production }
       },
       warnings: result.ok ? [] : [`${result.reason}: ${result.message}`]
@@ -94,7 +112,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
   ].sort();
 
   const input: DeriveInput = {
-    originMain, now, executorSha256: sha256(show(START_RUN_EXECUTOR_PATH)), workspace: path.basename(production.workspacePath), workerLabel: labels[0],
+    originMain, now: deriveAt, executorSha256: sha256(show(START_RUN_EXECUTOR_PATH)), workspace: path.basename(production.workspacePath), workerLabel: labels[0],
     gateCardId: START_RUN_DEFAULTS.gateCardId, offId: START_RUN_DEFAULTS.offId, grant,
     plan: {
       slug: grant.plan, project, status: String(planFile.status ?? ""),

@@ -137,3 +137,40 @@ export function deriveStartCard(input: DeriveInput): DeriveResult {
   const manifest = { sh: sha256(launcher), json: sha256(descriptorBytes), executor: input.executorSha256 };
   return { ok: true, card: { id, expiresAt, plan: plan.slug, actions, manifest, descriptor, launcher, descriptorBytes, manifestBytes: `${JSON.stringify(manifest, null, 2)}\n` } };
 }
+
+/** The refusal code of a press whose card on disk is not what the deriver returns for the current state. */
+export const CARD_NOT_DERIVED = "CARD_NOT_DERIVED";
+export interface CardOnDisk { descriptor: string | null; launcher: string | null; manifest: string | null }
+export interface CardVerification { verified: boolean; code: typeof CARD_NOT_DERIVED | null; differs: string[]; derivedCardId: string | null }
+
+const canonical = (value: unknown): string => JSON.stringify(value, (_key, inner) =>
+  inner && typeof inner === "object" && !Array.isArray(inner) ? Object.fromEntries(Object.entries(inner as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) : inner);
+const differing = (derived: Record<string, unknown>, actual: Record<string, unknown>, prefix: string): string[] =>
+  [...new Set([...Object.keys(derived), ...Object.keys(actual)])].sort().filter((key) => canonical(derived[key]) !== canonical(actual[key])).map((key) => `${prefix}${key}`);
+
+/**
+ * Compares the card on disk with a fresh derivation, byte for byte, and names each differing field: every descriptor key, every
+ * `startRun` key (the delegation block among them), the launcher and the reviewed manifest. Pure; a card that is not a card at all
+ * names `descriptor`.
+ */
+export function verifyDerivedCard(result: DeriveResult, onDisk: CardOnDisk): CardVerification {
+  if (!result.ok) return { verified: false, code: CARD_NOT_DERIVED, differs: [`derivation (${result.reason}: ${result.message})`], derivedCardId: null };
+  const { card } = result;
+  const differs: string[] = [];
+  let actual: Record<string, unknown> | null = null;
+  try {
+    const parsed: unknown = onDisk.descriptor === null ? null : JSON.parse(onDisk.descriptor);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) actual = parsed as Record<string, unknown>;
+  } catch { /* named below */ }
+  if (!actual) differs.push("descriptor");
+  else {
+    const isRecord = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);
+    const { startRun: derivedStart, ...derivedTop } = card.descriptor;
+    const { startRun: actualStart, ...actualTop } = actual;
+    differs.push(...differing(derivedTop, actualTop, ""), ...differing(derivedStart as Record<string, unknown>, isRecord(actualStart) ? actualStart : {}, "startRun."));
+    if (!differs.length && onDisk.descriptor !== card.descriptorBytes) differs.push("descriptor.bytes");
+  }
+  if (onDisk.launcher !== card.launcher) differs.push("launcher");
+  if (onDisk.manifest !== card.manifestBytes) differs.push("manifest");
+  return { verified: differs.length === 0, code: differs.length ? CARD_NOT_DERIVED : null, differs, derivedCardId: card.id };
+}
