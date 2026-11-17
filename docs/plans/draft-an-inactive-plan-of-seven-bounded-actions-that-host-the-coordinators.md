@@ -221,6 +221,78 @@ actions:
     depends_on: [prove-two-live-rowan-handoffs]
     decisions: []
     references: ["docs/agent-guidance/coordinator-handoff-design.md"]
+  - id: name-one-home-for-helper-launch
+    title: "Name one home for helper launch: one Action id owns it, and the overlapping housekeeping and governed-roles Actions cite it as superseding or are marked deferred with a revival trigger."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Name one home for helper launch: one Action id owns it, and the overlapping housekeeping and governed-roles Actions cite it as superseding or are marked deferred with a revival trigger."
+    expected_artifact: Evidence satisfying Agent Ask name-one-home-for-helper-launch
+    clarification: clarified
+    confidence: high
+    source: Agent Ask claudia-host-coordinators-helper-launch-20261117
+    why: "Three draft Plans touch helper launch; without one named owner the same work would be built twice."
+    acceptance_criteria:
+      - One Action id owns helper launch and no Action for it exists twice across the Plans.
+      - The housekeeping Plan's launch-helpers-from-role-briefs-and-stop-exact-identity and the governed-roles Plan's broker-delegation-requests either cite this Plan's Action as superseding or are marked deferred with a named revival trigger, through the governed Agent Ask route; no Plan status or pointer is hand-edited.
+    depends_on: [prove-two-live-rowan-handoffs]
+    decisions: []
+    references: ["docs/decisions/0253-record-the-operator-s-answer-on-how-much-of-rowan-as-team-lead-helper-launch-to.md", "docs/decisions/0225-d3-may-arcadia-start-helper-sessions-beyond-the-two-conditional-launch-decisions.md"]
+  - id: launch-helpers-from-the-timer
+    title: "Add arcadia helper request, list and stop: Rowan writes a request row and receipt, and the existing liveness tick launches each admitted request through the relay's launcher, extracted from relay.ts, with delivery proved by sha."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Add arcadia helper request, list and stop: Rowan writes a request row and receipt, and the existing liveness tick launches each admitted request through the relay's launcher, extracted from relay.ts, with delivery proved by sha."
+    expected_artifact: Evidence satisfying Agent Ask launch-helpers-from-the-timer
+    clarification: clarified
+    confidence: high
+    source: Agent Ask claudia-host-coordinators-helper-launch-20261117
+    why: "Rowan can staff research, planning and repair work with nobody awake, without any agent starting a session itself, which the host refuses."
+    acceptance_criteria:
+      - Failing-first tests with an injected launcher show that a request from anyone but the registered custodian is refused, a helper's own request is refused (depth), and code-reviewer and qa roles are refused.
+      - A spend, capacity or sign-in refusal launches nothing and leaves a receipt, and a missing spend or capacity envelope refuses (Decision 0225 A); a test shows two attempts then one ping.
+      - A test shows the fixed daily cap of Decision 0256 A holds (about six launches a day, light tier first, no paid fallback), a replay adds no launch, and helper stop targets the exact recorded session id.
+      - The receipt names the model actually running and flags a mismatch, a table of live helper sessions backs helper list, the coordinator path in relay.ts behaves as before, and focused vitest, lint and tsc pass with authority-path edits listed in the PR description.
+    depends_on: [prove-two-live-rowan-handoffs, name-one-home-for-helper-launch]
+    decisions: []
+    references: ["src/coordinator/relay.ts", "src/coordinator/launchProof.ts", "src/commands/keeper.ts", "src/agentRoles/registry.ts", "src/agentRoles/brief.ts", "docs/decisions/0256-record-the-operator-s-answer-on-the-finite-helper-envelope-decision-0225-a.md"]
+  - id: return-helper-results-by-mail
+    title: Return helper results to Rowan by native mail with receipts, so the assignment is delivered in the launch prompt and a report goes only to the requesting Rowan.
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: Return helper results to Rowan by native mail with receipts, so the assignment is delivered in the launch prompt and a report goes only to the requesting Rowan.
+    expected_artifact: Evidence satisfying Agent Ask return-helper-results-by-mail
+    clarification: clarified
+    confidence: high
+    source: Agent Ask claudia-host-coordinators-helper-launch-20261117
+    why: "Decision 0255 A makes Rowan the only recipient; a reported result must be acknowledged or show as overdue."
+    acceptance_criteria:
+      - A fixture shows the assignment delivered (equal hashes), the report sent, exposed and acknowledged, each with a receipt.
+      - An unacknowledged report appears as overdue after the window, and an idle Rowan receives exactly one wake.
+      - A helper cannot address anyone but its requester, shown by a test; focused vitest, lint and tsc pass.
+    depends_on: [launch-helpers-from-the-timer]
+    decisions: []
+    references: ["src/nativeMail/attention.ts", "docs/decisions/0255-record-the-operator-s-answer-on-who-may-message-whom-in-a-rowan-team.md"]
+  - id: prove-one-live-helper-team
+    title: "Prove one live helper team: a hosted Rowan requests one researcher and one implementer, the timer launches both, they report and are stopped, and the evidence is recorded."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Prove one live helper team: a hosted Rowan requests one researcher and one implementer, the timer launches both, they report and are stopped, and the evidence is recorded."
+    expected_artifact: Evidence satisfying Agent Ask prove-one-live-helper-team
+    clarification: clarified
+    confidence: high
+    source: Agent Ask claudia-host-coordinators-helper-launch-20261117
+    why: "No timer-launched helper has run yet; one observed live team is the proof before any further team work."
+    acceptance_criteria:
+      - Both helpers are launched by the timer, report by mail and are stopped, with the operator touching nothing and every operator touch listed in the run record.
+      - Tokens, minutes, model and tier are recorded per helper, and any refusal is preserved with its code.
+      - A START preflight passes with the helpers stopped.
+    depends_on: [return-helper-results-by-mail]
+    decisions: []
+    references: ["docs/decisions/0253-record-the-operator-s-answer-on-how-much-of-rowan-as-team-lead-helper-launch-to.md"]
 questions: []
 decisions: []
 ---
