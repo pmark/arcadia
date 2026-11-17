@@ -4,7 +4,7 @@ type: decision
 id: "0245"
 slug: where-does-the-relay-tick-work-wire-renew-into-the-liveness-tick-stand-down-for
 project: arcadia
-status: open
+status: approved
 question: Where does the relay-tick work (wire renew into the liveness tick, stand-down for an unresponsive predecessor, two live handoffs, skills pointed at the relay) go in the queue?
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
-updated: 2026-11-17
+updated: 2026-11-16
+answer: C. Fold into the hosted-coordinators Plan, wherever it lands
+decided: 2026-11-16
 ---
 
 # Decision 0245: Where does the relay-tick work (wire renew into the liveness tick, stand-down for an unresponsive predecessor, two live handoffs, skills pointed at the relay) go in the queue?
