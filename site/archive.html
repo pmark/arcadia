@@ -1,0 +1,41 @@
+---
+layout: default
+title: Archive
+summary: Every Field Notes dispatch, newest first, grouped by month.
+permalink: /archive/
+---
+{% assign total = site.posts.size %}
+<article class="post-body archive" aria-labelledby="archive-title">
+  <a class="back-article" href="{{ '/' | relative_url }}">← All Field Notes</a>
+  <p class="field-label field-label--sealed"><span class="field-seal" aria-hidden="true"></span> Field Notes / Archive</p>
+  <h1 id="archive-title">Archive</h1>
+  {% if total > 0 %}
+  <p class="arch-total">{{ total }} {% if total == 1 %}dispatch{% else %}dispatches{% endif %}, newest first, grouped by month.</p>
+  {% assign months = site.posts | group_by_exp: "p", "p.date | date: '%Y-%m'" %}
+  {% assign prev_year = "" %}
+  {% for m in months %}
+    {% assign year = m.name | slice: 0, 4 %}
+    {% if year != prev_year %}
+  <h2 class="arch-year" id="y-{{ year }}">{{ year }}</h2>
+      {% assign prev_year = year %}
+    {% endif %}
+  <details class="arch-month" id="m-{{ m.name }}"{% if forloop.first %} open{% endif %}>
+    <summary><h3>{{ m.items.first.date | date: "%B" }}</h3><span class="arch-count">{{ m.size }} {% if m.size == 1 %}dispatch{% else %}dispatches{% endif %}</span></summary>
+    <ul class="arch-list">
+    {% for post in m.items %}
+      {% assign rw = post.writer | default: 'arcadia' %}
+      {% assign rwd = site.data.writers[rw] %}
+      <li class="arch-row" data-writer="{{ rw | escape }}">
+        <p class="field-label arch-meta"><time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%-d %b" }}</time>{% if post.writer and rwd and rw != 'arcadia' %} · <a class="wr-chip" href="{{ '/authors/' | append: rw | append: '/' | relative_url }}"><span aria-hidden="true">{{ rwd.glyph }}</span> {{ rwd.name }}</a>{% endif %}{% case post.type %}{% when 'essay' %} · Essay{% when 'ship' %} · Ship note{% when 'digest' %} · Chronicle{% endcase %}</p>
+        <a class="arch-title" href="{{ post.url | relative_url }}">{{ post.title | escape }}</a>
+        {% if post.summary %}<p class="arch-summary">{{ post.summary | escape }}</p>{% endif %}
+        {% include topic-links.html tags=post.tags %}
+      </li>
+    {% endfor %}
+    </ul>
+  </details>
+  {% endfor %}
+  {% else %}
+  <p class="arch-empty">There are no published dispatches yet.</p>
+  {% endif %}
+</article>
