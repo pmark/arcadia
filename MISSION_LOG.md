@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-16
+updated: 2026-11-17
 ---
 
 # Mission Log: Arcadia
@@ -3718,3 +3718,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A test shows `arcadia start-run derive --json` accepts no option for Plan, Actions, Action count, provider, concurrency, expiry, cause, Decision or card id, and exits non-zero with a named refusal when any such option is passed."; "A test shows the derived Plan is the Plan the open standing-grant receipt and the approved work queue name, and the derived Actions are exactly the first unfinished ready Actions of that Plan at the top of the governed queue in queue order, at most 12, stopping before the first Action that is not ready."; "A test shows two derivations from the same main revision, queue revision, production revision and epoch, receipt set and clock minute are byte-identical, and that the card id is a function of those inputs."; "A test shows the card lifetime is a single exported constant of 10 minutes and the previous-press block is read from the production record (clean batch, failed attempt or no session) with no free-text field."; "A test shows the derived reviewed manifest holds the sha256 of the derived launcher, descriptor and executor, and that the derived descriptor passes validateStartRunPins and validateDescriptor unchanged."; "A property test over at least 200 generated Plan and queue fixtures shows every derived card pins only open Actions of the receipt's Plan, in queue order, with concurrency 1 and provider claude-code-cli, or derives nothing and reports one named reason."; "The command mutates nothing: a test shows the library, the workspace database and the checkout are byte-identical before and after it runs."; "Focused vitest for the touched suites, lint and tsc pass.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-derive-start-card-from-main-657e3b2c2339).
+
+## 2026-11-17 — Completed arcadia/refuse-press-unless-card-rederives
+
+- **Did:** Completed Action arcadia/refuse-press-unless-card-rederives from accepted evidence (Candidate 91bbd21248ebed21c5d85b8dd7e85ce5b3b24634).
+- **Result:** Every declared acceptance criterion was accepted as met: "A mutation test changes each key of START_RUN_KEYS, the delegation block, expires_at, the title and the launcher in turn on an otherwise derived card, and every one of those presses exits non-zero with the refusal code CARD_NOT_DERIVED before any mutation, naming the differing field."; "A test shows a derived card is refused with CARD_NOT_DERIVED after origin main, the queue revision, the production revision or the receipt set changes between derivation and press, and that no allowance is consumed."; "A test shows the comparison runs in P0 and again in P3 before the consumed marker is written, and that a card swapped between the two is refused at P3."; "A test shows a card that names the standing-grant Decision in its delegation block but was not produced by the deriver (hand-written manifest, extra planActivation block, or a narrower Action list) is refused."; "A test shows operator-pressed cards under Decisions 0156 and 0157 and day-grant cards under Decision 0173 behave exactly as before."; "The delegated press route refuses a standing-grant press whose card id is not the id the deriver returns for the current state, shown by a test."; "The PR description lists every authority-path edit, and focused vitest, the start-run shell suites, lint and tsc pass.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-refuse-press-unless-card-rederives-5da1008422e6).
