@@ -7,7 +7,7 @@ import { START_RUN_EXECUTOR_PATH } from "../operatorActions/startRunPins.js";
 import { inspectDayGrantChain, standingGrantStatus } from "../operatorActions/startRunDayGrant.js";
 import { StartRunDelegationError } from "../operatorActions/startRunDelegation.js";
 import { checkReplayReceipt, replayCardIdentity, replayReceiptPath, type ReplayCheck } from "../operatorActions/startRunReplayReceipt.js";
-import { DERIVED_CARD_LIFETIME_MS, DERIVED_PROVIDER, answeredDecisionIds, deriveStartCard, refuse, verifyDerivedCard, type CardVerification, type DeriveInput, type DeriveResult } from "../operatorActions/startRunDerive.js";
+import { DERIVED_CARD_LIFETIME_MS, DERIVED_PROVIDER, answeredDecisionIds, failedBatchClearancePath, parseFailedBatchClearance, deriveStartCard, refuse, verifyDerivedCard, type CardVerification, type DeriveInput, type DeriveResult } from "../operatorActions/startRunDerive.js";
 import { START_RUN_DEFAULTS, frontmatter, mainCheckout, realStartRunPinsDeps, startRunCriteriaFindings, type StartRunPinsDeps } from "./startRun.js";
 import { createHash } from "node:crypto";
 
@@ -23,7 +23,7 @@ export interface StartRunDeriveData {
   verification?: CardVerification;
   /** Only with `--verify-card`: the card's replay receipt, a prediction bound to this card (REPLAY_REQUIRED, REPLAY_MISMATCH, REPLAY_PREDICTS_NO_LAUNCH). */
   replay?: ReplayCheck;
-  observations: { originMain: string | null; queueRevision: number | null; production: { revision: number; epoch: number } | null };
+  observations: { originMain: string | null; queueRevision: number | null; production: { revision: number; epoch: number } | null; latestPress: { press: string; kind: string } | null };
 }
 
 const text = (buffer: Buffer): string => buffer.toString("utf8");
@@ -67,6 +67,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
     if (!bound) return { ok: false, code: "REPLAY_REQUIRED", detail: "the card is not a START card, so no replay receipt can name it" };
     return checkReplayReceipt(readOrNull(replayReceiptPath(path.dirname(descriptorFile), bound.card)), bound.identity);
   };
+  let latestPress: { press: string; kind: string } | null = null;
   let deriveAt = now;
   if (cardOnDisk.descriptor !== null) {
     try {
@@ -81,7 +82,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
       data: {
         derived: result.ok,
         ...(options.verifyCard === undefined ? {} : { verification: verifyDerivedCard(result, cardOnDisk), replay: replayCheckOf(options.verifyCard, cardOnDisk.descriptor) }), reason: result.ok ? null : result.reason, message: result.ok ? null : result.message, card: result.ok ? result.card : null,
-        observations: { originMain, queueRevision, production }
+        observations: { originMain, queueRevision, production, latestPress }
       },
       warnings: result.ok ? [] : [`${result.reason}: ${result.message}`]
     });
@@ -110,6 +111,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
     return done(refuse("CHAIN_REFUSED", `${error.code}: ${error.message}`), queue.revision, productionPins);
   }
 
+  latestPress = chain.latest;
   const labels = deps.launchctlList().split("\n").map((line) => line.trim().split(/\s+/).pop() ?? "").filter((label) => /^com\.arcadia\.local\.[A-Za-z0-9._-]+\.worker$/.test(label));
   if (labels.length !== 1) throw validationError(`Expected exactly one com.arcadia.local.*.worker launchd job, found ${labels.length}; no worker label was guessed.`);
   const entries = new Set(deps.listFiles(library));
@@ -134,6 +136,10 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
       }))
     },
     answeredDecisions,
+    ...(chain.latest?.kind === "failed-attempt" ? (() => {
+      const failedBatchClearance = parseFailedBatchClearance(readOrNull(failedBatchClearancePath(library, chain.latest.press)));
+      return failedBatchClearance ? { failedBatchClearance } : {};
+    })() : {}),
     production: { desiredState: production.desiredState, liveAdmissions: production.liveAdmissions, ...productionPins },
     queue: { revision: queue.revision, orderValid: queue.orderValid, unpositionedCount: queue.unpositionedCount, keys: queue.ordered.map((entry) => entry.orderKey ?? "") },
     chain: { receiptSha256: chain.window.receiptSha256, pressSha256: chain.window.pressSha256, attemptsSoFar: chain.attemptsSoFar, latest: chain.latest },

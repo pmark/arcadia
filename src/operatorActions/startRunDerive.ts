@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import path from "node:path";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, startRunLauncher, type StartRunPins } from "./startRunPins.js";
 import { parse as parseYaml } from "yaml";
 import { classifyAuthorityPaths } from "../decisions/batchMerge.js";
@@ -49,6 +50,26 @@ export interface DeriveInput {
   consumedHistory: Array<{ path: string; sha256: string }>;
   /** Ids of the Decisions answered on origin main; a cited Decision not in this list is open. */
   answeredDecisions?: string[];
+  /** What was recorded for a failed latest press: the cause, the independent pre-mortem pointer and the merged fix. Without it a failed batch derives nothing. */
+  failedBatchClearance?: FailedBatchClearance;
+}
+/** Recorded evidence that a failed batch may be followed by a card (Decisions 0181 and 0187): recorded, not machine-proved. */
+export interface FailedBatchClearance {
+  cause: string;
+  /** The independent pre-mortem's pointer: an https URL or a repository-relative path. It becomes the card's `premortem`. */
+  premortem: string;
+  fix: { pullRequest: string; commit: string; reproduction: string };
+}
+/** Where a failed press's clearance is recorded, beside the card library: `clearances/<card>--<press run id>.json`. */
+export const failedBatchClearancePath = (library: string, press: string): string => path.join(library, "clearances", `${press.replace("/", "--")}.json`);
+export function parseFailedBatchClearance(text: string | null): FailedBatchClearance | null {
+  if (text === null) return null;
+  try {
+    const value = JSON.parse(text) as Partial<FailedBatchClearance>;
+    const fix = value.fix as Partial<FailedBatchClearance["fix"]> | undefined;
+    if (typeof value.cause !== "string" || typeof value.premortem !== "string" || !value.premortem.trim() || !fix || typeof fix.pullRequest !== "string" || typeof fix.commit !== "string" || typeof fix.reproduction !== "string") return null;
+    return { cause: value.cause, premortem: value.premortem, fix: { pullRequest: fix.pullRequest, commit: fix.commit, reproduction: fix.reproduction } };
+  } catch { return null; }
 }
 export interface DerivedCard {
   id: string;
@@ -124,9 +145,15 @@ export function deriveActionsAndOperatorItem(project: string, planActions: Deriv
 }
 
 /** The previous-press block, read from the production record alone. A failed attempt needs a merged fix, which cannot be derived. */
-function derivedPrevious(latest: DeriveInput["chain"]["latest"]): DayGrantPrevious | null | "needs-fix" {
+function derivedPrevious(latest: DeriveInput["chain"]["latest"], clearance?: FailedBatchClearance): DayGrantPrevious | null | "needs-fix" {
   if (!latest) return null;
-  if (latest.kind === "failed-attempt") return "needs-fix";
+  if (latest.kind === "failed-attempt") {
+    if (!clearance) return "needs-fix";
+    return {
+      press: latest.press, kind: latest.kind, cause: clearance.cause, evidence: clearance.premortem,
+      clearance: { kind: "merged-fix", pullRequest: clearance.fix.pullRequest, commit: clearance.fix.commit, reproduction: clearance.fix.reproduction, cause: clearance.cause }
+    };
+  }
   return { press: latest.press, kind: latest.kind, cause: latest.kind, evidence: PREVIOUS_EVIDENCE, clearance: { kind: "observed-cleared", observation: PREVIOUS_EVIDENCE } };
 }
 
@@ -139,7 +166,7 @@ export function deriveStartCard(input: DeriveInput): DeriveResult {
   const { actions, operatorItem } = deriveActionsAndOperatorItem(plan.project, plan.actions, queue.keys, input.answeredDecisions ?? []);
   if (!actions.length && operatorItem) return refuse("OPERATOR_ITEM_FIRST", `the first Action in the queue, ${operatorItem.action}, needs the operator (${operatorItem.reasons.join("; ")}); nothing is derived`);
   if (!actions.length) return refuse("NO_READY_ACTIONS", `the top of the queue holds no ready Action of Plan ${plan.slug}`);
-  const previous = derivedPrevious(chain.latest);
+  const previous = derivedPrevious(chain.latest, input.failedBatchClearance);
   if (previous === "needs-fix") return refuse("FAILED_BATCH_NEEDS_FIX", `the latest press ${chain.latest!.press} failed; a failed batch stops for a merged fix and an independent pre-mortem, which are not derived`);
 
   const minute = minuteOf(input.now);
@@ -193,6 +220,19 @@ const differing = (derived: Record<string, unknown>, actual: Record<string, unkn
   [...new Set([...Object.keys(derived), ...Object.keys(actual)])].sort().filter((key) => canonical(derived[key]) !== canonical(actual[key])).map((key) => `${prefix}${key}`);
 
 /**
+ * The reviewed manifest may carry one extra key, `premortem`: the pre-press check recorded after minting (the replay receipt's
+ * pointer after a clean batch, the independent pre-mortem's after a failed one). Everything else must be the derived bytes.
+ */
+function manifestMatches(onDisk: string | null, derivedBytes: string): boolean {
+  if (onDisk === null) return false;
+  if (onDisk === derivedBytes) return true;
+  try {
+    const { premortem, ...rest } = JSON.parse(onDisk) as Record<string, unknown>;
+    return typeof premortem === "string" && premortem.trim() !== "" && `${JSON.stringify(rest, null, 2)}\n` === derivedBytes;
+  } catch { return false; }
+}
+
+/**
  * Compares the card on disk with a fresh derivation, byte for byte, and names each differing field: every descriptor key, every
  * `startRun` key (the delegation block among them), the launcher and the reviewed manifest. Pure; a card that is not a card at all
  * names `descriptor`.
@@ -215,6 +255,6 @@ export function verifyDerivedCard(result: DeriveResult, onDisk: CardOnDisk): Car
     if (!differs.length && onDisk.descriptor !== card.descriptorBytes) differs.push("descriptor.bytes");
   }
   if (onDisk.launcher !== card.launcher) differs.push("launcher");
-  if (onDisk.manifest !== card.manifestBytes) differs.push("manifest");
+  if (!manifestMatches(onDisk.manifest, card.manifestBytes)) differs.push("manifest");
   return { verified: differs.length === 0, code: differs.length ? CARD_NOT_DERIVED : null, differs, derivedCardId: card.id };
 }

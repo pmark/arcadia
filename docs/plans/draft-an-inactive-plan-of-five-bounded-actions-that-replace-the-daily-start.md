@@ -78,11 +78,11 @@ actions:
     references: ["src/operatorActions/startRunDayGrant.ts", "src/operatorActions/startRunPins.ts", "scripts/start-run.sh", "scripts/day-grant.sh", "docs/agent-guidance/operator-actions.md"]
   - id: press-successor-cards-from-the-host-timer
     title: While a standing grant is open, the host timer mints, checks and presses the next START card itself after each clean batch, so no card waits unpressed and no agent turn is needed between batches.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: While a standing grant is open, the host timer mints, checks and presses the next START card itself after each clean batch, so no card waits unpressed and no agent turn is needed between batches.
+    next_action: Completed via Agent Ask auto-settle-arcadia-press-successor-cards-from-the-host-timer-9b67fb6d173e; no further action.
     expected_artifact: Evidence satisfying Agent Ask press-successor-cards-from-the-host-timer
     clarification: clarified
     confidence: high
@@ -215,7 +215,7 @@ actions:
     references: ["src/commands/startRun.ts", "scripts/start-run.sh", "src/decisions/batchMerge.ts", "tests", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
 questions: []
 decisions: []
-current_action: press-successor-cards-from-the-host-timer
+current_action: prove-card-integrity-against-recorded-defects
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

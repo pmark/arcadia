@@ -183,6 +183,7 @@ const EXACT: Record<string, AuthorityBoundary> = {
   "src/commands/workreservations.ts": "operator_authority",
   "src/commands/productionliveness.ts": "operator_authority",
   "src/commands/productionmomentum.ts": "operator_authority",
+  "src/commands/productionsuccessor.ts": "operator_authority",
   "src/commands/gobrokerinstall.ts": "operator_authority",
   "src/commands/gocontext.ts": "operator_authority",
   "src/commands/capacity.ts": "operator_authority",
