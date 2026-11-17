@@ -78,7 +78,7 @@ export function createCanyonDust(THREE, count, centerAt, floorHeight) {
       void main() {
         float edge = 1.0 - smoothstep(0.22, 1.0, length(shape));
         vec2 drift = shape * vec2(2.9, 2.1) + vec2(grain * 17.0 - flow.z * flow.y * 0.53, (0.17 + flow.w * 0.32) * flow.y);
-        float density = smoothstep(0.15, 0.78, noise(drift) * 0.72 + noise(drift * 2.2) * 0.28);
+        float density = smoothstep(0.07, 0.72, noise(drift) * 0.72 + noise(drift * 2.2) * 0.28);
         vec3 color = mix(tint, deepTint, grain);
         if (flow.x < 0.0) color = mix(color, haze, .55);
         float opacity = abs(flow.x) * edge * density;
@@ -186,7 +186,7 @@ export function createCanyonDust(THREE, count, centerAt, floorHeight) {
       const ahead = distance - travel;
       const offset = 1.65 * Math.sin(phase + time * .23) + .58 * Math.sin(phase * .7 + time * .09);
       const edge = smoothstep(ahead, 2, 8) * (1 - smoothstep(ahead, (ambientCount - 2) * ambientSpacing, (ambientCount - 1) * ambientSpacing));
-      const density = .11 + .045 * Math.sin(phase + time * .28);
+      const density = .125 + .045 * Math.sin(phase + time * .28);
       particles.setXYZW(index, centerAt(distance) + offset,
         floorHeight(offset, distance) + .55, stripOrigin - distance, 1.8 + .4 * Math.sin(phase));
       currents.setXYZW(index, -density * edge * aerialFade, time * .18, .4, .28);
@@ -198,7 +198,7 @@ export function createCanyonDust(THREE, count, centerAt, floorHeight) {
       const progress = (elapsed - batch.start) / batch.duration;
       const envelope = smoothstep(progress, 0, .14) * (1 - smoothstep(progress, .72, 1));
       const opacity = envelope * (.56 + .44 * Math.min(1, batch.velocity / batch.speed))
-        * aerialFade * (batch.lead ? .25 : -.19);
+        * aerialFade * (batch.lead ? .30 : -.23);
       const drift = batch.drift;
       const { alongwind, crosswind } = batch;
       for (const { along, cross, height, size, pigment } of batch.puffs) {
