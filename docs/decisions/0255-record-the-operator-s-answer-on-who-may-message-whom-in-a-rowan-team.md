@@ -4,7 +4,7 @@ type: decision
 id: "0255"
 slug: record-the-operator-s-answer-on-who-may-message-whom-in-a-rowan-team
 project: arcadia
-status: open
+status: approved
 question: Record the operator's answer on who may message whom in a Rowan team.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
 updated: 2026-11-17
+answer: A. Helpers report only to Rowan
+decided: 2026-11-17
 ---
 
 # Decision 0255: Record the operator's answer on who may message whom in a Rowan team.
