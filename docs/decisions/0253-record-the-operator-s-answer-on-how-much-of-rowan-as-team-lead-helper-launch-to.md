@@ -4,7 +4,7 @@ type: decision
 id: "0253"
 slug: record-the-operator-s-answer-on-how-much-of-rowan-as-team-lead-helper-launch-to
 project: arcadia
-status: open
+status: approved
 question: Record the operator's answer on how much of Rowan-as-team-lead helper launch to build, and when.
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
 updated: 2026-11-17
+answer: A. Helper launch only, after the two live Rowan handoffs
+decided: 2026-11-17
 ---
 
 # Decision 0253: Record the operator's answer on how much of Rowan-as-team-lead helper launch to build, and when.
