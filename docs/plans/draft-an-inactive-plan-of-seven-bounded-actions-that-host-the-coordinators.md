@@ -7,7 +7,7 @@ status: draft
 milestone: Draft an inactive Plan of seven bounded Actions that host the coordinators (Rowan, then Signal and Flynn) as Arcadia-launched tmux sessions under the relay, with one live handoff and one worker-merged source change as proof
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-15
+updated: 2026-11-17
 actions:
   - id: fix-tmux-codex-start-alert-and-meter-reviews
     title: Fix or explain the 'tmux could not start the Codex Session' red alert with a reproducing test, bound alert re-fires, and record reviewer tokens and wall time per verdict.
@@ -58,14 +58,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask idle-wake-for-hosted-rowan
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-host-coordinators-20261115c
+    source: Agent Ask claudia-host-coordinators-relay-tick-20261116
     why: "scripts/wait-for-event.sh wakes only the session that started it; an idle hosted coordinator needs an Arcadia-side wake."
     acceptance_criteria:
       - Read proposal agentask_8cb7d47cb80d86acbb and confirm gap G3 in code before editing; if the premise is false, stop and report.
       - A failing-first test with an injected tmux adapter shows an idle registered coordinator receives exactly one wake message when a watched PR leaves OPEN or production state changes, a non-custodian or standby never receives it, and replays add none.
       - The wake runs from the existing timer or tick, never inline in a way that can starve the heartbeat, and a send failure only logs and alerts once.
       - Focused vitest, lint and tsc pass.
-    depends_on: []
+    depends_on: [prove-two-live-rowan-handoffs]
     decisions: []
     references: ["scripts/wait-for-event.sh", "src/coordinator/relay.ts", "src/production/idleFront.ts", "src/sessions/launch.ts"]
   - id: fix-day-evidence-and-carry-day-grant
@@ -117,13 +117,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask host-signal-and-flynn-under-the-relay
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-host-coordinators-20261115c
+    source: Agent Ask claudia-host-coordinators-relay-tick-20261116
     why: "Signal is the operator's single contact and is still a Desktop session whose starts are often refused; hosting it removes that dependency."
     acceptance_criteria:
       - A Decision naming who supervises whom and whether Signal and Flynn are hosted under the relay exists on main with an operator answer (answered_at recorded) before the first commit of this Action's branch; `arcadia decision show <id>` and `git log` prove the order.
       - After approval, a test shows Signal and Flynn register as relay roles with separate custody rows and one renewal each in a fixture; START tolerance still refuses any unregistered session.
       - One live renewal of each is recorded as evidence, with the Rowan custody rules unchanged.
-    depends_on: [prove-live-hosted-rowan-handoff]
+    depends_on: [prove-live-hosted-rowan-handoff, prove-two-live-rowan-handoffs]
     decisions: []
     references: ["docs/agent-guidance/signal.md", "docs/agent-guidance/coordinator-handoff-design.md", "src/coordinator/relay.ts"]
   - id: worker-merge-one-source-action-with-main-moving
@@ -145,6 +145,82 @@ actions:
     depends_on: [prove-live-hosted-rowan-handoff]
     decisions: []
     references: ["src/production/workerMerge.ts", "docs/decisions/0214-which-merge-route-should-unattended-production-s-worker-use-for-candidate-pull.md", "docs/managed-production-readiness.md"]
+  - id: wire-renew-into-liveness-tick
+    title: Wire the relay's renew into the launchd liveness tick so a registered Rowan custodian that reads due or forced gets a successor launched with no operator touch.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Wire the relay's renew into the launchd liveness tick so a registered Rowan custodian that reads due or forced gets a successor launched with no operator touch.
+    expected_artifact: Evidence satisfying Agent Ask wire-renew-into-liveness-tick
+    clarification: clarified
+    confidence: high
+    source: Agent Ask claudia-host-coordinators-relay-tick-20261116
+    why: "Nothing calls renew today (Issue #2286), so Decision 0191 A's relay never launches a successor; every handoff still needs the operator."
+    acceptance_criteria:
+      - The liveness check calls renew --repo <primary checkout> for a role only when the registered custodian's own session id reads due or forced, no generation is launching, and no START press is running; fixture tests show one launch per episode and none on replay.
+      - Each refusal has a named skip reason, shown by a test; exactly one ping is sent when both launch attempts fail; a renew error never fails the worker heartbeat.
+      - A title-matched but unregistered session never triggers a launch, shown by a test; focused vitest, lint and tsc pass and the PR description lists any authority-path edits.
+    depends_on: []
+    decisions: []
+    references: ["docs/agent-guidance/coordinator-handoff-design.md", "src/coordinator/relay.ts", "src/commands/coordinatorBudget.ts", "docs/decisions/0191-may-arcadia-s-deterministic-relay-launch-successor-coordinator-sessions-signal.md", "docs/decisions/0245-where-does-the-relay-tick-work-wire-renew-into-the-liveness-tick-stand-down-for.md"]
+  - id: stand-down-for-unresponsive-predecessor
+    title: Let the relay record stand-down for a predecessor Rowan that never stands down, at forced 75% or after 20 minutes of transcript silence since the launch, so accept can pass.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Let the relay record stand-down for a predecessor Rowan that never stands down, at forced 75% or after 20 minutes of transcript silence since the launch, so accept can pass.
+    expected_artifact: Evidence satisfying Agent Ask stand-down-for-unresponsive-predecessor
+    clarification: clarified
+    confidence: high
+    source: Agent Ask claudia-host-coordinators-relay-tick-20261116
+    why: "accept refuses until the predecessor itself records stand-down, so a Rowan that ran out of context deadlocks the transfer; Decision 0244 A (the operator's answer) authorizes the relay to stand it down."
+    acceptance_criteria:
+      - Decision 0244 is answered A on main (answer and decided recorded) before this Action's first commit; arcadia decision show 0244 and git log prove the order.
+      - Tests show the relay records stand-down only at the Decision 0244 thresholds (forced 75% or 20 minutes of transcript silence since the launch), never for a predecessor with transcript activity inside the window, and writes a receipt naming the evidence.
+      - A test shows accept then passes for that predecessor; focused vitest, lint and tsc pass and the PR description lists any authority-path edits.
+    depends_on: []
+    decisions: []
+    references: ["docs/agent-guidance/coordinator-handoff-design.md", "src/coordinator/relay.ts", "docs/decisions/0244-when-the-relay-has-launched-a-successor-rowan-and-the-outgoing-rowan-never.md"]
+  - id: prove-two-live-rowan-handoffs
+    title: "Prove two live Rowan handoffs launched by the timer with zero operator touches (hop 1 desktop Rowan to tmux Rowan, hop 2 tmux to tmux) and record the evidence, closing Issue #2697."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Prove two live Rowan handoffs launched by the timer with zero operator touches (hop 1 desktop Rowan to tmux Rowan, hop 2 tmux to tmux) and record the evidence, closing Issue #2697."
+    expected_artifact: Evidence satisfying Agent Ask prove-two-live-rowan-handoffs
+    clarification: clarified
+    confidence: high
+    source: Agent Ask claudia-host-coordinators-relay-tick-20261116
+    why: "Only fixtures exist today; two recorded automatic handoffs are the live proof, and the condition under which Decision 0246 A renews Decision 0191."
+    acceptance_criteria:
+      - Each hop is launched by the timer with the operator touching nothing; each hop's launch-proof has equal hashes at attempt 1, and its verify, accept and predecessor-stop receipts are filed.
+      - A preflight START passes with the hosted Rowan live, and the run record lists operator touches as none; every unattended permission refusal during the proof is recorded.
+      - "A failure is preserved with its receipt and reported with the exact boundary; Issue #2697 is closed only with the evidence."
+    depends_on: [wire-renew-into-liveness-tick, stand-down-for-unresponsive-predecessor]
+    decisions: []
+    references: ["docs/agent-guidance/coordinator-handoff-design.md", "src/coordinator/relay.ts", "docs/decisions/0246-decision-0191-relay-launches-of-successor-coordinator-sessions-expires-2026-12.md"]
+  - id: point-handoff-skills-at-the-relay
+    title: "Point the arcadia-handoff, arcadia-signal and nightshift skills at the relay: at due the timer launches the successor, the predecessor journals, stands down and stops, and no paste prompt is asked of the operator."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Point the arcadia-handoff, arcadia-signal and nightshift skills at the relay: at due the timer launches the successor, the predecessor journals, stands down and stops, and no paste prompt is asked of the operator."
+    expected_artifact: Evidence satisfying Agent Ask point-handoff-skills-at-the-relay
+    clarification: clarified
+    confidence: high
+    source: Agent Ask claudia-host-coordinators-relay-tick-20261116
+    why: "The three skills still describe the paste-a-prompt handoff, which contradicts the relay once it is live."
+    acceptance_criteria:
+      - Each of the three skills keeps one portable SKILL.md source with its required resources, exposed through the shared .agents/skills and Claude's .claude/skills discovery paths (repository or personal scope as appropriate), with existing installs preserved.
+      - Discovery is verified on the Codex, Claude Code and OpenCode paths, with native checks reported separately from filesystem checks, and no skill installation grants execution authority.
+      - No remaining instruction in the three skills asks the operator to start a successor Rowan.
+    depends_on: [prove-two-live-rowan-handoffs]
+    decisions: []
+    references: ["docs/agent-guidance/coordinator-handoff-design.md"]
 questions: []
 decisions: []
 ---
