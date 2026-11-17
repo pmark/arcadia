@@ -80,6 +80,7 @@ import {
   runAgentAskSettleCommand
 } from "./commands/agentAsk.js";
 import { renderOperatorActionSettleAskSuccess, runOperatorActionSettleAskCommand } from "./commands/operatorAction.js";
+import { runStartRunDeriveCommand } from "./commands/startRunDerive.js";
 import { renderStartRunPinsSuccess, renderStartRunReadinessSuccess, renderStartRunSignInSuccess, runStartRunDayEvidenceCommand, runStartRunGrantStatusCommand, runStartRunStandingPinsCommand,runStartRunReadinessCommand, runStartRunDayPinsCommand, runStartRunGateCheckCommand, runStartRunHoldCommand, runStartRunPinsCommand, runStartRunSignInCommand, runStartRunUnholdCommand } from "./commands/startRun.js";
 import { renderActionSettleSuccess, runActionSettleCommand } from "./commands/actionSettle.js";
 import {
@@ -1284,6 +1285,15 @@ the fingerprint hashes them, so any change between preview and apply is refused.
     .option("--library <path>", "Operator-script library (default: the main checkout's library)")
   ).action((options: { repository?: string; workspace?: string; library?: string; json?: boolean }) =>
     runCliAction("start-run.grant-status", options, () => runStartRunGrantStatusCommand(options), (response) => JSON.stringify(response.data, null, 2).split("\n")));
+  addJsonOption(startRun.command("derive")
+    .description("Decision 0241: derive the whole standing-grant START card from main, the queue, production and the open grant; read-only, accepts no value for any card field")
+    .option("--repository <path>", "Arcadia repository (default: git toplevel of the current directory)")
+    .option("--workspace <path>", "Workspace path", defaultWorkspace())
+    .option("--library <path>", "Operator-script library (default: the main checkout's library)")
+    .allowUnknownOption()
+    .allowExcessArguments()
+  ).action((options: { repository?: string; workspace?: string; library?: string; json?: boolean }, command: Command) =>
+    runCliAction("start-run.derive", options, () => runStartRunDeriveCommand({ ...options, unknownArguments: command.args }), (response) => JSON.stringify(response.data, null, 2).split("\n")));
   addJsonOption(startRun.command("day-evidence")
     .description("Decision 0173: print production's policy transitions and admitted Sessions since Decision 0170; read-only")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())

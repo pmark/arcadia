@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Draft an inactive Plan of five bounded Actions that replace the daily START approval with one standing grant the operator presses once, so production on the chosen Plan moves on its own and asks the operator only for decisive action
 active_plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
 updated: 2026-11-16
-current_action: derive-start-card-from-main
+current_action: refuse-press-unless-card-rederives
 ---
 
 # Arcadia

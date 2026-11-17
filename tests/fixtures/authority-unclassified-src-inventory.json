@@ -151,6 +151,10 @@
       "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
       "gateScanPatterns": []
     },
+    "src/commands/startRunDerive.ts": {
+      "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
+      "gateScanPatterns": []
+    },
     "src/commands/status.ts": {
       "reason": "CLI command wrapper judged read-only, reporting or capture; state changes and gates run in classified modules (src/ask, src/decisions, src/sessions, src/dispatch, src/spend).",
       "gateScanPatterns": []
