@@ -13,7 +13,9 @@ GitHub Pages; AMC ([arcadiamissioncontrol.com](https://arcadiamissioncontrol.com
   Note under Decision 0120: `status: approved`, `type: ship|essay`,
   `channels: [site, rss]`, `not_done: true`, and a `claims_receipt` under
   `docs/articles/receipts/` that records `- Verdict: PASS` from an independent
-  fact-check. Every other article (drafts included) is skipped and listed in the
+  fact-check and, under `## Editorial review`, `- Editorial verdict: APPROVE` from
+  the critic (operator direction, 2026-11-17; exactly one such section, the last
+  verdict line decides, anything else refuses). Every other article (drafts included) is skipped and listed in the
   build log. `README.md`, `templates/` and `receipts/` are not posts. Articles are
   never edited by the build.
 - **Unpublish:** set the post's `status: withdrawn` (keep the file and receipt)
