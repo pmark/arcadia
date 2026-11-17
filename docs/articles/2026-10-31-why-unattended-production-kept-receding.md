@@ -47,7 +47,7 @@ In its 20 October entry the record also states that repairing a candidate touchi
 
 ## Pointer moves and guidance size
 
-The pointer is the `active_plan` field in `PROJECT.md`, which tells a new session which plan to resume. It changed 11 times between 12 and 29 October, per git history. It moved 15 more times by 15 November, but not during the 20 merges of 8–9 November, so those merges neither support nor weaken the pointer idea.
+The pointer is the `active_plan` field in `PROJECT.md`, which tells a new session which plan to resume. It changed 11 times between 12 and 29 October, per git history, twice more on 31 October and 5 November, and 15 more times between 6 and 15 November, but not during the 20 merges of 8–9 November, so those merges neither support nor weaken the pointer idea.
 
 | Date | Readiness record | `docs/agent-guidance` |
 | --- | --- | --- |
@@ -56,7 +56,7 @@ The pointer is the `active_plan` field in `PROJECT.md`, which tells a new sessio
 | 5 Nov (`2c7c89485`) | 156,524 | 270,562 (30 files) |
 | 17 Nov (`4c2cb0ee3`) | 159,151 | 368,418 (39 files) |
 
-`AGENTS.md` caps what loads by default: 12 KiB for the root file (now 11,165 bytes) and 24 KiB for default-loading guidance; procedures are retrieved on demand. By the caps, the growth is in documents agents retrieve; we did not measure what loads. The guidance directory kept growing after the run worked: 253,385 bytes on 31 October, 270,562 on 5 November (the run), 319,840 when the 8–9 November merges began and 321,889 when they ended. That weakens the idea that its size blocked merges.
+`AGENTS.md` caps what loads by default: 12 KiB for the root file (now 11,165 bytes) and 24 KiB for default-loading guidance; procedures are retrieved on demand. The caps do not show where the growth is: default-loading guidance can grow while staying under its 24 KiB cap, and we did not measure what loads or what agents retrieve. The guidance directory kept growing after the run worked: 253,385 bytes on 31 October, 270,562 on 5 November (the run), 319,840 when the 8–9 November merges began and 321,889 when they ended. That weakens the idea that its size blocked merges.
 
 ## What you can take from this
 

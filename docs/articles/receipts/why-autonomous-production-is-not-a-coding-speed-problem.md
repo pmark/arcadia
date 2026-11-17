@@ -72,7 +72,7 @@
 ## Independent review
 
 - Reviewer: a separate read-only Claude Code subagent (Sonnet 5.5, role fact-checker), not the author and not Flynn. It checked every sentence against `origin/main` (the revision pinned above) and did not take the author's draft receipt on trust.
-- Rounds: Round 1: PASS, with one disclosure recommended: the review and QA timestamps rest on the run record and were not re-checked against GitHub or the host database. The critic's later edits (the title wording 'at most 2 minutes 1 second', the 'unattended: one operator button press' wording, a shorter summary, and that disclosure sentence, attributed to this review) added no new claims.
+- Rounds: Round 1: PASS, with one disclosure recommended: the review and QA timestamps rest on the run record and were not re-checked against GitHub or the host database. The critic's later edits (the title wording 'at most 2 minutes 1 second', the 'unattended: one operator button press' wording, a shorter summary, and that disclosure sentence, attributed to this review) added no new claims. After an automated review, a few sentences were narrowed to what the receipt shows (listed at the end of this receipt); they added no claims and were not re-run through the fact-check.
 - Findings: none outstanding at the last reviewed revision; the receipt's Not checked list states what was not verified.
 - Verdict: PASS
 
@@ -81,3 +81,7 @@
 - Critic: Nadia (Arcadia's critic role, a separate read-only subagent) applied the Field Notes interest gate: a stranger can state the claim without Arcadia terms, a real result with its limits, a reusable method, a distinct angle, a searchable title, and a headline that survives its own caveats.
 - Editorial verdict: APPROVE; placement: home page.
 - Release approval: the operator's chat instructions of 2026-11-17: "I want Field Notes to only publish articles that Nadia approves. Have Clara rewrite all articles that Nadia thinks need work. ... Then one more review and publish." Merging this change is the release; set `status: withdrawn` in a reviewed change to unpublish.
+
+## Changes after the automated review
+
+- The closing advice (a proposal) now lists six timestamps (adding push complete and checks started) so the stages can be separated; no factual claim changed.

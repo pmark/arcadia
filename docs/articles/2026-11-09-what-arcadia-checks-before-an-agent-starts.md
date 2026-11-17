@@ -48,7 +48,7 @@ The check is text pattern matching. The function makes no model call and reuses 
 | Sessions per task | 14 tasks took one session; one took four | same receipt |
 | Replay of the pinned criteria for those batches | 0 warnings, 0 refusals | same receipt |
 
-The one task that took four sessions was held up by a different error. A later step, the generated QA plan, read path-like strings quoted as test input as changed files ([Issue #2324](https://github.com/pmark/arcadia/issues/2324)). [PR #2325](https://github.com/pmark/arcadia/pull/2325) fixed that separately and states that it does not reuse the pre-flight check. The replay for the batch containing that task reported 0 warnings, so the check, replayed on its criteria, did not flag it.
+The one task that took four sessions was held up by a different error. A later step, the generated QA plan, read path-like strings quoted as test input as changed files ([Issue #2324](https://github.com/pmark/arcadia/issues/2324)). [PR #2325](https://github.com/pmark/arcadia/pull/2325) fixed that separately and states that it does not reuse the pre-flight check. The replay for the batch containing that task reported 0 warnings. The receipt does not give a per-task replay result, so this article does not establish whether the check flagged that task.
 
 ## What to copy
 

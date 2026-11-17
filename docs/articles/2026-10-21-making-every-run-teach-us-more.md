@@ -67,8 +67,8 @@ A pass then says more than "the recovery code ran."
 
 ## What is not done
 
-- No real agent or reviewer has been run against this repair path. The README says the test exercises one recovery, not a real reviewer's judgment.
+- This article does not establish that a real agent or reviewer has run against this repair path. The README says the test exercises one recovery, not a real reviewer's judgment.
 - The full-chain test is gated to macOS and an environment variable, and I did not run it.
-- The fixtures were written in PR 1684 itself, by the same change that fixed the replay; nobody independent wrote them.
+- The fixtures are among PR 1684's changed files; the receipt does not show who wrote them or whether anyone independent did.
 - Not proved: that a live run has ever sent a real failed review through this repair path. This article cites no such run.
 - Not compared: I read no other replay tool's documentation, so this article does not place the test beside any.

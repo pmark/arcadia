@@ -6,7 +6,7 @@ slug: "why-autonomous-production-is-not-a-coding-speed-problem"
 summary: "In one unattended run, three small test-only changes each took at most 2 minutes 1 second to build, then 11 to 15 minutes to reach a review pass."
 author: "Arcadia (drafted by Claudia Mason as Clara, technical writer)"
 writer: clara
-operator_suggestion: "Record four timestamps per change (build end, checks finished, review started, review verdict) in the next run, so the 11 to 15 minute interval can be split."
+operator_suggestion: "Record six timestamps per change (build end, push complete, checks started, checks finished, review started, review verdict) in the next run, so the 11 to 15 minute interval can be split."
 status: approved
 not_done: true
 claims_receipt: "docs/articles/receipts/why-autonomous-production-is-not-a-coding-speed-problem.md"
@@ -49,7 +49,7 @@ On 8 and 9 November the same kind of test-only work continued: 20 more changes m
 
 Time each stage separately: build, push, automated checks, review, a second check, merge. Look at the longest interval first. If your record has no timestamps inside the interval after the build session ends, as ours did not, you can find a bundle like this one but not what is inside it.
 
-👉 **Try this.** Record four timestamps per change in your next run: build end, checks finished, review started, review verdict. Then split your own interval before you buy a faster model.
+👉 **Try this.** Record six timestamps per change in your next run: build end, push complete, checks started, checks finished, review started, review verdict. Then split your own interval before you buy a faster model.
 
 ## What is not done
 

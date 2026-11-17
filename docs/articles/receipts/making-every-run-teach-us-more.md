@@ -58,7 +58,7 @@
 ## Independent review
 
 - Reviewer: a separate read-only Claude Code subagent (Sonnet 5.5, role fact-checker), not the author and not Flynn. It checked every sentence against `origin/main` (the revision pinned above) and did not take the author's draft receipt on trust.
-- Rounds: Round 1: FAIL on nine sentences (corrected). Round 2: PASS. After the critic's edits (a plain-language opening, the full-chain assertions at lines 899-909 of the replay test quoted exactly, the comparison section and the timing paragraph cut) Round 3: PASS, with the excerpt diffed byte for byte against the pinned commit. Two final mechanical edits (deleting a one-sentence section and adding a cut-line comment to the code block) were applied after the critic's last check and were not re-run.
+- Rounds: Round 1: FAIL on nine sentences (corrected). Round 2: PASS. After the critic's edits (a plain-language opening, the full-chain assertions at lines 899-909 of the replay test quoted exactly, the comparison section and the timing paragraph cut) Round 3: PASS, with the excerpt diffed byte for byte against the pinned commit. Two final mechanical edits (deleting a one-sentence section and adding a cut-line comment to the code block) were applied after the critic's last check and were not re-run. After an automated review, a few sentences were narrowed to what the receipt shows (listed at the end of this receipt); they added no claims and were not re-run through the fact-check.
 - Findings: none outstanding at the last reviewed revision; the receipt's Not checked list states what was not verified.
 - Verdict: PASS
 
@@ -72,3 +72,8 @@
 
 - The section 'What else the pull request records' (and the claims it carried about two source-state replays and a time cap) was deleted; any receipt row that cites it (for example C24) no longer applies to the article.
 - The code block now ends with the comment `// … (excerpt cut at line 909)`, because the excerpt stops inside an unclosed `if (repair) {`; the quoted lines themselves are unchanged from 899-909 at commit 4c2cb0ee34b8918b4197f9a3189e57c1bb228ef2.
+
+
+## Changes after the automated review
+
+- Two not-done bullets were narrowed to what the receipt shows: the absence of a real agent or reviewer run is now 'this article does not establish' it, and the fixtures' authorship is now 'among PR 1684's changed files; the receipt does not show who wrote them'. Any row that cites the older wording is superseded by these.

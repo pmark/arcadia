@@ -70,7 +70,7 @@ Abbreviations: `SR` = `src/commands/startRun.ts`; `CV` = `src/sessions/completio
 ## Independent review
 
 - Reviewer: a separate read-only Claude Code subagent (Sonnet 5.5, role fact-checker), not the author and not Flynn. It checked every sentence against `origin/main` (the revision pinned above) and did not take the author's draft receipt on trust.
-- Rounds: Round 1: PASS, with three wording tightenings (applied). After the critic's four edits (the limit moved into paragraph two, the 26-session versus 52-launch wording, two glosses, a duplicate removed) Round 2: PASS on the changed sentences.
+- Rounds: Round 1: PASS, with three wording tightenings (applied). After the critic's four edits (the limit moved into paragraph two, the 26-session versus 52-launch wording, two glosses, a duplicate removed) Round 2: PASS on the changed sentences. After an automated review, a few sentences were narrowed to what the receipt shows (listed at the end of this receipt); they added no claims and were not re-run through the fact-check.
 - Findings: none outstanding at the last reviewed revision; the receipt's Not checked list states what was not verified.
 - Verdict: PASS
 
@@ -79,3 +79,7 @@ Abbreviations: `SR` = `src/commands/startRun.ts`; `CV` = `src/sessions/completio
 - Critic: Nadia (Arcadia's critic role, a separate read-only subagent) applied the Field Notes interest gate: a stranger can state the claim without Arcadia terms, a real result with its limits, a reusable method, a distinct angle, a searchable title, and a headline that survives its own caveats.
 - Editorial verdict: APPROVE; placement: archive and the reliability topic page.
 - Release approval: the operator's chat instructions of 2026-11-17: "I want Field Notes to only publish articles that Nadia approves. Have Clara rewrite all articles that Nadia thinks need work. ... Then one more review and publish." Merging this change is the release; set `status: withdrawn` in a reviewed change to unpublish.
+
+## Changes after the automated review
+
+- The sentence about the batch replay now states only the batch-level result (0 warnings) and says the receipt gives no per-task replay result, so the article does not establish whether the check flagged that task (row C33 was already marked as an inference).

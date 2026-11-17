@@ -4,7 +4,7 @@
 
 - Evidence read on `origin/main` at commit `4c2cb0ee3` (fetched 2026-11-17). `todo-views.tsx` and `use-approvals.ts` have no diff between `c2859d022fe9ce165b827153491f7bf29a98473f` (the revision the original receipt pinned) and `origin/main`. `approvals.ts` was read at `origin/main` only.
 - Short names: RCPT = `docs/articles/receipts/what-needs-me.md`; TV = `apps/dashboard/components/todo-views.tsx`; AP = `apps/dashboard/lib/approvals.ts`; UA = `apps/dashboard/hooks/use-approvals.ts`. All paths are on `origin/main`.
-- Important limit: the frozen fixtures, the answer key and `results.json` are not in the repository. Every score in the article traces only to the table in RCPT. I recounted that table (see N1) but could not re-run the grader.
+- Important limit: the frozen fixtures, the answer key and `results.json` are not in the repository. Every score in the article traces only to the table in RCPT. I recounted that table (see N1; it is in the earlier receipt at https://github.com/pmark/arcadia/blob/4c2cb0ee3/docs/articles/receipts/what-needs-me.md, which this receipt replaces) but could not re-run the grader.
 
 ## Claims and evidence
 

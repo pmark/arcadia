@@ -90,7 +90,7 @@ Each row is a commit on `origin/main` that changed the `active_plan` value in `P
 ## Independent review
 
 - Reviewer: a separate read-only Claude Code subagent (Sonnet 5.5, role fact-checker), not the author and not Flynn. It checked every sentence against `origin/main` (the revision pinned above) and did not take the author's draft receipt on trust.
-- Rounds: Round 1: FAIL on four sentences and one unlabelled inference (the headline claim, the '22 days' framing, a fault count, a pointer inference), corrected. Round 2: FAIL on a wrong guidance size and an overstated phrase, corrected. Round 3: PASS. After the critic's restructure (new title, a lead with the failure record, a condensed pointer section, a proposed 'what you can take' section) Round 4: FAIL on five items (the 8-of-9 split is table rows only, a row count, a START-approval statement, a dated rule, a growth claim), corrected. Round 5: PASS. The critic's last four mechanical edits (the #1601 sentence, one gloss, the date, one deleted sentence) added no claims and were not re-run through the fact-check.
+- Rounds: Round 1: FAIL on four sentences and one unlabelled inference (the headline claim, the '22 days' framing, a fault count, a pointer inference), corrected. Round 2: FAIL on a wrong guidance size and an overstated phrase, corrected. Round 3: PASS. After the critic's restructure (new title, a lead with the failure record, a condensed pointer section, a proposed 'what you can take' section) Round 4: FAIL on five items (the 8-of-9 split is table rows only, a row count, a START-approval statement, a dated rule, a growth claim), corrected. Round 5: PASS. The critic's last four mechanical edits (the #1601 sentence, one gloss, the date, one deleted sentence) added no claims and were not re-run through the fact-check. After an automated review, a few sentences were narrowed to what the receipt shows (listed at the end of this receipt); they added no claims and were not re-run through the fact-check.
 - Findings: none outstanding at the last reviewed revision; the receipt's Not checked list states what was not verified.
 - Verdict: PASS
 
@@ -105,3 +105,9 @@ Each row is a commit on `origin/main` that changed the `active_plan` value in `P
 - The sentence about #1601 now reads: One further agent-side failure is not among those nine rows: the first change an agent produced for the first task (#1601) was closed as a false fix. So the harness share is a count of table rows, not of every failure. (Same fact as row C14.)
 - A bullet was glossed (`governed settlement records` became `files the system writes itself`) and the last sentence of lesson 3 (about START approval) was deleted; any row that cites it no longer applies.
 - The front-matter `date` was set to the publish date (2026-11-17), because the essay reports data to that date.
+
+
+## Changes after the automated review
+
+- The sentence that began 'By the caps, the growth is in documents agents retrieve' now says the caps do not show where the growth is, and that default-loading guidance can grow while staying under its cap; we did not measure what loads or what agents retrieve. (Narrower than before; the byte figures are unchanged.)
+- The pointer sentence now says: changed 11 times between 12 and 29 October, twice more on 31 October (`ee843dab0`) and 5 November (`2c7c89485`), and 15 more times between 6 and 15 November (row C25 and the move table); the earlier wording left the two moves between 29 October and 5 November out.
