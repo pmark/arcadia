@@ -1,43 +1,79 @@
 ---
-title: "Nothing is waiting on you—unless the read is incomplete"
+title: "When 'nothing needs you' sits beside a failed read: complete, partial or unknown"
 date: "2026-11-10"
 type: essay
 slug: "what-needs-me"
-summary: "A synthetic partial-read test put an all-clear beside a warning. Here is why useful agents need to say complete, partial, or unknown—and show their evidence."
-author: "Arcadia (drafted by Clara / Cody Swift)"
+summary: "In an offline test of our own dashboard, an all-clear appeared next to a warning that a data source could not be read; this note shows the result and a three-line status pattern."
+author: "Arcadia (drafted by Claudia Mason as Clara, technical writer)"
 writer: clara
+operator_suggestion: "Open a change that makes the to-do list page show 'unknown' and a Retry button whenever a source warning is present, then re-create the eight test cases in the repository and run them against it."
 status: approved
-claims_receipt: "docs/articles/receipts/what-needs-me.md"
 not_done: true
+claims_receipt: "docs/articles/receipts/what-needs-me.md"
 canonical: "https://pmark.github.io/arcadia/posts/what-needs-me/"
 channels: [site, rss]
-tags: [agent-workflows, evals]
+tags: [agent-workflows, evals, interface-design]
+last_modified_at: "2026-11-17"
+featured: true
 ---
 
-# Nothing is waiting on you—unless the read is incomplete
+# When "nothing needs you" sits beside a failed read: complete, partial or unknown
 
-“Nothing is waiting on you.” It sounds reassuring—until the same screen says a source could not be read.
+🔎 Checked: in one offline test of our own dashboard, the to-do page showed "Nothing is waiting on you." beside a warning that a data source could not be read. ❓ Our view, not tested: an all-clear is only trustworthy when the read behind it was complete.
 
-That contradiction showed up in a small offline experiment. Given a synthetic empty list with one failed source, Arcadia’s checked-in To-do view displayed both the source warning and the all-clear. A separate, hand-written mock showed “Current status unknown” and “Retry the read.” The mock was clearer in this case. It is not a shipped Arcadia feature. Across all eight cases, the current first view met the basic disposition check in five, but the stricter check with visible source and freshness evidence in none.
+The main limit comes first. The test used eight made-up cases, not real traffic. The comparison screen was a mock that was hand-written for the test and is not product code. No person used either screen. Treat the numbers below as a small designed check, not a benchmark. The scores come from our own receipt, the frozen test files are not in the repository, and the mock's 8 of 8 shows only what a design can do.
 
-The useful distinction is simple: **complete**, **partial**, or **unknown**. An empty result is reassuring only when the read that produced it is complete. If a source is missing, the agent should say what it could not check, keep the answer open, and offer a safe next step. A confident summary cannot make missing data complete.
+We tested a dashboard, not an AI agent. ❓ Our view, not tested: the same three states (complete, partial, unknown) may apply to agent summaries too.
 
-## Show the trail behind the answer
+## What we ran
 
-We compared the current dashboard component with a read-only mock using the same eight frozen, fabricated cases. The cases included ordinary pending items and settled work, but also a partial empty read, a failed refresh with an older blocking item still on screen, and a request scoped to one project while the data included another.
+We rendered the checked-in to-do page component offline with eight made-up cases and graded its first screen, and separately the screen with item details opened. The same cases were given to the mock. The receipt records that the fixtures and answer key were frozen before rendering and that a separate, deterministic grader scored the result; we could not check this because those files are not in the repository. Two checks were used:
 
-On the initial view, the current component reached the expected basic disposition and safe next step in five of eight cases. It met the stricter check—which also required visible source and freshness evidence—in zero. Opening item details raised that stricter score to three of eight. The mock met both checks in all eight cases. These are small, designed examples, not a benchmark or a measure of real-world performance; the receipt describes the grading rule and each result.
+- **Basic:** the screen gives the correct overall status and a supported safe next step.
+- **Strict:** the basic check, plus the source and freshness of the read are visible on that screen. Any unsafe cue fails the case.
 
-That points to two practical habits for agent builders. Carry completeness and freshness alongside the answer. Make the evidence easy to inspect where a person decides. In this comparison, details sometimes contained useful evidence, but a person had to open them. The failed-refresh case still showed an old approval control. We did not click it or test server-side enforcement, so this experiment says nothing about what an action endpoint would allow.
+| Screen | Basic check | Strict check |
+| --- | --- | --- |
+| Current page, first screen | 5 of 8 | 0 of 8 |
+| Current page, after opening item details | not reported | 3 of 8 |
+| Hand-written mock | 8 of 8 | 8 of 8 |
 
-Google Cloud’s [2026 agent trends report](https://cloud.google.com/resources/content/ai-agent-trends-2026) offers a helpful hypothetical: a delivery agent notices a failed delivery, checks operational information, proposes a new slot, and explains the situation to the customer, with a human handoff for a more complex case. The important pattern is the trail between signal and response: what was checked, what remains uncertain, and what the person can do next. The report describes a scenario, not proof that every agent can do this reliably.
+The three cases where the current page failed even the basic check were:
 
-Arcadia’s [Relay first-slice proposal](https://github.com/pmark/arcadia/blob/c2859d022fe9ce165b827153491f7bf29a98473f/docs/proposals/relay.md#L104-L133) sketches grounded replies with freshness; the [operations proposal](https://github.com/pmark/arcadia/blob/c2859d022fe9ce165b827153491f7bf29a98473f/docs/relay-driven-operations.md#L156-L193) sketches signal triage linked to evidence and verified fixes. Both are proposals. An answer should name its scope and check the current verified Decision that applies to that scope. For a delegated task, it should point to the verified Artifact—or honestly say it is still waiting.
+1. An empty result with one source missing. The page showed the source warning beside the all-clear.
+2. A failed refresh with an older blocking item still on screen. The page showed an enabled Approve control beside the refresh error. No control was clicked.
+3. A request scoped to one project while a row from another project was present (the receipt notes the current portfolio list is intentionally global, so this may be a design choice, not a defect).
 
-The stakes are practical. During Arcadia’s November 9 run, 20 worker merges landed across five serial, test-only batches. The day record read the last batch as failed because its completion signal was missing. Separately, it records that approval had to be retyped at a coordinator handoff. [PR #2365](https://github.com/pmark/arcadia/pull/2365) later merged a scope-complete fix. This essay did not verify that fix installed or live. The [run record](https://github.com/pmark/arcadia/blob/c2859d022fe9ce165b827153491f7bf29a98473f/docs/managed-production-readiness.md#L5-L15) captures why evidence must distinguish “the work landed” from “the completion was verified.”
+## Why the contradiction can happen
 
-So when an agent says “nothing needs you,” ask: **What did it check, how fresh was that read, and what could it not see?** If one source goes silent, “unknown; retrying” is often the most useful answer.
+This part is readable in the code, apart from the experiment. The list page shows "Nothing is waiting on you." when it has zero live items and no error (`apps/dashboard/components/todo-views.tsx:88`). A missing source is reported as a separate note. The server adds that note when a source could not be read (`apps/dashboard/lib/approvals.ts:376`), and the page prints it above the list (`todo-views.tsx:36,83`). The all-clear condition does not look at the note, so both can appear together.
+
+A failed refresh keeps the previous list: the failure handler sets an error and does not replace the items (`apps/dashboard/hooks/use-approvals.ts:92-96`).
+
+One page already shows an unknown state with retry, like the mock described in the receipt. On the single-item page, an item found in the list shows its card. An item absent from the list shows "State unknown" and, when the page supplies a retry handler, a Retry button, if the read failed, carried a note about a source or about settle controls, or was the fallback list. It shows "Done" only when the last poll succeeded, every source was read, and the list was not the fallback list (`todo-views.tsx:139-188`). The eight cases did not test that page, and we did not run it. We only read its code.
+
+## A three-line pattern you can copy
+
+📐 Proposed, not built, and not tested in the form below. Attach this to any answer that says "nothing needs you":
+
+```
+status: complete | partial | unknown
+checked: <source> ok | failed | skipped, read at <time>   (one per source)
+fresh_as_of: <time of the oldest successful read>
+```
+
+Three rules go with it:
+
+- Print an all-clear only when `status` is `complete`.
+- When `status` is `partial`, list the sources that failed, show what was found so far, and do not call the result empty.
+- When `status` is `unknown`, say so and offer a retry. Do not leave the last known list on screen without saying how old it is.
+
+Put the three fields on the first screen. In our test, the strict check passed 3 of 8 cases only after item details were opened, and 0 of 8 on the first screen.
 
 ## What is not done
 
-This was an offline, first-render comparison using fabricated fixtures and a hand-authored mock. It had no participants, live system, browser session, model call, routing test, or approval-endpoint test. The mock is not deployed functionality, and its eight-for-eight result is not a product benchmark. PR #2365 merged a source fix, but this work did not verify installed or live behavior. The proposals above have not been implemented as part of this experiment.
+- ❓ The eight cases are fabricated. There was no live system, browser session, model call or approval-endpoint test.
+- ❓ The receipt records the mock as "hand-authored". The receipt does not say who wrote the mock, and the mock has not been shipped.
+- ❓ The frozen fixtures and the results file are not in the repository. The scores trace only to the table in the receipt, which this rewrite did not re-run.
+- ❓ We did not click the Approve control or test what a server would allow.
+- ❓ The three-line pattern has not been built or tested. We do not know it would score 8 of 8.

@@ -1,98 +1,68 @@
 # Field Notes evidence for why-agent-roles-make-collaborative-work-easier
 
-- Article: 2026-10-12-why-agent-roles-make-collaborative-work-easier.md
-- Type: essay.
-- Source revision: [88045ef97](https://github.com/pmark/arcadia/tree/88045ef9712fa0341bdc5be2df45eee2334e8eaa).
-- Destination: [Field Notes](https://pmark.github.io/arcadia/posts/why-agent-roles-make-collaborative-work-easier/) and its [Atom feed](https://pmark.github.io/arcadia/feed.xml).
-- Release: operator-directed November 9, 2026 batch in America/Los_Angeles, scoped to the four shortlisted essays. The standing automatic cadence remains separate.
-- Previous feed check: November 9, 2026. The feed contained two ship notes, and this slug was absent.
-- Governing destination: [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). [Decision 0206](../../decisions/0206-record-the-operator-s-one-time-approval-to-publish-the-four-shortlisted-field.md) records the one-time batch approval.
+- Status: this is the publication receipt for the article above (status approved). Notes below written while drafting may say draft; the reviews are recorded under Independent review and Editorial review.
+
+- Article: R9-who-writes-the-change.md (draft; target path `docs/articles/2026-10-12-why-agent-roles-make-collaborative-work-easier.md`).
+- Source revision checked: origin/main `54d4d0aecbf7dadc89826b2bf7792f503ecbbad6` (cited lines re-verified by the fact-checker at this sha; none shifted; originally read at 4c2cb0ee3, fetched 2026-11-17).
+- PR evidence read read-only with `gh pr view <n> --repo pmark/arcadia --comments` and `gh pr view <n> --json ...`, and `gh api repos/pmark/arcadia/pulls/1171/comments`.
+- Condition from the critic brief: the article stands only if one specific real review finding can be quoted and verified. Met by the PR 1171 comment (rows C2, C9).
+- Wording note: findings are the wording of a summary comment posted under the project account (signed "Claudia Atlas" on PR 1171; the commits are by "Claudia Mason"). "Lead comment 1171" = PR 1171 comment by `pmark` at 2026-10-10T00:11:03Z. "Lead comment 1296" = PR 1296 comment by `pmark` at 2026-10-12T07:55:11Z.
 
 ## Claims
 
-The summary is covered by the claims below. Suggested developer practices and hypothetical examples are editorial advice.
-
-| ID | Claim | Pinned public evidence | Proof boundary |
+| ID | Exact factual sentence | Evidence | What it proves and its limits |
 | --- | --- | --- | --- |
-| C1 | Seven registered roles separate coordination, planning, critique, research, development, code review and QA. A candidate has one writer at a time, and an independent reviewer checks the exact revision. | [Registered roles](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/config/defaults/agent-roles.json) · [Role rules](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/agent-guidance/session-roles-and-briefs.md) · [Review rules](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/agent-guidance/pull-requests.md#independent-review-gate) | This describes the repo's contract. The CSV export is a hypothetical example. |
-| C2 | Ellis can be a planner or implementer by assignment; Clara is an implementer with a technical-writing specialization. | [Canonical role and profile definitions](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/arcadia-semantics.md#roles-specializations-and-optional-names) | Optional handles narrow a brief within the assigned role. |
-| C3 | The registry and brief commands define and validate roles. Automatic governed admission of native delegates remains future work. | [Role commands](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/src/commands/roles.ts) · [Native dispatch scope](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/agent-guidance/session-roles-and-briefs.md#native-dispatch-and-model-selection) | An eligible brief does not authorize or launch a session. |
+| C1 | "A coding agent wrote a change in pull request 1171." | Commit messages for 51899711d, 0535d5d29, 52b02c1eb, 143feab9e, 8a720629d, c6f613e88 end with "Co-Authored-By: Claude Sonnet 5.5"; PR 1171 body ends "Generated with Claude Code". | Shows agent involvement. Not proved: that no person edited it. |
+| C2 | "...and, according to a summary comment, a separate read-only reviewer reviewed it. The comment says the review took five rounds, with three blocking findings in round one." | Lead comment 1171: "Independent review (read-only subagent), 5 rounds ... R1 (51899711d): 3 BLOCKING". | Proves the summary comment (signed "Claudia Atlas"; commits are by "Claudia Mason") says this. The reviewer's own report is not in the PR. Independence rests on the comment's words and `docs/agent-guidance/pull-requests.md:13`. |
+| C3 | "Read in order, its lines show the approval check still open in each of the first three rounds: first reading local files, then steerable through environment settings, then through the search path and home directory. Round 4 is the first it reports with no blocking findings. That sequence is my reading of the list, not a statement in it." | Lead comment 1171: R1 "forgeable Decision gate (working-tree read)"; R2 "B1 still forgeable via env-steered live workspace and agent-writable local refs"; R3 "still steerable via PATH (fake gh) / HOME"; R4 "no blocking findings". Commits 0535d5d29 (B1: read from committed origin/main), 52b02c1eb (fetch from GitHub main), 143feab9e. | The comment does not say "each fix exposed the next way around". The article states the sequence is Clara's reading. "Round 4 is the first it reports with no blocking findings": R2 and R3 do not use the word "blocking", so this means the first round the comment explicitly marks as having none. Applies to the approval check (B1) only. |
+| C4 | "In pull request 1296, the same kind of comment says a round with no blocking defect was followed by a list of bypass phrasings that still get through." | Lead comment 1296 (2026-10-12T07:55:11Z): "Round 3 (fa464c694): no blocking defect for a first slice ... Known remaining bypasses (heuristic term lists), LOW to MEDIUM". | Not re-tested against current main. |
+| C5 | "The reviewer's own reports are not in either pull request." | PR 1171: comments by `coderabbitai` and `pmark` (two `pmark` summary comments), reviews by `coderabbitai` and `pmark`; `gh api .../pulls/1171/comments` returned three inline comments (two CodeRabbit, one `pmark` reply). PR 1296: one review (`coderabbitai`), two comments (`coderabbitai`, `pmark`). No separate reviewer report found. | Checked 2026-11-17 in PR threads only. Reports may exist outside the PR (session logs); not checked. CodeRabbit is an automated reviewer and is not the reviewer described. |
+| C6 | "There was no control without review, and the findings are relayed from a summary comment posted under the project account. These threads do not show that the author would have missed the flaws." | Absence of any comparison in the PR 1171 and 1296 threads; summary comments are posted by `pmark`. | Limit statement. |
+| C7 | "The change lets a session start work on a disposable test repository without a person confirming at a terminal." | PR 1171 body: "mints the same Decision 0096 one-shot authorization as `--operator-launch`, with no terminal confirmation"; "only for a registered disposable fixture". | Describes what the PR claims to add. |
+| C8 | "The comment lists each round and the commit the reviewer examined." | Lead comment 1171: R1 (51899711d), R2 (0535d5d29), R3 (52b02c1eb), R4 (143feab9e), R5 (8a720629d). | As C2. |
+| C9 | Table row 1: commit 51899711d; "Yes, three"; approval check read local files, called a "forgeable Decision gate (working-tree read)"; push-target check could change between check and use and missed rewritten remote addresses; one branch skipped the remote check. | Lead comment 1171 R1: "3 BLOCKING — forgeable Decision gate (working-tree read), remote check TOCTOU/insteadOf-blind, experiment branch skipped remotes." Commit 0535d5d29 B1/B2/B3. `src/sessions/fixtureStandingLaunch.ts:14-19` mentions the `insteadOf` rewrites. | "Read local files" is Clara's gloss of "working-tree read"; "change between check and use" glosses TOCTOU; "rewritten remote addresses" glosses insteadOf. The quote is verbatim. The article does not say who could forge the check; the comment does not say. |
+| C10 | Table row 2: commit 0535d5d29; "A fix for two accepted; one still open"; still forgeable through environment settings that steer which workspace is read and through local references an agent can write. | Lead comment 1171 R2: "B2/B3 accepted; B1 still forgeable via env-steered live workspace and agent-writable local refs." | The comment does not use "blocking" for R2; the article says so (C14). |
+| C11 | Table row 3: commit 52b02c1eb; "One still open"; record now fetched from the hosting service's main branch but fetch could be steered through the search path (a fake `gh` program) or the home directory. | Lead comment 1171 R3: "Decision now fetched from GitHub main of pmark/arcadia; still steerable via PATH (fake gh) / HOME." | As C10. |
+| C12 | Table row 4: commit 143feab9e; "No"; `gh` pinned to absolute trusted paths, home from the system user record, search path fixed, tokens dropped, file hash verified; holds under the project's stated threat model, which accepts tampering by a deliberately misbehaving process running as the same user. | Lead comment 1171 R4: "gh pinned to absolute trusted paths, passwd HOME, fixed PATH, tokens dropped, blob sha verified — no blocking findings under Decision 0096's threat model (residual same-uid tampering is \"deliberately misbehaving process\")". `src/sessions/fixtureStandingLaunch.ts:128`, `:183-186`. | The model name "Decision 0096" is not named in the article. |
+| C13 | Table row 5: commit 8a720629d; "No"; "A type fix only." | Lead comment 1171 R5: "dashboard-build type fix only — no blocking findings". Commit 8a720629d: "type the gh spawn env so the dashboard build typechecks". | As C2. |
+| C14 | "A sixth check, on commit c6f613e88 after an automated reviewer commented, also reported no blocking findings. The comment does not use the word 'blocking' for rounds 2 and 3; the table states what it says remained open." | `pmark` comment 2026-10-10T00:28:13Z: "Round 6 (CodeRabbit follow-up) on c6f613e88: independent review found no blocking findings". CodeRabbit CHANGES_REQUESTED review on 143feab9e (2026-10-09T23:57:33Z); `pmark` reply "Addressed in c6f613e88". Lead comment 1171 R2 and R3 wording (C10, C11). | Summary comment. The second sentence describes the absence of the word in R2 and R3 lines. |
+| C15 | "Today's code states the result. A doc comment in the launch module says the approval is fetched from the main branch of the repository itself, with no local reference, working tree, workspace database or user config consulted, and that any fetch failure refuses." | `src/sessions/fixtureStandingLaunch.ts:21-24` on origin/main. | Documented intent only; tests not run. |
+| C16 | "Pull request 1296 changed a validator; its description says it 'judges an approval-contradiction per sentence'." | PR 1296 body: "`src/stewardship/artifactValidator.ts` judges an approval-contradiction per sentence". | Quotes the PR body. |
+| C17 | "According to the summary comment on that pull request, round 1 reported five bypasses of the validator plus a task owned by a person that was routed to Codex, a coding agent." | Lead comment 1296: "Round 1 (d8d8c6511): blocking, 5 validator bypasses + a human-owned Action routed to Codex." | Summary comment only. "A coding agent" is Clara's gloss of Codex. |
+| C18 | "Round 2 reported seven classes of bypass, such as 'does not need an approved goal' and 'pre-approved'." | Lead comment 1296: "Round 2 (b12dbc9be): blocking, 7 bypass classes (... "does not need an approved goal", "pre-approved" ...)". | Summary comment. |
+| C19 | "Round 3 reported no blocking defect for a first slice." | Lead comment 1296: "Round 3 (fa464c694): no blocking defect for a first slice." | Summary comment. |
+| C20 | "The same comment then lists further bypass phrasings that still get through, such as 'Approval is waived.'" | Lead comment 1296: "Known remaining bypasses ... "Approval is waived."" | Not re-tested. |
+| C21 | "A clean final round was not proof of completeness." | Inference from C19 and C20. | Clara's inference. |
+| C22 | "Several of the round 2 phrasings are now test cases in the repository, for example 'Implementation is pre-approved.'" | `tests/planning-artifact-validator.test.ts:231`, `:236`, `:243`, `:246`. | Strings are in tests on main. Whether added in the round 2 fix commit is not checked. |
+| C23 | Step 1: "The repository's review procedure names data loss, broader authority, handing the same work to two agents, races, regressions, and differences between the author's host and the build server." | `docs/agent-guidance/pull-requests.md:21-24` ("authority broadening"; "the CI platform"). | Paraphrase; "build server" glosses "CI platform". |
+| C24 | Step 2: "In pull request 1171, a fix to one flaw was followed by a new review, and, per the summary comment, the next round found the check still open." | Rounds 1 to 3 and the following commits (C9 to C11); commits 0535d5d29, 52b02c1eb, 143feab9e. | Per the summary comment: R2 "B1 still forgeable", R3 "still steerable". Applies to the approval check across rounds 1 to 3. |
+| C25 | Step 3: "This is our lesson, proposed and not a measured result: here the findings were only summarized afterwards, so a reader cannot check what the reviewer wrote." | C5. | Labelled proposed. |
+| C26 | "No acceptance-test finding appears in these threads (PR bodies, comments and reviews only were searched)." | PR 1171 and PR 1296 comments, reviews and bodies read; only "Operator QA" steps (1171) and a "QA" test-count line (1296) exist. | Searched PR bodies, comments and reviews only; Issues, session logs and other PRs were not searched. |
+| C27 | "Pull request 1171 used the generic read-only pull-request reviewer (a 'read-only subagent' per its summary comment), which the procedure says is not admission to a registered code-reviewer role; the comment on 1296 does not say how its reviewer ran." | Lead comment 1171: "read-only subagent". `docs/agent-guidance/pull-requests.md:25-27`: "This generic current-head verification mechanism is not admission to a registered `code-reviewer` or `qa` role". Lead comment 1296 has no statement about how the reviewer ran. | As written. |
+| C28 | "The remaining validator bypasses in pull request 1296 are listed there as follow-up; this note does not check whether they were fixed." | Lead comment 1296 "Suggested follow-up". | Limit statement. |
+| C29 | Front matter summary: "Five rounds, three blocking findings in round one: a summary comment lists the same approval check as still open in each of the first three rounds; this note relays it and states what that does not prove." | C2, C3. | Summary comment as source; the "still open" reading is as in C3. |
+| C30 | Front matter: title as retitled by the critic; date 2026-11-09; slug; tags `agent-workflows`, `review`. | Current article on origin/main front matter (date 2026-11-09, slug, tags). Both tags appear on existing articles. `site/_data` holds no tag list (only `resources.yml`, `writers.json`). | The filename date (2026-10-12) differs from the front-matter date; the front-matter date was kept. |
+| C31 | Author line and `writer: clara`. | `site/_data/writers.json:8` defines `clara`, "Technical writer", status "reserved". | Whether `reserved` permits publishing is not checked. |
 
-## Mechanical checks
+## Not checked
 
-The candidate uses the Field Notes front matter, a public canonical URL, site and RSS channels, and a specific unfinished-work section. The article body is short-form.
+- Whether the reviewer reports exist elsewhere (session logs); only the PR threads were read.
+- Whether the PR 1171 flaws were real exploits. The review rounds were not replayed and the code was not run.
+- Whether the tests cited in C22 were added in the round 2 fix commit of PR 1296.
+- Whether the remaining bypasses in PR 1296 were fixed after the comment.
+- The CodeRabbit finding on PR 1171 was read but is not described in the article beyond C14.
+- The claims receipt on main for this slug (`docs/articles/receipts/why-agent-roles-make-collaborative-work-easier.md`) covers the previous article; this draft receipt should replace its Claims section when the article is re-approved.
+- Word count: body about 860 words by `wc -w` excluding table pipes (front matter excluded).
 
 ## Independent review
 
-- Reviewer: separate read-only Codex context `field_notes_publication_review`.
-- Reviewed candidate: `8c047010b08a9626965bab2ee1ae8eafd7e1762f`. Pinned source: `88045ef9712fa0341bdc5be2df45eee2334e8eaa`.
-- Reviewed article SHA-256: `0b9c0a8c164ed4d3414d795a8ac2e14e77a03870eb4265c3a741fb8c543fef42`.
-- Reviewed claims receipt SHA-256: `cbe3b2b1897bb70f9f81ac0396ddf7098585ad4f78198e23c4fbfc2f82a2b603`.
-- Findings: none blocking. The publication candidate records the approved status and Decision. [PR #2393](https://github.com/pmark/arcadia/pull/2393) records the final approval-delta review.
+- Reviewer: a separate read-only Claude Code subagent (Sonnet 5.5, role fact-checker), not the author and not Flynn. It checked every sentence against `origin/main` (the revision pinned above) and did not take the author's draft receipt on trust.
+- Rounds: Round 1: FAIL on two required fixes. Round 2: FAIL on one scoping sentence. Round 3: PASS. After the critic's restructure (new title, lead, a five-row table, three proposed steps) Round 4: FAIL on three fixes (the progression claim, an unattributed independence claim, an acceptance-testing sentence), corrected. Round 5: the reviewer confirmed all of those and required one off-by-one change ('still open after each of the first three fixes' to 'still open in each of the first three rounds'), which the author applied exactly; that last replacement was not re-run.
+- Findings: none outstanding at the last reviewed revision; the receipt's Not checked list states what was not verified.
 - Verdict: PASS
 
-## Delivery handoff
+## Editorial review
 
-Pending. The exact approved source, Pages run, canonical page, full-text Atom entry and link notification will be recorded on [release PR #2393](https://github.com/pmark/arcadia/pull/2393). To withdraw the article, set its source status to withdrawn in a reviewed PR and verify the next Pages build removes its page and feed entry.
-
-## Earlier draft record
-
-## Agent roles explainer evidence
-
-### Editorial refresh, 2026-11-09
-
-Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). The shortened CSV example is illustrative. Current role, writer, and independence claims are sourced to the [role procedure](../../agent-guidance/session-roles-and-briefs.md), [identity profiles](../../arcadia-semantics.md#roles-specializations-and-optional-names), and [review procedure](../../agent-guidance/pull-requests.md#independent-review-gate).
-
-The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
-
-This is an operator-requested draft for later adaptation into an Arcadia Mission
-Control guide. It is not a publication receipt, Action settlement or live-use
-claim. No governed Action exists for this writing request. Intake: #1351.
-
-- Article: docs/articles/2026-10-12-why-agent-roles-make-collaborative-work-easier.md
-- Source repository: pmark/arcadia
-- Pinned source revision: `17f05f789b416bc091d47d14d433dc511cc58d52`
-- Author identity: Cody Atlas <cody.atlas@agents.arcadia.local>
-- Body words: 445
-- Intended canonical URL and channels are template metadata, not publication
-  evidence. No site deployment or RSS publication is requested.
-
-### Claims and scope
-
-| Article claim | Pinned evidence | Limit |
-| --- | --- | --- |
-| Arcadia defines seven roles and their responsibilities: Lead, Planner, Plan critic, Researcher, Implementer, Code reviewer, QA. | [Role registry](https://github.com/pmark/arcadia/blob/17f05f789b416bc091d47d14d433dc511cc58d52/config/defaults/agent-roles.json) and [shared role protocol](https://github.com/pmark/arcadia/blob/17f05f789b416bc091d47d14d433dc511cc58d52/.agents/skills/arcadia-role/SKILL.md) | Definition and procedure, not proof of automatic role dispatch. |
-| A researcher has no production-mutation eligibility; specialization does not broaden authority; review remains independent. | [Shared role protocol](https://github.com/pmark/arcadia/blob/17f05f789b416bc091d47d14d433dc511cc58d52/.agents/skills/arcadia-role/SKILL.md) and registry. | Roles never grant production, ownership or other approval authority. |
-| Supervision is a relationship rather than an eighth role, with friction and learning duties. | [Supervisor skill](https://github.com/pmark/arcadia/blob/17f05f789b416bc091d47d14d433dc511cc58d52/.agents/skills/arcadia-supervisor/SKILL.md) and approved Decisions 0113/0121. | An assigned duty does not prove a running supervisor. |
-| Role definitions and brief commands are implemented; automatic delegation admission and event-triggered supervision remain future work. | [Merged foundation PR1342](https://github.com/pmark/arcadia/pull/1342), shared role and supervisor skills at the pinned revision. | No unattended orchestration claim. |
-
-The CSV export is explicitly hypothetical. General capability statements, the
-questions each role asks, clearer handoffs and reduced repeated explanation are
-reasoned advice about the design, not measured productivity results. The article
-contains no claim of a working CSV export, benchmark or completed supervisor
-automation. Its advice preserves sole implementation ownership and independence.
-
-### Validation and review
-
-Frontmatter, word count, unique role coverage, receipt links and draft status are
-checked before commit. A fresh independent editorial review is launched at PR
-creation; its pinned-head verdict and required CI results are recorded in the
-PR handoff. No pass is asserted in advance here.
-
-Loaded guidance includes AGENTS.md, Constitution, current decision-card-contract
-Action (overlap check only), context policy/index, operator-directed work, PR and
-identity procedures, article README/templates, the Pages write-page writing
-guidance and editorial checklist. Role evidence is from the canonical registry
-and shared skills. No Plan, Action, Decision, queue or publication state changes.
-
-### Delivery boundary
-
-The operator’s follow-up authorizes a repository PR. The draft is stored under
-`docs/articles/`; the separate external folder named Arcadia Articles has no
-confirmed path/link. The existing article index is already changed by another
-parallel candidate, so this PR leaves that index in its owner's custody. Add the
-new article link when that candidate lands and the shared index can be reconciled.
-The prior managed role-foundation checkout was absent when reuse was attempted;
-the temporary article draft was intact and a new managed candidate was created.
-
-Publication remains a separate step under Decision 0120 and its required proof.
+- Critic: Nadia (Arcadia's critic role, a separate read-only subagent) applied the Field Notes interest gate: a stranger can state the claim without Arcadia terms, a real result with its limits, a reusable method, a distinct angle, a searchable title, and a headline that survives its own caveats.
+- Editorial verdict: APPROVE; placement: archive and the review topic page.
+- Release approval: the operator's chat instructions of 2026-11-17: "I want Field Notes to only publish articles that Nadia approves. Have Clara rewrite all articles that Nadia thinks need work. ... Then one more review and publish." Merging this change is the release; set `status: withdrawn` in a reviewed change to unpublish.
