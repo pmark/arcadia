@@ -4,7 +4,7 @@ type: decision
 id: "0247"
 slug: should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or
 project: arcadia
-status: open
+status: approved
 question: Should production repair a candidate that fails lint, budget, fingerprint or notes-cap checks or whose reviewed head moved, instead of parking it?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
-updated: 2026-11-17
+updated: 2026-11-16
+answer: E. Diagnose, then repair by software-engineering best practice, ping only on operator-attention criteria
+decided: 2026-11-16
 ---
 
 # Decision 0247: Should production repair a candidate that fails lint, budget, fingerprint or notes-cap checks or whose reviewed head moved, instead of parking it?
