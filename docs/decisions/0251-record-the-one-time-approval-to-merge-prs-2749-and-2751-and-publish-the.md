@@ -1,7 +1,7 @@
 ---
 arcadia: v1
 type: decision
-id: "0250"
+id: "0251"
 slug: record-the-one-time-approval-to-merge-prs-2749-and-2751-and-publish-the
 project: arcadia
 status: approved
@@ -23,7 +23,7 @@ answer: Publish the approved canyon terrain and dust
 decided: 2026-11-16
 ---
 
-# Decision 0250: Record the one-time approval to merge PRs #2749 and #2751 and publish the approved canyon terrain and dust to Field Notes.
+# Decision 0251: Record the one-time approval to merge PRs #2749 and #2751 and publish the approved canyon terrain and dust to Field Notes.
 
 ## Options
 
