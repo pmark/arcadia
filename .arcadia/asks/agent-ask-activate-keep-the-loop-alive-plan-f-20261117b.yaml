@@ -1,8 +1,8 @@
 agent_ask: v1
-request_id: activate-keep-the-loop-alive-plan-f-20261117a
+request_id: activate-keep-the-loop-alive-plan-f-20261117b
 project: arcadia
 intent: plan
 target_ref: plan/draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 requested_authority: propose
-desired_result: Activate Plan F, the keep-the-loop-alive Plan, at its first Action retry-successor-press-when-main-moves now that the standing-autonomy Plan is complete; its five Actions stay as amended in #2769 and the finished standing-autonomy Plan stays complete.
+desired_result: "Activate Plan F, the keep-the-loop-alive Plan, at its first Action retry-successor-press-when-main-moves now that the standing-autonomy Plan is complete; its five Actions stay as amended in #2769 and the finished standing-autonomy Plan stays complete."
 rationale: "Operator order, 2026-11-17 (relayed by Signal 13 from Ellis's chat today): Plan F first, then Plan G, then the host-the-coordinators Plan; only Plan F is activated here. Signal verifies the operator's words under Decision 0229 before the tap, and the tap on the published runner action is the operator's own consent; this Ask only proposes. Activation grants no production START and answers no Decision: production stays Off pending the separate START approval (the standing START grant, Decision 0241, read from arcadia start-run grant-status)."
