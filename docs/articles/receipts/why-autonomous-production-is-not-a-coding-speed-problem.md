@@ -1,10 +1,10 @@
-# Draft claims receipt: why-autonomous-production-is-not-a-coding-speed-problem (R4 rewrite)
+# Claims receipt: why-autonomous-production-is-not-a-coding-speed-problem
 
-- Article draft: `R4-where-runs-spend-their-time.md` (this folder). Target path on main: `docs/articles/2026-10-12-why-autonomous-production-is-not-a-coding-speed-problem.md`; receipt target: `docs/articles/receipts/why-autonomous-production-is-not-a-coding-speed-problem.md`.
+- Status: this is the publication receipt for the article above (status approved). Notes below written while drafting may say draft; the reviews are recorded under Independent review and Editorial review.
+
 - Source revision read: `origin/main` at `4c2cb0ee34b8918b4197f9a3189e57c1bb228ef2` (fetched 2026-11-17).
 - Abbreviation: **RR** = `docs/managed-production-readiness.md` at that revision (line numbers as printed by `git show origin/main:<path> | grep -n ""`).
 - "Derived" means I subtracted two timestamps printed in RR lines 54-56. The arithmetic is shown so a reviewer can redo it.
-- Status: draft receipt. Nothing here is approved; no authority is granted.
 
 ## Claims
 

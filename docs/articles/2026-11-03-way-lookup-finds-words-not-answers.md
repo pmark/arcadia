@@ -1,6 +1,6 @@
 ---
 title: "Keyword search over agent rule files: the right passage in the top three for 16 of 30 questions"
-date: "2026-11-03"
+date: "2026-11-17"
 type: essay
 slug: "way-lookup-finds-words-not-answers"
 summary: "We tested a keyword search over the rule files our coding agents follow on 30 newcomer questions. It reached the right passage in its top three for 16; one author, one judge, no held-out set."

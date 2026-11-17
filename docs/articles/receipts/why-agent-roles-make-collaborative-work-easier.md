@@ -1,7 +1,8 @@
-# Field Notes evidence for why-agent-roles-make-collaborative-work-easier (R9 rewrite, DRAFT)
+# Field Notes evidence for why-agent-roles-make-collaborative-work-easier
+
+- Status: this is the publication receipt for the article above (status approved). Notes below written while drafting may say draft; the reviews are recorded under Independent review and Editorial review.
 
 - Article: R9-who-writes-the-change.md (draft; target path `docs/articles/2026-10-12-why-agent-roles-make-collaborative-work-easier.md`).
-- Type: essay. Status: draft. Not a publication receipt.
 - Source revision checked: origin/main `54d4d0aecbf7dadc89826b2bf7792f503ecbbad6` (cited lines re-verified by the fact-checker at this sha; none shifted; originally read at 4c2cb0ee3, fetched 2026-11-17).
 - PR evidence read read-only with `gh pr view <n> --repo pmark/arcadia --comments` and `gh pr view <n> --json ...`, and `gh api repos/pmark/arcadia/pulls/1171/comments`.
 - Condition from the critic brief: the article stands only if one specific real review finding can be quoted and verified. Met by the PR 1171 comment (rows C2, C9).

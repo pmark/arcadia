@@ -1,6 +1,7 @@
-# Field Notes evidence: way-lookup-finds-words-not-answers (draft, rewrite R1)
+# Field Notes evidence: way-lookup-finds-words-not-answers
 
-- Type: draft claims receipt for the rewritten essay. Not yet on main. No approval, publication or merge is claimed.
+- Status: this is the publication receipt for the article above (status approved). Notes below written while drafting may say draft; the reviews are recorded under Independent review and Editorial review.
+
 - Article: `docs/articles/2026-11-03-way-lookup-finds-words-not-answers.md` (rewrite draft R1-way-lookup.md).
 - Source repository and revision checked: `pmark/arcadia` `origin/main` at `4c2cb0ee3` (fetched 2026-11-17). Original draft arrived on main through PR 2028 (merged 2026-11-10).
 - Labels: 🔎 Checked means read at file:line or looked up with `gh` on 2026-11-17. 📐 Proposed and ❓ Not proved are marked where used.

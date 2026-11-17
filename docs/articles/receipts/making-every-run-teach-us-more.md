@@ -1,8 +1,9 @@
-# Draft claims receipt: Replay your agent harness, not the model
+# Claims receipt: Replay your agent harness, not the model
+
+- Status: this is the publication receipt for the article above (status approved). Notes below written while drafting may say draft; the reviews are recorded under Independent review and Editorial review.
 
 - Article draft: `R6-replaying-an-agent-run.md` (slug `making-every-run-teach-us-more`, date 2026-11-09 kept). Revision 3, after Nadia's REVISE.
 - Evidence read at `origin/main` 4c2cb0ee34b8918b4197f9a3189e57c1bb228ef2 (fetched 2026-11-17), written "commit `4c2cb0e`" in the article. Pre-fix lines are read from `76209f55e^` (the parent of the PR 1684 merge commit `76209f55ea3c0dfbec326017a359c753e3548d6d`, an ancestor of origin/main). The README link in the article is pinned to the same commit.
-- Draft status: not approved. Nothing here is a ✅ Done claim.
 - "At 4c2cb0e" and "main" below both mean that pinned revision.
 
 ## Claims

@@ -1,4 +1,6 @@
-# Field Notes evidence (draft rewrite R7)
+# Field Notes evidence
+
+- Status: this is the publication receipt for the article above (status approved). Notes below written while drafting may say draft; the reviews are recorded under Independent review and Editorial review.
 
 - Article: `R7-lint-the-task.md` (slug `what-arcadia-checks-before-an-agent-starts`, replaces the approved version dated 2026-11-09).
 - Evidence base: `origin/main` at `4c2cb0ee34b8918b4197f9a3189e57c1bb228ef2`, read 2026-11-17. Line citations below are at that commit.
