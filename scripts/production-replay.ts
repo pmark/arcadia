@@ -12,7 +12,9 @@ import { drainPreservationWorkspaceSync } from "../src/sessions/preservationProc
  * grant and concurrency; expiries are press-time plus the card's hours) and
  * activated exactly as a press would. It is labelled "built from card
  * descriptor, not a press receipt" and is no evidence the card would pass its
- * own preconditions.
+ * own preconditions. For a START card it also writes a replay receipt beside
+ * the card (`replays/<id>.json`): a prediction bound to that card's descriptor
+ * sha256 and pinned revisions, never proof of the run's result.
  *
  * Phase 1 (this process, read-only on the source):
  *   - `sqlite3 .backup` of the source database opened `mode=ro` into a fresh
@@ -70,6 +72,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import Database from "better-sqlite3";
 import { bridgeCompletionDependencies } from "../src/sessions/completionValidation.js";
 import { StartRunPinsError, validateStartRunPins } from "../src/operatorActions/startRunPins.js";
+import { startRunActivationScope } from "../src/operatorActions/startRunScope.js";
+import { buildReplayReceipt, replayCardIdentity, replayReceiptPath } from "../src/operatorActions/startRunReplayReceipt.js";
 import { CODE_REVIEW_PR_CRITERIA, QA_PR_REVIEW_CRITERIA } from "../src/qa/reviewCriteria.js";
 
 const SCRIPT = fileURLToPath(import.meta.url);
@@ -208,6 +212,8 @@ export interface ReplayReport {
   grantReceipt: string;
   activation: { ok: boolean; detail: string; warnings: string[]; source?: "press-receipt" | "card-descriptor" };
   ticks: ReplayTick[];
+  /** `--card` of a START card: the replay receipt written for it. */
+  cardReceipt?: string;
   stop: {
     reason: "launched" | "integrated" | "all_merged" | "external_effect" | "unrecorded_github_read" | "steady_state" | "host_operation_timeout" | "tick_limit" | "activation_refused" | "error";
     detail: string;
@@ -451,22 +457,11 @@ function startRunCardReceipt(card: string, now: string, descriptor: { expires_at
   const expires = typeof expiresRaw === "string" ? Date.parse(expiresRaw) : Number.NaN;
   if (Number.isNaN(expires)) throw new Error(`Card ${card}: its descriptor carries no valid expires_at, which the START executor requires.`);
   if (new Date(now).getTime() >= expires) throw new Error(`Card ${card} expired at ${String(expiresRaw)}; the card itself would refuse ("ask for a fresh card").`);
-  const expiresAt = new Date(new Date(now).getTime() + pins.packetApprovalHours * 3_600_000).toISOString();
   return {
     requestId: `${card}-card-descriptor`,
     createdAt: now,
-    scope: {
-      intent: pins.intent,
-      projects: [pins.project],
-      plans: [`${pins.project}/${pins.plan}`],
-      actions: pins.actions.map((id) => `${pins.project}/${id}`),
-      providers: [pins.provider],
-      maxConcurrentSessions: pins.concurrency,
-      mechanicalTransitions: [...pins.transitions],
-      remotePreservation: true,
-      integrationGrant: { decisionRef: pins.integrationDecision, expiresAt, mergeThroughPullRequest: true },
-      packetApprovalExpiresAt: expiresAt
-    },
+    // The scope is built by the function P6's fingerprint is held to, never from a second copy of its fields.
+    scope: startRunActivationScope(pins, new Date(now)),
     authority: { grantedAt: now, decisionRef: pins.spendDecision, grantedBy: "production-replay" },
     source: "card-descriptor"
   };
@@ -1410,6 +1405,19 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       for (const effect of report.lateEffects) {
         report.predicted.push(`requested external effect (after the last tick) ${effect.kind}: ${effect.detail}`);
         print(`Late effect ${effect.kind}: ${effect.detail.slice(0, 600)}`);
+      }
+    }
+    if (options.card) {
+      // A START card's replay leaves a receipt bound to that card's bytes, which a standing-grant press reads. It is a prediction.
+      const dir = options.cardDir ? path.resolve(options.cardDir) : path.join(REPO_ROOT, "artifacts", "generated", "operator-scripts");
+      const bound = replayCardIdentity(readFileSync(path.join(dir, `${options.card}.json`), "utf8"));
+      if (bound) {
+        const project = (JSON.parse(readFileSync(path.join(dir, `${options.card}.json`), "utf8")) as { startRun: { project: string } }).startRun.project;
+        const file = replayReceiptPath(dir, options.card);
+        mkdirSync(path.dirname(file), { recursive: true });
+        writeFileSync(file, `${JSON.stringify(buildReplayReceipt(options.card, bound.identity, project, report, options.now ?? new Date().toISOString()), null, 2)}\n`);
+        report.cardReceipt = file;
+        print(`Replay receipt: ${file} (a prediction bound to this card's descriptor sha256, not proof of the run's result)`);
       }
     }
     const destination = options.reportPath ? path.resolve(options.reportPath) : reportFile;

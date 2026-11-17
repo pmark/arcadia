@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, startRunLauncher, type StartRunPins } from "./startRunPins.js";
+import { parse as parseYaml } from "yaml";
+import { classifyAuthorityPaths } from "../decisions/batchMerge.js";
 import { validateDayGrantPrevious, type DayGrantDelegation, type DayGrantPrevious, type DayGrantPressKind } from "./startRunDayGrant.js";
 
 /**
@@ -24,9 +26,11 @@ const PREVIOUS_EVIDENCE = "docs/agent-guidance/production-24x7.md";
 
 /** Why nothing was derived: one named reason, in the order the checks run. */
 export type DeriveRefusal =
-  | "GRANT_NOT_OPEN" | "PLAN_NOT_ACTIVE" | "PRODUCTION_NOT_INACTIVE" | "QUEUE_INVALID" | "NO_READY_ACTIONS" | "FAILED_BATCH_NEEDS_FIX" | "CHAIN_REFUSED" | "CARD_INVALID";
+  | "GRANT_NOT_OPEN" | "PLAN_NOT_ACTIVE" | "PRODUCTION_NOT_INACTIVE" | "QUEUE_INVALID" | "NO_READY_ACTIONS" | "OPERATOR_ITEM_FIRST" | "FAILED_BATCH_NEEDS_FIX" | "CHAIN_REFUSED" | "CARD_INVALID";
 
-export interface DerivePlanAction { id: string; status: string; dependsOn: string[]; criteriaErrors: string[] }
+export interface DerivePlanAction { id: string; status: string; dependsOn: string[]; criteriaErrors: string[]; decisions?: string[]; references?: string[] }
+/** An Action the card stops before because it needs the operator: an unanswered Decision it cites or an authority path it names. */
+export interface OperatorItem { action: string; reasons: string[] }
 export interface DeriveInput {
   originMain: string;
   /** The wall clock; the card id and expiry use its minute only. */
@@ -43,6 +47,8 @@ export interface DeriveInput {
   /** The standing chain's reading of the production record: the receipt hashes, the attempt count and the latest press. */
   chain: { receiptSha256: string; pressSha256: string; attemptsSoFar: number; latest: { press: string; kind: DayGrantPressKind } | null };
   consumedHistory: Array<{ path: string; sha256: string }>;
+  /** Ids of the Decisions answered on origin main; a cited Decision not in this list is open. */
+  answeredDecisions?: string[];
 }
 export interface DerivedCard {
   id: string;
@@ -51,6 +57,8 @@ export interface DerivedCard {
   actions: string[];
   /** The reviewed manifest's hashes: the card pair and the executor, which `reviewed/<id>.json` holds. */
   manifest: { sh: string; json: string; executor: string };
+  /** The Action the card stopped before because it needs the operator, or null when the card ended for another reason. */
+  operatorItem: OperatorItem | null;
   descriptor: Record<string, unknown>;
   launcher: string;
   /** The exact file bytes: `<id>.json`, `<id>.sh` and `reviewed/<id>.json`. */
@@ -65,7 +73,40 @@ const minuteOf = (now: Date): number => Math.floor(now.getTime() / 60_000) * 60_
 const iso = (ms: number): string => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 
 /** The first unfinished ready Actions of the Plan at the top of the queue, in queue order, stopping before the first that is not. */
-export function deriveActions(project: string, planActions: DerivePlanAction[], queueKeys: string[]): string[] {
+export function deriveActions(project: string, planActions: DerivePlanAction[], queueKeys: string[], answeredDecisions: string[] = []): string[] {
+  return deriveActionsAndOperatorItem(project, planActions, queueKeys, answeredDecisions).actions;
+}
+
+/** Which of the cited Decision ids are answered (frontmatter `status: approved` with an `answer`) among the Decision files on main. */
+export function answeredDecisionIds(cited: string[], decisionPaths: string[], read: (file: string) => string): string[] {
+  const answered: string[] = [];
+  for (const id of new Set(cited)) {
+    const file = decisionPaths.find((entry) => new RegExp(`^docs/decisions/${id}-[^/]+\\.md$`).test(entry));
+    if (!file) continue;
+    try {
+      const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(read(file));
+      const fields = match ? (parseYaml(match[1]) as Record<string, unknown> | null) : null;
+      if (fields && fields.status === "approved" && typeof fields.answer === "string" && fields.answer.trim() !== "") answered.push(id);
+    } catch { /* unreadable counts as open */ }
+  }
+  return answered;
+}
+
+/** Why an Action needs the operator: each unanswered Decision it cites, and each authority boundary its references name. */
+export function operatorReasons(action: DerivePlanAction, answeredDecisions: string[]): string[] {
+  const answered = new Set(answeredDecisions);
+  const reasons = (action.decisions ?? []).filter((decision) => !answered.has(decision)).map((decision) => `cites unanswered Decision ${decision}`);
+  const references = action.references ?? [];
+  const boundaries = references.length ? classifyAuthorityPaths(references).filter((boundary) => boundary !== "unclassifiable_path") : [];
+  if (boundaries.length) reasons.push(`names authority paths (${boundaries.join(", ")})`);
+  return reasons;
+}
+
+/**
+ * The same walk as `deriveActions`, which also stops before the first ready Action that needs the operator (an unanswered Decision
+ * in its `decisions`, or an authority path in its `references`) and returns it as the one operator item. Nothing is derived past it.
+ */
+export function deriveActionsAndOperatorItem(project: string, planActions: DerivePlanAction[], queueKeys: string[], answeredDecisions: string[]): { actions: string[]; operatorItem: OperatorItem | null } {
   const byId = new Map(planActions.map((action) => [action.id, action]));
   const ready = (action: DerivePlanAction): boolean =>
     !["done", "blocked", "deferred"].includes(action.status) && action.criteriaErrors.length === 0 &&
@@ -75,9 +116,11 @@ export function deriveActions(project: string, planActions: DerivePlanAction[], 
     if (picked.length >= DERIVED_CARD_MAX_ACTIONS || !key.startsWith(`${project}/`)) break;
     const action = byId.get(key.slice(project.length + 1));
     if (!action || !ready(action)) break;
+    const reasons = operatorReasons(action, answeredDecisions);
+    if (reasons.length) return { actions: picked, operatorItem: { action: action.id, reasons } };
     picked.push(action.id);
   }
-  return picked;
+  return { actions: picked, operatorItem: null };
 }
 
 /** The previous-press block, read from the production record alone. A failed attempt needs a merged fix, which cannot be derived. */
@@ -93,7 +136,8 @@ export function deriveStartCard(input: DeriveInput): DeriveResult {
   if (plan.slug !== grant.plan || plan.status !== "active" || !plan.isProjectActivePlan) return refuse("PLAN_NOT_ACTIVE", `Plan ${grant.plan} is not the active Plan of the Project at origin main`);
   if (production.desiredState !== "inactive" || production.liveAdmissions !== 0) return refuse("PRODUCTION_NOT_INACTIVE", "production must be Inactive with zero live admissions");
   if (!queue.orderValid || queue.unpositionedCount !== 0) return refuse("QUEUE_INVALID", "the Action queue is invalid or has unpositioned Actions");
-  const actions = deriveActions(plan.project, plan.actions, queue.keys);
+  const { actions, operatorItem } = deriveActionsAndOperatorItem(plan.project, plan.actions, queue.keys, input.answeredDecisions ?? []);
+  if (!actions.length && operatorItem) return refuse("OPERATOR_ITEM_FIRST", `the first Action in the queue, ${operatorItem.action}, needs the operator (${operatorItem.reasons.join("; ")}); nothing is derived`);
   if (!actions.length) return refuse("NO_READY_ACTIONS", `the top of the queue holds no ready Action of Plan ${plan.slug}`);
   const previous = derivedPrevious(chain.latest);
   if (previous === "needs-fix") return refuse("FAILED_BATCH_NEEDS_FIX", `the latest press ${chain.latest!.press} failed; a failed batch stops for a merged fix and an independent pre-mortem, which are not derived`);
@@ -135,7 +179,7 @@ export function deriveStartCard(input: DeriveInput): DeriveResult {
   const launcher = startRunLauncher(id);
   const descriptorBytes = `${JSON.stringify(descriptor, null, 2)}\n`;
   const manifest = { sh: sha256(launcher), json: sha256(descriptorBytes), executor: input.executorSha256 };
-  return { ok: true, card: { id, expiresAt, plan: plan.slug, actions, manifest, descriptor, launcher, descriptorBytes, manifestBytes: `${JSON.stringify(manifest, null, 2)}\n` } };
+  return { ok: true, card: { id, expiresAt, plan: plan.slug, actions, manifest, operatorItem, descriptor, launcher, descriptorBytes, manifestBytes: `${JSON.stringify(manifest, null, 2)}\n` } };
 }
 
 /** The refusal code of a press whose card on disk is not what the deriver returns for the current state. */

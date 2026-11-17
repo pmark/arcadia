@@ -6,7 +6,8 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { START_RUN_EXECUTOR_PATH } from "../operatorActions/startRunPins.js";
 import { inspectDayGrantChain, standingGrantStatus } from "../operatorActions/startRunDayGrant.js";
 import { StartRunDelegationError } from "../operatorActions/startRunDelegation.js";
-import { DERIVED_CARD_LIFETIME_MS, DERIVED_PROVIDER, deriveStartCard, refuse, verifyDerivedCard, type CardVerification, type DeriveInput, type DeriveResult } from "../operatorActions/startRunDerive.js";
+import { checkReplayReceipt, replayCardIdentity, replayReceiptPath, type ReplayCheck } from "../operatorActions/startRunReplayReceipt.js";
+import { DERIVED_CARD_LIFETIME_MS, DERIVED_PROVIDER, answeredDecisionIds, deriveStartCard, refuse, verifyDerivedCard, type CardVerification, type DeriveInput, type DeriveResult } from "../operatorActions/startRunDerive.js";
 import { START_RUN_DEFAULTS, frontmatter, mainCheckout, realStartRunPinsDeps, startRunCriteriaFindings, type StartRunPinsDeps } from "./startRun.js";
 import { createHash } from "node:crypto";
 
@@ -20,6 +21,8 @@ export interface StartRunDeriveData {
   card: Extract<DeriveResult, { ok: true }>["card"] | null;
   /** Only with `--verify-card`: the card on disk against this derivation (the press-time check of scripts/start-run.sh). */
   verification?: CardVerification;
+  /** Only with `--verify-card`: the card's replay receipt, a prediction bound to this card (REPLAY_REQUIRED, REPLAY_MISMATCH, REPLAY_PREDICTS_NO_LAUNCH). */
+  replay?: ReplayCheck;
   observations: { originMain: string | null; queueRevision: number | null; production: { revision: number; epoch: number } | null };
 }
 
@@ -58,6 +61,12 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
     descriptor: readOrNull(options.verifyCard), launcher: readOrNull(options.verifyCard.replace(/\.json$/, ".sh")),
     manifest: readOrNull(path.join(path.dirname(options.verifyCard), "reviewed", path.basename(options.verifyCard)))
   };
+  /** The replay receipt beside the card, held to the card's own bytes: its descriptor sha256, pinned revisions and every pinned Action. */
+  const replayCheckOf = (descriptorFile: string, descriptor: string | null): ReplayCheck => {
+    const bound = descriptor === null ? null : replayCardIdentity(descriptor);
+    if (!bound) return { ok: false, code: "REPLAY_REQUIRED", detail: "the card is not a START card, so no replay receipt can name it" };
+    return checkReplayReceipt(readOrNull(replayReceiptPath(path.dirname(descriptorFile), bound.card)), bound.identity);
+  };
   let deriveAt = now;
   if (cardOnDisk.descriptor !== null) {
     try {
@@ -71,7 +80,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
       command: "start-run.derive", workspace: workspacePath,
       data: {
         derived: result.ok,
-        ...(options.verifyCard === undefined ? {} : { verification: verifyDerivedCard(result, cardOnDisk) }), reason: result.ok ? null : result.reason, message: result.ok ? null : result.message, card: result.ok ? result.card : null,
+        ...(options.verifyCard === undefined ? {} : { verification: verifyDerivedCard(result, cardOnDisk), replay: replayCheckOf(options.verifyCard, cardOnDisk.descriptor) }), reason: result.ok ? null : result.reason, message: result.ok ? null : result.message, card: result.ok ? result.card : null,
         observations: { originMain, queueRevision, production }
       },
       warnings: result.ok ? [] : [`${result.reason}: ${result.message}`]
@@ -82,7 +91,9 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
 
   const planFile = frontmatter(text(show(`docs/plans/${grant.plan}.md`)), `Plan ${grant.plan}`);
   const project = String(planFile.project ?? "");
-  const planActions = (Array.isArray(planFile.actions) ? planFile.actions : []) as Array<{ id?: string; status?: string; depends_on?: unknown; next_action?: string; acceptance_criteria?: unknown[] }>;
+  const planActions = (Array.isArray(planFile.actions) ? planFile.actions : []) as Array<{ id?: string; status?: string; depends_on?: unknown; next_action?: string; acceptance_criteria?: unknown[]; decisions?: unknown; references?: unknown }>;
+  const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : []);
+  const answeredDecisions = answeredDecisionIds(planActions.flatMap((action) => strings(action.decisions)), decisionFiles, (file) => text(show(file)));
   const production = deps.production(options.workspace);
   const queue = deps.queue(production.workspacePath);
   const productionPins = { revision: production.revision, epoch: production.epoch };
@@ -119,9 +130,10 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
       isProjectActivePlan: frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan === grant.plan,
       actions: planActions.filter((action): action is { id: string } & typeof action => typeof action.id === "string").map((action) => ({
         id: action.id, status: String(action.status ?? ""), dependsOn: Array.isArray(action.depends_on) ? action.depends_on.map(String) : [],
-        criteriaErrors: startRunCriteriaFindings(action).errors
+        criteriaErrors: startRunCriteriaFindings(action).errors, decisions: strings(action.decisions), references: strings(action.references)
       }))
     },
+    answeredDecisions,
     production: { desiredState: production.desiredState, liveAdmissions: production.liveAdmissions, ...productionPins },
     queue: { revision: queue.revision, orderValid: queue.orderValid, unpositionedCount: queue.unpositionedCount, keys: queue.ordered.map((entry) => entry.orderKey ?? "") },
     chain: { receiptSha256: chain.window.receiptSha256, pressSha256: chain.window.pressSha256, attemptsSoFar: chain.attemptsSoFar, latest: chain.latest },

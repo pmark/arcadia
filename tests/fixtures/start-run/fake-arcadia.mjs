@@ -96,7 +96,8 @@ switch (key2) {
     const verdicts = state.derive?.verdicts ?? [null];
     const differs = verdicts.length > 1 ? verdicts.shift() : verdicts[0];
     save();
-    ok({ derived: true, verification: { verified: differs === null, code: differs === null ? null : "CARD_NOT_DERIVED", differs: differs ?? [], derivedCardId: "standing-start-derived" } });
+    // state.derive.replay: the replay receipt's verdict ({ ok, code, detail }); absent means a receipt that names this card. The real check is tested in start-run-replay-receipt.test.ts.
+    ok({ derived: true, verification: { verified: differs === null, code: differs === null ? null : "CARD_NOT_DERIVED", differs: differs ?? [], derivedCardId: "standing-start-derived" }, replay: state.derive?.replay ?? { ok: true, code: null, detail: "the replay receipt names this card" } });
     break;
   }
   case "start-run day-evidence":
