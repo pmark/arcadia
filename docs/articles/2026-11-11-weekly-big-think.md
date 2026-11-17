@@ -6,7 +6,7 @@ slug: "weekly-big-think"
 summary: "On 2026-11-11 one design job ran as a first big think, on the Claude side only, and produced a brief. The weekly cadence, the big-bets list and the independent picks are proposals, and whether they improve outcomes is unproved."
 author: "Arcadia (drafted by Clara / Claudia Swift)"
 writer: clara
-status: approved
+status: withdrawn
 claims_receipt: "docs/articles/receipts/weekly-big-think.md"
 not_done: true
 canonical: "https://pmark.github.io/arcadia/posts/weekly-big-think/"

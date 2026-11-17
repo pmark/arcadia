@@ -1,67 +1,73 @@
 ---
-title: "Way lookup finds words, not answers"
+title: "Keyword search over agent rule files: the right passage in the top three for 16 of 30 questions"
 date: "2026-11-03"
 type: essay
 slug: "way-lookup-finds-words-not-answers"
-summary: "arcadia way lookup is a deterministic search over Arcadia's own guidance. On 30 newcomer questions it reached the right material in its top three results for 16, and 9 of its 20 matches missed the right material. It did refuse all 17 off-topic queries."
+summary: "We tested a keyword search over the rule files our coding agents follow on 30 newcomer questions. It reached the right passage in its top three for 16; one author, one judge, no held-out set."
 author: "Arcadia (drafted by Claudia Mason as Clara, technical writer)"
-status: draft
-claims_receipt: "docs/articles/receipts/way-lookup-finds-words-not-answers.md"
+writer: clara
+operator_suggestion: "Have someone other than the tool's author write 30 fresh newcomer questions, then run both the lookup fixture and the plain file-search agent on them, to replace this author-written development set."
+status: approved
 not_done: true
+claims_receipt: "docs/articles/receipts/way-lookup-finds-words-not-answers.md"
 canonical: "https://pmark.github.io/arcadia/posts/way-lookup-finds-words-not-answers/"
 channels: [site, rss]
+tags: [evals, testing]
+last_modified_at: "2026-11-17"
+featured: true
 ---
 
-# Way lookup finds words, not answers
+# Keyword search over agent rule files: the right passage in the top three for 16 of 30 questions
 
-If your agents follow written rules, the rules get long. Reading every document before acting is slow, and reading a fragment may miss the exception. Arcadia added a command to help, then measured it. The measurements are the interesting part.
+We wrote a keyword search over our agent rule files, the guidance our coding agents follow, then tested it on 30 questions a newcomer might ask. The search put the right passage in its top three results for 16 of the 30. Separately, an agent using ordinary file search over the same files, with no lookup command, gave answers that a judge marked fully correct for 22 of the 30.
 
-## What the command does
+These two numbers are not like for like. One counts whether the right passage appeared in three results. The other counts whether a written answer was correct. Both come from a development set: one author wrote the questions, one judge graded all 30 answers (22 were fully correct), and the search's author had already seen the questions. 🔎 Checked: the numbers are real. ❓ Not proved: that they hold on questions nobody on the team wrote.
 
-```sh
-arcadia way lookup "How do I stop everything immediately?"
-```
+## The comparison
 
-It searches a fixed list of Arcadia's checked-in guidance: the guidance folder, the Constitution, the operator guides, the command reference and each skill. It splits each file at `##` and `###` headings, ranks the passages with BM25 over lightly stemmed words, and returns the best few. It uses no model or network and writes nothing.
+| | Plain file-search agent | Keyword lookup |
+| --- | --- | --- |
+| What was counted | Answers graded fully correct by one judge | Questions where an accepted passage was in the top three results |
+| Result on the same 30 questions | 22 fully correct, 8 partial, 0 wrong | 16 of 30 |
 
-By default you get at most three passages and 1,500 bytes of excerpt. Each comes with an address (`path#heading`) and a note when it was cut. Sections headed superseded, historical, obsolete or outdated are left out. The Constitution, and any passage that states a rule with an exception, come back whole when they fit.
+The agent was told to start from the guidance index and one skill file, and could use file search and bounded reads. The lookup is a command that ranks passages by keyword (BM25 over lightly stemmed words). It uses no model and no network, and by default returns at most three passages and 1,500 bytes. The lookup was built after the agent run and measured on the same questions.
 
-The [command reference](../COMMANDS.md#look-up-the-exact-way-passage) is blunt about one field. `matched` is true when enough of the question's words were found in one chunk. It is about wording, not correctness. Output opens by saying the results may not answer the question. When nothing matches, the command says the Way does not clearly answer and lists only nearby addresses.
-
-## What was measured
-
-The test came from the Relay design, which needs a conversational agent to answer newcomers' questions about Arcadia. The [probe](../design/relay/probes/way-knowledge-1.md) used 30 questions written from a first-timer's point of view, without consulting the guidance. The lookup was then measured on the same 30.
+## What the lookup did
 
 | Measure | Result |
 | --- | --- |
-| Right material in the top three | 16 of 30 |
-| Questions that matched | 20 of 30 |
-| Matched results that missed the right material | 9 of 20 |
+| Questions | 30 |
+| Questions where the search said it had a match | 20 |
+| Matches that did not contain the right material | 9 of 20 (original build, as probed; 8 of 20 on main, see below) |
 | Off-topic queries refused | 17 of 17 |
-| Typical output | about 1.7 KB |
-| Lookup alone, cold | about 150 to 320 ms, depending on load |
 
-A separate reviewer reproduced 16 of 30, 17 of 17 and the output size.
+The refusals are the good half. The weak half: a match means only that the question's words were found, not that the passage answers the question. The command's documentation says so, and its output opens with that warning.
 
-These are development data. The same author wrote the questions and built the lookup, so this is a measurement of a tool its author could see, not a pass. It was one run, with one judge and no answer key, and no real first-time operator was involved.
+The probe's example is the question "How do I stop everything immediately?". The lookup matched, and returned the agent's own stopping rule, not the operator's stop control.
 
-## What the numbers say
+That ranking has since been changed. A pull request merged on 2026-11-13 (#2549) makes stop-production wording return the production Off guidance first, and tests pin nine wordings. We re-ran the 30-question fixture on the main branch (revision 4c2cb0ee3; 🔎 checked by re-run, script in the receipt). It again gives 16 of 30, with 20 matched and 8 of those matches missing the accepted material, down from 9. Different questions moved and the total stayed at 16, so the ranking fix did not raise the headline number. The fixture still counts the stop question as a miss, because its accepted passages are not the one now returned first. We did not judge whether that passage answers the question.
 
-The useful half is the refusals. Given 17 off-topic queries, it declined every one, so it is not a tool that always returns something plausible.
+## Two kinds of failure
 
-The weak half is that a match is not an answer. Nine of the 20 matches pointed at the wrong material. The probe's example is the question about stopping everything. It matches. At commit `74dc1f07c`, on 2026-11-05, the first result is still the guidance on what an agent does before it stops. The question was about the operator's stop control. The probe found that documented elsewhere and missing from the operator's start guide. A paragraph on it was added to the guide afterwards, and the lookup's numbers have not been measured again since.
+The judge gave a cause for each of the 10 file-search answers that fell short on correctness or citation: 5 retrieval failures, 4 problems in the answer itself, and 1 missing-guidance case. The probe's author says the judge's defect list ties four of the five retrieval failures to defects in the guidance. That is the probe's reading; we did not re-derive it.
 
-Part of this is the guidance, not the search. The probe also had an agent answer the 30 questions from the same material, with ordinary file search and before the lookup existed. A judge found 22 fully correct and 8 partial. That is 73% fully correct, short of the probe's 90% pass mark. One answer wrongly said there was no one-press stop. The judge tied several misses to gaps in the guidance, and eight defects were filed as [Issue 2013](https://github.com/pmark/arcadia/issues/2013). A better search cannot find a passage that is missing.
+- **A retrieval miss (Q15).** Asked how to stop everything, the agent said the material had no one-press stop. The judge marked the answer partial: a STOP button on the actions page exists, and the main operator guide did not mention it at the time.
+- **A guidance gap (Q24).** Asked whether the system can generate images, the agent answered honestly that nothing explains how an operator asks for one. The judge found the same: the guidance has the engineering description and no plain-words path.
 
-## How to use it
+Eight guidance defects from the probe were filed as [Issue 2013](https://github.com/pmark/arcadia/issues/2013), which is still open. Our reading, not a measurement: a better search cannot find a passage that does not exist.
 
-The Relay mode skill tells agents to try the lookup first, never to treat a match as the answer, and then to read the guidance index and the matching procedure before replying. That is the right way to hold it. Use the lookup to find where to read, not to decide that you know.
+## Try this on your own rule files
 
-Two scoping facts also matter. The corpus is Arcadia's own checked-in guidance, and the package does not ship it, so an installed copy finds it only inside a checkout. The design's own author wrote that the lookup may suit agents' own vocabulary better than newcomer wording. That is unmeasured.
+📐 Proposed method, not something this probe proved:
+
+1. Write 30 newcomer questions before reading your docs, and have someone who did not build the search write them.
+2. For each question, list the passages you would accept as the right material.
+3. Measure the top-three hit rate, how many reported matches miss, and how many off-topic queries are refused.
+4. Run a plain agent with file search on the same questions and grade its answers, so you have a baseline the search must beat.
 
 ## What is not done
 
-- The numbers come from one development set that its author had seen. A held-out set written by someone else, ideally real newcomers, has not been run.
-- Agent-written queries, which may suit the tool better, have not been measured.
-- The lookup is not wired into a Relay, because Relay does not exist. Only the skill's instruction to try it first uses it.
-- In another Project, the lookup reads that Project's guidance if it has an index file, and otherwise falls back to Arcadia's own checkout and says so. No probe from an adopting Project is recorded.
+- No held-out question set for this lookup is recorded. Someone other than the tool's author has to write it. Until then every number here is a development-set measurement.
+- Limits recorded in the probe: no real first-time operator took part; a frontier model with full file search is probably an upper bound, and a local model was not tried; the judge had no fixed answer key, so another judge may grade differently.
+- The agent ran without the lookup, so the lookup's effect on answer quality is unmeasured.
+- The guidance gaps in Issue 2013 are open.

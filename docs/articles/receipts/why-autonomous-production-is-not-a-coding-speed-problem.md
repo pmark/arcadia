@@ -1,81 +1,83 @@
-# Field Notes evidence for why-autonomous-production-is-not-a-coding-speed-problem
+# Draft claims receipt: why-autonomous-production-is-not-a-coding-speed-problem (R4 rewrite)
 
-- Article: 2026-10-12-why-autonomous-production-is-not-a-coding-speed-problem.md
-- Type: essay.
-- Source revision: [88045ef97](https://github.com/pmark/arcadia/tree/88045ef9712fa0341bdc5be2df45eee2334e8eaa).
-- Destination: [Field Notes](https://pmark.github.io/arcadia/posts/why-autonomous-production-is-not-a-coding-speed-problem/) and its [Atom feed](https://pmark.github.io/arcadia/feed.xml).
-- Release: operator-directed November 9, 2026 batch in America/Los_Angeles, scoped to the four shortlisted essays. The standing automatic cadence remains separate.
-- Previous feed check: November 9, 2026. The feed contained two ship notes, and this slug was absent.
-- Governing destination: [Decision 0165](../../decisions/0165-may-decision-0120-s-automatic-field-notes-publication-use-the-arcadia-field.md). [Decision 0206](../../decisions/0206-record-the-operator-s-one-time-approval-to-publish-the-four-shortlisted-field.md) records the one-time batch approval.
+- Article draft: `R4-where-runs-spend-their-time.md` (this folder). Target path on main: `docs/articles/2026-10-12-why-autonomous-production-is-not-a-coding-speed-problem.md`; receipt target: `docs/articles/receipts/why-autonomous-production-is-not-a-coding-speed-problem.md`.
+- Source revision read: `origin/main` at `4c2cb0ee34b8918b4197f9a3189e57c1bb228ef2` (fetched 2026-11-17).
+- Abbreviation: **RR** = `docs/managed-production-readiness.md` at that revision (line numbers as printed by `git show origin/main:<path> | grep -n ""`).
+- "Derived" means I subtracted two timestamps printed in RR lines 54-56. The arithmetic is shown so a reviewer can redo it.
+- Status: draft receipt. Nothing here is approved; no authority is granted.
 
 ## Claims
 
-The summary is covered by the claims below. Suggested developer practices and hypothetical examples are editorial advice.
-
-| ID | Claim | Pinned public evidence | Proof boundary |
+| ID | Exact factual sentence or figure in the article | Evidence | What it proves, and its limits |
 | --- | --- | --- | --- |
-| C1 | An October regression fixture asserts that approval wording with a nice-to-have exception is flagged. The validator took several review rounds. | [Validator PR #1296](https://github.com/pmark/arcadia/pull/1296) · [Regression fixture](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/tests/planning-artifact-validator.test.ts#L199-L204) | Supports the test and the review history; the story does not assert that the reviewer used the exact string against an earlier implementation. |
-| C2 | On November 5 one START was followed by three worker merges on the Arcadia repository, with serial test-only work and frozen main. Review and QA were the longest measured stage. | [November 5 run record](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/managed-production-readiness.md#run-record-attempt-3-card-start-run-unattended-20261105d) | The combined timing cannot separate CI wait from review and QA execution. |
-| C3 | Twenty worker merges landed in five separately started test-only batches on November 8 Pacific time. One batch stopped on a quoted example path; PR #2325 fixed that case. | [November batch accounting](https://github.com/pmark/arcadia/blob/88045ef9712fa0341bdc5be2df45eee2334e8eaa/docs/managed-production-readiness.md#operator-view-the-rovers-route-from-here) · [Parser PR #2325](https://github.com/pmark/arcadia/pull/2325) | UTC interval from 19:41Z Nov 8 to 07:20Z Nov 9 falls on Nov 8 in America/Los_Angeles. The verified outcome is limited to the test-only serial envelope. |
+| C1 | On 5 November 2026 we ran an AI coding agent unattended on our own repository: one operator button press started it and the record shows no other operator touch. | RR:17 ("On 2026-11-05 one serial production run on Arcadia's own repository"; "The only operator touch was the activation press"); RR:43 (operator pressed the card from `/actions` at 21:48:06Z); RR:76 (touch table; nobody restarted, re-ran or repaired during the run). Wording supplied by the coordinator, backed by RR:17 and RR:76. | Date, repository, one press, no other operator touch during the run. Touches before the run are listed in RR:78-82 and are not claimed away; "button press" is the activation card press. |
+| C2 | It made three small changes, one after another, and each change touched one test file. | RR:17 (concurrency one, three Actions); RR:22 ("three test-only Actions, each touching one test file, with 23 to 46 changed lines including settlement records"). | "Small" is supported only by the 23 to 46 changed line range. "One after another" is concurrency one; the session times in RR:54-56 do not overlap. |
+| C3 | The agent's build session lasted 35 seconds to 2 minutes 1 second. | Derived from RR:54-56: 21:55:51 to 21:57:23 = 1:32; 22:15:11 to 22:17:12 = 2:01; 22:32:05 to 22:32:40 = 0:35. The title's "at most 2 minutes 1 second" is the longest of the three. | Wall time between the recorded start and end of each session. The record calls the column "Session start to end"; it does not say how much of that was writing code versus reading or other work, so "building" is the article's label for the whole session. |
+| C4 | After each session ended, 11 minutes 34 seconds to 14 minutes 54 seconds passed before a code review passed. | Derived from RR:54-56: 21:57:23 to 22:12:17 = 14:54; 22:17:12 to 22:29:16 = 12:04; 22:32:40 to 22:44:14 = 11:34. | The review-pass times are the "round 1 passed" timestamps. This is a time difference, not review effort. |
+| C5 | That was the longest interval we measured. | Derived: the intervals in C3, C4 and the QA-after-review intervals in C10-C12 (1:16, 1:21, 1:35); C4 is largest in every row. RR:60 also says review and QA were "the longest stage". | True only among the intervals derivable from the table. Time between sessions, and any interval the table does not record, were not measured. Does not prove review was the slowest part (see C6). |
+| C6 | The interval includes the supervising program's own steps after the session (settle its records, push the branch, mark the pull request ready) and the review itself. | RR:58: "The host settled the Session's complete Ask on the candidate, pushed the settled head, and marked the PR ready. Claude code review, then Claude QA, passed on that exact head". | Describes the route each change took. RR does not give the duration of each step. |
+| C7 | It may also include time spent waiting for automated checks. The record does not separate these. | Absence: RR:52-60 give no CI or check timestamps and RR:60 says reviewer wall time is not recorded per verdict. The "may" is Nadia's brief ("push, CI and independent review"). | Stated as possible, not as measured. Not proved that CI wait is inside the interval or how long it was. I did not query CI check times on the three PRs. |
+| C8 | The honest claim is "the longest measured interval", not "review is the slowest part". | Follows from C4-C7. RR:60 says "Review and QA took 11 to 15 minutes per Action, the longest stage" and "Reviewer tokens and wall time are not recorded per verdict". | The article is deliberately narrower than RR:60's phrasing. |
+| C9 | The run was three test-only changes with the main branch frozen, so it says nothing about larger changes. | RR:22 (test-only; "a merge freeze on main for the whole run"); RR:26 ("Substantive source changes, concurrent Actions, a main that moves mid-run, a lost CI event and a repair loop on a live candidate have not been proved unattended"). | Scope limit. The conclusion "says nothing about larger changes" is the article's own wording of the limit. |
+| C10 | Table, row 1: PR #2124; session 21:55:51 to 21:57:23; length 1 min 32 s; review pass 22:12:17 (14 min 54 s after session end); QA pass 22:13:33 (1 min 16 s after review pass); merged 22:13:40. | RR:54 (times and PR #2124 at `80d6435a6831`, 22:13:40Z). Derived: 22:12:17 to 22:13:33 = 1:16. | Timestamps are UTC (the "Z" suffix in RR). The record does not say when QA started, so "review pass to QA pass" is not QA duration. |
+| C11 | Table, row 2: PR #2125; session 22:15:11 to 22:17:12; length 2 min 1 s; review pass 22:29:16 (12 min 4 s); QA pass 22:30:37 (1 min 21 s after review pass); merged 22:30:42. | RR:55. Derived: 22:29:16 to 22:30:37 = 1:21. | As C10. The merge time is the record's; see C17. |
+| C12 | Table, row 3: PR #2126; session 22:32:05 to 22:32:40; length 35 s; review pass 22:44:14 (11 min 34 s); QA pass 22:45:49 (1 min 35 s after review pass); merged 22:45:55. | RR:56. Derived: 22:44:14 to 22:45:49 = 1:35. | As C10. |
+| C13 | All times are UTC on 5 November 2026. | RR:54-56 use the "Z" suffix; RR:17 gives the date. | The Z suffix means UTC. |
+| C14 | QA is the second check the record lists after code review. | RR:58 ("Claude code review, then Claude QA, passed"); RR:54-56 columns "Code review", "QA". | Order only. What QA verifies is not described in the article. |
+| C15 | The record says activation to scope complete took 52 minutes. | RR:60 ("Activation to scope complete took 52 minutes."). | Quoted figure; I did not recompute it. The article states it as the record's. Cross-check, not an independent proof: card finished 21:53:46 (RR:43) and "Production scope complete" was reported at 22:46:03 (RR:58), which is 52 min 17 s. |
+| C16 | The three build sessions together lasted 4 minutes 8 seconds of that. | Derived: 92 s + 121 s + 35 s = 248 s = 4:08 (from C3). | Sum of session lengths only. "Of that" compares it with the 52-minute total, whose start is activation (RR:60), not the first session. |
+| C17 | All three build sessions are labelled "haiku" in the record. Each change touched one test file, with 23 to 46 changed lines including settlement records. | RR:54-56 ("(haiku)" in each Session column); RR:22. | The label is the record's; the model's behaviour was not checked. The row for #2125 reads "refused" (RR:55). |
+| C18 | A person pressed one approval card to start the run, and the record says that was the only operator touch. | RR:17 ("The only operator touch was the activation press"); RR:43 (pressed from `/actions` at 21:48:06Z); RR:76. | Operator touches during the run. Other human involvement before the run is recorded in RR:78-82 and is not claimed away. |
+| C19 | Each change was merged by the supervising program after the review and QA passed. | RR:17 ("a PR that the worker merged through GitHub after independent code review and QA passed on the first round"); RR:58. | The article's "supervising program" is the record's "worker"/"host". |
+| C20 | The record's row for the second change reads "refused" although GitHub merged it; the record says the row misreports a merge that landed. The merge time above is the one the record shows. | RR:55 ("row says refused; see failure 9"); RR:106 (failure 9: "a worker-merge row misreports a landed merge"); RR:87. | The 22:30:42 time is in the RR:55 row. I did not check GitHub for the merge time of #2125. |
+| C21 | The record says reviewer tokens and wall time "are not recorded per verdict". | RR:60 ("Reviewer tokens and wall time are not recorded per verdict and are not measured here."). | Direct quote of the limitation. |
+| C22 | The record's table does not show when review started or when automated checks finished. | RR:52-56 (columns: session, tokens, code review, QA, worker merge; no check-finish or review-start column). | Absence in that table only. |
+| C23 | Its own summary reads "Review and QA took 11 to 15 minutes per Action". | RR:60 ("Review and QA took 11 to 15 minutes per Action, the longest stage."). | Quote of 10 words. |
+| C24 | My subtraction reproduces that range only for session end to review pass. Adding the QA step gives 13 minutes 9 seconds to 16 minutes 10 seconds. | Derived: session end to QA pass = 21:57:23 to 22:13:33 = 16:10; 22:17:12 to 22:30:37 = 13:25; 22:32:40 to 22:45:49 = 13:09. Session end to review pass is 11:34 to 14:54 (C4). | Shows the record's 11-to-15 range fits the review-pass measure, not the QA-pass measure. It does not show what the record's author measured. |
+| C25 | On 8 and 9 November the same kind of test-only work continued: 20 more changes merged, in five batches. | RR:9-10 ("20 worker merges in five batches of 5, 3, 5, 5 and 2, from 2026-11-08T19:41Z to 2026-11-09T07:20Z"; "test-only Actions, concurrency one, a merge freeze on main for each batch"). | Counts are the record's, from Issue #1929 and GitHub PRs #2308 to #2351 per RR:7; I did not recount them. "8 and 9 November" are UTC dates of the window. |
+| C26 | The second batch stopped after three merges. | RR:9 ("Batch 2 stopped at three on #2324"; batch sizes 5, 3, 5, 5, 2). | Batch 2 delivered 3 of its planned set; the record does not state the planned size beyond the list. |
+| C27 | The cause was the generated QA checklist. It read a path quoted as example input in an acceptance criterion as a file the change had to touch. The host program generates that checklist. | RR:9 ("a QA plan read a quoted test path as a changed file; fixed by #2325"); Issue #2324 body ("The host-rendered Operator QA plan ... treats path-like strings quoted in a criterion as files"; "No model wrote the plan"). | Issue #2324 is a defect report written by an agent during the run (read with `gh issue view 2324`, state CLOSED). Its analysis was not independently reproduced. |
+| C28 | Issue #2324 says no model wrote that checklist, so a repair session could not change it. | Issue #2324 body: "No model wrote the plan, so a repair Session cannot change it: the next head gets the same plan." | Quote-level claim about what the issue says, not proof that the statement is true. |
+| C29 | The fix, PR #2325, changed one source file (the checklist generator) and two test files. | `gh pr view 2325 --json files`: `src/sessions/operatorQaPlan.ts` (modified), `tests/operator-qa-plan-quoted-data.test.ts` (added), `tests/operator-qa-plan.test.ts` (modified). PR state MERGED, mergedAt 2026-11-08T23:52:39Z. | File list only. "Checklist generator" is the PR body's description of `operatorQaPlan.ts` ("The host-rendered Operator QA plan ... Changes are in `src/sessions/operatorQaPlan.ts`"). |
+| C30 | My inference: a faster build step would have stopped in the same place. | Inference from C27-C29: the fault was in checklist generation, outside the build session. | Labelled inference (proposed, 📐). Not tested; no run was repeated with a faster build step. |
+| C31 | Time each stage separately: build, push, automated checks, review, a second check, merge. Look at the longest interval first. | None (advice). | Editorial recommendation, labelled by the article as a method, not a result. |
+| C32 | If your record has no timestamps inside the interval after the build session ends, as ours did not, you can find a bundle like this one but not what is inside it. | RR:52-56 (the table has session start and end, review pass, QA pass and merge timestamps; no push, check or review-start timestamps). | Absence in the table only; same basis as C22. |
+| C33 | Try this: record four timestamps per change in your next run: build end, checks finished, review started, review verdict. | None (advice). Same text in front matter `operator_suggestion` (under 240 characters). | Proposed; no result is claimed. |
+| C34 | Not proved: how the 11 to 15 minutes divide between pushing, automated checks and review. | Follows from C6, C7, C21, C22. | Limitation. |
+| C35 | Not proved: that a faster or slower build model would change the picture. All three build sessions used the same model. | RR:54-56 (all "haiku"). | Limitation. The review and QA model was not examined. |
+| C36 | Not proved: anything about source changes, concurrent work, a moving main branch or a repair loop. The record lists these as not proved. | RR:26; RR:10 ("No source Action, no concurrent run and no moving main was proved."). | Limitation. |
+| C37 | Not checked: reviewer cost in tokens or time per verdict. The record says it is not measured. | RR:60. | Limitation. |
+| C40 | The independent fact-check reports that it did not re-check the review and QA times against GitHub or the host database, and that it did confirm the session lengths and merge times against the ledger and GitHub. | Sentence relayed by the coordinator from the independent fact-check (2026-11-17 message). I did not perform or see that check; the receipt's Not checked list still says I did not query the ledger or GitHub. | Disclosure of fact-check scope, in the third person because it is not my own verification. Needs the fact-checker's report to be attached to the final receipt. |
+| C41 | Front matter: title "...at most 2 minutes 1 second building, 11 to 15 minutes to a review pass"; summary "In one unattended run, three small test-only changes each took at most 2 minutes 1 second to build, then 11 to 15 minutes to reach a review pass." | Same figures as C3 and C4 (2 min 1 s longest session; 11:34 to 14:54 session end to review pass). | The coordinator asked for "under 2 minutes"; the second session lasted 2 min 1 s (RR:55), so that would be false by one second and I used "at most 2 minutes 1 second". "Small" rests on the 23 to 46 changed lines (C2). |
+| C38 | Front matter: date 2026-11-09, type essay, slug, tags `[automation, review, reliability]`, canonical URL, channels. | Unchanged from `origin/main:docs/articles/2026-10-12-why-autonomous-production-is-not-a-coding-speed-problem.md` front matter. Tags exist on other articles, e.g. `docs/articles/2026-10-21-making-every-run-teach-us-more.md` (automation, reliability) and `2026-10-12-why-agent-roles-make-collaborative-work-easier.md` (review). The permalink is `/posts/:title/` (`site/_config.yml:5`). | Slug unchanged, so the canonical URL is unchanged. Whether the permalink title derives from the filename or the slug field was not tested; the filename is also unchanged. |
+| C39 | Links: run record at the pinned revision; Issue #2324; PR #2325; claims receipt path. | Run record anchor `#run-record-attempt-3-card-start-run-unattended-20261105d` (RR:41 heading); issue and PR read with `gh`. | The receipt link `receipts/why-autonomous-production-is-not-a-coding-speed-problem.md` exists on main (an older receipt) and must be replaced by the approved version of this file. |
 
-## Mechanical checks
+## Changes from the published article
 
-The candidate uses the Field Notes front matter, a public canonical URL, site and RSS channels, and a specific unfinished-work section. The article body is short-form.
+- Removed: the opening paragraph about the October validator regression test (PR #1296) and its link, per the brief.
+- Replaced: the original sentence that "Faster typing would have left the same stop in the same place" with an explicitly labelled inference (C30).
+- Added: the per-change timing table (C10-C13), the 52-minute total (C15), and the statement that the interval is bundled (C6-C8, C22-C24).
+- Not used: the original link label "Parser fix" for PR #2325; the PR changes the QA plan generator (C27, C29), so the article calls it "the fix".
+
+## Not checked
+
+- CI check start and finish times on PRs #2124, #2125 and #2126. They may separate CI wait from review time; I did not query them, following the brief's instruction to report only the bundled interval.
+- By me: the ledger files `docs/reports/session-ledger/20261105T2155Z-*.json` named at RR:60, GitHub merge times, and the host-local card receipts and worker log named at RR:28-37. My timings come only from the RR table. The fact-check's confirmation (C40) is relayed, not mine.
+- The 20-merge and five-batch counts (C25, C26) were not recounted from GitHub or Issue #1929.
+- Whether the reviewer's wall time is recorded anywhere outside RR (RR says it is not recorded per verdict).
+- Whether the Nov 8 batch 2 stop cost any measured time; the article does not claim a duration for it.
+- The merge time of PR #2125 on GitHub (C20).
+- Original article date: front matter says 2026-11-09 while the filename date is 2026-10-12. I kept the front matter date.
 
 ## Independent review
 
-- Reviewer: separate read-only Codex context `field_notes_publication_review`.
-- Reviewed candidate: `8c047010b08a9626965bab2ee1ae8eafd7e1762f`. Pinned source: `88045ef9712fa0341bdc5be2df45eee2334e8eaa`.
-- Reviewed article SHA-256: `7dcad5d834141263b9a689982d3baeae915012275c31ce4a0b04eebbce788682`.
-- Reviewed claims receipt SHA-256: `ff66307d1beb6adce06602e828d38277ba9af85610df5b878b3ae82d567e6d98`.
-- Findings: none blocking. The publication candidate records the approved status and Decision. The timing summary calls the November observations efforts to distinguish the five-batch follow-up from a single run. [PR #2393](https://github.com/pmark/arcadia/pull/2393) records the final approval-delta review.
+- Reviewer: a separate read-only Claude Code subagent (Sonnet 5.5, role fact-checker), not the author and not Flynn. It checked every sentence against `origin/main` (the revision pinned above) and did not take the author's draft receipt on trust.
+- Rounds: Round 1: PASS, with one disclosure recommended: the review and QA timestamps rest on the run record and were not re-checked against GitHub or the host database. The critic's later edits (the title wording 'at most 2 minutes 1 second', the 'unattended: one operator button press' wording, a shorter summary, and that disclosure sentence, attributed to this review) added no new claims.
+- Findings: none outstanding at the last reviewed revision; the receipt's Not checked list states what was not verified.
 - Verdict: PASS
 
-## Delivery handoff
+## Editorial review
 
-Pending. The exact approved source, Pages run, canonical page, full-text Atom entry and link notification will be recorded on [release PR #2393](https://github.com/pmark/arcadia/pull/2393). To withdraw the article, set its source status to withdrawn in a reviewed PR and verify the next Pages build removes its page and feed entry.
-
-## Earlier draft record
-
-## Field Notes evidence: why-autonomous-production-is-not-a-coding-speed-problem
-
-### Editorial refresh, 2026-11-09
-
-Source checked at [`2e5b841bd`](https://github.com/pmark/arcadia/tree/2e5b841bde29efa63e9f7fa77d1455deb6457444). Claim C4 records the October validator regression test and review rounds. The draft uses the test as an example of the rule and leaves the unverified history of the first implementation out. The shortened draft uses the [readiness record](../../managed-production-readiness.md) for the November 5 timeline and November 8 Pacific time batch count (November 8–9 UTC), and [PR #2325](https://github.com/pmark/arcadia/pull/2325) for the parser fix. It drops the provider-mode comparison and preserves the timing limitation.
-
-The claims and review below apply to the earlier draft. The refreshed version awaits independent fact-checking.
-
-- Type: essay draft (operator-requested repository storage)
-- Article: docs/articles/2026-10-12-why-autonomous-production-is-not-a-coding-speed-problem.md
-- Source repository and pinned revision: pmark/arcadia@17f05f789 (merge of #1348)
-- Intended destination: ArcadiaMissionControl.com; proposed canonical path /notes/why-autonomous-production-is-not-a-coding-speed-problem/
-- Eligibility: operator-requested draft; contains judgement (the ultracode comparison) that is explicitly not a measurement
-- Publication: future intent only; no site, RSS, deploy or notification receipt
-- Publication policy reference: [Decision 0120](../../decisions/0120-decide-whether-agents-may-publish-field-notes-ship-notes-and-essays-to-the.md)
-
-### Claims
-
-| ID | Factual sentence or clause | Pinned public evidence | What it proves and its limits |
-| --- | --- | --- | --- |
-| C1 | The first supervised run took about three hours to launch one Session, then spent about 11.1M input tokens (98% cache re-reads) with no diff because the Session sandbox could not write the workspace database. | [first-supervised-production-run-learnings-2026-10-11.md](../../reports/first-supervised-production-run-learnings-2026-10-11.md), [living notes](../../reports/production-simulation-living-notes.md) | Token and sandbox figures from the report; "about three hours" is living-notes friction #1. Not independently re-measured. |
-| C2 | A platform per-Session token ceiling is merged. | [PR #1303](https://github.com/pmark/arcadia/pull/1303) | Delivery to main; not live behaviour. |
-| C3 | An in-Session environment probe is merged and was repaired across several commits for packaging, nonce binding and an overly broad allow rule. | [PR #1306](https://github.com/pmark/arcadia/pull/1306) commit history | The PR carries no review summary; the specifics are inferred from commit subjects. |
-| C4 | The approval validator needed three reviews; "Implementation requires no approval, but a separate approval is nice to have" is a regression-test case it must flag. | [PR #1296](https://github.com/pmark/arcadia/pull/1296), `tests/planning-artifact-validator.test.ts` | Whether the first draft let it through is not confirmed by the PR text; disclosed bypass classes remain. |
-| C5 | The decision-card contract failed open on a bad clock and treated invisible characters as non-empty text before it was repaired; it merged with 70 tests. | [PR #1348](https://github.com/pmark/arcadia/pull/1348) review summary comment | A schema only; no rendering or execution engine. |
-| C6 | A guard that refuses Plan changes inside an Active production scope, a validated session ledger, role guidance and one-click clears for two blocker kinds are merged. | [#1297](https://github.com/pmark/arcadia/pull/1297), [#1301](https://github.com/pmark/arcadia/pull/1301), [#1304](https://github.com/pmark/arcadia/pull/1304), [#1309](https://github.com/pmark/arcadia/pull/1309) | Delivery; none ran as an unattended Session. |
-| C7 | More than twenty pull requests merged during the day, four of eight guard/validator PRs were blocked by independent review (two in successive rounds), and about twenty-five frictions were recorded. | [living notes](../../reports/production-simulation-living-notes.md), PR history of pmark/arcadia on 2026-10-12 | The fact-check counted 37 PRs merged that UTC day, about 25 from the supervised team; the rest were other agents' work. Counts are approximate. |
-| C8 | As described in the Claude Code harness, ultracode is an explicit opt-in to a scripted multi-agent workflow that can spawn many agents and consume many tokens. | The Claude Code harness tool description available to the Lead session | Not in the repository; unverifiable from public evidence. Ultracode was not run on this problem. |
-
-### Mechanical checks
-
-Front matter, draft status, receipt link, intended destination, channels, the limitation section, relative links and absence of placeholders checked by the author; independent fact-check recorded below.
-
-### Independent review
-
-- Independent fact-checker: fresh read-only Sonnet agent, separate lineage.
-- Reviewed candidate: ba6b867dd. Verdict: needs minor edits; nothing invented. Applied in the following commit: dropped "governed", softened the review-round and probe claims, cited the test file for the quoted string, attributed "about three hours" to the living notes and attributed the ultracode description to the harness.
-- This section records review of the preceding revision; the edited bytes were not re-reviewed.
-
-### Delivery handoff
-
-Draft for eventual posting to ArcadiaMissionControl.com. Website publication is outside this writing request. No publication or notification has occurred.
+- Critic: Nadia (Arcadia's critic role, a separate read-only subagent) applied the Field Notes interest gate: a stranger can state the claim without Arcadia terms, a real result with its limits, a reusable method, a distinct angle, a searchable title, and a headline that survives its own caveats.
+- Editorial verdict: APPROVE; placement: home page.
+- Release approval: the operator's chat instructions of 2026-11-17: "I want Field Notes to only publish articles that Nadia approves. Have Clara rewrite all articles that Nadia thinks need work. ... Then one more review and publish." Merging this change is the release; set `status: withdrawn` in a reviewed change to unpublish.
