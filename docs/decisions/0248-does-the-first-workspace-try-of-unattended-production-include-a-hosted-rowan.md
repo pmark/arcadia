@@ -4,7 +4,7 @@ type: decision
 id: "0248"
 slug: does-the-first-workspace-try-of-unattended-production-include-a-hosted-rowan
 project: arcadia
-status: open
+status: approved
 question: Does the first Workspace try of unattended production include a hosted Rowan?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
-updated: 2026-11-17
+updated: 2026-11-16
+answer: "A. No: worker plus timer-pressed cards only"
+decided: 2026-11-16
 ---
 
 # Decision 0248: Does the first Workspace try of unattended production include a hosted Rowan?
