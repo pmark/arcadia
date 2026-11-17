@@ -97,7 +97,7 @@ Each row is a commit on `origin/main` that changed the `active_plan` value in `P
 ## Editorial review
 
 - Critic: Nadia (Arcadia's critic role, a separate read-only subagent) applied the Field Notes interest gate: a stranger can state the claim without Arcadia terms, a real result with its limits, a reusable method, a distinct angle, a searchable title, and a headline that survives its own caveats.
-- Editorial verdict: APPROVE; placement: archive until resubmitted.
+- Editorial verdict: APPROVE; placement: home page (the critic's fourth pick).
 - Release approval: the operator's chat instructions of 2026-11-17: "I want Field Notes to only publish articles that Nadia approves. Have Clara rewrite all articles that Nadia thinks need work. ... Then one more review and publish." Merging this change is the release; set `status: withdrawn` in a reviewed change to unpublish.
 
 ## Changes after the critic's approval check
