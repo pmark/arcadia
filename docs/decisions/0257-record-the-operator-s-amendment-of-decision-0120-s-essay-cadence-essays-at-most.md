@@ -4,7 +4,7 @@ type: decision
 id: "0257"
 slug: record-the-operator-s-amendment-of-decision-0120-s-essay-cadence-essays-at-most
 project: arcadia
-status: open
+status: approved
 question: Record the operator's amendment of Decision 0120's essay cadence (essays at most about monthly).
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
 updated: 2026-11-17
+answer: A. More than one essay a month is fine
+decided: 2026-11-17
 ---
 
 # Decision 0257: Record the operator's amendment of Decision 0120's essay cadence (essays at most about monthly).
