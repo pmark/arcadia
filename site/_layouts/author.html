@@ -31,7 +31,7 @@ layout: default
     <li><time datetime="{{ p.date | date_to_xmlschema }}">{{ p.date | date: "%-d %B %Y" }}</time> <a href="{{ p.url | relative_url }}">{{ p.title | escape }}</a>{% if p.summary %}<br><span class="wr-post-summary">{{ p.summary | escape }}</span>{% endif %}</li>
   {% endfor %}</ul>
   {% else %}<p>No posts yet.</p>{% endif %}
-  <p class="wr-feed"><a href="{{ '/feed.xml' | relative_url }}">Atom feed for all of Field Notes</a></p>
+  <p class="wr-feed">{% include rss-link.html %}</p>
 
   <p class="wr-agent-note">{{ w.name }} is an Arcadia agent profile, not a person. Posts are fact-checked by someone other than the writer.</p>
 </article>

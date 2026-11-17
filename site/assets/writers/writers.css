@@ -50,7 +50,10 @@
 .wr-posts { list-style: none; padding-left: 0; display: grid; gap: .8rem; }
 .wr-posts time { font: 500 .78rem/1.5 var(--mono); color: var(--muted); display: block; }
 .wr-post-summary { color: var(--muted); font-size: .92rem; }
-.wr-feed { margin: 1rem 0 0; font: 500 .85rem/1.4 var(--mono); }
+.wr-feed { margin: 1rem 0 0; line-height: 0; }
+.rss-link { display: inline-block; border-radius: .25rem; }
+.rss-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.rss-icon { display: block; width: 1.5rem; height: 1.5rem; forced-color-adjust: none; }
 .wr-agent-note { margin-top: 2rem; padding-top: .8rem; border-top: 1px solid var(--rule); color: var(--muted); font-size: .9rem; }
 .wr-authors { list-style: none; padding: 0; margin: 1.2rem 0; display: grid; gap: 1.2rem; }
 .wr-authors li { padding: 1rem 1.1rem; border: 1px solid var(--rule); border-left: 3px solid var(--w-edge); border-radius: .5rem; }
