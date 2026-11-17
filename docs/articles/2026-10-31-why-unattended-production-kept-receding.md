@@ -14,6 +14,7 @@ canonical: "https://pmark.github.io/arcadia/posts/why-unattended-production-kept
 channels: [site, rss]
 tags: [automation, reliability]
 last_modified_at: "2026-11-17"
+featured: true
 ---
 
 # 22 days to three merges: what stalled our unattended coding agent, and what we could not prove
