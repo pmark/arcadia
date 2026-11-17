@@ -534,7 +534,8 @@ describe("production replay of a card never pressed (--card)", () => {
 
   it("writes a receipt bound to a START card's descriptor, revisions and one predicted outcome per pinned Action", () => {
     const id = "start-replay-receipt-card";
-    const descriptor = JSON.stringify({ id, kind: "grant", expires_at: "2099-01-01T00:00:00Z", startRun: startRunPinsFixture({ project: source.projectSlug, plan: source.planSlug, actions: [source.actionA, source.actionB], reviewedRevision: "c".repeat(40), queueRevision: 41, production: { revision: 13, epoch: 4 } }) }, null, 2) + "\n";
+    const pins = [source.actionA, source.actionB].map((key) => key.slice(key.indexOf("/") + 1));
+    const descriptor = JSON.stringify({ id, kind: "grant", expires_at: "2099-01-01T00:00:00Z", startRun: startRunPinsFixture({ project: source.projectSlug, plan: source.planSlug, actions: pins, reviewedRevision: "c".repeat(40), queueRevision: 41, production: { revision: 13, epoch: 4 } }) }, null, 2) + "\n";
     writeFileSync(path.join(cardDir, `${id}.sh`), "#!/usr/bin/env bash\n");
     writeFileSync(path.join(cardDir, `${id}.json`), descriptor);
     const startReport = runProductionReplay({ sourceWorkspace: source.workspace, card: id, cardDir, ticks: 4, github: "offline", parent, keep: true, print: () => undefined });
@@ -546,7 +547,7 @@ describe("production replay of a card never pressed (--card)", () => {
       descriptorSha256: createHash("sha256").update(descriptor).digest("hex"),
       reviewedRevision: "c".repeat(40), queueRevision: 41, productionRevision: 13, productionEpoch: 4
     });
-    expect(receipt.predictions).toEqual([{ action: source.actionA, predicted: "launch" }, { action: source.actionB, predicted: "launch" }]);
+    expect(receipt.predictions).toEqual([{ action: pins[0], predicted: "launch" }, { action: pins[1], predicted: "launch" }]);
     expect(receipt.basis).toMatch(/not proof of the run's result/);
   }, REPLAY_TIMEOUT_MS);
 

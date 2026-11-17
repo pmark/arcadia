@@ -45,7 +45,7 @@ describe("the replay receipt is bound to one card", () => {
   it.each([
     ["descriptorSha256", "0".repeat(64)], ["reviewedRevision", "b".repeat(40)], ["queueRevision", 41], ["productionRevision", 13], ["productionEpoch", 4]
   ])("refuses with REPLAY_MISMATCH when %s differs from the card", (key, value) => {
-    const result = checkReplayReceipt(receiptOf({ [key]: value } as Partial<ReplayReceipt>), identity);
+    const result = checkReplayReceipt(receiptOf({ [key]: value }), identity);
     expect(result).toMatchObject({ ok: false, code: "REPLAY_MISMATCH" });
     expect(result.detail).toContain(key);
   });
