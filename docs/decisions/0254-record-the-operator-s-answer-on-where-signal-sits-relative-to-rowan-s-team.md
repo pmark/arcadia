@@ -4,7 +4,7 @@ type: decision
 id: "0254"
 slug: record-the-operator-s-answer-on-where-signal-sits-relative-to-rowan-s-team
 project: arcadia
-status: open
+status: approved
 question: Record the operator's answer on where Signal sits relative to Rowan's team.
 gap_type: missing-decision
 gate_question: reasonable_disagreement
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
 updated: 2026-11-17
+answer: A. Outside, supervising
+decided: 2026-11-17
 ---
 
 # Decision 0254: Record the operator's answer on where Signal sits relative to Rowan's team.
