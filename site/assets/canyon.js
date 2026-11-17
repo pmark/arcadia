@@ -1,5 +1,5 @@
 // AMC sol palette adapted from Mission Control Site.
-import { createCanyonDust } from './canyon-dust.js?v=ambient-dust';
+import { createCanyonDust } from './canyon-dust.js?v=red-dust';
 import { createCanyonStars, createCanyonSun } from './canyon-sky.js';
 
   const root = document.body;
@@ -35,7 +35,7 @@ import { createCanyonStars, createCanyonSun } from './canyon-sky.js';
   const RIDE_SPEEDS = [{ name:'Normal', factor:1 }, { name:'Fast', factor:2 }, { name:'Slow', factor:.5 }];
   const STAR_FRAME_MS = 1000 / 30;
   const STATE_KEY = 'field-notes-camera-v1';
-  const FRAME_KEY = STATE_KEY + '-frame-v8';
+  const FRAME_KEY = STATE_KEY + '-frame-v9';
   let saved;
   try { saved = JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null'); } catch {}
   const restoreNumber = value => Number.isFinite(value) ? Math.max(0, value) : 0;
