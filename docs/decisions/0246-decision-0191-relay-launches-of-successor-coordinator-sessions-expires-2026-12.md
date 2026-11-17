@@ -4,7 +4,7 @@ type: decision
 id: "0246"
 slug: decision-0191-relay-launches-of-successor-coordinator-sessions-expires-2026-12
 project: arcadia
-status: open
+status: approved
 question: Decision 0191 (relay launches of successor coordinator sessions) expires 2026-12-07; what happens then?
 gap_type: missing-decision
 gate_question: resists_reversal
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
-updated: 2026-11-17
+updated: 2026-11-16
+answer: A. Renew after 2 handoffs
+decided: 2026-11-16
 ---
 
 # Decision 0246: Decision 0191 (relay launches of successor coordinator sessions) expires 2026-12-07; what happens then?
