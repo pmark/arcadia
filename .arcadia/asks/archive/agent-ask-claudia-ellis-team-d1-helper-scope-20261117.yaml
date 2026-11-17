@@ -1,0 +1,20 @@
+agent_ask: v1
+request_id: claudia-ellis-team-d1-helper-scope-20261117
+project: arcadia
+intent: decision
+requested_authority: propose
+gate_question: reasonable_disagreement
+desired_result: >-
+  Record the operator's answer on how much of Rowan-as-team-lead helper launch to build, and when.
+rationale: >-
+  The operator answered A. His words, verbatim: "A: Helper launch only". Recorded meaning: build arcadia helper request, list and stop; the launchd timer launches admitted requests through the relay's launcher; a table of live helper sessions backs helper list; it is built after the two live Rowan handoffs, in the hosted-coordinators Plan; no team templates and no peer chat yet. This builds on Decision 0225 A, Decision 0114, Decision 0104 and Decision 0248 and widens none of them. Source: the operator's answer, given by picker in Signal 13's chat (verified by Signal 13, who holds the transcript), 2026-11-17, about 12:15 AM Pacific. Evidence report: Ellis, 'Rowan as team lead, with Arcadia launching and managing the team', 2026-11-17 (sha256 1f934bdc8e34abf7ef583b6e219dd25bdc5ab9ae165a887cd48d154f455767d4). Proposed by Claudia Mason under Rowan 20 to record the already-given answer; this draft grants nothing, only the answer recorded through arcadia decision approve does.
+options:
+  - label: "A. Helper launch only, after the two live Rowan handoffs"
+    consequence: "Rowan can staff research, planning and repair work with nobody awake, a few Actions after the relay proof; the first Workspace try (Decision 0248) is not delayed; team templates and peer chat wait."
+    recommended: true
+  - label: "B. Full team framework now (templates, registry page, message bus)"
+    consequence: "Matches the picture soonest on paper; competes with standing autonomy and the relay proof for the queue; high chance of rework, because no timer-launched helper has run yet."
+    recommended: false
+  - label: "C. Nothing until the first Workspace try succeeds"
+    consequence: "Least distraction; Rowan keeps using in-session subagents, which the host sometimes refuses."
+    recommended: false
