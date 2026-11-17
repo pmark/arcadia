@@ -137,7 +137,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
     },
     answeredDecisions,
     ...(chain.latest?.kind === "failed-attempt" ? (() => {
-      const failedBatchClearance = parseFailedBatchClearance(readOrNull(failedBatchClearancePath(library, chain.latest!.press)));
+      const failedBatchClearance = parseFailedBatchClearance(readOrNull(failedBatchClearancePath(library, chain.latest.press)));
       return failedBatchClearance ? { failedBatchClearance } : {};
     })() : {}),
     production: { desiredState: production.desiredState, liveAdmissions: production.liveAdmissions, ...productionPins },

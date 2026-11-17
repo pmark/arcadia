@@ -72,7 +72,7 @@ function readMainChecks(repository: string): { green: boolean; detail: string } 
     const runs = JSON.parse(gh(["api", "repos/{owner}/{repo}/commits/main/check-runs?per_page=100", "--jq", "[.check_runs[] | {name, status, conclusion}]"])) as Array<{ name: string; status: string; conclusion: string | null }>;
     let required: string[] | null = null;
     try { required = JSON.parse(gh(["api", "repos/{owner}/{repo}/branches/main/protection/required_status_checks", "--jq", ".contexts"])) as string[]; } catch { required = null; }
-    const judged = required && required.length > 0 ? runs.filter((run) => required!.includes(run.name)) : runs;
+    const judged = required && required.length > 0 ? runs.filter((run) => required.includes(run.name)) : runs;
     if (judged.length === 0) return { green: false, detail: "main has no check runs to read" };
     const bad = judged.filter((run) => run.status !== "completed" || !["success", "skipped", "neutral"].includes(String(run.conclusion)));
     return bad.length === 0 ? { green: true, detail: `${judged.length} checks green on main` } : { green: false, detail: `main's ${bad.map((run) => `${run.name} (${run.status}${run.conclusion ? `/${run.conclusion}` : ""})`).join(", ")} not green` };

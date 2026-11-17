@@ -234,7 +234,7 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   ),
   "production status": ALLOWED,
   "production freeze-check": ALLOWED,
-  "production liveness-check": exempt("A launchd timer reads the named workspace read-only each minute; a row a minute would be noise, and only a page writes, through the ping outbox, besides its own .arcadia state files."),
+  "production liveness-check": exempt("A launchd timer runs this each minute against the named workspace; a row a minute would be noise. It reads read-only, except that --successor-press may press a ready successor card and page through the ping outbox, besides its own .arcadia state files."),
   // Writes one armed-until file in the resolved workspace's .arcadia/armed-wakes; no database, ping or Project state.
   "production keeper-heartbeat": ALLOWED,
   // Launches or stops a host Claude Code session and writes one record under .arcadia; no database, Project state or production policy.

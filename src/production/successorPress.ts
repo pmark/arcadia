@@ -133,8 +133,8 @@ export function runSuccessorPressStep(ports: SuccessorPorts, prior: SuccessorSta
   if (batch?.kind === "unsettled") return skip("BATCH_NOT_CLEAN", `the latest press ${batch.press} has not finished`, offIssued);
   let clearance: FailedBatchClearance | null = null;
   if (failed) {
-    clearance = ports.clearance(batch!.press);
-    if (!clearance) return refuse("FAILED_BATCH_NEEDS_FIX", `the latest press ${batch!.press} failed; the press waits for an independent pre-mortem pointer and a merged fix for the named cause`, batch!.press);
+    clearance = ports.clearance(batch.press);
+    if (!clearance) return refuse("FAILED_BATCH_NEEDS_FIX", `the latest press ${batch.press} failed; the press waits for an independent pre-mortem pointer and a merged fix for the named cause`, batch.press);
   }
   const checks = ports.mainChecks();
   if (!checks.green) return skip("MAIN_CHECKS_NOT_GREEN", checks.detail, offIssued);

@@ -63,9 +63,9 @@ function world(options: { actions?: number; library?: string } = {}): World {
       grant: { open: true, plan: DAY_PLAN, approvalCard: GRANT_CARD, approvalRun: DAY_RUN, reason: null },
       plan: { slug: DAY_PLAN, project: "arcadia", status: "active", isProjectActivePlan: true, actions: planActions },
       production: { desiredState: w.production.desiredState, liveAdmissions: w.production.liveAdmissions, revision: w.production.revision, epoch: 50 },
-      queue: { revision: 290, orderValid: true, unpositionedCount: 0, keys: w.actions.map((id) => `arcadia/${id}`) },
+      queue: { revision: 290, orderValid: true, unpositionedCount: 0, keys: w.actions.filter((id) => !w.done.has(id)).map((id) => `arcadia/${id}`) },
       chain: { receiptSha256: "a".repeat(64), pressSha256: "b".repeat(64), attemptsSoFar: w.pressLog.length, latest: w.batch && w.batch.kind !== "unsettled" ? { press: w.batch.press, kind: w.batch.kind } : null },
-      consumedHistory: [], ...(clearance ? { failedBatchClearance: clearance } : {})
+      consumedHistory: [{ path: "/runs/receipts/consumed-1.json", sha256: "c".repeat(64) }], ...(clearance ? { failedBatchClearance: clearance } : {})
     };
     return deriveStartCard(input);
   };
@@ -98,7 +98,7 @@ function world(options: { actions?: number; library?: string } = {}): World {
       if (w.pressRefusal) return { ok: false, ...w.pressRefusal };
       const descriptor = JSON.parse(readFileSync(path.join(library, `${card}.json`), "utf8")) as { startRun: { actions: string[]; delegation: never } };
       // The runner records Rowan's press with the marker it derives from the card; an operator press records none.
-      const press = delegatedPressMarker(descriptor as never, { decision: "0173", agent: "rowan" })!;
+      const press = delegatedPressMarker(descriptor, { decision: "0173", agent: "rowan" })!;
       const pressId = `${new Date(w.now).toISOString().replace(/[-:.TZ]/g, "")}-${card}`;
       const dir = path.join(library, "runs", "operator", card, pressId);
       mkdirSync(dir, { recursive: true });
@@ -278,8 +278,8 @@ describe("successor press: a refused press", () => {
     const w = world({ actions: 3 });
     w.pressRefusal = { code: "PRESS_UNREACHABLE", message: "connection refused" };
     let fail = true;
-    const ping = w.ports.ping;
-    w.ports.ping = (input) => { if (fail) throw new Error("outbox locked"); return ping(input); };
+    const realPing = w.ports.ping.bind(w.ports);
+    w.ports.ping = (input) => { if (fail) throw new Error("outbox locked"); return realPing(input); };
     const first = step(w, emptySuccessorState());
     expect(first.outcome).toMatchObject({ kind: "refused", pingId: null });
     fail = false;
