@@ -122,6 +122,8 @@ const EXACT: Record<string, AuthorityBoundary> = {
   "src/agentwatch/classify.ts": "operator_authority",
   "src/agentwatch/contract.ts": "operator_authority",
   "src/ping/operatorping.ts": "operator_authority",
+  // Decision 0241: which events Signal may ping the operator about; the list is the operator-interruption boundary.
+  "src/ping/signalpingpolicy.ts": "operator_authority",
   "src/nativemail.ts": "operator_authority",
   "src/nativemail/index.ts": "operator_authority",
   "src/operatorinteractions/store.ts": "operator_authority",

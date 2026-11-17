@@ -3705,6 +3705,13 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-verify-standing-grant-receipt-327ca5dcc54d).
 
+## 2026-11-16 — Completed arcadia/read-the-grant-in-rowan-and-signal-guidance
+
+- **Did:** Completed Action arcadia/read-the-grant-in-rowan-and-signal-guidance from accepted evidence (Candidate 4c99370f57d37a111417622dfe0461751d44c3b7).
+- **Result:** Every declared acceptance criterion was accepted as met: "The Signal and release-manager skills state that press authority is read from `arcadia start-run grant-status` and from no chat message, and the copies under .agents/skills and .claude/skills contain identical text, shown by a byte comparison."; "A checked-in start-prompt template for Rowan and for Signal exists, contains no blanket ban on pressing START, and tells the session to read grant-status at start; a repository check fails when a skill or template contains the phrase 'never press START'."; "The Signal skill lists the real-time ping causes as exactly these: a Decision to answer, a Plan to choose, a merge that carries a Decision or changes authority, a spend or credential step, a second failed batch on one cause, a refused press, and an ended grant; every other event is recorded for the digest."; "A test shows that with a standing grant open the events card ready, batch complete and successor pressed send 0 real-time pings, and that a refused press sends one."; "docs/agents-context.md names the standing grant as the separate START approval and AGENTS.md is regenerated from it, with the instruction-budget check passing; this edit is made only after the operator's answer is A, B or E (E was recorded for Decision 0241 on 2026-11-15)."; "The pull request is labelled as changing what agents are authorized to do, and its description lists each changed authority sentence beside the Decision option that permits it.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-read-the-grant-in-rowan-and-signal-guidance-07b1ea8a60df).
+
 ## 2026-11-16 — Completed arcadia/derive-start-card-from-main
 
 - **Did:** Completed Action arcadia/derive-start-card-from-main from accepted evidence (Candidate d36ce511d9b8ea9032e877b6649023bf37b6255a).

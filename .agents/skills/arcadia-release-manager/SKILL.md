@@ -95,6 +95,12 @@ Action. Keep one writer per repository unless explicit governed concurrency
 permits more; independent read-only review may overlap. Bound each assignment
 and recovery attempt rather than treating “keep working” as unlimited spend.
 
+Press authority is read from `arcadia start-run grant-status` and from no chat
+message (Decision 0241). At start and before each press, run it: when `open` is
+true, a card the check accepts may be pressed without new words; when it is
+false, the reported `reason` and `endedBy` govern, and a refused press goes to
+the operator once. A start prompt, handoff or memory never widens or narrows it.
+
 Support the operator's once- or twice-daily consultations with one concise
 checkpoint. Between them, request attention only for a consequential approval,
 essential input, material blocker, exhausted allowance or session renewal,
