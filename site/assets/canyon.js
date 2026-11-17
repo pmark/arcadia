@@ -778,6 +778,28 @@ function drawSky(colors) {
         + terrainNoise(offset / 2.8 + 7.2, distance / 9 + 4.3) * .24;
     }
 
+    // Intersect the row's triangles at the stone's depth. Sampling the noise
+    // again here would miss the actual surface between mesh vertices.
+    function floorSurfaceAt(row, x, depth) {
+      const lerp = THREE.MathUtils.lerp;
+      const rowStart = row * floorColumns;
+      const position = floorPositions.array;
+      const acrossRows = (column, axis) => {
+        const near = (rowStart + column) * 3 + axis;
+        return lerp(position[near], position[near + floorColumns * 3], depth);
+      };
+      let column = 0;
+      while (column < floorColumns - 2 && acrossRows(column + 1, 0) < x) column++;
+      const nearRight = rowStart + column + 1;
+      const farLeft = rowStart + floorColumns + column;
+      const diagonalX = lerp(floorPositions.getX(nearRight), floorPositions.getX(farLeft), depth);
+      const diagonalY = lerp(floorPositions.getY(nearRight), floorPositions.getY(farLeft), depth);
+      // At a shared vertex the selected half-triangle can have zero width.
+      if (x === diagonalX) return diagonalY;
+      const edge = x < diagonalX ? column : column + 1;
+      return lerp(diagonalY, acrossRows(edge, 1), (x - diagonalX) / (acrossRows(edge, 0) - diagonalX));
+    }
+
     function updateFloor(cell) {
       const start = cell - lookBehind;
       for (let local = 0; local <= segments; local++) {
@@ -809,12 +831,11 @@ function drawSky(colors) {
       for (let local = 0; local < segments; local++) {
         const index = start + local;
         if (detailNoise(index, 2) > .66) continue;
-        const offset = detailNoise(index, 3) * spacing;
+        const depth = detailNoise(index, 3);
         const side = detailNoise(index, 4) < .5 ? -1 : 1;
-        const distance = index * spacing + offset;
-        const x = side * (1.3 + detailNoise(index, 5) * 1.65);
+        const x = centerAt((index + depth) * spacing) + side * (1.3 + detailNoise(index, 5) * 1.65);
         const size = .10 + .45 * detailNoise(index, 6) ** 2;
-        stonePose.position.set(centerAt(distance) + x, floorHeight(x, distance) + size * .24, (lookBehind - local) * spacing - offset);
+        stonePose.position.set(x, floorSurfaceAt(local, x, depth) + size * .24, (lookBehind - local - depth) * spacing);
         stonePose.rotation.y = detailNoise(index, 7) * Math.PI * 2;
         stonePose.scale.set(size, size * .52, size * (.65 + detailNoise(index, 8) * .6));
         stonePose.updateMatrix();
