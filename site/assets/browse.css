@@ -1,0 +1,68 @@
+/* Archive page (/archive/): posts by year and month. Site tokens only; no colour or font literals. */
+.archive .field-label { margin: .5rem 0 0; color: var(--label); }
+.arch-total { margin: 0 0 1.25rem; color: var(--muted); }
+.arch-empty { margin: 1rem 0 0; color: var(--muted); }
+
+.arch-year {
+  margin: 1.75rem 0 .5rem;
+  padding-bottom: .35rem;
+  border-bottom: 1px solid var(--rule);
+  font-size: 1.55rem;
+  letter-spacing: -.03em;
+}
+
+.arch-month { border-bottom: 1px solid var(--rule); }
+.arch-month > summary {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: .1rem .75rem;
+  min-height: 44px;
+  padding-block: .55rem;
+  cursor: pointer;
+  list-style: none;
+}
+.arch-month > summary::-webkit-details-marker { display: none; }
+.arch-month > summary::before {
+  content: "";
+  flex: none;
+  align-self: center;
+  width: .45rem;
+  height: .45rem;
+  margin-inline: .2rem .1rem;
+  border: solid currentColor;
+  border-width: 0 1.5px 1.5px 0;
+  color: var(--label);
+  transform: rotate(-45deg);
+}
+.arch-month[open] > summary::before { transform: rotate(45deg); }
+.arch-month h3 { margin: 0; font-size: 1.2rem; letter-spacing: -.02em; }
+.arch-count { color: var(--muted); font: .78rem/1.5 var(--mono); }
+
+.arch-list { margin: 0; padding: 0 0 .5rem; list-style: none; }
+.arch-row { padding: .7rem 0 .75rem; border-top: 1px solid var(--rule); }
+.arch-row[data-writer]:not([data-writer="arcadia"]) { padding-left: .8rem; border-left: 3px solid var(--w-edge); }
+.arch-row .arch-meta { margin: 0; }
+.arch-title { display: inline-block; margin-top: .15rem; font: 700 1.05rem/1.3 var(--display); letter-spacing: -.02em; }
+.arch-summary {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  margin: .2rem 0 0;
+  color: var(--muted);
+  font-size: .92rem;
+  line-height: 1.5;
+}
+/* Compact topic links: smaller than the article page chips, still a comfortable target. */
+.arch-row .post-topics { gap: .3rem; margin: .45rem 0 0; }
+.arch-row .post-topics a { min-height: 32px; padding: .15em .6em; font-size: .78rem; }
+
+@media (max-width: 35rem) {
+  .arch-title { font-size: 1rem; }
+}
+
+@media (forced-colors: active) {
+  .arch-year, .arch-month, .arch-row, .arch-row[data-writer]:not([data-writer="arcadia"]) { border-color: CanvasText; }
+  .arch-month > summary::before { color: CanvasText; }
+}
