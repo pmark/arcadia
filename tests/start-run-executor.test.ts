@@ -1026,6 +1026,16 @@ describe("start-run executor: a standing-grant card is refused unless it re-deri
     const b = box({ dayGrant: FIRST, cardId: STANDING, state: (s) => { s.derive = { fail: true }; } });
     expectRefusedClean(b, b.run("preflight"), "P0", /^CARD_NOT_DERIVED: \(P0\)/, b.head());
   });
+  it("passes a re-derived card whose replay receipt names it, and records that in the run record", () => {
+    const b = box({ dayGrant: FIRST, cardId: STANDING, state: (s) => { s.derive = { verdicts: [null] }; } });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt!.record.replayReceiptP0).toBe(true);
+  });
+  it.each(["REPLAY_REQUIRED", "REPLAY_MISMATCH", "REPLAY_PREDICTS_NO_LAUNCH"])("refuses a re-derived card with %s in P0, before anything is consumed", (code) => {
+    const b = box({ dayGrant: FIRST, cardId: STANDING, state: (s) => { s.derive = { verdicts: [null], replay: { ok: false, code, detail: `the replay says ${code}` } }; } });
+    expectRefusedClean(b, b.run("preflight"), "P0", new RegExp(`^${code}: \\(P0\\) the replay says ${code}; no allowance consumed`), b.head());
+  });
   it("leaves operator-pressed cards (Decisions 0156, 0157) and day-grant cards (Decision 0173) without a derivation", () => {
     const ordinary = box();
     expect(ordinary.run("preflight").status).toBe(0);

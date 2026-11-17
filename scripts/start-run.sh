@@ -249,6 +249,11 @@ check_card_rederived() {  # $1: P0 or P3
   jq -e '.data.verification.verified == true' <<<"$out" >/dev/null \
     || refuse "CARD_NOT_DERIVED: ($1) this card is not what the deriver returns for the current state (derived id $(jq -r '.data.verification.derivedCardId // "none"' <<<"$out")); differing field: $(jq -r '.data.verification.differs | join(", ")' <<<"$out"); no allowance consumed"
   rec "cardRederived$1" true
+  # The pre-press replay is a prediction bound to this exact card (its descriptor sha256, pinned revisions and every pinned Action):
+  # a missing, mismatched or no-launch receipt refuses with its own code. It is not proof of the run's result.
+  jq -e '.data.replay.ok == true' <<<"$out" >/dev/null \
+    || refuse "$(jq -r '.data.replay.code // "REPLAY_REQUIRED"' <<<"$out"): ($1) $(jq -r '.data.replay.detail // "the derivation returned no replay verdict"' <<<"$out"); no allowance consumed"
+  rec "replayReceipt$1" true
 }
 check_preserved_history() {  # REF:L158, L364
   node -e 'const f=require("fs"),c=require("crypto");for(const x of JSON.parse(process.argv[1]))if(c.createHash("sha256").update(f.readFileSync(x.path)).digest("hex")!==x.sha256)throw Error("preserved receipt/authority drift")' "$(pin_json consumedHistory)" || refuse "consumed history or authority receipt changed"

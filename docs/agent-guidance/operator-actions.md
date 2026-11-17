@@ -380,6 +380,21 @@ pinned descriptor, so per-card review is small.
   manifest `reviewed/<id>.json` (`sh`, `json`, `executor` sha256). A change to
   `scripts/start-run.sh` is reviewed once and invalidates the hash in every older
   card, which then refuses.
+- **A replay receipt is a prediction bound to one card, not proof of the run's
+  result.** `pnpm production-replay --source-workspace <workspace> --card <id>`
+  writes `<library>/replays/<id>.json` for a START card: the descriptor's sha256,
+  its `reviewedRevision`, queue revision, production revision and epoch, and one
+  predicted outcome per pinned Action. A standing-grant press (P0, and again in
+  P3 before the allowance is consumed) refuses with `REPLAY_REQUIRED` when no
+  receipt exists, `REPLAY_MISMATCH` when any of those five values differs from
+  the card, and `REPLAY_PREDICTS_NO_LAUNCH` when a pinned Action is not predicted
+  to launch. The receipt grants nothing and proves nothing about what the run
+  will do; the replay builds its scope with `startRunActivationScope`
+  (`src/operatorActions/startRunScope.ts`), the same scope P6 activates. The
+  deriver also stops the card before the first Action that cites an unanswered
+  Decision or names an authority path in its `references`, records it as the one
+  operator item (`OPERATOR_ITEM_FIRST` when it is first), and leaves the
+  worker-merge authority gate (`candidateChangeGate`) unchanged.
 - **Pre-mortem before every START card (operator, 2026-11-01).** Before minting
   or pinging any START card (operator or delegated successor), run one
   independent, read-only pre-mortem with the

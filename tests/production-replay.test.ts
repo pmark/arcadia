@@ -532,6 +532,25 @@ describe("production replay of a card never pressed (--card)", () => {
     expect(fingerprint(source)).toEqual(before);
   });
 
+  it("writes a receipt bound to a START card's descriptor, revisions and one predicted outcome per pinned Action", () => {
+    const id = "start-replay-receipt-card";
+    const pins = [source.actionA, source.actionB].map((key) => key.slice(key.indexOf("/") + 1));
+    const descriptor = JSON.stringify({ id, kind: "grant", expires_at: "2099-01-01T00:00:00Z", startRun: startRunPinsFixture({ project: source.projectSlug, plan: source.planSlug, actions: pins, reviewedRevision: "c".repeat(40), queueRevision: 41, production: { revision: 13, epoch: 4 } }) }, null, 2) + "\n";
+    writeFileSync(path.join(cardDir, `${id}.sh`), "#!/usr/bin/env bash\n");
+    writeFileSync(path.join(cardDir, `${id}.json`), descriptor);
+    const startReport = runProductionReplay({ sourceWorkspace: source.workspace, card: id, cardDir, ticks: 4, github: "offline", parent, keep: true, print: () => undefined });
+    const file = path.join(cardDir, "replays", `${id}.json`);
+    expect(startReport.cardReceipt).toBe(file);
+    const receipt = JSON.parse(readFileSync(file, "utf8"));
+    expect(receipt).toMatchObject({
+      schema: "arcadia-start-run-replay-receipt-v1", card: id,
+      descriptorSha256: createHash("sha256").update(descriptor).digest("hex"),
+      reviewedRevision: "c".repeat(40), queueRevision: 41, productionRevision: 13, productionEpoch: 4
+    });
+    expect(receipt.predictions).toEqual([{ action: pins[0], predicted: "launch" }, { action: pins[1], predicted: "launch" }]);
+    expect(receipt.basis).toMatch(/not proof of the run's result/);
+  }, REPLAY_TIMEOUT_MS);
+
   it("reads scope, expiries and flags only from the script's code lines", () => {
     const receipt = cardGrantReceipt("grant-replay-fixture-card", "2026-10-20T00:00:00.000Z", cardDir);
     expect(receipt.scope).toEqual({
