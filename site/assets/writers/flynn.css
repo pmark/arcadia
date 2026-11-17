@@ -1,0 +1,6 @@
+/* PROTOTYPE draft of site/assets/writers/flynn.css (Flynn, 2026-11-16). Slots only; site tokens only; no literals. */
+[data-writer="flynn"] {
+  --w-accent: var(--label);
+  --w-edge: var(--brand);
+  --w-tint: color-mix(in srgb, var(--brand) 8%, var(--bg));
+}

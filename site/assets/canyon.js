@@ -1,4 +1,5 @@
 // AMC sol palette adapted from Mission Control Site.
+import { createCanyonDust } from './canyon-dust.js?v=denser-dust';
 import { createCanyonStars, createCanyonSun } from './canyon-sky.js';
 
   const root = document.body;
@@ -34,7 +35,7 @@ import { createCanyonStars, createCanyonSun } from './canyon-sky.js';
   const RIDE_SPEEDS = [{ name:'Normal', factor:1 }, { name:'Fast', factor:2 }, { name:'Slow', factor:.5 }];
   const STAR_FRAME_MS = 1000 / 30;
   const STATE_KEY = 'field-notes-camera-v1';
-  const FRAME_KEY = STATE_KEY + '-frame-v4';
+  const FRAME_KEY = STATE_KEY + '-frame-v10';
   let saved;
   try { saved = JSON.parse(sessionStorage.getItem(STATE_KEY) || 'null'); } catch {}
   const restoreNumber = value => Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -713,19 +714,35 @@ function drawSky(colors) {
     const spacing = 2.45;
     const lookBehind = 5;
     const cellsPerUpdate = 10;
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(36, segments * spacing), new THREE.MeshBasicMaterial());
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.z = (lookBehind - segments / 2) * spacing;
+    const centerAt = distance => 4.8 * Math.sin(distance * .046) + 1.55 * Math.sin(distance * .083);
+    const floorColumns = 13;
+    const leftTreadColumn = 4;
+    const rightTreadColumn = 7;
+    const floorVertexCount = (segments + 1) * floorColumns;
+    const groundGeometry = new THREE.BufferGeometry();
+    const floorPositions = new THREE.BufferAttribute(new Float32Array(floorVertexCount * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    const floorColors = new THREE.BufferAttribute(new Float32Array(floorVertexCount * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    groundGeometry.setAttribute('position', floorPositions);
+    groundGeometry.setAttribute('color', floorColors);
+    const floorFaces = [];
+    const trackFaces = [];
+    for (let row = 0; row < segments; row++) {
+      for (let column = 0; column < floorColumns - 1; column++) {
+        const near = row * floorColumns + column;
+        const far = near + floorColumns;
+        // Each tread is a strip of the floor itself, sharing vertices with the dirt.
+        const faces = column === leftTreadColumn || column === rightTreadColumn ? trackFaces : floorFaces;
+        faces.push(near, near + 1, far, near + 1, far + 1, far);
+      }
+    }
+    groundGeometry.setIndex([...floorFaces, ...trackFaces]);
+    groundGeometry.addGroup(0, floorFaces.length, 0);
+    groundGeometry.addGroup(floorFaces.length, trackFaces.length, 1);
+    const groundMaterial = new THREE.MeshBasicMaterial({ vertexColors:true });
+    const trackMaterial = new THREE.MeshBasicMaterial({ vertexColors:true });
+    const ground = new THREE.Mesh(groundGeometry, [groundMaterial, trackMaterial]);
+    ground.frustumCulled = false;
     canyon.add(ground);
-    const centerAt = distance => 1.65 * Math.sin(distance * .073) + .63 * Math.sin(distance * .031);
-    const trackGeometry = new THREE.BufferGeometry();
-    const trackPositions = new THREE.BufferAttribute(new Float32Array(2 * segments * 18), 3).setUsage(THREE.DynamicDrawUsage);
-    trackGeometry.setAttribute('position', trackPositions);
-    const tracks = new THREE.Mesh(trackGeometry, new THREE.MeshBasicMaterial({
-      polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1
-    }));
-    tracks.frustumCulled = false;
-    canyon.add(tracks);
 
     const stoneGeometry = new THREE.IcosahedronGeometry(1, 0);
     const normals = stoneGeometry.getAttribute('normal');
@@ -745,42 +762,81 @@ function drawSky(colors) {
       return value - Math.floor(value);
     };
 
-    // Use world cells for the detail too, so it never shifts when the strip is recycled.
-    function updateFloorDetails(cell) {
-      const start = cell - lookBehind;
-      const trackEdges = (index, side) => {
-        const distance = index * spacing;
-        const center = centerAt(distance) + .18 * Math.sin(distance * .24) + side * .79;
-        const halfWidth = .095 + .035 * detailNoise(index, side);
-        return [center - halfWidth, center + halfWidth];
+    // Smooth value noise sampled in canyon coordinates. World distance keeps
+    // the hills fixed as the renderer recycles the strip under the camera.
+    function terrainNoise(x, distance) {
+      const ix = Math.floor(x);
+      const iz = Math.floor(distance);
+      const u = smooth(0, 1, x - ix);
+      const v = smooth(0, 1, distance - iz);
+      const lerp = THREE.MathUtils.lerp;
+      const near = lerp(detailNoise(iz, ix), detailNoise(iz, ix + 1), u);
+      const far = lerp(detailNoise(iz + 1, ix), detailNoise(iz + 1, ix + 1), u);
+      return lerp(near, far, v) * 2 - 1;
+    }
+    function floorHeight(offset, distance) {
+      return terrainNoise(offset / 5 + .37, distance / 22 + .62) * 1.2
+        + terrainNoise(offset / 2.8 + 7.2, distance / 9 + 4.3) * .24;
+    }
+
+    // Intersect the row's triangles at the stone's depth. Sampling the noise
+    // again here would miss the actual surface between mesh vertices.
+    function floorSurfaceAt(row, x, depth) {
+      const lerp = THREE.MathUtils.lerp;
+      const rowStart = row * floorColumns;
+      const position = floorPositions.array;
+      const acrossRows = (column, axis) => {
+        const near = (rowStart + column) * 3 + axis;
+        return lerp(position[near], position[near + floorColumns * 3], depth);
       };
-      let vertex = 0;
-      for (const side of [-1, 1]) {
-        let [left, right] = trackEdges(start, side);
-        for (let local = 0; local < segments; local++) {
-          const z = (lookBehind - local) * spacing;
-          const [nextLeft, nextRight] = trackEdges(start + local + 1, side);
-          trackPositions.setXYZ(vertex++, left, 0, z);
-          trackPositions.setXYZ(vertex++, right, 0, z);
-          trackPositions.setXYZ(vertex++, nextLeft, 0, z - spacing);
-          trackPositions.setXYZ(vertex++, right, 0, z);
-          trackPositions.setXYZ(vertex++, nextRight, 0, z - spacing);
-          trackPositions.setXYZ(vertex++, nextLeft, 0, z - spacing);
-          left = nextLeft;
-          right = nextRight;
+      let column = 0;
+      while (column < floorColumns - 2 && acrossRows(column + 1, 0) < x) column++;
+      const nearRight = rowStart + column + 1;
+      const farLeft = rowStart + floorColumns + column;
+      const diagonalX = lerp(floorPositions.getX(nearRight), floorPositions.getX(farLeft), depth);
+      const diagonalY = lerp(floorPositions.getY(nearRight), floorPositions.getY(farLeft), depth);
+      // At a shared vertex the selected half-triangle can have zero width.
+      if (x === diagonalX) return diagonalY;
+      const edge = x < diagonalX ? column : column + 1;
+      return lerp(diagonalY, acrossRows(edge, 1), (x - diagonalX) / (acrossRows(edge, 0) - diagonalX));
+    }
+
+    function updateFloor(cell) {
+      const start = cell - lookBehind;
+      for (let local = 0; local <= segments; local++) {
+        const index = start + local;
+        const distance = index * spacing;
+        const center = centerAt(distance);
+        const z = (lookBehind - local) * spacing;
+        const rutDrift = .18 * Math.sin(distance * .24);
+        const leftTread = rutDrift - .79;
+        const rightTread = rutDrift + .79;
+        const leftHalfWidth = .095 + .035 * detailNoise(index, -1);
+        const rightHalfWidth = .095 + .035 * detailNoise(index, 1);
+        const offsets = [-18, -6, -3, -1.6, leftTread - leftHalfWidth, leftTread + leftHalfWidth,
+          0, rightTread - rightHalfWidth, rightTread + rightHalfWidth, 1.6, 3, 6, 18];
+        for (let column = 0; column < floorColumns; column++) {
+          const x = offsets[column];
+          const height = floorHeight(x, distance);
+          const vertex = local * floorColumns + column;
+          const slope = floorHeight(x, distance + 1) - floorHeight(x, distance - 1);
+          const shade = .88 + .2 * slope + .05 * height;
+          floorPositions.setXYZ(vertex, center + x, height, z);
+          floorColors.setXYZ(vertex, shade, shade, shade);
         }
       }
-      trackPositions.needsUpdate = true;
+      floorPositions.needsUpdate = true;
+      floorColors.needsUpdate = true;
 
       let count = 0;
       for (let local = 0; local < segments; local++) {
         const index = start + local;
         if (detailNoise(index, 2) > .66) continue;
-        const offset = detailNoise(index, 3) * spacing;
+        const depth = detailNoise(index, 3);
         const side = detailNoise(index, 4) < .5 ? -1 : 1;
-        const x = centerAt(index * spacing + offset) + side * (1.3 + detailNoise(index, 5) * 1.65);
+        const x = centerAt((index + depth) * spacing) + side * (1.3 + detailNoise(index, 5) * 1.65);
         const size = .10 + .45 * detailNoise(index, 6) ** 2;
-        stonePose.position.set(x, size * .24, (lookBehind - local) * spacing - offset);
+        stonePose.position.set(x, floorSurfaceAt(local, x, depth) + size * .24, (lookBehind - local - depth) * spacing);
         stonePose.rotation.y = detailNoise(index, 7) * Math.PI * 2;
         stonePose.scale.set(size, size * .52, size * (.65 + detailNoise(index, 8) * .6));
         stonePose.updateMatrix();
@@ -802,13 +858,16 @@ function drawSky(colors) {
     });
     let previousCell;
 
+    const dust = createCanyonDust(THREE, coarsePointer.matches ? 16 : 24, centerAt, floorHeight);
+    canyon.add(dust.mesh);
+
     // Recycle the same visible strip around the camera. Sampling by world
     // distance makes crossing a strip boundary or scrolling back seamless.
     // Keep ten cells per upload so small scroll steps only move the camera.
-    function updateWalls(cell) {
+    function updateCanyon(cell) {
       if (cell === previousCell) return;
       previousCell = cell;
-      updateFloorDetails(cell);
+      updateFloor(cell);
       for (const { side, geometry } of walls) {
         const position = geometry.getAttribute('position');
         const color = geometry.getAttribute('color');
@@ -873,27 +932,34 @@ function drawSky(colors) {
       const travel = Math.max(0, scroll) * .0355;
       const cell = Math.floor(travel / (spacing * cellsPerUpdate)) * cellsPerUpdate;
       const z = cell * spacing - travel;
-      updateWalls(cell);
+      updateCanyon(cell);
       const x = centerAt(travel) * canyon.scale.x;
-      const height = 2.58 + elevation * 36;
+      const nearGround = floorHeight(0, travel);
+      const aheadGround = floorHeight(0, travel + 14);
+      const ride = 1 - elevation;
+      const height = 2.58 + elevation * 36 + nearGround * ride;
       const angle = THREE.MathUtils.lerp(FEED_ANGLE, ASCENT_ANGLE, elevation);
       camera.position.set(x, height, z);
-      camera.lookAt(THREE.MathUtils.lerp(x, centerAt(travel + 14) * canyon.scale.x, .62), height + Math.tan(angle * Math.PI / 180) * 14, z - 14);
+      camera.lookAt(
+        THREE.MathUtils.lerp(x, centerAt(travel + 14) * canyon.scale.x, .62),
+        height + Math.tan(angle * Math.PI / 180) * 14 + (aheadGround - nearGround) * .52 * ride,
+        z - 14
+      );
       if (horizonColor) {
         const [red, green, blue] = horizonColor;
         fog.color.setRGB(red / 255, green / 255, blue / 255, THREE.SRGBColorSpace);
         horizonTint.copy(fog.color);
         rock.color.copy(rockDay).lerp(rockNight, night).lerp(horizonTint, .25);
-        ground.material.color.copy(groundDay).lerp(groundNight, night).lerp(horizonTint, .25);
-        tracks.material.color.copy(ground.material.color).multiplyScalar(.72);
-        stones.material.color.copy(ground.material.color).lerp(rock.color, .09);
+        groundMaterial.color.copy(groundDay).lerp(groundNight, night).lerp(horizonTint, .25);
+        trackMaterial.color.copy(groundMaterial.color).multiplyScalar(.72);
+        stones.material.color.copy(groundMaterial.color).lerp(rock.color, .09);
         const [edgeRed, edgeGreen, edgeBlue] = skyEdgeColor;
         skyEdge.setRGB(edgeRed / 255, edgeGreen / 255, edgeBlue / 255, THREE.SRGBColorSpace);
         skyTexture.needsUpdate = true;
       }
       // Safari can use the page color for the native scroll edge instead of the canvas.
       if (coarsePointer.matches && (horizonColor || elevation !== previousLift)) {
-        edgeTint.copy(ground.material.color).lerp(skyEdge, elevation);
+        edgeTint.copy(groundMaterial.color).lerp(skyEdge, elevation);
         document.documentElement.style.setProperty('--canyon-live-edge', '#' + edgeTint.getHexString());
       }
       const frames = Math.max(1, now - (lastStarFrame ?? now - SCROLL_FRAME_MS)) / SCROLL_FRAME_MS;
@@ -923,6 +989,7 @@ function drawSky(colors) {
           .92 * smooth(-.02, .04, alt)
         );
       }
+      dust.update({ now, travel, stripOrigin:cell * spacing, elevation, night, groundColor:groundMaterial.color });
       renderer.render(scene, camera);
     };
 
