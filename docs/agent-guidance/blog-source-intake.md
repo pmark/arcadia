@@ -26,7 +26,7 @@ destination is ambiguous, prepare the analysis and ask where to place it.
    review and publication procedure. An intake request authorizes draft
    preparation within its scope.
 
-For Arcadia Field Notes, follow the [site contract](../../site/README.md).
+For Arcadia Field Notes, follow the [site contract](https://github.com/pmark/arcadia/blob/main/site/README.md).
 Use a dated draft in `docs/articles/`, one to three topic slugs, and a source
 entry in `site/_data/resources.yml` linked by post slug. Resources only displays
 sources paired with a published post. Resolve publication separately under
