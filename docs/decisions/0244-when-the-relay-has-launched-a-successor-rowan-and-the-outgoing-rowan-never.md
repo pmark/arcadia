@@ -4,7 +4,7 @@ type: decision
 id: "0244"
 slug: when-the-relay-has-launched-a-successor-rowan-and-the-outgoing-rowan-never
 project: arcadia
-status: open
+status: approved
 question: When the relay has launched a successor Rowan and the outgoing Rowan never stands down (dead, out of context or idle), what completes the custody transfer?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
-updated: 2026-11-17
+updated: 2026-11-16
+answer: A. The relay stands it down
+decided: 2026-11-16
 ---
 
 # Decision 0244: When the relay has launched a successor Rowan and the outgoing Rowan never stands down (dead, out of context or idle), what completes the custody transfer?
