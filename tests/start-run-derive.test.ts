@@ -200,7 +200,7 @@ describe("arcadia start-run derive --verify-card: the press-time CARD_NOT_DERIVE
   ];
   it.each(MUTATIONS)("refuses with CARD_NOT_DERIVED, naming the field, when %s is changed on an otherwise derived card", (_label, edit, field) => {
     const w = world();
-    const { card, descriptorPath } = writeCard(w, edit as never);
+    const { card, descriptorPath } = writeCard(w, edit);
     const before = w.before();
     const result = verify(w, descriptorPath);
     expect(result).toMatchObject({ verified: false, code: "CARD_NOT_DERIVED", derivedCardId: card.id });
