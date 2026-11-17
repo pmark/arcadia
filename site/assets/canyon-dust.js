@@ -8,7 +8,9 @@ export function createCanyonDust(THREE, count, centerAt, floorHeight) {
   ], 3));
   geometry.setIndex([0, 1, 2, 0, 2, 3]);
   const wispCount = Math.ceil(count * .5);
-  const capacity = count + wispCount;
+  const ambientCount = wispCount;
+  const ambientSpacing = 4.8;
+  const capacity = count + wispCount + ambientCount;
   geometry.instanceCount = 0;
   const particles = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
   const currents = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 4), 4).setUsage(THREE.DynamicDrawUsage);
@@ -85,11 +87,11 @@ export function createCanyonDust(THREE, count, centerAt, floorHeight) {
 
   let previousFrame;
   let elapsed = 0;
-  let nextBatch = 1650;
+  let nextBatch = 1000 + Math.random() * 2600;
   let heading;
   let remaining = 0;
   let availableHeadings = [];
-  let batches = [];
+  const batches = [];
 
   function launchBatch(travel) {
     const lead = remaining === 0;
@@ -103,12 +105,14 @@ export function createCanyonDust(THREE, count, centerAt, floorHeight) {
     const angle = heading + (Math.random() - .5) * .32;
     const crosswind = Math.cos(angle);
     const alongwind = Math.sin(angle);
-    const duration = 3550 + Math.random() * 1100;
+    const duration = 7200 + Math.random() * 5100;
     const speed = lead ? .88 + Math.random() * .2 : 1.22 + Math.random() * .26;
     const size = lead ? count : wispCount;
     const origin = travel + (alongwind < -.5 ? 20 : 9);
     batches.push({
-      start:elapsed, duration, speed, lead, origin, crosswind, alongwind,
+      start:elapsed, duration, speed, lead, origin, crosswind, alongwind, drift:0,
+      peaks:[.15 + Math.random() * .2, .48 + Math.random() * .2, .72 + Math.random() * .17],
+      pulseWidth:.04 + Math.random() * .08,
       puffs:Array.from({ length:size }, (_, i) => ({
         along:(i / size) * 28 + Math.random() * 3,
         cross:(Math.random() - .5) * (Math.abs(alongwind) > .5 ? 4.2 : 3),
@@ -117,35 +121,60 @@ export function createCanyonDust(THREE, count, centerAt, floorHeight) {
       }))
     });
     remaining--;
-    // 2.4 seconds is more than half the longest batch lifetime. A third
-    // batch can start as the first expires, with at most two alive at once.
-    nextBatch = elapsed + (remaining ? 2400 + Math.random() * 500 : duration + 650 + Math.random() * 1550);
+    const waveEnd = Math.max(...batches.map(batch => batch.start + batch.duration));
+    nextBatch = remaining ? elapsed + 2200 + Math.random() ** 2 * 5700
+      : waveEnd + 250 + Math.random() ** 2 * 3800;
   }
 
   function update({ now, travel, stripOrigin, elevation, night, groundColor }) {
     // Ignore elapsed wall time while the tab or renderer is paused.
-    elapsed += Math.min(100, now - (previousFrame ?? now));
+    const step = Math.min(100, now - (previousFrame ?? now));
+    elapsed += step;
     previousFrame = now;
-    while (batches.length && elapsed - batches[0].start >= batches[0].duration) batches.shift();
-    if (elapsed >= nextBatch) launchBatch(travel);
-    mesh.visible = batches.length > 0 && elevation < .9;
+    for (let i = batches.length - 1; i >= 0; i--) {
+      if (elapsed - batches[i].start >= batches[i].duration) batches.splice(i, 1);
+    }
+    if (elapsed >= nextBatch && batches.length < 2) launchBatch(travel);
+    mesh.visible = elevation < .9;
     if (!mesh.visible) return;
 
     const { smoothstep } = THREE.MathUtils;
     const aerialFade = 1 - smoothstep(elevation, .18, .9);
     haze.copy(groundColor).lerp(dustLight, .23 - night * .09);
     tint.copy(groundColor).lerp(dustLight, .46 - night * .19);
-    let index = 0;
+    const time = elapsed / 1000;
+    const firstCell = Math.floor(travel / ambientSpacing);
+    // Recycle in world space. New and retired wisps are beyond the fade edges.
+    for (let index = 0; index < ambientCount; index++) {
+      const cell = firstCell + index;
+      const phase = cell * 2.39996;
+      const distance = cell * ambientSpacing + 2.4 + 1.3 * Math.sin(phase + time * .20);
+      const ahead = distance - travel;
+      const offset = 1.65 * Math.sin(phase + time * .23) + .58 * Math.sin(phase * .7 + time * .09);
+      const edge = smoothstep(ahead, 2, 8) * (1 - smoothstep(ahead, (ambientCount - 2) * ambientSpacing, (ambientCount - 1) * ambientSpacing));
+      const density = .13 + .06 * Math.sin(phase + time * .36);
+      particles.setXYZW(index, centerAt(distance) + offset,
+        floorHeight(offset, distance) + .55, stripOrigin - distance, 1.8 + .4 * Math.sin(phase));
+      currents.setXYZW(index, -density * edge * aerialFade, time * .25, .4, .28);
+    }
+
+    let index = ambientCount;
     for (const batch of batches) {
       const age = (elapsed - batch.start) / 1000;
       const progress = age * 1000 / batch.duration;
-      const envelope = smoothstep(progress, 0, .22) * (1 - smoothstep(progress, .47, 1));
-      const opacity = envelope * aerialFade * (batch.lead ? .34 : -.27);
-      const drift = age * batch.speed;
+      const envelope = smoothstep(progress, 0, .14) * (1 - smoothstep(progress, .72, 1));
+      let power = .27;
+      for (const peak of batch.peaks) {
+        const away = (progress - peak) / batch.pulseWidth;
+        power += .82 * Math.exp(-away * away);
+      }
+      const opacity = envelope * (.42 + .58 * Math.min(1.25, power)) * aerialFade * (batch.lead ? .34 : -.27);
+      batch.drift += Math.min(step / 1000, age) * batch.speed * power;
+      const drift = batch.drift;
       const { alongwind, crosswind } = batch;
       for (const { along, cross, height, size } of batch.puffs) {
-        const distance = batch.origin + along + alongwind * (drift * 4.3 - 4);
-        const offset = cross + crosswind * (drift * 1.65 - 3);
+        const distance = batch.origin + along + alongwind * (drift * 3.5 - 4);
+        const offset = cross + crosswind * (drift * 1.15 - 3);
         particles.setXYZW(index, centerAt(distance) + offset,
           floorHeight(offset, distance) + height + progress * .34,
           stripOrigin - distance, size * (1 + progress * .52));
