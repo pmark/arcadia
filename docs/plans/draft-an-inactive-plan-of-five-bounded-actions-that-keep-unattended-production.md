@@ -11,11 +11,11 @@ updated: 2026-11-18
 actions:
   - id: retry-successor-press-when-main-moves
     title: When main moves while the host timer is between derive and press, the timer retires that card and derives a fresh one on a later tick instead of ending the standing grant's loop, so the operator can merge to main freely while production runs.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: When main moves while the host timer is between derive and press, the timer retires that card and derives a fresh one on a later tick instead of ending the standing grant's loop, so the operator can merge to main freely while production runs.
+    next_action: Completed via Agent Ask auto-settle-arcadia-retry-successor-press-when-main-moves-73b81bde0aac; no further action.
     expected_artifact: Evidence satisfying Agent Ask retry-successor-press-when-main-moves
     clarification: clarified
     confidence: high
@@ -120,7 +120,7 @@ actions:
     references: ["src/docs/sync.ts", "src/docs/types.ts", "src/docs/operatorGate.ts", "src/production/startRunSignIn.ts", "src/production/workerClaudeUsageDiagnostic.ts", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md"]
 questions: []
 decisions: []
-current_action: retry-successor-press-when-main-moves
+current_action: repair-mechanical-check-failures-deterministically
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

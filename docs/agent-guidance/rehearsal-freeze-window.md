@@ -29,6 +29,11 @@ the press refuse. `arcadia work monitor` prints `Run window: OPEN` (and
 `runWindow` in `--json`) while production is Active or a card that is not
 consumed or expired pins the local origin/main, naming the card and its
 `expires_at`. While a card waits, hold merges until it is consumed or expires.
+This does not apply to a card the host timer derived (`standing-start-…`) while a
+standing grant is open: a merge to main voids nothing there. The timer retires the
+card, derives a fresh one at the new main on a later tick, and a run of consecutive
+main moves delays the next press by at most 3 derivations
+(`SUCCESSOR_MAIN_MOVED_RETRY_BOUND`); after that the step ends with one ping.
 While production is Active, the rules below apply. It is a signal only: it
 blocks nothing, and `UNKNOWN` means a source could not be read.
 

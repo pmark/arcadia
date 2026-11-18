@@ -3,7 +3,7 @@
   "fingerprints": {
     "continuation": "ee9da1e2887a6a1f021f88cbdf58a0311355f8283aabc42d2c500ff61b05997f",
     "agent-asks": "e321345d3a373048ad8b9f08b9d30d715c67b39780d64187dc5f2ea93e129229",
-    "operator-actions": "89c78fa56898eeb2f9a32b7ed9d704a9a6417d53ddca46fc23223a37defe3417",
+    "operator-actions": "c9e16a7713c325bce2df001308cb7f488219938b087faaed7ac89ec25ddb4e4b",
     "proposals": "2b781df466a30191591790e5029f8107dc9d6e18cc1f1cf264a90cf3d092ac62",
     "principles": "119a74f7aaaa14380943f2a965a3a8f60e71fa01f67483c801bc3be5f9ea0894",
     "pull-requests": "496e22a0f6d838b81f4cea3b5107c46a2ce33b62aa3c699c3ee70c980fb7df45",
@@ -14,7 +14,7 @@
     "working-copy": "ce22e012f54a9b293f4c0fec384254d244bb18362d3a11da892b7155ce28af3b",
     "agent-peer-watch": "135c4f17f412f3e2ff668f69163c32731efb9bbe89bf9a4867516c09f1eda5ed",
     "agent-comms": "4ff1955bb6af94d31c860b6f793bacbb996d26d95984736716096f283165f87d",
-    "rehearsal-freeze-window": "a23c7e64df7433fe1387f5b60209c11b87722e93cefa148c0b16fce7b3209811",
+    "rehearsal-freeze-window": "29b9fc5ed07346dc36a757649d985f25c3b3e130ae59ee0f15dd3605fc211d1a",
     "operator-directed-work": "4e5e1be606bef778bb505d01d29956940560dc4152b404e7c4b33644d9555072",
     "standard-harness": "cf5e97cf70ae9c6c2778d020cde824be20d92f92e122767a05b431962fcd723f",
     "ask-todo-scout": "1bf00104667677704da2c3cb7cbacdc09328cbcf0894b2e1c57a62d5868e52e8",

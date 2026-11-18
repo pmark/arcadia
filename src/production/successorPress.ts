@@ -1,5 +1,5 @@
 import type { DayGrantPressKind } from "../operatorActions/startRunDayGrant.js";
-import { DERIVED_CARD_MAX_ACTIONS, type DeriveResult, type DerivedCard, type FailedBatchClearance } from "../operatorActions/startRunDerive.js";
+import { CARD_NOT_DERIVED, DERIVED_CARD_MAX_ACTIONS, type DeriveResult, type DerivedCard, type FailedBatchClearance } from "../operatorActions/startRunDerive.js";
 import type { ReplayCheck } from "../operatorActions/startRunReplayReceipt.js";
 
 /**
@@ -12,10 +12,15 @@ import type { ReplayCheck } from "../operatorActions/startRunReplayReceipt.js";
 export const SUCCESSOR_STATE_SCHEMA = "arcadia-successor-press-state-v1";
 /** The only slug the step's own Off uses: the CLI composes the request id `rowan-off-<slug>`, which does not end a standing grant. */
 export const SUCCESSOR_OFF_SLUG = "successor-press-scope-complete";
+/** Consecutive main-moved retirements the step tolerates; the next one ends the step with one ping. */
+export const SUCCESSOR_MAIN_MOVED_RETRY_BOUND = 3;
+/** Wall-clock limits of the two checks the step runs on a minted card; `src/commands/productionSuccessor.ts` passes them to the real runs. */
+export const SUCCESSOR_REPLAY_TIMEOUT_MS = 30 * 60_000;
+export const SUCCESSOR_PREFLIGHT_TIMEOUT_MS = 10 * 60_000;
 
 /** Why the step pressed nothing and stays quiet: recorded on the run, never pinged. */
 export type SuccessorSkip =
-  | "GRANT_NOT_OPEN" | "PRODUCTION_NOT_OFF" | "BATCH_NOT_CLEAN" | "MAIN_CHECKS_NOT_GREEN" | "CARD_HELD" | "NOTHING_READY" | "STEP_ENDED" | "ALREADY_PRESSED";
+  | "GRANT_NOT_OPEN" | "PRODUCTION_NOT_OFF" | "BATCH_NOT_CLEAN" | "MAIN_CHECKS_NOT_GREEN" | "CARD_HELD" | "NOTHING_READY" | "STEP_ENDED" | "ALREADY_PRESSED" | "MAIN_MOVED";
 
 export interface SuccessorEnd { code: string; message: string; at: string; press: string | null; pingId: string | null }
 export interface SuccessorState {
@@ -27,6 +32,8 @@ export interface SuccessorState {
   pressed: Array<{ card: string; runId: string; at: string }>;
   /** Policy revisions at which the step issued its scope-complete Off. */
   offs: number[];
+  /** Consecutive cards retired because main moved, with the latest receipt; a press resets the count. */
+  mainMoved?: { count: number; last: { card: string; from: string; to: string; at: string } | null };
 }
 export const emptySuccessorState = (): SuccessorState => ({ schema: SUCCESSOR_STATE_SCHEMA, grant: null, ended: null, pressed: [], offs: [] });
 
@@ -43,6 +50,8 @@ export interface SuccessorPorts {
   production(): SuccessorProduction;
   /** The latest START press and how production's record reads it, or null before any. `unsettled` is a press whose batch has not ended. */
   batch(): { press: string; kind: DayGrantPressKind | "unsettled" } | null;
+  /** origin main now, read at the failing check; null when it cannot be read. */
+  originMain(): string | null;
   mainChecks(): { green: boolean; detail: string };
   /** Governed START card holds that are not yet consumed. */
   holds(): string[];
@@ -76,6 +85,11 @@ export interface SuccessorResult { state: SuccessorState; outcome: SuccessorOutc
 /** Derivation refusals that mean "nothing to press yet" rather than "something is wrong". */
 const QUIET_DERIVATIONS = new Set(["NO_READY_ACTIONS", "OPERATOR_ITEM_FIRST", "PRODUCTION_NOT_INACTIVE", "GRANT_NOT_OPEN"]);
 
+const pinnedRevision = (card: DerivedCard): string | null => {
+  const pins = (card.descriptor as { startRun?: { reviewedRevision?: unknown } }).startRun;
+  return typeof pins?.reviewedRevision === "string" ? pins.reviewedRevision : null;
+};
+
 const refusalPing = (code: string, message: string, grant: string): string =>
   `🚨 Successor press refused (${code}): ${message.slice(0, 300)} The step is ended for standing grant ${grant}; nothing was pressed.`;
 
@@ -95,7 +109,7 @@ function offAtScopeComplete(ports: SuccessorPorts, state: SuccessorState): { iss
 export function runSuccessorPressStep(ports: SuccessorPorts, prior: SuccessorState): SuccessorResult {
   const grant = ports.grant();
   const grantKey = grant.open && grant.approvalCard && grant.approvalRun ? `${grant.approvalCard}/${grant.approvalRun}` : null;
-  let state: SuccessorState = grantKey !== null && prior.grant === grantKey ? { ...prior, pressed: [...prior.pressed], offs: [...prior.offs] } : { ...emptySuccessorState(), grant: grantKey };
+  let state: SuccessorState = grantKey !== null && prior.grant === grantKey ? { ...prior, pressed: [...prior.pressed], offs: [...prior.offs], ...(prior.mainMoved ? { mainMoved: { ...prior.mainMoved } } : {}) } : { ...emptySuccessorState(), grant: grantKey };
   const skip = (reason: SuccessorSkip, detail: string, offIssued = false): SuccessorResult => ({ state, outcome: { kind: "skipped", reason, detail, offIssued } });
   if (grantKey === null) return skip("GRANT_NOT_OPEN", "no standing grant is open");
 
@@ -116,6 +130,20 @@ export function runSuccessorPressStep(ports: SuccessorPorts, prior: SuccessorSta
   const { issued: offIssued, production } = offAtScopeComplete(ports, state);
   const refuse = (code: string, message: string, press: string | null, minted: DerivedCard | null = null): SuccessorResult => {
     if (minted) ports.retire(minted.id);
+    if (minted && (code === CARD_NOT_DERIVED || code === "ORIGIN_MOVED")) {
+      // Retryable only when main itself moved since the card was pinned; the same code with main unchanged stays sticky.
+      const from = pinnedRevision(minted);
+      let to: string | null;
+      try { to = ports.originMain(); } catch { to = null; }
+      if (from !== null && to !== null && from !== to) {
+        const count = (state.mainMoved?.count ?? 0) + 1;
+        if (count <= SUCCESSOR_MAIN_MOVED_RETRY_BOUND) {
+          state = { ...state, mainMoved: { count, last: { card: minted.id, from, to, at: ports.now.toISOString() } } };
+          return skip("MAIN_MOVED", `retired ${minted.id}: main moved ${from.slice(0, 12)} -> ${to.slice(0, 12)} before the press (${code}); a fresh card is derived on a later tick (retry ${count} of ${SUCCESSOR_MAIN_MOVED_RETRY_BOUND})`);
+        }
+        message = `main moved ${from.slice(0, 12)} -> ${to.slice(0, 12)} on more than ${SUCCESSOR_MAIN_MOVED_RETRY_BOUND} consecutive derivations (retry bound); last refusal ${code}: ${message}`;
+      }
+    }
     // The end is recorded before the page is queued, so a failed queue is retried next run under the same key.
     const ended: SuccessorEnd = { code, message, at: ports.now.toISOString(), press, pingId: null };
     state = { ...state, ended };
@@ -151,7 +179,7 @@ export function runSuccessorPressStep(ports: SuccessorPorts, prior: SuccessorSta
   if (state.pressed.some((entry) => entry.card === card.id)) return skip("ALREADY_PRESSED", `card ${card.id} was already pressed`, offIssued);
 
   // Mint, check and press in this one run: a failed check retires the card, so the library never holds an unpressed one past
-  // its 10-minute lifetime.
+  // its lifetime.
   ports.mint(card);
   const replay = ports.replay(card);
   if (!replay.ok) return refuse(replay.code ?? "REPLAY_REQUIRED", replay.detail, batch?.press ?? null, card);
@@ -160,6 +188,6 @@ export function runSuccessorPressStep(ports: SuccessorPorts, prior: SuccessorSta
   if (!preflight.ok) return refuse(preflight.code, preflight.message, batch?.press ?? null, card);
   const pressed = ports.press(card.id);
   if (!pressed.ok) return refuse(pressed.code, pressed.message, batch?.press ?? null, card);
-  state = { ...state, pressed: [...state.pressed, { card: card.id, runId: pressed.runId, at: ports.now.toISOString() }] };
+  state = { ...state, pressed: [...state.pressed, { card: card.id, runId: pressed.runId, at: ports.now.toISOString() }], mainMoved: { count: 0, last: state.mainMoved?.last ?? null } };
   return { state, outcome: { kind: "pressed", card: card.id, runId: pressed.runId, actions: card.actions, offIssued } };
 }

@@ -11,8 +11,8 @@ import { validateDayGrantPrevious, type DayGrantDelegation, type DayGrantPreviou
  * the `arcadia start-run derive` command only gathers its input. It writes nothing and grants nothing: a card is still pressed
  * under the standing grant by the existing checks.
  */
-/** The one card lifetime: a derived card may wait this long unpressed. */
-export const DERIVED_CARD_LIFETIME_MS = 10 * 60_000;
+/** The one card lifetime: a derived card may wait this long unpressed. It covers the successor step's replay and preflight timeouts. */
+export const DERIVED_CARD_LIFETIME_MS = 40 * 60_000;
 /** Most Actions one card pins (the pins validator's bound). */
 export const DERIVED_CARD_MAX_ACTIONS = 12;
 export const DERIVED_CARD_ID_PREFIX = "standing-start-";
