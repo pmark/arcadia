@@ -740,6 +740,16 @@ describe("the launchd agent", () => {
     expect(existsSync(fixture.plistPath())).toBe(true);
   });
 
+  it("reads Off from a status as large as the live one (no SIGPIPE false refusal under pipefail)", () => {
+    const fixture = host({ release: true });
+    const admissions = Array.from({ length: 4000 }, (_, i) => ({ id: `padm_${i}`, requestId: `worker-tick-${"x".repeat(80)}-${i}`, status: "fenced" }));
+    writeFileSync(fixture.statusFile, JSON.stringify({ ok: true, data: { read: { status: "ok", policy: { desiredState: "inactive" } }, admissions } }, null, 2));
+    const result = fixture.run("liveness");
+    expect(result.stderr).not.toContain("production is not Off");
+    expect(result.status).toBe(0);
+    expect(existsSync(fixture.plistPath())).toBe(true);
+  });
+
   it("is the only checked-in source that writes the liveness plist", () => {
     const writers = execFileSync("git", ["-C", repo, "grep", "-l", "write_liveness_plist", "--", "scripts", "src", "apps"], { encoding: "utf8" }).trim().split("\n").sort();
     expect(writers).toEqual(["scripts/lib/liveness-agent.sh", "scripts/restart-services-impl.sh"]);
