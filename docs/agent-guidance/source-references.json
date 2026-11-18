@@ -1,5 +1,5 @@
 {
-  "revision": "93249f6da546dd4494c59ff31b18eed031bdb029",
+  "revision": "dba58e4c70f4c01db5b2d26583bbf017053a03ab",
   "files": {
     ".agents/skills/arcadia-design/SKILL.md": "37fed7099f77d43fef3f1a69f3ea1ce8a8448593b10495ab913d5a789e4d27e6",
     ".agents/skills/arcadia-hacker/SKILL.md": "b91ec2dd3d0870d36ef7b66679605de3948a9337a1fc9692997032126fcc6d1f",
@@ -7,7 +7,7 @@
     ".agents/skills/arcadia-relay/SKILL.md": "51d81c050a995a939ab919e927e0f6ff243fea8fce5494a1e60c50437db9f9aa",
     ".agents/skills/arcadia-release-investigator/SKILL.md": "22718d4524ee7dfedd9004f7fa8094c5ebcbe1b645dd183c67b901443c661fba",
     ".agents/skills/arcadia-role/SKILL.md": "36ef4109efd84c928b0fd0a12c811e1e526c83e713ba531925358c81e998492e",
-    ".agents/skills/arcadia-signal/SKILL.md": "bb3b0de5971e00449ead7a5e66621acd6d2cde6ffa502b9a459c6844de8127b6",
+    ".agents/skills/arcadia-signal/SKILL.md": "2b0ffe273b5a66713174a8256e038d91404c96848c85401c7934a7a39acdda13",
     ".agents/skills/arcadia-supervisor/SKILL.md": "3e6f0df13aed6c54f171390a781944a81dfa91f65ca78cdd5d2b26f2cfc36d81",
     "docs/AGENT_ORIENTATION.md": "e9e6d5ad3a12946281275bf59645fc712404bc921ecaa847e84830bcd9bdcc91",
     "docs/COMMANDS.md": "204e0cdc2ad792887ec646f534c1e63c6873155498289c4fabb2e558241d3e1d",
