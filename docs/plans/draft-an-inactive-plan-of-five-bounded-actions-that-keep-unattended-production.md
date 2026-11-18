@@ -188,14 +188,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask reconcile-current-action-after-a-base-merge
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
     why: "Issue #2780: after #2745 merged, #2746's base merge kept a current_action that #2746 had marked done, failing the managed-documents contract and stalling the batch about 5 hours; the host refused the two-line hand fix."
     acceptance_criteria:
       - A test merges two sibling batch candidates in either order and shows main ends with a single valid current Action, with no manual edit.
       - The reconcile is the same governed implementation the stale-current-action repair class of repair-mechanical-check-failures-deterministically uses; a test or code reference shows there is one implementation, not two.
       - "A recorded fixture of the #2746 state (c23c38232 merged with main) passes tests/managed-documents-contract.test.ts after the reconcile."
       - No agent or operator hand-edits a pointer; the guidance names the governed command or settlement step that performs the reconcile.
-    depends_on: [repair-mechanical-check-failures-deterministically]
+    depends_on: [repair-mechanical-check-failures-deterministically, require-pre-pr-before-every-pull-request]
     decisions: []
     references: ["src/ask/settlement.ts", "src/dispatch/pointer.ts", "tests/managed-documents-contract.test.ts"]
   - id: keep-pointer-commits-mergeable-across-a-date-change
@@ -208,14 +208,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask keep-pointer-commits-mergeable-across-a-date-change
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
     why: "Issue #2029: a date rollover makes updated: (next to current_action in PROJECT.md) conflict even when both sides agree on the pointer, leaving local main ahead and behind and blocking make-next and START."
     acceptance_criteria:
       - "A test reproduces the recorded shape (local main ahead and behind, with the only conflict being updated: in PROJECT.md across a date change while both sides name the same current_action) and shows the reconcile completes without a hand merge."
       - "The fix is the smaller one Issue #2029 names: settlement or pointer commits stop producing a conflicting updated: next to current_action, or the existing reviewed resolver runs as a validated host step. arcadia go still never resolves a conflict itself, shown by its existing tests passing unchanged."
       - "If neither smaller fix satisfies the first criterion, the Action stops and submits a proposal for an operator Decision about the #2023 boundary instead of changing it."
       - "Issue #2029 is closed citing the merged PR."
-    depends_on: []
+    depends_on: [require-pre-pr-before-every-pull-request]
     decisions: []
     references: ["src/git/pointerReconcile.ts", "src/ask/settlement.ts", "src/production/tick.ts"]
   - id: accept-registration-after-a-recorded-stand-down
@@ -228,14 +228,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask accept-registration-after-a-recorded-stand-down
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
     why: "Issue #2781: Rowan 20's registration kept refusing because cross-session messages kept writing Rowan 19's transcript inside the freshness window, and the operator had to archive Rowan 19 by hand."
     acceptance_criteria:
       - A test shows register succeeds immediately after a recorded stand-down even when the predecessor's transcript is written within the freshness window afterwards.
       - A test shows a TAKE CUSTODY ACK naming the successor has the same effect, and an ACK naming a different session does not.
       - Without a recorded stand-down or a matching ACK, the existing custodian_session_live refusal is unchanged; the existing coordinator tests pass.
       - "Issue #2781 is closed citing the merged PR."
-    depends_on: []
+    depends_on: [require-pre-pr-before-every-pull-request]
     decisions: []
     references: ["src/commands/coordinator.ts", "src/coordinator/generations.ts", "src/coordinator/state.ts"]
   - id: explain-the-ping-length-limit
@@ -248,13 +248,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask explain-the-ping-length-limit
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
     why: "Issue #2782: an evening digest over 500 characters failed with only '[ELIFECYCLE] Command failed with exit code 2'."
     acceptance_criteria:
       - A test shows a 501-character message exits non-zero with exactly one stderr line of the form 'message is 501 characters; the limit is 500', and nothing is queued.
       - A test shows a 500-character message is accepted unchanged; the message is never silently truncated.
       - "Issue #2782 is closed citing the merged PR."
-    depends_on: []
+    depends_on: [require-pre-pr-before-every-pull-request]
     decisions: []
     references: ["src/commands/ping.ts", "src/ping/operatorPing.ts"]
   - id: wire-mechanical-repair-into-production
@@ -267,7 +267,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask wire-mechanical-repair-into-production
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
     why: "#2777 merged mechanicalRepair.ts with no caller outside the module, yet its Action was marked done; the operator chose option B on 2026-11-17 to wire it in this amendment."
     acceptance_criteria:
       - "An integration test drives the worker tick (not the library alone) with the recorded #2752 and #2766 check failures and shows one deterministic round runs, commits and pushes a production-owned head to the candidate branch. With the recorded #2758 and #2765 failures, the same test shows a hand-off to repair-red-candidates-with-a-bounded-session without running any generator."
@@ -276,9 +276,163 @@ actions:
       - A repository test fails if src/production/mechanicalRepair.ts has no caller outside tests, so an unwired repair library cannot be marked done again.
       - Proposal agentask_abd3a5e65938083517 is recorded as absorbed, with its receipt id cited in this Action's completion evidence.
       - Each criterion's completion evidence names the integration test, the repository test or the receipt that proves it, not a unit test of the library.
-    depends_on: []
+    depends_on: [treat-fingerprint-fold-ins-as-governance-records, require-pre-pr-before-every-pull-request]
     decisions: []
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/production/mechanicalRepair.ts", "tests/mechanical-repair.test.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md"]
+  - id: launch-past-a-merged-handoff
+    title: Preparing a new Action's Session is no longer refused by an incomplete resumable handoff of a different Action whose branch is already merged into the base; that handoff is superseded instead, while an unmerged handoff still blocks.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Preparing a new Action's Session is no longer refused by an incomplete resumable handoff of a different Action whose branch is already merged into the base; that handoff is superseded instead, while an unmerged handoff still blocks.
+    expected_artifact: Evidence satisfying Agent Ask launch-past-a-merged-handoff
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    why: "src/sessions/index.ts:694 refuses Action B while Action A's handoff worktree exists, even after A's branch merged, which stops a serial night between Actions (Mira, 2026-11-18)."
+    acceptance_criteria:
+      - A test with an incomplete_resumable handoff for Action A whose branch is an ancestor of, or patch-equivalent to, the base, with its worktree still present, shows preparing Action B succeeds and the handoff is superseded through the existing supersede path with a receipt naming the merge evidence.
+      - A control test with an unmerged branch and its worktree present still refuses with today's message.
+      - Patch equivalence is decided deterministically from git (ancestry or patch-id), and a test covers a merge-commit and a squash-merged branch.
+    depends_on: []
+    decisions: []
+    references: ["src/sessions/index.ts"]
+  - id: supersede-an-older-pending-completion-ask
+    title: When a later completion Ask for the same Action settles or its evidence completes, an older pending completion Ask for that Action is recorded as superseded, so it no longer holds the Action at operator_gate_pending ahead of auto-settle.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: When a later completion Ask for the same Action settles or its evidence completes, an older pending completion Ask for that Action is recorded as superseded, so it no longer holds the Action at operator_gate_pending ahead of auto-settle.
+    expected_artifact: Evidence satisfying Agent Ask supersede-an-older-pending-completion-ask
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    why: "An older pending complete Ask gates the Action as operator_gate_pending (src/docs/operatorGate.ts:115, src/sessions/index.ts:435-468) before auto-settle runs (src/production/tick.ts:2908); this extends #2786."
+    acceptance_criteria:
+      - A test with two pending complete proposals for one Action, the older failing criteria and the newer clean, shows auto-settle settles the newer, records the older as superseded with a receipt, and the Action no longer reads operator_gate_pending.
+      - A control test with a single pending complete Ask that fails criteria still gates the Action exactly as today.
+      - Asks that open or carry a Decision, and non-completion intents, are never superseded by this rule; a test shows both.
+      - "#2786 is cited in the PR and updated with the merged change."
+    depends_on: []
+    decisions: []
+    references: ["src/docs/operatorGate.ts", "src/sessions/index.ts", "src/production/tick.ts", "src/ask/autoSettleBeforeDispatch.ts"]
+  - id: treat-fingerprint-fold-ins-as-governance-records
+    title: A fold-in commit that changes only docs/agent-guidance/fingerprints.json after a completion Ask's candidate revision no longer makes auto-settle return AUTO_SETTLE_REVISION_CHANGED, while any change to a guidance document still does.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: A fold-in commit that changes only docs/agent-guidance/fingerprints.json after a completion Ask's candidate revision no longer makes auto-settle return AUTO_SETTLE_REVISION_CHANGED, while any change to a guidance document still does.
+    expected_artifact: Evidence satisfying Agent Ask treat-fingerprint-fold-ins-as-governance-records
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    why: "GOVERNANCE_RECORD_PATHS in src/ask/autoSettleBeforeDispatch.ts omits fingerprints.json, so every fingerprint-only fold-in, including each mechanical repair round, blocks auto-settle."
+    acceptance_criteria:
+      - GOVERNANCE_RECORD_PATHS includes docs/agent-guidance/fingerprints.json, and a test shows a commit that changes only that file after the candidate revision settles cleanly.
+      - A test shows a commit that changes any guidance document, or fingerprints.json together with any other non-record path, still returns AUTO_SETTLE_REVISION_CHANGED.
+      - The worker still reviews and merges only at the exact final head; the existing independent-review tests pass unchanged.
+    depends_on: []
+    decisions: []
+    references: ["src/ask/autoSettleBeforeDispatch.ts", "docs/agent-guidance/fingerprints.json"]
+  - id: add-a-guidance-refresh-command
+    title: "A `pnpm guidance:refresh` command refreshes the fingerprint of named or all stale guidance documents with the same fingerprint function the guidance check uses, so a stale-fingerprint failure has a one-line fix and nobody hand-edits fingerprints.json."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "A `pnpm guidance:refresh` command refreshes the fingerprint of named or all stale guidance documents with the same fingerprint function the guidance check uses, so a stale-fingerprint failure has a one-line fix and nobody hand-edits fingerprints.json."
+    expected_artifact: Evidence satisfying Agent Ask add-a-guidance-refresh-command
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    why: "A stale docs/agent-guidance/fingerprints.json entry was a hand fix on #2766, #2776 and others; notes-to-self says never hand-edit fingerprints."
+    acceptance_criteria:
+      - "`pnpm guidance:refresh [<doc>…]` rewrites only the fingerprints of the named stale documents (or all stale ones with no argument), using the fingerprint function that check:agent-guidance uses; a test shows its output then passes check:agent-guidance."
+      - It reuses that function and the refresh logic of src/production/mechanicalRepair.ts (refreshCandidateGuidanceFingerprints) rather than a second implementation; a test or code reference shows the shared function.
+      - It changes nothing when no fingerprint is stale and exits zero; a test covers it.
+    depends_on: []
+    decisions: []
+    references: ["src/projects/agentGuidance.ts", "src/production/mechanicalRepair.ts", "docs/agent-guidance/fingerprints.json", "package.json"]
+  - id: add-a-pre-pr-check-that-mirrors-ci
+    title: "`pnpm pre-pr` runs, fail-fast and locally, the CI-equivalent checks that have turned production candidates red, and prints for each failure the exact command or edit that fixes it."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "`pnpm pre-pr` runs, fail-fast and locally, the CI-equivalent checks that have turned production candidates red, and prints for each failure the exact command or edit that fixes it."
+    expected_artifact: Evidence satisfying Agent Ask add-a-pre-pr-check-that-mirrors-ci
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    why: "Eight of eight production candidates since 2026-11-15 went red on checks a local run would have caught, each costing a hand fix and a CI cycle."
+    acceptance_criteria:
+      - "scripts/pre-pr.ts and a package.json \"pre-pr\" script run, in order and stopping at the first failure: check:agent-guidance (fingerprints and the bootstrap and default-loading instruction caps), eslint on the files changed against origin/main, tsc --noEmit, tests/authority-classifier-coverage.test.ts, check:operator-scripts, check:plan-close-outs and check:frozen-records."
+      - "Each failure prints one fix line: `pnpm guidance:refresh <doc>` for a stale fingerprint; the cap, the measured bytes and the file for an instruction-cap overflow; `pnpm exec eslint --fix <files>` for auto-fixable lint; file:line for type errors; and, for a new src file missing from src/decisions/batchMerge.ts, the file and a most-restrictive classification entry to add."
+      - tests/pre-pr.test.ts builds a temporary repository fixture with an edited guidance document and an unclassified new src file. pre-pr fails naming both with their fix commands, and after applying those commands it passes.
+      - "The recorded failures of #2752 (lint), #2766 (guidance fingerprint) and #2744 (classification) each reproduce as a pre-pr failure with the correct fix line, shown by fixtures."
+    depends_on: [add-a-guidance-refresh-command]
+    decisions: []
+    references: ["package.json", "scripts/check-agent-guidance.ts", "scripts/check-operator-scripts.ts", "scripts/check-plan-close-outs.ts", "scripts/check-frozen-records.ts", "tests/authority-classifier-coverage.test.ts", "src/decisions/batchMerge.ts"]
+  - id: inspect-stale-completion-candidate-revision
+    title: Determine whether an auto-settled completion Ask keeps a stale candidate_revision when a hand fix moves the candidate head, and either fix it so the recorded revision is the merged head or record with evidence that it does not occur.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Determine whether an auto-settled completion Ask keeps a stale candidate_revision when a hand fix moves the candidate head, and either fix it so the recorded revision is the merged head or record with evidence that it does not occur.
+    expected_artifact: Evidence satisfying Agent Ask inspect-stale-completion-candidate-revision
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    why: "Hypothesis from Mira's 2026-11-17 review: completion Asks are settled at the pre-fix head (e.g. 574a2327c before fix 82b87b043), which may misstate what was completed."
+    acceptance_criteria:
+      - "A fixture replays #2777's sequence (auto-settle at the preserved candidate, then a fix commit, then merge) and shows which revision the completion record names."
+      - If the record names a pre-fix head, a failing-first test then passes with the completion record naming the merged head, or with a recorded refresh when the head moves; otherwise the finding and the fixture are recorded in docs/notes-to-self.md and no code changes.
+      - Either outcome is cited on a new or existing Issue.
+    depends_on: []
+    decisions: []
+    references: ["src/ask/settlement.ts", "src/production/tick.ts", "MISSION_LOG.md"]
+  - id: correct-usage-refresh-and-assert-capacity-freshness
+    title: docs/managed-production-readiness.md states truthfully that the worker refreshes Claude usage before admission, and the START press runbook asserts after activation that the worker's capacity reading is newer than the press.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: docs/managed-production-readiness.md states truthfully that the worker refreshes Claude usage before admission, and the START press runbook asserts after activation that the worker's capacity reading is newer than the press.
+    expected_artifact: Evidence satisfying Agent Ask correct-usage-refresh-and-assert-capacity-freshness
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    why: "docs/managed-production-readiness.md:515 says the worker never refreshes Claude usage before admission, but src/commands/worker.ts:1122 calls refreshClaudeUsageBeforeAdmission."
+    acceptance_criteria:
+      - docs/managed-production-readiness.md no longer says the worker never refreshes Claude usage before admission, and cites src/commands/worker.ts preAdmission (refreshClaudeUsageBeforeAdmission).
+      - "The START press runbook in docs/agent-guidance/operator-actions.md gains one post-activation step: confirm the worker's Claude usage reading is newer than the press time, naming the command that shows it, and what to do when it is not."
+      - "Guidance fingerprints and instruction caps pass check:agent-guidance after the edit."
+    depends_on: []
+    decisions: []
+    references: ["docs/managed-production-readiness.md", "src/commands/worker.ts", "docs/agent-guidance/operator-actions.md"]
+  - id: require-pre-pr-before-every-pull-request
+    title: Every build Session's brief and the pull-request procedure require `pnpm pre-pr` to pass before a pull request is opened or pushed, with its output cited in the PR description.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Every build Session's brief and the pull-request procedure require `pnpm pre-pr` to pass before a pull request is opened or pushed, with its output cited in the PR description.
+    expected_artifact: Evidence satisfying Agent Ask require-pre-pr-before-every-pull-request
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    why: "A local check only helps if the build Session runs it before the PR; today the brief and procedure do not ask for it."
+    acceptance_criteria:
+      - The build Session brief composed for a production candidate contains one line requiring `pnpm pre-pr` before opening or pushing a PR; a test asserts the line in a composed brief.
+      - "docs/agent-guidance/pull-requests.md gains a criterion requiring a passing `pnpm pre-pr` with its output cited in the PR description, and its index entry and fingerprint are refreshed with `pnpm guidance:refresh`; check:agent-guidance, including the bootstrap cap, passes."
+      - The next production candidate after this merges shows pre-pr output in its PR description, and that PR's evidence is cited when the Plan completes.
+    depends_on: [add-a-pre-pr-check-that-mirrors-ci]
+    decisions: []
+    references: ["src/codex/packets.ts", "docs/agent-guidance/pull-requests.md", "docs/agent-guidance/index.json"]
 questions: []
 decisions: []
 current_action: reconcile-current-action-after-a-base-merge
