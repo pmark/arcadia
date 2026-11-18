@@ -395,7 +395,17 @@ pinned descriptor, so per-card review is small.
   records `{cause, premortem, fix:{pullRequest, commit, reproduction}}` (recorded,
   not machine-proved). Any refusal pings once with its code and ends the step for
   that grant (`<workspace>/.arcadia/successor-press.json`); a replay of the step
-  adds no press and no ping. The flag is opt-in on the timer's plist.
+  adds no press and no ping. The flag is set by the checked-in liveness step
+  (`services.sh liveness`, `install_liveness_agent` in
+  `scripts/restart-services-impl.sh`): its plist `ProgramArguments` are
+  `production liveness-check --successor-press` (plus `--dashboard-url` and
+  `--stale-seconds` when set), run from the installed go-broker release. The step
+  refuses, naming the release and `ddfae2b62`, when that release does not contain
+  the main-moved retry commit (`ARCADIA_LIVENESS_REQUIRED_COMMIT` overrides it for
+  tests), and refuses with "production is not Off" unless `production status`
+  reads Off. The existing timer stays in place on a refusal. No standing-grant
+  press is expected from the timer until the live proof Action
+  (`press-successor-cards-from-the-host-timer`) is done.
   The one exception is main moving between derive and press: when a
   `CARD_NOT_DERIVED` (at replay, preflight or press) or origin-moved refusal finds
   the card's pinned main revision differs from origin main read at that check, the
