@@ -18,6 +18,7 @@ GitHub Pages; AMC ([arcadiamissioncontrol.com](https://arcadiamissioncontrol.com
   verdict line decides, anything else refuses). Every other article (drafts included) is skipped and listed in the
   build log. `README.md`, `templates/` and `receipts/` are not posts. Articles are
   never edited by the build.
+- **Archive-only placement:** `archive_only: true` keeps a published post off the home page. It remains in the archive, topic pages, author page and full-text feed. Posts without this field keep their existing home-page placement.
 - **Unpublish:** set the post's `status: withdrawn` (keep the file and receipt)
   and merge; the next deploy removes the page and its feed item.
 - `node site/stage.mjs <dir>` copies this directory and the posts into `<dir>`,

@@ -14,9 +14,10 @@ canyon: true
     <a class="start-link" href="{{ '/authors/' | relative_url }}">Meet the authors <span aria-hidden="true">↗</span></a>
   </div>
 </div>
-{% if site.posts.size > 0 %}
+{% assign homepage_posts = site.posts | where_exp: "post", "post.archive_only != true" %}
+{% if homepage_posts.size > 0 %}
 <ul class="posts" aria-label="Field Notes dispatches">
-{% for post in site.posts %}
+{% for post in homepage_posts %}
   {% assign rw = post.writer | default: 'arcadia' %}
   <li data-writer="{{ rw | escape }}">
     <article>
