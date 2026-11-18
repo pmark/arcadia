@@ -435,7 +435,7 @@ actions:
     references: ["src/codex/packets.ts", "docs/agent-guidance/pull-requests.md", "docs/agent-guidance/index.json"]
 questions: []
 decisions: []
-current_action: reconcile-current-action-after-a-base-merge
+current_action: launch-past-a-merged-handoff
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
