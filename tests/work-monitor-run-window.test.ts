@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { renderWorkMergeCheckSuccess, renderWorkMonitorSuccess, runWorkMergeCheckCommand } from "../src/commands/workMonitor.js";
 import { withDatabase } from "../src/db/connection.js";
 import { activateProduction, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
-import { formatRunWindowLines, holdStartCard, mergeFreezeRefusal, observeRunWindow, type RunWindowDeps, unholdStartCard } from "../src/workMonitoring/runWindow.js";
+import { formatRunWindowLines, holdStartCard, libraryMergeFreeze, mergeFreezeRefusal, observeRunWindow, readMergeOverride, recordMergeOverride, type RunWindowDeps, unholdStartCard, workerMergeFreeze } from "../src/workMonitoring/runWindow.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const MAIN = "a".repeat(40);
@@ -304,6 +304,67 @@ describe("work monitor run window held START cards", () => {
       expect(refused.data).toMatchObject({ refused: true, refusal: { code: "start_card_waiting" } });
       expect(renderWorkMergeCheckSuccess(refused)[0]).toMatch(/^MERGE REFUSED \(start_card_waiting\).*start-run-waiting/);
       expect(readdirSync(library).sort()).toEqual([...before, "start-run-waiting.json"].sort());
+    });
+
+    it("refuses with 'merge freeze: card <id> pinned to <sha>' and the card survives", () => {
+      card("start-run-waiting");
+      const refusal = mergeFreezeRefusal(observe());
+      expect(refusal?.message).toContain(`merge freeze: card start-run-waiting pinned to ${MAIN.slice(0, 12)}`);
+      expect(existsSync(path.join(library, "start-run-waiting.json"))).toBe(true);
+      expect(existsSync(path.join(library, "start-run-waiting.consumed.json"))).toBe(false);
+    });
+
+    it("lifts on press, expiry and retirement", () => {
+      card("start-run-waiting");
+      expect(mergeFreezeRefusal(observe())).not.toBeNull();
+      writeFileSync(path.join(library, "start-run-waiting.consumed.json"), JSON.stringify({ state: "CONSUMED" })); // press
+      expect(mergeFreezeRefusal(observe())).toBeNull(); // a merge the run itself makes after the press is never refused
+      rmSync(path.join(library, "start-run-waiting.consumed.json"));
+      expect(mergeFreezeRefusal(observe(deps({ now: () => new Date("2026-11-06T00:00:00Z") })))).toBeNull(); // expiry
+      rmSync(path.join(library, "start-run-waiting.json")); // retired
+      expect(mergeFreezeRefusal(observe())).toBeNull();
+    });
+
+    it("never refuses for the merge's own card, a timer-derived card, or a card pinned to an older main", () => {
+      card("start-run-batch");
+      expect(mergeFreezeRefusal(observe(), { ownCardIds: ["start-run-batch"] })).toBeNull();
+      rmSync(path.join(library, "start-run-batch.json"));
+      card("standing-start-abc");
+      expect(mergeFreezeRefusal(observe())).toBeNull();
+      card("start-run-old", { reviewedRevision: OLD });
+      expect(mergeFreezeRefusal(observe())).toBeNull();
+    });
+
+    it("an operator override names the card and the PR and lets only that PR through", () => {
+      card("start-run-waiting");
+      const receipt = recordMergeOverride(library, "start-run-waiting", { pr: 7, reason: "operator said merge it", evidence: "docs/x.md", authorizedBy: "operator chat" }, NOW);
+      expect(receipt).toMatchObject({ card: "start-run-waiting", pr: 7 });
+      const opts = (pr: number) => ({ pr, now: NOW, readOverride: (c: string, p: number) => readMergeOverride(library, c, p) });
+      expect(mergeFreezeRefusal(observe(), opts(7))).toBeNull();
+      expect(mergeFreezeRefusal(observe(), opts(8))?.message).toContain("merge freeze: card start-run-waiting");
+      expect(mergeFreezeRefusal(observe(), { ...opts(7), now: new Date(NOW.getTime() + 31 * 60 * 1000) })).not.toBeNull();
+      // The receipt file is not mistaken for a card.
+      expect(mergeFreezeRefusal(observe(), opts(7))).toBeNull();
+      const checked = runWorkMergeCheckCommand({ workspace, pr: 7, runWindowDeps: deps() });
+      expect(checked.data.refused).toBe(false);
+      expect(() => recordMergeOverride(library, "start-run-missing", { pr: 7, reason: "r", evidence: "docs/x.md", authorizedBy: "a" }, NOW)).toThrow(/missing/);
+    });
+
+    it("the batch gate refuses another pinned card, but not its own, a derived card or an overridden PR", () => {
+      card("start-run-other");
+      expect(libraryMergeFreeze(deps(), { pr: 3, ownCardIds: ["batch-card"] })?.message).toContain("merge freeze: card start-run-other pinned to");
+      expect(libraryMergeFreeze(deps(), { pr: 3, ownCardIds: ["start-run-other"] })).toBeNull();
+      recordMergeOverride(library, "start-run-other", { pr: 3, reason: "r", evidence: "docs/x.md", authorizedBy: "a" }, NOW);
+      expect(libraryMergeFreeze(deps(), { pr: 3 })).toBeNull();
+      expect(libraryMergeFreeze(deps(), { pr: 4 })).not.toBeNull();
+    });
+
+    it("the worker gate refuses for a waiting card only", () => {
+      card("start-run-waiting");
+      expect(withDatabase(workspace, (db) => workerMergeFreeze(db, library, deps()))?.message).toContain("merge freeze: card start-run-waiting");
+      rmSync(path.join(library, "start-run-waiting.json"));
+      card("standing-start-abc");
+      expect(withDatabase(workspace, (db) => workerMergeFreeze(db, library, deps()))).toBeNull(); // timer-derived: re-derived, never frozen
     });
 
     it("the CLI exits 1 only when it refuses, 0 when clear", () => {

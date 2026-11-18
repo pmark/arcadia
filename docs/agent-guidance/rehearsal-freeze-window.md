@@ -34,8 +34,30 @@ standing grant is open: a merge to main voids nothing there. The timer retires t
 card, derives a fresh one at the new main on a later tick, and a run of consecutive
 main moves delays the next press by at most 3 derivations
 (`SUCCESSOR_MAIN_MOVED_RETRY_BOUND`); after that the step ends with one ping.
-While production is Active, the rules below apply. It is a signal only: it
-blocks nothing, and `UNKNOWN` means a source could not be read.
+While production is Active, the rules below apply. `arcadia work monitor` is a
+signal only: it blocks nothing, and `UNKNOWN` means a source could not be read.
+
+### Agent merge gate
+
+Every agent merge path to main calls the gate first and refuses with
+`merge freeze: card <id> pinned to <sha>` while a per-run START or activation card is
+pinned and unpressed: the worker merge (`merge_freeze` refusal), the batch-merge card
+script, and the merge step the nightshift and arcadia-signal skills and Momentum
+Keeper sessions follow, `arcadia work merge-check --pr <n>` (exit 1 refuses; run it
+immediately before `gh pr merge`). The freeze lifts when the card is pressed
+(consumed), expires, is retired or held (`arcadia start-run hold`). A merge the run
+itself makes is never refused: its card is already pressed, and a batch's own card is
+excluded. A timer-derived standing-grant card and a running batch freeze nothing.
+
+The operator may override one merge: `arcadia work merge-override --card <id> --pr <n>
+--reason ... --evidence ... --authorized-by ...` writes a receipt naming the card and
+the PR, valid for 30 minutes and for that PR only; the agent then passes
+`merge-check --pr <n>`. An agent never records an override on its own say-so.
+
+The gate blocks only agent merge paths. It never blocks the operator's own GitHub
+merges and changes no branch protection. Revival trigger: an agent merge that
+bypasses the gate and voids a card; then make the bypassed path call the gate and
+record the miss with `arcadia learn`.
 
 ## Forbidden inside the window
 

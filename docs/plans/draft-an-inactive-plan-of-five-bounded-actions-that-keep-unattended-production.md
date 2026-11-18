@@ -139,11 +139,11 @@ actions:
     references: ["scripts/services.sh", "src/commands/productionLiveness.ts", "src/production/successorPress.ts", "docs/agent-guidance/operator-actions.md"]
   - id: refuse-agent-merges-while-a-card-is-pinned
     title: "While a per-run START or activation card is pinned and unpressed, every Arcadia agent merge path refuses a merge to main with 'merge freeze: card <id> pinned to <sha>', so another session's merge can no longer void the operator's press."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "While a per-run START or activation card is pinned and unpressed, every Arcadia agent merge path refuses a merge to main with 'merge freeze: card <id> pinned to <sha>', so another session's merge can no longer void the operator's press."
+    next_action: Completed via Agent Ask auto-settle-arcadia-refuse-agent-merges-while-a-card-is-pinned-d75fd7dd8c6b; no further action.
     expected_artifact: Evidence satisfying Agent Ask refuse-agent-merges-while-a-card-is-pinned
     clarification: clarified
     confidence: high
@@ -281,7 +281,7 @@ actions:
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/production/mechanicalRepair.ts", "tests/mechanical-repair.test.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md"]
 questions: []
 decisions: []
-current_action: refuse-agent-merges-while-a-card-is-pinned
+current_action: prove-the-timer-runs-the-successor-press-live
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

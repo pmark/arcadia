@@ -186,7 +186,9 @@ finite allowance and the stop condition in the existing brief.
   (tests and plain docs; held `src/` PRs capped at 2; check main for an
   existing fix before building); open reviewed PRs and post reviews.
 - **Never:** merge, press cards, spend, touch credentials or message the
-  operator. A host refusal is reported, never routed around.
+  operator. Any merge that a supervising session or the operator explicitly
+  assigns still calls `arcadia work merge-check --pr <n>` first and stops on
+  `merge freeze: card <id> pinned to <sha>`. A host refusal is reported, never routed around.
 - **Reports:** hand the supervising session a ranked operator queue and a
   digest at 16:00Z and 04:00Z (08:00 and 20:00 Pacific). Real-time pings only
   for a critical-path block on the operator with a tap ready.

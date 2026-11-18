@@ -365,6 +365,10 @@ export const COMMAND_CLASSIFICATION: Readonly<Record<string, CommandClassificati
   "artifact validate-planning": ALLOWED,
   "work monitor": ALLOWED,
   "work merge-check": exempt("Read-only run-window observation and a pure merge-freeze check; no run or activity record."),
+  "work merge-override": guarded(
+    "Writes an operator merge-freeze override receipt into the operator-script library that the live merge gate reads.",
+    FROM_LIVE_TERMINAL
+  ),
   "work reservations": exempt("Reads all unexpired handoff reservations through a read-only database; no recovery, custody mutation or activity recording."),
   "work prs": ALLOWED,
   "work list": ALLOWED,

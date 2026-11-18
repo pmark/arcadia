@@ -107,6 +107,10 @@ Failure: fix inside authority, re-run from the failed item; never press past a N
 
 ### 5. Gap discipline (production Off only)
 
+0. Before any merge run `arcadia work merge-check --pr <n>`. Exit 1 prints
+   `merge freeze: card <id> pinned to <sha>`: do not merge; the card survives until it
+   is pressed or expires, or the operator records `arcadia work merge-override`
+   (`docs/agent-guidance/rehearsal-freeze-window.md`, "Agent merge gate").
 1. Merge only with production Off: `gh pr merge <n> <method> --match-head-commit <sha>`,
    where `<sha>` carries an "Independent review, head <sha>: PASS" comment, every
    check completed green, and merge state CLEAN. Use the method

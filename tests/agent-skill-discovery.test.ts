@@ -1,4 +1,4 @@
-import { mkdtempSync, mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -14,6 +14,21 @@ function fixture() {
   writeFileSync(path.join(root, ".agents/skills/example/SKILL.md"), "---\nname: example\ndescription: Example skill\n---\nUse existing commands.\n");
   return root;
 }
+describe("merge-gate skills in this repository", () => {
+  const repo = path.resolve(import.meta.dirname, "..");
+  it.each(["nightshift", "arcadia-signal"])("%s calls the merge gate from one source discoverable at every provider path", (skill) => {
+    expect(inspectAgentSkills(repo)).toEqual([]);
+    const source = readFileSync(path.join(repo, ".agents/skills", skill, "SKILL.md"), "utf8");
+    expect(source).toContain("arcadia work merge-check --pr");
+    expect(source).toContain("merge freeze: card <id> pinned to <sha>");
+    // .claude (Claude Code) links to the shared source; Codex and OpenCode read .agents/skills directly.
+    expect(readFileSync(path.join(repo, ".claude/skills", skill, "SKILL.md"), "utf8")).toBe(source);
+  });
+  it("the Momentum Keeper brief calls the gate before any merge", () => {
+    expect(readFileSync(path.join(repo, "docs/agent-guidance/session-roles-and-briefs.md"), "utf8")).toContain("arcadia work merge-check --pr");
+  });
+});
+
 describe("three-agent shared skill discovery", () => {
   it("accepts a relative alias resolving to the same complete source", () => {
     const root = fixture();

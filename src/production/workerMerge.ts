@@ -7,6 +7,7 @@ import { classifyPullRequestChecks, runHostCommand, type PullRequestCheckRun, ty
 import { isSettlementArchiveOf } from "../qa/patchApplicability.js";
 import { SETTLEMENT_RECORD_PATH } from "./candidateChangeGate.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
+import { workerMergeFreeze } from "../workMonitoring/runWindow.js";
 
 /**
  * The worker's automated review-and-merge (Decision 0097, Action
@@ -52,6 +53,7 @@ export type WorkerMergeRefusalCode =
   | "merge_state_not_clean"
   | "blast_radius_unknown"
   | "authority_adjacent"
+  | "merge_freeze"
   | "merge_failed"
   | "merge_unverified"
   | "base_not_synced";
@@ -70,6 +72,7 @@ export const WORKER_MERGE_REFUSAL_CODES: readonly WorkerMergeRefusalCode[] = [
   "merge_state_not_clean",
   "blast_radius_unknown",
   "authority_adjacent",
+  "merge_freeze",
   "merge_failed",
   "merge_unverified",
   "base_not_synced"
@@ -466,6 +469,8 @@ export interface WorkerMergeDeps {
   runCommand?: RunCommand;
   /** Moves the local base onto the remote base after GitHub merged; defaults to `git fetch` + `merge --ff-only origin/<base>`. */
   syncBase?: (input: { repoRoot: string; baseBranch: string }) => void;
+  /** Merge freeze gate, checked right before the merge call: a non-null answer refuses the merge. Defaults to the waiting-START-card check. */
+  mergeFreeze?: () => { message: string } | null;
 }
 
 export interface WorkerMergeInput {
@@ -563,6 +568,8 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
 
   const fenced = input.authorityChanged?.() ?? null;
   if (fenced) return { kind: "withheld", reason: `Withheld the worker merge of ${url}: ${fenced}.` };
+  const freeze = (deps.mergeFreeze ?? (() => workerMergeFreeze(db, repoRoot)))();
+  if (freeze) return refused("merge_freeze", freeze.message);
   const merged = runCommand({ command: "gh", args: ["pr", "merge", evaluation.pullRequestUrl, "--merge", "--match-head-commit", head], cwd: repoRoot, timeoutMs: 120_000 });
   if (merged.status !== 0) {
     const detail = merged.error ?? (merged.stderr.trim() || `exit ${String(merged.status)}`);

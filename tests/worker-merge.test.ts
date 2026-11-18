@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -122,13 +122,14 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
   }
 
-  function merge(over: { review?: VerdictGate | null; syncFails?: boolean } = {}) {
+  function merge(over: { review?: VerdictGate | null; syncFails?: boolean; mergeFreeze?: () => { message: string } | null } = {}) {
     return mergeCandidatePullRequest({
       db, repoRoot: repo, baseBranch: "main", sessionId: "session_1", actionKey: "fixture/write-feature", head,
       settlementCommit: head, pullRequestUrl: URL, review: over.review === undefined ? gateFor(head) : over.review,
       now: new Date("2026-10-17T12:00:00Z")
     }, {
       runCommand: github.runCommand,
+      ...(over.mergeFreeze ? { mergeFreeze: over.mergeFreeze } : {}),
       ...(over.syncFails ? { syncBase: () => { throw new Error("fetch refused"); } } : {})
     });
   }
@@ -171,6 +172,52 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     // A replay (the PR already MERGED at this head) only re-syncs.
     expect(merge()).toMatchObject({ kind: "merged", replayed: true });
     expect(github.mergeCalls).toHaveLength(1);
+  });
+
+  it("refuses with the merge freeze message while a START card is pinned, and never calls merge", () => {
+    candidate({ [SAFE]: "feature\n" });
+    const outcome = merge({ mergeFreeze: () => ({ message: "merge freeze: card start-run-x pinned to aaaaaaaaaaaa." }) });
+    expect(outcome).toMatchObject({ kind: "refused", code: "merge_freeze" });
+    expect((outcome as { reason: string }).reason).toContain("merge freeze: card start-run-x pinned to aaaaaaaaaaaa");
+    expect(github.ghCalls.some((call) => call.startsWith("gh pr merge"))).toBe(false);
+    expect(listWorkerMerges(db).map((row) => row.code)).toEqual(["merge_freeze"]);
+    // Once the freeze lifts (the card pressed), the same merge goes through.
+    expect(merge({ mergeFreeze: () => null })).toMatchObject({ kind: "merged" });
+  });
+
+  it("default gate: a pinned unpressed per-run START card refuses with the exact freeze message, keeps the card and calls no merge; pressing it lets the merge through", () => {
+    candidate({ [SAFE]: "feature\n" });
+    const library = path.join(root, "library");
+    mkdirSync(library);
+    const originMain = git(repo, ["rev-parse", "refs/remotes/origin/main"]).trim();
+    const cardFile = path.join(library, "start-run-pinned.json");
+    writeFileSync(cardFile, JSON.stringify({
+      schema: "arcadia-operator-script-v1",
+      id: "start-run-pinned",
+      expires_at: new Date(Date.now() + 3_600_000).toISOString(),
+      startRun: { schema: "arcadia-start-run-v1", reviewedRevision: originMain }
+    }));
+    const previous = process.env.ARCADIA_OPERATOR_SCRIPT_LIBRARY;
+    process.env.ARCADIA_OPERATOR_SCRIPT_LIBRARY = library;
+    try {
+      // No mergeFreeze is injected: workerMergeFreeze(db, repoRoot) runs for real.
+      const outcome = merge();
+      expect(outcome).toMatchObject({ kind: "refused", code: "merge_freeze" });
+      expect((outcome as { reason: string }).reason).toContain(`merge freeze: card start-run-pinned pinned to ${originMain.slice(0, 12)}`);
+      expect(github.ghCalls.some((call) => call.startsWith("gh pr merge"))).toBe(false);
+      expect(github.mergeCalls).toEqual([]);
+      expect(existsSync(cardFile)).toBe(true);
+      expect(listWorkerMerges(db).map((row) => row.code)).toEqual(["merge_freeze"]);
+
+      // Pressed (consumed): the card no longer waits, so the same call reaches the merge step.
+      writeFileSync(path.join(library, "start-run-pinned.consumed.json"), JSON.stringify({ state: "CONSUMED" }));
+      expect(merge()).toMatchObject({ kind: "merged" });
+      expect(github.mergeCalls).toEqual([{ url: URL, matchHead: head, merged: true }]);
+      expect(existsSync(cardFile)).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.ARCADIA_OPERATOR_SCRIPT_LIBRARY;
+      else process.env.ARCADIA_OPERATOR_SCRIPT_LIBRARY = previous;
+    }
   });
 
   it("refuses a moved head by name, and never calls merge", () => {

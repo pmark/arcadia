@@ -7,7 +7,7 @@ import { openReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
 import { sharesRepository } from "../git/worktrees.js";
 import { formatWorkingCopySafetyLines, scanProjectWorkingCopies } from "../workMonitoring/scanner.js";
-import { defaultRunWindowDeps, formatRunWindowLines, mergeFreezeRefusal, observeRunWindow, type MergeFreezeRefusal, type RunWindow, type RunWindowDeps } from "../workMonitoring/runWindow.js";
+import { defaultRunWindowDeps, formatRunWindowLines, mergeFreezeRefusal, observeRunWindow, readMergeOverride, recordMergeOverride, type MergeFreezeOverride, type MergeFreezeRefusal, type RunWindow, type RunWindowDeps } from "../workMonitoring/runWindow.js";
 import type { WorkMonitorProject, WorkMonitorSnapshot } from "../workMonitoring/types.js";
 
 export interface WorkMonitorCommandData {
@@ -121,18 +121,49 @@ export interface WorkMergeCheckData {
 /** Read-only: observes the run window and applies the pure merge-freeze check. Writes nothing and grants no authority. */
 export function runWorkMergeCheckCommand(options: {
   workspace: string;
+  /** The PR about to merge: an unexpired operator override receipt naming it and a waiting card passes that card. */
+  pr?: number;
+  /** Cards that belong to the merge being run (a batch's own card); they never freeze it. */
+  ownCardIds?: string[];
   /** Test seam for the run-window sources. */
   runWindowDeps?: RunWindowDeps;
 }): CommandSuccess<WorkMergeCheckData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const db = openReadOnlyDatabase(workspacePath);
   try {
-    const runWindow = observeRunWindow(db, options.runWindowDeps ?? defaultRunWindowDeps(process.cwd()));
-    const refusal = mergeFreezeRefusal(runWindow);
+    const deps = options.runWindowDeps ?? defaultRunWindowDeps(process.cwd());
+    const runWindow = observeRunWindow(db, deps);
+    const refusal = mergeFreezeRefusal(runWindow, {
+      pr: options.pr,
+      ownCardIds: options.ownCardIds,
+      now: deps.now(),
+      readOverride: (card, pr) => readMergeOverride(deps.libraryDir(), card, pr)
+    });
     return createSuccess({ command: "work.merge-check", workspace: workspacePath, data: { refused: refusal !== null, refusal, runWindow } });
   } finally {
     db.close();
   }
+}
+
+/** Records the operator's explicit override of one merge freeze. Run only when the operator has said so; it merges nothing. */
+export function runWorkMergeOverrideCommand(options: {
+  workspace: string;
+  card: string;
+  pr: number;
+  reason: string;
+  evidence: string;
+  authorizedBy: string;
+  runWindowDeps?: RunWindowDeps;
+}): CommandSuccess<{ override: MergeFreezeOverride }> {
+  const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const deps = options.runWindowDeps ?? defaultRunWindowDeps(process.cwd());
+  const override = recordMergeOverride(deps.libraryDir(), options.card, options, deps.now());
+  return createSuccess({ command: "work.merge-override", workspace: workspacePath, data: { override } });
+}
+
+export function renderWorkMergeOverrideSuccess(response: CommandSuccess<{ override: MergeFreezeOverride }>): string[] {
+  const { override } = response.data;
+  return [`Merge freeze override recorded for card ${override.card} and PR #${override.pr}, until ${override.expiresAt}. It lets that one PR merge; it blocks nothing else.`];
 }
 
 export function renderWorkMergeCheckSuccess(response: CommandSuccess<WorkMergeCheckData>): string[] {
