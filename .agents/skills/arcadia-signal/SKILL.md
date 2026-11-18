@@ -79,6 +79,9 @@ only from Decisions and the operator's own words.
 - **Gap discipline.**
   - Signal itself merges only PRs the operator names in Signal's own chat. Rowan's
     gap merges come under Decision 0182 C.
+  - Whoever merges, run `arcadia work merge-check --pr <n>` first; exit 1
+    (`merge freeze: card <id> pinned to <sha>`) means do not merge
+    (`docs/agent-guidance/rehearsal-freeze-window.md`, "Agent merge gate").
   - Whoever merges, a runtime-path PR merges only while production is Off
     (`docs/agent-guidance/rehearsal-freeze-window.md`).
   - After two or more merges in one gap, check main's full CI before Rowan mints

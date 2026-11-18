@@ -164,7 +164,7 @@ function readStartCardHold(library: string, id: string): StartCardHold | null | 
 
 function waitingStartCards(deps: RunWindowDeps, now: Date, unknown: string[]): { reasons: RunWindowReason[]; held: string[] } {
   const library = deps.libraryDir();
-  const names = readdirSync(library).filter((name) => name.endsWith(".json") && !name.endsWith(".consumed.json") && !name.endsWith(".held.json")).sort();
+  const names = readdirSync(library).filter((name) => name.endsWith(".json") && !name.endsWith(".consumed.json") && !name.endsWith(".held.json") && !name.includes(MERGE_OVERRIDE_INFIX)).sort();
   const candidates: Array<{ id: string; reviewedRevision: string; expiresAt: string; expiry: number; workerLabel: string | null }> = [];
   let unreadable = 0;
   for (const name of names) {
@@ -254,23 +254,128 @@ export interface MergeFreezeRefusal {
   cards: Array<{ id: string; reviewedRevision: string; expiresAt: string }>;
 }
 
+export const MERGE_OVERRIDE_SCHEMA = "arcadia-merge-freeze-override-v1";
+const MERGE_OVERRIDE_INFIX = ".merge-override-pr";
+/** An override receipt lets one named PR through for this long; the merge itself moves main and retires the card. */
+export const MERGE_OVERRIDE_TTL_MS = 30 * 60 * 1000;
+
+/** An explicit operator override: lets exactly one PR merge past exactly one pinned card. Written by `arcadia work merge-override`. */
+export interface MergeFreezeOverride {
+  schema: typeof MERGE_OVERRIDE_SCHEMA;
+  card: string;
+  pr: number;
+  reason: string;
+  evidence: string;
+  authorizedBy: string;
+  recordedAt: string;
+  expiresAt: string;
+}
+
+export interface MergeFreezeOptions {
+  /** Card ids that belong to the merge itself (the batch being run); they never freeze it. */
+  ownCardIds?: readonly string[];
+  /** The PR about to merge; an unexpired override receipt naming a waiting card and this PR passes that card. */
+  pr?: number;
+  /** Reads the override receipt for one card and PR, or null. */
+  readOverride?: (card: string, pr: number) => MergeFreezeOverride | null;
+  now?: Date;
+}
+
 /**
  * Pure merge check over an observed window. Refuses only for (a) an unheld, unexpired, unconsumed START card pinned to the
  * local origin/main, or (b) a window it cannot read (fail closed: a hidden card is worse than a stopped merge).
- * A window opened only by managed production Active stays advisory (Issue #2104); a governed-held card never refuses.
- * It reads nothing, writes nothing and grants no authority.
+ * A window opened only by managed production Active stays advisory (Issue #2104); a governed-held card never refuses, and a
+ * timer-derived card never refuses (the timer re-derives it). A pressed (consumed) card is not waiting, so the run's own
+ * merges are never refused; a batch's own card id is excluded through `ownCardIds`. An unexpired operator override receipt
+ * naming the card and the PR passes that card. It reads nothing, writes nothing and grants no authority.
  */
-export function mergeFreezeRefusal(window: RunWindow): MergeFreezeRefusal | null {
-  const waiting = window.reasons.filter((reason) => reason.kind === "start_card_waiting" && !isTimerDerived(reason));
+export function mergeFreezeRefusal(window: RunWindow, options: MergeFreezeOptions = {}): MergeFreezeRefusal | null {
+  const own = new Set(options.ownCardIds ?? []);
+  const now = (options.now ?? new Date()).getTime();
+  const overridden = (id: string): boolean => {
+    if (options.pr === undefined || !options.readOverride) return false;
+    const receipt = options.readOverride(id, options.pr);
+    return receipt !== null && receipt.card === id && receipt.pr === options.pr && Date.parse(receipt.expiresAt) > now;
+  };
+  const waiting = window.reasons.filter((reason) => reason.kind === "start_card_waiting" && !isTimerDerived(reason) && !own.has(reason.subject) && !overridden(reason.subject));
   if (waiting.length > 0) {
     const cards = waiting.map((reason) => ({ id: reason.subject, reviewedRevision: reason.revision ?? "unknown", expiresAt: reason.until ?? "unknown" }));
-    const named = cards.map((card) => `${card.id} (pinned to origin/main ${card.reviewedRevision.slice(0, 12)}, expires ${card.expiresAt})`).join("; ");
-    return { code: "start_card_waiting", message: `Do not merge to main: START card ${named} is waiting and a merge would make its press refuse. Wait for it to be consumed or to expire, or hold it with arcadia start-run hold.`, cards };
+    const named = cards.map((card) => `card ${card.id} pinned to ${card.reviewedRevision.slice(0, 12)}`).join("; ");
+    const expiry = cards.map((card) => `${card.id} expires ${card.expiresAt}`).join("; ");
+    return { code: "start_card_waiting", message: `merge freeze: ${named}. A merge to main would make its press refuse (${expiry}). Wait for it to be pressed or to expire, hold it with arcadia start-run hold, or have the operator record arcadia work merge-override for this PR.`, cards };
   }
   if (window.state === "unknown" || window.unknown.length > 0) {
-    return { code: "run_window_unknown", message: `Do not merge to main: the run window could not be read (${window.unknown.join("; ") || "state unknown"}), so a waiting START card may be hidden.`, cards: [] };
+    return { code: "run_window_unknown", message: `merge freeze: the run window could not be read (${window.unknown.join("; ") || "state unknown"}), so a waiting START card may be hidden.`, cards: [] };
   }
   return null;
+}
+
+/** Reads `<id>.merge-override-pr<N>.json` from the library, or null when absent or invalid. */
+export function readMergeOverride(library: string, id: string, pr: number): MergeFreezeOverride | null {
+  try {
+    const value = JSON.parse(readFileSync(path.join(library, `${id}${MERGE_OVERRIDE_INFIX}${pr}.json`), "utf8")) as Partial<MergeFreezeOverride>;
+    if (value.schema !== MERGE_OVERRIDE_SCHEMA || value.card !== id || value.pr !== pr || typeof value.expiresAt !== "string") return null;
+    return value as MergeFreezeOverride;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * `arcadia work merge-override`: record the operator's explicit override for one merge of one PR past one waiting START card.
+ * It names the card and the PR, expires after MERGE_OVERRIDE_TTL_MS and never edits the card. It merges nothing, blocks none
+ * of the operator's own GitHub merges and touches no branch protection.
+ */
+export function recordMergeOverride(
+  library: string,
+  id: string,
+  input: { pr: number; reason: string; evidence: string; authorizedBy: string },
+  now: Date
+): MergeFreezeOverride {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw validationError("START card id must be a plain card name.");
+  if (!Number.isInteger(input.pr) || input.pr <= 0) throw validationError("--pr must be a positive pull request number.");
+  const reason = input.reason.trim();
+  if (!reason || reason.length > 500) throw validationError("--reason is required and must be at most 500 characters.");
+  const evidence = input.evidence.trim();
+  const isUrl = /^https:\/\/\S+$/.test(evidence);
+  const isRepoPath = !isUrl && !path.isAbsolute(evidence) && !evidence.split(/[\\/]/).includes("..") && /^\S+$/.test(evidence);
+  if (!isUrl && !isRepoPath) throw validationError("--evidence must be an https URL or a repository-relative path.");
+  const authorizedBy = input.authorizedBy.trim();
+  if (!authorizedBy) throw validationError("--authorized-by is required: name where the operator said yes.");
+  if (!existsSync(path.join(library, `${id}.json`))) throw validationError(`START card ${id} is missing from the operator-script library.`);
+  if (existsSync(path.join(library, `${id}.consumed.json`))) throw validationError(`START card ${id} is already pressed; nothing to override.`);
+  const receipt: MergeFreezeOverride = {
+    schema: MERGE_OVERRIDE_SCHEMA, card: id, pr: input.pr, reason, evidence, authorizedBy,
+    recordedAt: now.toISOString(), expiresAt: new Date(now.getTime() + MERGE_OVERRIDE_TTL_MS).toISOString()
+  };
+  writeFileSync(path.join(library, `${id}${MERGE_OVERRIDE_INFIX}${input.pr}.json`), `${JSON.stringify(receipt, null, 2)}\n`);
+  return receipt;
+}
+
+/**
+ * The batch-merge script's gate, which has no workspace database: it reads only the operator-script library. Refuses only for a
+ * waiting START card other than `ownCardIds` (the batch's own card), after any override receipt for this PR.
+ */
+export function libraryMergeFreeze(deps: RunWindowDeps, options: { pr?: number; ownCardIds?: readonly string[] } = {}): MergeFreezeRefusal | null {
+  const unknown: string[] = [];
+  let reasons: RunWindowReason[] = [];
+  try {
+    reasons = waitingStartCards(deps, deps.now(), unknown).reasons;
+  } catch (error) {
+    unknown.push(`the operator-script library could not be read (${oneLine(error)})`);
+  }
+  const window: RunWindow = { state: reasons.length > 0 ? "open" : unknown.length > 0 ? "unknown" : "closed", reasons, unknown, held: [], observedAt: deps.now().toISOString() };
+  const refusal = mergeFreezeRefusal(window, { ...options, now: deps.now(), readOverride: (card, pr) => readMergeOverride(deps.libraryDir(), card, pr) });
+  return refusal?.code === "start_card_waiting" ? refusal : null;
+}
+
+/**
+ * The worker merge's gate: refuses only for a waiting START card. An unreadable window never stops the worker (the
+ * operator-facing check fails closed instead), so a host without the library keeps merging as before.
+ */
+export function workerMergeFreeze(db: Database.Database, repositoryPath: string, deps: RunWindowDeps = defaultRunWindowDeps(repositoryPath)): MergeFreezeRefusal | null {
+  const refusal = mergeFreezeRefusal(observeRunWindow(db, deps), { readOverride: (card, pr) => readMergeOverride(deps.libraryDir(), card, pr) });
+  return refusal?.code === "start_card_waiting" ? refusal : null;
 }
 
 /**

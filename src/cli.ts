@@ -620,7 +620,7 @@ import {
   runWorkSeedZeroPromptRehearsalPacketsCommand,
   runWorkUpdateCommand
 } from "./commands/work.js";
-import { renderWorkMergeCheckSuccess, renderWorkMonitorSuccess, runWorkMergeCheckCommand, runWorkMonitorCommand } from "./commands/workMonitor.js";
+import { renderWorkMergeCheckSuccess, renderWorkMergeOverrideSuccess, renderWorkMonitorSuccess, runWorkMergeCheckCommand, runWorkMergeOverrideCommand, runWorkMonitorCommand } from "./commands/workMonitor.js";
 import { renderWorkReservationsSuccess, runWorkReservationsCommand } from "./commands/workReservations.js";
 import { renderWorkPullRequestsSuccess, runWorkPullRequestsCommand } from "./commands/workPullRequests.js";
 import {
@@ -3909,17 +3909,37 @@ Allowed only while Production is Off. The candidate worktree stays on disk, unto
     work
       .command("merge-check")
       .description("Read-only: refuse (exit 1) while an unheld START card waits on the pinned origin/main, or the window is unreadable; run immediately before any merge to main")
+      .option("--pr <number>", "The PR about to merge; an operator override receipt naming it and a waiting card passes that card")
+      .option("--own-card <id>", "A card that belongs to the merge being run (repeatable); it never freezes it", (value: string, previous: string[] = []) => [...previous, value])
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
-  ).action((options: { workspace: string; json?: boolean }) =>
+  ).action((options: { workspace: string; pr?: string; ownCard?: string[]; json?: boolean }) =>
     runCliAction(
       "work.merge-check",
       options,
       () => {
-        const response = runWorkMergeCheckCommand({ workspace: options.workspace });
+        const response = runWorkMergeCheckCommand({ workspace: options.workspace, pr: options.pr === undefined ? undefined : Number(options.pr), ownCardIds: options.ownCard });
         if (response.data.refused) process.exitCode = 1;
         return response;
       },
       renderWorkMergeCheckSuccess
+    )
+  );
+  addJsonOption(
+    work
+      .command("merge-override")
+      .description("Record the operator's explicit override letting one PR merge past one waiting START card; merges nothing, 30-minute receipt")
+      .requiredOption("--card <id>", "The waiting START card the override names")
+      .requiredOption("--pr <number>", "The one PR the override lets through")
+      .requiredOption("--reason <text>", "Why the operator allows it")
+      .requiredOption("--evidence <ref>", "An https URL or repository-relative path showing the operator's yes")
+      .requiredOption("--authorized-by <text>", "Where the operator said yes")
+      .option("--workspace <path>", "Workspace path", defaultWorkspace())
+  ).action((options: { workspace: string; card: string; pr: string; reason: string; evidence: string; authorizedBy: string; json?: boolean }) =>
+    runCliAction(
+      "work.merge-override",
+      options,
+      () => runWorkMergeOverrideCommand({ workspace: options.workspace, card: options.card, pr: Number(options.pr), reason: options.reason, evidence: options.evidence, authorizedBy: options.authorizedBy }),
+      renderWorkMergeOverrideSuccess
     )
   );
   addJsonOption(

@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import path from "node:path";
 import { runBatchMerge, type BatchMergeGateway, type BatchPrFacts, type BatchReceipt } from "../src/decisions/batchMerge.js";
 import { runBatchMergeGuard, systemGit } from "../src/decisions/batchMergeGuard.js";
+import { defaultRunWindowDeps, libraryMergeFreeze } from "../src/workMonitoring/runWindow.js";
 
 // Entry point for the operator action whose id is a batch card id (descriptor built by
 // buildBatchMergeDescriptor; the pinned spec lives in the descriptor's `batchMerge` and the
@@ -85,6 +86,9 @@ const gateway: BatchMergeGateway = {
   },
   merge(number, headSha) {
     if (dryRun) throw new Error("dry run must not merge");
+    // Another pinned, unpressed START card would be voided by this merge; the batch's own card never freezes it.
+    const freeze = libraryMergeFreeze(defaultRunWindowDeps(repoRoot), { pr: number, ownCardIds: [spec.cardId] });
+    if (freeze) throw new Error(freeze.message);
     gh(["pr", "merge", String(number), "--repo", REPO, "--squash", "--match-head-commit", headSha]);
   }
 };

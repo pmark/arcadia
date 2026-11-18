@@ -122,13 +122,14 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
   }
 
-  function merge(over: { review?: VerdictGate | null; syncFails?: boolean } = {}) {
+  function merge(over: { review?: VerdictGate | null; syncFails?: boolean; mergeFreeze?: () => { message: string } | null } = {}) {
     return mergeCandidatePullRequest({
       db, repoRoot: repo, baseBranch: "main", sessionId: "session_1", actionKey: "fixture/write-feature", head,
       settlementCommit: head, pullRequestUrl: URL, review: over.review === undefined ? gateFor(head) : over.review,
       now: new Date("2026-10-17T12:00:00Z")
     }, {
       runCommand: github.runCommand,
+      ...(over.mergeFreeze ? { mergeFreeze: over.mergeFreeze } : {}),
       ...(over.syncFails ? { syncBase: () => { throw new Error("fetch refused"); } } : {})
     });
   }
@@ -171,6 +172,17 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     // A replay (the PR already MERGED at this head) only re-syncs.
     expect(merge()).toMatchObject({ kind: "merged", replayed: true });
     expect(github.mergeCalls).toHaveLength(1);
+  });
+
+  it("refuses with the merge freeze message while a START card is pinned, and never calls merge", () => {
+    candidate({ [SAFE]: "feature\n" });
+    const outcome = merge({ mergeFreeze: () => ({ message: "merge freeze: card start-run-x pinned to aaaaaaaaaaaa." }) });
+    expect(outcome).toMatchObject({ kind: "refused", code: "merge_freeze" });
+    expect((outcome as { reason: string }).reason).toContain("merge freeze: card start-run-x pinned to aaaaaaaaaaaa");
+    expect(github.ghCalls.some((call) => call.startsWith("gh pr merge"))).toBe(false);
+    expect(listWorkerMerges(db).map((row) => row.code)).toEqual(["merge_freeze"]);
+    // Once the freeze lifts (the card pressed), the same merge goes through.
+    expect(merge({ mergeFreeze: () => null })).toMatchObject({ kind: "merged" });
   });
 
   it("refuses a moved head by name, and never calls merge", () => {
