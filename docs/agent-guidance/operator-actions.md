@@ -396,6 +396,15 @@ pinned descriptor, so per-card review is small.
   not machine-proved). Any refusal pings once with its code and ends the step for
   that grant (`<workspace>/.arcadia/successor-press.json`); a replay of the step
   adds no press and no ping. The flag is opt-in on the timer's plist.
+  The one exception is main moving between derive and press: when a
+  `CARD_NOT_DERIVED` (at replay, preflight or press) or origin-moved refusal finds
+  the card's pinned main revision differs from origin main read at that check, the
+  step retires the card, records a `MAIN_MOVED` skip naming both revisions, and
+  derives a fresh card on a later tick. While a standing grant is open a merge to
+  main therefore voids nothing and delays the next press by at most 3 derivations
+  (`SUCCESSOR_MAIN_MOVED_RETRY_BOUND`); the fourth consecutive main move ends the
+  step with one ping. The same code with main unchanged (a differing field,
+  `NO_READY_ACTIONS`) stays sticky, as does every other refusal code.
 - **A replay receipt is a prediction bound to one card, not proof of the run's
   result.** `pnpm production-replay --source-workspace <workspace> --card <id>`
   writes `<library>/replays/<id>.json` for a START card: the descriptor's sha256,
@@ -414,7 +423,7 @@ pinned descriptor, so per-card review is small.
 - **Residual risks of a derived card, and what bounds each (Decision 0241).**
   `tests/start-card-integrity.test.ts` replays each START card defect recorded on
   2026-11-15 against the derived-card path: a card left 8 hours cannot exist (the
-  card lives 10 minutes and the press re-derives it); an Off with request id
+  card lives 40 minutes, the replay and preflight timeouts together, and the press re-derives it); an Off with request id
   `.-plan3-pins-13-15-complete-20261115` is refused; a hand-edited pin is refused
   with `CARD_NOT_DERIVED`; a standing-grant press after a clean batch needs no
   hand-written pre-mortem pointer, and after a failed batch is refused without one.

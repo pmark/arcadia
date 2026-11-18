@@ -114,10 +114,10 @@ describe("arcadia start-run derive: derivation", () => {
     expect(derive(at(NOW, () => ({ ...production, epoch: production.epoch + 1 }))).card!.id).not.toBe(a.card!.id);
   });
 
-  it("gives the card a single 10 minute lifetime and reads the previous press from the production record", () => {
-    expect(DERIVED_CARD_LIFETIME_MS).toBe(10 * MINUTE);
+  it("gives the card a single 40 minute lifetime and reads the previous press from the production record", () => {
+    expect(DERIVED_CARD_LIFETIME_MS).toBe(40 * MINUTE);
     const data = derive(world());
-    expect(data.card!.expiresAt).toBe("2026-11-10T12:10:00Z");
+    expect(data.card!.expiresAt).toBe("2026-11-10T12:40:00Z");
     expect((data.card!.descriptor.startRun as { delegation: { previous: unknown; attempt: number } }).delegation).toMatchObject({ previous: null, attempt: 1 });
     const m = (minutes: number) => NOW - minutes * MINUTE;
     const clean: DayScenario = {

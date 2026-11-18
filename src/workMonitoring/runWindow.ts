@@ -4,7 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
 import { validationError } from "../cli/errors.js";
+import { DERIVED_CARD_ID_PREFIX } from "../operatorActions/startRunDerive.js";
+import { SUCCESSOR_MAIN_MOVED_RETRY_BOUND } from "../production/successorPress.js";
 import { readProductionPolicySafely } from "../production/policy.js";
+
+/** A card the host timer derived: a merge to main retires it and the timer derives a fresh one, so it never freezes merges. */
+const isTimerDerived = (reason: { subject: string }): boolean => reason.subject.startsWith(DERIVED_CARD_ID_PREFIX);
 
 /**
  * The run window, as a visible signal for `arcadia work monitor`.
@@ -227,10 +232,12 @@ function waitingReason(card: { id: string; expiresAt: string; workerLabel: strin
 export function formatRunWindowLines(window: RunWindow): string[] {
   if (window.state === "closed") return window.held.slice();
   if (window.state === "unknown") return [`Run window: UNKNOWN (${window.unknown.join("; ")}).`, ...window.held];
-  const cardWaiting = window.reasons.some((reason) => reason.kind === "start_card_waiting");
+  const cardWaiting = window.reasons.some((reason) => reason.kind === "start_card_waiting" && !isTimerDerived(reason));
   const lines = [cardWaiting
     ? "Run window: OPEN. Do not merge to main now: it will make the waiting START card refuse."
-    : "Run window: OPEN. A live run is in progress: follow docs/agent-guidance/rehearsal-freeze-window.md before merging."];
+    : window.reasons.some(isTimerDerived)
+      ? `Run window: OPEN. A timer-derived START card waits; a merge to main voids nothing: the timer retires it and derives a fresh one (at most ${SUCCESSOR_MAIN_MOVED_RETRY_BOUND} in a row, then one ping).`
+      : "Run window: OPEN. A live run is in progress: follow docs/agent-guidance/rehearsal-freeze-window.md before merging."];
   for (const reason of window.reasons) {
     lines.push(`- ${reason.detail}${reason.until ? ` (until ${reason.until})` : ""}.`);
   }
@@ -254,7 +261,7 @@ export interface MergeFreezeRefusal {
  * It reads nothing, writes nothing and grants no authority.
  */
 export function mergeFreezeRefusal(window: RunWindow): MergeFreezeRefusal | null {
-  const waiting = window.reasons.filter((reason) => reason.kind === "start_card_waiting");
+  const waiting = window.reasons.filter((reason) => reason.kind === "start_card_waiting" && !isTimerDerived(reason));
   if (waiting.length > 0) {
     const cards = waiting.map((reason) => ({ id: reason.subject, reviewedRevision: reason.revision ?? "unknown", expiresAt: reason.until ?? "unknown" }));
     const named = cards.map((card) => `${card.id} (pinned to origin/main ${card.reviewedRevision.slice(0, 12)}, expires ${card.expiresAt})`).join("; ");

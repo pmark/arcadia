@@ -5,10 +5,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { runProductionLivenessTimerCommand } from "../src/commands/productionMomentum.js";
 import { ROWAN_OFF_REQUEST, standingGrantStatus, STANDING_SLUG, type DayGrantPressKind, type StandingDecisionSource } from "../src/operatorActions/startRunDayGrant.js";
-import { deriveStartCard, verifyDerivedCard, type DeriveInput, type DerivePlanAction, type FailedBatchClearance } from "../src/operatorActions/startRunDerive.js";
+import { DERIVED_CARD_LIFETIME_MS, deriveStartCard, verifyDerivedCard, type DeriveInput, type DerivePlanAction, type FailedBatchClearance } from "../src/operatorActions/startRunDerive.js";
 import { delegatedPressMarker } from "../src/operatorActions/startRunDelegation.js";
 import { buildReplayReceipt, checkReplayReceipt, replayCardIdentity, replayReceiptPath } from "../src/operatorActions/startRunReplayReceipt.js";
-import { SUCCESSOR_OFF_SLUG, emptySuccessorState, runSuccessorPressStep, type SuccessorPorts, type SuccessorProduction, type SuccessorState } from "../src/production/successorPress.js";
+import { SUCCESSOR_MAIN_MOVED_RETRY_BOUND, SUCCESSOR_OFF_SLUG, SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, emptySuccessorState, runSuccessorPressStep, type SuccessorPorts, type SuccessorProduction, type SuccessorState } from "../src/production/successorPress.js";
 import { DAY_PLAN, DAY_RUN, STOP_ID, writeDayApproval, writeDayScenario } from "./helpers/dayGrantFixture.js";
 
 /**
@@ -44,6 +44,9 @@ interface World {
   lastCard?: string[];
   minted: Array<{ id: string; at: number }>;
   pressLog: Array<{ card: string; at: number }>;
+  /** origin main: derivations pin it, and `originMain` reads it at the failing check. */
+  main: string;
+  onMint?: () => void;
   ports: SuccessorPorts;
 }
 
@@ -54,12 +57,12 @@ function world(options: { actions?: number; library?: string } = {}): World {
   mkdirSync(path.join(library, "reviewed"), { recursive: true });
   const w: World = {
     library, now: T0, production: { desiredState: "inactive", liveAdmissions: 0, scopeComplete: false, revision: 90 }, batch: null, checks: { green: true, detail: "green" }, holds: [], grantOpen: true,
-    actions: ids(options.actions ?? 14), done: new Set(), clearances: new Map(), pressRefusal: null, replayNoLaunch: false, pings: [], offs: [], minted: [], pressLog: [], ports: undefined as never
+    actions: ids(options.actions ?? 14), done: new Set(), clearances: new Map(), pressRefusal: null, replayNoLaunch: false, pings: [], offs: [], minted: [], pressLog: [], main: MAIN, ports: undefined as never
   };
   const deriveFor = (clearance: FailedBatchClearance | null) => {
     const planActions: DerivePlanAction[] = w.actions.map((id) => ({ id, status: w.done.has(id) ? "done" : "open", dependsOn: [], criteriaErrors: [] }));
     const input: DeriveInput = {
-      originMain: MAIN, now: new Date(w.now), executorSha256: sha("executor"), workspace: "martianrover", workerLabel: "com.arcadia.local.1.worker", gateCardId: "enable-capacity-gate-20261017", offId: STOP_ID,
+      originMain: w.main, now: new Date(w.now), executorSha256: sha("executor"), workspace: "martianrover", workerLabel: "com.arcadia.local.1.worker", gateCardId: "enable-capacity-gate-20261017", offId: STOP_ID,
       grant: { open: true, plan: DAY_PLAN, approvalCard: GRANT_CARD, approvalRun: DAY_RUN, reason: null },
       plan: { slug: DAY_PLAN, project: "arcadia", status: "active", isProjectActivePlan: true, actions: planActions },
       production: { desiredState: w.production.desiredState, liveAdmissions: w.production.liveAdmissions, revision: w.production.revision, epoch: 50 },
@@ -74,6 +77,7 @@ function world(options: { actions?: number; library?: string } = {}): World {
     grant: () => ({ open: w.grantOpen, plan: DAY_PLAN, approvalCard: GRANT_CARD, approvalRun: DAY_RUN }),
     production: () => ({ ...w.production }),
     batch: () => w.batch,
+    originMain: () => w.main,
     mainChecks: () => w.checks,
     holds: () => w.holds,
     clearance: (press) => w.clearances.get(press) ?? null,
@@ -83,6 +87,7 @@ function world(options: { actions?: number; library?: string } = {}): World {
       writeFileSync(path.join(library, `${card.id}.sh`), card.launcher);
       writeFileSync(path.join(library, "reviewed", `${card.id}.json`), card.manifestBytes);
       w.minted.push({ id: card.id, at: w.now });
+      w.onMint?.();
     },
     replay: (card) => {
       const bound = replayCardIdentity(readFileSync(path.join(library, `${card.id}.json`), "utf8"))!;
@@ -288,6 +293,83 @@ describe("successor press: a refused press", () => {
     expect(w.pings).toHaveLength(1);
     expect(retried.state.ended?.pingId).toBe("ping-1");
     expect(w.pressLog).toEqual([]);
+  });
+
+  describe("when main moves between derive and press", () => {
+    const NEW_MAIN = "b".repeat(40);
+    const notDerived = { code: "CARD_NOT_DERIVED", message: "this card is not what the deriver returns for the current state" };
+
+    it("retires the card with a receipt naming both revisions, does not end the step, and derives fresh at the new main on a later tick", () => {
+      const w = world({ actions: 3 });
+      w.pressRefusal = notDerived;
+      w.onMint = () => { w.main = NEW_MAIN; w.onMint = undefined; };
+      const first = step(w, emptySuccessorState());
+      expect(first.outcome).toMatchObject({ kind: "skipped", reason: "MAIN_MOVED" });
+      expect((first.outcome as { detail: string }).detail).toContain(MAIN.slice(0, 12));
+      expect((first.outcome as { detail: string }).detail).toContain(NEW_MAIN.slice(0, 12));
+      expect(first.state.ended).toBeNull();
+      expect(first.state.mainMoved).toMatchObject({ count: 1, last: { from: MAIN, to: NEW_MAIN } });
+      expect(w.pings).toEqual([]);
+      expect(cardsInLibrary(w.library)).toEqual([]);
+
+      w.pressRefusal = null;
+      w.now += MINUTE;
+      const later = step(w, first.state);
+      expect(later.outcome).toMatchObject({ kind: "pressed" });
+      expect(w.minted).toHaveLength(2);
+      const pinned = (JSON.parse(readFileSync(path.join(w.library, `${w.pressLog[0].card}.json`), "utf8")) as { startRun: { reviewedRevision: string } }).startRun.reviewedRevision;
+      expect(pinned).toBe(NEW_MAIN);
+      expect(later.state.mainMoved?.count).toBe(0);
+    });
+
+    it("retries a replay or preflight CARD_NOT_DERIVED the same way, and stays sticky when main has not moved", () => {
+      const w = world({ actions: 3 });
+      w.ports.preflight = () => ({ ok: false, code: "CARD_NOT_DERIVED", message: "differing field: actions" });
+      w.onMint = () => { w.main = NEW_MAIN; w.onMint = undefined; };
+      expect(step(w, emptySuccessorState()).outcome).toMatchObject({ kind: "skipped", reason: "MAIN_MOVED" });
+
+      const sticky = world({ actions: 3 });
+      sticky.pressRefusal = notDerived;
+      const result = step(sticky, emptySuccessorState());
+      expect(result.outcome).toMatchObject({ kind: "refused", code: "CARD_NOT_DERIVED" });
+      expect(result.state.ended).not.toBeNull();
+      expect(sticky.pings).toHaveLength(1);
+    });
+
+    it("keeps every other refusal code sticky even when main moved", () => {
+      const w = world({ actions: 3 });
+      w.pressRefusal = { code: "PREVIOUS_UNSETTLED", message: "unfinished" };
+      w.onMint = () => { w.main = NEW_MAIN; };
+      expect(step(w, emptySuccessorState()).outcome).toMatchObject({ kind: "refused", code: "PREVIOUS_UNSETTLED" });
+    });
+
+    it("tolerates SUCCESSOR_MAIN_MOVED_RETRY_BOUND consecutive moves, then ends with exactly one ping naming the cause", () => {
+      const w = world({ actions: 3 });
+      w.pressRefusal = notDerived;
+      let move = 0;
+      w.onMint = () => { move += 1; w.main = String(move).padStart(40, "c"); };
+      let state = emptySuccessorState();
+      for (let attempt = 1; attempt <= SUCCESSOR_MAIN_MOVED_RETRY_BOUND; attempt += 1) {
+        w.now += MINUTE;
+        const result = step(w, state);
+        expect(result.outcome).toMatchObject({ kind: "skipped", reason: "MAIN_MOVED" });
+        state = result.state;
+      }
+      expect(w.pings).toEqual([]);
+      w.now += MINUTE;
+      const over = step(w, state);
+      expect(over.outcome).toMatchObject({ kind: "refused", code: "CARD_NOT_DERIVED" });
+      expect(w.pings).toHaveLength(1);
+      expect(w.pings[0].message).toContain("retry bound");
+      expect(step(w, over.state).outcome).toMatchObject({ kind: "skipped", reason: "STEP_ENDED" });
+      expect(w.pings).toHaveLength(1);
+    });
+  });
+
+  it("keeps a derived card alive through its own replay and preflight timeouts, and moves the three constants together", () => {
+    expect(SUCCESSOR_REPLAY_TIMEOUT_MS).toBe(30 * MINUTE);
+    expect(SUCCESSOR_PREFLIGHT_TIMEOUT_MS).toBe(10 * MINUTE);
+    expect(DERIVED_CARD_LIFETIME_MS).toBeGreaterThanOrEqual(SUCCESSOR_REPLAY_TIMEOUT_MS + SUCCESSOR_PREFLIGHT_TIMEOUT_MS);
   });
 
   it("refuses a card whose replay predicts no launch, naming the replay's code", () => {

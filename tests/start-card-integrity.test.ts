@@ -47,12 +47,12 @@ const onDisk = (card: ReturnType<typeof derived>, edit: (files: { descriptor: Re
 };
 
 describe("recorded defect: a card minted and left 8 hours", () => {
-  it("cannot exist: no input or pin carries a lifetime, and every derived card lives 10 minutes", () => {
-    expect(DERIVED_CARD_LIFETIME_MS).toBe(10 * MINUTE);
+  it("cannot exist: no input or pin carries a lifetime, and every derived card lives 40 minutes", () => {
+    expect(DERIVED_CARD_LIFETIME_MS).toBe(40 * MINUTE);
     expect(START_RUN_KEYS.filter((key) => /expir|hours|lifetime|ttl/i.test(key))).toEqual(["packetApprovalHours"]);
     expect(Object.keys(DERIVER_INPUT_SOURCES).filter((key) => /expir|hours|lifetime|ttl/i.test(key))).toEqual([]);
     const card = derived();
-    expect(Date.parse(card.expiresAt) - Math.floor(NOW / MINUTE) * MINUTE).toBe(10 * MINUTE);
+    expect(Date.parse(card.expiresAt) - Math.floor(NOW / MINUTE) * MINUTE).toBe(40 * MINUTE);
   });
 
   it("is refused when pressed 8 hours later, because the press re-derives at the current minute", () => {

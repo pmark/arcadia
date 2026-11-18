@@ -5,7 +5,7 @@ import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import {
-  SUCCESSOR_STATE_SCHEMA, emptySuccessorState, runSuccessorPressStep, type SuccessorOutcome, type SuccessorPorts, type SuccessorState
+  SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, SUCCESSOR_STATE_SCHEMA, emptySuccessorState, runSuccessorPressStep, type SuccessorOutcome, type SuccessorPorts, type SuccessorState
 } from "../production/successorPress.js";
 import { failedBatchClearancePath, parseFailedBatchClearance } from "../operatorActions/startRunDerive.js";
 import { checkReplayReceipt, replayCardIdentity, replayReceiptPath } from "../operatorActions/startRunReplayReceipt.js";
@@ -43,7 +43,7 @@ export function readSuccessorState(workspacePath: string): SuccessorState {
   try {
     const value = JSON.parse(readFileSync(statePath(workspacePath), "utf8")) as Partial<SuccessorState>;
     if (value.schema !== SUCCESSOR_STATE_SCHEMA || !Array.isArray(value.pressed) || !Array.isArray(value.offs)) throw new Error("malformed");
-    return { schema: SUCCESSOR_STATE_SCHEMA, grant: value.grant ?? null, ended: value.ended ?? null, pressed: value.pressed, offs: value.offs };
+    return { schema: SUCCESSOR_STATE_SCHEMA, grant: value.grant ?? null, ended: value.ended ?? null, pressed: value.pressed, offs: value.offs, ...(value.mainMoved ? { mainMoved: value.mainMoved } : {}) };
   } catch {
     // An unreadable record restarts the step: the cost is a repeated check, never a repeated press, because a pressed card is consumed.
     return emptySuccessorState();
@@ -109,6 +109,9 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
       const latest = data.observations.latestPress;
       return latest ? { press: latest.press, kind: latest.kind as "failed-attempt" | "clean-batch" | "no-session" } : null;
     },
+    originMain: () => {
+      try { return execFileSync("git", ["ls-remote", "--exit-code", "origin", "refs/heads/main"], { cwd: repository, encoding: "utf8", timeout: 30_000 }).split(/\s+/)[0] || null; } catch { return null; }
+    },
     mainChecks: () => readMainChecks(repository),
     holds: () => {
       const names = (pins.listFiles(library) ?? []).filter((name) => name.endsWith(".held.json"));
@@ -129,7 +132,7 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
     },
     replay: (card) => {
       try {
-        execFileSync("pnpm", ["production-replay", "--source-workspace", workspacePath, "--card", card.id], { cwd: repository, stdio: ["ignore", "pipe", "pipe"], timeout: 30 * 60_000 });
+        execFileSync("pnpm", ["production-replay", "--source-workspace", workspacePath, "--card", card.id], { cwd: repository, stdio: ["ignore", "pipe", "pipe"], timeout: SUCCESSOR_REPLAY_TIMEOUT_MS });
       } catch (error) {
         return { ok: false, code: "REPLAY_REQUIRED", detail: `the replay did not complete: ${tail(error)}` };
       }
@@ -142,7 +145,7 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
     },
     preflight: (card) => {
       try {
-        execFileSync(path.join(library, `${card}.sh`), ["preflight"], { cwd: library, stdio: ["ignore", "pipe", "pipe"], timeout: 10 * 60_000 });
+        execFileSync(path.join(library, `${card}.sh`), ["preflight"], { cwd: library, stdio: ["ignore", "pipe", "pipe"], timeout: SUCCESSOR_PREFLIGHT_TIMEOUT_MS });
         return { ok: true };
       } catch (error) {
         return { ok: false, code: "PREFLIGHT_FAILED", message: tail(error) };
