@@ -58,6 +58,20 @@ Reference canonical records instead of creating a competing state store. Keep
 facts, technical conclusions and supporting evidence; omit a transcript or
 private reasoning. Mark unknowns and failures explicitly.
 
+### Mine the shift before standing down
+
+Operator standing order, 2026-11-18: before a coordinator stands down or hands
+off, at the natural gap and before the handoff is final, it mines the shift so
+the next run is smoother, cheaper and closer to the North Star:
+
+1. Capture every friction not yet recorded with `arcadia learn`.
+2. For each bug, search open Issues first; add evidence to a match, else file one.
+3. Rank them: P1 stalls an unattended run or needs a person; P2 authority or
+   delegation correctness; P3 planning friction. Label P1 `critical-path`.
+4. Post the ranked list on the coordination Issue and link it from the handoff.
+
+The handoff is not complete until that comment exists.
+
 Derive changed paths from actual Git status/diff, including untracked work.
 Record exact revisions and distinguish committed, pushed and local-only work.
 Follow existing preservation/PR procedures; an external publication failure
