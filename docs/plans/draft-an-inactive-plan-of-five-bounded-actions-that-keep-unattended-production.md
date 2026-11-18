@@ -33,11 +33,11 @@ actions:
     references: ["src/production/successorPress.ts", "src/commands/productionSuccessor.ts", "src/operatorActions/startRunDerive.ts", "scripts/start-run.sh", "docs/agent-guidance/rehearsal-freeze-window.md", "docs/agent-guidance/operator-actions.md", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md"]
   - id: repair-mechanical-check-failures-deterministically
     title: When a production candidate's required checks fail only on mechanical classes (lint auto-fixable rules, a stale guidance fingerprint, current_action left behind after a base merge), production applies the class's existing generator to the candidate, pushes a new production-owned head and lets it be reviewed afresh, with no model call and no person.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: When a production candidate's required checks fail only on mechanical classes (lint auto-fixable rules, a stale guidance fingerprint, current_action left behind after a base merge), production applies the class's existing generator to the candidate, pushes a new production-owned head and lets it be reviewed afresh, with no model call and no person.
+    next_action: Completed via Agent Ask auto-settle-arcadia-repair-mechanical-check-failures-deterministically-7fac0bc3ee10; no further action.
     expected_artifact: Evidence satisfying Agent Ask repair-mechanical-check-failures-deterministically
     clarification: clarified
     confidence: high
@@ -120,7 +120,7 @@ actions:
     references: ["src/docs/sync.ts", "src/docs/types.ts", "src/docs/operatorGate.ts", "src/production/startRunSignIn.ts", "src/production/workerClaudeUsageDiagnostic.ts", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md"]
 questions: []
 decisions: []
-current_action: repair-mechanical-check-failures-deterministically
+current_action: repair-red-candidates-with-a-bounded-session
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
