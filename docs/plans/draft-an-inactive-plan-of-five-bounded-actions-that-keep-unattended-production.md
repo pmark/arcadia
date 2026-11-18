@@ -433,6 +433,64 @@ actions:
     depends_on: [add-a-pre-pr-check-that-mirrors-ci]
     decisions: []
     references: ["src/codex/packets.ts", "docs/agent-guidance/pull-requests.md", "docs/agent-guidance/index.json"]
+  - id: show-the-resulting-queue-order-in-settle-preview
+    title: Previewing a Plan amendment Ask prints the resulting activation order of the target Plan's remaining Actions and the stored queue order after settlement, and refuses at preview time an anchor that settlement cannot use.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Previewing a Plan amendment Ask prints the resulting activation order of the target Plan's remaining Actions and the stored queue order after settlement, and refuses at preview time an anchor that settlement cannot use.
+    expected_artifact: Evidence satisfying Agent Ask show-the-resulting-queue-order-in-settle-preview
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-gap-actions-20261118-b
+    why: "Plan F's 2026-11-17 amendment took about seven versions because '--before' inside the active Plan and the Plan-file dependency order were discovered only at settle."
+    acceptance_criteria:
+      - agent-ask preview of a plan-intent Ask prints, for the target Plan, the dependency-ordered remaining Actions as dependencyOrderedActionIds would compute them after settlement, and the stored queue order for each placement it accepts; a test uses a fixture of Plan F's 2026-11-17 state and the e and e-alt amendments and shows both orders.
+      - A '--before' or '--after' anchor that settlement would reject (for example an Action inside the active Plan's own segment) is refused by preview with the same reason settlement gives; a test covers it.
+      - When the stored queue order and the Plan-file dependency order disagree, preview names the first differing position; a test covers it.
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates]
+    decisions: []
+    references: ["src/ask/settlement.ts", "src/dispatch/actionOrder.ts", "src/commands/agentAsk.ts"]
+  - id: require-proof-for-every-met-criterion
+    title: A completion Ask is auto-settled only when every 'met' criterion's evidence note names a proof that exists at the candidate revision (a test name and file, a receipt path or a commit), and a repository check fails when a new production module has no caller outside tests.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: A completion Ask is auto-settled only when every 'met' criterion's evidence note names a proof that exists at the candidate revision (a test name and file, a receipt path or a commit), and a repository check fails when a new production module has no caller outside tests.
+    expected_artifact: Evidence satisfying Agent Ask require-proof-for-every-met-criterion
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-gap-actions-20261118-b
+    why: "#2777 was auto-settled with six criteria 'met' and empty evidence notes while its library had no caller, so 'done' did not mean wired in."
+    acceptance_criteria:
+      - "A test replays #2777's completion Ask (criteria 'met', no evidence notes) and shows auto-settle refuses it with a reason naming each criterion that lacks a proof."
+      - A test shows a completion whose every 'met' note names a test file and test name, a receipt path or a commit that exists at the candidate revision settles as today; a note naming a missing file is refused.
+      - A repository check fails when a module added under src/production, src/sessions or src/ask has no importer outside tests, naming the module, with an explicit allowlist for intentional entry points; a fixture shows it would have failed on c7d7fba5f.
+      - The build Session brief asks for one proof per criterion in the completion evidence notes; a test asserts the line in a composed brief.
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates]
+    decisions: []
+    references: ["src/ask/autoSettleBeforeDispatch.ts", "src/ask/agentAsk.ts", "src/ask/settlement.ts", "src/codex/packets.ts"]
+  - id: check-tonights-card-at-noon
+    title: Once a day at a configured local time (default noon Pacific), the existing liveness timer checks read-only whether tonight's per-run START card for the top of the active Plan's queue could be minted, and pings the operator once only when it could not, naming each blocker.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: Once a day at a configured local time (default noon Pacific), the existing liveness timer checks read-only whether tonight's per-run START card for the top of the active Plan's queue could be minted, and pings the operator once only when it could not, naming each blocker.
+    expected_artifact: Evidence satisfying Agent Ask check-tonights-card-at-noon
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-gap-actions-20261118-b
+    why: "Card blockers (a batch not yet merged, production not Off, main CI red, an unready or authority-stopped Action, unpushed local commits) were found at mint time in the evening instead of at noon."
+    acceptance_criteria:
+      - "A pure function reports, for the next N ready Actions of the active Plan, every blocker to minting a per-run card tonight: production not Off or with live admissions, main's required checks not green, an invalid or unpositioned queue, an Action not ready, local main ahead of or diverged from origin, and an open failed-batch stop. Fixture tests cover each blocker and a clean case."
+      - The liveness timer runs it once per day at the configured local time, mints, presses and writes nothing, and sends at most one ping per day only when a blocker exists. Tests show no ping on a clean day and one ping naming every blocker otherwise.
+      - docs/agent-guidance/operator-actions.md describes the noon check and its single ping.
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates]
+    decisions: []
+    references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
 current_action: launch-past-a-merged-handoff
