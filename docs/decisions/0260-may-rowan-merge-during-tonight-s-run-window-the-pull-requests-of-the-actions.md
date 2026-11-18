@@ -4,7 +4,7 @@ type: decision
 id: "0260"
 slug: may-rowan-merge-during-tonight-s-run-window-the-pull-requests-of-the-actions
 project: arcadia
-status: open
+status: approved
 question: May Rowan merge, during tonight's run window, the pull requests of the Actions pinned on the Nov 18 9 PM START card when each passes exact-head independent review and green checks, so an unattended night does not stop at the first authority-path pull request?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-18
+answer: A. Tonight only, named Actions, until 8 AM
+decided: 2026-11-18
 ---
 
 # Decision 0260: May Rowan merge, during tonight's run window, the pull requests of the Actions pinned on the Nov 18 9 PM START card when each passes exact-head independent review and green checks, so an unattended night does not stop at the first authority-path pull request?
