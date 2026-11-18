@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-17
+updated: 2026-11-18
 ---
 
 # Mission Log: Arcadia
@@ -3746,3 +3746,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A test named for each recorded defect passes: a card minted and left 8 hours cannot exist because derivation and press are one step with a 10-minute lifetime; an Off with request id `.-plan3-pins-13-15-complete-20261115` is refused; a card with a hand-edited pin is refused with CARD_NOT_DERIVED; a standing-grant press after a clean batch needs no hand-written pre-mortem pointer and after a failed batch is refused without one."; "A repository check fails when the deriver's exported function gains a parameter outside the fixed input set (main revision, Plan frontmatter, queue, production policy, receipts, clock) or when START_RUN_KEYS gains a key the deriver does not compute."; "A test shows classifyAuthorityPaths classifies the deriver module, scripts/start-run.sh, src/operatorActions/startRunPins.ts and scripts/production-replay.ts, so a change to any of them cannot merge on a worker merge."; "docs/agent-guidance/operator-actions.md lists the residual risks with their bounds: the content of an approved Plan (the operator's queue approval and exact-head review before every merge), a defect in the deriver or executor (this suite, the property test and the operator-held merge of those files), a run that differs from its replay (concurrency one and the failed-batch stop of Decisions 0181 and 0187), and a host or credential fault (preflight P2 and P4)."; "The guidance states that operator-pressed cards under Decisions 0156 and 0157 are still prepared by an agent and reviewed before the operator presses them."; "Focused vitest for the touched suites, lint and tsc pass.".
 - **Next:** Plan complete; every Action is done.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-prove-card-integrity-against-recorded-defects-19c028b1c596).
+
+## 2026-11-18 — Agent Ask activate-keep-the-loop-alive-plan-f-20261117b
+
+- **Did:** Activated draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production at retry-successor-press-when-main-moves.
+- **Result:** Operator-settled Plan transition. Previous Plan draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start keeps status complete with completion state preserved. Operator order, 2026-11-17 (relayed by Signal 13 from Ellis's chat today): Plan F first, then Plan G, then the host-the-coordinators Plan; only Plan F is activated here. Signal verifies the operator's words under Decision 0229 before the tap, and the tap on the published runner action is the operator's own consent; this Ask only proposes. Activation grants no production START and answers no Decision: production stays Off pending the separate START approval (the standing START grant, Decision 0241, read from arcadia start-run grant-status).
+- **Next:** Continue from the governed Project pointer and execution queue.
+- **Blockers:** None recorded by this settlement.

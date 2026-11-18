@@ -6,9 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: Draft an inactive Plan of five bounded Actions that replace the daily START approval with one standing grant the operator presses once, so production on the chosen Plan moves on its own and asks the operator only for decisive action
-active_plan: draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start
-updated: 2026-11-17
+milestone: "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions"
+active_plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
+updated: 2026-11-18
+current_action: retry-successor-press-when-main-moves
 ---
 
 # Arcadia

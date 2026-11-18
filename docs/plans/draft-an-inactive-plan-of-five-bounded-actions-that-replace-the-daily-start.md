@@ -7,7 +7,7 @@ status: complete
 milestone: Draft an inactive Plan of five bounded Actions that replace the daily START approval with one standing grant the operator presses once, so production on the chosen Plan moves on its own and asks the operator only for decisive action
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-17
+updated: 2026-11-18
 actions:
   - id: decide-standing-start-grant
     title: Submit one operator Decision that replaces the daily approval of Decision 0173 with a standing START grant, with the four lettered options recorded here, and stay blocked until the operator answers.

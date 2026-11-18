@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 project: arcadia
-status: draft
+status: active
 milestone: "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions"
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-17
+updated: 2026-11-18
 actions:
   - id: retry-successor-press-when-main-moves
     title: When main moves while the host timer is between derive and press, the timer retires that card and derives a fresh one on a later tick instead of ending the standing grant's loop, so the operator can merge to main freely while production runs.
@@ -120,6 +120,9 @@ actions:
     references: ["src/docs/sync.ts", "src/docs/types.ts", "src/docs/operatorGate.ts", "src/production/startRunSignIn.ts", "src/production/workerClaudeUsageDiagnostic.ts", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md"]
 questions: []
 decisions: []
+current_action: retry-successor-press-when-main-moves
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions
