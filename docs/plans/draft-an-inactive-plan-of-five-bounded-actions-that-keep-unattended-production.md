@@ -281,7 +281,7 @@ actions:
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/production/mechanicalRepair.ts", "tests/mechanical-repair.test.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md"]
 questions: []
 decisions: []
-current_action: repair-red-candidates-with-a-bounded-session
+current_action: run-successor-press-from-a-current-timer-release
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
