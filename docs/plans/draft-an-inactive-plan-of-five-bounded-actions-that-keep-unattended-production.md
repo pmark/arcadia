@@ -160,11 +160,11 @@ actions:
     references: ["src/workMonitoring/runWindow.ts", "src/commands/workMonitor.ts", "src/production/workerMerge.ts", "scripts/merge-decision-card-batch.ts", "docs/agent-guidance/rehearsal-freeze-window.md", "docs/agent-guidance/session-roles-and-briefs.md"]
   - id: prove-the-timer-runs-the-successor-press-live
     title: "On the live host, after production's Off, the liveness timer runs a release containing the successor-press retry with --successor-press, shown by recorded evidence, under the operator's approval recorded in Issue #2778."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "On the live host, after production's Off, the liveness timer runs a release containing the successor-press retry with --successor-press, shown by recorded evidence, under the operator's approval recorded in Issue #2778."
+    next_action: Completed via Agent Ask complete-prove-the-timer-runs-the-successor-press-live-20261118; no further action.
     expected_artifact: Evidence satisfying Agent Ask prove-the-timer-runs-the-successor-press-live
     clarification: clarified
     confidence: high
@@ -281,7 +281,7 @@ actions:
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/production/mechanicalRepair.ts", "tests/mechanical-repair.test.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md"]
 questions: []
 decisions: []
-current_action: prove-the-timer-runs-the-successor-press-live
+current_action: reconcile-current-action-after-a-base-merge
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
