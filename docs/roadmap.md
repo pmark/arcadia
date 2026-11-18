@@ -6,7 +6,7 @@ This page is the captured list of features we want, so plan time is spent on pri
 
 The operator plans each day in the Arcadia Workspace, and production runs it unattended overnight. The operator is asked only about what is decisive: queue approval, Decisions, authority merges, spend and credentials.
 
-## Plan order (operator, 2026-11-18: "A: F, then G")
+## Plan order (operator direction, 2026-11-18: "A: F, then G"; not a Decision)
 
 1. **F**, `draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production`: keep the loop alive.
 2. **G**, `draft-an-inactive-plan-of-four-bounded-actions-that-make-the-arcadia-workspace`: the Workspace planning surface. It is the first Plan started from F's Plan queue.
@@ -39,7 +39,8 @@ The operator plans each day in the Arcadia Workspace, and production runs it una
 - In-run merges overnight (draft `ellis-decision-in-run-merges-20261118`).
 - Publishing controller settle commits (menu question G).
 - Judging authority by the files an Action changes, so derived cards can run work. Not drafted yet; without it the standing grant derives nothing.
-- Renewing Decision 0191 after two automatic handoffs (Decision 0246 A).
+
+Decided, with a later governed step still to come: Decision 0246 (answer A, 2026-11-16) renews Decision 0191 once two automatic handoffs are on record. The renewal itself is that later step.
 
 ## Intake: where a newly found bug or task goes
 
@@ -60,7 +61,9 @@ Capture first (`arcadia learn` or an Issue), then classify by urgency. Use the m
 
 ## The daily rhythm
 
-**Standing order (operator, 2026-11-18):** keep the Plans for the **next 48 hours** ready at all times, so daily planning is prioritization, not heavy planning work. Each morning by 7:30 AM the planner reports which Plans and Actions are ready for tonight and tomorrow night, and which are not and why, ranked by how many unattended hours each would add. The report is refreshed whenever a bug is inserted.
+This section describes the working rhythm; it grants nothing. Press, merge and Plan authority come only from recorded Decisions (START presses: the operator's press or the standing grant, Decision 0241) and the operator.
+
+**Operator direction (2026-11-18, not yet a Decision):** keep the Plans for the **next 48 hours** ready at all times, so daily planning is prioritization, not heavy planning work. Each morning by 7:30 AM the planner reports which Plans and Actions are ready for tonight and tomorrow night, and which are not and why, ranked by how many unattended hours each would add. The report is refreshed whenever a bug is inserted.
 
 - **8 AM:** digest.
 - **Noon:** the operator answers the one-line menu (placement, scope, Decisions).
@@ -69,4 +72,4 @@ Capture first (`arcadia learn` or an Issue), then classify by urgency. Use the m
 - **8 PM:** card minted; replay and preflight.
 - **8:15 PM:** pre-mortem.
 - **8:30 PM:** ping with the exact card title.
-- **9 PM:** press.
+- **9 PM:** press, by whoever holds press authority that night.
