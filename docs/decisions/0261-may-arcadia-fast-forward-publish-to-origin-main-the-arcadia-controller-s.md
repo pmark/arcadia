@@ -4,7 +4,7 @@ type: decision
 id: "0261"
 slug: may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s
 project: arcadia
-status: open
+status: approved
 question: May Arcadia fast-forward publish to origin main the Arcadia Controller's governance-record-only commits (auto-settle and pointer commits) whenever five conditions checked each time hold, so local main never drifts into base_not_synced?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-18
+answer: A. Publish governance-only controller commits, checked each time
+decided: 2026-11-18
 ---
 
 # Decision 0261: May Arcadia fast-forward publish to origin main the Arcadia Controller's governance-record-only commits (auto-settle and pointer commits) whenever five conditions checked each time hold, so local main never drifts into base_not_synced?
