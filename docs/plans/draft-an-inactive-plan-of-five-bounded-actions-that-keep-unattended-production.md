@@ -347,10 +347,10 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask add-a-guidance-refresh-command
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    source: Agent Ask amend-p1-ascii-ellipsis-20261118
     why: "A stale docs/agent-guidance/fingerprints.json entry was a hand fix on #2766, #2776 and others; notes-to-self says never hand-edit fingerprints."
     acceptance_criteria:
-      - "`pnpm guidance:refresh [<doc>…]` rewrites only the fingerprints of the named stale documents (or all stale ones with no argument), using the fingerprint function that check:agent-guidance uses; a test shows its output then passes check:agent-guidance."
+      - "`pnpm guidance:refresh [<doc>...]` rewrites only the fingerprints of the named stale documents (or all stale ones with no argument), using the fingerprint function that check:agent-guidance uses; a test shows its output then passes check:agent-guidance."
       - It reuses that function and the refresh logic of src/production/mechanicalRepair.ts (refreshCandidateGuidanceFingerprints) rather than a second implementation; a test or code reference shows the shared function.
       - It changes nothing when no fingerprint is stale and exits zero; a test covers it.
     depends_on: []
