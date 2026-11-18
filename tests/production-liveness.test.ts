@@ -582,18 +582,29 @@ describe("the launchd agent", () => {
     stub("lsof", "exit 0");
     stub("ps", "exit 0");
     stub("curl", "exit 1");
-    stub("mise", "exit 0");
+    // Both launch routes answer `production status --json` from this file.
+    const statusFile = path.join(root, "status.json");
+    writeFileSync(statusFile, JSON.stringify({ ok: true, data: { read: { status: "ok", policy: { desiredState: "inactive" } } } }));
+    stub("mise", `cat "${statusFile}"`);
+
+    // The checkout is a git repo whose base commit stands in for the successor-press retry commit.
+    const git = (...args: string[]) => execFileSync("git", ["-C", fakeRepo, "-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { encoding: "utf8" }).trim();
+    git("init", "-q");
+    git("commit", "-q", "--allow-empty", "-m", "retry");
+    const retryCommit = git("rev-parse", "HEAD");
+    git("commit", "-q", "--allow-empty", "-m", "descendant");
+    const revision = git("rev-parse", "HEAD");
 
     let releaseDir: string | null = null;
     if (options.release) {
-      releaseDir = path.join(home, ".local", "share", "arcadia", "go-broker", "releases", "a".repeat(40));
+      releaseDir = path.join(home, ".local", "share", "arcadia", "go-broker", "releases", revision);
       mkdirSync(path.join(releaseDir, "dist", "src", "commands"), { recursive: true });
       writeFileSync(path.join(releaseDir, "dist", "src", "cli.js"), "");
       writeFileSync(path.join(releaseDir, "dist", "src", "commands", "productionLiveness.js"), "");
       const runtime = path.join(root, "release-node");
-      writeFileSync(runtime, "#!/bin/sh\n");
+      writeFileSync(runtime, `#!/bin/sh\ncat "${statusFile}"\n`);
       chmodSync(runtime, 0o755);
-      writeFileSync(path.join(releaseDir, "broker-manifest.json"), JSON.stringify({ runtimeExecutable: runtime }, null, 2));
+      writeFileSync(path.join(releaseDir, "broker-manifest.json"), JSON.stringify({ revision, runtimeExecutable: runtime }, null, 2));
       mkdirSync(path.join(home, ".local", "bin"), { recursive: true });
       symlinkSync(path.join(releaseDir, "arcadia-advance-broker-claude"), path.join(home, ".local", "bin", "arcadia-advance-broker-claude"));
     }
@@ -604,6 +615,7 @@ describe("the launchd agent", () => {
         HOME: home,
         ARCADIA_WORKSPACE: fakeWorkspace,
         ARCADIA_MISE_BIN: path.join(bin, "mise"),
+        ARCADIA_LIVENESS_REQUIRED_COMMIT: retryCommit,
         ...env
       }
     });
@@ -613,7 +625,7 @@ describe("the launchd agent", () => {
       return path.join(agentsDir, `com.arcadia.local.${key}.liveness-check.plist`);
     };
     const launchctlCalls = () => (existsSync(calls) ? readFileSync(calls, "utf8") : "");
-    return { root, home, fakeRepo, fakeWorkspace, releaseDir, run, plistPath, launchctlCalls, bin, failures };
+    return { root, home, fakeRepo, fakeWorkspace, releaseDir, revision, retryCommit, statusFile, run, plistPath, launchctlCalls, bin, failures };
   }
 
   function plistJson(file: string): { Label: string; ProgramArguments: string[]; StartInterval: number; RunAtLoad: boolean; KeepAlive?: unknown; StandardOutPath: string; StandardErrorPath: string; WorkingDirectory: string; EnvironmentVariables: Record<string, string> } {
@@ -643,7 +655,7 @@ describe("the launchd agent", () => {
     expect(plist.ProgramArguments).toEqual([
       path.join(fixture.root, "release-node"),
       `${fixture.releaseDir}/dist/src/cli.js`,
-      "production", "liveness-check",
+      "production", "liveness-check", "--successor-press",
       "--dashboard-url", "http://arcadia.example.ts.net"
     ]);
     expect(readFileSync(fixture.plistPath(), "utf8")).not.toContain("do-not-read");
@@ -703,6 +715,34 @@ describe("the launchd agent", () => {
     expect(argv.slice(0, 5)).toEqual([path.join(fixture.bin, "mise"), "-C", realpathSync(fixture.fakeRepo), "exec", "--"]);
     expect(argv.slice(-2)).toEqual(["--stale-seconds", "420"]);
     expect(argv).toContain("liveness-check");
+    expect(argv).toContain("--successor-press");
+  });
+
+  it("refuses a release without the successor-press retry commit, naming both, and accepts one that has it", () => {
+    const fixture = host({ release: true });
+    const refused = fixture.run("liveness", { ARCADIA_LIVENESS_REQUIRED_COMMIT: "deadbeef" });
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain(`release ${fixture.revision} does not contain the successor-press retry (missing commit deadbeef)`);
+    expect(existsSync(fixture.plistPath())).toBe(false);
+    expect(fixture.run("liveness").status).toBe(0);
+    expect(existsSync(fixture.plistPath())).toBe(true);
+  });
+
+  it("installs only while production is Off, and names the reason otherwise", () => {
+    const fixture = host({ release: true });
+    writeFileSync(fixture.statusFile, JSON.stringify({ ok: true, data: { read: { status: "ok", policy: { desiredState: "active" } } } }));
+    const refused = fixture.run("liveness");
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("production is not Off");
+    expect(existsSync(fixture.plistPath())).toBe(false);
+    writeFileSync(fixture.statusFile, JSON.stringify({ ok: true, data: { read: { status: "ok", policy: { desiredState: "inactive" } } } }));
+    expect(fixture.run("liveness").status).toBe(0);
+    expect(existsSync(fixture.plistPath())).toBe(true);
+  });
+
+  it("is the only checked-in source that writes the liveness plist", () => {
+    const writers = execFileSync("git", ["-C", repo, "grep", "-l", "write_liveness_plist", "--", "scripts", "src", "apps"], { encoding: "utf8" }).trim().split("\n").sort();
+    expect(writers).toEqual(["scripts/lib/liveness-agent.sh", "scripts/restart-services-impl.sh"]);
   });
 
   it("is removed by stop and reported by status, without touching the real launchd", () => {

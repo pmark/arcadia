@@ -61,10 +61,28 @@ liveness_stale_seconds_valid() {
 # environment, it resolves the workspace exactly as the worker's agent does.
 liveness_command_args() {
   local repo="$1" url
-  printf '%s\n' production liveness-check
+  printf '%s\n' production liveness-check --successor-press
   url="$(liveness_dashboard_url "$repo")"
   if [[ -n "$url" ]]; then printf '%s\n' --dashboard-url "$url"; fi
   if [[ -n "${ARCADIA_LIVENESS_STALE_SECONDS:-}" ]]; then printf '%s\n' --stale-seconds "$ARCADIA_LIVENESS_STALE_SECONDS"; fi
+}
+
+# The commit the timer's release must contain: the successor-press main-moved
+# retry (PR #2776). The timer passes --successor-press, so a release without the
+# retry would press cards it cannot recover from a moved main.
+LIVENESS_REQUIRED_COMMIT="${ARCADIA_LIVENESS_REQUIRED_COMMIT:-ddfae2b62}"
+
+# <repo> <program and arguments before the command...>: succeeds only when
+# production status reads Off (inactive). An unreadable status refuses too.
+liveness_production_is_off() {
+  local repo="$1" out
+  shift
+  out="$(cd "$repo" && "$@" production status --json 2>/dev/null)" || out=""
+  if printf '%s' "$out" | grep -Eq '"desiredState"[[:space:]]*:[[:space:]]*"inactive"'; then
+    return 0
+  fi
+  echo "liveness-check not changed: production is not Off (or its status could not be read); the timer that presses successor cards is installed only while production is Off." >&2
+  return 1
 }
 
 liveness_xml() {

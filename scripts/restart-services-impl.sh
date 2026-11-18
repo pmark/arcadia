@@ -509,9 +509,21 @@ stop_all() {
 # leave it alone, so a failed restart that leaves the worker down still queues an
 # alert. Rollback stops the Discord bot too, so delivery waits until the bot is back.
 
+# <repo> <revision>: succeeds when the revision contains LIVENESS_REQUIRED_COMMIT,
+# else names both on stderr.
+liveness_release_has_retry() {
+  local repo="$1" revision="$2"
+  if [[ -n "$revision" ]] && git -C "$repo" merge-base --is-ancestor "$LIVENESS_REQUIRED_COMMIT" "$revision" 2>/dev/null; then
+    return 0
+  fi
+  echo "liveness-check not changed: release ${revision:-unknown} does not contain the successor-press retry (missing commit $LIVENESS_REQUIRED_COMMIT); install a release from current main first." >&2
+  return 1
+}
+
 install_liveness_agent() {
   local label plist out err release runtime path_value node_path="" mise_bin line
-  local -a argv command_args=()
+  local -a argv command_args=() prefix=()
+  local revision
   if ! liveness_stale_seconds_valid; then
     echo "liveness-check not changed: ARCADIA_LIVENESS_STALE_SECONDS must be a whole number of at least 30, got: $ARCADIA_LIVENESS_STALE_SECONDS" >&2
     return 1
@@ -524,7 +536,10 @@ install_liveness_agent() {
   if release="$(liveness_release_dir "$HOME")" && runtime="$(liveness_release_runtime "$release")"; then
     path_value="/usr/bin:/bin:/usr/sbin:/sbin"
     node_path="$release/node_modules"
-    argv=("$runtime" "$release/dist/src/cli.js" "${command_args[@]}")
+    prefix=("$runtime" "$release/dist/src/cli.js")
+    revision="$(sed -n 's/.*"revision"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$release/broker-manifest.json" | head -n 1)"
+    liveness_release_has_retry "$REPO" "$revision" || return 1
+    NODE_PATH="$node_path" liveness_production_is_off "$REPO" "${prefix[@]}" || return 1
   else
     mise_bin="$(resolve_mise_bin)"
     if [[ -z "$mise_bin" || ! -x "$mise_bin" ]]; then
@@ -533,8 +548,12 @@ install_liveness_agent() {
     fi
     echo "note: no installed go-broker release has liveness-check yet, so it runs from this checkout until one does and services restart." >&2
     path_value="${mise_bin%/*}:/usr/bin:/bin:/usr/sbin:/sbin"
-    argv=("$mise_bin" -C "$REPO" exec -- node "$TSX_ENTRY" "$REPO/src/cli.ts" "${command_args[@]}")
+    prefix=("$mise_bin" -C "$REPO" exec -- node "$TSX_ENTRY" "$REPO/src/cli.ts")
+    revision="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
+    liveness_release_has_retry "$REPO" "$revision" || return 1
+    liveness_production_is_off "$REPO" "${prefix[@]}" || return 1
   fi
+  argv=("${prefix[@]}" "${command_args[@]}")
   # launchd holds one job per label, so the old timer must go before the new one
   # loads. Everything that can fail first happens first, and a refused load puts
   # the old timer back: a bad replacement must not leave nothing watching.
