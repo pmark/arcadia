@@ -133,7 +133,7 @@ export function runSuccessorPressStep(ports: SuccessorPorts, prior: SuccessorSta
     if (minted && (code === CARD_NOT_DERIVED || code === "ORIGIN_MOVED")) {
       // Retryable only when main itself moved since the card was pinned; the same code with main unchanged stays sticky.
       const from = pinnedRevision(minted);
-      let to: string | null = null;
+      let to: string | null;
       try { to = ports.originMain(); } catch { to = null; }
       if (from !== null && to !== null && from !== to) {
         const count = (state.mainMoved?.count ?? 0) + 1;
