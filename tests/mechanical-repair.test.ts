@@ -154,14 +154,18 @@ describe("refreshCandidateGuidanceFingerprints", () => {
     const root = mkdtempSync(path.join(tmpdir(), "mech-repair-"));
     repoRoots.push(root);
     mkdirSync(path.join(root, "docs/agent-guidance"), { recursive: true });
-    const index = { schema: "arcadia-agent-guidance-v1", entries: [
-      { id: "mine", trigger: "t", path: "docs/agent-guidance/mine.md", read_before: "r" },
-      { id: "theirs", trigger: "t", path: "docs/agent-guidance/theirs.md", read_before: "r" }
-    ] };
+    // The real loader (guidanceEntries) demands every mandatory trigger, so the fixture indexes them all.
+    const mandatory = ["continuation", "agent-asks", "operator-actions", "proposals", "principles", "pull-requests", "learning", "git-identity", "managed-documents", "planning", "working-copy"];
+    const ids = ["mine", "theirs", ...mandatory];
+    const index = { schema: "arcadia-agent-guidance-v1", entries: ids.map((id) => ({ id, trigger: "t", path: `docs/agent-guidance/${id}.md`, read_before: "r" })) };
     writeFileSync(path.join(root, "docs/agent-guidance/index.json"), JSON.stringify(index));
-    writeFileSync(path.join(root, "docs/agent-guidance/mine.md"), "mine, edited\n");
-    writeFileSync(path.join(root, "docs/agent-guidance/theirs.md"), "theirs, drifted on the base\n");
-    writeFileSync(path.join(root, "docs/agent-guidance/fingerprints.json"), renderGuidanceFingerprints({ mine: "0".repeat(64), theirs: "1".repeat(64) }));
+    const prints: Record<string, string> = {};
+    for (const id of ids) {
+      const text = id === "mine" ? "mine, edited\n" : id === "theirs" ? "theirs, drifted on the base\n" : `${id}\n`;
+      writeFileSync(path.join(root, `docs/agent-guidance/${id}.md`), text);
+      prints[id] = id === "mine" ? "0".repeat(64) : id === "theirs" ? "1".repeat(64) : guidanceFingerprint(text);
+    }
+    writeFileSync(path.join(root, "docs/agent-guidance/fingerprints.json"), renderGuidanceFingerprints(prints));
     return { root, fingerprints: () => (JSON.parse(readFileSync(path.join(root, "docs/agent-guidance/fingerprints.json"), "utf8")) as { fingerprints: Record<string, string> }).fingerprints };
   }
 

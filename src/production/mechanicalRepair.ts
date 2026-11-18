@@ -42,7 +42,7 @@ const NON_MECHANICAL = /(?:^|\n)\s*(?:FAIL\s|✗|×\s)|error TS\d+|Test Files\s+
  */
 export function classifyCheckFailureLog(log: string): MechanicalClassification {
   const classes = new Set<Exclude<MechanicalClass, "unknown">>();
-  const guidancePaths = [...new Set([...log.matchAll(STALE_FINGERPRINT)].map((match) => match[1]!))];
+  const guidancePaths = [...new Set([...log.matchAll(STALE_FINGERPRINT)].map((match) => match[1]))];
   if (guidancePaths.length > 0) classes.add("guidance-fingerprint");
   const summary = ESLINT_SUMMARY.exec(log);
   const fixable = ESLINT_FIXABLE.exec(log);
@@ -57,7 +57,7 @@ export function classifyCheckFailureLog(log: string): MechanicalClassification {
   if (NON_MECHANICAL.test(log)) return { class: "unknown", classes: [...classes], guidancePaths, residue: true, reason: "the log shows a failure no generator addresses" };
   if (classes.size === 0) return { class: "unknown", classes: [], guidancePaths, residue: false, reason: "no mechanical failure recognised" };
   const list = [...classes];
-  return { class: list.length === 1 ? list[0]! : "unknown", classes: list, guidancePaths, residue: false, reason: list.length === 1 ? `sole class ${list[0]}` : `several classes: ${list.join(", ")}` };
+  return { class: list.length === 1 ? list[0] : "unknown", classes: list, guidancePaths, residue: false, reason: list.length === 1 ? `sole class ${list[0]}` : `several classes: ${list.join(", ")}` };
 }
 
 /* ------------------------------------------------------------------------ */
