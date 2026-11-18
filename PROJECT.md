@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions"
 active_plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-18
-current_action: prove-the-timer-runs-the-successor-press-live
+current_action: reconcile-current-action-after-a-base-merge
 ---
 
 # Arcadia
