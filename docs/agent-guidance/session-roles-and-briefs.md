@@ -46,7 +46,9 @@ host enforces dependencies, ownership, conflicts and limits; a coordinator
 never treats a consultation or disjoint worktrees as permission for concurrency.
 Throughout an assignment, Rowan looks for and captures lessons with `arcadia learn`,
 especially what wasted time or tokens, what a check missed, and what could be cheaper
-or removed, and passes this duty on in every handoff.
+or removed, and passes this duty on in every handoff. Before standing down, Rowan
+mines the shift: bugs logged with evidence and ranked, friction recorded (the
+arcadia-handoff skill's "Mine the shift before standing down").
 For production work, Rowan's pre-mortem cites rules 5 and 6 of
 `docs/agent-guidance/production-24x7.md`. Handoff rule 8 there is a target: the
 predecessor keeps custody only while alive and able to act, and renewal never

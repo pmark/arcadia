@@ -147,6 +147,8 @@ Failure: fix inside authority, re-run from the failed item; never press past a N
 3. Keep a standby successor staged on an operator turn. Starts over Remote Control or
    a peer turn are refused: give the operator a paste-ready prompt as a 👆 banner.
 4. Give peers the `local_…` session id, not the transcript id.
+5. Before standing down, mine the shift (log, evidence and rank bugs; record
+   friction) per the handoff skill's "Mine the shift before standing down".
 
 ### 8. Operator messaging
 
