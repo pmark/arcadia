@@ -78,7 +78,10 @@ liveness_production_is_off() {
   local repo="$1" out
   shift
   out="$(cd "$repo" && "$@" production status --json 2>/dev/null)" || out=""
-  if printf '%s' "$out" | grep -Eq '"desiredState"[[:space:]]*:[[:space:]]*"inactive"'; then
+  # A here-string, not `printf | grep -q`: grep -q exits at the first match, and
+  # under the caller's pipefail the writer's SIGPIPE (141) on the real, large
+  # status JSON would read as "not Off" (#2778 live proof, 2026-11-18).
+  if grep -Eq '"desiredState"[[:space:]]*:[[:space:]]*"inactive"' <<<"$out"; then
     return 0
   fi
   echo "liveness-check not changed: production is not Off (or its status could not be read); the timer that presses successor cards is installed only while production is Off." >&2
