@@ -3774,3 +3774,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Acceptance criterion 3 of the operator-approved amendment e-alt2 (sha256 dbda157d6095885d24c9942f56dc55c9bda2ceb160d7d594d9b33a22de8cbd76, operator's B via Signal 14 on 2026-11-17) requires this correction in MISSION_LOG.md, but a Plan-amendment settlement writes no log entry, so it is recorded by this log Ask. Independent review of the settlement found the gap. This Ask grants nothing.
 - **Next:** Continue from the governed Project pointer and execution queue.
 - **Blockers:** None recorded by this settlement.
+
+## 2026-11-18 — Completed arcadia/run-successor-press-from-a-current-timer-release
+
+- **Did:** Completed Action arcadia/run-successor-press-from-a-current-timer-release from accepted evidence (Candidate 5bb495f19951f9478c250bd577fec880bb825972).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test of the liveness step's generated plist shows its ProgramArguments contain production liveness-check and --successor-press, and no other checked-in source writes the liveness plist."; "The step refuses to point the timer at a release that does not contain the successor-press retry (commit ddfae2b62 or a descendant), naming the release and the missing commit; a test covers refusal and acceptance."; "The step installs only while production is Off, refusing with a named reason otherwise; a test covers both states."; "docs/agent-guidance/operator-actions.md describes the timer's flag and release exactly as the step sets them, and states that no standing-grant press is expected until the live proof Action is done."; "Proposal agentask_2a475e6ceff828199d is recorded as absorbed by this Action and the next, with its receipt id cited in this Action's completion evidence.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-run-successor-press-from-a-current-timer-release-0f512640e40a).

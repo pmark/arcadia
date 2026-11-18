@@ -118,11 +118,11 @@ actions:
     references: ["src/docs/sync.ts", "src/docs/types.ts", "src/docs/operatorGate.ts", "src/production/startRunSignIn.ts", "src/production/workerClaudeUsageDiagnostic.ts", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md"]
   - id: run-successor-press-from-a-current-timer-release
     title: The checked-in services.sh liveness step installs a release from current main that contains successorPress, including the main-moved retry, and writes --successor-press into the liveness plist, so the host timer can press successor cards once a standing grant is open.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: The checked-in services.sh liveness step installs a release from current main that contains successorPress, including the main-moved retry, and writes --successor-press into the liveness plist, so the host timer can press successor cards once a standing grant is open.
+    next_action: Completed via Agent Ask auto-settle-arcadia-run-successor-press-from-a-current-timer-release-0f512640e40a; no further action.
     expected_artifact: Evidence satisfying Agent Ask run-successor-press-from-a-current-timer-release
     clarification: clarified
     confidence: high
@@ -281,7 +281,7 @@ actions:
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/production/mechanicalRepair.ts", "tests/mechanical-repair.test.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md"]
 questions: []
 decisions: []
-current_action: run-successor-press-from-a-current-timer-release
+current_action: refuse-agent-merges-while-a-card-is-pinned
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
