@@ -358,11 +358,11 @@ actions:
     references: ["src/projects/agentGuidance.ts", "src/production/mechanicalRepair.ts", "docs/agent-guidance/fingerprints.json", "package.json"]
   - id: add-a-pre-pr-check-that-mirrors-ci
     title: "`pnpm pre-pr` runs, fail-fast and locally, the CI-equivalent checks that have turned production candidates red, and prints for each failure the exact command or edit that fixes it."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "`pnpm pre-pr` runs, fail-fast and locally, the CI-equivalent checks that have turned production candidates red, and prints for each failure the exact command or edit that fixes it."
+    next_action: Completed via Agent Ask auto-settle-arcadia-add-a-pre-pr-check-that-mirrors-ci-a83d02965eb2; no further action.
     expected_artifact: Evidence satisfying Agent Ask add-a-pre-pr-check-that-mirrors-ci
     clarification: clarified
     confidence: high
@@ -493,7 +493,7 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
-current_action: add-a-pre-pr-check-that-mirrors-ci
+current_action: require-pre-pr-before-every-pull-request
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
