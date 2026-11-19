@@ -155,6 +155,10 @@ Compaction is strongly discouraged.
   - the wake sources to re-arm;
   - PR heads with their review status;
   - these standing orders.
+- **Mine the shift first.** Before the handoff is final, Signal runs the handoff
+  skill's "Mine the shift before standing down" pass, as Rowan does: lessons with
+  `arcadia learn`, bugs deduplicated and filed with evidence, ranked P1-P3 with
+  opportunities, and the list linked from the handoff block.
 - **How to start the successor.** Starting a session can fail over Remote Control.
   If it does, give the operator a paste-ready prompt to start Signal n+1 in the
   desktop app, and put it at the top as a 👆 banner.
