@@ -60,15 +60,17 @@ private reasoning. Mark unknowns and failures explicitly.
 
 ### Mine the shift before standing down
 
-Operator standing order, 2026-11-18: before a coordinator stands down or hands
-off, at the natural gap and before the handoff is final, it mines the shift so
-the next run is smoother, cheaper and closer to the North Star:
+Operator standing order, 2026-11-18, extended 2026-11-19 to every Rowan and
+Signal session: before it stands down or hands off, at the natural gap and before
+the handoff is final, it mines the shift so the next run is smoother, cheaper and
+closer to the North Star:
 
 1. Capture every friction not yet recorded with `arcadia learn`.
 2. For each bug, search open Issues first; add evidence to a match, else file one.
 3. Rank them: P1 stalls an unattended run or needs a person; P2 authority or
    delegation correctness; P3 planning friction. Label P1 `critical-path`.
-4. Post the ranked list on the coordination Issue and link it from the handoff.
+4. Name the opportunities: what would remove a human stop from the next night.
+5. Post the ranked list on the coordination Issue and link it from the handoff.
 
 The handoff is not complete until that comment exists.
 

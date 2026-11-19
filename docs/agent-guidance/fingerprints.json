@@ -1,7 +1,7 @@
 {
   "schema": "arcadia-agent-guidance-v1",
   "fingerprints": {
-    "continuation": "ee9da1e2887a6a1f021f88cbdf58a0311355f8283aabc42d2c500ff61b05997f",
+    "continuation": "0742dedf2f798e7c06790a65b62933003a28d0fe292fe162b9c4af4cf37f2d5e",
     "agent-asks": "e321345d3a373048ad8b9f08b9d30d715c67b39780d64187dc5f2ea93e129229",
     "operator-actions": "f0eb8b5e876e452d775a8eb0dea135777ae8c0945d8c062185ba09b814582a15",
     "proposals": "2b781df466a30191591790e5029f8107dc9d6e18cc1f1cf264a90cf3d092ac62",
