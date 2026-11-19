@@ -518,11 +518,11 @@ actions:
     references: ["src/operatorActions/startRunDerive.ts", "src/production/candidateChangeGate.ts", "src/decisions/batchMerge.ts"]
   - id: define-the-gate-set
     title: One checked-in gate-set list names the gate modules, their first-order imports, spend/ and the hard classes; one loader serves it to every reader; a drift test fails when a gate module gains a first-order import outside the list, and the list, loader and test are themselves in the list.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: One checked-in gate-set list names the gate modules, their first-order imports, spend/ and the hard classes; one loader serves it to every reader; a drift test fails when a gate module gains a first-order import outside the list, and the list, loader and test are themselves in the list.
+    next_action: Completed via Agent Ask auto-settle-arcadia-define-the-gate-set-56ec0a38fd0c; no further action.
     expected_artifact: Evidence satisfying Agent Ask define-the-gate-set
     clarification: clarified
     confidence: high
@@ -642,7 +642,7 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
-current_action: define-the-gate-set
+current_action: wire-mechanical-repair-into-production
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

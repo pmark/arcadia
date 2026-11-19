@@ -1,0 +1,160 @@
+{
+  "gateSet": "v1",
+  "projects": {
+    "arcadia": {
+      "repository": "pmark/arcadia",
+      "gateModules": [
+        {
+          "id": "workerMerge",
+          "path": "src/production/workerMerge.ts",
+          "imports": [
+            "better-sqlite3",
+            "src/decisions/batchMerge.ts",
+            "src/git/pointerReconcile.ts",
+            "src/git/worktrees.ts",
+            "src/production/candidateChangeGate.ts",
+            "src/qa/patchApplicability.ts",
+            "src/qa/prReview.ts",
+            "src/sessions/roleLineage.ts",
+            "src/stewardship/prBlastRadius.ts",
+            "src/workMonitoring/runWindow.ts"
+          ]
+        },
+        {
+          "id": "independentReview",
+          "path": "src/production/independentReview.ts",
+          "imports": [
+            "better-sqlite3",
+            "src/cli/errors.ts",
+            "src/git/worktrees.ts",
+            "src/production/candidateChangeGate.ts",
+            "src/production/journeyLog.ts",
+            "src/production/policy.ts",
+            "src/production/recoverySignals.ts",
+            "src/production/workerMerge.ts",
+            "src/qa/prReview.ts",
+            "src/sessions/candidatePreservation.ts",
+            "src/sessions/enrollment.ts",
+            "src/sessions/index.ts",
+            "src/sessions/reviewRepair.ts",
+            "src/sessions/roleLineage.ts",
+            "src/sessions/validationEvidence.ts"
+          ]
+        },
+        {
+          "id": "batchMerge",
+          "path": "src/decisions/batchMerge.ts",
+          "imports": [
+            "node:crypto",
+            "src/decisions/card.ts"
+          ]
+        },
+        {
+          "id": "startRunDerive",
+          "path": "src/operatorActions/startRunDerive.ts",
+          "imports": [
+            "node:crypto",
+            "node:path",
+            "src/operatorActions/startRunDayGrant.ts",
+            "src/operatorActions/startRunPins.ts",
+            "yaml"
+          ]
+        },
+        {
+          "id": "autoSettleBeforeDispatch",
+          "path": "src/ask/autoSettleBeforeDispatch.ts",
+          "imports": [
+            "better-sqlite3",
+            "node:fs",
+            "node:path",
+            "src/ask/agentAsk.ts",
+            "src/ask/autoSettleRequestId.ts",
+            "src/ask/preview.ts",
+            "src/ask/settlement.ts",
+            "src/ask/supersedeOlderCompletionAsks.ts",
+            "src/cli/errors.ts",
+            "src/git/worktrees.ts"
+          ]
+        },
+        {
+          "id": "candidateChangeGate",
+          "path": "src/production/candidateChangeGate.ts",
+          "imports": [
+            "src/decisions/batchMerge.ts",
+            "src/git/worktrees.ts"
+          ]
+        },
+        {
+          "id": "mechanicalRepair",
+          "path": "src/production/mechanicalRepair.ts",
+          "imports": [
+            "better-sqlite3",
+            "node:crypto",
+            "node:fs",
+            "node:path",
+            "src/projects/agentGuidance.ts"
+          ]
+        },
+        {
+          "id": "start-run.sh",
+          "path": "scripts/start-run.sh",
+          "imports": []
+        }
+      ],
+      "spend": [
+        "src/spend/"
+      ],
+      "hardClasses": [
+        {
+          "name": "decisions",
+          "paths": [
+            "docs/decisions/"
+          ]
+        },
+        {
+          "name": "agent_permissions",
+          "paths": [
+            ".claude/",
+            ".codex/",
+            ".opencode/"
+          ]
+        },
+        {
+          "name": "constitution",
+          "paths": [
+            "CONSTITUTION.md"
+          ]
+        },
+        {
+          "name": "governance_files",
+          "paths": [
+            "PROJECT.md",
+            "AGENTS.md",
+            "CLAUDE.md",
+            "NORTH_STAR.md",
+            "OPERATOR_CONTEXT.md",
+            "docs/agents-context.md"
+          ]
+        }
+      ],
+      "self": [
+        {
+          "id": "list",
+          "path": "config/gate-set.json"
+        },
+        {
+          "id": "loader",
+          "path": "src/production/gateSet.ts",
+          "imports": [
+            "node:fs",
+            "node:path"
+          ]
+        },
+        {
+          "id": "driftTest",
+          "path": "tests/gate-set.test.ts"
+        }
+      ]
+    }
+  }
+}
