@@ -423,16 +423,16 @@ actions:
     responsibility: agent
     execution: build
     effort: session
-    next_action: Completed via Agent Ask complete-require-pre-pr-before-every-pull-request-rowan24-two-criteria-b; no further action.
+    next_action: Every build Session's brief and the pull-request procedure require `pnpm pre-pr` to pass before a pull request is opened or pushed, with its output cited in the PR description.
     expected_artifact: Evidence satisfying Agent Ask require-pre-pr-before-every-pull-request
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask rowan24-drop-p5-ordering-edges-20261119
     why: "A local check only helps if the build Session runs it before the PR; today the brief and procedure do not ask for it."
     acceptance_criteria:
       - The build Session brief composed for a production candidate contains one line requiring `pnpm pre-pr` before opening or pushing a PR; a test asserts the line in a composed brief.
       - "docs/agent-guidance/pull-requests.md gains a criterion requiring a passing `pnpm pre-pr` with its output cited in the PR description, and its index entry and fingerprint are refreshed with `pnpm guidance:refresh`; check:agent-guidance, including the bootstrap cap, passes."
-    depends_on: [add-a-pre-pr-check-that-mirrors-ci, allocate-decision-numbers-on-main-and-refuse-duplicates, reconcile-current-action-after-a-base-merge]
+    depends_on: [add-a-pre-pr-check-that-mirrors-ci]
     decisions: []
     references: ["src/codex/packets.ts", "docs/agent-guidance/pull-requests.md", "docs/agent-guidance/index.json"]
   - id: show-the-resulting-queue-order-in-settle-preview
