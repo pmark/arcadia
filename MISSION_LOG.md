@@ -3816,3 +3816,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "GOVERNANCE_RECORD_PATHS includes docs/agent-guidance/fingerprints.json, and a test shows a commit that changes only that file after the candidate revision settles cleanly."; "A test shows a commit that changes any guidance document, or fingerprints.json together with any other non-record path, still returns AUTO_SETTLE_REVISION_CHANGED."; "The worker still reviews and merges only at the exact final head; the existing independent-review tests pass unchanged.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-treat-fingerprint-fold-ins-as-governance-records-3e38bb0d032b).
+
+## 2026-11-19 — Completed arcadia/inspect-stale-completion-candidate-revision
+
+- **Did:** Completed Action arcadia/inspect-stale-completion-candidate-revision from accepted evidence (Candidate 723e5078e989fad201b95c3e5468727fa48512f8).
+- **Result:** Every declared acceptance criterion was accepted as met: "A fixture replays #2777's sequence (auto-settle at the preserved candidate, then a fix commit, then merge) and shows which revision the completion record names."; "If the record names a pre-fix head, a failing-first test then passes with the completion record naming the merged head, or with a recorded refresh when the head moves; otherwise the finding and the fixture are recorded in docs/notes-to-self.md and no code changes."; "Either outcome is cited on a new or existing Issue.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-inspect-stale-completion-candidate-revision-1a427caa3e07).
