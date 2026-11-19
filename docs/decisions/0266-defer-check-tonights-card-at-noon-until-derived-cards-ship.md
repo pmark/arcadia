@@ -20,7 +20,7 @@ confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 action: check-tonights-card-at-noon
 updated: 2026-11-19
-answer: "A. Defer check-tonights-card-at-noon"
+answer: A. Defer check-tonights-card-at-noon
 decided: 2026-11-19
 ---
 

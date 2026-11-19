@@ -476,7 +476,7 @@ actions:
     references: ["src/ask/autoSettleBeforeDispatch.ts", "src/ask/agentAsk.ts", "src/ask/settlement.ts", "src/codex/packets.ts"]
   - id: check-tonights-card-at-noon
     title: Once a day at a configured local time (default noon Pacific), the existing liveness timer checks read-only whether tonight's per-run START card for the top of the active Plan's queue could be minted, and pings the operator once only when it could not, naming each blocker.
-    status: open
+    status: deferred
     responsibility: agent
     execution: build
     effort: session
