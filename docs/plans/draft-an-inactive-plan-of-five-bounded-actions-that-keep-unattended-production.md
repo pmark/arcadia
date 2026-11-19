@@ -262,11 +262,11 @@ actions:
     references: ["src/commands/ping.ts", "src/ping/operatorPing.ts"]
   - id: wire-mechanical-repair-into-production
     title: "The worker tick runs the deterministic repair round of src/production/mechanicalRepair.ts on every candidate whose required checks fail, the independent review treats its push as a new production-owned head, and the live red-alert path raises repair alerts once per episode, so the library merged in #2777 actually repairs candidates."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "The worker tick runs the deterministic repair round of src/production/mechanicalRepair.ts on every candidate whose required checks fail, the independent review treats its push as a new production-owned head, and the live red-alert path raises repair alerts once per episode, so the library merged in #2777 actually repairs candidates."
+    next_action: Completed via Agent Ask auto-settle-arcadia-wire-mechanical-repair-into-production-54bbbf30ba06; no further action.
     expected_artifact: Evidence satisfying Agent Ask wire-mechanical-repair-into-production
     clarification: clarified
     confidence: high
@@ -638,7 +638,7 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
-current_action: wire-mechanical-repair-into-production
+current_action: define-the-gate-set
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
