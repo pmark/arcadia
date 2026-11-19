@@ -203,7 +203,7 @@ actions:
     references: ["src/ask/settlement.ts", "src/dispatch/pointer.ts", "tests/managed-documents-contract.test.ts"]
   - id: keep-pointer-commits-mergeable-across-a-date-change
     title: "Unpushed production pointer commits on local main reconcile with a remote commit that changed only PROJECT.md's updated: date, without a hand merge and without blocking START, and arcadia go's no-resolve boundary (#2023) is unchanged."
-    status: open
+    status: deferred
     responsibility: agent
     execution: build
     effort: session
