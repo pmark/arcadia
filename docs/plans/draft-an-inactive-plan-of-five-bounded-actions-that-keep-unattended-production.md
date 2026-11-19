@@ -300,11 +300,11 @@ actions:
     references: ["src/sessions/index.ts"]
   - id: supersede-an-older-pending-completion-ask
     title: When a later completion Ask for the same Action settles or its evidence completes, an older pending completion Ask for that Action is recorded as superseded, so it no longer holds the Action at operator_gate_pending ahead of auto-settle.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: When a later completion Ask for the same Action settles or its evidence completes, an older pending completion Ask for that Action is recorded as superseded, so it no longer holds the Action at operator_gate_pending ahead of auto-settle.
+    next_action: Completed via Agent Ask auto-settle-arcadia-supersede-an-older-pending-completion-ask-e1146162af36; no further action.
     expected_artifact: Evidence satisfying Agent Ask supersede-an-older-pending-completion-ask
     clarification: clarified
     confidence: high
@@ -493,7 +493,7 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
-current_action: supersede-an-older-pending-completion-ask
+current_action: treat-fingerprint-fold-ins-as-governance-records
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
