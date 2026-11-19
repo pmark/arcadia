@@ -107,13 +107,18 @@ describe("the deriver stops before an Action that needs the operator", () => {
     expect(deriveActionsAndOperatorItem("arcadia", actions, keys("one", "two", "three"), ["0300"])).toEqual({ actions: ["one", "two", "three"], operatorItem: null });
   });
 
-  it("ends the card before the first Action whose references include a classified authority path", () => {
-    expect(classifyAuthorityPaths(["scripts/start-run.sh"]).length).toBeGreaterThan(0);
-    const actions = [action("one", { references: ["docs/notes-to-self.md", "README.md"] }), action("two", { references: ["scripts/start-run.sh"] }), action("three")];
-    const found = deriveActionsAndOperatorItem("arcadia", actions, keys("one", "two", "three"), []);
-    expect(found.actions).toEqual(["one"]);
-    expect(found.operatorItem?.action).toBe("two");
-    expect(found.operatorItem?.reasons[0]).toMatch(/^names authority paths \(/);
+  it("derives an Action whose references name operator_authority or production_policy paths; the merge-time diff judges authority", () => {
+    expect(classifyAuthorityPaths(["scripts/start-run.sh"])).toContain("operator_authority");
+    expect(classifyAuthorityPaths(["src/production/policy.ts"])).toContain("production_policy");
+    const actions = [action("one", { references: ["docs/notes-to-self.md", "README.md"] }), action("two", { references: ["scripts/start-run.sh", "src/production/policy.ts"] }), action("three")];
+    expect(deriveActionsAndOperatorItem("arcadia", actions, keys("one", "two", "three"), [])).toEqual({ actions: ["one", "two", "three"], operatorItem: null });
+  });
+
+  it("still stops before an Action citing an unanswered Decision even when it also names authority paths", () => {
+    const actions = [action("one"), action("two", { decisions: ["0300"], references: ["scripts/start-run.sh"] })];
+    expect(deriveActionsAndOperatorItem("arcadia", actions, keys("one", "two"), [])).toEqual({
+      actions: ["one"], operatorItem: { action: "two", reasons: ["cites unanswered Decision 0300"] }
+    });
   });
 
   it("an Action that is not ready ends the card without being an operator item", () => {

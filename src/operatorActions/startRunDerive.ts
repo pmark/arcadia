@@ -2,7 +2,6 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, startRunLauncher, type StartRunPins } from "./startRunPins.js";
 import { parse as parseYaml } from "yaml";
-import { classifyAuthorityPaths } from "../decisions/batchMerge.js";
 import { validateDayGrantPrevious, type DayGrantDelegation, type DayGrantPrevious, type DayGrantPressKind } from "./startRunDayGrant.js";
 
 /**
@@ -30,7 +29,7 @@ export type DeriveRefusal =
   | "GRANT_NOT_OPEN" | "PLAN_NOT_ACTIVE" | "PRODUCTION_NOT_INACTIVE" | "QUEUE_INVALID" | "NO_READY_ACTIONS" | "OPERATOR_ITEM_FIRST" | "FAILED_BATCH_NEEDS_FIX" | "CHAIN_REFUSED" | "CARD_INVALID";
 
 export interface DerivePlanAction { id: string; status: string; dependsOn: string[]; criteriaErrors: string[]; decisions?: string[]; references?: string[] }
-/** An Action the card stops before because it needs the operator: an unanswered Decision it cites or an authority path it names. */
+/** An Action the card stops before because it cites an unanswered Decision. */
 export interface OperatorItem { action: string; reasons: string[] }
 export interface DeriveInput {
   originMain: string;
@@ -113,19 +112,16 @@ export function answeredDecisionIds(cited: string[], decisionPaths: string[], re
   return answered;
 }
 
-/** Why an Action needs the operator: each unanswered Decision it cites, and each authority boundary its references name. */
+/** Why an Action needs the operator: each unanswered Decision it cites. Authority paths its references name do not stop the card; the diff gate judges authority at merge time. */
 export function operatorReasons(action: DerivePlanAction, answeredDecisions: string[]): string[] {
   const answered = new Set(answeredDecisions);
   const reasons = (action.decisions ?? []).filter((decision) => !answered.has(decision)).map((decision) => `cites unanswered Decision ${decision}`);
-  const references = action.references ?? [];
-  const boundaries = references.length ? classifyAuthorityPaths(references).filter((boundary) => boundary !== "unclassifiable_path") : [];
-  if (boundaries.length) reasons.push(`names authority paths (${boundaries.join(", ")})`);
   return reasons;
 }
 
 /**
  * The same walk as `deriveActions`, which also stops before the first ready Action that needs the operator (an unanswered Decision
- * in its `decisions`, or an authority path in its `references`) and returns it as the one operator item. Nothing is derived past it.
+ * in its `decisions`) and returns it as the one operator item. Nothing is derived past it.
  */
 export function deriveActionsAndOperatorItem(project: string, planActions: DerivePlanAction[], queueKeys: string[], answeredDecisions: string[]): { actions: string[]; operatorItem: OperatorItem | null } {
   const byId = new Map(planActions.map((action) => [action.id, action]));

@@ -495,11 +495,11 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
   - id: derive-by-change-not-reference
     title: The START card deriver no longer stops before an Action because its references name an authority path; it still stops before an Action citing an unanswered Decision, and authority is judged at merge time by the diff.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: The START card deriver no longer stops before an Action because its references name an authority path; it still stops before an Action citing an unanswered Decision, and authority is judged at merge time by the diff.
+    next_action: Completed via Agent Ask auto-settle-arcadia-derive-by-change-not-reference-bc39151077fd; no further action.
     expected_artifact: Evidence satisfying Agent Ask derive-by-change-not-reference
     clarification: clarified
     confidence: high
@@ -638,7 +638,7 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
-current_action: derive-by-change-not-reference
+current_action: define-the-gate-set
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
