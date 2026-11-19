@@ -119,6 +119,15 @@ Decisions, and `MISSION_LOG.md` wherever their authoritative state changed:
 - record one precise operator question required for review; or
 - record a concrete external blocker and the draft ask needed to resolve it.
 
+A Rowan or Signal session that stands down or hands off first mines its shift
+(operator standing order, 2026-11-18): lessons recorded with `arcadia learn`,
+bugs deduplicated against open Issues and filed or evidenced, everything ranked
+(P1 stalls an unattended run or needs a person, P2 authority or delegation,
+P3 planning friction; P1 labelled `critical-path`), opportunities named without
+weakening any gate, and the ranked list posted on the
+coordination Issue and linked from the handoff. The arcadia-handoff skill's
+"Mine the shift before standing down" holds the steps.
+
 A merged pull request, a ratified Decision, or a plan reaching its milestone
 is itself a stopping condition. Open or update a pull request then — without
 being asked, and without waiting for the plan to close out. Then say whether to
