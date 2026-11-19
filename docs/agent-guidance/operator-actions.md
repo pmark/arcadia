@@ -290,6 +290,14 @@ pinned descriptor, so per-card review is small.
   this Grant is returned to Off. A later `scripts/restart-services-impl.sh`
   (restart-arcadia-services) rewrites that same worker label back to a
   source-run worker and so unbinds it; the next START card binds it again.
+- **After activation, assert capacity freshness.** Once the press has activated
+  the Plan, run `arcadia capacity --json` and confirm the Claude reading's
+  observed time is newer than the press time. The worker refreshes Claude usage
+  before every admission (`preAdmission` in src/commands/worker.ts), so an older
+  reading means that refresh did not land. If it is not newer, do not rerun the
+  press or refresh by hand: read the worker log for the refresh outcome
+  (`unauthorized` means sign in again), then send it to the configured Discord
+  blocker alert as a blocker.
 - **Holding a waiting card.** `arcadia start-run hold <card> --reason <text> --evidence <https URL or repo path>`
   writes only `<card>.held.json` (schema `arcadia-card-held-v1`), refuses a missing, consumed or expired card, and
   never edits the card. `arcadia work monitor` then reports the card as held and does not count it as opening the
