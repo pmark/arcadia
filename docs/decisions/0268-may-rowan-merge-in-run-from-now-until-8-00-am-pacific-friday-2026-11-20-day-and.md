@@ -4,7 +4,7 @@ type: decision
 id: "0268"
 slug: may-rowan-merge-in-run-from-now-until-8-00-am-pacific-friday-2026-11-20-day-and
 project: arcadia
-status: open
+status: approved
 question: "May Rowan merge in-run, from now until 8:00 AM Pacific Friday 2026-11-20, day and night, the non-gate pull requests of Plans F and G that meet Decision 0260's five conditions, parking gate-set and hard-class PRs for your merge?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-19
+answer: A. Today and tonight, until 8 AM Friday, non-gate PRs only
+decided: 2026-11-19
 ---
 
 # Decision 0268: May Rowan merge in-run, from now until 8:00 AM Pacific Friday 2026-11-20, day and night, the non-gate pull requests of Plans F and G that meet Decision 0260's five conditions, parking gate-set and hard-class PRs for your merge?
