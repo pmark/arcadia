@@ -3830,3 +3830,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A fixture replays #2777's sequence (auto-settle at the preserved candidate, then a fix commit, then merge) and shows which revision the completion record names."; "If the record names a pre-fix head, a failing-first test then passes with the completion record naming the merged head, or with a recorded refresh when the head moves; otherwise the finding and the fixture are recorded in docs/notes-to-self.md and no code changes."; "Either outcome is cited on a new or existing Issue.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-inspect-stale-completion-candidate-revision-1a427caa3e07).
+
+## 2026-11-19 — Completed arcadia/correct-usage-refresh-and-assert-capacity-freshness
+
+- **Did:** Completed Action arcadia/correct-usage-refresh-and-assert-capacity-freshness from accepted evidence (Candidate 5b90a91f860b71d103311cbcc581a6dab3105b7e).
+- **Result:** Every declared acceptance criterion was accepted as met: "docs/managed-production-readiness.md no longer says the worker never refreshes Claude usage before admission, and cites src/commands/worker.ts preAdmission (refreshClaudeUsageBeforeAdmission)."; "The START press runbook in docs/agent-guidance/operator-actions.md gains one post-activation step: confirm the worker's Claude usage reading is newer than the press time, naming the command that shows it, and what to do when it is not."; "Guidance fingerprints and instruction caps pass check:agent-guidance after the edit.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-correct-usage-refresh-and-assert-capacity-freshness-c1a1c3ace0c8).

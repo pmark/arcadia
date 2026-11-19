@@ -397,11 +397,11 @@ actions:
     references: ["src/ask/settlement.ts", "src/production/tick.ts", "MISSION_LOG.md"]
   - id: correct-usage-refresh-and-assert-capacity-freshness
     title: docs/managed-production-readiness.md states truthfully that the worker refreshes Claude usage before admission, and the START press runbook asserts after activation that the worker's capacity reading is newer than the press.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: docs/managed-production-readiness.md states truthfully that the worker refreshes Claude usage before admission, and the START press runbook asserts after activation that the worker's capacity reading is newer than the press.
+    next_action: Completed via Agent Ask auto-settle-arcadia-correct-usage-refresh-and-assert-capacity-freshness-c1a1c3ace0c8; no further action.
     expected_artifact: Evidence satisfying Agent Ask correct-usage-refresh-and-assert-capacity-freshness
     clarification: clarified
     confidence: high
@@ -493,7 +493,7 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
-current_action: correct-usage-refresh-and-assert-capacity-freshness
+current_action: add-a-pre-pr-check-that-mirrors-ci
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
