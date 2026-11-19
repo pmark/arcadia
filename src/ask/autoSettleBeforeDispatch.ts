@@ -282,13 +282,15 @@ function attemptSettleOneDraft(
       try {
         const own = db.prepare("SELECT created_at FROM agent_ask_proposals WHERE request_id = ?")
           .get(draft.normalized.requestId) as { created_at: string } | undefined;
-        supersedeOlderPendingCompletionAsks(db, {
+        // Without the draft's own recorded preview there is no trustworthy date to call another Ask older,
+        // so nothing is superseded and a differing Ask keeps gating (Issue #2102).
+        if (own) supersedeOlderPendingCompletionAsks(db, {
           projectSlug: input.projectSlug,
           planSlug: input.activePlanSlug,
           actionId: input.action.id,
           settledRequestId: draft.normalized.requestId,
           settledReceiptId: settlement.id,
-          settledAskCreatedAt: own?.created_at ?? new Date().toISOString()
+          settledAskCreatedAt: own.created_at
         });
       } catch { /* the Action is settled; the leftover Ask is retried at the next settlement */ }
     }

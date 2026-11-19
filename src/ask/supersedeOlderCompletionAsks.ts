@@ -29,7 +29,7 @@ export function supersedeOlderPendingCompletionAsks(db: Database.Database, input
   settledRequestId: string;
   /** The settlement that landed, named in each receipt. */
   settledReceiptId: string;
-  /** The settled Ask's own creation time; Asks created after it are never superseded. */
+  /** The settled Ask's own recorded creation time; Asks created at or after it are never superseded. */
   settledAskCreatedAt: string;
 }): SupersededCompletionAsk[] {
   const targetRefs = new Set([`action/${input.actionId}`, `plan/${input.planSlug}#${input.actionId}`]);
@@ -41,7 +41,8 @@ export function supersedeOlderPendingCompletionAsks(db: Database.Database, input
     if (ask.intent !== "complete" || ask.project !== input.projectSlug) continue;
     if (!ask.targetRef || !targetRefs.has(ask.targetRef)) continue;
     if ((ask.options?.length ?? 0) > 0 || ask.gateQuestion) continue;
-    if (row.createdAt > input.settledAskCreatedAt) continue;
+    // Only Asks created strictly before the settled one are older; a same-instant sibling stays pending.
+    if (row.createdAt >= input.settledAskCreatedAt) continue;
     const settlementRequestId = `superseded-${row.requestId}`.slice(0, 120);
     const receipt: AgentAskSettlementReceipt = {
       id: `asksettle_${randomUUID().replaceAll("-", "").slice(0, 18)}`,
