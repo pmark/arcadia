@@ -69,7 +69,8 @@ closer to the North Star:
 2. For each bug, search open Issues first; add evidence to a match, else file one.
 3. Rank them: P1 stalls an unattended run or needs a person; P2 authority or
    delegation correctness; P3 planning friction. Label P1 `critical-path`.
-4. Name the opportunities: what would remove a human stop from the next night.
+4. Name the opportunities: what would remove a human stop from the next night,
+   without weakening any Decision, merge, press, spend or credential gate.
 5. Post the ranked list on the coordination Issue and link it from the handoff.
 
 The handoff is not complete until that comment exists.
