@@ -91,6 +91,7 @@ import {
   type ReviewStepOutcome
 } from "./independentReview.js";
 import { getReviewRepair, requiredChecksRepairRequestId } from "../sessions/reviewRepair.js";
+import { attemptMechanicalRepair, type MechanicalRepairDeps, type TickMechanicalRepair } from "./mechanicalRepairWiring.js";
 import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, releaseMergedReviewRepairs, releaseStalePendingRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
 /**
@@ -153,6 +154,8 @@ export interface ManagedProductionTickOptions {
    * is given here.
    */
   review?: IndependentReviewDeps;
+  /** Seams for the deterministic repair round of red required checks (the generator runner, the push). */
+  mechanicalRepair?: MechanicalRepairDeps;
   /**
    * The current time, re-read after long steps (a reviewer run) so a grant
    * that expired meanwhile is honored. Defaults to `now` when one is given
@@ -2460,8 +2463,21 @@ export function runManagedProductionTick(
       // (src/production/reviewRepair.ts) returns the PR to draft with its
       // findings and launches one bounded repair Session, or stops once. Red
       // checks are repaired only when attributed to the candidate's own change.
-      launch = attemptReviewRepairLaunch(db, { workspace, repoRoot, projectSlug: project.slug, session: handoffSession, options, tmux, now, log,
-        checkFailure: handoffReview.code === "required_checks_failed" ? handoffReview.checkFailure : undefined });
+      // Red required checks first get one deterministic round (src/production/mechanicalRepair.ts); only a
+      // head it did not repair continues to the bounded repair Session.
+      let mechanical: TickMechanicalRepair | null = null;
+      if (handoffReview.code === "required_checks_failed" && handoffReview.checkFailure) {
+        try {
+          mechanical = attemptMechanicalRepair(db, { repoRoot, session: handoffSession, failure: handoffReview.checkFailure, now, log, runCommand: options.review?.runCommand,
+            deps: { ...options.mechanicalRepair, remote: options.mechanicalRepair?.remote ?? options.handoff?.preserve?.remote } });
+        } catch (error) {
+          log(`Mechanical repair of ${handoffSession.project_slug}/${handoffSession.action_id} failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+      launch = mechanical?.kind === "repaired"
+        ? { attempted: false, outcome: "skipped", reason: mechanical.reason, actionKey: `${handoffSession.project_slug}/${handoffSession.action_id}` }
+        : attemptReviewRepairLaunch(db, { workspace, repoRoot, projectSlug: project.slug, session: handoffSession, options, tmux, now, log,
+          checkFailure: handoffReview.code === "required_checks_failed" ? handoffReview.checkFailure : undefined });
     } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
       // Logged once per (Session, head, reason), not on every ~3 s tick: the
