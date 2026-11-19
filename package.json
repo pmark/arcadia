@@ -53,6 +53,7 @@
     "check:large-files": "node scripts/check-large-files.mjs",
     "check:plan-close-outs": "node --import tsx scripts/check-plan-close-outs.ts",
     "check:start-card-deriver": "node --import tsx scripts/check-start-card-deriver.ts",
+    "guidance:refresh": "node --import tsx scripts/guidance-refresh.ts",
     "check:agent-guidance": "node --import tsx scripts/check-agent-guidance.ts",
     "check:plan-summaries": "node --import tsx scripts/plan-summaries.ts check",
     "fast-rehearsal": "node scripts/fast-rehearsal.mjs",

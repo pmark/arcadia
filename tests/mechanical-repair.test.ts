@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { guidanceFingerprint, renderGuidanceFingerprints } from "../src/projects/agentGuidance.js";
+import { guidanceFingerprint, guidanceResources, renderGuidanceFingerprints } from "../src/projects/agentGuidance.js";
 import {
   claimRepairNotice,
   classifyCheckFailureLog,
@@ -11,8 +11,10 @@ import {
   judgeRepairHeadMove,
   lintFixArgs,
   refreshCandidateGuidanceFingerprints,
+  refreshStaleGuidance,
   repairEpisodeKey,
   runMechanicalRepairRound,
+  staleGuidancePaths,
   type MechanicalRepairEffects
 } from "../src/production/mechanicalRepair.js";
 
@@ -191,6 +193,45 @@ describe("refreshCandidateGuidanceFingerprints", () => {
     const out = runMechanicalRepairRound({ db, actionKey: KEY, head: HEAD, logs: [log], changedPaths: ["docs/agent-guidance/mine.md"], effects: fx, now: NOW });
     expect(out.kind).toBe("handoff");
     expect(fx.commits).toEqual([]);
+  });
+});
+
+describe("guidance:refresh (refreshStaleGuidance)", () => {
+  function setup(): { root: string; fingerprints: () => string } {
+    const root = mkdtempSync(path.join(tmpdir(), "guidance-refresh-"));
+    repoRoots.push(root);
+    mkdirSync(path.join(root, "docs/agent-guidance"), { recursive: true });
+    const mandatory = ["continuation", "agent-asks", "operator-actions", "proposals", "principles", "pull-requests", "learning", "git-identity", "managed-documents", "planning", "working-copy"];
+    const ids = ["a", "b", ...mandatory];
+    writeFileSync(path.join(root, "docs/agent-guidance/index.json"), JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: ids.map((id) => ({ id, trigger: "t", path: `docs/agent-guidance/${id}.md`, read_before: "r" })) }));
+    const prints: Record<string, string> = {};
+    for (const id of ids) {
+      writeFileSync(path.join(root, `docs/agent-guidance/${id}.md`), `${id}\n`);
+      prints[id] = guidanceFingerprint(`${id}\n`);
+    }
+    writeFileSync(path.join(root, "docs/agent-guidance/fingerprints.json"), renderGuidanceFingerprints(prints));
+    return { root, fingerprints: () => readFileSync(path.join(root, "docs/agent-guidance/fingerprints.json"), "utf8") };
+  }
+
+  it("refreshes only the named stale document, and the result then passes the guidance check", () => {
+    const { root, fingerprints } = setup();
+    writeFileSync(path.join(root, "docs/agent-guidance/a.md"), "a edited\n");
+    writeFileSync(path.join(root, "docs/agent-guidance/b.md"), "b edited\n");
+    const result = refreshStaleGuidance(root, ["docs/agent-guidance/a.md"]);
+    expect(result).toMatchObject({ refreshed: ["docs/agent-guidance/a.md"], refused: [], written: true });
+    expect(staleGuidancePaths(root)).toEqual(["docs/agent-guidance/b.md"]);
+    expect(JSON.parse(fingerprints()).fingerprints.a).toBe(guidanceFingerprint("a edited\n"));
+    refreshStaleGuidance(root);
+    expect(staleGuidancePaths(root)).toEqual([]);
+    const read = (file: string): string | null => { try { return readFileSync(path.join(root, file), "utf8"); } catch { return null; } };
+    expect(() => guidanceResources(read)).not.toThrow();
+  });
+
+  it("changes nothing when no fingerprint is stale", () => {
+    const { root, fingerprints } = setup();
+    const before = fingerprints();
+    expect(refreshStaleGuidance(root)).toEqual({ refreshed: [], refused: [], written: false });
+    expect(fingerprints()).toBe(before);
   });
 });
 
