@@ -82,16 +82,19 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask queue-approved-plans-and-start-the-next
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
     why: "Decision 0241 E: the operator stacks Plans on the work queue and expects Arcadia to work through each. Today no record holds that stack and the timer stops at scope complete."
     acceptance_criteria:
       - A checked-in Plan-queue record per Project lists approved Plan slugs in order. Only a settled Agent Ask carrying the operator's approval can add, remove or reorder entries; a test shows any other write path is refused.
       - A read-only command prints the Plan queue with each Plan's status and readiness. A Plan is ready when every remaining Action has observable acceptance and none cites an open Decision or names an authority path the deriver stops at. Tests cover a ready Plan and two not-ready ones.
       - The deriver (src/operatorActions/startRunDerive.ts) accepts a Plan under an open standing grant only if it is the grant's pinned Plan or the Project's active Plan and an entry of the approved Plan-queue record at the same origin main revision. Any other Plan refuses with a named code, and the grant's end conditions are unchanged. Tests cover the pinned Plan, a queued activated Plan, and an active Plan missing from the record.
-      - At scope complete with an open standing grant, the timer activates the next ready queued Plan through the governed pointer transition and derives its first card on a later tick. A not-ready next Plan, or an empty queue, turns production Off with exactly one ping naming the reason. Tests cover all three.
+      - When the active Plan completes while production is Active, the worker activates the next ready approved Plan through the governed pointer transition and admits its first Action, with no card shown to anyone; a not-ready next Plan, or an empty queue, turns production Off with exactly one ping naming the reason. Tests cover all three.
       - The derived card for a newly activated Plan passes the existing replay and press checks; the card-integrity suite from prove-card-integrity-against-recorded-defects still passes, extended with a fixture for a queued-Plan card.
       - Plan let-the-operator-change-what-production-queues-from-the-production-project records, through a governed amendment, that its single-Project ordering is delivered here and that its multi-Project preference Actions remain, with a revival trigger.
-    depends_on: [retry-successor-press-when-main-moves, wire-mechanical-repair-into-production]
+      - production-replay gains a Plan-to-Plan scenario (the last Action of one Plan merges, the next approved Plan activates, its first Action is admitted) and it passes before any continuous night.
+      - The queue is a set of named lanes (today one lane with a limit of 1) plus an expedite position; an expedited approved Action takes the next admission slot under the same gates and never preempts running work. Tests cover lane order and expedite.
+      - "Plan-completion check moved from require-pre-pr-before-every-pull-request (its criterion 3, which P5 cannot meet by itself, per the review at https://github.com/pmark/arcadia/pull/2852#issuecomment-7015286763): before Plan F is recorded complete, the first production candidate PR merged after P5 shows pnpm pre-pr output in its description, and that PR is cited."
+    depends_on: [retry-successor-press-when-main-moves, wire-mechanical-repair-into-production, publish-governance-commits-from-the-clone, require-proof-for-every-met-criterion, show-the-resulting-queue-order-in-settle-preview]
     decisions: []
     references: ["src/production/successorPress.ts", "src/dispatch/queue.ts", "src/dispatch/pointer.ts", "src/plans/nextPlanSelector.ts", "src/operatorActions/planQueue.ts", "src/ask/agentAsk.ts", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md", "docs/plans/let-the-operator-change-what-production-queues-from-the-production-project.md"]
   - id: allocate-decision-numbers-on-main-and-refuse-duplicates
@@ -104,7 +107,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask allocate-decision-numbers-on-main-and-refuse-duplicates
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
     why: "Operator, 2026-11-17: 'This needs to never happen again.' Collisions recurred on 0240 and 0250, and every START press now mints a Decision on main."
     acceptance_criteria:
       - A test reproduces the 0250 race (an Ask settle candidate chooses N while a START sign-in mints N on main) and shows the second writer receives N+1 or refuses. No two Decision files on main share an id.
@@ -113,7 +116,7 @@ actions:
       - A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.
       - START sign-in usage-check Decisions take their id at the moment they are written to main, from origin main, and a test shows a concurrent open PR's Decision does not block or collide with them.
       - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
-    depends_on: [wire-mechanical-repair-into-production]
+    depends_on: [verify-overnight-merges-at-8am]
     decisions: []
     references: ["src/docs/sync.ts", "src/docs/types.ts", "src/docs/operatorGate.ts", "src/production/startRunSignIn.ts", "src/production/workerClaudeUsageDiagnostic.ts", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md"]
   - id: run-successor-press-from-a-current-timer-release
@@ -188,14 +191,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask reconcile-current-action-after-a-base-merge
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
     why: "Issue #2780: after #2745 merged, #2746's base merge kept a current_action that #2746 had marked done, failing the managed-documents contract and stalling the batch about 5 hours; the host refused the two-line hand fix."
     acceptance_criteria:
       - A test merges two sibling batch candidates in either order and shows main ends with a single valid current Action, with no manual edit.
       - The reconcile is the same governed implementation the stale-current-action repair class of repair-mechanical-check-failures-deterministically uses; a test or code reference shows there is one implementation, not two.
       - "A recorded fixture of the #2746 state (c23c38232 merged with main) passes tests/managed-documents-contract.test.ts after the reconcile."
       - No agent or operator hand-edits a pointer; the guidance names the governed command or settlement step that performs the reconcile.
-    depends_on: [repair-mechanical-check-failures-deterministically, require-pre-pr-before-every-pull-request]
+    depends_on: [repair-mechanical-check-failures-deterministically, verify-overnight-merges-at-8am]
     decisions: []
     references: ["src/ask/settlement.ts", "src/dispatch/pointer.ts", "tests/managed-documents-contract.test.ts"]
   - id: keep-pointer-commits-mergeable-across-a-date-change
@@ -424,13 +427,12 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask require-pre-pr-before-every-pull-request
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
     why: "A local check only helps if the build Session runs it before the PR; today the brief and procedure do not ask for it."
     acceptance_criteria:
       - The build Session brief composed for a production candidate contains one line requiring `pnpm pre-pr` before opening or pushing a PR; a test asserts the line in a composed brief.
       - "docs/agent-guidance/pull-requests.md gains a criterion requiring a passing `pnpm pre-pr` with its output cited in the PR description, and its index entry and fingerprint are refreshed with `pnpm guidance:refresh`; check:agent-guidance, including the bootstrap cap, passes."
-      - The next production candidate after this merges shows pre-pr output in its PR description, and that PR's evidence is cited when the Plan completes.
-    depends_on: [add-a-pre-pr-check-that-mirrors-ci]
+    depends_on: [add-a-pre-pr-check-that-mirrors-ci, allocate-decision-numbers-on-main-and-refuse-duplicates, reconcile-current-action-after-a-base-merge]
     decisions: []
     references: ["src/codex/packets.ts", "docs/agent-guidance/pull-requests.md", "docs/agent-guidance/index.json"]
   - id: show-the-resulting-queue-order-in-settle-preview
@@ -443,7 +445,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask show-the-resulting-queue-order-in-settle-preview
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-gap-actions-20261118-b
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
     why: "Plan F's 2026-11-17 amendment took about seven versions because '--before' inside the active Plan and the Plan-file dependency order were discovered only at settle."
     acceptance_criteria:
       - agent-ask preview of a plan-intent Ask prints, for the target Plan, the dependency-ordered remaining Actions as dependencyOrderedActionIds would compute them after settlement, and the stored queue order for each placement it accepts; a test uses a fixture of Plan F's 2026-11-17 state and the e and e-alt amendments and shows both orders.
@@ -491,6 +493,149 @@ actions:
     depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates]
     decisions: []
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
+  - id: derive-by-change-not-reference
+    title: The START card deriver no longer stops before an Action because its references name an authority path; it still stops before an Action citing an unanswered Decision, and authority is judged at merge time by the diff.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: The START card deriver no longer stops before an Action because its references name an authority path; it still stops before an Action citing an unanswered Decision, and authority is judged at merge time by the diff.
+    expected_artifact: Evidence satisfying Agent Ask derive-by-change-not-reference
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    why: "All 34 open F/G/H Actions trip the reference-based stop (startRunDerive.ts operatorReasons), so the standing grant derives nothing."
+    acceptance_criteria:
+      - A test shows an Action whose references name operator_authority or production_policy paths is derived, and an Action citing an unanswered Decision still stops the card.
+      - The merge-time diff gate (candidateChangeGate and workerMerge authority_adjacent) is unchanged; its existing tests pass.
+      - The card-integrity suite from prove-card-integrity-against-recorded-defects still passes.
+    depends_on: []
+    decisions: []
+    references: ["src/operatorActions/startRunDerive.ts", "src/production/candidateChangeGate.ts", "src/decisions/batchMerge.ts"]
+  - id: define-the-gate-set
+    title: One checked-in gate-set list names the gate modules, their first-order imports, spend/ and the hard classes; one loader serves it to every reader; a drift test fails when a gate module gains a first-order import outside the list, and the list, loader and test are themselves in the list.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: One checked-in gate-set list names the gate modules, their first-order imports, spend/ and the hard classes; one loader serves it to every reader; a drift test fails when a gate module gains a first-order import outside the list, and the list, loader and test are themselves in the list.
+    expected_artifact: Evidence satisfying Agent Ask define-the-gate-set
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    why: "Steps 1 and 4 must read one shared protected set; the transitive closure of workerMerge.ts alone is 209 files, so the set is the gate modules plus first-order imports."
+    acceptance_criteria:
+      - "A checked-in list names: workerMerge, independentReview, batchMerge, startRunDerive, autoSettleBeforeDispatch, candidateChangeGate, mechanicalRepair, scripts/start-run.sh; their first-order imports as of the merge commit; spend/; the hard classes (decisions, agent_permissions, CONSTITUTION.md, governance files); and the list file, its loader and the drift test."
+      - A drift test fails, naming the module and import, when any listed gate module gains a first-order import outside the list; a fixture adds one and shows the failure.
+      - One loader is the only reader of the list; a repository check fails if another module reads the list file directly.
+      - Unmapped files under the listed paths classify as protected (fail closed); a test covers an unmapped new file.
+      - The list is keyed by project (and repository), so each Project carries its own gate list; Arcadia's is the first entry, and a second project's absence is reported, not assumed.
+    depends_on: [derive-by-change-not-reference]
+    decisions: []
+    references: ["src/decisions/batchMerge.ts", "src/production/workerMerge.ts", "src/production/independentReview.ts", "src/operatorActions/startRunDerive.ts", "src/ask/autoSettleBeforeDispatch.ts", "src/production/candidateChangeGate.ts"]
+  - id: run-production-in-its-own-clone
+    title: "Production works in a workspace-owned clone: the policy's repository path is that clone, candidates branch from its origin/main, the tick never writes to the primary checkout, and admission and merge refuse when the installed release differs from the clone's origin/main on gate-set paths."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "Production works in a workspace-owned clone: the policy's repository path is that clone, candidates branch from its origin/main, the tick never writes to the primary checkout, and admission and merge refuse when the installed release differs from the clone's origin/main on gate-set paths."
+    expected_artifact: Evidence satisfying Agent Ask run-production-in-its-own-clone
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    why: "On 2026-11-18 the shared primary checkout diverged (base_not_synced), needed a hand pointer commit under an operator exception (982e14733) and an operator-approved reset."
+    acceptance_criteria:
+      - A fixture replays the 2026-11-18 divergence against a clone-configured policy and shows the primary checkout unchanged and no base_not_synced; a human commit on the primary checkout no longer affects production.
+      - "Currency compares only gate-set paths (via the shared loader) between the installed release and the clone's origin/main: test A merges a docs-only change and admission continues; test B merges a gate-path change and admission and merge refuse."
+      - The PR lists every consumer repointed to the clone or to origin/main (dashboard, /runs library, arcadia go, liveness), and a check shows none still reads the primary checkout for production state.
+      - Active refuses, with one page, unless keep-awake is on and free disk is above a named threshold; turning keep-awake on stays an operator host setting.
+      - Each production receipt records the release sha. The live host step (pointing the installed policy at the clone) is a separate operator-approved step after this merges.
+      - The clone path is per project and repository (workspace/clones/<project>/<repo>), and every production receipt records project, repository and attempt id explicitly, so the global concurrency limit of 1 is a setting, not an assumption in paths or receipts.
+    depends_on: [define-the-gate-set]
+    decisions: []
+    references: ["scripts/services.sh", "src/production/policy.ts", "src/production/tick.ts", "src/production/runtimeCurrency.ts", "src/git/pointerReconcile.ts"]
+  - id: worker-applies-standing-merge-conditions
+    title: The worker merges an in-run PR only when conditions C1-C5 hold on its exact head, writes the receipt before --match-head-commit, and parks it otherwise; C1 is bound to the Plan revision or Action-id list the operator approved; protection comes from the shared gate set.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: The worker merges an in-run PR only when conditions C1-C5 hold on its exact head, writes the receipt before --match-head-commit, and parks it otherwise; C1 is bound to the Plan revision or Action-id list the operator approved; protection comes from the shared gate set.
+    expected_artifact: Evidence satisfying Agent Ask worker-applies-standing-merge-conditions
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    why: "Decision 0260 made C1-C5 the in-run merge rule; today Rowan applies them by hand, and the operator wants conditions checked by Arcadia, not re-decided."
+    acceptance_criteria:
+      - Fixture tests cover a pass and a fail for each of C1-C5, and an unreadable input, which parks.
+      - C1 passes only for an Action whose requirement content (desired_result, acceptance and references) and version match what the operator approved, recorded at approval as a content hash per Action. Added scope (a new Action), changed acceptance or a newly named authority path voids that approval and parks the Action until the operator re-approves; wording-only and order-only edits do not. Tests cover each case.
+      - A PR whose diff touches the shared gate set or a hard class parks for the operator; a test covers each.
+      - The receipt comment (card or run id, head sha, review marker URL, 'Loosens a gate' line, check conclusions, merge state, classes, release sha) is posted before the merge call.
+      - The worker applies these only while an operator Decision authorizing in-run merges for that run is answered on main; otherwise behavior is unchanged (authority-adjacent PRs wait).
+    depends_on: [define-the-gate-set]
+    decisions: []
+    references: ["src/production/workerMerge.ts", "src/production/independentReview.ts", "src/decisions/batchMerge.ts", "docs/decisions/0260-may-rowan-merge-during-tonight-s-run-window-the-pull-requests-of-the-actions.md"]
+  - id: park-and-continue
+    title: A failed condition parks only that Action with a receipt and admission continues with the next Action that does not depend on it, under a night breaker that turns production Off and pages.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: A failed condition parks only that Action with a receipt and admission continues with the next Action that does not depend on it, under a night breaker that turns production Off and pages.
+    expected_artifact: Evidence satisfying Agent Ask park-and-continue
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    why: "Today one parked PR ends the night (card 2 on 2026-11-18 stopped at 11:27 PM awaiting a merge)."
+    acceptance_criteria:
+      - A park records (action, condition, cause) and leaves the Action open; admission skips its dependents and admits the next independent Action; a fixture shows both.
+      - The breaker pauses the affected lane or project, and pages, at 3 parks, at 3 merges on a lane's first 24 hours (6 after), or at the token ceiling (40M input tokens summed over the lane's Sessions, or the Claude 5-hour window at 70%, read through capacityPreAdmission). All counts are over a rolling 24 hours per project and lane, and tests cover each. Production-wide Off is kept for main going red and for the same cause twice (Decisions 0181 and 0187).
+      - Sign-in holds, capacity holds and outages are holds, not parks; a second park with the same cause, or main going red, stops production.
+      - A park older than one night is re-reviewed at its current head and never merged as recorded.
+      - "A park accepts an operator-cancel cause: cancel stops admission of that Action now, vetoes any pending merge, preserves the work as a draft and records the reason; a test covers it."
+    depends_on: [worker-applies-standing-merge-conditions]
+    decisions: []
+    references: ["src/production/tick.ts", "src/dispatch/actionOrder.ts", "src/production/capacityPreAdmission.ts"]
+  - id: verify-overnight-merges-at-8am
+    title: An 8 AM report re-verifies every overnight merge independently from GitHub, classifies each diff with the classifier pinned at the run's first-admission release sha, and leads with heartbeat age.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: An 8 AM report re-verifies every overnight merge independently from GitHub, classifies each diff with the classifier pinned at the run's first-admission release sha, and leads with heartbeat age.
+    expected_artifact: Evidence satisfying Agent Ask verify-overnight-merges-at-8am
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    why: "The operator decides once and Arcadia verifies that conditions matched reality; the re-check must not trust the night's own receipts."
+    acceptance_criteria:
+      - The report's first line is heartbeat age; it states that host death is detected only at 8 AM.
+      - For each merge it re-reads head sha, check runs, review marker and file list from GitHub and classifies the diff with src/decisions/batchMerge.ts at the release sha recorded at the run's first admission; a fixture of a recorded night reproduces Rowan's hand report.
+      - It lists parks with lettered options, merges, idle hours with causes and token burn.
+      - A fixture test shows the liveness timer sends exactly one page after N hours Active with no merge and no park, and none before N hours; the page text appears in the PR description.
+    depends_on: [worker-applies-standing-merge-conditions]
+    decisions: []
+    references: ["src/digests/composer.ts", "src/commands/productionLiveness.ts", "src/coordinator/sources.ts", "src/decisions/batchMerge.ts"]
+  - id: publish-governance-commits-from-the-clone
+    title: The Decision 0261 publisher fast-forward publishes governance-record-only Arcadia Controller commits from production's clone, under 0261's five conditions, refusing otherwise with one ping.
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: The Decision 0261 publisher fast-forward publishes governance-record-only Arcadia Controller commits from production's clone, under 0261's five conditions, refusing otherwise with one ping.
+    expected_artifact: Evidence satisfying Agent Ask publish-governance-commits-from-the-clone
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    why: "Auto-settle commits stay local (Issue #2802); Decision 0261 authorized checked publication, now sourced from the clone."
+    acceptance_criteria:
+      - Fixture tests show a publish only when all five 0261 conditions hold (controller identity, governance-record paths only, origin ancestor re-checked before a plain push, no pinned unpressed card, receipt), with a fail case for each.
+      - A fixture test shows a refused publish leaves origin unchanged and records exactly one ping per refusal episode.
+      - "A fixture of Issue #2802's state ends with the clone and origin equal; #2802 cites the merged PR."
+    depends_on: [run-production-in-its-own-clone]
+    decisions: []
+    references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
 current_action: require-pre-pr-before-every-pull-request
