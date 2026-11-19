@@ -3809,3 +3809,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A test with two pending complete proposals for one Action, the older failing criteria and the newer clean, shows auto-settle settles the newer, records the older as superseded with a receipt, and the Action no longer reads operator_gate_pending."; "A control test with a single pending complete Ask that fails criteria still gates the Action exactly as today."; "Asks that open or carry a Decision, and non-completion intents, are never superseded by this rule; a test shows both."; "#2786 is cited in the PR and updated with the merged change.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-supersede-an-older-pending-completion-ask-e1146162af36).
+
+## 2026-11-19 — Completed arcadia/treat-fingerprint-fold-ins-as-governance-records
+
+- **Did:** Completed Action arcadia/treat-fingerprint-fold-ins-as-governance-records from accepted evidence (Candidate ad1e21f8cc9b8a28a9acbeed0b11f26eece65039).
+- **Result:** Every declared acceptance criterion was accepted as met: "GOVERNANCE_RECORD_PATHS includes docs/agent-guidance/fingerprints.json, and a test shows a commit that changes only that file after the candidate revision settles cleanly."; "A test shows a commit that changes any guidance document, or fingerprints.json together with any other non-record path, still returns AUTO_SETTLE_REVISION_CHANGED."; "The worker still reviews and merges only at the exact final head; the existing independent-review tests pass unchanged.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-treat-fingerprint-fold-ins-as-governance-records-3e38bb0d032b).
