@@ -4,7 +4,7 @@ type: decision
 id: "0271"
 slug: is-the-derived-start-card-s-reference-based-authority-stop-removed-in-code-by
 project: arcadia
-status: open
+status: approved
 question: "Is the derived START card's reference-based authority stop, removed in code by #2864, removed permanently rather than only for Decision 0268's window?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-19
+answer: "A. Permanent: the reference stop is gone; merge-time gates unchanged"
+decided: 2026-11-19
 ---
 
 # Decision 0271: Is the derived START card's reference-based authority stop, removed in code by #2864, removed permanently rather than only for Decision 0268's window?
