@@ -286,6 +286,7 @@ describe("renderActionBrief", () => {
     });
 
     expect(brief).toContain("do not merge, deploy, publish, push to shared");
+    expect(brief).toContain("Before any pull request is opened or pushed, `pnpm pre-pr` must pass, and its output is cited in the PR description.");
     expect(brief).toContain("Approval boundaries are hard stops.");
     expect(brief).toContain("Run the repository's declared validation and make it pass.");
     expect(brief).toContain("arcadia-preserve-broker-codex");
