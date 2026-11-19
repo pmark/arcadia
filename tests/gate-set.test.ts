@@ -109,15 +109,18 @@ describe("one loader", () => {
         else if (/\.(?:ts|tsx|mts|mjs|js|sh)$/.test(name)) {
           const rel = path.relative(root, full).split(path.sep).join("/");
           if (rel === "src/production/gateSet.ts" || rel === "tests/gate-set.test.ts") continue;
-          if (readFileSync(full, "utf8").includes("gate-set.json")) readers.push(rel);
+          const text = readFileSync(full, "utf8");
+          // A module may read the list through the exported constant, not only by its literal name.
+          if (text.includes("gate-set.json") || /\bGATE_SET_PATH\b/.test(text)) readers.push(rel);
         }
       }
     };
     for (const dir of ["src", "scripts", "tests", "apps", "bin"]) {
       try {
         walk(path.join(root, dir));
-      } catch {
-        /* directory absent */
+      } catch (error) {
+        // Only an absent top-level directory may be skipped; any other walk error must fail the scan.
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
     }
     expect(readers, `only src/production/gateSet.ts may read ${GATE_SET_PATH}; call loadGateSet() instead`).toEqual([]);
