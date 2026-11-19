@@ -3851,3 +3851,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "The build Session brief composed for a production candidate contains one line requiring `pnpm pre-pr` before opening or pushing a PR; a test asserts the line in a composed brief."; "docs/agent-guidance/pull-requests.md gains a criterion requiring a passing `pnpm pre-pr` with its output cited in the PR description, and its index entry and fingerprint are refreshed with `pnpm guidance:refresh`; check:agent-guidance, including the bootstrap cap, passes.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-require-pre-pr-before-every-pull-request-rowan24-two-criteria-b).
+
+## 2026-11-19 — Completed arcadia/derive-by-change-not-reference
+
+- **Did:** Completed Action arcadia/derive-by-change-not-reference from accepted evidence (Candidate e6c9485f0855412ebc82a1151543180b9f31f73a).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test shows an Action whose references name operator_authority or production_policy paths is derived, and an Action citing an unanswered Decision still stops the card."; "The merge-time diff gate (candidateChangeGate and workerMerge authority_adjacent) is unchanged; its existing tests pass."; "The card-integrity suite from prove-card-integrity-against-recorded-defects still passes.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-derive-by-change-not-reference-bc39151077fd).
