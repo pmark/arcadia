@@ -419,11 +419,11 @@ actions:
     references: ["docs/managed-production-readiness.md", "src/commands/worker.ts", "docs/agent-guidance/operator-actions.md"]
   - id: require-pre-pr-before-every-pull-request
     title: Every build Session's brief and the pull-request procedure require `pnpm pre-pr` to pass before a pull request is opened or pushed, with its output cited in the PR description.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Every build Session's brief and the pull-request procedure require `pnpm pre-pr` to pass before a pull request is opened or pushed, with its output cited in the PR description.
+    next_action: Completed via Agent Ask complete-require-pre-pr-before-every-pull-request-rowan24-two-criteria-b; no further action.
     expected_artifact: Evidence satisfying Agent Ask require-pre-pr-before-every-pull-request
     clarification: clarified
     confidence: high
@@ -638,7 +638,7 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
-current_action: require-pre-pr-before-every-pull-request
+current_action: derive-by-change-not-reference
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
