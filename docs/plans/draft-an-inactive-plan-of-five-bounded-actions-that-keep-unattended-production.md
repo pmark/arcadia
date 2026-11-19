@@ -493,7 +493,7 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
-current_action: add-a-guidance-refresh-command
+current_action: inspect-stale-completion-candidate-revision
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
