@@ -107,8 +107,34 @@ export function refreshCandidateGuidanceFingerprints(
   return { refreshed, refused, written: true };
 }
 
+/** Indexed guidance documents whose recorded fingerprint no longer matches their bytes, by the guidance check's own function. */
+export function staleGuidancePaths(repoRoot: string): string[] {
+  const fingerprintsPath = path.join(repoRoot, GUIDANCE_FINGERPRINTS);
+  const fingerprintsText = existsSync(fingerprintsPath) ? readFileSync(fingerprintsPath, "utf8") : null;
+  const entries = guidanceEntries(readFileSync(path.join(repoRoot, GUIDANCE_INDEX), "utf8"), fingerprintsText);
+  return entries
+    .filter((entry) => existsSync(path.join(repoRoot, entry.path)) && guidanceFingerprint(readFileSync(path.join(repoRoot, entry.path), "utf8")) !== entry.sha256)
+    .map((entry) => entry.path);
+}
+
+/**
+ * `pnpm guidance:refresh [<doc>...]`: refresh the named stale documents (all
+ * stale ones when none are named) through {@link refreshCandidateGuidanceFingerprints}.
+ * A named document that is not stale is left alone; one that is not indexed is `refused`.
+ */
+export function refreshStaleGuidance(repoRoot: string, named: readonly string[] = []): { refreshed: string[]; refused: string[]; written: boolean } {
+  const stale = staleGuidancePaths(repoRoot);
+  const normalized = named.map((file) => path.relative(repoRoot, path.resolve(repoRoot, file)).split(path.sep).join("/"));
+  const indexText = readFileSync(path.join(repoRoot, GUIDANCE_INDEX), "utf8");
+  const indexed = new Set(guidanceEntries(indexText, readFileSync(path.join(repoRoot, GUIDANCE_FINGERPRINTS), "utf8")).map((entry) => entry.path));
+  const unindexed = normalized.filter((file) => !indexed.has(file));
+  const wanted = normalized.length === 0 ? stale : stale.filter((file) => normalized.includes(file));
+  const result = refreshCandidateGuidanceFingerprints(repoRoot, wanted, wanted);
+  return { ...result, refused: [...result.refused, ...unindexed] };
+}
+
 /* ------------------------------------------------------------------------ */
-/* The bounded round.                                                         */
+/* The bounded round.                                                       */
 /* ------------------------------------------------------------------------ */
 
 export type MechanicalRepairOutcome =

@@ -339,11 +339,11 @@ actions:
     references: ["src/ask/autoSettleBeforeDispatch.ts", "docs/agent-guidance/fingerprints.json"]
   - id: add-a-guidance-refresh-command
     title: "A `pnpm guidance:refresh` command refreshes the fingerprint of named or all stale guidance documents with the same fingerprint function the guidance check uses, so a stale-fingerprint failure has a one-line fix and nobody hand-edits fingerprints.json."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "A `pnpm guidance:refresh` command refreshes the fingerprint of named or all stale guidance documents with the same fingerprint function the guidance check uses, so a stale-fingerprint failure has a one-line fix and nobody hand-edits fingerprints.json."
+    next_action: Completed via Agent Ask auto-settle-arcadia-add-a-guidance-refresh-command-a17d54c1a89b; no further action.
     expected_artifact: Evidence satisfying Agent Ask add-a-guidance-refresh-command
     clarification: clarified
     confidence: high
@@ -493,7 +493,7 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
-current_action: add-a-guidance-refresh-command
+current_action: inspect-stale-completion-candidate-revision
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
