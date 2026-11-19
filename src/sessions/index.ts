@@ -1103,7 +1103,7 @@ function handoffMergeEvidence(session: Pick<AgentSession, "repository_path" | "w
 
 /** The supersede receipt names its merge evidence on the superseded exit receipt itself. */
 function recordHandoffMergeEvidence(db: Database.Database, receipt: { id: string; evidence_json: string | null }, evidence: HandoffMergeEvidence): void {
-  let existing: Record<string, unknown> = {};
+  let existing: Record<string, unknown>;
   try { existing = receipt.evidence_json ? JSON.parse(receipt.evidence_json) as Record<string, unknown> : {}; } catch { existing = {}; }
   db.prepare("UPDATE session_exit_receipts SET evidence_json = ? WHERE id = ?")
     .run(JSON.stringify({ ...existing, supersededByMerge: evidence }), receipt.id);
