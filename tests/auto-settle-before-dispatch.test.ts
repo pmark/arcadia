@@ -255,6 +255,29 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(plan).toMatchObject({ currentAction: "first" });
   });
 
+  it("settles past a later commit that changes only the guidance fingerprints record", () => {
+    const { repo, workspace } = fixture({ draftAsk: true, laterCommitFiles: ["docs/agent-guidance/fingerprints.json"] });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+
+    expect(result).toMatchObject({ settled: true, reason: AUTO_SETTLE_SETTLED });
+  });
+
+  it.each([
+    ["a guidance document", ["docs/agent-guidance/pull-requests.md"]],
+    ["fingerprints.json together with a non-record path", ["docs/agent-guidance/fingerprints.json", "NOTES.md"]]
+  ])("still returns AUTO_SETTLE_REVISION_CHANGED when a later commit changes %s", (_label, files) => {
+    const { repo, workspace } = fixture({ draftAsk: true, laterCommitFiles: files });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+
+    expect(result).toMatchObject({ settled: false, reason: AUTO_SETTLE_REVISION_CHANGED });
+  });
+
   it("falls through when settlement itself refuses (e.g. an unresolved required review Decision), with no partial write", () => {
     const { repo, workspace } = fixture({ draftAsk: true, withOpenDecision: true });
 
@@ -283,6 +306,8 @@ function fixture(options: {
   jsonDraft?: boolean;
   /** Make the commit after the draft change a non-governance file. */
   laterCodeCommit?: boolean;
+  /** Files the later commit writes, instead of the default governance record. */
+  laterCommitFiles?: string[];
 }): { repo: string; workspace: string; draftHead: string; currentHead: string; divergentSha?: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-auto-settle-"));
   roots.push(root);
@@ -345,7 +370,12 @@ function fixture(options: {
   // A commit that lands after the draft. A governance record -- another
   // settlement's archived Ask -- is the ordinary reason candidate_revision
   // goes stale with nothing wrong about the evidence; a code change is not.
-  if (options.laterCodeCommit) {
+  if (options.laterCommitFiles) {
+    for (const file of options.laterCommitFiles) {
+      mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+      writeFileSync(path.join(repo, file), "{}\n", "utf8");
+    }
+  } else if (options.laterCodeCommit) {
     writeFileSync(path.join(repo, "NOTES.md"), "later code work\n", "utf8");
   } else {
     writeFileSync(path.join(repo, ".arcadia/asks/archive/agent-ask-earlier-log.yaml"),

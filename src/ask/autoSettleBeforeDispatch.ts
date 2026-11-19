@@ -71,7 +71,7 @@ export const AUTO_SETTLE_SETTLED = "settled_from_drafted_complete_ask";
  * and other Asks write. A commit touching anything else may have changed what
  * the evidence validated, so it is never refreshed past (Issue #639).
  */
-const GOVERNANCE_RECORD_PATHS = [/^\.arcadia\//, /^PROJECT\.md$/, /^MISSION_LOG\.md$/, /^docs\/plans\//, /^docs\/decisions\//];
+const GOVERNANCE_RECORD_PATHS = [/^\.arcadia\//, /^PROJECT\.md$/, /^MISSION_LOG\.md$/, /^docs\/plans\//, /^docs\/decisions\//, /^docs\/agent-guidance\/fingerprints\.json$/];
 
 interface DraftedCompleteAsk {
   path: string;
