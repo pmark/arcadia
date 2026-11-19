@@ -201,6 +201,9 @@ describe("guidance:refresh (refreshStaleGuidance)", () => {
     const root = mkdtempSync(path.join(tmpdir(), "guidance-refresh-"));
     repoRoots.push(root);
     mkdirSync(path.join(root, "docs/agent-guidance"), { recursive: true });
+    // guidanceResources requires these two sources before it reads the index.
+    writeFileSync(path.join(root, "CONSTITUTION.md"), "constitution\n");
+    writeFileSync(path.join(root, "docs/agent-continuation-protocol.md"), "continuation protocol\n");
     const mandatory = ["continuation", "agent-asks", "operator-actions", "proposals", "principles", "pull-requests", "learning", "git-identity", "managed-documents", "planning", "working-copy"];
     const ids = ["a", "b", ...mandatory];
     writeFileSync(path.join(root, "docs/agent-guidance/index.json"), JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: ids.map((id) => ({ id, trigger: "t", path: `docs/agent-guidance/${id}.md`, read_before: "r" })) }));
