@@ -339,7 +339,8 @@ export function renderActionBrief(input: ActionBriefInput): string {
     ...renderNamedTestCommands(action.acceptanceCriteria, input.headless === true && input.agent === "claude"),
     "",
     "Standing constraints — from this Session, do not merge, deploy, publish, push to shared",
-    "branches, or edit the Project pointer; those remain operator gates."
+    "branches, or edit the Project pointer; those remain operator gates.",
+    "Before any pull request is opened or pushed, `pnpm pre-pr` must pass, and its output is cited in the PR description."
   ];
   if (input.continuation) {
     lines.push(

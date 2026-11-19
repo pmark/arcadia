@@ -3,6 +3,12 @@
 Read this procedure before its indexed operation. The compact bootstrap and
 CONSTITUTION.md still bind; retrieval grants no authority.
 
+## Pre-PR check
+
+Before a pull request is opened or pushed, `pnpm pre-pr` must pass on the
+branch, and its output is cited in the PR description. A failing run is fixed
+first; it is never skipped or weakened to open the pull request.
+
 ## Independent review gate
 
 Every pull request gets an independent code review **at creation**: start it in
