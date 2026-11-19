@@ -320,11 +320,11 @@ actions:
     references: ["src/docs/operatorGate.ts", "src/sessions/index.ts", "src/production/tick.ts", "src/ask/autoSettleBeforeDispatch.ts"]
   - id: treat-fingerprint-fold-ins-as-governance-records
     title: A fold-in commit that changes only docs/agent-guidance/fingerprints.json after a completion Ask's candidate revision no longer makes auto-settle return AUTO_SETTLE_REVISION_CHANGED, while any change to a guidance document still does.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A fold-in commit that changes only docs/agent-guidance/fingerprints.json after a completion Ask's candidate revision no longer makes auto-settle return AUTO_SETTLE_REVISION_CHANGED, while any change to a guidance document still does.
+    next_action: Completed via Agent Ask auto-settle-arcadia-treat-fingerprint-fold-ins-as-governance-records-3e38bb0d032b; no further action.
     expected_artifact: Evidence satisfying Agent Ask treat-fingerprint-fold-ins-as-governance-records
     clarification: clarified
     confidence: high
@@ -493,7 +493,7 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
-current_action: treat-fingerprint-fold-ins-as-governance-records
+current_action: add-a-guidance-refresh-command
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
