@@ -111,7 +111,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask allocate-decision-numbers-on-main-and-refuse-duplicates
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask rowan24-drop-allocate-ordering-edge-20261119
     why: "Operator, 2026-11-17: 'This needs to never happen again.' Collisions recurred on 0240 and 0250, and every START press now mints a Decision on main."
     acceptance_criteria:
       - A test reproduces the 0250 race (an Ask settle candidate chooses N while a START sign-in mints N on main) and shows the second writer receives N+1 or refuses. No two Decision files on main share an id.
@@ -120,7 +120,7 @@ actions:
       - A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.
       - START sign-in usage-check Decisions take their id at the moment they are written to main, from origin main, and a test shows a concurrent open PR's Decision does not block or collide with them.
       - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
-    depends_on: [verify-overnight-merges-at-8am]
+    depends_on: []
     decisions: []
     references: ["src/docs/sync.ts", "src/docs/types.ts", "src/docs/operatorGate.ts", "src/production/startRunSignIn.ts", "src/production/workerClaudeUsageDiagnostic.ts", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md"]
   - id: run-successor-press-from-a-current-timer-release
