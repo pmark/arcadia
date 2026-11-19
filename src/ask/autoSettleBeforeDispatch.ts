@@ -7,6 +7,7 @@ import { evidenceHasPlaceholder, normalizeAgentAsk, setTopLevelAskScalar, type N
 import { autoSettleRequestId } from "./autoSettleRequestId.js";
 import { previewAgentAskRequest } from "./preview.js";
 import { settleAgentAsk } from "./settlement.js";
+import { supersedeOlderPendingCompletionAsks } from "./supersedeOlderCompletionAsks.js";
 
 /** Matches `AGENT_ASK_ASKS_DIR` in `ask/discovery.ts`, duplicated as a literal
  * for the same reason that module documents: this is a plain filesystem scan
@@ -275,6 +276,24 @@ function attemptSettleOneDraft(
       // managed-production tick is the Arcadia runtime, not the Project.
       cwd: input.repoRoot
     });
+    // Issue #2786: an older still-pending completion Ask for this Action is now obsolete and must not keep
+    // gating it. The draft's own earlier proposal (if previewed) dates the settled Ask.
+    if (settlement.applied && settlement.documentsCommit && settlement.recovery?.documentsCommitted !== false) {
+      try {
+        const own = db.prepare("SELECT created_at FROM agent_ask_proposals WHERE request_id = ?")
+          .get(draft.normalized.requestId) as { created_at: string } | undefined;
+        // Without the draft's own recorded preview there is no trustworthy date to call another Ask older,
+        // so nothing is superseded and a differing Ask keeps gating (Issue #2102).
+        if (own) supersedeOlderPendingCompletionAsks(db, {
+          projectSlug: input.projectSlug,
+          planSlug: input.activePlanSlug,
+          actionId: input.action.id,
+          settledRequestId: draft.normalized.requestId,
+          settledReceiptId: settlement.id,
+          settledAskCreatedAt: own.created_at
+        });
+      } catch { /* the Action is settled; the leftover Ask is retried at the next settlement */ }
+    }
     return {
       settled: true,
       reason: AUTO_SETTLE_SETTLED,
