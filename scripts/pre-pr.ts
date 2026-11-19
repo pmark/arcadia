@@ -51,6 +51,48 @@ function tail(text: string, lines = 15): string[] {
   return text.trim().split("\n").slice(-lines);
 }
 
+interface DeliveryEvidence { cwd?: string; agent?: string; sources?: { path: string; bytes: number }[]; projectBytes?: number; combinedBytes?: number; problems?: string[] }
+
+/**
+ * Root, project and combined instruction-cap overflows from check:agent-guidance's JSON evidence, each with the cap,
+ * the measured bytes and the files that make up the measurement (largest first), so the fix names what to shrink.
+ * Returns nothing when the output is not that JSON; the caller then falls back to the text.
+ */
+export function instructionCapFailures(root: string, stdout: string): { problems: string[]; fixes: string[] } {
+  const problems: string[] = [];
+  const fixes: string[] = [];
+  let evidence: DeliveryEvidence[];
+  try {
+    const parsed = JSON.parse(stdout) as { evidence?: DeliveryEvidence[] };
+    evidence = Array.isArray(parsed.evidence) ? parsed.evidence : [];
+  } catch { return { problems, fixes }; }
+  const seen = new Set<string>();
+  const rel = (file: string): string => (path.isAbsolute(file) ? path.relative(root, file) || file : file);
+  for (const entry of evidence) {
+    const sources = (entry.sources ?? []).map((s) => ({ path: rel(s.path), bytes: s.bytes }));
+    const inRepo = sources.filter((s) => !s.path.startsWith(".."));
+    for (const problem of entry.problems ?? []) {
+      let scope: string; let cap: number; let measured: number; let files: { path: string; bytes: number }[];
+      if (problem.startsWith("Root instructions exceed")) {
+        files = inRepo.filter((s) => /(?:^|\/)AGENTS(?:\.override)?\.md$/.test(s.path)).slice(0, 1);
+        scope = "Root instructions"; cap = INSTRUCTION_BUDGET.root; measured = files[0]?.bytes ?? Number.NaN;
+      } else if (problem.startsWith("Project instructions exceed")) {
+        files = inRepo; scope = "Project instructions"; cap = INSTRUCTION_BUDGET.project; measured = entry.projectBytes ?? Number.NaN;
+      } else if (problem.startsWith("Combined guidance exceeds")) {
+        files = sources; scope = "Combined guidance"; cap = INSTRUCTION_BUDGET.combined; measured = entry.combinedBytes ?? Number.NaN;
+      } else continue;
+      const listed = [...files].sort((a, b) => b.bytes - a.bytes).map((s) => `${s.path} (${s.bytes} bytes)`);
+      const key = `${scope}|${measured}|${listed.join(",")}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const where = `${entry.agent ?? "agent"} at ${entry.cwd ?? "."}`;
+      problems.push(`${scope} over its cap for ${where}: ${measured} bytes, cap ${cap}`);
+      fixes.push(`Shrink ${listed[0] ?? "the instruction files"} so ${scope.toLowerCase()} fit: measured ${measured} bytes, cap ${cap}; files: ${listed.join(", ") || "none listed"}; move procedure text behind docs/agent-guidance/index.json`);
+    }
+  }
+  return { problems, fixes };
+}
+
 /** Step 1: fingerprints and instruction caps. */
 export function checkGuidance(root: string, run: CommandRunner): PreprFailure | null {
   const problems: string[] = [];
@@ -76,11 +118,16 @@ export function checkGuidance(root: string, run: CommandRunner): PreprFailure | 
   const r = run("pnpm", ["check:agent-guidance"], root);
   if (r.status === 0) return null;
   const text = `${r.stdout}\n${r.stderr}`;
-  for (const m of text.matchAll(/Stale mandatory guidance: (\S+?)\./g)) {
-    problems.push(`Stale guidance fingerprint: ${m[1]}`);
-    fixes.push(`pnpm guidance:refresh ${m[1]}`);
+  const stale = new Set([...text.matchAll(/Stale mandatory guidance: (\S+?)\. Refresh/g)].map((m) => m[1]));
+  for (const doc of stale) {
+    problems.push(`Stale guidance fingerprint: ${doc}`);
+    fixes.push(`pnpm guidance:refresh ${doc}`);
   }
-  for (const m of text.matchAll(/((?:Root|Project) instructions exceed \d+ bytes[^"\n]*|Combined guidance exceeds[^"\n]*|Agent bootstrap exceeds[^"\n]*)/g)) {
+  const capped = instructionCapFailures(root, r.stdout);
+  problems.push(...capped.problems);
+  fixes.push(...capped.fixes);
+  const remainder = capped.problems.length > 0 ? text.replace(/(?:Root|Project) instructions exceed[^"\n]*|Combined guidance exceeds[^"\n]*/g, "") : text;
+  for (const m of remainder.matchAll(/((?:Root|Project) instructions exceed \d+ bytes[^"\n]*|Combined guidance exceeds[^"\n]*|Agent bootstrap exceeds[^"\n]*)/g)) {
     const cap = /(\d+)(?:-byte| UTF-8 bytes| bytes)/.exec(m[1])?.[1] ?? "?";
     const measured = /\((\d+)\)/.exec(m[1])?.[1] ?? "see output";
     problems.push(m[1].trim());

@@ -93,6 +93,41 @@ describe("pre-pr", () => {
     expect(failure?.fixes[0]).toContain(String(12 * 1024));
   });
 
+  it("names the file, measured bytes and cap for project and combined instruction-cap overflows", () => {
+    const evidence = {
+      schema: "arcadia-guidance-delivery-evidence-v1",
+      evidence: ["codex", "claude"].map((agent) => ({
+        cwd: ".", agent,
+        sources: [
+          { path: path.join(root, "AGENTS.md"), bytes: 11000, sha256: "a" },
+          { path: path.join(root, "CLAUDE.md"), bytes: 14000, sha256: "b" },
+          { path: "/Users/someone/.claude/CLAUDE.md", bytes: 9000, sha256: "c" },
+        ],
+        projectBytes: 25002, combinedBytes: 34004,
+        problems: ["Project instructions exceed 24576 bytes (25002).", "Combined guidance exceeds the supported 32768-byte envelope (34004); mandatory guidance may be truncated."],
+      })),
+    };
+    const run: CommandRunner = (_c, args) => (args[0] === "check:agent-guidance" ? { status: 1, stdout: JSON.stringify(evidence), stderr: "" } : ok);
+    const failure = runPrePr(root, { run, changedFiles: [] });
+    expect(failure?.step).toBe("check:agent-guidance");
+    const project = failure?.fixes.find((f) => f.includes("project instructions"));
+    expect(project).toContain("Shrink CLAUDE.md (14000 bytes)");
+    expect(project).toContain("measured 25002 bytes, cap 24576");
+    const combined = failure?.fixes.find((f) => f.includes("combined guidance"));
+    expect(combined).toContain("measured 34004 bytes, cap 32768");
+    expect(combined).toContain("CLAUDE.md (14000 bytes)");
+    // The same overflow reported for several agents prints once.
+    expect(failure?.fixes.filter((f) => f.includes("project instructions"))).toHaveLength(1);
+  });
+
+  it("captures the full path of a stale guidance document from the check output", () => {
+    const run: CommandRunner = (_c, args) => (args[0] === "check:agent-guidance"
+      ? { status: 1, stdout: "", stderr: "Stale mandatory guidance: docs/agent-guidance/learning.md. Refresh adoption before its operation." }
+      : ok);
+    const failure = runPrePr(root, { run, changedFiles: [] });
+    expect(failure?.fixes).toEqual(["pnpm guidance:refresh docs/agent-guidance/learning.md"]);
+  });
+
   it("prints file:line for type errors", () => {
     const run: CommandRunner = (_c, args) => (args.includes("tsc") ? { status: 2, stdout: "src/a.ts(7,3): error TS2322: Type string is not assignable to type number.", stderr: "" } : ok);
     const failure = runPrePr(root, { run, changedFiles: [] });
