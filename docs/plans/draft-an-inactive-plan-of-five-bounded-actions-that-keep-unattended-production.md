@@ -82,7 +82,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask queue-approved-plans-and-start-the-next
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask ellis-amend-plan-f-lanes-20261119
     why: "Decision 0241 E: the operator stacks Plans on the work queue and expects Arcadia to work through each. Today no record holds that stack and the timer stops at scope complete."
     acceptance_criteria:
       - A checked-in Plan-queue record per Project lists approved Plan slugs in order. Only a settled Agent Ask carrying the operator's approval can add, remove or reorder entries; a test shows any other write path is refused.
@@ -92,7 +92,11 @@ actions:
       - The derived card for a newly activated Plan passes the existing replay and press checks; the card-integrity suite from prove-card-integrity-against-recorded-defects still passes, extended with a fixture for a queued-Plan card.
       - Plan let-the-operator-change-what-production-queues-from-the-production-project records, through a governed amendment, that its single-Project ordering is delivered here and that its multi-Project preference Actions remain, with a revival trigger.
       - production-replay gains a Plan-to-Plan scenario (the last Action of one Plan merges, the next approved Plan activates, its first Action is admitted) and it passes before any continuous night.
-      - The queue is a set of named lanes (today one lane with a limit of 1) plus an expedite position; an expedited approved Action takes the next admission slot under the same gates and never preempts running work. Tests cover lane order and expedite.
+      - "The queue has two lanes across every operator-approved Plan: an operator lane for an Action whose declared change paths touch the shared gate set, docs/decisions, an agent_permissions path or CONSTITUTION.md, and an autonomous lane for every other Action; a test classifies a fixture of Plan F's and Plan G's 2026-11-19 Actions into the expected lanes."
+      - "Admission draws the next ready Action across all approved Plans, not only the active one: autonomous-lane Actions at any hour; operator-lane Actions only inside a configured operator window (default 7 AM-9 PM Pacific), or built at night and parked for the morning batch with dependents held once park-and-continue is live. Tests cover each case."
+      - An expedited approved Action takes the next slot in its lane under the same gates and never preempts running work; a test covers it.
+      - "At merge the diff decides: an autonomous-lane PR whose diff touches the gate set or a hard class parks; a test shows it."
+      - The 48h ready view and the 8 AM report split each slot into DAY (operator lane) and NIGHT (autonomous lane) and flag a night with no eligible autonomous work; a test asserts the flag on the 2026-11-19 fixture.
       - "Plan-completion check moved from require-pre-pr-before-every-pull-request (its criterion 3, which P5 cannot meet by itself, per the review at https://github.com/pmark/arcadia/pull/2852#issuecomment-7015286763): before Plan F is recorded complete, the first production candidate PR merged after P5 shows pnpm pre-pr output in its description, and that PR is cited."
     depends_on: [retry-successor-press-when-main-moves, wire-mechanical-repair-into-production, publish-governance-commits-from-the-clone, require-proof-for-every-met-criterion, show-the-resulting-queue-order-in-settle-preview]
     decisions: []
