@@ -3816,3 +3816,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "GOVERNANCE_RECORD_PATHS includes docs/agent-guidance/fingerprints.json, and a test shows a commit that changes only that file after the candidate revision settles cleanly."; "A test shows a commit that changes any guidance document, or fingerprints.json together with any other non-record path, still returns AUTO_SETTLE_REVISION_CHANGED."; "The worker still reviews and merges only at the exact final head; the existing independent-review tests pass unchanged.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-treat-fingerprint-fold-ins-as-governance-records-3e38bb0d032b).
+
+## 2026-11-19 — Completed arcadia/add-a-guidance-refresh-command
+
+- **Did:** Completed Action arcadia/add-a-guidance-refresh-command from accepted evidence (Candidate 7f1e8439429117f301cf866496d94d5779f3e33e).
+- **Result:** Every declared acceptance criterion was accepted as met: "`pnpm guidance:refresh [<doc>...]` rewrites only the fingerprints of the named stale documents (or all stale ones with no argument), using the fingerprint function that check:agent-guidance uses; a test shows its output then passes check:agent-guidance."; "It reuses that function and the refresh logic of src/production/mechanicalRepair.ts (refreshCandidateGuidanceFingerprints) rather than a second implementation; a test or code reference shows the shared function."; "It changes nothing when no fingerprint is stale and exits zero; a test covers it.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-add-a-guidance-refresh-command-a17d54c1a89b).
