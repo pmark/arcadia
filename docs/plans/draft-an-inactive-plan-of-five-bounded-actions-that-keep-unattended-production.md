@@ -7,7 +7,7 @@ status: active
 milestone: "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions"
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-18
+updated: 2026-11-19
 actions:
   - id: retry-successor-press-when-main-moves
     title: When main moves while the host timer is between derive and press, the timer retires that card and derives a fresh one on a later tick instead of ending the standing grant's loop, so the operator can merge to main freely while production runs.
@@ -281,11 +281,11 @@ actions:
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/production/mechanicalRepair.ts", "tests/mechanical-repair.test.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md"]
   - id: launch-past-a-merged-handoff
     title: Preparing a new Action's Session is no longer refused by an incomplete resumable handoff of a different Action whose branch is already merged into the base; that handoff is superseded instead, while an unmerged handoff still blocks.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Preparing a new Action's Session is no longer refused by an incomplete resumable handoff of a different Action whose branch is already merged into the base; that handoff is superseded instead, while an unmerged handoff still blocks.
+    next_action: Completed via Agent Ask auto-settle-arcadia-launch-past-a-merged-handoff-fed4ee348532; no further action.
     expected_artifact: Evidence satisfying Agent Ask launch-past-a-merged-handoff
     clarification: clarified
     confidence: high
@@ -493,7 +493,7 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
-current_action: launch-past-a-merged-handoff
+current_action: supersede-an-older-pending-completion-ask
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

@@ -1924,6 +1924,74 @@ describe("arcadia go — candidate continuation (Decision 0051)", () => {
     expect(withReadOnlyDatabase(fixture.workspace, (db) => getResumableLeaseHandoff(db, fixture.repo))).toBeNull();
   });
 
+  describe("a different Action's handoff whose branch already merged into the base", () => {
+    const setup = () => {
+      const fixture = preparedFixture();
+      const tmux = new FakeTmux();
+      const launched = launch(fixture, tmux);
+      const sessionId = launched.data.session!.id;
+      const worktreePath = launched.data.session!.worktree_path;
+      const branch = launched.data.session!.branch;
+      tmux.live = false;
+      writeFileSync(path.join(worktreePath, "contract.md"), "draft\n");
+      git(worktreePath, ["add", "contract.md"]);
+      git(worktreePath, ["commit", "-m", "wip"]);
+      withDatabase(fixture.workspace, (db) =>
+        reconcileSessionExit({ db, sessionId, requestId: "resume-merged", repoRoot: fixture.repo })
+      );
+      withDatabase(fixture.workspace, (db) =>
+        db.prepare("UPDATE agent_sessions SET action_id = 'retired-contract' WHERE id = ?").run(sessionId)
+      );
+      const dispatch = resolveProjectTransition({ repoRoot: fixture.repo, projectSlug: "test-project", db: undefined }).dispatch;
+      const prepare = (suffix: string) => {
+        const baseRevision = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+        const nextWorktree = path.join(fixture.root, suffix);
+        git(fixture.repo, ["worktree", "add", "-b", `claude/${suffix}`, nextWorktree, "HEAD"]);
+        return withDatabase(fixture.workspace, (db) => prepareSession({
+          db, workspace: fixture.workspace, repoRoot: fixture.repo, dispatch,
+          agent: "claude", model: fixture.model, effort: "high", baseRevision,
+          branch: `claude/${suffix}`, worktreePath: nextWorktree, now: new Date(), tmux: new FakeTmux()
+        }));
+      };
+      return { fixture, sessionId, worktreePath, branch, prepare };
+    };
+
+    it.each([
+      ["merge commit", "ancestor", (repo: string, branch: string) => git(repo, ["merge", "--no-ff", "-m", "merge handoff branch", branch])],
+      ["squash merge", "patch-equivalent", (repo: string, branch: string) => {
+        git(repo, ["merge", "--squash", branch]);
+        git(repo, ["commit", "-m", "squash handoff branch"]);
+      }]
+    ])("supersedes it with merge evidence after a %s, worktree still present", (_label, method, land) => {
+      const { fixture, sessionId, worktreePath, branch, prepare } = setup();
+      land(fixture.repo, branch);
+      expect(existsSync(worktreePath)).toBe(true);
+
+      const prepared = prepare("after-merge");
+      expect(prepared.action_id).toBe("define-contract");
+      const receipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, sessionId));
+      expect(receipt?.superseded_by_session_id).toBe(prepared.id);
+      const evidence = JSON.parse(receipt!.evidence_json!).supersededByMerge;
+      expect(evidence).toMatchObject({ method, branch: branch.replace(/^refs\/heads\//, "") });
+      expect(evidence.baseRevision).toBe(git(fixture.repo, ["rev-parse", "HEAD"]).trim());
+      expect(withReadOnlyDatabase(fixture.workspace, (db) => getResumableLeaseHandoff(db, fixture.repo))).toBeNull();
+    });
+
+    it("still refuses while the branch is unmerged and its worktree is present", () => {
+      const { fixture, sessionId, prepare } = setup();
+      expect(() => prepare("unmerged")).toThrow(/incomplete resumable candidate for a different Action/);
+      const receipt = withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, sessionId));
+      expect(receipt?.superseded_by_session_id).toBeNull();
+    });
+
+    it("still refuses a merged branch whose worktree holds uncommitted work", () => {
+      const { fixture, worktreePath, branch, prepare } = setup();
+      git(fixture.repo, ["merge", "--no-ff", "-m", "merge handoff branch", branch]);
+      writeFileSync(path.join(worktreePath, "unsaved.md"), "unsaved\n");
+      expect(() => prepare("dirty-merged")).toThrow(/different Action/);
+    });
+  });
+
   it("refuses a new worktree while a Session is still live", () => {
     const fixture = preparedFixture();
     const tmux = new FakeTmux();

@@ -691,7 +691,13 @@ export function prepareSession(input: {
     // applies. Without it the automated tick refused every other Action in
     // the repository forever and burned its repair budget (Issue #697). The
     // discarded handoff is then superseded below, closing its record.
-    if (handoff && handoff.session.action_id !== context.action.id && !candidateWorktreeIsGone(handoff.session.worktree_path)) {
+    // A branch already merged into the base (ancestry for a merge commit,
+    // patch equivalence for a squash or rebase) with a clean worktree has
+    // nothing left to resume either; it is superseded below with the evidence.
+    const mergedEvidence = handoff && handoff.session.action_id !== context.action.id && !candidateWorktreeIsGone(handoff.session.worktree_path)
+      ? handoffMergeEvidence(handoff.session)
+      : null;
+    if (handoff && handoff.session.action_id !== context.action.id && !mergedEvidence && !candidateWorktreeIsGone(handoff.session.worktree_path)) {
       throw validationError("The repository holds an incomplete resumable candidate for a different Action; resolve or discard it before preparing a new one.", {
         sessionId: handoff.session.id, actionId: handoff.session.action_id, worktreePath: handoff.session.worktree_path
       });
@@ -740,6 +746,7 @@ export function prepareSession(input: {
     input.terminalRecovery?.record(row);
     if (handoff && !input.terminalRecovery) {
       supersedeLeaseHandoff(input.db, handoff.receipt.id, id);
+      if (mergedEvidence) recordHandoffMergeEvidence(input.db, handoff.receipt, mergedEvidence);
     }
     if (input.repair) bindRepairSession(input.db, { requestId: input.repair.requestId, sessionId: id, now: input.now });
     return row;
@@ -1067,6 +1074,41 @@ export function reserveAgentWorktree(db: Database.Database, input: {
  * would let a still-present candidate -- possibly holding real work -- be
  * superseded as if it had been discarded.
  */
+interface HandoffMergeEvidence { method: "ancestor" | "patch-equivalent"; branch: string; baseRef: string; baseRevision: string }
+
+/**
+ * Deterministic, offline Git proof that a handoff's branch already landed on
+ * the base, and that its still-present worktree holds no uncommitted work.
+ * Anything short of that proof -- a missing branch, an unresolvable base, a
+ * Git error, a dirty worktree -- returns null, so the handoff keeps blocking.
+ */
+function handoffMergeEvidence(session: Pick<AgentSession, "repository_path" | "worktree_path" | "branch">): HandoffMergeEvidence | null {
+  const repo = session.repository_path;
+  const branch = session.branch.replace(/^refs\/heads\//, "");
+  try {
+    if (localBranchState(repo, branch) !== "present") return null;
+    if (uncommittedChanges(session.worktree_path).length > 0) return null;
+    const base = resolveBaseBranch(repo);
+    const bases = [base, ...(refExists(repo, `refs/remotes/origin/${base}`) ? [`origin/${base}`] : [])];
+    for (const baseRef of bases) {
+      const method = isAncestor(repo, branch, baseRef) ? "ancestor" : isPatchEquivalent(repo, baseRef, branch) ? "patch-equivalent" : null;
+      const baseRevision = method ? tryGit(repo, ["rev-parse", "--verify", `${baseRef}^{commit}`])?.trim() : null;
+      if (method && baseRevision) return { method, branch, baseRef, baseRevision };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** The supersede receipt names its merge evidence on the superseded exit receipt itself. */
+function recordHandoffMergeEvidence(db: Database.Database, receipt: { id: string; evidence_json: string | null }, evidence: HandoffMergeEvidence): void {
+  let existing: Record<string, unknown>;
+  try { existing = receipt.evidence_json ? JSON.parse(receipt.evidence_json) as Record<string, unknown> : {}; } catch { existing = {}; }
+  db.prepare("UPDATE session_exit_receipts SET evidence_json = ? WHERE id = ?")
+    .run(JSON.stringify({ ...existing, supersededByMerge: evidence }), receipt.id);
+}
+
 function candidateWorktreeIsGone(worktreePath: string): boolean {
   try {
     statSync(worktreePath);
