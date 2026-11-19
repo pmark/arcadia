@@ -378,11 +378,11 @@ actions:
     references: ["package.json", "scripts/check-agent-guidance.ts", "scripts/check-operator-scripts.ts", "scripts/check-plan-close-outs.ts", "scripts/check-frozen-records.ts", "tests/authority-classifier-coverage.test.ts", "src/decisions/batchMerge.ts"]
   - id: inspect-stale-completion-candidate-revision
     title: Determine whether an auto-settled completion Ask keeps a stale candidate_revision when a hand fix moves the candidate head, and either fix it so the recorded revision is the merged head or record with evidence that it does not occur.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Determine whether an auto-settled completion Ask keeps a stale candidate_revision when a hand fix moves the candidate head, and either fix it so the recorded revision is the merged head or record with evidence that it does not occur.
+    next_action: Completed via Agent Ask auto-settle-arcadia-inspect-stale-completion-candidate-revision-1a427caa3e07; no further action.
     expected_artifact: Evidence satisfying Agent Ask inspect-stale-completion-candidate-revision
     clarification: clarified
     confidence: high
@@ -493,7 +493,7 @@ actions:
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
 questions: []
 decisions: []
-current_action: inspect-stale-completion-candidate-revision
+current_action: correct-usage-refresh-and-assert-capacity-freshness
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

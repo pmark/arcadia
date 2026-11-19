@@ -70,6 +70,30 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(stillDrafted).toEqual([]);
   });
 
+  it("replays #2777: a hand fix after the auto-settle leaves the record naming the evidenced head, not the merged head, by design", () => {
+    const { repo, workspace, currentHead } = fixture({ draftAsk: true });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+    expect(result).toMatchObject({ settled: true, reason: AUTO_SETTLE_SETTLED });
+
+    // The hand fix lands on the candidate branch after settlement, then it merges.
+    writeFileSync(path.join(repo, "FIX.md"), "hand fix after settle\n", "utf8");
+    execFileSync("git", ["add", "."], { cwd: repo });
+    execFileSync("git", ["commit", "-qm", "Hand fix"], { cwd: repo });
+    const mergedHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim();
+
+    // Both governance records still name the head the evidence validated: the
+    // fix is unvalidated code, so naming it would assert proof nobody gathered.
+    const log = readFileSync(path.join(repo, "MISSION_LOG.md"), "utf8");
+    expect(log).toContain(currentHead);
+    expect(log).not.toContain(mergedHead);
+    const archivedAsk = readFileSync(path.join(repo, ".arcadia/asks/archive/agent-ask-complete-first.yaml"), "utf8");
+    expect(archivedAsk).toMatch(new RegExp(`^candidate_revision: ${currentHead}$`, "m"));
+    expect(mergedHead).not.toBe(currentHead);
+  });
+
   it("settles a compact JSON draft too, rewriting its request id and stale candidate_revision structurally", () => {
     const { repo, workspace, draftHead, currentHead } = fixture({ draftAsk: true, jsonDraft: true });
 

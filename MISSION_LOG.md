@@ -3823,3 +3823,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "`pnpm guidance:refresh [<doc>...]` rewrites only the fingerprints of the named stale documents (or all stale ones with no argument), using the fingerprint function that check:agent-guidance uses; a test shows its output then passes check:agent-guidance."; "It reuses that function and the refresh logic of src/production/mechanicalRepair.ts (refreshCandidateGuidanceFingerprints) rather than a second implementation; a test or code reference shows the shared function."; "It changes nothing when no fingerprint is stale and exits zero; a test covers it.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-add-a-guidance-refresh-command-a17d54c1a89b).
+
+## 2026-11-19 — Completed arcadia/inspect-stale-completion-candidate-revision
+
+- **Did:** Completed Action arcadia/inspect-stale-completion-candidate-revision from accepted evidence (Candidate 723e5078e989fad201b95c3e5468727fa48512f8).
+- **Result:** Every declared acceptance criterion was accepted as met: "A fixture replays #2777's sequence (auto-settle at the preserved candidate, then a fix commit, then merge) and shows which revision the completion record names."; "If the record names a pre-fix head, a failing-first test then passes with the completion record naming the merged head, or with a recorded refresh when the head moves; otherwise the finding and the fixture are recorded in docs/notes-to-self.md and no code changes."; "Either outcome is cited on a new or existing Issue.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-inspect-stale-completion-candidate-revision-1a427caa3e07).

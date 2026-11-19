@@ -173,12 +173,14 @@ Changing only a stale queue revision/fingerprint does not repair the transaction
 
 ## Operator action failed after settlement: was the work accepted?
 
-keys: applied true, accepted, publication, LOCAL ONLY, failure handoff, operator script, process launch
+keys: applied true, accepted, publication, LOCAL ONLY, failure handoff, operator script, process launch, candidate_revision, auto-settle, stale revision, hand fix, 2777, completion record, merged head, inspect-stale-completion-candidate-revision
 
 Read the run's settlement receipt, failure handoff, publication receipt, and Git history separately: `applied: true` proves local acceptance, not publication or pointer advancement.
 An absent publication receipt after an applied settlement is an unresolved publication stage; verify current remote state before claiming it is local only.
 Preserve the accepted commit and failed run; recovery must validate the exact existing result rather than reapply acceptance or reset the button.
 See `docs/reports/autonomous-production-session-friction-2026-10-02.md` for the untracked-Ask failure and exact retained receipts.
+
+**Which head does an auto-settled completion name after a hand fix? (not a bug)** Replaying #2777's sequence (auto-settle at the preserved candidate, then a fix commit, then merge) in `tests/auto-settle-before-dispatch.test.ts` ("replays #2777") shows the Mission Log and the archived Ask both name the head the settlement bound (the evidenced tree, refreshed only across governance-record commits), never the later fix commit. That is intended: the fix is code the evidence never validated, and `attemptSettleOneDraft` refuses to refresh across a code change (Issue #639), so no code changed. A completion naming the merged head needs a fresh validation and a new completion Ask, which the independent review and required checks on the merged head supply. The fixture was not run in the authoring Session (test commands refused); host pre-acceptance validation runs it (2026-11-18).
 
 ## Preserve exact generated-script preparation
 
