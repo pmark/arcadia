@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-18
+updated: 2026-11-19
 ---
 
 # Mission Log: Arcadia
@@ -3795,3 +3795,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "With production Off, the services.sh liveness step from the merged build Action is run once on the live host, and its output is saved as a receipt."; "plutil -p of the liveness plist shows --successor-press, and the release it names contains commit ddfae2b62 (git merge-base --is-ancestor), both saved in the receipt."; "One liveness tick after the install logs the successor step's named skip (GRANT_NOT_OPEN while no standing grant is open), proving the installed job runs the step; the log line is saved in the receipt."; "Issue #2778 is closed citing the receipt.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-prove-the-timer-runs-the-successor-press-live-20261118).
+
+## 2026-11-19 — Completed arcadia/launch-past-a-merged-handoff
+
+- **Did:** Completed Action arcadia/launch-past-a-merged-handoff from accepted evidence (Candidate 322e346eb4d8f606dc5d744dce0310682b8055c9).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test with an incomplete_resumable handoff for Action A whose branch is an ancestor of, or patch-equivalent to, the base, with its worktree still present, shows preparing Action B succeeds and the handoff is superseded through the existing supersede path with a receipt naming the merge evidence."; "A control test with an unmerged branch and its worktree present still refuses with today's message."; "Patch equivalence is decided deterministically from git (ancestry or patch-id), and a test covers a merge-commit and a squash-merged branch.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-launch-past-a-merged-handoff-fed4ee348532).
