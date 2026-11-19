@@ -17,7 +17,8 @@ import { runReviewApproveCommand } from "../../src/commands/review.js";
 import { runWorkListCommand, runWorkPlanCommand } from "../../src/commands/work.js";
 import { withDatabase, withReadOnlyDatabase } from "../../src/db/connection.js";
 import { loadPhase3Registries } from "../../src/intent/registries.js";
-import { runManagedProductionTick, type ManagedProductionTickProjectResult } from "../../src/production/tick.js";
+import type { MechanicalRepairDeps } from "../../src/production/mechanicalRepairWiring.js";
+import { runManagedProductionTick,type ManagedProductionTickProjectResult } from "../../src/production/tick.js";
 import { getRepositoryLease, type AgentSession, type TmuxAdapter } from "../../src/sessions/index.js";
 import { recordClearProbeEvidence } from "./sessionProbeEvidence.js";
 import { launchGuardedHostSession } from "../../src/sessions/launch.js";
@@ -187,6 +188,8 @@ export interface RehearsalOptions {
   independentReviewers?: boolean | "host-commands" | "tick";
   /** `"tick"` mode only: overrides for the tick's review deadlines and budget. */
   review?: Pick<IndependentReviewDeps, "pollIntervalMs" | "checksDeadlineMs" | "maxFailures" | "rateLimitBackoffMs" | "rateLimitEscalateAfterMs">;
+  /** `"tick"` mode only: the deterministic repair round's generator runner. */
+  mechanicalRepair?: Pick<MechanicalRepairDeps, "run">;
 }
 
 export const DEFAULT_VALIDATION_COMMAND = "node scripts/check-marker.mjs";
@@ -482,6 +485,7 @@ Disposable fixture plan.
         log: (message) => this.log.push(`[tick ${this.tickCount}] ${message}`),
         // Without host Seatbelt, pre-acceptance validation (#1599) runs its identical checks unconfined, as preservation does.
         handoff: { ...(Object.keys(preserve).length ? { preserve } : {}), ...(HOST_SEATBELT ? {} : { completionValidation: { unconfinedForTests: true } }) },
+        ...(this.options.mechanicalRepair ? { mechanicalRepair: this.options.mechanicalRepair } : {}),
         ...(tickReviews ? { review: { runCommand: this.github.runCommand, selectReviewer: () => hostReviewer(), ...this.options.review } } : {})
       })
     );

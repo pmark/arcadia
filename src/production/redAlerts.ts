@@ -138,6 +138,23 @@ function toAlert(row: AlertRow): RedAlert {
   };
 }
 
+/** Triggers raised once per episode: a tick that sees the open, notified alert again does not touch its seen-count. */
+const ONCE_PER_EPISODE_TRIGGERS: readonly RedAlertTrigger[] = ["repair_gated", "repair_budget_repeat"];
+
+/**
+ * Raise a once-per-episode trigger: the episode ends when the alert clears,
+ * and a recurrence after that is a new episode. An open alert whose
+ * notification was not yet sent is still refreshed so the send is retried.
+ */
+function raiseOncePerEpisode(db: Database.Database, input: RaiseRedAlertInput): void {
+  if (ONCE_PER_EPISODE_TRIGGERS.includes(input.trigger)) {
+    const alertKey = `${input.trigger}:${input.projectSlug}:${input.sessionId ?? input.actionKey ?? "project"}`;
+    const open = db.prepare("SELECT notified_at FROM production_red_alerts WHERE alert_key = ? AND status = 'open'").get(alertKey) as { notified_at: string | null } | undefined;
+    if (open && open.notified_at !== null) return;
+  }
+  raiseRedAlert(db, input);
+}
+
 /** Every open red alert, oldest first. Safe on a read-only connection. */
 export function listOpenRedAlerts(db: Database.Database): RedAlert[] {
   try {
@@ -485,7 +502,7 @@ export function observeRepairBudget(ctx: AlertContext, launch: ManagedProduction
     | { attempts: number; last_error: string | null }
     | undefined;
   if (!attempts || attempts.attempts < PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) return;
-  raiseRedAlert(db, {
+  raiseOncePerEpisode(db, {
     workspace: ctx.workspace,
     projectSlug,
     actionKey: launch.actionKey,
@@ -637,7 +654,7 @@ export function observeReviewRepairStops(ctx: AlertContext): void {
     }
     if (!stop || !repair || repair.outcome !== stop.outcome) continue;
     wanted.set(`${stop.trigger}\u0000${row.action_key}`, stop.trigger);
-    raiseRedAlert(db, {
+    raiseOncePerEpisode(db, {
       workspace: ctx.workspace,
       projectSlug,
       actionKey: row.action_key,

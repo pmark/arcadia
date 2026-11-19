@@ -797,7 +797,7 @@ export type ChecksJudgement =
   | { kind: "waiting"; reason: string }
   | { kind: "judged"; repairable: boolean; reason: string | null; summary: string; findings: ReviewRepairFinding[]; checks: ReviewRepairCheck[] };
 
-const runIdOf = (url: string | null) => /\/actions\/runs\/(\d+)/.exec(url ?? "")?.[1] ?? null;
+export const runIdOf = (url: string | null) => /\/actions\/runs\/(\d+)/.exec(url ?? "")?.[1] ?? null;
 
 /**
  * Whether red required checks on a candidate's exact head are the candidate's
@@ -985,7 +985,7 @@ function attemptChecksRepair(input: ReviewRepairInput, failure: RequiredChecksFa
 }
 
 /** The Active production authority a repair needs, or why it does not apply. */
-function repairAuthority(db: Database.Database, session: AgentSession, now: Date):
+export function repairAuthority(db: Database.Database, session: AgentSession, now: Date):
   { policy: ProductionPolicyRecord; authorizedNow: () => string | null } | { notApplicable: string } {
   const actionKey = `${session.project_slug}/${session.action_id}`;
   const policyRead = readProductionPolicySafely(db);
