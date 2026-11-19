@@ -384,3 +384,9 @@ The full pre-press gate, supervision cadence and operator-communication rules ar
 keys: rowan-off, deactivate, request-id, DAY_ENDED_BY_OPERATOR, rg -r, replace, malformed request id, MALFORMED_REQUEST_ID
 
 `rg -r` is `--replace`, not recursive: a command that fed it a pattern printed it as `^.-`, and that text was pasted as the Off request id (`.-plan3-pins-13-15-complete-20261115`). The day-grant check accepts only `rowan-off-<slug>` (`ROWAN_OFF_REQUEST`), so the day ended with `DAY_ENDED_BY_OPERATOR`. Rowan runs `arcadia production deactivate --rowan-off <slug>`, which composes the id; `--request-id` now refuses an id that does not start with a letter or digit (`MALFORMED_REQUEST_ID`). Never type the id by hand (2026-11-15).
+
+## A hand fix after an auto-settle leaves the completion record on the evidenced head (not a bug)
+
+keys: candidate_revision, auto-settle, stale revision, hand fix, 2777, completion record, merged head, inspect-stale-completion-candidate-revision
+
+Replaying #2777's sequence (auto-settle at the preserved candidate, then a fix commit, then merge) in `tests/auto-settle-before-dispatch.test.ts` ("replays #2777") shows the Mission Log and the archived Ask both name the head the settlement bound (the evidenced tree, refreshed only across governance-record commits), never the later fix commit. That is intended: the fix is code the evidence never validated, and `attemptSettleOneDraft` refuses to refresh across a code change (Issue #639), so no code changed. A completion naming the merged head needs a fresh validation and a new completion Ask, which the independent review and required checks on the merged head supply. The fixture was not run in the authoring Session (test commands refused); host pre-acceptance validation runs it (2026-11-18).
