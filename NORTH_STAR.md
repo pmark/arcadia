@@ -1,23 +1,23 @@
 ---
 type: north_star
-target: Automated production is live for Arcadia
+target: Production runs for long unattended stretches
 project: arcadia
-why: Once the worker takes an Action from the queue to a landed change with no operator in between, every other Plan in every Project is built faster and cheaper than any hand-driven session can build it. Everything else waits for this.
-looks_like: With production activated once, the worker launches Action A, preserves and lands it, and launches the dependent Action B with no operator step in between. prove-two-action-unattended-production records that run.
-updated: 2026-09-25
+why: 'The operator plans a day at a time: planning and design fill an approved queue; work that needs his merge runs in the day lane and reaches him in batches, and autonomous work runs in the night lane. Every Project is built faster as the hours between operator-needed stops grow and no night is empty. Unattended-run reliability breaks ties.'
+looks_like: "Each night production runs the night lane's approved work with no operator step; each day the day lane's pull requests reach him in batches; the 8 AM report shows the hours between operator-needed stops rising and no empty night."
+updated: 2026-11-20
 gates:
-  - id: preservation-refusals-actionable
-    title: A refused preservation names its failing check, and a Session stops after a bounded number of identical refusals
-    action: plan/bootstrap-managed-production-to-build-flight-deck#name-failing-preservation-check-and-bound-retries
-  - id: policy-providers-honored
-    title: Launch selects only providers the standing policy permits, or surfaces the mismatch once
-    action: plan/bootstrap-managed-production-to-build-flight-deck#honor-policy-providers-at-launch
-  - id: unpreservable-sessions-refused
-    title: A Project with no validation commands is refused before a Session is spent on it
-    action: plan/bootstrap-managed-production-to-build-flight-deck#refuse-packets-without-validation-commands
-  - id: two-action-proof
-    title: Two dependent Actions run from one activation with no operator step between them
-    action: plan/bootstrap-managed-production-to-build-flight-deck#prove-two-action-unattended-production
+  - id: merges-without-a-person-under-checked-conditions
+    title: Merges happen without a person under checked conditions
+    action: plan/draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production#worker-applies-standing-merge-conditions
+  - id: one-failure-never-ends-the-night
+    title: One failure never ends the night
+    action: plan/draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production#park-and-continue
+  - id: both-lanes-filled-across-approved-plans
+    title: Both lanes are filled across approved Plans
+    action: plan/draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production#queue-approved-plans-and-start-the-next
+  - id: every-overnight-merge-reverified
+    title: Every overnight merge is reverified at 8 AM
+    action: plan/draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production#verify-overnight-merges-at-8am
 ---
 
 # Arcadia North Star
@@ -33,36 +33,32 @@ type and restore the marker.
 
 ## Why this target, and why now
 
-Every Plan in every Project goes faster once the worker can carry work from the
-queue to a landed change unattended. The shortest path is therefore the only
-path worth working. `arcadia go` in this repository is held to it by three
-separate controls:
+Every Plan in every Project goes faster as production runs longer without an
+operator-needed stop. The order of work toward that is in `docs/roadmap.md`,
+and how planning ranks and fills the two lanes is in `docs/planning-process.md`.
 
-- **This Plan's off-path Actions** depend on
-  `prove-two-action-unattended-production`, directly or transitively, so
-  dispatch cannot select them until the proof has run.
-- **`prove-zero-prompt-production-loop`** is operator-only
-  (`responsibility: requires_review`), so dispatch never selects it.
-- **Other Plans' ready Actions** wait for the pointer. Dispatch never selects
-  them while this Plan is active and incomplete.
+## Measures
+
+Hours between operator-needed stops, read from the 8 AM report, and empty
+nights per week; the target is zero empty nights.
+
+## History
+
+The one-click whole-Plan goal was retired as superseded on 2026-11-18 ("what we
+have is better ... There's a big process of planning and design that creates a
+queue of work. Right now we're doing it a day at a time, and that seems good.").
+On 2026-11-19 the operator made long unattended stretches the target, with day
+and night lanes.
 
 ## The gates
 
 Each gate takes its status from the Action it names, so this list never needs
-maintaining by hand. Gates already passed were dropped rather than listed as
-done: releasing finished Sessions' admissions (#610), preserving candidates
-across a moved base (#539), withholding worker control from Sessions (#611),
-and not killing busy workers (#617).
-
-The one operator step is not a gate. After the first three gates pass, the
-operator reverses Decision 0057's deferral and starts the rehearsal. That is the
-revival trigger Decisions 0057 and 0061 recorded.
+maintaining by hand.
 
 `docs/managed-production-readiness.md` carries the derivation behind this list.
 It is re-derived whenever a gate moves.
 
 ## After the target
 
-Continuous production (`prove-multi-provider-production-recovery`,
-`run-managed-production-live-soak`) comes next, followed by every Action held
-behind the proof. Removing that sequencing dependency is one Plan amendment.
+Plan G comes next, then the host-coordinators Plan, then concurrency behind
+Decisions 0066 and 0071.

@@ -4,6 +4,8 @@ This is the **single canonical checklist** for the remaining unattended-producti
 
 ## Operator view: the rover's route from here
 
+**Update, 2026-11-19: the interim one-click whole-Plan goal is retired as superseded.** The target is production running for long unattended stretches: a day lane of work that needs the operator's merge, batched, and a night lane of autonomous work, measured by hours between operator-needed stops and empty nights. The target and gates are in NORTH_STAR.md, the order in docs/roadmap.md. This checklist remains derived evidence, not an authority store.
+
 **Update, 2026-11-09: Plan `record-run-unattended-test-pins-20261107-part-2` is complete, 20 of 20, within the same narrow envelope.** The sections below keep the 2026-11-05 proof as written; this update adds to it and does not widen it. Derived 2026-11-09 from read-only evidence: [Issue1929 comments 6734093798 (batch 5 START) and 6734550957 (final accounting)](https://github.com/pmark/arcadia/issues/1929), `arcadia production status --json` (observed 07:51Z), `arcadia start-run day-evidence`, GitHub PRs #2308 to #2351, and the code-review verdict under `workspaces/martianrover/artifacts/code-review/pull-requests/pmark-arcadia/2351/`.
 
 - **Delivered:** 20 worker merges in five batches of 5, 3, 5, 5 and 2, from 2026-11-08T19:41Z to 2026-11-09T07:20Z. Rowan landed none; the worker merged each PR at its reviewed head. Batch 2 stopped at three on [#2324](https://github.com/pmark/arcadia/issues/2324) (a QA plan read a quoted test path as a changed file; fixed by #2325, closed); the batch resumed in batch 3.
@@ -160,16 +162,16 @@ Derived **2026-10-31** from fresh read-only observation and exact merged source.
    The duplicate `cover-mail-ack-receipt-kind-collision` was completed with evidence from PR1787. The Plan stays inactive.
 2. [x] **One-press authority.** Decisions [0156](decisions/0156-may-a-per-run-start-card-also-install-its-pinned-reviewed-main-revision-and.md) and [0157](decisions/0157-may-a-per-run-start-card-also-activate-its-named-plan-through-the-pinned-plan.md) were answered A/A ([PR1936](https://github.com/pmark/arcadia/pull/1936)). A per-run card may install its pinned reviewed main, restart and bind the worker, activate its Plan, and START.
 3. [x] **One-press machinery.** [PR1934](https://github.com/pmark/arcadia/pull/1934) added `production runtime-check` and `activate --require-current-runtime`. [PR1944](https://github.com/pmark/arcadia/pull/1944) (`d65457f`) added the reviewed-once `scripts/start-run.sh` executor, thin pinned cards, `arcadia start-run pins` and a no-mutation `preflight`, after independent review R1 NO-GO and then R2 GO. It was proved only against fakes.
-4. [ ] **Before minting the first card (agent work, no press):**
+4. [x] **Before minting the first card (agent work, no press):** (done 2026-11-05; see the verdict above)
    - fix [Issue1943](https://github.com/pmark/arcadia/issues/1943): the emitter must check the delegation receipt's validity window, and the test seam must move out of the executor;
    - establish what `delegationReceipt` means when the operator presses the card themselves, since the daily START/STOP delegation expired 2026-10-26;
    - obtain fresh sign-in/usage evidence under Decision 0141/0143's bounded class;
    - pass a host `preflight` and get an independent critic check of the pins;
    - run the standing pre-mortem before minting or pinging the card (operator, 2026-11-01; see `docs/agent-guidance/operator-actions.md`, "Pre-mortem before every START card"). For each pinned Action, it covers the predicted route and every gate, pending Asks and Decisions, stale escalations and repair budgets, and queue eligibility. It also covers the card's phases. A declared `build` route skips the planning-run Decision gate, so the pre-mortem checks that the route is appropriate. Fix what can be fixed first. After START, watch admission against the card's stated deadline, or 15 minutes if it states none; a missed deadline goes to the configured Discord blocker alert.
-5. [ ] **One press (operator).** Run the card from `/actions`. It installs, activates and STARTs.
-6. [ ] **Unattended delivery and acceptance.** The worker delivers. Rowan re-derives this document from the ledger, and settles `first-unattended-run` only if every criterion is met.
+5. [x] **One press (operator).** Run the card from `/actions`. It installs, activates and STARTs. (done 2026-11-05; see the verdict above)
+6. [x] **Unattended delivery and acceptance.** The worker delivers. Rowan re-derives this document from the ledger, and settles `first-unattended-run` only if every criterion is met. (done 2026-11-05; see the verdict above)
 
-Every press and host step on this route is recorded as friction toward one-click whole-Plan continuation ([Issue1929](https://github.com/pmark/arcadia/issues/1929)); the cheapest, checklist drift, is fixed by this refresh.
+Every press and host step on this route is recorded as friction toward long unattended runs ([Issue1929](https://github.com/pmark/arcadia/issues/1929)); the cheapest, checklist drift, is fixed by this refresh.
 
 Evidence custody: the `runs/` receipts named above (main checkout, ignored, host-local), GitHub PR records and canonical Decisions. Rowan retains sole coordination.
 
