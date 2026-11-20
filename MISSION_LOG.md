@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Mission Log: Arcadia
@@ -3865,3 +3865,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A checked-in list names: workerMerge, independentReview, batchMerge, startRunDerive, autoSettleBeforeDispatch, candidateChangeGate, mechanicalRepair, scripts/start-run.sh; their first-order imports as of the merge commit; spend/; the hard classes (decisions, agent_permissions, CONSTITUTION.md, governance files); and the list file, its loader and the drift test."; "A drift test fails, naming the module and import, when any listed gate module gains a first-order import outside the list; a fixture adds one and shows the failure."; "One loader is the only reader of the list; a repository check fails if another module reads the list file directly."; "Unmapped files under the listed paths classify as protected (fail closed); a test covers an unmapped new file."; "The list is keyed by project (and repository), so each Project carries its own gate list; Arcadia's is the first entry, and a second project's absence is reported, not assumed.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-define-the-gate-set-56ec0a38fd0c).
+
+## 2026-11-20 — Completed arcadia/explain-the-ping-length-limit
+
+- **Did:** Completed Action arcadia/explain-the-ping-length-limit from accepted evidence (Candidate df9afabd94b34c4208aa534a8f19f8eff03b0e03).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test shows a 501-character message exits non-zero with exactly one stderr line of the form 'message is 501 characters; the limit is 500', and nothing is queued."; "A test shows a 500-character message is accepted unchanged; the message is never silently truncated."; "Issue #2782 is closed citing the merged PR.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-explain-the-ping-length-limit-b7abbe032958).
