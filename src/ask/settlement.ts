@@ -34,6 +34,7 @@ import {
 import { getSessionExitReceipt } from "../sessions/reconciliation.js";
 import { activeScopeCoveringPlan, assertNoActiveScopeOverPlan, SCOPE_DRIFT_REMEDY } from "../production/policy.js";
 import { slugify, SLUG_MAX_LENGTH } from "../utils/slug.js";
+import { allocateDecisionId } from "../decisions/decisionIds.js";
 
 export type AgentAskDisposition = "accepted" | "rejected";
 export type AgentAskResponsibility = WorkClassification;
@@ -2666,8 +2667,8 @@ function addDecisionMutation(
   options: NormalizedAgentAskOption[],
   gateQuestion: GateQuestion
 ): void {
-  const nextNumber = decisions.reduce((highest, decision) => Math.max(highest, Number.parseInt(decision.id, 10) || 0), 0) + 1;
-  const id = String(nextNumber).padStart(4, "0");
+  // Allocated against origin main as well as the local tree, so a Decision minted on main meanwhile is never reused.
+  const id = allocateDecisionId(repoRoot, decisions.map((decision) => decision.id));
   const slug = uniqueDecisionSlug(decisions, slugify(question) || `agent-ask-${id}`);
   const targetPath = path.join(repoRoot, "docs", "decisions", `${id}-${slug}.md`);
   // `recommendation` holds only the recommended course of action, read from

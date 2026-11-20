@@ -185,6 +185,23 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     expect(merge({ mergeFreeze: () => null })).toMatchObject({ kind: "merged" });
   });
 
+  it("refuses a candidate whose Decision id origin main took meanwhile (checked against current origin main, names both files) and calls no merge", () => {
+    candidate({ "docs/decisions/0300-from-candidate.md": "candidate\n" });
+    // Another writer lands id 0300 on origin main after the candidate branched and was reviewed.
+    git(repo, ["checkout", "-q", "main"]);
+    mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
+    writeFileSync(path.join(repo, "docs/decisions/0300-minted-on-main.md"), "main\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "mint 0300 on main"]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    const outcome = merge();
+    expect(outcome).toMatchObject({ kind: "refused", code: "decision_id_duplicate" });
+    const reason = (outcome as { reason: string }).reason;
+    expect(reason).toContain("docs/decisions/0300-from-candidate.md");
+    expect(reason).toContain("docs/decisions/0300-minted-on-main.md");
+    expect(github.ghCalls.some((call) => call.startsWith("gh pr merge"))).toBe(false);
+  });
+
   it("default gate: a pinned unpressed per-run START card refuses with the exact freeze message, keeps the card and calls no merge; pressing it lets the merge through", () => {
     candidate({ [SAFE]: "feature\n" });
     const library = path.join(root, "library");

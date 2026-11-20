@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { classifyAuthorityPaths, type AuthorityBoundary } from "../decisions/batchMerge.js";
+import { decisionIdClashRefusal, systemDecisionGit } from "../decisions/decisionIds.js";
 import { computeBlastRadius } from "../stewardship/prBlastRadius.js";
 import { syncBaseOrThrow } from "../git/pointerReconcile.js";
 import { git, isAncestor, tryGit } from "../git/worktrees.js";
@@ -54,6 +55,7 @@ export type WorkerMergeRefusalCode =
   | "blast_radius_unknown"
   | "authority_adjacent"
   | "merge_freeze"
+  | "decision_id_duplicate"
   | "merge_failed"
   | "merge_unverified"
   | "base_not_synced";
@@ -73,6 +75,7 @@ export const WORKER_MERGE_REFUSAL_CODES: readonly WorkerMergeRefusalCode[] = [
   "blast_radius_unknown",
   "authority_adjacent",
   "merge_freeze",
+  "decision_id_duplicate",
   "merge_failed",
   "merge_unverified",
   "base_not_synced"
@@ -471,6 +474,8 @@ export interface WorkerMergeDeps {
   syncBase?: (input: { repoRoot: string; baseBranch: string }) => void;
   /** Merge freeze gate, checked right before the merge call: a non-null answer refuses the merge. Defaults to the waiting-START-card check. */
   mergeFreeze?: () => { message: string } | null;
+  /** Duplicate Decision id check against current origin base, run immediately before the merge call: a non-null answer refuses it. */
+  decisionIdClash?: (input: { repoRoot: string; baseBranch: string; head: string }) => string | null;
 }
 
 export interface WorkerMergeInput {
@@ -570,6 +575,8 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
   if (fenced) return { kind: "withheld", reason: `Withheld the worker merge of ${url}: ${fenced}.` };
   const freeze = (deps.mergeFreeze ?? (() => workerMergeFreeze(db, repoRoot)))();
   if (freeze) return refused("merge_freeze", freeze.message);
+  const clash = (deps.decisionIdClash ?? ((i) => decisionIdClashRefusal(systemDecisionGit(i.repoRoot), i.head, i.baseBranch)))({ repoRoot, baseBranch, head });
+  if (clash) return refused("decision_id_duplicate", clash);
   const merged = runCommand({ command: "gh", args: ["pr", "merge", evaluation.pullRequestUrl, "--merge", "--match-head-commit", head], cwd: repoRoot, timeoutMs: 120_000 });
   if (merged.status !== 0) {
     const detail = merged.error ?? (merged.stderr.trim() || `exit ${String(merged.status)}`);

@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-19
+updated: 2026-11-20
 ---
 
 # Mission Log: Arcadia
@@ -3865,3 +3865,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A checked-in list names: workerMerge, independentReview, batchMerge, startRunDerive, autoSettleBeforeDispatch, candidateChangeGate, mechanicalRepair, scripts/start-run.sh; their first-order imports as of the merge commit; spend/; the hard classes (decisions, agent_permissions, CONSTITUTION.md, governance files); and the list file, its loader and the drift test."; "A drift test fails, naming the module and import, when any listed gate module gains a first-order import outside the list; a fixture adds one and shows the failure."; "One loader is the only reader of the list; a repository check fails if another module reads the list file directly."; "Unmapped files under the listed paths classify as protected (fail closed); a test covers an unmapped new file."; "The list is keyed by project (and repository), so each Project carries its own gate list; Arcadia's is the first entry, and a second project's absence is reported, not assumed.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-define-the-gate-set-56ec0a38fd0c).
+
+## 2026-11-20 — Completed arcadia/allocate-decision-numbers-on-main-and-refuse-duplicates
+
+- **Did:** Completed Action arcadia/allocate-decision-numbers-on-main-and-refuse-duplicates from accepted evidence (Candidate 9bd65f728269b7834b34a47a76d5502fe57c6f1a).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test reproduces the 0250 race (an Ask settle candidate chooses N while a START sign-in mints N on main) and shows the second writer receives N+1 or refuses. No two Decision files on main share an id."; "A required CI check fails a pull request that adds a docs/decisions file whose id already exists on its base, naming both files. The four historical pairs are grandfathered by an explicit list, and a test shows a fifth pair fails."; "Every Arcadia merge path (the worker merge and the operator batch-merge card) re-runs the duplicate check against current origin main immediately before merging and refuses on a duplicate. A test with two pull requests that each add id N against the same base shows the second is refused after the first merges."; "A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route."; "START sign-in usage-check Decisions take their id at the moment they are written to main, from origin main, and a test shows a concurrent open PR's Decision does not block or collide with them."; "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-allocate-decision-numbers-on-main-and-refuse-duplicates-98f655fa84af).
