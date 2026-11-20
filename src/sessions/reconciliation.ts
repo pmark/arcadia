@@ -23,6 +23,7 @@ import { createArtifactRecord, getArtifact, getProjectMetadata } from "../db/rep
 import { decodeStringArray } from "../projects/setup.js";
 import { claimedFileChangeRefusal } from "./claimedFileChanges.js";
 import { criteriaValidationCommands, namedTestFiles, validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
+import { contradictedCriteriaRefusal } from "./contradictedCriteria.js";
 import { candidateScopeRefusal, isGovernedRecordPath, settlementRecordPaths } from "./scopeCriteria.js";
 import { completionExecutionPassed, completionSupplementDirectory, writeSupplementFile, type CompletionSupplementEnvelope, type CompletionSupplementBinding, type CompletionSupplementPin, readCompletionEvidence, type CompletionEvidenceBinding, type CompletionEvidenceReference, type CompletionEvidenceView } from "./completionValidationEvidence.js";
 import { classifyPatchApplicability } from "../qa/patchApplicability.js";
@@ -600,8 +601,11 @@ function settleCandidateDraftedCompletion(db: Database.Database, session: AgentS
   // Issue #2261: a claim that a test or source file changed is measured from where this Session's own work
   // began: the base, or for a review repair the failed work it started from (the base diff already holds that).
   const repairStart = getSessionRepair(db, session.id)?.start_revision ?? null;
-  const validateBeforeSettle = (draft: { evidence: ReadonlyArray<{ note: string | null }> }) => {
+  const validateBeforeSettle = (draft: { evidence: ReadonlyArray<{ criterion: string; status: string; note: string | null }> }) => {
     if (scopeRefusal) return { ok: false as const, reason: scopeRefusal };
+    // Issue #2890: a criterion marked met whose own note says it was not done, not run, or is deferred.
+    const contradiction = contradictedCriteriaRefusal(draft.evidence);
+    if (contradiction) return { ok: false as const, reason: contradiction };
     const claimRefusal = claimedFileChangeRefusal(worktree, repairStart ?? session.base_revision, evidence.candidateRevision ?? "HEAD", draft.evidence,
       repairStart ? "the repair's start revision" : "the base revision");
     if (claimRefusal) return { ok: false as const, reason: claimRefusal };
