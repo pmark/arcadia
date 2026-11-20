@@ -190,9 +190,22 @@ interface LoadedPlan {
   mtime: number | null;
 }
 
+/** A Plan slug is lowercase words joined by hyphens, as every file in docs/plans is named. Anything else is never a path. */
+const PLAN_SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function isPlanSlug(slug: string): boolean {
+  return PLAN_SLUG.test(slug);
+}
+
 function loadPlan(repoRoot: string, slug: string): LoadedPlan {
+  // Slugs come from checked-in prose (docs/roadmap.md, NORTH_STAR.md), so they are data: never join one into a path
+  // unless it is a plain slug that resolves inside docs/plans.
+  const plansRoot = path.resolve(repoRoot, PLANS_DIR);
   const relative = `${PLANS_DIR}/${slug}.md`;
-  const absolute = path.join(repoRoot, relative);
+  const absolute = path.resolve(plansRoot, `${slug}.md`);
+  if (!isPlanSlug(slug) || path.dirname(absolute) !== plansRoot) {
+    return { plan: null, reason: "Its Plan name is not a plain slug, so no file was opened. Its counts are unknown.", mtime: null };
+  }
   let content: string;
   let mtime: number;
   try {
@@ -270,8 +283,8 @@ export function deriveRoadmap(repoRoot: string, options: { now?: () => Date } = 
     planCache.set(entry.slug, loaded);
     if (loaded.mtime !== null) times.push(loaded.mtime);
     if (!loaded.plan) {
-      warnings.push({ source: `${PLANS_DIR}/${entry.slug}.md`, message: loaded.reason ?? "Could not be read." });
-      return { kind: "unreadable", order: entry.order, letter: entry.letter, slug: entry.slug, description: entry.description, reason: loaded.reason ?? "Could not be read." };
+      warnings.push({ source: isPlanSlug(entry.slug) ? `${PLANS_DIR}/${entry.slug}.md` : ROADMAP_FILE, message: loaded.reason ?? "Could not be read." });
+      return { kind: "unreadable", order: entry.order, letter: entry.letter, slug: entry.slug, description: entry.description, reason: loaded.reason ?? "Could not be read. Its counts are unknown." };
     }
     const counts = countActions(loaded.plan);
     return {

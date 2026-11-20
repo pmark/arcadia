@@ -9,8 +9,9 @@ import "./roadmap.css";
 export const REFRESH_SECONDS = 30;
 
 function clock(iso: string): string {
+  // Fixed UTC so the server's and the browser's render agree (no hydration mismatch, no locale guess).
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return Number.isNaN(date.getTime()) ? iso : `${date.toISOString().slice(11, 19)} UTC`;
 }
 
 /**

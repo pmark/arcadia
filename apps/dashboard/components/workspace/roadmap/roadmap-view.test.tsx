@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { RoadmapView } from "../../../../../src/roadmap/derive";
@@ -49,5 +50,13 @@ describe("RoadmapStack", () => {
   it("draws the latest Plan at the top and the active Plan's marker at the bottom of the stack", () => {
     expect(html.indexOf("Plan G")).toBeLessThan(html.indexOf("Plan F"));
     expect(html.indexOf("North Star")).toBeLessThan(html.indexOf("Plan G"));
+  });
+
+  it("never styles planned as reached: a draft Plan has no done column, and a declared gate is not styled done", () => {
+    const draft: RoadmapView = { ...view, northStar: { ...view.northStar!, gates: [{ id: "g", title: "Declared", status: "done", basis: "declared in NORTH_STAR.md" }, { id: "h", title: "Recorded", status: "done", basis: "Action a in its Plan record" }] }, sequence: [{ kind: "plan", order: 1, letter: "G", slug: "g", description: "", status: "draft", checkpoint: null, counts: { done: 0, open: 4, inProgress: 0, blocked: 0, deferred: 0, total: 4 }, notSmall: 4, countsAsOf: "2026-11-19", isActive: false }] };
+    const out = renderToStaticMarkup(<RoadmapStack view={draft} />);
+    expect(out).not.toContain("rm-seg rm-done");
+    expect(out.match(/rm-gate rm-gate-done/g)?.length).toBe(1);
+    expect(readFileSync(new URL("./roadmap.css", import.meta.url), "utf8")).not.toMatch(/\.rm-plan \{[^}]*var\(--rm-done\)/);
   });
 });

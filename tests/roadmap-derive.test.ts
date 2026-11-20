@@ -141,6 +141,28 @@ describe("deriveRoadmap", () => {
   });
 });
 
+describe("hostile Plan slugs", () => {
+  const hostile = ["../PROJECT", "../../etc/passwd", "/etc/passwd", "%2e%2e/PROJECT", "..%2fPROJECT", "plan-f/../../PROJECT", "plan-f\\..\\x", "Plan-F", "plan_f", "plan-f.md", "", "a b"];
+  it.each(hostile)("opens no file for %j and reports unknown, not zero", (slug) => {
+    const repo = makeRepo();
+    writeFileSync(path.join(repo, "docs", "roadmap.md"), `## Plan order\n\n1. **X**, \`${slug}\`: hostile.\n2. **G**, \`plan-g\`: fine.\n`);
+    writeFileSync(path.join(repo, "NORTH_STAR.md"), readFileSync(path.join(repo, "NORTH_STAR.md"), "utf8").replace("plan/plan-f#a0", `plan/${slug}#a0`));
+    const view = deriveRoadmap(repo);
+    const stop = view.sequence.find((s) => s.letter === "X");
+    if (stop) {
+      expect(stop.kind).toBe("unreadable");
+      expect(stop.kind === "unreadable" && stop.reason).toMatch(/unknown|does not exist/);
+    }
+    expect(view.northStar?.gates[0].status).toBe("unknown");
+    expect(view.sequence.find((s) => s.letter === "G")?.kind).toBe("plan");
+  });
+  it("accepts ordinary slugs only", async () => {
+    const { isPlanSlug } = await import("../src/roadmap/derive.js");
+    expect(["plan-f", "a1-b2"].every(isPlanSlug)).toBe(true);
+    expect(["..", "a/b", "a..b", "-a", "a-", "A"].some(isPlanSlug)).toBe(false);
+  });
+});
+
 describe("roadmapFingerprint", () => {
   it("changes when a Plan, the roadmap or the North Star changes, and only then", () => {
     const repo = makeRepo();

@@ -1,6 +1,6 @@
 import path from "node:path";
 import { resolveReadyWorkspace } from "../../../src/cli/workspace";
-import { withDatabase } from "../../../src/db/connection";
+import { withReadOnlyDatabase } from "../../../src/db/connection";
 import { getProjectBySlug, getProjectMetadata, listProjects } from "../../../src/db/repositories";
 import { deriveRoadmap, roadmapFingerprint, type RoadmapView } from "../../../src/roadmap/derive";
 import { createFingerprintCache } from "./fingerprint-cache";
@@ -25,7 +25,7 @@ const roadmaps = createFingerprintCache<string, RoadmapView>({
 
 function repoPathOf(projectSlug: string): string {
   const { workspacePath } = resolveReadyWorkspace();
-  const found = withDatabase(workspacePath, (db) => {
+  const found = withReadOnlyDatabase(workspacePath, (db) => {
     const project = getProjectBySlug(db, projectSlug);
     return project ? { repoPath: getProjectMetadata(db, project.id)?.repo_path ?? null } : null;
   });
@@ -42,5 +42,5 @@ export async function loadRoadmap(projectSlug: string, options: { fresh?: boolea
 /** The Project slugs a Roadmap can open, for the bare `/workspace/roadmap` address. */
 export function roadmapProjectSlugs(): string[] {
   const { workspacePath } = resolveReadyWorkspace();
-  return withDatabase(workspacePath, (db) => listProjects(db).filter((p) => getProjectMetadata(db, p.id)?.repo_path).map((p) => p.slug));
+  return withReadOnlyDatabase(workspacePath, (db) => listProjects(db).filter((p) => getProjectMetadata(db, p.id)?.repo_path).map((p) => p.slug));
 }

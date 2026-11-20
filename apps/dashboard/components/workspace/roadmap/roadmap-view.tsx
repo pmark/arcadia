@@ -22,7 +22,6 @@ function PlanColumn({ stop }: { stop: RoadmapPlanStop }) {
 }
 
 function PlanStopView({ stop, currentAction }: { stop: RoadmapPlanStop; currentAction: string | null }) {
-  const open = stop.counts.open + stop.counts.inProgress + stop.counts.blocked;
   return <li className={`rm-plan${stop.isActive ? " rm-active" : ""}`} aria-label={`Plan ${stop.letter}`}>
     <PlanColumn stop={stop} />
     <div className="rm-plan-text">
@@ -31,7 +30,7 @@ function PlanStopView({ stop, currentAction }: { stop: RoadmapPlanStop; currentA
       {stop.description && <span className="rm-desc">{stop.description}</span>}
       {stop.checkpoint && <span className="rm-checkpoint"><i>Checkpoint:</i> {stop.checkpoint}</span>}
       <small><CountsLine stop={stop} /> of {stop.counts.total} Actions</small>
-      <small>{stop.notSmall > 0 ? `${stop.notSmall} open Actions are not small (size is not recorded yet), so their length is unknown.` : "No open Actions."}{open === 0 && stop.counts.total > 0 ? "" : ""}</small>
+      <small>{stop.notSmall > 0 ? `${stop.notSmall} open Actions are not small (size is not recorded yet), so their length is unknown.` : "No open Actions."}</small>
       <small className="rm-dated">Counts as recorded in the Plan on {stop.countsAsOf}.</small>
       {stop.isActive && <span className="rm-here" role="note">● you are here{currentAction ? <> · current Action <code>{currentAction}</code></> : null}</span>}
     </div>
@@ -65,7 +64,7 @@ export function RoadmapStack({ view }: { view: RoadmapView }) {
         {view.northStar.why && <p className="rm-why">{view.northStar.why}</p>}
         {view.northStar.looksLike && <details><summary>What it looks like</summary><p className="rm-why">{view.northStar.looksLike}</p></details>}
         {view.northStar.gates.length > 0 && <ul className="rm-gates" aria-label="North Star gates">
-          {view.northStar.gates.map(g => <li key={g.id}><span className={`rm-gate rm-gate-${g.status}`}>{g.status.replace("_", " ")}</span> {g.title}<small>{g.basis}</small></li>)}
+          {view.northStar.gates.map(g => <li key={g.id}><span className={`rm-gate${g.status === "done" && g.basis.startsWith("Action ") ? " rm-gate-done" : ""}`}>{g.status.replace("_", " ")}</span> {g.title}<small>{g.basis}</small></li>)}
         </ul>}
         <small>Read from NORTH_STAR.md{view.northStar.updated ? `, updated ${view.northStar.updated}` : ""}. Shown as written.</small>
       </> : <p className="rm-fogtext">The North Star could not be read, so the route has no target.</p>}
