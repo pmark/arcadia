@@ -640,12 +640,13 @@ actions:
     title: "A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route, and the older settlement-queue Action is closed as superseded with Issues #2369 and #1275 citing the merged PR."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route, and the older settlement-queue Action is closed as superseded with Issues #2369 and #1275 citing the merged PR."
     expected_artifact: Evidence satisfying Agent Ask finish-allocate-push-ping-and-supersede-older-action
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan25-split-allocate-criteria-4-and-6-20261119
+    source: Agent Ask rowan25-route-only-finish-allocate-20261119
     acceptance_criteria:
       - A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.
       - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
