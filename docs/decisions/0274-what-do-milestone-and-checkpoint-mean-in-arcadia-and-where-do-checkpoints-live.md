@@ -4,7 +4,7 @@ type: decision
 id: "0274"
 slug: what-do-milestone-and-checkpoint-mean-in-arcadia-and-where-do-checkpoints-live
 project: arcadia
-status: open
+status: approved
 question: What do Milestone and Checkpoint mean in Arcadia, and where do Checkpoints live?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-20
+answer: A. Ordered Checkpoint list per Plan; Milestones operator-declared
+decided: 2026-11-20
 ---
 
 # Decision 0274: What do Milestone and Checkpoint mean in Arcadia, and where do Checkpoints live?
