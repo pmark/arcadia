@@ -4,8 +4,9 @@ For testing Arcadia as different kinds of people, read [behavioral testing with 
 
 ## The Roadmap in Workspace
 
-Open the Roadmap from the **Roadmap** link in the Workspace header
-([Arcadia](http://arcadia-1.alpine-rattlesnake.ts.net:3020/workspace/roadmap/arcadia)):
+Open the Roadmap at
+[/workspace/roadmap/arcadia](http://arcadia-1.alpine-rattlesnake.ts.net:3020/workspace/roadmap/arcadia)
+(no header link yet: adding one to the shared Workspace header broke two phone e2e tests in CI):
 the route from the current Plan up to the North Star, drawn as one vertical stack.
 It reads only checked-in files (`NORTH_STAR.md`, `PROJECT.md`, `docs/roadmap.md`'s
 Plan order and the Plans it names), stores nothing and has no button that declares
