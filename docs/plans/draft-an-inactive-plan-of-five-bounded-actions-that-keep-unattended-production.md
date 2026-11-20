@@ -657,12 +657,13 @@ actions:
     title: "Finish the wired mechanical repair: an integration test through the worker tick shows #2766's fingerprint refresh run, commit and push a production-owned head for a candidate that changed the named guidance document; a test records a verdict on the old head first and shows the production-owned repair push is reviewed as a new head; proposal agentask_abd3a5e65938083517 is recorded as absorbed with its receipt id cited; and each criterion's evidence names the integration test, the repository test or the receipt that proves it."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "Finish the wired mechanical repair: an integration test through the worker tick shows #2766's fingerprint refresh run, commit and push a production-owned head for a candidate that changed the named guidance document; a test records a verdict on the old head first and shows the production-owned repair push is reviewed as a new head; proposal agentask_abd3a5e65938083517 is recorded as absorbed with its receipt id cited; and each criterion's evidence names the integration test, the repository test or the receipt that proves it."
     expected_artifact: Evidence satisfying Agent Ask finish-wire-repair-verdict-case-and-absorb-proposal
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan25-split-wire-repair-20261119b
+    source: Agent Ask rowan25-route-only-finish-wire-repair-20261119
     acceptance_criteria:
       - "An integration test drives the worker tick (not the library alone) with the recorded #2752 and #2766 check failures and shows one deterministic round runs, commits and pushes a production-owned head to the candidate branch. With the recorded #2758 and #2765 failures, the same test shows a hand-off to repair-red-candidates-with-a-bounded-session without running any generator."
       - src/production/independentReview.ts treats a production-owned repair push after a recorded verdict as a new head to review, not review_head_moved; an integration test through the review path shows it, and any other moved head is still review_head_moved.
