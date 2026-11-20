@@ -2,6 +2,19 @@
 
 For testing Arcadia as different kinds of people, read [behavioral testing with operator personas](docs/behavioral-testing.md). The [Scout continuation guide](docs/scout/CONTINUE.md) covers its first bounded Ask/To-do Hello World probe and current gates.
 
+## The Roadmap in Workspace
+
+Open the Roadmap from the **Roadmap** link in the Workspace header
+([Arcadia](http://arcadia-1.alpine-rattlesnake.ts.net:3020/workspace/roadmap/arcadia)):
+the route from the current Plan up to the North Star, drawn as one vertical stack.
+It reads only checked-in files (`NORTH_STAR.md`, `PROJECT.md`, `docs/roadmap.md`'s
+Plan order and the Plans it names), stores nothing and has no button that declares
+anything. Each Plan's column is its Action counts as recorded in the Plan on the
+date printed; every open Action is hatched because Action size is not recorded yet.
+A Plan's `milestone:` string is labelled **Checkpoint**. No Milestone record exists
+yet, so Milestones show as fog. A source it cannot read appears as a warning and a
+gap, never as zero. The page refreshes about every 30 seconds while it is open.
+
 ## Daily evidence in Journey
 
 Open a Plan's Journey (for Arcadia, [current Plan](http://arcadia-1.alpine-rattlesnake.ts.net:3020/journey/arcadia/plan/current))

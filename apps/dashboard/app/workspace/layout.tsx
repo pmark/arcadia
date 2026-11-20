@@ -19,7 +19,7 @@ export default function WorkspaceLayout({ children }: { children: ReactNode }) {
       <WorkspaceWeather />
       <WorkspaceActivity />
       <a className="workspace-skip" href="#workspace-context">Skip to selected context</a>
-      <header className="workspace-header"><Link href="/workspace" className="workspace-wordmark">arcadia</Link><span>space for your work</span><Link href="/workspace/feed">Feed</Link><Link href="/">Dashboard</Link><WorkspaceStatusPill /><PresenceMenu /></header>
+      <header className="workspace-header"><Link href="/workspace" className="workspace-wordmark">arcadia</Link><span>space for your work</span><Link href="/workspace/feed">Feed</Link><Link href="/workspace/roadmap">Roadmap</Link><Link href="/">Dashboard</Link><WorkspaceStatusPill /><PresenceMenu /></header>
       <WorkspaceAskProvider><WorkspaceGoProvider><RelayLayer>{children}</RelayLayer></WorkspaceGoProvider></WorkspaceAskProvider>
     </SystemStatusProvider>
   </div>;

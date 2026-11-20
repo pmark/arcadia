@@ -96,6 +96,8 @@ const EXACT: Record<string, AuthorityBoundary> = {
   // Classifier-coverage audit (Decision 0214 A; tests/authority-classifier-coverage.test.ts):
   // gate-enforcing modules outside the prefixes below.
   "src/commands/decision.ts": "operator_authority",
+  // Read-only Roadmap derivation: classified most restrictive by the audit default, so changes to it wait for the operator.
+  "src/roadmap/derive.ts": "operator_authority",
   "src/commands/actionsettle.ts": "operator_authority",
   "src/commands/ask.ts": "operator_authority",
   "src/commands/todo.ts": "operator_authority",
