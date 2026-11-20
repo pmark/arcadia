@@ -7,7 +7,7 @@ status: active
 milestone: "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions"
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-19
+updated: 2026-11-20
 actions:
   - id: retry-successor-press-when-main-moves
     title: When main moves while the host timer is between derive and press, the timer retires that card and derives a fresh one on a later tick instead of ending the standing grant's loop, so the operator can merge to main freely while production runs.
@@ -227,11 +227,11 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/ask/settlement.ts", "src/production/tick.ts"]
   - id: accept-registration-after-a-recorded-stand-down
     title: arcadia coordinator register accepts the successor immediately after a verified stand-down, or a TAKE CUSTODY ACK naming the successor, even if the predecessor's transcript is written afterwards.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: arcadia coordinator register accepts the successor immediately after a verified stand-down, or a TAKE CUSTODY ACK naming the successor, even if the predecessor's transcript is written afterwards.
+    next_action: Completed via Agent Ask complete-accept-registration-after-a-recorded-stand-down-r26; no further action.
     expected_artifact: Evidence satisfying Agent Ask accept-registration-after-a-recorded-stand-down
     clarification: clarified
     confidence: high
@@ -247,11 +247,11 @@ actions:
     references: ["src/commands/coordinator.ts", "src/coordinator/generations.ts", "src/coordinator/state.ts"]
   - id: explain-the-ping-length-limit
     title: arcadia ping send with a message over the 500-character limit fails with a one-line error naming the message length and the limit, instead of a bare exit 2.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: arcadia ping send with a message over the 500-character limit fails with a one-line error naming the message length and the limit, instead of a bare exit 2.
+    next_action: Completed via Agent Ask complete-explain-the-ping-length-limit-r27; no further action.
     expected_artifact: Evidence satisfying Agent Ask explain-the-ping-length-limit
     clarification: clarified
     confidence: high
@@ -642,7 +642,7 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
-current_action: accept-registration-after-a-recorded-stand-down
+current_action: allocate-decision-numbers-on-main-and-refuse-duplicates
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
