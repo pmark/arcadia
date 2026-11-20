@@ -4,7 +4,7 @@ type: decision
 id: "0273"
 slug: may-signal-or-rowan-merge-the-record-pr-of-a-non-authority-decision-you-already
 project: arcadia
-status: open
+status: approved
 question: May Signal or Rowan merge the record PR of a non-authority Decision you already answered in chat, without a second merge word, when its file is byte-identical to the text read back to you and the PR passes exact-head review, green checks and merge-check?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -21,7 +21,9 @@ options:
     recommended: false
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
-updated: 2026-11-20
+updated: 2026-11-19
+answer: A. Non-authority Decision records merge on a byte-matched read-back
+decided: 2026-11-19
 ---
 
 # Decision 0273: May Signal or Rowan merge the record PR of a non-authority Decision you already answered in chat, without a second merge word, when its file is byte-identical to the text read back to you and the PR passes exact-head review, green checks and merge-check?
