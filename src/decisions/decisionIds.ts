@@ -91,7 +91,10 @@ function lines(text: string): string[] {
 /** Decision files in `ref`'s tree, or null when the ref cannot be read. */
 export function decisionFilesAtRef(git: DecisionGit, ref: string): string[] | null {
   const r = git(["ls-tree", "--name-only", `${ref}:${DECISIONS_DIR}`]);
-  if (r.status !== 0) return null;
+  if (r.status !== 0) {
+    // A readable commit with no Decisions directory simply holds no Decision files; an unreadable ref stays null.
+    return git(["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]).status === 0 ? [] : null;
+  }
   return lines(r.stdout).filter((name) => decisionIdOfFile(name) !== null).map((name) => `${DECISIONS_DIR}/${name}`);
 }
 

@@ -1195,7 +1195,7 @@ export function runBatchMerge(
       return assessPr(fresh, pinned).refusals[0] ?? null;
     })();
     if (refusal) return stopAt(i, refusal, "refused");
-    let clash: string | null = null;
+    let clash: string | null;
     try {
       clash = gateway.decisionIdClash?.(n, pinned.headSha) ?? null;
     } catch (error) {
