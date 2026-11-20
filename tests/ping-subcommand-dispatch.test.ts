@@ -62,6 +62,24 @@ describe("ping subcommand dispatch", () => {
     expect(queuedMessages(ws)).toEqual(["pending review the queue", "sent"]);
   });
 
+  it("refuses a 501-character message with one stderr line naming length and limit, queueing nothing", async () => {
+    const ws = workspace();
+    const stderr = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    await runPing(ws, ["send", "x".repeat(501)]);
+    expect(process.exitCode).toBeGreaterThan(0);
+    const written = stderr.mock.calls.map((call) => String(call[0])).join("");
+    expect(written.trimEnd().split("\n")).toHaveLength(1);
+    expect(written).toContain("message is 501 characters; the limit is 500");
+    expect(queuedMessages(ws)).toEqual([]);
+  });
+
+  it("accepts a 500-character message unchanged", async () => {
+    const ws = workspace();
+    const message = "x".repeat(500);
+    await runPing(ws, ["send", message]);
+    expect(queuedMessages(ws)).toEqual([message]);
+  });
+
   it("keeps implicit multi-word messages queueing as before", async () => {
     const ws = workspace();
     await runPing(ws, ["Look", "at", "Actions"]);
