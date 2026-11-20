@@ -69,7 +69,7 @@ actions:
       - The repair runs on the light tier first, makes at most one attempt per candidate head, uses no paid fallback and stays inside the existing repair budget. A test shows a refused spend or capacity check launches nothing and leaves a receipt.
       - A successful repair's head is reviewed afresh by the worker and merges only under the 0060/0080 gate. A failed repair parks the candidate and sends exactly one ping that names the failing check, the attempted fix and the operator-attention criterion it meets.
       - A fixture run replays one recorded red candidate through both repair rounds to a green, reviewed head with zero operator touches, and the run record lists the touches as none.
-    depends_on: [repair-mechanical-check-failures-deterministically, wire-mechanical-repair-into-production]
+    depends_on: [repair-mechanical-check-failures-deterministically, wire-mechanical-repair-into-production, finish-wire-repair-verdict-case-and-absorb-proposal]
     decisions: []
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/decisions/batchMerge.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md", "docs/decisions/0181-decide-what-unattended-production-does-after-attempt-3-s-clean-run-re-deciding.md", "docs/decisions/0187-decide-what-unattended-production-does-after-a-delegated-batch-fails-under-the.md", "CONSTITUTION.md"]
   - id: queue-approved-plans-and-start-the-next
@@ -98,7 +98,7 @@ actions:
       - "At merge the diff decides: an autonomous-lane PR whose diff touches the gate set or a hard class parks; a test shows it."
       - The 48h ready view and the 8 AM report split each slot into DAY (operator lane) and NIGHT (autonomous lane) and flag a night with no eligible autonomous work; a test asserts the flag on the 2026-11-19 fixture.
       - "Plan-completion check moved from require-pre-pr-before-every-pull-request (its criterion 3, which P5 cannot meet by itself, per the review at https://github.com/pmark/arcadia/pull/2852#issuecomment-7015286763): before Plan F is recorded complete, the first production candidate PR merged after P5 shows pnpm pre-pr output in its description, and that PR is cited."
-    depends_on: [retry-successor-press-when-main-moves, wire-mechanical-repair-into-production, publish-governance-commits-from-the-clone, require-proof-for-every-met-criterion, show-the-resulting-queue-order-in-settle-preview]
+    depends_on: [retry-successor-press-when-main-moves, wire-mechanical-repair-into-production, publish-governance-commits-from-the-clone, require-proof-for-every-met-criterion, show-the-resulting-queue-order-in-settle-preview, finish-wire-repair-verdict-case-and-absorb-proposal]
     decisions: []
     references: ["src/production/successorPress.ts", "src/dispatch/queue.ts", "src/dispatch/pointer.ts", "src/plans/nextPlanSelector.ts", "src/operatorActions/planQueue.ts", "src/ask/agentAsk.ts", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md", "docs/plans/let-the-operator-change-what-production-queues-from-the-production-project.md"]
   - id: allocate-decision-numbers-on-main-and-refuse-duplicates
@@ -265,24 +265,21 @@ actions:
     references: ["src/commands/ping.ts", "src/ping/operatorPing.ts"]
   - id: wire-mechanical-repair-into-production
     title: "The worker tick runs the deterministic repair round of src/production/mechanicalRepair.ts on every candidate whose required checks fail, the independent review treats its push as a new production-owned head, and the live red-alert path raises repair alerts once per episode, so the library merged in #2777 actually repairs candidates."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "The worker tick runs the deterministic repair round of src/production/mechanicalRepair.ts on every candidate whose required checks fail, the independent review treats its push as a new production-owned head, and the live red-alert path raises repair alerts once per episode, so the library merged in #2777 actually repairs candidates."
+    next_action: Completed via Agent Ask rowan25-split-wire-repair-20261119b; no further action.
     expected_artifact: Evidence satisfying Agent Ask wire-mechanical-repair-into-production
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-handoff-and-pre-pr-20261118-a
+    source: Agent Ask rowan25-split-wire-repair-20261119b
     why: "#2777 merged mechanicalRepair.ts with no caller outside the module, yet its Action was marked done; the operator chose option B on 2026-11-17 to wire it in this amendment."
     acceptance_criteria:
-      - "An integration test drives the worker tick (not the library alone) with the recorded #2752 and #2766 check failures and shows one deterministic round runs, commits and pushes a production-owned head to the candidate branch. With the recorded #2758 and #2765 failures, the same test shows a hand-off to repair-red-candidates-with-a-bounded-session without running any generator."
-      - src/production/independentReview.ts treats a production-owned repair push after a recorded verdict as a new head to review, not review_head_moved; an integration test through the review path shows it, and any other moved head is still review_head_moved.
       - The live red-alert path raises repair_gated and repair_budget_repeat once per episode. An integration test through the tick shows one raise per episode, and the episode's seen-count does not grow on later ticks.
       - A repository test fails if src/production/mechanicalRepair.ts has no caller outside tests, so an unwired repair library cannot be marked done again.
-      - Proposal agentask_abd3a5e65938083517 is recorded as absorbed, with its receipt id cited in this Action's completion evidence.
-      - Each criterion's completion evidence names the integration test, the repository test or the receipt that proves it, not a unit test of the library.
     depends_on: [treat-fingerprint-fold-ins-as-governance-records, require-pre-pr-before-every-pull-request]
+    split_into: [finish-wire-repair-verdict-case-and-absorb-proposal]
     decisions: []
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/production/mechanicalRepair.ts", "tests/mechanical-repair.test.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md"]
   - id: launch-past-a-merged-handoff
@@ -643,18 +640,37 @@ actions:
     title: "A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route, and the older settlement-queue Action is closed as superseded with Issues #2369 and #1275 citing the merged PR."
     status: open
     responsibility: agent
+    execution: build
     effort: session
     next_action: "A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route, and the older settlement-queue Action is closed as superseded with Issues #2369 and #1275 citing the merged PR."
     expected_artifact: Evidence satisfying Agent Ask finish-allocate-push-ping-and-supersede-older-action
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan25-split-allocate-criteria-4-and-6-20261119
+    source: Agent Ask rowan25-route-only-finish-allocate-20261119
     acceptance_criteria:
       - A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.
       - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
     depends_on: []
     decisions: []
     references: ["scripts/check-decision-ids.ts", ".github/workflows/ci.yml", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/pull/2880"]
+  - id: finish-wire-repair-verdict-case-and-absorb-proposal
+    title: "Finish the wired mechanical repair: an integration test through the worker tick shows #2766's fingerprint refresh run, commit and push a production-owned head for a candidate that changed the named guidance document; a test records a verdict on the old head first and shows the production-owned repair push is reviewed as a new head; proposal agentask_abd3a5e65938083517 is recorded as absorbed with its receipt id cited; and each criterion's evidence names the integration test, the repository test or the receipt that proves it."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "Finish the wired mechanical repair: an integration test through the worker tick shows #2766's fingerprint refresh run, commit and push a production-owned head for a candidate that changed the named guidance document; a test records a verdict on the old head first and shows the production-owned repair push is reviewed as a new head; proposal agentask_abd3a5e65938083517 is recorded as absorbed with its receipt id cited; and each criterion's evidence names the integration test, the repository test or the receipt that proves it."
+    expected_artifact: Evidence satisfying Agent Ask finish-wire-repair-verdict-case-and-absorb-proposal
+    clarification: clarified
+    confidence: high
+    source: Agent Ask rowan25-split-wire-repair-20261119b
+    acceptance_criteria:
+      - "An integration test drives the worker tick (not the library alone) with the recorded #2752 and #2766 check failures and shows one deterministic round runs, commits and pushes a production-owned head to the candidate branch. With the recorded #2758 and #2765 failures, the same test shows a hand-off to repair-red-candidates-with-a-bounded-session without running any generator."
+      - src/production/independentReview.ts treats a production-owned repair push after a recorded verdict as a new head to review, not review_head_moved; an integration test through the review path shows it, and any other moved head is still review_head_moved.
+      - Proposal agentask_abd3a5e65938083517 is recorded as absorbed, with its receipt id cited in this Action's completion evidence.
+      - Each criterion's completion evidence names the integration test, the repository test or the receipt that proves it, not a unit test of the library.
+    depends_on: []
+    decisions: []
+    references: ["src/production/independentReview.ts", "src/production/mechanicalRepairWiring.ts", "tests/mechanical-repair-wiring.test.ts", "https://github.com/pmark/arcadia/pull/2887"]
 questions: []
 decisions: []
 current_action: finish-allocate-push-ping-and-supersede-older-action
