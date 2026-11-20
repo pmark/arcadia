@@ -103,24 +103,23 @@ actions:
     references: ["src/production/successorPress.ts", "src/dispatch/queue.ts", "src/dispatch/pointer.ts", "src/plans/nextPlanSelector.ts", "src/operatorActions/planQueue.ts", "src/ask/agentAsk.ts", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md", "docs/plans/let-the-operator-change-what-production-queues-from-the-production-project.md"]
   - id: allocate-decision-numbers-on-main-and-refuse-duplicates
     title: Decision numbers are allocated against origin main at settle or mint time, and a required check fails any pull request that adds a Decision id its base already has, so two Decisions never share a number again.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Decision numbers are allocated against origin main at settle or mint time, and a required check fails any pull request that adds a Decision id its base already has, so two Decisions never share a number again.
+    next_action: Completed via Agent Ask rowan25-split-allocate-criteria-4-and-6-20261119; no further action.
     expected_artifact: Evidence satisfying Agent Ask allocate-decision-numbers-on-main-and-refuse-duplicates
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan24-drop-allocate-ordering-edge-20261119
+    source: Agent Ask rowan25-split-allocate-criteria-4-and-6-20261119
     why: "Operator, 2026-11-17: 'This needs to never happen again.' Collisions recurred on 0240 and 0250, and every START press now mints a Decision on main."
     acceptance_criteria:
       - A test reproduces the 0250 race (an Ask settle candidate chooses N while a START sign-in mints N on main) and shows the second writer receives N+1 or refuses. No two Decision files on main share an id.
       - A required CI check fails a pull request that adds a docs/decisions file whose id already exists on its base, naming both files. The four historical pairs are grandfathered by an explicit list, and a test shows a fifth pair fails.
       - Every Arcadia merge path (the worker merge and the operator batch-merge card) re-runs the duplicate check against current origin main immediately before merging and refuses on a duplicate. A test with two pull requests that each add id N against the same base shows the second is refused after the first merges.
-      - A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.
       - START sign-in usage-check Decisions take their id at the moment they are written to main, from origin main, and a test shows a concurrent open PR's Decision does not block or collide with them.
-      - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
     depends_on: []
+    split_into: [finish-allocate-push-ping-and-supersede-older-action]
     decisions: []
     references: ["src/docs/sync.ts", "src/docs/types.ts", "src/docs/operatorGate.ts", "src/production/startRunSignIn.ts", "src/production/workerClaudeUsageDiagnostic.ts", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md"]
   - id: run-successor-press-from-a-current-timer-release
@@ -455,7 +454,7 @@ actions:
       - agent-ask preview of a plan-intent Ask prints, for the target Plan, the dependency-ordered remaining Actions as dependencyOrderedActionIds would compute them after settlement, and the stored queue order for each placement it accepts; a test uses a fixture of Plan F's 2026-11-17 state and the e and e-alt amendments and shows both orders.
       - A '--before' or '--after' anchor that settlement would reject (for example an Action inside the active Plan's own segment) is refused by preview with the same reason settlement gives; a test covers it.
       - When the stored queue order and the Plan-file dependency order disagree, preview names the first differing position; a test covers it.
-    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates]
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action]
     decisions: []
     references: ["src/ask/settlement.ts", "src/dispatch/actionOrder.ts", "src/commands/agentAsk.ts"]
   - id: require-proof-for-every-met-criterion
@@ -475,7 +474,7 @@ actions:
       - A test shows a completion whose every 'met' note names a test file and test name, a receipt path or a commit that exists at the candidate revision settles as today; a note naming a missing file is refused.
       - A repository check fails when a module added under src/production, src/sessions or src/ask has no importer outside tests, naming the module, with an explicit allowlist for intentional entry points; a fixture shows it would have failed on c7d7fba5f.
       - The build Session brief asks for one proof per criterion in the completion evidence notes; a test asserts the line in a composed brief.
-    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates]
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action]
     decisions: []
     references: ["src/ask/autoSettleBeforeDispatch.ts", "src/ask/agentAsk.ts", "src/ask/settlement.ts", "src/codex/packets.ts"]
   - id: check-tonights-card-at-noon
@@ -494,7 +493,7 @@ actions:
       - "A pure function reports, for the next N ready Actions of the active Plan, every blocker to minting a per-run card tonight: production not Off or with live admissions, main's required checks not green, an invalid or unpositioned queue, an Action not ready, local main ahead of or diverged from origin, and an open failed-batch stop. Fixture tests cover each blocker and a clean case."
       - The liveness timer runs it once per day at the configured local time, mints, presses and writes nothing, and sends at most one ping per day only when a blocker exists. Tests show no ping on a clean day and one ping naming every blocker otherwise.
       - docs/agent-guidance/operator-actions.md describes the noon check and its single ping.
-    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates]
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action]
     decisions: []
     references: ["src/commands/productionLiveness.ts", "src/operatorActions/libraryContract.ts", "src/operatorActions/startRunDerive.ts", "src/ping/operatorPing.ts"]
   - id: derive-by-change-not-reference
@@ -640,9 +639,25 @@ actions:
     depends_on: [run-production-in-its-own-clone]
     decisions: []
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
+  - id: finish-allocate-push-ping-and-supersede-older-action
+    title: "A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route, and the older settlement-queue Action is closed as superseded with Issues #2369 and #1275 citing the merged PR."
+    status: open
+    responsibility: agent
+    effort: session
+    next_action: "A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route, and the older settlement-queue Action is closed as superseded with Issues #2369 and #1275 citing the merged PR."
+    expected_artifact: Evidence satisfying Agent Ask finish-allocate-push-ping-and-supersede-older-action
+    clarification: clarified
+    confidence: high
+    source: Agent Ask rowan25-split-allocate-criteria-4-and-6-20261119
+    acceptance_criteria:
+      - A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.
+      - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
+    depends_on: []
+    decisions: []
+    references: ["scripts/check-decision-ids.ts", ".github/workflows/ci.yml", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/pull/2880"]
 questions: []
 decisions: []
-current_action: allocate-decision-numbers-on-main-and-refuse-duplicates
+current_action: finish-allocate-push-ping-and-supersede-older-action
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
