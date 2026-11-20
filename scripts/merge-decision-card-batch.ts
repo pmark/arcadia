@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { runBatchMerge, type BatchMergeGateway, type BatchPrFacts, type BatchReceipt } from "../src/decisions/batchMerge.js";
+import { decisionIdClashRefusal, systemDecisionGit } from "../src/decisions/decisionIds.js";
 import { runBatchMergeGuard, systemGit } from "../src/decisions/batchMergeGuard.js";
 import { defaultRunWindowDeps, libraryMergeFreeze } from "../src/workMonitoring/runWindow.js";
 
@@ -83,6 +84,12 @@ const gateway: BatchMergeGateway = {
       } catch { /* an unreadable older receipt is replaced by this one */ }
     }
     writeFileSync(file, `${JSON.stringify(receipt, null, 2)}\n`);
+  },
+  decisionIdClash(number, headSha) {
+    // Against current origin main right now, so an earlier merge of this same batch counts.
+    const decisionGit = systemDecisionGit(repoRoot);
+    decisionGit(["fetch", "--quiet", "origin", `refs/pull/${number}/head`]);
+    return decisionIdClashRefusal(decisionGit, headSha, spec.trunk);
   },
   merge(number, headSha) {
     if (dryRun) throw new Error("dry run must not merge");

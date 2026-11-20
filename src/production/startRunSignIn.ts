@@ -6,6 +6,7 @@ import { normalizeAgentAsk, type NormalizedAgentAsk } from "../ask/agentAsk.js";
 import { discoverDocs } from "../docs/discover.js";
 import { parseDoc } from "../docs/parse.js";
 import { slugify } from "../utils/slug.js";
+import { allocateDecisionId } from "../decisions/decisionIds.js";
 import { CLAUDE_CLI_SELF_REFRESH_ARGS, CLAUDE_CLI_SELF_REFRESH_TIMEOUT_MS, type ClaudeCliRunner } from "./capacityPreAdmission.js";
 import {
   CLAUDE_DIAGNOSTIC_ENDPOINT, CLAUDE_DIAGNOSTIC_REQUEST, diagnosticGrantAnswer, diagnosticGrantPath, diagnosticResponsePath, publishDiagnosticAttempt,
@@ -362,11 +363,14 @@ function readBoundWorker(context: StartRunSignInContext, now: Date): DiagnosticW
   return binding;
 }
 
-/** The id settlement will allocate: the highest frontmatter id over the discovered Decision documents, plus one (src/ask/settlement.ts addDecisionMutation). */
+/**
+ * The id settlement will allocate: one above the highest id in the local tree or on origin main (src/ask/settlement.ts
+ * addDecisionMutation uses the same allocator). It is read from main at the moment the Decision is written; an open
+ * pull request's Decision is on no main, so it neither blocks nor collides here (the merge-time check refuses a clash).
+ */
 export function nextDecisionId(repository: string): string {
-  const highest = discoverDocs(repository).docs.filter((doc) => doc.type === "decision")
-    .reduce((max, doc) => Math.max(max, Number.parseInt(String((doc as { id?: unknown }).id), 10) || 0), 0);
-  return String(highest + 1).padStart(4, "0");
+  const known = discoverDocs(repository).docs.filter((doc) => doc.type === "decision").map((doc) => String((doc as { id?: unknown }).id));
+  return allocateDecisionId(repository, known);
 }
 
 /** The exact grant, in the property order the digest is taken over. */

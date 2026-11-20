@@ -434,6 +434,7 @@ export type BatchRefusalCode =
   | "stack_changed"
   | "pr_unreadable"
   | "pr_closed_unmerged"
+  | "decision_id_duplicate"
   | "head_moved"
   | "merged_at_other_head"
   | "receipt_conflict"
@@ -1048,6 +1049,11 @@ export interface BatchMergeGateway {
   writeReceipt(receipt: BatchReceipt): void;
   /** Must merge only if the PR head still equals headSha (gh `--match-head-commit`). */
   merge(number: number, headSha: string): void;
+  /**
+   * Run immediately before each merge: a non-null answer means merging the PR at headSha would leave two
+   * Decision files with one id on current origin main (after earlier PRs of this batch merged). Absent = no check.
+   */
+  decisionIdClash?(number: number, headSha: string): string | null;
 }
 
 export interface BatchMergeRunResult {
@@ -1189,6 +1195,13 @@ export function runBatchMerge(
       return assessPr(fresh, pinned).refusals[0] ?? null;
     })();
     if (refusal) return stopAt(i, refusal, "refused");
+    let clash: string | null;
+    try {
+      clash = gateway.decisionIdClash?.(n, pinned.headSha) ?? null;
+    } catch (error) {
+      clash = `the duplicate Decision id check could not run: ${errorText(error)}`;
+    }
+    if (clash) return stopAt(i, { code: "decision_id_duplicate", number: n, message: `#${n}: ${clash}` }, "refused");
     try {
       gateway.merge(n, pinned.headSha);
     } catch (error) {

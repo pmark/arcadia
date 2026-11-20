@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { decisionIdClashRefusal, systemDecisionGit } from "../src/decisions/decisionIds.js";
 import { buildBatchMergeCard, classifyAuthorityPaths, type BatchPrFacts } from "../src/decisions/batchMerge.js";
 import {
   evaluateWorkerMerge,
@@ -122,7 +123,7 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
   }
 
-  function merge(over: { review?: VerdictGate | null; syncFails?: boolean; mergeFreeze?: () => { message: string } | null } = {}) {
+  function merge(over: { review?: VerdictGate | null; syncFails?: boolean; mergeFreeze?: () => { message: string } | null; decisionIdClash?: (input: { repoRoot: string; baseBranch: string; head: string }) => string | null } = {}) {
     return mergeCandidatePullRequest({
       db, repoRoot: repo, baseBranch: "main", sessionId: "session_1", actionKey: "fixture/write-feature", head,
       settlementCommit: head, pullRequestUrl: URL, review: over.review === undefined ? gateFor(head) : over.review,
@@ -130,6 +131,7 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     }, {
       runCommand: github.runCommand,
       ...(over.mergeFreeze ? { mergeFreeze: over.mergeFreeze } : {}),
+      ...(over.decisionIdClash ? { decisionIdClash: over.decisionIdClash } : {}),
       ...(over.syncFails ? { syncBase: () => { throw new Error("fetch refused"); } } : {})
     });
   }
@@ -183,6 +185,36 @@ describe("mergeCandidatePullRequest against a real repository and the shared Fak
     expect(listWorkerMerges(db).map((row) => row.code)).toEqual(["merge_freeze"]);
     // Once the freeze lifts (the card pressed), the same merge goes through.
     expect(merge({ mergeFreeze: () => null })).toMatchObject({ kind: "merged" });
+  });
+
+  it("refuses a candidate whose Decision id origin main took meanwhile (checked against current origin main, names both files) and calls no merge", () => {
+    // The worker allowlist keeps a Decision file out of an unattended candidate, so the real check is run against the
+    // real repository here and its refusal is carried through the worker merge's duplicate-id seam.
+    candidate({ [SAFE]: "feature\n" });
+    // Another writer lands id 0300 on origin main after the candidate branched and was reviewed.
+    git(repo, ["checkout", "-q", "main"]);
+    mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
+    writeFileSync(path.join(repo, "docs/decisions/0300-minted-on-main.md"), "main\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "mint 0300 on main"]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    const real = (input: { repoRoot: string; baseBranch: string; head: string }) =>
+      decisionIdClashRefusal(systemDecisionGit(input.repoRoot), input.head, input.baseBranch);
+    // The settlement-free candidate head plus a Decision file at id 0300, as a branch the allowlist would never merge.
+    git(repo, ["checkout", "-q", "-b", "probe", head]);
+    mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
+    writeFileSync(path.join(repo, "docs/decisions/0300-from-candidate.md"), "candidate\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "decision 0300 on the candidate"]);
+    const probeHead = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    const refusal = real({ repoRoot: repo, baseBranch: "main", head: probeHead });
+    expect(refusal).toContain("docs/decisions/0300-from-candidate.md");
+    expect(refusal).toContain("docs/decisions/0300-minted-on-main.md");
+    const outcome = merge({ decisionIdClash: () => refusal });
+    expect(outcome).toMatchObject({ kind: "refused", code: "decision_id_duplicate" });
+    expect((outcome as { reason: string }).reason).toContain("docs/decisions/0300-minted-on-main.md");
+    expect(github.ghCalls.some((call) => call.startsWith("gh pr merge"))).toBe(false);
   });
 
   it("default gate: a pinned unpressed per-run START card refuses with the exact freeze message, keeps the card and calls no merge; pressing it lets the merge through", () => {

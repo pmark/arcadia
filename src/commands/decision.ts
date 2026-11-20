@@ -24,6 +24,7 @@ import { invocationRoot } from "../cli/invocation.js";
 import { commitOnlyPaths, projectCheckoutFor, sharesRepository, tryGit } from "../git/worktrees.js";
 import { localDateStamp } from "../utils/time.js";
 import { decisionOptionsDigest } from "../decisions/optionsDigest.js";
+import { allocateDecisionId } from "../decisions/decisionIds.js";
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const DECISION_FILENAME = /^(\d{4})-(.+)\.md$/;
@@ -76,7 +77,7 @@ export function runDecisionNewCommand(options: DecisionNewOptions): CommandSucce
   const decisionsDir = path.join(repoRoot, "docs", "decisions");
   mkdirSync(decisionsDir, { recursive: true });
 
-  const id = nextDecisionId(decisionsDir);
+  const id = allocateDecisionId(repoRoot);
   const absolutePath = path.join(decisionsDir, `${id}-${options.slug}.md`);
   if (existsSync(absolutePath)) {
     throw validationError("A decision file with this id already exists.", { path: absolutePath });
@@ -911,19 +912,6 @@ function registeredRepoPathFromDb(db: Parameters<typeof getProject>[0], projectI
     });
   }
   return repoPath;
-}
-
-function nextDecisionId(decisionsDir: string): string {
-  let highest = 0;
-  if (existsSync(decisionsDir)) {
-    for (const entry of readdirSync(decisionsDir)) {
-      const match = DECISION_FILENAME.exec(entry);
-      if (match) {
-        highest = Math.max(highest, Number.parseInt(match[1], 10));
-      }
-    }
-  }
-  return String(highest + 1).padStart(4, "0");
 }
 
 export function findDecisionFile(decisionsDir: string, id: string): string | null {

@@ -10,6 +10,7 @@
           "imports": [
             "better-sqlite3",
             "src/decisions/batchMerge.ts",
+            "src/decisions/decisionIds.ts",
             "src/git/pointerReconcile.ts",
             "src/git/worktrees.ts",
             "src/production/candidateChangeGate.ts",
