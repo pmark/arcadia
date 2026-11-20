@@ -117,7 +117,9 @@ describe("review repair stops raised by the real tick from escalation rows", () 
     rehearsal.tick();
     const later = open(rehearsal);
     expect(later.map((alert) => alert.id).sort()).toEqual(first.map((alert) => alert.id).sort());
-    expect(later.every((alert) => alert.occurrences > 1)).toBe(true);
+    // repair_gated is once per episode (its seen-count never grows); the rounds-exhausted notice still counts every tick.
+    expect(later.map((alert) => [alert.trigger, alert.occurrences > 1])).toEqual(first.map((alert) => [alert.trigger, alert.trigger !== "repair_gated"]));
+    expect(later.find((alert) => alert.trigger === "repair_gated")!.occurrences).toBe(1);
     expect(notices(rehearsal)).toHaveLength(2);
   });
 

@@ -203,6 +203,13 @@ export function isProductionOwnedRepairHead(db: Database.Database, actionKey: st
   return db.prepare(`SELECT 1 FROM ${TABLE} WHERE action_key = ? AND repaired_head = ? AND outcome = 'repaired'`).get(actionKey, head) !== undefined;
 }
 
+/** The failed head a production-owned repair head replaced, or null when `head` is none. */
+export function productionRepairedFromHead(db: Database.Database, actionKey: string, head: string): string | null {
+  ensureMechanicalRepairTable(db);
+  const row = db.prepare(`SELECT failed_head FROM ${TABLE} WHERE action_key = ? AND repaired_head = ? AND outcome = 'repaired'`).get(actionKey, head) as { failed_head: string } | undefined;
+  return row?.failed_head ?? null;
+}
+
 function record(input: MechanicalRepairInput, outcome: string, classes: string[], repairedHead: string | null, reason: string | null): void {
   input.db.prepare(`INSERT INTO ${TABLE} (action_key, failed_head, outcome, classes, repaired_head, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(action_key, failed_head) DO NOTHING`)

@@ -1,4 +1,5 @@
 import { completionSupplementOperator, supplementDigest } from "../operatorActions/operatorExecution.js";
+import { isProductionOwnedRepairHead } from "../production/mechanicalRepair.js";
 import { readProductionPolicySafely } from "../production/policy.js";
 import type { CompletionSupplementPin } from "./completionValidationEvidence.js";
 import { createHash } from "node:crypto";
@@ -460,7 +461,10 @@ export function independentVerdictReadiness(db: Database.Database, input: { sess
   if (!head || status === null || status.trim() || branchHead !== head) {
     reasons.push("The candidate worktree is missing, dirty, or differs from its branch.");
   } else {
-    if (developer?.target_head && developer.target_head !== head) reasons.push("The candidate head changed after its development attempt finished.");
+    // A head production itself pushed in a deterministic repair round (src/production/mechanicalRepair.ts) is the
+    // candidate's next head to review afresh; any other change after the development attempt is a moved head.
+    if (developer?.target_head && developer.target_head !== head
+      && !isProductionOwnedRepairHead(db, `${session.project_slug}/${session.action_id}`, head)) reasons.push("The candidate head changed after its development attempt finished.");
     if (preserved?.commitSha && !isAncestor(session.worktree_path, preserved.commitSha, head)) reasons.push("The candidate head does not descend from its preserved commit.");
   }
   if (reasons.length > 0 || !developer || !preserved || !head) return { ready: false, requirement, reasons };
