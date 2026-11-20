@@ -7,7 +7,7 @@ status: active
 milestone: "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions"
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-19
+updated: 2026-11-20
 actions:
   - id: retry-successor-press-when-main-moves
     title: When main moves while the host timer is between derive and press, the timer retires that card and derives a fresh one on a later tick instead of ending the standing grant's loop, so the operator can merge to main freely while production runs.
@@ -103,11 +103,11 @@ actions:
     references: ["src/production/successorPress.ts", "src/dispatch/queue.ts", "src/dispatch/pointer.ts", "src/plans/nextPlanSelector.ts", "src/operatorActions/planQueue.ts", "src/ask/agentAsk.ts", "docs/decisions/0241-may-one-standing-start-grant-replace-the-daily-approval-of-decision-0173-so.md", "docs/plans/let-the-operator-change-what-production-queues-from-the-production-project.md"]
   - id: allocate-decision-numbers-on-main-and-refuse-duplicates
     title: Decision numbers are allocated against origin main at settle or mint time, and a required check fails any pull request that adds a Decision id its base already has, so two Decisions never share a number again.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Decision numbers are allocated against origin main at settle or mint time, and a required check fails any pull request that adds a Decision id its base already has, so two Decisions never share a number again.
+    next_action: Completed via Agent Ask auto-settle-arcadia-allocate-decision-numbers-on-main-and-refuse-duplicates-98f655fa84af; no further action.
     expected_artifact: Evidence satisfying Agent Ask allocate-decision-numbers-on-main-and-refuse-duplicates
     clarification: clarified
     confidence: high
@@ -642,7 +642,7 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
-current_action: allocate-decision-numbers-on-main-and-refuse-duplicates
+current_action: accept-registration-after-a-recorded-stand-down
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
