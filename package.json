@@ -51,6 +51,7 @@
     "ledger:tail": "node --import tsx scripts/ledger-tail.ts",
     "check:frozen-records": "node --import tsx scripts/check-frozen-records.ts",
     "check:large-files": "node scripts/check-large-files.mjs",
+    "check:decision-ids": "node --import tsx scripts/check-decision-ids.ts",
     "check:plan-close-outs": "node --import tsx scripts/check-plan-close-outs.ts",
     "check:start-card-deriver": "node --import tsx scripts/check-start-card-deriver.ts",
     "pre-pr": "node --import tsx scripts/pre-pr.ts",
