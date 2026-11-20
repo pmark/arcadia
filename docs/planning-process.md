@@ -322,6 +322,19 @@ rather than guessing.
 Do not write implementation code.
 ```
 
+## Ranking and the 48-hour window
+
+Rank work by how much it lengthens unattended runs or removes a stop that needs the operator. A change that lets a night run longer, or turns an operator step into a checked condition, outranks one that only saves effort; unattended-run reliability breaks ties, and implementation cost decides only between equals.
+
+Plan every 48-hour window with both lanes filled:
+
+- **Day lane:** Actions whose changes touch the gate set or a hard class. They park for the operator's batched merge, so batch them into his available hours.
+- **Night lane:** Actions that can merge in-run under the in-run merge Decision in force. They run without him.
+
+A window whose night lane has no eligible work is flagged in the 48-hour ready view and the 8 AM report, with the reason and the smallest change that would fill it (for example, dropping an ordering-only dependency, or queueing another approved Plan's night-lane Actions).
+
+Measure the result every morning: the hours between operator-needed stops, and the number of empty nights per week.
+
 ## Deferred, not built here
 
 - **Automatic `arcadia ask` routing into Phase 1.** Today both phases are
