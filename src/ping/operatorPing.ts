@@ -147,9 +147,7 @@ export function normalizeOperatorPing(input: OperatorPingInput): NormalizedField
   const message = (input.message ?? "").replace(/\s+/g, " ").trim();
   if (!message) throw validationError("A ping needs a message.");
   if (message.length > OPERATOR_PING_MESSAGE_MAX) {
-    throw validationError(
-      `A ping message is at most ${OPERATOR_PING_MESSAGE_MAX} characters (got ${message.length}); it is a nudge, not a report. Put detail in the PR and link it.`
-    );
+    throw validationError(`message is ${message.length} characters; the limit is ${OPERATOR_PING_MESSAGE_MAX}`);
   }
   const kind = (input.kind?.trim().toLowerCase() || "fyi") as OperatorPingKind;
   if (!OPERATOR_PING_KINDS.includes(kind)) {
