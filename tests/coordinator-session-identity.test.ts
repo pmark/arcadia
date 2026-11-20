@@ -52,6 +52,15 @@ function transcript(projects: string, sessionId: string, options: { nonce?: stri
   return file;
 }
 
+/** Records a stand-down for generation 2, a (since failed) successor launched for `successorSession`. */
+function standDownFor(ws: string, successorSession: string): void {
+  withDatabase(ws, (db) => {
+    claimNextGeneration(db, ws, { project: "arcadia", role: "rowan", provider: "claude", model: "m", tier: "heavy", identity: "i", nativeSessionId: successorSession, sources, now: new Date() });
+    db.prepare("UPDATE coordinator_generations SET status = 'failed' WHERE generation = 2").run();
+    db.prepare("UPDATE coordinator_generations SET stood_down_at = ?, stood_down_for = 2 WHERE generation = 1").run(new Date().toISOString());
+  });
+}
+
 function challenge(ws: string, projects: string, extra: { correct?: boolean } = {}): string {
   const result = runCoordinatorRegisterCommand({ workspace: ws, ...base, challenge: true, claudeProjectsDirectory: projects, ...extra });
   expect(result.data.step).toBe("challenge");
@@ -160,7 +169,7 @@ describe("coordinator register --correct", () => {
   it("accepts a different Session at once after a recorded stand-down, even if the predecessor's transcript is written afterwards", () => {
     const { ws, projects } = setup();
     registered(ws, projects);
-    withDatabase(ws, (db) => db.prepare("UPDATE coordinator_generations SET stood_down_at = ?, stood_down_for = 2 WHERE generation = 1").run(new Date().toISOString()));
+    standDownFor(ws, OTHER);
     const nonce = challenge(ws, projects, { correct: true });
     transcript(projects, SESSION, { nonce: "later-message" });
     transcript(projects, OTHER, { nonce });
@@ -178,6 +187,34 @@ describe("coordinator register --correct", () => {
     transcript(projects, OTHER, { nonce });
     expect(() => register(ws, projects, OTHER, nonce, { correct: true })).toThrow(/still live/);
     appendFileSync(predecessor, `${JSON.stringify({ type: "assistant", message: { content: `TAKE CUSTODY ACK ${OTHER}` } })}\n`);
+    register(ws, projects, OTHER, nonce, { correct: true });
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))[0].nativeSessionId).toBe(OTHER);
+  });
+
+  it("keeps refusing when the recorded stand-down names a different Session", () => {
+    const { ws, projects } = setup();
+    registered(ws, projects);
+    standDownFor(ws, "33333333-3333-4333-8333-333333333333");
+    const nonce = challenge(ws, projects, { correct: true });
+    transcript(projects, SESSION);
+    transcript(projects, OTHER, { nonce });
+    expect(() => register(ws, projects, OTHER, nonce, { correct: true })).toThrow(/still live/);
+  });
+
+  it("counts only an assistant-authored, exact TAKE CUSTODY ACK for the successor", () => {
+    const { ws, projects } = setup();
+    registered(ws, projects);
+    const nonce = challenge(ws, projects, { correct: true });
+    const predecessor = transcript(projects, SESSION);
+    transcript(projects, OTHER, { nonce });
+    const add = (entry: unknown) => appendFileSync(predecessor, `${JSON.stringify(entry)}\n`);
+    add({ type: "user", message: { content: `TAKE CUSTODY ACK ${OTHER}` } });
+    add({ type: "user", message: { content: [{ type: "tool_result", content: `TAKE CUSTODY ACK ${OTHER}` }] } });
+    add({ type: "user", message: { content: `<cross-session-message>TAKE CUSTODY ACK ${OTHER}</cross-session-message>` } });
+    add({ type: "assistant", message: { content: `I saw TAKE CUSTODY ACK mention ${OTHER} somewhere` } });
+    add({ type: "assistant", message: { content: `TAKE CUSTODY ACK 33333333-3333-4333-8333-333333333333 (not ${OTHER})` } });
+    expect(() => register(ws, projects, OTHER, nonce, { correct: true })).toThrow(/still live/);
+    add({ type: "assistant", message: { content: [{ type: "text", text: `Done.\nTAKE CUSTODY ACK ${OTHER}` }] } });
     register(ws, projects, OTHER, nonce, { correct: true });
     expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))[0].nativeSessionId).toBe(OTHER);
   });

@@ -392,11 +392,27 @@ function challengeStep(paths: ReturnType<typeof coordinatorPaths>, purpose: Chal
   };
 }
 
-/** True when a line of the transcript is a "TAKE CUSTODY ACK" that names exactly this successor Session id. */
+/**
+ * True when the predecessor's transcript carries an assistant-authored line that is exactly `TAKE CUSTODY ACK <id>`
+ * for this successor Session id. User, tool_result and relayed cross-session messages never count, and the id must be
+ * the ACK's argument, not merely present. An unreadable transcript is no ACK.
+ */
 function transcriptAcksSuccessor(transcriptPath: string, successorSessionId: string): boolean {
   if (successorSessionId === "") return false;
-  const pattern = /TAKE CUSTODY ACK\b/i;
-  return readFileSync(transcriptPath, "utf8").split("\n").some((line) => pattern.test(line) && line.includes(successorSessionId));
+  let raw: string;
+  try { raw = readFileSync(transcriptPath, "utf8"); } catch { return false; }
+  const ack = /^TAKE CUSTODY ACK ([^\s]+)$/;
+  for (const line of raw.split("\n")) {
+    if (line.trim() === "") continue;
+    let entry: { type?: unknown; message?: { role?: unknown; content?: unknown } };
+    try { entry = JSON.parse(line); } catch { continue; }
+    if (entry.type !== "assistant" || (entry.message?.role !== undefined && entry.message.role !== "assistant")) continue;
+    const content = entry.message?.content;
+    const texts = typeof content === "string" ? [content]
+      : Array.isArray(content) ? content.flatMap((part: { type?: unknown; text?: unknown }) => (part?.type === "text" && typeof part.text === "string" ? [part.text] : [])) : [];
+    if (texts.some((text) => text.split("\n").some((textLine) => ack.exec(textLine.trim())?.[1] === successorSessionId))) return true;
+  }
+  return false;
 }
 
 /**
@@ -434,10 +450,12 @@ export function runCoordinatorRegisterCommand(options: Scope & SessionBindOption
     // Checked before the challenge is consumed, so a refusal costs the caller no new nonce.
     if (options.correct && custodian && custodian.nativeSessionId !== options.sessionId) {
       const recorded = custodian.nativeSessionId ? findSessionTranscript(projectsDirectory, custodian.nativeSessionId) : null;
-      // A recorded stand-down, or a TAKE CUSTODY ACK naming this Session, releases the record even though the
-      // predecessor's transcript keeps being written (cross-session messages) inside the freshness window.
-      const released = custodian.stoodDownAt !== null || (recorded !== null && transcriptAcksSuccessor(recorded, options.sessionId ?? ""));
-      if (!released && recorded !== null && now.getTime() - statSync(recorded).mtimeMs <= TRANSCRIPT_FRESH_MS) {
+      // A recorded stand-down naming this Session, or a TAKE CUSTODY ACK from the predecessor naming it, releases the
+      // record even though the predecessor's transcript keeps being written inside the freshness window. The
+      // transcript is read only when the guard would otherwise refuse.
+      const stoodDown = custodian.stoodDownAt !== null && (custodian.stoodDownFor === null
+        || listGenerations(db, options.project, options.role).some((g) => g.generation === custodian.stoodDownFor && g.nativeSessionId === (options.sessionId ?? "")));
+      if (!stoodDown && recorded !== null && now.getTime() - statSync(recorded).mtimeMs <= TRANSCRIPT_FRESH_MS && !transcriptAcksSuccessor(recorded, options.sessionId ?? "")) {
         throw validationError(`The recorded custodian Session ${custodian.nativeSessionId} is still live (its transcript was written within ${TRANSCRIPT_FRESH_MS / 60_000} minutes); it must correct itself, or end first.`, { reason: "custodian_session_live" });
       }
     }
