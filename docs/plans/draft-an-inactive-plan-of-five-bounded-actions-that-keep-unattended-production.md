@@ -642,7 +642,7 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
-current_action: wire-mechanical-repair-into-production
+current_action: accept-registration-after-a-recorded-stand-down
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
