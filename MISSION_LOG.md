@@ -3872,3 +3872,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A test shows register succeeds immediately after a recorded stand-down even when the predecessor's transcript is written within the freshness window afterwards."; "A test shows a TAKE CUSTODY ACK naming the successor has the same effect, and an ACK naming a different session does not."; "Without a recorded stand-down or a matching ACK, the existing custodian_session_live refusal is unchanged; the existing coordinator tests pass."; "Issue #2781 is closed citing the merged PR.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask complete-accept-registration-after-a-recorded-stand-down-r26).
+
+## 2026-11-20 — Completed arcadia/explain-the-ping-length-limit
+
+- **Did:** Completed Action arcadia/explain-the-ping-length-limit from accepted evidence (Candidate e1e78f0d5556851c7d760ecd3a703680c384a06f).
+- **Result:** Every declared acceptance criterion was accepted as met: "A test shows a 501-character message exits non-zero with exactly one stderr line of the form 'message is 501 characters; the limit is 500', and nothing is queued."; "A test shows a 500-character message is accepted unchanged; the message is never silently truncated."; "Issue #2782 is closed citing the merged PR.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-explain-the-ping-length-limit-r27).

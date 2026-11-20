@@ -247,11 +247,11 @@ actions:
     references: ["src/commands/coordinator.ts", "src/coordinator/generations.ts", "src/coordinator/state.ts"]
   - id: explain-the-ping-length-limit
     title: arcadia ping send with a message over the 500-character limit fails with a one-line error naming the message length and the limit, instead of a bare exit 2.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: arcadia ping send with a message over the 500-character limit fails with a one-line error naming the message length and the limit, instead of a bare exit 2.
+    next_action: Completed via Agent Ask complete-explain-the-ping-length-limit-r27; no further action.
     expected_artifact: Evidence satisfying Agent Ask explain-the-ping-length-limit
     clarification: clarified
     confidence: high
@@ -642,7 +642,7 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
 questions: []
 decisions: []
-current_action: explain-the-ping-length-limit
+current_action: allocate-decision-numbers-on-main-and-refuse-duplicates
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
