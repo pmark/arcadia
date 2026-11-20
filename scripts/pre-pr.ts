@@ -230,6 +230,7 @@ export function runPrePr(root: string, options: PrePrOptions = {}): PreprFailure
     () => checkClassification(root, run),
     () => checkScript(root, run, "check:operator-scripts", "Regenerate or fix the operator script named in the output, then rerun pnpm check:operator-scripts"),
     () => checkScript(root, run, "check:plan-close-outs", "Add or correct the close-out for the plan named in the output, then rerun pnpm check:plan-close-outs"),
+    () => checkScript(root, run, "check:decision-ids", "Renumber the newer Decision file named in the output to the next free id, then rerun pnpm check:decision-ids"),
     () => checkScript(root, run, "check:frozen-records", "Revert the edit to the frozen record named in the output (frozen records are append-only), then rerun pnpm check:frozen-records"),
   ];
   for (const step of steps) {

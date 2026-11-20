@@ -38,6 +38,8 @@ jobs:
         run: mise exec -- pnpm check:frozen-records
       - name: Validate Plan close-out records
         run: mise exec -- pnpm check:plan-close-outs
+      - name: Validate Decision ids are unique (fails a pull request or a push to main that duplicates one)
+        run: mise exec -- pnpm check:decision-ids
       - name: Validate no large files are tracked (#2488)
         run: mise exec -- pnpm check:large-files
       - name: Validate unit shard partition covers every test file once
