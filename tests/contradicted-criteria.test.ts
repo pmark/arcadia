@@ -1,0 +1,39 @@
+import { describe, expect, it } from "vitest";
+import { contradictedCriteriaRefusal, contradictedMetCriteria } from "../src/sessions/contradictedCriteria.js";
+
+// Issue #2890: a completion Ask marked criteria met while their own notes said the work was not done.
+const entry = (note: string | null, status = "met", criterion = "The focused vitest run passes.") => ({ criterion, status, note });
+
+describe("contradicted met criteria", () => {
+  it("refuses a met criterion whose note says NOT done, naming the criterion and phrase", () => {
+    const reason = contradictedCriteriaRefusal([entry("Focused run NOT done in this session.")]);
+    expect(reason).toContain("The focused vitest run passes.");
+    expect(reason).toContain("NOT done");
+  });
+
+  it("refuses a note that defers the work until the PR merges", () => {
+    expect(contradictedCriteriaRefusal([entry("Deferred until the PR merges.", "met", "Issue closed citing the merged PR.")]))
+      .toContain("Deferred until the PR merges");
+    expect(contradictedCriteriaRefusal([entry("Close the issue, pending the merge.")])).not.toBeNull();
+  });
+
+  it("refuses a note that says it was not run", () => {
+    expect(contradictedCriteriaRefusal([entry("Tests not run in this session.")])).toContain("not run");
+    expect(contradictedCriteriaRefusal([entry("Not yet run; will be run once the PR merges.")])).toContain("Not yet run");
+  });
+
+  it("does not refuse a met criterion with a clean note", () => {
+    expect(contradictedCriteriaRefusal([entry("Ran pnpm exec vitest run tests/x.test.ts: 1 file, 4 tests passed.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry(null)])).toBeNull();
+  });
+
+  it("does not judge a failed or skipped criterion that already says it was not done", () => {
+    expect(contradictedCriteriaRefusal([entry("NOT done.", "failed"), entry("Deferred until the PR merges.", "skipped")])).toBeNull();
+  });
+
+  it("does not judge a phrase about another state of the code or a hypothetical", () => {
+    expect(contradictedCriteriaRefusal([entry("The old behavior was not run by this path before the fix; now it is. Tests pass.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("Deferred to a later Action only if the cache is cold; it was not, so all 3 tests ran.")])).toBeNull();
+    expect(contradictedMetCriteria([entry("The unfixed code was not yet done in this path. Tests pass.")])).toEqual([]);
+  });
+});
