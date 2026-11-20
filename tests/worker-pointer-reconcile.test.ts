@@ -695,10 +695,10 @@ describe("a local base ahead only by its own pointer commits", () => {
       return sha;
     }
 
-    function merge(db: Database.Database, github: FakeGitHub, sha: string) {
+    function merge(db: Database.Database, github: FakeGitHub, sha: string, extraDeps: Partial<Parameters<typeof mergeCandidatePullRequest>[1]> = {}) {
       return mergeCandidatePullRequest(
         { db, repoRoot: repo, baseBranch: "main", sessionId: "session_1", actionKey: "fixture/write-feature", head: sha, settlementCommit: null, pullRequestUrl: URL, review: gateFor(sha), now: new Date("2026-11-02T12:00:00Z") },
-        { runCommand: github.runCommand }
+        { runCommand: github.runCommand, ...extraDeps }
       );
     }
 
@@ -747,7 +747,9 @@ describe("a local base ahead only by its own pointer commits", () => {
       expect(failed.reason).not.toContain("\n");
       expect(failed.reason!.length).toBeLessThan(700);
 
-      const outcome = merge(db, github, sha);
+      // The duplicate-id check now refuses first when origin is unreachable (fail closed); this test is about the
+      // post-merge sync, so that check is isolated through its seam.
+      const outcome = merge(db, github, sha, { decisionIdClash: () => null });
       expect(outcome).toMatchObject({ kind: "refused", code: "base_not_synced" });
       expect(outcome.kind === "refused" && outcome.reason).toContain("gone.git");
       expect(listWorkerMerges(db)[0]).toMatchObject({ outcome: "refused", code: "base_not_synced", head: sha });
