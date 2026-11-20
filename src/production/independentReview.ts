@@ -19,6 +19,7 @@ import {
   type PullRequestCheckRun,
   type QaPrReviewDependencies
 } from "../qa/prReview.js";
+import { isProductionOwnedRepairHead } from "./mechanicalRepair.js";
 import { PRODUCTION_CONTROL_DEADLINES, policyAuthorizesPullRequestReadiness, readProductionPolicySafely } from "./policy.js";
 
 /**
@@ -1201,6 +1202,10 @@ export function advanceIndependentReview(db: Database.Database, input: {
         descends = isAncestor(repoRoot, pr.headRefOid, head);
       } catch (error) {
         return fail("push", `Comparing the PR head with the settled head failed: ${errorMessage(error)}`);
+      }
+      if (!descends && isProductionOwnedRepairHead(db, actionKey, pr.headRefOid) && isAncestor(repoRoot, head, pr.headRefOid)) {
+        // Production's own deterministic repair push: the next head to review, once readiness binds it, never a moved head.
+        return { kind: "waiting", reason: `PR ${url} shows ${pr.headRefOid.slice(0, 12)}, the production-owned repair head after ${head.slice(0, 12)}; it is reviewed afresh as the candidate's next head.` };
       }
       if (!descends) {
         return {

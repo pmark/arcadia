@@ -3805,7 +3805,8 @@ describe("red alerts from the worker tick", () => {
     expect(others).toHaveLength(0);
     expect(repeated.id).toBe(alert.id);
     expect(repeated.firstSeenAt).toBe(alert.firstSeenAt);
-    expect(repeated.occurrences).toBeGreaterThan(alert.occurrences);
+    // Once per episode: later ticks do not grow the seen-count of the open alert.
+    expect(repeated.occurrences).toBe(alert.occurrences);
 
     const notices = pendingNotices(fixture);
     expect(notices).toHaveLength(1);
