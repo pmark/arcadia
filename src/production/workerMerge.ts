@@ -571,12 +571,13 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
   });
   if (!evaluation.ok) return refused(evaluation.code, evaluation.reason, evaluation.code === "authority_adjacent" ? blastRadius?.boundaries ?? [] : []);
 
+  // The duplicate check fetches and can be slow, so it runs first: the authority and freeze guards are the last reads before the merge call.
+  const clash = (deps.decisionIdClash ?? ((i) => decisionIdClashRefusal(systemDecisionGit(i.repoRoot), i.head, i.baseBranch)))({ repoRoot, baseBranch, head });
+  if (clash) return refused("decision_id_duplicate", clash);
   const fenced = input.authorityChanged?.() ?? null;
   if (fenced) return { kind: "withheld", reason: `Withheld the worker merge of ${url}: ${fenced}.` };
   const freeze = (deps.mergeFreeze ?? (() => workerMergeFreeze(db, repoRoot)))();
   if (freeze) return refused("merge_freeze", freeze.message);
-  const clash = (deps.decisionIdClash ?? ((i) => decisionIdClashRefusal(systemDecisionGit(i.repoRoot), i.head, i.baseBranch)))({ repoRoot, baseBranch, head });
-  if (clash) return refused("decision_id_duplicate", clash);
   const merged = runCommand({ command: "gh", args: ["pr", "merge", evaluation.pullRequestUrl, "--merge", "--match-head-commit", head], cwd: repoRoot, timeoutMs: 120_000 });
   if (merged.status !== 0) {
     const detail = merged.error ?? (merged.stderr.trim() || `exit ${String(merged.status)}`);

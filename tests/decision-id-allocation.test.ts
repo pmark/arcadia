@@ -62,6 +62,9 @@ describe("Decision id allocation and duplicate refusal", () => {
     const offline = path.join(root, "offline");
     mkdirSync(offline);
     git(offline, ["init", "-q", "-b", "main"]);
+    git(offline, ["config", "user.name", "Fixture"]);
+    git(offline, ["config", "user.email", "fixture@example.invalid"]);
+    git(offline, ["config", "commit.gpgsign", "false"]);
     commitFile(offline, decision("0249", "latest"));
     expect(allocateDecisionId(offline)).toBe("0250");
     // Writing the candidate's Decision at the allocated id leaves no two files on one id.
@@ -133,5 +136,12 @@ describe("Decision id allocation and duplicate refusal", () => {
     expect(result.refusals[0]).toMatchObject({ code: "decision_id_duplicate", number: 2 });
     expect(result.refusals[0].message).toContain(decision("0250", "pr-1"));
     expect(result.refusals[0].message).toContain(decision("0250", "pr-2"));
+  });
+  it("the merge-time check refuses when origin cannot be refreshed instead of trusting a stale cached ref", () => {
+    const realGit = systemDecisionGit(candidate);
+    const failingFetch = (args: string[]): { status: number; stdout: string } => (args[0] === "fetch" ? { status: 1, stdout: "" } : realGit(args));
+    const refusal = decisionIdClashRefusal(failingFetch, "HEAD");
+    expect(refusal).toContain("could not be refreshed");
+    expect(decisionIdClashRefusal(realGit, "HEAD")).toBeNull();
   });
 });

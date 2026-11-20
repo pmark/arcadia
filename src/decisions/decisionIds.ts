@@ -127,10 +127,13 @@ export function allocateDecisionId(repoRoot: string, knownIds: readonly (string 
 
 /**
  * Merge-time check: would merging `head` leave two Decision files with one id on current origin main? Fetches
- * origin/<base>; returns the refusal text or null. An unreadable origin or head is itself a refusal.
+ * origin/<base>; returns the refusal text or null. A failed refresh, or an unreadable origin or head, is itself a refusal.
  */
 export function decisionIdClashRefusal(git: DecisionGit, head: string, base = "main"): string | null {
-  const origin = originDecisionFiles(git, base);
+  // Unlike allocation, a merge-time check must not fall back to a stale cached ref: a failed refresh is a refusal.
+  const fetched = git(["fetch", "--quiet", "origin", base]);
+  if (fetched.status !== 0) return `origin/${base} could not be refreshed, so a duplicate Decision id cannot be ruled out`;
+  const origin = decisionFilesAtRef(git, `refs/remotes/origin/${base}`);
   if (!origin) return `origin/${base} Decision files could not be read, so a duplicate Decision id cannot be ruled out`;
   const headFiles = decisionFilesAtRef(git, head);
   if (!headFiles) return `${head.slice(0, 7)} Decision files could not be read, so a duplicate Decision id cannot be ruled out`;
