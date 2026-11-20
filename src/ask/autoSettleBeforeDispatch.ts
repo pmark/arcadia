@@ -4,6 +4,7 @@ import type Database from "better-sqlite3";
 import { normalizeError } from "../cli/errors.js";
 import { git, tryGit } from "../git/worktrees.js";
 import { evidenceHasPlaceholder, normalizeAgentAsk, setTopLevelAskScalar, type NormalizedAgentAsk } from "./agentAsk.js";
+import { contradictedCriteriaRefusal } from "../sessions/contradictedCriteria.js";
 import { autoSettleRequestId } from "./autoSettleRequestId.js";
 import { previewAgentAskRequest } from "./preview.js";
 import { settleAgentAsk } from "./settlement.js";
@@ -249,6 +250,12 @@ function attemptSettleOneDraft(
   effectiveContent = withRequestId(effectiveContent, requestId);
 
   const settlementRequestId = `settle-${requestId}`.slice(0, 120);
+  // Issue #2890: every caller (tick, advance, reconciliation) settles through here, so a met criterion whose
+  // own note says it was not done is refused here, before any caller's validation runs, whether or not it supplies one.
+  const contradiction = contradictedCriteriaRefusal(draft.normalized.evidence);
+  if (contradiction) {
+    return { settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED, detail: contradiction, askPath: draft.path };
+  }
   const validation = input.validateBeforeSettle?.({ path: draft.path, evidence: draft.normalized.evidence });
   if (validation && !validation.ok) {
     return { settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED, detail: validation.reason, askPath: draft.path };

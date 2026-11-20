@@ -74,7 +74,8 @@
             "src/ask/settlement.ts",
             "src/ask/supersedeOlderCompletionAsks.ts",
             "src/cli/errors.ts",
-            "src/git/worktrees.ts"
+            "src/git/worktrees.ts",
+            "src/sessions/contradictedCriteria.ts"
           ]
         },
         {

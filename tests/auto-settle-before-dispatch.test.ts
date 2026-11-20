@@ -10,7 +10,8 @@ import {
   AUTO_SETTLE_NO_DRAFT,
   AUTO_SETTLE_REVISION_CHANGED,
   AUTO_SETTLE_SETTLED,
-  AUTO_SETTLE_STALE_REVISION
+  AUTO_SETTLE_STALE_REVISION,
+  AUTO_SETTLE_VALIDATION_REFUSED
 } from "../src/ask/autoSettleBeforeDispatch.js";
 import { EVIDENCE_PLACEHOLDER_MARKER } from "../src/ask/agentAsk.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -68,6 +69,28 @@ describe("attemptAutoSettlePendingCompletion", () => {
     const stillDrafted = execFileSync("git", ["ls-files", ".arcadia/asks"], { cwd: repo, encoding: "utf8" })
       .split("\n").filter((line) => line && !line.includes("/archive/"));
     expect(stillDrafted).toEqual([]);
+  });
+
+  it("refuses a drafted completion whose met note says it was NOT run, with no caller-supplied validation (the tick and advance call shape)", () => {
+    const { repo, workspace } = fixture({ draftAsk: true, note: "Focused suite NOT run in this session." });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+
+    expect(result).toMatchObject({ settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED });
+    expect((result as { detail?: string }).detail).toContain("First proof exists.");
+    expect((result as { detail?: string }).detail).toContain("NOT run");
+    // Nothing settled: the draft is still in place.
+    expect(execFileSync("git", ["ls-files", ".arcadia/asks/agent-ask-complete-first.yaml"], { cwd: repo, encoding: "utf8" })).toContain("agent-ask-complete-first.yaml");
+  });
+
+  it("still settles a drafted completion with a clean met note through the same shared path", () => {
+    const { repo, workspace } = fixture({ draftAsk: true, note: "Ran the focused suite: 3 tests passed." });
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+    expect(result).toMatchObject({ settled: true, reason: AUTO_SETTLE_SETTLED });
   });
 
   it("replays #2777: a hand fix after the auto-settle leaves the record naming the evidenced head, not the merged head, by design", () => {
@@ -328,6 +351,8 @@ function fixture(options: {
   extraIneligibleDraft?: boolean;
   /** Write the draft as compact JSON, the form AGENTS.md tells agents to use. */
   jsonDraft?: boolean;
+  /** The evidence note the drafted Ask carries (default: a clean note). */
+  note?: string;
   /** Make the commit after the draft change a non-governance file. */
   laterCodeCommit?: boolean;
   /** Files the later commit writes, instead of the default governance record. */
@@ -375,7 +400,7 @@ function fixture(options: {
     const added = [".arcadia/asks/agent-ask-complete-first.yaml"];
     writeFileSync(
       path.join(repo, ".arcadia/asks/agent-ask-complete-first.yaml"),
-      (options.jsonDraft ? completeAskJson : completeAsk)("complete-first", options.wrongCriterion ? "A different criterion entirely." : "First proof exists.", candidateRevision),
+      (options.jsonDraft ? completeAskJson : completeAsk)("complete-first", options.wrongCriterion ? "A different criterion entirely." : "First proof exists.", candidateRevision, options.note),
       "utf8"
     );
     if (options.extraIneligibleDraft) {
@@ -427,22 +452,22 @@ function fixture(options: {
   return { repo, workspace, draftHead, currentHead, divergentSha };
 }
 
-function completeAsk(requestId: string, criterion: string, candidateRevision: string): string {
+function completeAsk(requestId: string, criterion: string, candidateRevision: string, note = "Verified by the agent."): string {
   return [
     "agent_ask: v1", `request_id: ${requestId}`, "project: demo", "intent: complete",
     "target_ref: action/first", "desired_result: Accept the completion evidence for the first Action",
     "rationale: Every declared criterion is met.", `candidate_revision: ${candidateRevision}`,
-    "evidence:", `  - criterion: "${criterion}"`, "    status: met", "    note: Verified by the agent.",
+    "evidence:", `  - criterion: "${criterion}"`, "    status: met", `    note: ${JSON.stringify(note)}`,
     "requested_authority: apply_if_approved", ""
   ].join("\n");
 }
 
-function completeAskJson(requestId: string, criterion: string, candidateRevision: string): string {
+function completeAskJson(requestId: string, criterion: string, candidateRevision: string, note = "Verified by the agent."): string {
   return `${JSON.stringify({
     agent_ask: "v1", request_id: requestId, project: "demo", intent: "complete",
     target_ref: "action/first", desired_result: "Accept the completion evidence for the first Action",
     rationale: "Every declared criterion is met.", candidate_revision: candidateRevision,
-    evidence: [{ criterion, status: "met", note: "Verified by the agent." }],
+    evidence: [{ criterion, status: "met", note }],
     requested_authority: "apply_if_approved"
   })}\n`;
 }
