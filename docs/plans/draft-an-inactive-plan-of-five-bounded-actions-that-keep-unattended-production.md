@@ -655,11 +655,11 @@ actions:
     references: ["scripts/check-decision-ids.ts", ".github/workflows/ci.yml", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/pull/2880"]
   - id: finish-wire-repair-verdict-case-and-absorb-proposal
     title: "Finish the wired mechanical repair: an integration test through the worker tick shows #2766's fingerprint refresh run, commit and push a production-owned head for a candidate that changed the named guidance document; a test records a verdict on the old head first and shows the production-owned repair push is reviewed as a new head; proposal agentask_abd3a5e65938083517 is recorded as absorbed with its receipt id cited; and each criterion's evidence names the integration test, the repository test or the receipt that proves it."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Finish the wired mechanical repair: an integration test through the worker tick shows #2766's fingerprint refresh run, commit and push a production-owned head for a candidate that changed the named guidance document; a test records a verdict on the old head first and shows the production-owned repair push is reviewed as a new head; proposal agentask_abd3a5e65938083517 is recorded as absorbed with its receipt id cited; and each criterion's evidence names the integration test, the repository test or the receipt that proves it."
+    next_action: Completed via Agent Ask complete-finish-wire-repair-verdict-case-and-absorb-proposal-rowan27; no further action.
     expected_artifact: Evidence satisfying Agent Ask finish-wire-repair-verdict-case-and-absorb-proposal
     clarification: clarified
     confidence: high
@@ -674,7 +674,7 @@ actions:
     references: ["src/production/independentReview.ts", "src/production/mechanicalRepairWiring.ts", "tests/mechanical-repair-wiring.test.ts", "https://github.com/pmark/arcadia/pull/2887"]
 questions: []
 decisions: []
-current_action: finish-wire-repair-verdict-case-and-absorb-proposal
+current_action: finish-allocate-push-ping-and-supersede-older-action
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
