@@ -31,6 +31,19 @@ describe("contradicted met criteria", () => {
     expect(contradictedCriteriaRefusal([entry("NOT done.", "failed"), entry("Deferred until the PR merges.", "skipped")])).toBeNull();
   });
 
+  it("judges every match: an historical lower-case comparison does not hide a later NOT", () => {
+    expect(contradictedCriteriaRefusal([entry("The old suite was not run; the required focused suite was NOT run.")])).toContain("NOT run");
+    expect(contradictedCriteriaRefusal([entry("The old suite was not run, NOT run here either.")])).toContain("NOT run");
+    expect(contradictedCriteriaRefusal([entry("The old suite was not run; the new suite passed.")])).toBeNull();
+  });
+
+  it("refuses an affirmed deferral but not a negated one", () => {
+    expect(contradictedCriteriaRefusal([entry("Work is deferred until the PR merges.")])).toContain("deferred until the PR merges");
+    expect(contradictedCriteriaRefusal([entry("All tests passed; no work is deferred until the PR merges.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("Nothing deferred to a later Action.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("The cleanup isn't deferred until the merge.")])).toBeNull();
+  });
+
   it("does not judge a phrase about another state of the code or a hypothetical", () => {
     expect(contradictedCriteriaRefusal([entry("The old behavior was not run by this path before the fix; now it is. Tests pass.")])).toBeNull();
     expect(contradictedCriteriaRefusal([entry("Deferred to a later Action only if the cache is cold; it was not, so all 3 tests ran.")])).toBeNull();
