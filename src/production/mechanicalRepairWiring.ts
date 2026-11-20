@@ -4,9 +4,11 @@ import { isAncestor, tryGit } from "../git/worktrees.js";
 import { systemPreservationRemote, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import type { AgentSession } from "../sessions/index.js";
 import { independentVerdictReadiness } from "../sessions/roleLineage.js";
-import { agentChangedPaths, candidateChangeGate } from "./candidateChangeGate.js";
+import { classifyAuthorityPaths } from "../decisions/batchMerge.js";
+import { agentChangedPaths, candidateChangeGate, isRepairGatedPath, testWeakeningGates } from "./candidateChangeGate.js";
 import type { RequiredChecksFailure } from "./independentReview.js";
 import {
+  classifyCheckFailureLog,
   getMechanicalRepair,
   refreshCandidateGuidanceFingerprints,
   runMechanicalRepairRound,
@@ -53,6 +55,21 @@ function runGenerator(command: string, args: string[], cwd: string): { status: n
 }
 
 /**
+ * Whether the only checked-in authority boundary the candidate's own change
+ * (`from...to`) touches is `agent_guidance` (its guidance documents), no launch-authority code, and no test-weakening gate. The
+ * regenerated fingerprint file adds no authority the candidate did not
+ * already carry; the guidance change itself still needs the operator to merge.
+ */
+function onlyGuidanceDocumentsChanged(repoRoot: string, from: string, to: string): boolean {
+  const paths = agentChangedPaths(repoRoot, from, to);
+  if (!paths || paths.length === 0) return false;
+  const boundaries = classifyAuthorityPaths(paths);
+  return boundaries.length === 1 && boundaries[0] === "agent_guidance"
+    && !paths.some(isRepairGatedPath)
+    && testWeakeningGates(repoRoot, from, to).length === 0;
+}
+
+/**
  * One deterministic repair round for the candidate whose required checks just
  * read red. Returns `not_applicable` without recording anything while the
  * round cannot start (checks still running, a log unreadable, authority off,
@@ -91,7 +108,10 @@ export function attemptMechanicalRepair(db: Database.Database, input: {
   // Decision 0098's gate list stops at the operator whatever generator would run.
   const start = tryGit(repoRoot, ["rev-parse", "--verify", `${head}^1`]) ?? head;
   const gate = candidateChangeGate(repoRoot, session.base_revision, start);
-  if (gate) return skip(`The candidate is on Decision 0098's gate list (${gate}); no generator touches it.`);
+  // The one exception: a candidate whose only gated change is to its own guidance documents may still have the
+  // fingerprint file regenerated, and only when every failed log is that stale-fingerprint class alone (checked below).
+  const guidanceOnly = gate !== null && onlyGuidanceDocumentsChanged(repoRoot, session.base_revision, start);
+  if (gate && !guidanceOnly) return skip(`The candidate is on Decision 0098's gate list (${gate}); no generator touches it.`);
 
   const repository = /github\.com\/([^/]+\/[^/]+)\/pull\/\d+/.exec(failure.pullRequestUrl)?.[1];
   const runIds = [...new Set(failure.checks.filter((check) => check.conclusion?.toUpperCase() === "FAILURE").map((check) => runIdOf(check.url)).filter((id): id is string => id !== null))];
@@ -102,6 +122,9 @@ export function attemptMechanicalRepair(db: Database.Database, input: {
     const read = runCommand({ command: "gh", args: ["run", "view", runId, "-R", repository, "--log-failed"], cwd: repoRoot, timeoutMs: 60_000 });
     if (read.status !== 0) return skip(`The failed log of CI run ${runId} could not be read; retried next tick.`);
     logs.push(read.stdout);
+  }
+  if (gate && !logs.every((log) => { const c = classifyCheckFailureLog(log); return !c.residue && c.classes.length === 1 && c.classes[0] === "guidance-fingerprint"; })) {
+    return skip(`The candidate is on Decision 0098's gate list (${gate}); no generator touches it.`);
   }
   const changedPaths = agentChangedPaths(repoRoot, session.base_revision, head);
   if (changedPaths === null) return skip("The candidate's changed paths could not be read.");

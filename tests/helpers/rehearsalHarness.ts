@@ -188,6 +188,8 @@ export interface RehearsalOptions {
   independentReviewers?: boolean | "host-commands" | "tick";
   /** `"tick"` mode only: overrides for the tick's review deadlines and budget. */
   review?: Pick<IndependentReviewDeps, "pollIntervalMs" | "checksDeadlineMs" | "maxFailures" | "rateLimitBackoffMs" | "rateLimitEscalateAfterMs">;
+  /** Extra files committed with the fixture repository's genesis (path to content), on top of the default fixture. */
+  extraGenesisFiles?: Record<string, string>;
   /** `"tick"` mode only: the deterministic repair round's generator runner. */
   mechanicalRepair?: Pick<MechanicalRepairDeps, "run">;
 }
@@ -271,7 +273,7 @@ export class Rehearsal {
     writeFileSync(path.join(this.repo, "scripts", "check-marker.mjs"),
       checkMarkerScript(this.options.thirdAction ? [LINE_A, LINE_B, LINE_C] : [LINE_A, LINE_B]));
     const custom = this.options.fixturePlan;
-    for (const [file, content] of Object.entries(custom?.genesisFiles ?? {})) {
+    for (const [file, content] of Object.entries({ ...this.options.extraGenesisFiles, ...custom?.genesisFiles })) {
       mkdirSync(path.dirname(path.join(this.repo, file)), { recursive: true });
       writeFileSync(path.join(this.repo, file), content);
     }

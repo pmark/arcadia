@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { withReadOnlyDatabase } from "../src/db/connection.js";
 import { getMechanicalRepair, isProductionOwnedRepairHead } from "../src/production/mechanicalRepair.js";
+import { BOOTSTRAP_MARKER, guidanceFingerprint, renderGuidanceFingerprints } from "../src/projects/agentGuidance.js";
 import type { AgentSession } from "../src/sessions/index.js";
 import { git, LINE_A, Rehearsal } from "./helpers/rehearsalHarness.js";
 
@@ -44,11 +45,36 @@ const CRITERIA_A = [`MARKER.md exists and contains exactly the line "${LINE_A}" 
 const rehearsals: Rehearsal[] = [];
 afterEach(() => { for (const rehearsal of rehearsals.splice(0)) rehearsal.dispose(); });
 
-/** Action A finished with a lintable file, preserved and readied; its required checks read red with `log`. */
-function redCandidate(log: string) {
+const GUIDANCE_DOC = "docs/agent-guidance/operator-actions.md";
+/** A fixture guidance index and fingerprints, current for the genesis bytes of every indexed document. */
+function guidanceGenesis(): Record<string, string> {
+  const ids = ["continuation", "agent-asks", "operator-actions", "proposals", "principles", "pull-requests", "learning", "git-identity", "managed-documents", "planning", "working-copy"];
+  // An indexed repository is audited for the Way bootstrap on every dispatch, so the fixture's root instructions carry it.
+  const rules = ["Authority", "Governance", "Preservation", "Identity", "Handoff", "Operator steps", "Review", "Economy and truth", "Vocabulary"];
+  const bootstrap = `# AGENTS\n\n${BOOTSTRAP_MARKER}\n\nRead docs/agent-guidance/index.json, docs/notes-to-self.md, CONSTITUTION.md and PROJECT.md.\n\n${rules.map((rule) => `- **${rule}:** fixture rule.\n`).join("")}`;
+  const files: Record<string, string> = {
+    "AGENTS.md": bootstrap,
+    "CLAUDE.md": "# CLAUDE.md\n\n@AGENTS.md\n",
+    "docs/agent-guidance/index.json": JSON.stringify({ schema: "arcadia-agent-guidance-v1", entries: ids.map((id) => ({ id, trigger: "t", path: `docs/agent-guidance/${id}.md`, read_before: "r" })) })
+  };
+  const prints: Record<string, string> = {};
+  for (const id of ids) {
+    files[`docs/agent-guidance/${id}.md`] = `${id}\n`;
+    prints[id] = guidanceFingerprint(`${id}\n`);
+  }
+  files["docs/agent-guidance/fingerprints.json"] = renderGuidanceFingerprints(prints);
+  return files;
+}
+
+/**
+ * Action A finished with a lintable file, preserved and readied; its required checks read red with `log`.
+ * With `guidance`, the candidate also edits the named guidance document, leaving its fingerprint stale.
+ */
+function redCandidate(log: string, options: { guidance?: boolean } = {}) {
   const runs: string[][] = [];
   const rehearsal = new Rehearsal({
     independentReviewers: "tick",
+    ...(options.guidance ? { extraGenesisFiles: guidanceGenesis() } : {}),
     mechanicalRepair: {
       run: (command, args, cwd) => {
         runs.push([command, ...args]);
@@ -66,6 +92,7 @@ function redCandidate(log: string) {
   const a: AgentSession = rehearsal.lease()!;
   rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
   rehearsal.agentEdit(a, "src/lintme.ts", "export const value = 1 as number;\n");
+  if (options.guidance) rehearsal.agentEdit(a, GUIDANCE_DOC, "operator-actions, edited by the candidate\n");
   rehearsal.agentFinish(a, CRITERIA_A);
   rehearsal.tmux.exit(a.tmux_session_name);
   let checks = RED;
@@ -74,7 +101,7 @@ function redCandidate(log: string) {
   expect(rehearsal.tick().reconciled[0]?.outcome).toBe("accepted_completion");
   rehearsal.tick(); // ready
   const head = git(rehearsal.repo, ["rev-parse", `refs/heads/${a.branch}`]).trim();
-  return { rehearsal, a, head, runs, turnGreen: () => { checks = GREEN; } };
+  return { rehearsal, a, head, runs, turnGreen: () => { checks = GREEN; }, turnRed: () => { checks = RED; } };
 }
 
 const roundOf = (rehearsal: Rehearsal, head: string) => withReadOnlyDatabase(rehearsal.workspace, (db) => getMechanicalRepair(db, rehearsal.actionA, head));
@@ -109,6 +136,25 @@ describe("the worker tick runs the deterministic repair round on red required ch
     expect(roundOf(rehearsal, head)!.reason).toContain("operator-actions.md");
   });
 
+  it("#2766: refreshes the fingerprint of a guidance document the candidate changed, then commits and pushes a production-owned head", () => {
+    const { rehearsal, a, head, runs } = redCandidate(FINGERPRINT_2766, { guidance: true });
+    rehearsal.tick();
+    // The fingerprint generator is in-process: no child command ran, and no other document's fingerprint moved.
+    expect(runs).toEqual([]);
+    const repaired = git(rehearsal.repo, ["rev-parse", `refs/heads/${a.branch}`]).trim();
+    expect(repaired).not.toBe(head);
+    expect(git(rehearsal.repo, ["rev-parse", `${repaired}^`]).trim()).toBe(head);
+    expect(git(rehearsal.repo, ["log", "-1", "--format=%an <%ae>", repaired]).trim()).toBe("Arcadia Controller <controller@arcadia.local>");
+    expect(git(rehearsal.repo, ["diff", "--name-only", head, repaired]).trim()).toBe("docs/agent-guidance/fingerprints.json");
+    const fingerprints = (JSON.parse(git(rehearsal.repo, ["show", `${repaired}:docs/agent-guidance/fingerprints.json`])) as { fingerprints: Record<string, string> }).fingerprints;
+    expect(fingerprints["operator-actions"]).toBe(guidanceFingerprint("operator-actions, edited by the candidate\n"));
+    expect(fingerprints.continuation).toBe(guidanceFingerprint("continuation\n"));
+    expect(rehearsal.github.pushes.at(-1)).toEqual({ branch: a.branch, commitSha: repaired });
+    expect(rehearsal.github.headOf(a.branch)).toBe(repaired);
+    expect(roundOf(rehearsal, head)).toMatchObject({ outcome: "repaired", repaired_head: repaired, classes: "guidance-fingerprint" });
+    expect(rehearsal.lease()).toBeNull();
+  });
+
   it.each([["#2758", MIXED_2758], ["#2765", MIXED_2765]])("%s: hands off to the bounded repair Session without running any generator", (_name, log) => {
     const { rehearsal, a, head, runs } = redCandidate(log);
     rehearsal.tick();
@@ -135,6 +181,26 @@ describe("the independent review treats the production-owned repair push as a ne
     expect(rehearsal.github.reviewerCalls.length).toBeGreaterThan(0);
     expect(rehearsal.github.reviewerCalls.every((call) => call.head === repaired)).toBe(true);
     expect(escalationKind(rehearsal)).not.toBe("review_head_moved");
+  });
+
+  it("a repair push after a recorded verdict on the old head is reviewed as a new head, never review_head_moved", () => {
+    const { rehearsal, head, a, turnGreen, turnRed } = redCandidate(LINT_2752);
+    // Record a verdict on the old head first: green checks, then the tick's own reviewers judge it.
+    turnGreen();
+    rehearsal.tick();
+    const onOldHead = rehearsal.github.reviewerCalls.filter((call) => call.head === head);
+    expect(onOldHead.length).toBeGreaterThan(0);
+    // A required check then reads red on that head and production's deterministic round pushes its repair.
+    turnRed();
+    rehearsal.tick();
+    const repaired = git(rehearsal.repo, ["rev-parse", `refs/heads/${a.branch}`]).trim();
+    expect(repaired).not.toBe(head);
+    expect(rehearsal.github.headOf(a.branch)).toBe(repaired);
+    turnGreen();
+    rehearsal.tick();
+    rehearsal.tick();
+    expect(escalationKind(rehearsal)).not.toBe("review_head_moved");
+    expect(rehearsal.github.reviewerCalls.some((call) => call.head === repaired)).toBe(true);
   });
 
   it("any other moved head is still review_head_moved", () => {
