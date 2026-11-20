@@ -91,6 +91,8 @@ import {
   type ReviewStepOutcome
 } from "./independentReview.js";
 import { getReviewRepair, requiredChecksRepairRequestId } from "../sessions/reviewRepair.js";
+import { runHostCommand } from "../qa/prReview.js";
+import { productionRepairedFromHead } from "./mechanicalRepair.js";
 import { attemptMechanicalRepair, type MechanicalRepairDeps, type TickMechanicalRepair } from "./mechanicalRepairWiring.js";
 import { attemptReviewRepair, closeSupersededPullRequests, gateRepairCandidate, releaseMergedReviewRepairs, releaseStalePendingRepair, REVIEW_REPAIR_ESCALATIONS } from "./reviewRepair.js";
 
@@ -316,7 +318,16 @@ function recoverTerminalHandoff(
   const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
   const status = tryGit(session.worktree_path, ["status", "--porcelain", "--untracked-files=all"]);
   if (!head || status === null || status.trim()) return refused("The terminal candidate worktree is missing or changed.", { head });
-  const settlement = findCandidateSettledCompletion(db, session, head);
+  let settlement = findCandidateSettledCompletion(db, session, head);
+  if (!settlement) {
+    // Production's own deterministic repair head (src/production/mechanicalRepair.ts) is one commit on the settled
+    // head it repaired: the exact settlement is judged at that parent, and the repair head is reviewed afresh.
+    const repairedFrom = productionRepairedFromHead(db, `${session.project_slug}/${session.action_id}`, head);
+    if (repairedFrom && tryGit(session.worktree_path, ["rev-parse", `${head}^`])?.trim() === repairedFrom) {
+      const parentSettlement = findCandidateSettledCompletion(db, session, repairedFrom);
+      if (parentSettlement?.documentsCommit === repairedFrom) settlement = { ...parentSettlement, documentsCommit: head };
+    }
+  }
   if (!settlement || head !== settlement.documentsCommit || !isAncestor(session.worktree_path, preserved.commitSha, head)) {
     return refused("The terminal candidate differs from its exact canonical completion settlement.", {
       head, settlementCommit: settlement?.documentsCommit ?? null
@@ -2466,9 +2477,11 @@ export function runManagedProductionTick(
       // Red required checks first get one deterministic round (src/production/mechanicalRepair.ts); only a
       // head it did not repair continues to the bounded repair Session.
       let mechanical: TickMechanicalRepair | null = null;
+      // The failed CI log is read once per tick: the round and the bounded repair judgement share it.
+      const ciRunCommand = memoizeFailedLogReads(options.review?.runCommand ?? runHostCommand);
       if (handoffReview.code === "required_checks_failed" && handoffReview.checkFailure) {
         try {
-          mechanical = attemptMechanicalRepair(db, { repoRoot, session: handoffSession, failure: handoffReview.checkFailure, now, log, runCommand: options.review?.runCommand,
+          mechanical = attemptMechanicalRepair(db, { repoRoot, session: handoffSession, failure: handoffReview.checkFailure, now, log, runCommand: ciRunCommand,
             deps: { ...options.mechanicalRepair, remote: options.mechanicalRepair?.remote ?? options.handoff?.preserve?.remote } });
         } catch (error) {
           log(`Mechanical repair of ${handoffSession.project_slug}/${handoffSession.action_id} failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -2476,7 +2489,7 @@ export function runManagedProductionTick(
       }
       launch = mechanical?.kind === "repaired"
         ? { attempted: false, outcome: "skipped", reason: mechanical.reason, actionKey: `${handoffSession.project_slug}/${handoffSession.action_id}` }
-        : attemptReviewRepairLaunch(db, { workspace, repoRoot, projectSlug: project.slug, session: handoffSession, options, tmux, now, log,
+        : attemptReviewRepairLaunch(db, { workspace, repoRoot, projectSlug: project.slug, session: handoffSession, options, tmux, now, log, runCommand: ciRunCommand,
           checkFailure: handoffReview.code === "required_checks_failed" ? handoffReview.checkFailure : undefined });
     } else if (mayLaunch) {
       const refusal = handoff?.integration.kind === "refused" ? handoff.integration : null;
@@ -2630,6 +2643,20 @@ function escalateReviewRepair(db: Database.Database, input: { actionKey: string;
  * standing-policy launch, like any other admission; a conflict (capacity, Off,
  * a moved pointer) is a wait retried next tick, logged once per reason.
  */
+/** A command runner that answers a repeated `gh run view <id> --log-failed` read from its first result (successes only). */
+function memoizeFailedLogReads(run: NonNullable<IndependentReviewDeps["runCommand"]>): NonNullable<IndependentReviewDeps["runCommand"]> {
+  const seen = new Map<string, ReturnType<typeof run>>();
+  return (input) => {
+    if (input.command !== "gh" || input.args[0] !== "run" || input.args[1] !== "view" || !input.args.includes("--log-failed")) return run(input);
+    const key = JSON.stringify([input.cwd, input.args]);
+    const prior = seen.get(key);
+    if (prior) return prior;
+    const result = run(input);
+    if (result.status === 0) seen.set(key, result);
+    return result;
+  };
+}
+
 function attemptReviewRepairLaunch(
   db: Database.Database,
   input: {
@@ -2643,6 +2670,7 @@ function attemptReviewRepairLaunch(
     log: (message: string) => void;
     /** Red required checks on the candidate's head: the trigger instead of a failed verdict. */
     checkFailure?: RequiredChecksFailure;
+    runCommand?: IndependentReviewDeps["runCommand"];
   }
 ): ManagedProductionLaunchAttempt {
   const actionKey = `${input.session.project_slug}/${input.session.action_id}`;
@@ -2675,7 +2703,7 @@ function attemptReviewRepairLaunch(
   try {
     const step = attemptReviewRepair({
       db, repoRoot: input.repoRoot, session: input.session, now: input.now, log: input.log,
-      runCommand: input.options.review?.runCommand,
+      runCommand: input.runCommand ?? input.options.review?.runCommand,
       checkFailure: input.checkFailure,
       escalate: (kind, message, remedy) => escalateReviewRepair(db, { actionKey, kind, message, remedy, now: input.now, log: input.log }),
       // Asked before the pre-launch PR read, and again inside the launch.

@@ -130,7 +130,8 @@ describe("the independent review treats the production-owned repair push as a ne
     const repaired = git(rehearsal.repo, ["rev-parse", `refs/heads/${a.branch}`]).trim();
     expect(repaired).not.toBe(head);
     turnGreen();
-    rehearsal.tick();
+    for (let i=0;i<3;i++){ const t = rehearsal.tick(); console.log("TICK", i, JSON.stringify(t.handoff ?? null).slice(0,600), JSON.stringify(rehearsal.status().operatorEscalations.map(e=>[e.kind,e.message?.slice(0,200)]))); }
+    console.log("LOG", rehearsal.log.slice(-25).join("\n"));
     rehearsal.tick();
     expect(rehearsal.github.reviewerCalls.length).toBeGreaterThan(0);
     expect(rehearsal.github.reviewerCalls.every((call) => call.head === repaired)).toBe(true);

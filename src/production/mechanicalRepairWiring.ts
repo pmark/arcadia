@@ -79,6 +79,13 @@ export function attemptMechanicalRepair(db: Database.Database, input: {
   const prior = getMechanicalRepair(db, actionKey, head);
   if (prior) return skip(`Head ${head.slice(0, 12)} already had its deterministic round (${prior.outcome}).`);
   if (failure.checks.some((check) => !check.unknown && check.status?.toUpperCase() !== "COMPLETED")) return skip("Required checks are still running beside a failure.");
+  // The same shape the bounded repair judges: every non-success check is a FAILURE, or a CANCELLED check of a failed run.
+  // A timeout, startup failure or unreadable check is CI infrastructure: no generator, no log read.
+  const failed = failure.checks.filter((check) => !check.unknown && check.conclusion?.toUpperCase() === "FAILURE");
+  const failedRuns = new Set(failed.map((check) => runIdOf(check.url)).filter((id): id is string => id !== null));
+  const infrastructure = failure.checks.filter((check) => !failed.includes(check)
+    && !(check.conclusion?.toUpperCase() === "CANCELLED" && failedRuns.has(runIdOf(check.url) ?? "")));
+  if (failed.length === 0 || infrastructure.length > 0) return skip("A required check did not fail on its own; that is CI infrastructure, never repaired.");
   const authority = repairAuthority(db, session, now);
   if ("notApplicable" in authority) return skip(authority.notApplicable);
   // Decision 0098's gate list stops at the operator whatever generator would run.
