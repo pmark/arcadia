@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import type Database from "better-sqlite3";
@@ -392,6 +392,13 @@ function challengeStep(paths: ReturnType<typeof coordinatorPaths>, purpose: Chal
   };
 }
 
+/** True when a line of the transcript is a "TAKE CUSTODY ACK" that names exactly this successor Session id. */
+function transcriptAcksSuccessor(transcriptPath: string, successorSessionId: string): boolean {
+  if (successorSessionId === "") return false;
+  const pattern = /TAKE CUSTODY ACK\b/i;
+  return readFileSync(transcriptPath, "utf8").split("\n").some((line) => pattern.test(line) && line.includes(successorSessionId));
+}
+
 /**
  * `arcadia coordinator register`: first registration (or, with `--correct`, correction) of a coordinator as the
  * generation-1 custodian, bound to a VERIFIED Session identity (Decision 0227 A; design gate 9). Two steps:
@@ -427,7 +434,10 @@ export function runCoordinatorRegisterCommand(options: Scope & SessionBindOption
     // Checked before the challenge is consumed, so a refusal costs the caller no new nonce.
     if (options.correct && custodian && custodian.nativeSessionId !== options.sessionId) {
       const recorded = custodian.nativeSessionId ? findSessionTranscript(projectsDirectory, custodian.nativeSessionId) : null;
-      if (recorded !== null && now.getTime() - statSync(recorded).mtimeMs <= TRANSCRIPT_FRESH_MS) {
+      // A recorded stand-down, or a TAKE CUSTODY ACK naming this Session, releases the record even though the
+      // predecessor's transcript keeps being written (cross-session messages) inside the freshness window.
+      const released = custodian.stoodDownAt !== null || (recorded !== null && transcriptAcksSuccessor(recorded, options.sessionId ?? ""));
+      if (!released && recorded !== null && now.getTime() - statSync(recorded).mtimeMs <= TRANSCRIPT_FRESH_MS) {
         throw validationError(`The recorded custodian Session ${custodian.nativeSessionId} is still live (its transcript was written within ${TRANSCRIPT_FRESH_MS / 60_000} minutes); it must correct itself, or end first.`, { reason: "custodian_session_live" });
       }
     }

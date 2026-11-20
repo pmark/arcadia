@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -153,6 +153,31 @@ describe("coordinator register --correct", () => {
     expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))[0].nativeSessionId).toBe(SESSION);
 
     transcript(projects, SESSION, { ageMs: 30 * 60 * 1000 });
+    register(ws, projects, OTHER, nonce, { correct: true });
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))[0].nativeSessionId).toBe(OTHER);
+  });
+
+  it("accepts a different Session at once after a recorded stand-down, even if the predecessor's transcript is written afterwards", () => {
+    const { ws, projects } = setup();
+    registered(ws, projects);
+    withDatabase(ws, (db) => db.prepare("UPDATE coordinator_generations SET stood_down_at = ?, stood_down_for = 2 WHERE generation = 1").run(new Date().toISOString()));
+    const nonce = challenge(ws, projects, { correct: true });
+    transcript(projects, SESSION, { nonce: "later-message" });
+    transcript(projects, OTHER, { nonce });
+    register(ws, projects, OTHER, nonce, { correct: true });
+    expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))[0].nativeSessionId).toBe(OTHER);
+  });
+
+  it("accepts a TAKE CUSTODY ACK naming the successor, and not one naming a different Session", () => {
+    const { ws, projects } = setup();
+    registered(ws, projects);
+    const THIRD = "33333333-3333-4333-8333-333333333333";
+    const nonce = challenge(ws, projects, { correct: true });
+    const predecessor = transcript(projects, SESSION);
+    appendFileSync(predecessor, `${JSON.stringify({ type: "assistant", message: { content: `TAKE CUSTODY ACK ${THIRD}` } })}\n`);
+    transcript(projects, OTHER, { nonce });
+    expect(() => register(ws, projects, OTHER, nonce, { correct: true })).toThrow(/still live/);
+    appendFileSync(predecessor, `${JSON.stringify({ type: "assistant", message: { content: `TAKE CUSTODY ACK ${OTHER}` } })}\n`);
     register(ws, projects, OTHER, nonce, { correct: true });
     expect(withDatabase(ws, (db) => listGenerations(db, "arcadia", "rowan"))[0].nativeSessionId).toBe(OTHER);
   });
