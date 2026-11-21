@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-20
+updated: 2026-11-21
 ---
 
 # Mission Log: Arcadia
@@ -3893,3 +3893,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "The live red-alert path raises repair_gated and repair_budget_repeat once per episode. An integration test through the tick shows one raise per episode, and the episode's seen-count does not grow on later ticks."; "A repository test fails if src/production/mechanicalRepair.ts has no caller outside tests, so an unwired repair library cannot be marked done again.".
 - **Next:** Split: narrowed to the finished slice and queued arcadia/finish-wire-repair-verdict-case-and-absorb-proposal immediately after. Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask rowan25-split-wire-repair-20261119b).
+
+## 2026-11-21 — Completed arcadia/finish-wire-repair-verdict-case-and-absorb-proposal
+
+- **Did:** Completed Action arcadia/finish-wire-repair-verdict-case-and-absorb-proposal from accepted evidence (Candidate 3f481914a615932e2f608967b33df1add428df13).
+- **Result:** Every declared acceptance criterion was accepted as met: "An integration test drives the worker tick (not the library alone) with the recorded #2752 check failure, and with #2766's stale-fingerprint failure for a candidate that changed an indexed procedure document outside docs/agent-guidance/, and shows one deterministic round runs, commits and pushes a production-owned head to the candidate branch. For #2766's failure on a candidate that changed a document under docs/agent-guidance/, the same test file shows no generator runs and no production-owned head is pushed, so the Decision 0098 agent-guidance gate holds and the required-checks escalation stands for the operator. With the recorded #2758 and #2765 failures, the same test file shows a hand-off to repair-red-candidates-with-a-bounded-session without running any generator."; "src/production/independentReview.ts treats a production-owned repair push after a recorded verdict as a new head to review, not review_head_moved; an integration test through the review path shows it, and any other moved head is still review_head_moved."; "Proposal agentask_abd3a5e65938083517 is recorded as absorbed, with its receipt id cited in this Action's completion evidence."; "Each criterion's completion evidence names the integration test, the repository test or the receipt that proves it, not a unit test of the library.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask complete-finish-wire-repair-verdict-case-and-absorb-proposal-rowan27-option-c).
