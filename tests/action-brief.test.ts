@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
-import { actionAcceptanceCriteria, CHECKS_VERIFIED_ELSEWHERE_NOTE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
+import { actionAcceptanceCriteria, CHECKS_VERIFIED_ELSEWHERE_NOTE, MET_REQUIRES_RUN_RULE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
@@ -178,7 +178,7 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("plus the named-test and dependency-bridge commands listed above (if any)");
     expect(brief).toContain("For checks you ran, record the command and observed result");
     expect(brief).toContain("Only for checks you did not run");
-    expect(brief).toContain("not run in this Session; verification deferred to host");
+    expect(brief).toContain("the host runs this check, not this Session");
     expect(brief).not.toContain("not run in this Session; verified by host");
     expect(brief).toContain("the host runs every test file your criteria name");
     expect(brief).toContain("required CI runs lint, tsc and build before anything integrates");
@@ -641,3 +641,17 @@ function candidateBriefRepo(): string {
   execFileSync("git", ["worktree", "add", "-q", "-b", "brief/candidate", candidate], { cwd: primary });
   return candidate;
 }
+
+// Issue #2905: the worker allow list is NOT widened; the host runs the tests a Session adds (Decision 0136's terms stand).
+describe("headless allow list stays criteria-bound", () => {
+  it("grants no vitest wildcard, no tsc, and no bridge when no criterion names a test", () => {
+    const allow = headlessClaudeAllowList(["node scripts/preservation-self-check.mjs"], null, ["The contract exists."]);
+    expect(allow.some((rule) => /vitest|tsc|bridge-worktree-deps/.test(rule))).toBe(false);
+    expect(allow.some((rule) => /tests\/\*/.test(rule))).toBe(false);
+  });
+
+  it("tells a Session its added tests are the host's to run, never failed for being unrunnable", () => {
+    expect(MET_REQUIRES_RUN_RULE).toContain("verified by the host before acceptance");
+    expect(MET_REQUIRES_RUN_RULE).not.toMatch(/mark that criterion `failed`/);
+  });
+});

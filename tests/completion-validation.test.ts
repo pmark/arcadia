@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
+import { changedTestFiles, COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
 import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 
 // Issue #1599: which test files an Action's acceptance criteria name. The
@@ -147,4 +147,48 @@ describe("criteria-required command bound and timeout message", () => {
     const result = validateCompletionCandidate(fixture("sleep 3"), { unconfinedForTests: true, timeoutMs: 1_000 });
     expect(result).toMatchObject({ status: "refused", timedOut: true, reason: expect.stringContaining("the validation did not finish within 1s, the bound on the whole validation") });
   }, 60_000);
+});
+
+// Issue #2905: a headless Session cannot run the tests it adds, so the host runs them before acceptance.
+describe("changedTestFiles", () => {
+  const roots: string[] = [];
+  afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+  const git = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@example.test", "-c", "commit.gpgsign=false", ...args], { cwd, stdio: "pipe" }).toString().trim();
+
+  it("lists committed and untracked added or modified test files, never a deleted or non-test file", () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "changed-tests-")));
+    roots.push(root);
+    git(root, "init", "-q");
+    mkdirSync(path.join(root, "tests"));
+    mkdirSync(path.join(root, "src"));
+    for (const file of ["tests/keep.test.ts", "tests/gone.test.ts", "src/a.ts"]) writeFileSync(path.join(root, file), "x\n");
+    git(root, "add", "-A"); git(root, "commit", "-q", "-m", "base");
+    const base = git(root, "rev-parse", "HEAD");
+    writeFileSync(path.join(root, "tests/keep.test.ts"), "changed\n");
+    writeFileSync(path.join(root, "tests/added.test.ts"), "new\n");
+    writeFileSync(path.join(root, "src/a.ts"), "changed\n");
+    rmSync(path.join(root, "tests/gone.test.ts"));
+    git(root, "add", "-A"); git(root, "commit", "-q", "-m", "candidate");
+    writeFileSync(path.join(root, "tests/untracked.test.ts"), "u\n");
+    writeFileSync(path.join(root, "tests/helper.ts"), "h\n");
+    expect(changedTestFiles(root, base)).toEqual(["tests/added.test.ts", "tests/keep.test.ts", "tests/untracked.test.ts"]);
+  });
+
+  it("is empty outside a git worktree", () => {
+    expect(changedTestFiles("/nonexistent", "HEAD")).toEqual([]);
+  });
+
+  it("is not required when only candidate-changed tests exist and the host cannot run them (no workspace)", () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "changed-tests-")));
+    roots.push(root);
+    git(root, "init", "-q");
+    mkdirSync(path.join(root, "tests"));
+    writeFileSync(path.join(root, "README.md"), "x\n");
+    git(root, "add", "-A"); git(root, "commit", "-q", "-m", "base");
+    const base = git(root, "rev-parse", "HEAD");
+    writeFileSync(path.join(root, "tests/new.test.ts"), "n\n");
+    git(root, "add", "-A"); git(root, "commit", "-q", "-m", "candidate");
+    expect(validateCompletionCandidate({ repository: root, worktree: root, base, workspace: undefined, commands: ["true"], acceptanceCriteria: ["The contract exists."] }))
+      .toEqual({ status: "not_required" });
+  });
 });
