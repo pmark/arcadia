@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { changedTestFiles, COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
+import { changedTestFiles, changesTypeScript, hostRequiredChecks, COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
 import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 
 // Issue #1599: which test files an Action's acceptance criteria name. The
@@ -206,6 +206,92 @@ describe("changedTestFiles", () => {
     roots.push(workspace);
     const result = validateCompletionCandidate({ repository: root, worktree: root, base, workspace, commands: ["true"], acceptanceCriteria: ["The contract exists."] }, { unconfinedForTests: true });
     expect(result.status === "refused" && result.hostFault).toBe(false);
+  });
+});
+
+// Issue #2919: a headless worker cannot run tsc, so the host typechecks a candidate that changes TypeScript before acceptance.
+describe("host typecheck at pre-acceptance", () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+  const tmp = (prefix: string) => { const dir = realpathSync(mkdtempSync(path.join(tmpdir(), prefix))); dirs.push(dir); return dir; };
+
+  function fixture(source: string, options: { tsconfig?: boolean; file?: string } = {}) {
+    const repository = tmp("typecheck-repo-");
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: repository, encoding: "utf8" }).trim();
+    git("init", "-q");
+    mkdirSync(path.join(repository, "src"), { recursive: true });
+    writeFileSync(path.join(repository, "package.json"), JSON.stringify({ name: "fixture", private: true }, null, 2));
+    if (options.tsconfig !== false) writeFileSync(path.join(repository, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: "es2022", module: "esnext", moduleResolution: "bundler" }, include: ["src"] }));
+    writeFileSync(path.join(repository, "src", "base.ts"), "export const base: number = 1;\n");
+    git("add", "."); git("commit", "-q", "-m", "base");
+    const base = git("rev-parse", "HEAD");
+    mkdirSync(path.dirname(path.join(repository, options.file ?? "src/candidate.ts")), { recursive: true });
+    writeFileSync(path.join(repository, options.file ?? "src/candidate.ts"), source);
+    git("add", "."); git("commit", "-q", "-m", "candidate");
+    const workspace = tmp("typecheck-workspace-");
+    return { repository, worktree: repository, base, workspace, commands: ["true"], acceptanceCriteria: ["The contract exists."] };
+  }
+  const validate = (candidate: ReturnType<typeof fixture>, dependencyRoot = process.cwd()) =>
+    validateCompletionCandidate(candidate, { unconfinedForTests: true, dependencyRoot });
+
+  it("detects a changed or added TypeScript file, never a deleted, non-TypeScript or dependency one", () => {
+    const candidate = fixture("export const x = 1;\n");
+    expect(changesTypeScript(candidate.worktree, candidate.base)).toBe(true);
+    const docs = fixture("# notes\n", { file: "README.md" });
+    expect(changesTypeScript(docs.worktree, docs.base)).toBe(false);
+    const vendored = fixture("export const y = 1;\n", { file: "node_modules/pkg/index.ts" });
+    expect(changesTypeScript(vendored.worktree, vendored.base)).toBe(false);
+    expect(changesTypeScript("/nonexistent", "HEAD")).toBe(false);
+    // Review of #2922: Git quotes a name containing a quote unless the listing is NUL-delimited.
+    const quoted = fixture("export const q = 1;\n", { file: 'src/a"b.ts' });
+    expect(changesTypeScript(quoted.worktree, quoted.base)).toBe(true);
+    // Review of #2922: a leading space in the first name must not be trimmed into a node_modules path.
+    const spaced = fixture("export const s = 1;\n", { file: " node_modules/pkg/a.ts" });
+    expect(changesTypeScript(spaced.worktree, spaced.base)).toBe(true);
+  });
+
+  it("refuses a candidate whose changed TypeScript has a type error, naming the tsc command (not a host fault)", () => {
+    const result = validate(fixture("export const wrong: number = \"not a number\";\n"));
+    expect(result).toMatchObject({ status: "refused", hostFault: false, failures: ["pnpm exec tsc --noEmit"], reason: expect.stringMatching(/exited [1-9]/) });
+    expect(result.status === "refused" && result.reason).toMatch(/TS2322/);
+  }, 120_000);
+
+  it("passes a candidate whose changed TypeScript typechecks", () => {
+    expect(validate(fixture("export const fine: number = 2;\n"))).toMatchObject({ status: "passed", namedTests: [], commands: expect.arrayContaining(["pnpm exec tsc --noEmit"]) });
+  }, 120_000);
+
+  it("returns not_required, never a hold, when the host cannot typecheck (compiler not installed): CI stays the proof", () => {
+    const bare = tmp("typecheck-no-deps-");
+    expect(validate(fixture("export const wrong: number = \"x\";\n"), bare)).toEqual({ status: "not_required" });
+  }, 120_000);
+
+  it("is not required for a Project with no root tsconfig.json, which `tsc --noEmit` would refuse for every candidate", () => {
+    expect(validate(fixture("export const wrong: number = \"x\";\n", { tsconfig: false }))).toEqual({ status: "not_required" });
+  }, 120_000);
+
+  it("keeps the whole validation inside the existing 900-second cap and the tsc command at its 120-second bound", () => {
+    expect(COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS["pnpm exec tsc --noEmit"]).toBe(COMPLETION_COMMAND_TIMEOUT_MS);
+    expect(COMPLETION_VALIDATION_TIMEOUT_MS).toBe(900_000);
+  });
+
+  // Review of #2922 (blocking 1): tsc never reads package.json scripts, so a candidate that also edits package.json is not refused.
+  it("does not bind package.json for the typecheck: a candidate that edits package.json and TypeScript passes", () => {
+    const candidate = fixture("export const fine: number = 3;\n");
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: candidate.repository, encoding: "utf8" }).trim();
+    writeFileSync(path.join(candidate.repository, "package.json"), JSON.stringify({ name: "fixture", private: true, scripts: { extra: "true" } }, null, 2));
+    git("add", "."); git("commit", "-q", "-m", "also edit package.json");
+    expect(validate(candidate)).toMatchObject({ status: "passed", commands: expect.arrayContaining(["pnpm exec tsc --noEmit"]) });
+  }, 120_000);
+
+  // Review of #2922 (blocking 2): the operator supplement derives its commands from the same helper, so its recorded commands match the host's.
+  it("derives the host-required checks once, for the host and the operator supplement", () => {
+    const withTs = fixture("export const z: number = 4;\n");
+    expect(hostRequiredChecks(["tests/n.test.ts passes."], withTs.worktree, withTs.base)).toEqual(["pnpm exec tsc --noEmit"]);
+    expect(hostRequiredChecks(["tests/n.test.ts passes.", "tsc passes."], withTs.worktree, withTs.base)).toEqual(["pnpm exec tsc --noEmit"]);
+    const docsOnly = fixture("# notes\n", { file: "README.md" });
+    expect(hostRequiredChecks(["tests/n.test.ts passes."], docsOnly.worktree, docsOnly.base)).toEqual([]);
+    const noConfig = fixture("export const z = 1;\n", { tsconfig: false });
+    expect(hostRequiredChecks(["tests/n.test.ts passes."], noConfig.worktree, noConfig.base)).toEqual([]);
   });
 });
 

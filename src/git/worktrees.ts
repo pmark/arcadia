@@ -277,6 +277,14 @@ export function tryGitWithStderr(cwd: string, args: string[], env: NodeJS.Proces
   return { stdout: null, stderr: line.length > maxChars ? `${line.slice(0, maxChars)}...` : line };
 }
 
+/** Like {@link tryGit} but returns stdout exactly as Git wrote it (no trimming), for NUL-delimited path listings whose first name may begin with whitespace. */
+export function tryGitUntrimmed(cwd: string, args: string[], env: NodeJS.ProcessEnv = process.env): string | null {
+  const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const timeout = preservationTimeout(result.error, "git", args, cwd);
+  if (timeout) throw timeout;
+  return result.status === 0 ? result.stdout : null;
+}
+
 /** Null only for a genuine non-zero exit; a timeout throws its typed error. */
 export function tryGit(cwd: string, args: string[], env: NodeJS.ProcessEnv = process.env): string | null {
   const result = spawnSync("git", args, { ...preservationProcessLimits("git", args), cwd, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });

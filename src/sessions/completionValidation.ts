@@ -7,7 +7,7 @@ import { performance } from "node:perf_hooks";
 import { normalizeError } from "../cli/errors.js";
 import { materializeCandidateTree, snapshotCandidate } from "./candidateSnapshot.js";
 import { bindCheckDefinitions } from "./preservationCheckBinding.js";
-import { tryGit } from "../git/worktrees.js";
+import { tryGitUntrimmed } from "../git/worktrees.js";
 
 /**
  * Issue #1599: a Session's drafted completion was accepted while the test
@@ -167,22 +167,51 @@ const TEST_FILE_PATH = new RegExp(`^${NAMED_TEST_FILE.source}$`);
  * or not), so the host runs the tests a headless Session cannot run. Only paths
  * shaped like a named test file qualify; a deleted file is not listed.
  */
-export function changedTestFiles(worktree: string, base: string): string[] {
+/** Paths the candidate adds or modifies (committed or untracked); a stalled or failing git read lists none. */
+function changedPaths(worktree: string, base: string): string[] {
   let listing: string;
   try {
-    const changed = tryGit(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", base]) ?? "";
-    const untracked = tryGit(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"]) ?? "";
-    listing = `${changed}\n${untracked}`;
+    const changed = tryGitUntrimmed(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", "-z", base]) ?? "";
+    const untracked = tryGitUntrimmed(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z"]) ?? "";
+    // NUL-delimited: without -z Git quotes and escapes a name containing a quote or other special character, which would hide its extension.
+    listing = `${changed}\0${untracked}`;
   } catch {
-    // A stalled or failing git read only means no extra tests are added; named tests and required CI are unaffected.
+    // A stalled or failing git read only means nothing extra is checked; named tests and required CI are unaffected.
     return [];
   }
   const files: string[] = [];
-  for (const line of listing.split("\n")) {
-    const file = line.trim();
-    if (file && TEST_FILE_PATH.test(file) && !file.split("/").some((segment) => segment === "." || segment === "..") && !files.includes(file)) files.push(file);
+  for (const file of listing.split("\0")) {
+    if (file && !file.split("/").some((segment) => segment === "." || segment === "..") && !files.includes(file)) files.push(file);
   }
   return files.sort();
+}
+
+export function changedTestFiles(worktree: string, base: string): string[] {
+  return changedPaths(worktree, base).filter((file) => TEST_FILE_PATH.test(file));
+}
+
+const TYPESCRIPT_FILE = /\.(?:ts|tsx|mts|cts)$/;
+const TYPECHECK_COMMAND = "pnpm exec tsc --noEmit";
+
+/**
+ * Issue #2919: a headless worker cannot run `tsc` (Decision 0136), so a type error it writes used to pass
+ * pre-acceptance and fail every required CI job on the pull request. True when the candidate adds or changes
+ * any TypeScript file, outside dependency trees; the host then typechecks the candidate's exact tree.
+ */
+export function changesTypeScript(worktree: string, base: string): boolean {
+  return changedPaths(worktree, base).some((file) => TYPESCRIPT_FILE.test(file) && !file.split("/").includes("node_modules"));
+}
+
+/**
+ * The checks the host runs for a candidate beyond its Project's declared commands: those the criteria require, plus
+ * (Issue #2919) a typecheck when it changes TypeScript in a Project with a root tsconfig.json (`tsc --noEmit` without
+ * one prints usage and would refuse every candidate). Shared with the operator supplement so its recorded commands
+ * match what the host ran.
+ */
+export function hostRequiredChecks(criteria: readonly string[], worktree: string, base: string): string[] {
+  const required = criteriaValidationCommands(criteria);
+  if (existsSync(path.join(worktree, "tsconfig.json")) && changesTypeScript(worktree, base) && !required.includes(TYPECHECK_COMMAND)) required.push(TYPECHECK_COMMAND);
+  return required;
 }
 
 /** The test files an Action's acceptance criteria name explicitly as files (not as data, and not removed), in first-mention order. */
@@ -351,9 +380,10 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
   // Issue #2905: also the tests the candidate adds or changes, named files first, within the same cap.
   const added = changedTestFiles(candidate.worktree, candidate.base).filter((file) => !criteriaNamed.includes(file));
   let namedTests = [...criteriaNamed, ...added.slice(0, Math.max(0, MAX_NAMED_TEST_FILES - criteriaNamed.length))];
-  const requiredChecks = criteriaValidationCommands(candidate.acceptanceCriteria);
+  const requiredChecks = hostRequiredChecks(candidate.acceptanceCriteria, candidate.worktree, candidate.base);
+  const typechecked = requiredChecks.includes(TYPECHECK_COMMAND);
   const commands = [...new Set([...candidate.commands, ...requiredChecks])];
-  if (namedTests.length === 0) return { status: "not_required" };
+  if (namedTests.length === 0 && !typechecked) return { status: "not_required" };
   // Only candidate-changed tests (no criterion names a file): when the host cannot run them, the required CI checks stay the proof.
   if (!criteriaNamed.length && ((process.platform !== "darwin" && !options.unconfinedForTests) || !candidate.workspace || !candidate.commands.length)) return { status: "not_required" };
   let outcome: CompletionValidationResult | undefined;
@@ -382,7 +412,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     tree = snapshotCandidate(candidate.worktree, candidate.base);
     // A check the candidate rewrote cannot judge it.
     // A required lint script is owned by the authorized base, never by its candidate.
-    bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands, ...(requiredChecks.length ? ["node package.json"] : [])]);
+    bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands, ...(requiredChecks.includes("pnpm lint") ? ["node package.json"] : [])]);
   } catch (error) {
     return stopped("captured for validation", error) ?? deny(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
   }
@@ -404,7 +434,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     }
     // A changed test the materialized tree lacks (for example an ignored file) is skipped; a criteria-named one is still refused below.
     namedTests = namedTests.filter((file) => criteriaNamed.includes(file) || lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
-    if (namedTests.length === 0) { skipEvidence = true; return { status: "not_required" }; }
+    if (namedTests.length === 0 && !typechecked) { skipEvidence = true; return { status: "not_required" }; }
     const missing = criteriaNamed.filter((file) => !lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
     if (missing.length) return deny("the candidate does not contain every test file its acceptance criteria name.", missing.map((file) => `${file} (missing)`));
     const vitest = declaresVitest(source);
@@ -421,7 +451,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
       }
     }
     const runner = path.join(source, "node_modules", "vitest", "vitest.mjs");
-    if (vitest && !existsSync(runner)) return unavailable("the Project's test runner (vitest) is not installed in its checkout; install its dependencies there.");
+    if (vitest && namedTests.length > 0 && !existsSync(runner)) return unavailable("the Project's test runner (vitest) is not installed in its checkout; install its dependencies there.");
 
     // Corepack in a private HOME may try to download pnpm. Run only the frozen
     // lint script and installed TypeScript entrypoint, with the same dependency
@@ -500,6 +530,9 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
       if (result.error) return unavailable(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
       if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.${result.output ? ` ${result.output}` : ""}`, [command]);
     }
+
+    // Typecheck only (no test file to run): the commands above were the whole validation. Never call vitest with no files.
+    if (namedTests.length === 0) return finish({ status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) });
 
     if (!vitest) {
       // Plain JavaScript tests: Node's own runner, one file at a time so each
