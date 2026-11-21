@@ -171,16 +171,16 @@ const TEST_FILE_PATH = new RegExp(`^${NAMED_TEST_FILE.source}$`);
 function changedPaths(worktree: string, base: string): string[] {
   let listing: string;
   try {
-    const changed = tryGit(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", base]) ?? "";
-    const untracked = tryGit(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"]) ?? "";
-    listing = `${changed}\n${untracked}`;
+    const changed = tryGit(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", "-z", base]) ?? "";
+    const untracked = tryGit(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z"]) ?? "";
+    // NUL-delimited: without -z Git quotes and escapes a name containing a quote or other special character, which would hide its extension.
+    listing = `${changed}\0${untracked}`;
   } catch {
     // A stalled or failing git read only means nothing extra is checked; named tests and required CI are unaffected.
     return [];
   }
   const files: string[] = [];
-  for (const line of listing.split("\n")) {
-    const file = line.trim();
+  for (const file of listing.split("\0")) {
     if (file && !file.split("/").some((segment) => segment === "." || segment === "..") && !files.includes(file)) files.push(file);
   }
   return files.sort();

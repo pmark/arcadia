@@ -242,6 +242,9 @@ describe("host typecheck at pre-acceptance", () => {
     const vendored = fixture("export const y = 1;\n", { file: "node_modules/pkg/index.ts" });
     expect(changesTypeScript(vendored.worktree, vendored.base)).toBe(false);
     expect(changesTypeScript("/nonexistent", "HEAD")).toBe(false);
+    // Review of #2922: Git quotes a name containing a quote unless the listing is NUL-delimited.
+    const quoted = fixture("export const q = 1;\n", { file: 'src/a"b.ts' });
+    expect(changesTypeScript(quoted.worktree, quoted.base)).toBe(true);
   });
 
   it("refuses a candidate whose changed TypeScript has a type error, naming the tsc command (not a host fault)", () => {
