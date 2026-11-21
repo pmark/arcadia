@@ -43,7 +43,7 @@ const CONTRADICTIONS: ReadonlyArray<{ pattern: RegExp; negatable: boolean }> = [
   { pattern: /\bdeferred\s+(?:to|until|till|pending|for|post)\b[^.;\n]*/gi, negatable: true },
   { pattern: /\bpending\s+(?:the\s+)?(?:(?:PR|pull\s+request)\b|merge[ds]?\b|review\b)[^.;\n]*/gi, negatable: true },
   // Issue #2905: a test the Session could not run (sandbox refusal) is not a pass.
-  { pattern: /\bunrun\b/gi, negatable: false },
+  { pattern: /\bunrun\b/gi, negatable: true },
   { pattern: /\bunable\s+to\s+(?:run|execute|verify)\b/gi, negatable: true },
   // Only a command, permission or sandbox refusal; "asserts the merge was refused: 4 passed" is an honest test description.
   { pattern: /\b(?:command|pnpm|vitest|tsc|permission|sandbox)\b(?:\s+\S+){0,3}?\s+(?:was|were)\s+(?:refused|denied)\b[^.;\n]*/gi, negatable: true },

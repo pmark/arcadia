@@ -191,4 +191,21 @@ describe("changedTestFiles", () => {
     expect(validateCompletionCandidate({ repository: root, worktree: root, base, workspace: undefined, commands: ["true"], acceptanceCriteria: ["The contract exists."] }))
       .toEqual({ status: "not_required" });
   });
+
+  it("never holds a candidate on a host fault for tests only it added or changed: CI stays the proof", () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "changed-tests-")));
+    roots.push(root);
+    git(root, "init", "-q");
+    mkdirSync(path.join(root, "tests"));
+    writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "fixture", private: true, devDependencies: { vitest: "*" } }));
+    git(root, "add", "-A"); git(root, "commit", "-q", "-m", "base");
+    const base = git(root, "rev-parse", "HEAD");
+    writeFileSync(path.join(root, "tests/new.test.ts"), "n\n");
+    git(root, "add", "-A"); git(root, "commit", "-q", "-m", "candidate");
+    const workspace = realpathSync(mkdtempSync(path.join(tmpdir(), "changed-tests-ws-")));
+    roots.push(workspace);
+    const result = validateCompletionCandidate({ repository: root, worktree: root, base, workspace, commands: ["true"], acceptanceCriteria: ["The contract exists."] }, { unconfinedForTests: true });
+    expect(result.status === "refused" && result.hostFault).toBe(false);
+  });
 });
+

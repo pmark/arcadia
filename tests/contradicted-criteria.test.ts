@@ -75,5 +75,10 @@ describe("contradicted met criteria", () => {
   it("still refuses an honest admission that a command was refused", () => {
     expect(contradictedCriteriaRefusal([entry("The vitest command was refused, so the test was never observed.")])).not.toBeNull();
   });
+
+  it("allows a negated statement about unrun tests but still refuses an affirmative one", () => {
+    expect(contradictedCriteriaRefusal([entry("No tests were left unrun: 4 passed.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("The new test is unrun.")])).not.toBeNull();
+  });
 });
 

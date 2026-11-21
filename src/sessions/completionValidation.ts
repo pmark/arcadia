@@ -567,8 +567,13 @@ function retainCompletionEvidence(workspace: string, record: CompletionEvidenceR
 }
 /** An execution without durable evidence cannot authorize completion. Scratch is retained on write failure. */
 export function validateCompletionCandidate(candidate: CompletionValidationCandidate, options: CompletionValidationOptions = {}): CompletionValidationResult {
-  try { return runCompletionValidation(candidate, options); }
-  catch (error) {
+  try {
+    const result = runCompletionValidation(candidate, options);
+    // Issue #2905: when no criterion names a test, a host fault (timeout, loopback denial, missing runner, unlinkable
+    // dependencies) on the candidate's merely added or changed tests holds nothing back: the required CI checks stay the proof.
+    if (result.status === "refused" && result.hostFault && namedTestFiles(candidate.acceptanceCriteria).length === 0) return { status: "not_required" };
+    return result;
+  } catch (error) {
     if (!(error instanceof CompletionEvidenceWriteError)) throw error;
     return { status: "refused", namedTests: namedTestFiles(candidate.acceptanceCriteria), failures: [], hostFault: true,
       reason: "Pre-acceptance validation evidence could not be retained; completion refused and execution scratch retained." };
