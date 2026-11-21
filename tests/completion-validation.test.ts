@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { changedTestFiles, changesTypeScript, COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
+import { changedTestFiles, changesTypeScript, hostRequiredChecks, COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
 import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 
 // Issue #1599: which test files an Action's acceptance criteria name. The
@@ -266,6 +266,26 @@ describe("host typecheck at pre-acceptance", () => {
   it("keeps the whole validation inside the existing 900-second cap and the tsc command at its 120-second bound", () => {
     expect(COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS["pnpm exec tsc --noEmit"]).toBe(COMPLETION_COMMAND_TIMEOUT_MS);
     expect(COMPLETION_VALIDATION_TIMEOUT_MS).toBe(900_000);
+  });
+
+  // Review of #2922 (blocking 1): tsc never reads package.json scripts, so a candidate that also edits package.json is not refused.
+  it("does not bind package.json for the typecheck: a candidate that edits package.json and TypeScript passes", () => {
+    const candidate = fixture("export const fine: number = 3;\n");
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: candidate.repository, encoding: "utf8" }).trim();
+    writeFileSync(path.join(candidate.repository, "package.json"), JSON.stringify({ name: "fixture", private: true, scripts: { extra: "true" } }, null, 2));
+    git("add", "."); git("commit", "-q", "-m", "also edit package.json");
+    expect(validate(candidate)).toMatchObject({ status: "passed", commands: expect.arrayContaining(["pnpm exec tsc --noEmit"]) });
+  }, 120_000);
+
+  // Review of #2922 (blocking 2): the operator supplement derives its commands from the same helper, so its recorded commands match the host's.
+  it("derives the host-required checks once, for the host and the operator supplement", () => {
+    const withTs = fixture("export const z: number = 4;\n");
+    expect(hostRequiredChecks(["tests/n.test.ts passes."], withTs.worktree, withTs.base)).toEqual(["pnpm exec tsc --noEmit"]);
+    expect(hostRequiredChecks(["tests/n.test.ts passes.", "tsc passes."], withTs.worktree, withTs.base)).toEqual(["pnpm exec tsc --noEmit"]);
+    const docsOnly = fixture("# notes\n", { file: "README.md" });
+    expect(hostRequiredChecks(["tests/n.test.ts passes."], docsOnly.worktree, docsOnly.base)).toEqual([]);
+    const noConfig = fixture("export const z = 1;\n", { tsconfig: false });
+    expect(hostRequiredChecks(["tests/n.test.ts passes."], noConfig.worktree, noConfig.base)).toEqual([]);
   });
 });
 

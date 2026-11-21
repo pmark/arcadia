@@ -22,7 +22,7 @@ import { getSessionRepair } from "./reviewRepair.js";
 import { createArtifactRecord, getArtifact, getProjectMetadata } from "../db/repositories.js";
 import { decodeStringArray } from "../projects/setup.js";
 import { claimedFileChangeRefusal } from "./claimedFileChanges.js";
-import { criteriaValidationCommands, namedTestFiles, validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
+import { hostRequiredChecks, namedTestFiles, validateCompletionCandidate, type CompletionValidationOptions, type CompletionValidationResult } from "./completionValidation.js";
 import { candidateScopeRefusal, isGovernedRecordPath, settlementRecordPaths } from "./scopeCriteria.js";
 import { completionExecutionPassed, completionSupplementDirectory, writeSupplementFile, type CompletionSupplementEnvelope, type CompletionSupplementBinding, type CompletionSupplementPin, readCompletionEvidence, type CompletionEvidenceBinding, type CompletionEvidenceReference, type CompletionEvidenceView } from "./completionValidationEvidence.js";
 import { classifyPatchApplicability } from "../qa/patchApplicability.js";
@@ -1056,7 +1056,7 @@ export function completionSupplementState(db: Database.Database, workspace: stri
   const criteria = actionCriteriaAtBase(session, plan.relativePath);
   if (!criteria || !namedTestFiles(criteria).length) throw new Error("Supplement requires the original named-test criteria.");
   const metadataCommands = decodeStringArray(getProjectMetadata(db, session.project_id)?.validation_commands);
-  const commands = [...new Set([...metadataCommands, ...criteriaValidationCommands(criteria)])];
+  const commands = [...new Set([...metadataCommands, ...hostRequiredChecks(criteria, session.worktree_path, session.base_revision)])];
   const row = db.prepare("SELECT receipt_json FROM candidate_preservation_receipts WHERE request_id = ?")
     .get(`worker-tick-preserve-${session.id}`) as { receipt_json: string } | undefined;
   if (!row) throw new Error("Supplement requires the original worker preservation receipt.");

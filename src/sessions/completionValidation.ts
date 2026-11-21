@@ -202,6 +202,18 @@ export function changesTypeScript(worktree: string, base: string): boolean {
   return changedPaths(worktree, base).some((file) => TYPESCRIPT_FILE.test(file) && !file.split("/").includes("node_modules"));
 }
 
+/**
+ * The checks the host runs for a candidate beyond its Project's declared commands: those the criteria require, plus
+ * (Issue #2919) a typecheck when it changes TypeScript in a Project with a root tsconfig.json (`tsc --noEmit` without
+ * one prints usage and would refuse every candidate). Shared with the operator supplement so its recorded commands
+ * match what the host ran.
+ */
+export function hostRequiredChecks(criteria: readonly string[], worktree: string, base: string): string[] {
+  const required = criteriaValidationCommands(criteria);
+  if (existsSync(path.join(worktree, "tsconfig.json")) && changesTypeScript(worktree, base) && !required.includes(TYPECHECK_COMMAND)) required.push(TYPECHECK_COMMAND);
+  return required;
+}
+
 /** The test files an Action's acceptance criteria name explicitly as files (not as data, and not removed), in first-mention order. */
 export function namedTestFiles(criteria: readonly string[]): string[] {
   const found: string[] = [];
@@ -368,11 +380,8 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
   // Issue #2905: also the tests the candidate adds or changes, named files first, within the same cap.
   const added = changedTestFiles(candidate.worktree, candidate.base).filter((file) => !criteriaNamed.includes(file));
   let namedTests = [...criteriaNamed, ...added.slice(0, Math.max(0, MAX_NAMED_TEST_FILES - criteriaNamed.length))];
-  const requiredChecks = criteriaValidationCommands(candidate.acceptanceCriteria);
-  // Issue #2919: a candidate that changes TypeScript is typechecked on the host, whether or not a criterion says "tsc passes".
-  // Only a Project with a root tsconfig.json: `tsc --noEmit` without one prints usage and would refuse every TypeScript candidate.
-  const typechecked = existsSync(path.join(candidate.worktree, "tsconfig.json")) && changesTypeScript(candidate.worktree, candidate.base);
-  if (typechecked && !requiredChecks.includes(TYPECHECK_COMMAND)) requiredChecks.push(TYPECHECK_COMMAND);
+  const requiredChecks = hostRequiredChecks(candidate.acceptanceCriteria, candidate.worktree, candidate.base);
+  const typechecked = requiredChecks.includes(TYPECHECK_COMMAND);
   const commands = [...new Set([...candidate.commands, ...requiredChecks])];
   if (namedTests.length === 0 && !typechecked) return { status: "not_required" };
   // Only candidate-changed tests (no criterion names a file): when the host cannot run them, the required CI checks stay the proof.
@@ -403,7 +412,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     tree = snapshotCandidate(candidate.worktree, candidate.base);
     // A check the candidate rewrote cannot judge it.
     // A required lint script is owned by the authorized base, never by its candidate.
-    bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands, ...(requiredChecks.length ? ["node package.json"] : [])]);
+    bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands, ...(requiredChecks.includes("pnpm lint") ? ["node package.json"] : [])]);
   } catch (error) {
     return stopped("captured for validation", error) ?? deny(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
   }
