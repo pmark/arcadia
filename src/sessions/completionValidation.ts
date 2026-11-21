@@ -168,10 +168,17 @@ const TEST_FILE_PATH = new RegExp(`^${NAMED_TEST_FILE.source}$`);
  * shaped like a named test file qualify; a deleted file is not listed.
  */
 export function changedTestFiles(worktree: string, base: string): string[] {
-  const changed = tryGit(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", base]) ?? "";
-  const untracked = tryGit(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"]) ?? "";
+  let listing: string;
+  try {
+    const changed = tryGit(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", base]) ?? "";
+    const untracked = tryGit(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"]) ?? "";
+    listing = `${changed}\n${untracked}`;
+  } catch {
+    // A stalled or failing git read only means no extra tests are added; named tests and required CI are unaffected.
+    return [];
+  }
   const files: string[] = [];
-  for (const line of `${changed}\n${untracked}`.split("\n")) {
+  for (const line of listing.split("\n")) {
     const file = line.trim();
     if (file && TEST_FILE_PATH.test(file) && !file.split("/").some((segment) => segment === "." || segment === "..") && !files.includes(file)) files.push(file);
   }
@@ -386,6 +393,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
   mkdirSync(source); mkdirSync(scratch);
   const startedAt = performance.now();
   let terminalProven = true;
+  let skipEvidence = false;
   const executions: CompletionExecution[] = [];
   const reports: CompletionEvidenceRecord["reports"] = [];
   try {
@@ -396,7 +404,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     }
     // A changed test the materialized tree lacks (for example an ignored file) is skipped; a criteria-named one is still refused below.
     namedTests = namedTests.filter((file) => criteriaNamed.includes(file) || lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
-    if (namedTests.length === 0) return { status: "not_required" };
+    if (namedTests.length === 0) { skipEvidence = true; return { status: "not_required" }; }
     const missing = criteriaNamed.filter((file) => !lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
     if (missing.length) return deny("the candidate does not contain every test file its acceptance criteria name.", missing.map((file) => `${file} (missing)`));
     const vitest = declaresVitest(source);
@@ -539,7 +547,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     if (unproven.length) return deny("vitest exited 0 but did not report a passing test for every named file.", unproven);
     return finish({ status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) });
   } finally {
-    if (candidate.evidenceBinding && candidate.workspace) {
+    if (candidate.evidenceBinding && candidate.workspace && !skipEvidence) {
       {
         const reference = retainCompletionEvidence(candidate.workspace, { version: 1, producer: "arcadia-completion-validation-v1", binding: candidate.evidenceBinding,
           tree, commands, namedTests, executions, reports, outcome: outcome?.status === "passed" ? "passed" : "refused",

@@ -653,5 +653,7 @@ describe("headless allow list stays criteria-bound", () => {
   it("tells a Session its added tests are the host's to run, never failed for being unrunnable", () => {
     expect(MET_REQUIRES_RUN_RULE).toContain("verified by the host before acceptance");
     expect(MET_REQUIRES_RUN_RULE).not.toMatch(/mark that criterion `failed`/);
+    // The words the rule prescribes must not themselves be a contradicted-criterion admission.
+    expect(MET_REQUIRES_RUN_RULE).not.toMatch(/\bnot\s+run\b/i);
   });
 });

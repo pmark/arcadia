@@ -124,7 +124,7 @@ export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "the host runs this check, not thi
  * unchanged), but the host runs it before acceptance, so it is deferred, never
  * claimed as passed and never a reason to mark the criterion `failed`.
  */
-export const MET_REQUIRES_RUN_RULE = "A `met` note that cites a test must say you ran it and quote its result (for example `1 passed`). A test you added or changed that this Session cannot run is verified by the host before acceptance: say you did not run it and add the words below, and never claim a pass from reading code.";
+export const MET_REQUIRES_RUN_RULE = "A `met` note that cites a test must say you ran it and quote its result (for example `1 passed`). A test you added or changed that this Session cannot run is verified by the host before acceptance: say the host runs it, not this Session, using the words given for checks the host runs, and never claim a pass from reading code.";
 
 /**
  * The draft-only completion block for a Session that cannot commit: one exact

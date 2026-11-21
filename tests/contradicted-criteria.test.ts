@@ -65,4 +65,15 @@ describe("contradicted met criteria", () => {
     expect(contradictedCriteriaRefusal([entry("Deferred to a later Action only if the cache is cold; it was not, so all 3 tests ran.")])).toBeNull();
     expect(contradictedMetCriteria([entry("The unfixed code was not yet done in this path. Tests pass.")])).toEqual([]);
   });
+
+  // Review of #2913: the brief's own wording must never trip the guard, and an honest test description stays honest.
+  it("accepts the brief's host-runs wording for a test the Session added", () => {
+    expect(contradictedCriteriaRefusal([entry(`Added tests/new.test.ts, which asserts the merge guard. ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`)])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("`arcadia agent-ask settle` was refused when evidence was missing (the test asserts this): 5 passed")])).toBeNull();
+  });
+
+  it("still refuses an honest admission that a command was refused", () => {
+    expect(contradictedCriteriaRefusal([entry("The vitest command was refused, so the test was never observed.")])).not.toBeNull();
+  });
 });
+

@@ -46,7 +46,7 @@ const CONTRADICTIONS: ReadonlyArray<{ pattern: RegExp; negatable: boolean }> = [
   { pattern: /\bunrun\b/gi, negatable: false },
   { pattern: /\bunable\s+to\s+(?:run|execute|verify)\b/gi, negatable: true },
   // Only a command, permission or sandbox refusal; "asserts the merge was refused: 4 passed" is an honest test description.
-  { pattern: /\b(?:command|pnpm|vitest|tsc|arcadia|permission|sandbox)\b[^.;\n]*?\b(?:was|were)\s+(?:refused|denied)\b[^.;\n]*/gi, negatable: true },
+  { pattern: /\b(?:command|pnpm|vitest|tsc|permission|sandbox)\b(?:\s+\S+){0,3}?\s+(?:was|were)\s+(?:refused|denied)\b[^.;\n]*/gi, negatable: true },
   { pattern: /\b(?:refused|denied|blocked)\s+by\s+(?:the\s+)?(?:sandbox|permission)[^.;\n]*/gi, negatable: true },
   { pattern: /\bwill\s+(?:be\s+)?(?:done|run|closed|merged|verified)\s+(?:after|once|when|upon)\b[^.;\n]*/gi, negatable: true }
 ];
