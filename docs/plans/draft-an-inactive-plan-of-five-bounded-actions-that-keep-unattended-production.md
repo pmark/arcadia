@@ -681,7 +681,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask build-the-checkpoint-field
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-checkpoint-field-20261120a
+    source: Agent Ask ellis-amend-plan-f-checkpoint-headline-precedence-20261120
     why: "Decision 0274 adopted Checkpoints as what a Plan reaches, but no governed path can write a list into a Plan today, so no Plan can carry one."
     acceptance_criteria:
       - "A fixture test shows a `plan` Agent Ask carrying a new top-level `checkpoints` field (accepted only for intent plan) is settled into the Plan frontmatter as an ordered `checkpoints:` list, each item recording its state text, `actions:` (Action ids) and `receipt:`, with the last item reported as the headline."
@@ -693,6 +693,7 @@ actions:
       - "The Milestone entry in docs/arcadia-semantics.md and a new Checkpoint entry quote Decision 0274's answered definitions word for word, docs/agent-guidance/source-references.json carries the edited file's new sha256, and `pnpm check:agent-guidance` passes."
       - "During the window the existing `milestone:` writers (settlement activation, the plan amendment of `milestone`, and the `milestone` Agent Ask intent) keep their behaviour and their existing tests pass unchanged; the PR description lists each as follow-up for the rename after cutover."
       - The PR changes no file under docs/decisions/, not PROJECT.md, and no docs/plans/ file other than the Plan F completion record that settlement writes for this Action; it ships no Roadmap view, and its description names the follow-up migration amendments.
+      - "When a Plan carries both `milestone:` and `checkpoints:`, docs sync takes the last Checkpoint as the Plan's headline and as the value other readers use for the Plan's milestone, consistently with the milestones-table behaviour criterion 6 states, and reports a warning naming both values when `milestone:` differs; a write by an existing `milestone:` writer changes only `milestone:`, so it produces that warning rather than a new headline; this applies to Plans only (PROJECT.md and Actions are unchanged); a docs sync test covers a Plan whose two fields agree and one where they differ."
     depends_on: []
     decisions: []
     references: ["docs/decisions/0274-what-do-milestone-and-checkpoint-mean-in-arcadia-and-where-do-checkpoints-live.md", "src/ask/settlement.ts", "src/ask/agentAsk.ts", "src/docs/parse.ts", "src/docs/sync.ts", "src/docs/types.ts", "docs/arcadia-semantics.md"]
