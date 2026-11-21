@@ -714,7 +714,7 @@ actions:
     references: ["docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/issues/2369", "https://github.com/pmark/arcadia/issues/1275"]
 questions: []
 decisions: []
-current_action: finish-allocate-push-ping-and-supersede-older-action
+current_action: worker-applies-standing-merge-conditions
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
