@@ -21,6 +21,8 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  *     the same followed by trailing arguments, `... <file> *`), plus
  *     the exact `node scripts/bridge-worktree-deps.mjs` a fresh worktree needs
  *     before any test can resolve its imports; no vitest or pnpm wildcard; and
+ *   - `pnpm [exec] vitest run tests/*` and `pnpm [exec|-s] tsc --noEmit` for every
+ *     headless build Session (Issue #2905), so a test the Session adds is one it can run; and
  *   - `arcadia agent-ask draft`, the completion protocol's fallback that
  *     leaves a drafted Ask for the host to preserve and settle.
  *
@@ -96,6 +98,25 @@ export function namedTestCommands(criteria: readonly string[]): string[] {
   return [HEADLESS_BRIDGE_DEPS_COMMAND, ...files.flatMap((file) => [`pnpm exec vitest run ${file}`, `pnpm vitest run ${file}`])];
 }
 
+/**
+ * Issue #2905: the checks every headless build Session needs to prove its own
+ * work, whatever the Project declares and whether or not a criterion names a
+ * file. The 2026-11-20 worker added two tests the Action's criteria did not
+ * name, the Project's only declared command was `node scripts/preservation-self-check.mjs`,
+ * so every `pnpm vitest run tests/<new>.test.ts` and `pnpm tsc` was refused, and
+ * it then marked the criteria met unrun. Path-scoped, not a vitest/pnpm wildcard:
+ * only test files under `tests/` (with trailing arguments such as `-t`, `2>&1`)
+ * and the typecheck. Lint, build and every other command stay refused.
+ */
+export const HEADLESS_WORKER_CHECK_RULES: readonly string[] = Object.freeze([
+  exactBashRule(HEADLESS_BRIDGE_DEPS_COMMAND),
+  "Bash(pnpm exec vitest run tests/*)",
+  "Bash(pnpm vitest run tests/*)",
+  "Bash(pnpm exec tsc --noEmit)",
+  "Bash(pnpm tsc --noEmit)",
+  "Bash(pnpm -s tsc --noEmit)"
+]);
+
 /** The complete allow list for a Session whose Project declares `validationCommands`. */
 export function headlessClaudeAllowList(validationCommands: readonly string[], probeCommand?: string | null, acceptanceCriteria: readonly string[] = []): string[] {
   const rules = new Set<string>();
@@ -108,6 +129,7 @@ export function headlessClaudeAllowList(validationCommands: readonly string[], p
     if (command !== HEADLESS_BRIDGE_DEPS_COMMAND) rules.add(`${exactBashRule(command).slice(0, -1)} *)`);
   }
   for (const command of criteriaValidationCommands(acceptanceCriteria)) rules.add(exactBashRule(command));
+  for (const rule of HEADLESS_WORKER_CHECK_RULES) rules.add(rule);
   for (const rule of [...HEADLESS_AGENT_ASK_DRAFT_RULES, ...HEADLESS_ROLE_READ_RULES]) rules.add(rule);
   // The brief's first step: the in-Session capability probe, pinned to the one
   // exact command string (path, arguments and this Session's nonce).

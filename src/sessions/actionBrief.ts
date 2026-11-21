@@ -116,7 +116,18 @@ function shellSingleQuote(value: string): string {
 }
 
 /** The words a headless Claude note adds for a check it cannot run (#1619): no quotes, so it is safe inside the one-line JSON. */
-export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build).";
+export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "the host runs this check, not this Session: pre-acceptance validation covers named tests and required CI covers lint, tsc and build.";
+
+/** The exact test and typecheck forms the headless allow list grants every build Session (Issue #2905). */
+const WORKER_TEST_COMMAND = "pnpm exec vitest run tests/<file>";
+const WORKER_TYPECHECK_COMMAND = "pnpm exec tsc --noEmit";
+
+/**
+ * Issue #2905: a worker once marked criteria `met` on two tests it never ran
+ * (its sandbox refused vitest); both failed. A `met` note that cites a test is
+ * a claim the Session ran it.
+ */
+export const MET_REQUIRES_RUN_RULE = "A `met` note that cites a test must say you ran it and quote its result (for example `1 passed`). A test you added or changed that you could not run (a refused command) is never `met`: mark that criterion `failed` and quote the refusal. Never claim a pass from reading code.";
 
 /**
  * The draft-only completion block for a Session that cannot commit: one exact
@@ -179,13 +190,15 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
   return [
     ...preservation,
     "     Checks: run the Project's declared validation exactly as declared, plus the named-test and dependency-bridge commands listed above (if any).",
-    "     Other test, lint, type-check, build or dependency-setup commands need approval unless already part of the",
+    `     You may also run \`${WORKER_TEST_COMMAND}\` for any test file under tests/ (including one you add) and \`${WORKER_TYPECHECK_COMMAND}\`.`,
+    "     Other lint, build or dependency-setup commands need approval unless already part of the",
     "     declared validation. Do not try unlisted check or setup commands or change permissions, and never write helper scripts or extra files",
     "     to work around a refusal (a file outside the Action's scope refuses the completion).",
     "     Before accepting it, the host runs every test file your criteria name; the pull request's",
     "     required CI runs lint, tsc and build before anything integrates.",
+    `     ${MET_REQUIRES_RUN_RULE}`,
     "     For checks you ran, record the command and observed result in the criterion's note.",
-    `     Only for checks you did not run, say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
+    `     Only for checks you did not run that the host runs (lint, tsc, build, or a test file your criteria name), say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
     "  3. Record completion without any shell quoting, in two steps:",
     "     a. With your Write tool (never Bash, echo, a heredoc or a script), create exactly this file:",
     "",

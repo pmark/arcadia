@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
-import { actionAcceptanceCriteria, CHECKS_VERIFIED_ELSEWHERE_NOTE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
+import { actionAcceptanceCriteria, CHECKS_VERIFIED_ELSEWHERE_NOTE, MET_REQUIRES_RUN_RULE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
 import { expectIdentityBlock } from "./helpers/identityBlock.js";
@@ -170,7 +170,7 @@ describe("renderActionBrief", () => {
     const instructedTests = [...brief.matchAll(/Run the named test exactly as `([^`]+)`/g)].map((match) => match[1]);
     expect(instructedTests).toEqual(files.map((file) => `pnpm exec vitest run ${file}`));
     for (const command of instructedTests) expect(allow).toContain(`Bash(${command})`);
-    expect(allow.includes("Bash(node scripts/bridge-worktree-deps.mjs)")).toBe(files.length > 0);
+    expect(allow).toContain("Bash(node scripts/bridge-worktree-deps.mjs)");
     expect(allow).toContain("Bash(pnpm lint)");
     expect(allow).not.toContain("Bash(pnpm exec vitest run tests/unassigned.test.ts)");
     expect(allow).not.toContain("Bash(pnpm exec vitest run *)");
@@ -178,8 +178,7 @@ describe("renderActionBrief", () => {
     expect(brief).toContain("plus the named-test and dependency-bridge commands listed above (if any)");
     expect(brief).toContain("For checks you ran, record the command and observed result");
     expect(brief).toContain("Only for checks you did not run");
-    expect(brief).toContain("not run in this Session; verification deferred to host");
-    expect(brief).not.toContain("not run in this Session; verified by host");
+    expect(brief).toContain(CHECKS_VERIFIED_ELSEWHERE_NOTE);
     expect(brief).toContain("the host runs every test file your criteria name");
     expect(brief).toContain("required CI runs lint, tsc and build before anything integrates");
   });
@@ -341,6 +340,11 @@ describe("renderActionBrief", () => {
       expect(protocol).toContain("required CI runs lint, tsc and build before anything integrates");
       expect(protocol).toContain("With your Write tool (never Bash, echo, a heredoc or a script)");
       expect(protocol).toContain(`add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`);
+      // Issue #2905: a met note citing a test requires the Session ran it; an unrun test is never met.
+      expect(protocol).toContain(MET_REQUIRES_RUN_RULE);
+      expect(protocol).toContain("A `met` note that cites a test must say you ran it and quote its result");
+      expect(protocol).toContain("is never `met`: mark that criterion `failed`");
+      expect(protocol).toContain("`pnpm exec vitest run tests/<file>` for any test file under tests/ (including one you add)");
       expect(CHECKS_VERIFIED_ELSEWHERE_NOTE).not.toMatch(/["\\]/);
       expect(protocol).toContain("whose target_ref is\n     action/define-contract, delete only that file");
       expect(protocol.split("arcadia agent-ask draft --dir").length - 1).toBe(1);

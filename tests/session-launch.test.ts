@@ -32,7 +32,7 @@ import {
   type ProductionScope
 } from "../src/production/policy.js";
 import { getRepositoryLease, launchPreparedSession, prepareSession, reserveAgentWorktree, sessionView, type TmuxAdapter } from "../src/sessions/index.js";
-import { headlessClaudeAllowList, HEADLESS_ROLE_READ_RULES } from "../src/sessions/headlessPermissions.js";
+import { headlessClaudeAllowList, HEADLESS_ROLE_READ_RULES, HEADLESS_WORKER_CHECK_RULES } from "../src/sessions/headlessPermissions.js";
 import { sessionLogPath, sessionSettingsPath, type SessionRecording } from "../src/sessions/sessionRecording.js";
 import { launchGuardedHostSession, type GuardedLaunchInput, type GuardedLaunchResult } from "../src/sessions/launch.js";
 import { buildLaunchPreview } from "../src/sessions/launchPreview.js";
@@ -2404,6 +2404,8 @@ describe("launch preflight and headless permission posture", () => {
           "Bash(pnpm exec tsc --noEmit)",
           "Bash(pnpm lint)",
           "Bash(node -e \"process.exit\\(0\\)\")",
+          // `pnpm exec tsc --noEmit` is already listed above as a declared command (deduplicated).
+          ...HEADLESS_WORKER_CHECK_RULES.filter((rule) => rule !== "Bash(pnpm exec tsc --noEmit)"),
           "Bash(arcadia agent-ask draft:*)",
           "Bash(pnpm arcadia agent-ask draft:*)",
           ...HEADLESS_ROLE_READ_RULES,
@@ -2420,6 +2422,7 @@ describe("launch preflight and headless permission posture", () => {
       "Bash(pnpm test:\\*)",
       "Bash(node scripts/\\*.mjs)",
       "Bash(echo \\(a\\))",
+      ...HEADLESS_WORKER_CHECK_RULES,
       "Bash(arcadia agent-ask draft:*)",
       "Bash(pnpm arcadia agent-ask draft:*)",
       ...HEADLESS_ROLE_READ_RULES,
@@ -2436,7 +2439,6 @@ describe("launch preflight and headless permission posture", () => {
     const base = headlessClaudeAllowList(["pnpm test"]);
     const rules = headlessClaudeAllowList(["pnpm test"], null, criteria);
     expect(rules.filter((rule) => !base.includes(rule))).toEqual([
-      "Bash(node scripts/bridge-worktree-deps.mjs)",
       "Bash(pnpm exec vitest run tests/review-repair-gate-upsert-role.test.ts)",
       "Bash(pnpm exec vitest run tests/review-repair-gate-upsert-role.test.ts *)",
       "Bash(pnpm vitest run tests/review-repair-gate-upsert-role.test.ts)",
@@ -2448,6 +2450,14 @@ describe("launch preflight and headless permission posture", () => {
     ]);
     expect(rules.some((rule) => /old\.test|escape|\.\./.test(rule))).toBe(false);
     expect(headlessClaudeAllowList(["pnpm test"], null, ["no test file is named here"])).toEqual(base);
+  });
+
+  it("always lets a headless build Session run tests under tests/ and the typecheck, and nothing broader (Issue #2905)", () => {
+    // The 2026-11-20 worker's Project declared one command and its criteria named no test file.
+    const rules = headlessClaudeAllowList(["node scripts/preservation-self-check.mjs"], null, ["A new regression test exists."]);
+    expect(rules).toEqual(expect.arrayContaining(["Bash(pnpm exec vitest run tests/*)", "Bash(pnpm vitest run tests/*)", "Bash(pnpm -s tsc --noEmit)", "Bash(pnpm exec tsc --noEmit)", "Bash(node scripts/bridge-worktree-deps.mjs)"]));
+    for (const rule of rules.filter((r) => /vitest|tsc/.test(r))) expect(rule).toMatch(/^Bash\(pnpm (?:exec |-s )?(?:vitest run tests\/\*|tsc --noEmit(?: \*)?)\)$/);
+    expect(rules.some((rule) => /\b(?:lint|build|commit|push|settle|bash|sh)\b|vitest run \*|vitest\b(?! run tests)/.test(rule))).toBe(false);
   });
 
   it("go --launch is headless by default and the explicit --interactive opt-in keeps the TUI, unrecorded", () => {
