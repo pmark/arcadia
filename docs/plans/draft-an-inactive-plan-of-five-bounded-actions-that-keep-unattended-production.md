@@ -61,7 +61,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask repair-red-candidates-with-a-bounded-session
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "Decision 0247 E: after deterministic fixes, a coding-agent repair Session produces a new reviewed head; the operator is pinged only when the attention criteria are met. Classification and fixture failures need judgment, not a generator."
     acceptance_criteria:
       - "The repair Session's brief contains the failing required checks' log excerpts and the classifier's verdict. A test asserts the brief text for the recorded #2744 lint-and-classification failure."
@@ -69,7 +69,7 @@ actions:
       - The repair runs on the light tier first, makes at most one attempt per candidate head, uses no paid fallback and stays inside the existing repair budget. A test shows a refused spend or capacity check launches nothing and leaves a receipt.
       - A successful repair's head is reviewed afresh by the worker and merges only under the 0060/0080 gate. A failed repair parks the candidate and sends exactly one ping that names the failing check, the attempted fix and the operator-attention criterion it meets.
       - A fixture run replays one recorded red candidate through both repair rounds to a green, reviewed head with zero operator touches, and the run record lists the touches as none.
-    depends_on: [repair-mechanical-check-failures-deterministically, wire-mechanical-repair-into-production, finish-wire-repair-verdict-case-and-absorb-proposal]
+    depends_on: [repair-mechanical-check-failures-deterministically, wire-mechanical-repair-into-production, finish-wire-repair-verdict-case-and-absorb-proposal, require-proof-for-every-met-criterion]
     decisions: []
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/decisions/batchMerge.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md", "docs/decisions/0181-decide-what-unattended-production-does-after-attempt-3-s-clean-run-re-deciding.md", "docs/decisions/0187-decide-what-unattended-production-does-after-a-delegated-batch-fails-under-the.md", "CONSTITUTION.md"]
   - id: queue-approved-plans-and-start-the-next
@@ -194,14 +194,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask reconcile-current-action-after-a-base-merge
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "Issue #2780: after #2745 merged, #2746's base merge kept a current_action that #2746 had marked done, failing the managed-documents contract and stalling the batch about 5 hours; the host refused the two-line hand fix."
     acceptance_criteria:
       - A test merges two sibling batch candidates in either order and shows main ends with a single valid current Action, with no manual edit.
       - The reconcile is the same governed implementation the stale-current-action repair class of repair-mechanical-check-failures-deterministically uses; a test or code reference shows there is one implementation, not two.
       - "A recorded fixture of the #2746 state (c23c38232 merged with main) passes tests/managed-documents-contract.test.ts after the reconcile."
       - No agent or operator hand-edits a pointer; the guidance names the governed command or settlement step that performs the reconcile.
-    depends_on: [repair-mechanical-check-failures-deterministically, verify-overnight-merges-at-8am]
+    depends_on: [repair-mechanical-check-failures-deterministically, verify-overnight-merges-at-8am, publish-governance-commits-from-the-clone]
     decisions: []
     references: ["src/ask/settlement.ts", "src/dispatch/pointer.ts", "tests/managed-documents-contract.test.ts"]
   - id: keep-pointer-commits-mergeable-across-a-date-change
@@ -445,13 +445,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask show-the-resulting-queue-order-in-settle-preview
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "Plan F's 2026-11-17 amendment took about seven versions because '--before' inside the active Plan and the Plan-file dependency order were discovered only at settle."
     acceptance_criteria:
       - agent-ask preview of a plan-intent Ask prints, for the target Plan, the dependency-ordered remaining Actions as dependencyOrderedActionIds would compute them after settlement, and the stored queue order for each placement it accepts; a test uses a fixture of Plan F's 2026-11-17 state and the e and e-alt amendments and shows both orders.
       - A '--before' or '--after' anchor that settlement would reject (for example an Action inside the active Plan's own segment) is refused by preview with the same reason settlement gives; a test covers it.
       - When the stored queue order and the Plan-file dependency order disagree, preview names the first differing position; a test covers it.
-    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action]
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action, publish-governance-commits-from-the-clone]
     decisions: []
     references: ["src/ask/settlement.ts", "src/dispatch/actionOrder.ts", "src/commands/agentAsk.ts"]
   - id: require-proof-for-every-met-criterion
@@ -464,14 +464,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask require-proof-for-every-met-criterion
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-gap-actions-20261118-b
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "#2777 was auto-settled with six criteria 'met' and empty evidence notes while its library had no caller, so 'done' did not mean wired in."
     acceptance_criteria:
       - "A test replays #2777's completion Ask (criteria 'met', no evidence notes) and shows auto-settle refuses it with a reason naming each criterion that lacks a proof."
       - A test shows a completion whose every 'met' note names a test file and test name, a receipt path or a commit that exists at the candidate revision settles as today; a note naming a missing file is refused.
       - A repository check fails when a module added under src/production, src/sessions or src/ask has no importer outside tests, naming the module, with an explicit allowlist for intentional entry points; a fixture shows it would have failed on c7d7fba5f.
       - The build Session brief asks for one proof per criterion in the completion evidence notes; a test asserts the line in a composed brief.
-    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action]
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action, publish-governance-commits-from-the-clone]
     decisions: []
     references: ["src/ask/autoSettleBeforeDispatch.ts", "src/ask/agentAsk.ts", "src/ask/settlement.ts", "src/codex/packets.ts"]
   - id: check-tonights-card-at-noon
@@ -543,7 +543,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask run-production-in-its-own-clone
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "On 2026-11-18 the shared primary checkout diverged (base_not_synced), needed a hand pointer commit under an operator exception (982e14733) and an operator-approved reset."
     acceptance_criteria:
       - A fixture replays the 2026-11-18 divergence against a clone-configured policy and shows the primary checkout unchanged and no base_not_synced; a human commit on the primary checkout no longer affects production.
@@ -552,7 +552,7 @@ actions:
       - Active refuses, with one page, unless keep-awake is on and free disk is above a named threshold; turning keep-awake on stays an operator host setting.
       - Each production receipt records the release sha. The live host step (pointing the installed policy at the clone) is a separate operator-approved step after this merges.
       - The clone path is per project and repository (workspace/clones/<project>/<repo>), and every production receipt records project, repository and attempt id explicitly, so the global concurrency limit of 1 is a setting, not an assumption in paths or receipts.
-    depends_on: [define-the-gate-set]
+    depends_on: [define-the-gate-set, verify-overnight-merges-at-8am]
     decisions: []
     references: ["scripts/services.sh", "src/production/policy.ts", "src/production/tick.ts", "src/production/runtimeCurrency.ts", "src/git/pointerReconcile.ts"]
   - id: worker-applies-standing-merge-conditions
