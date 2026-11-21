@@ -7,7 +7,7 @@ import { performance } from "node:perf_hooks";
 import { normalizeError } from "../cli/errors.js";
 import { materializeCandidateTree, snapshotCandidate } from "./candidateSnapshot.js";
 import { bindCheckDefinitions } from "./preservationCheckBinding.js";
-import { tryGit } from "../git/worktrees.js";
+import { tryGitUntrimmed } from "../git/worktrees.js";
 
 /**
  * Issue #1599: a Session's drafted completion was accepted while the test
@@ -171,8 +171,8 @@ const TEST_FILE_PATH = new RegExp(`^${NAMED_TEST_FILE.source}$`);
 function changedPaths(worktree: string, base: string): string[] {
   let listing: string;
   try {
-    const changed = tryGit(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", "-z", base]) ?? "";
-    const untracked = tryGit(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z"]) ?? "";
+    const changed = tryGitUntrimmed(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", "-z", base]) ?? "";
+    const untracked = tryGitUntrimmed(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard", "-z"]) ?? "";
     // NUL-delimited: without -z Git quotes and escapes a name containing a quote or other special character, which would hide its extension.
     listing = `${changed}\0${untracked}`;
   } catch {
