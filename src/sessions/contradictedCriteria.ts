@@ -42,6 +42,12 @@ const CONTRADICTIONS: ReadonlyArray<{ pattern: RegExp; negatable: boolean }> = [
   { pattern: /\bnot\s+yet\s+(?:done|run|merged|closed)\b/gi, negatable: false },
   { pattern: /\bdeferred\s+(?:to|until|till|pending|for|post)\b[^.;\n]*/gi, negatable: true },
   { pattern: /\bpending\s+(?:the\s+)?(?:(?:PR|pull\s+request)\b|merge[ds]?\b|review\b)[^.;\n]*/gi, negatable: true },
+  // Issue #2905: a test the Session could not run (sandbox refusal) is not a pass.
+  { pattern: /\bunrun\b/gi, negatable: true },
+  { pattern: /\bunable\s+to\s+(?:run|execute|verify)\b/gi, negatable: true },
+  // Only a command, permission or sandbox refusal; "asserts the merge was refused: 4 passed" is an honest test description.
+  { pattern: /\b(?:command|pnpm|vitest|tsc|permission|sandbox)\b(?:\s+(?:exec|run|command|check|invocation))*\s+(?:was|were)\s+(?:refused|denied)\b[^.;\n]*/gi, negatable: true },
+  { pattern: /\b(?:refused|denied|blocked)\s+by\s+(?:the\s+)?(?:sandbox|permission)[^.;\n]*/gi, negatable: true },
   { pattern: /\bwill\s+(?:be\s+)?(?:done|run|closed|merged|verified)\s+(?:after|once|when|upon)\b[^.;\n]*/gi, negatable: true }
 ];
 

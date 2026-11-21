@@ -489,7 +489,7 @@ describe("the review repair bound and gates", () => {
   });
 
   it("stops for the operator when the candidate adds a skipped test", () => {
-    const { rehearsal } = failedReview(() => {}, { "tests/marker.test.mjs": "import { it } from \"node:test\";\nit.skip(\"marker\", () => {});\n" });
+    const { rehearsal } = failedReview(() => {}, { "tests/marker.test.mjs": "import { it } from \"node:test\";\nit(\"runs\", () => {});\nit.skip(\"marker\", () => {});\n" });
     expect(rehearsal.lease()).toBeNull();
     expect(escalation(rehearsal)).toMatchObject({ kind: "review_repair_gated", message: expect.stringContaining("skipped or focused test") });
   });
@@ -1030,7 +1030,7 @@ const RED_CHECKS = [
 ];
 const GREEN_BASE = RED_CHECKS.map((check) => ({ name: check.name, status: "completed", conclusion: "success" }));
 
-/** Action A finished with its own new test, preserved and readied; its candidate's required checks are red. */
+/** Action A finished with its own new test, preserved and readied; its candidate's required checks are red in CI (the fake GitHub says so). The test itself passes locally: since #2905 the host runs a candidate's added tests before acceptance, so a locally failing one never reaches the PR. */
 function redChecks(configure: (rehearsal: Rehearsal, a: AgentSession) => void = () => {}): { rehearsal: Rehearsal; a: AgentSession; head: string } {
   const rehearsal = new Rehearsal({ independentReviewers: "tick" });
   rehearsals.push(rehearsal);
@@ -1040,7 +1040,7 @@ function redChecks(configure: (rehearsal: Rehearsal, a: AgentSession) => void = 
   rehearsal.tickUntil((r) => r.launch?.outcome === "launched" && r.launch.actionKey === rehearsal.actionA, 3);
   const a = rehearsal.lease()!;
   rehearsal.agentEdit(a, "MARKER.md", `${LINE_A}\n`);
-  rehearsal.agentEdit(a, OWN_TEST, "import { it } from \"node:test\";\nit(\"marker\", () => { throw new Error(\"red\"); });\n");
+  rehearsal.agentEdit(a, OWN_TEST, "import { it } from \"node:test\";\nit(\"marker\", () => {});\n");
   rehearsal.agentFinish(a, CRITERIA_A);
   rehearsal.tmux.exit(a.tmux_session_name);
   rehearsal.github.checks = (pr) => (pr.branch === a.branch ? RED_CHECKS : [{ name: "lint", status: "COMPLETED", conclusion: "SUCCESS", detailsUrl: "https://ci/fast", workflowName: "CI" }]);

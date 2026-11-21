@@ -7,6 +7,7 @@ import { performance } from "node:perf_hooks";
 import { normalizeError } from "../cli/errors.js";
 import { materializeCandidateTree, snapshotCandidate } from "./candidateSnapshot.js";
 import { bindCheckDefinitions } from "./preservationCheckBinding.js";
+import { tryGit } from "../git/worktrees.js";
 
 /**
  * Issue #1599: a Session's drafted completion was accepted while the test
@@ -157,6 +158,31 @@ function namedAsData(criterion: string, index: number, file: string): boolean {
     if (LIST_ITEMS_BEFORE.test(criterion.slice(start, index))) return true;
   }
   return false;
+}
+
+const TEST_FILE_PATH = new RegExp(`^${NAMED_TEST_FILE.source}$`);
+
+/**
+ * Issue #2905: the test files the candidate itself adds or modifies (committed
+ * or not), so the host runs the tests a headless Session cannot run. Only paths
+ * shaped like a named test file qualify; a deleted file is not listed.
+ */
+export function changedTestFiles(worktree: string, base: string): string[] {
+  let listing: string;
+  try {
+    const changed = tryGit(worktree, ["-c", "core.quotepath=false", "diff", "--no-renames", "--diff-filter=AM", "--name-only", base]) ?? "";
+    const untracked = tryGit(worktree, ["-c", "core.quotepath=false", "ls-files", "--others", "--exclude-standard"]) ?? "";
+    listing = `${changed}\n${untracked}`;
+  } catch {
+    // A stalled or failing git read only means no extra tests are added; named tests and required CI are unaffected.
+    return [];
+  }
+  const files: string[] = [];
+  for (const line of listing.split("\n")) {
+    const file = line.trim();
+    if (file && TEST_FILE_PATH.test(file) && !file.split("/").some((segment) => segment === "." || segment === "..") && !files.includes(file)) files.push(file);
+  }
+  return files.sort();
 }
 
 /** The test files an Action's acceptance criteria name explicitly as files (not as data, and not removed), in first-mention order. */
@@ -321,10 +347,15 @@ function failuresAreLoopbackDenials(report: VitestReport | null): boolean {
 function runCompletionValidation(candidate: CompletionValidationCandidate, given: CompletionValidationOptions = {}): CompletionValidationResult {
   // The unconfined seam exists for test runs only; anywhere else it is ignored.
   const options = given.unconfinedForTests && !process.env.VITEST ? { ...given, unconfinedForTests: false } : given;
-  const namedTests = namedTestFiles(candidate.acceptanceCriteria);
+  const criteriaNamed = namedTestFiles(candidate.acceptanceCriteria);
+  // Issue #2905: also the tests the candidate adds or changes, named files first, within the same cap.
+  const added = changedTestFiles(candidate.worktree, candidate.base).filter((file) => !criteriaNamed.includes(file));
+  let namedTests = [...criteriaNamed, ...added.slice(0, Math.max(0, MAX_NAMED_TEST_FILES - criteriaNamed.length))];
   const requiredChecks = criteriaValidationCommands(candidate.acceptanceCriteria);
   const commands = [...new Set([...candidate.commands, ...requiredChecks])];
   if (namedTests.length === 0) return { status: "not_required" };
+  // Only candidate-changed tests (no criterion names a file): when the host cannot run them, the required CI checks stay the proof.
+  if (!criteriaNamed.length && ((process.platform !== "darwin" && !options.unconfinedForTests) || !candidate.workspace || !candidate.commands.length)) return { status: "not_required" };
   let outcome: CompletionValidationResult | undefined;
   const finish = (result: CompletionValidationResult) => { outcome = result; return result; };
   const deny = (why: string, failures: string[] = []) => finish(refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures));
@@ -332,7 +363,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
   const timeout = (why: string, failures: string[] = []): CompletionValidationResult => ({ ...unavailable(why, failures) as Extract<CompletionValidationResult, { status: "refused" }>, timedOut: true });
   // Host-side only (no workspace or commands, non-darwin, runner not installed, spawn error): the candidate cannot fix it (Issue #1613). Errors from the candidate's own content stay ordinary resumable denials.
   const unavailable = (why: string, failures: string[] = []) => finish(refused(namedTests, `Pre-acceptance validation refused the completion: ${why}`, failures, true));
-  if (namedTests.length > MAX_NAMED_TEST_FILES) return deny(`the acceptance criteria name ${namedTests.length} test files; at most ${MAX_NAMED_TEST_FILES} run before acceptance.`);
+  if (criteriaNamed.length > MAX_NAMED_TEST_FILES) return deny(`the acceptance criteria name ${criteriaNamed.length} test files; at most ${MAX_NAMED_TEST_FILES} run before acceptance.`);
   if (process.platform !== "darwin" && !options.unconfinedForTests) return unavailable("protected candidate validation requires the macOS Seatbelt host.");
   if (!candidate.workspace) return unavailable("the workspace was not given, so candidate code could not be kept from reading it.");
   if (!candidate.commands.length) return unavailable("the Project declares no validation commands.");
@@ -362,6 +393,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
   mkdirSync(source); mkdirSync(scratch);
   const startedAt = performance.now();
   let terminalProven = true;
+  let skipEvidence = false;
   const executions: CompletionExecution[] = [];
   const reports: CompletionEvidenceRecord["reports"] = [];
   try {
@@ -370,7 +402,10 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     } catch (error) {
       return stopped("materialized", error) ?? deny(`the candidate tree could not be materialized (${untrusted(normalizeError(error).message, 300)}).`);
     }
-    const missing = namedTests.filter((file) => !lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
+    // A changed test the materialized tree lacks (for example an ignored file) is skipped; a criteria-named one is still refused below.
+    namedTests = namedTests.filter((file) => criteriaNamed.includes(file) || lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
+    if (namedTests.length === 0) { skipEvidence = true; return { status: "not_required" }; }
+    const missing = criteriaNamed.filter((file) => !lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
     if (missing.length) return deny("the candidate does not contain every test file its acceptance criteria name.", missing.map((file) => `${file} (missing)`));
     const vitest = declaresVitest(source);
     if (!vitest && !namedTests.every((file) => /\.(?:js|mjs|cjs)$/.test(file))) {
@@ -512,7 +547,7 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     if (unproven.length) return deny("vitest exited 0 but did not report a passing test for every named file.", unproven);
     return finish({ status: "passed", namedTests, commands, durationMs: Math.round(performance.now() - startedAt) });
   } finally {
-    if (candidate.evidenceBinding && candidate.workspace) {
+    if (candidate.evidenceBinding && candidate.workspace && !skipEvidence) {
       {
         const reference = retainCompletionEvidence(candidate.workspace, { version: 1, producer: "arcadia-completion-validation-v1", binding: candidate.evidenceBinding,
           tree, commands, namedTests, executions, reports, outcome: outcome?.status === "passed" ? "passed" : "refused",
@@ -532,8 +567,13 @@ function retainCompletionEvidence(workspace: string, record: CompletionEvidenceR
 }
 /** An execution without durable evidence cannot authorize completion. Scratch is retained on write failure. */
 export function validateCompletionCandidate(candidate: CompletionValidationCandidate, options: CompletionValidationOptions = {}): CompletionValidationResult {
-  try { return runCompletionValidation(candidate, options); }
-  catch (error) {
+  try {
+    const result = runCompletionValidation(candidate, options);
+    // Issue #2905: when no criterion names a test, a host fault (timeout, loopback denial, missing runner, unlinkable
+    // dependencies) on the candidate's merely added or changed tests holds nothing back: the required CI checks stay the proof.
+    if (result.status === "refused" && result.hostFault && namedTestFiles(candidate.acceptanceCriteria).length === 0) return { status: "not_required" };
+    return result;
+  } catch (error) {
     if (!(error instanceof CompletionEvidenceWriteError)) throw error;
     return { status: "refused", namedTests: namedTestFiles(candidate.acceptanceCriteria), failures: [], hostFault: true,
       reason: "Pre-acceptance validation evidence could not be retained; completion refused and execution scratch retained." };

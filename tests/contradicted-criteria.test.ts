@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CHECKS_VERIFIED_ELSEWHERE_NOTE } from "../src/sessions/actionBrief.js";
 import { contradictedCriteriaRefusal, contradictedMetCriteria } from "../src/sessions/contradictedCriteria.js";
 
 // Issue #2890: a completion Ask marked criteria met while their own notes said the work was not done.
@@ -20,6 +21,21 @@ describe("contradicted met criteria", () => {
   it("refuses a note that says it was not run", () => {
     expect(contradictedCriteriaRefusal([entry("Tests not run in this session.")])).toContain("not run");
     expect(contradictedCriteriaRefusal([entry("Not yet run; will be run once the PR merges.")])).toContain("Not yet run");
+  });
+
+  it("refuses a met note that admits a test was unrun or refused (Issue #2905), but accepts a quoted pass", () => {
+    expect(contradictedCriteriaRefusal([entry("New test unrun: the sandbox refused vitest.")])).toContain("unrun");
+    expect(contradictedCriteriaRefusal([entry("Unable to run the new test here.")])).toContain("Unable to run");
+    expect(contradictedCriteriaRefusal([entry("pnpm vitest run was refused in this Session.")])).toContain("was refused");
+    expect(contradictedCriteriaRefusal([entry("The sandbox refused pnpm; the command was denied.")])).toContain("was denied");
+    expect(contradictedCriteriaRefusal([entry("vitest was blocked by the sandbox.")])).toContain("blocked by the sandbox");
+    expect(contradictedCriteriaRefusal([entry("The test asserts the merge was refused: 4 passed.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("Ran tests/x.test.ts: the denied request was refused as expected, 2 passed.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("Nothing was refused; pnpm vitest run tests/x.test.ts: 3 passed.")])).toBeNull();
+  });
+
+  it("accepts the words the brief itself recommends for host-run checks", () => {
+    expect(contradictedCriteriaRefusal([entry(`Inspected git diff; ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`)])).toBeNull();
   });
 
   it("does not refuse a met criterion with a clean note", () => {
@@ -49,4 +65,22 @@ describe("contradicted met criteria", () => {
     expect(contradictedCriteriaRefusal([entry("Deferred to a later Action only if the cache is cold; it was not, so all 3 tests ran.")])).toBeNull();
     expect(contradictedMetCriteria([entry("The unfixed code was not yet done in this path. Tests pass.")])).toEqual([]);
   });
+
+  // Review of #2913: the brief's own wording must never trip the guard, and an honest test description stays honest.
+  it("accepts the brief's host-runs wording for a test the Session added", () => {
+    expect(contradictedCriteriaRefusal([entry(`Added tests/new.test.ts, which asserts the merge guard. ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`)])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("`arcadia agent-ask settle` was refused when evidence was missing (the test asserts this): 5 passed")])).toBeNull();
+  });
+
+  it("still refuses an honest admission that a command was refused", () => {
+    expect(contradictedCriteriaRefusal([entry("The vitest command was refused, so the test was never observed.")])).not.toBeNull();
+    expect(contradictedCriteriaRefusal([entry("Ran vitest and the merge was refused as expected: 4 passed.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("pnpm exec vitest run was refused by the host.")])).not.toBeNull();
+  });
+
+  it("allows a negated statement about unrun tests but still refuses an affirmative one", () => {
+    expect(contradictedCriteriaRefusal([entry("No tests were left unrun: 4 passed.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("The new test is unrun.")])).not.toBeNull();
+  });
 });
+

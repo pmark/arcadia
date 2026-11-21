@@ -116,7 +116,15 @@ function shellSingleQuote(value: string): string {
 }
 
 /** The words a headless Claude note adds for a check it cannot run (#1619): no quotes, so it is safe inside the one-line JSON. */
-export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "not run in this Session; verification deferred to host pre-acceptance validation (named tests) and required CI (lint, tsc, build).";
+export const CHECKS_VERIFIED_ELSEWHERE_NOTE = "the host runs this check, not this Session: pre-acceptance validation covers named tests and tests you add or change, and required CI covers lint, tsc and build.";
+
+/**
+ * Issue #2905: a `met` note that cites a test is a claim the Session ran it. A
+ * test this Session adds or changes cannot be run here (the allow list is
+ * unchanged), but the host runs it before acceptance, so it is deferred, never
+ * claimed as passed and never a reason to mark the criterion `failed`.
+ */
+export const MET_REQUIRES_RUN_RULE = "A `met` note that cites a test must say you ran it and quote its result (for example `1 passed`). A test you added or changed that this Session cannot run is verified by the host before acceptance: say the host runs it, not this Session, using the words given for checks the host runs, and never claim a pass from reading code.";
 
 /**
  * The draft-only completion block for a Session that cannot commit: one exact
@@ -182,8 +190,10 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     "     Other test, lint, type-check, build or dependency-setup commands need approval unless already part of the",
     "     declared validation. Do not try unlisted check or setup commands or change permissions, and never write helper scripts or extra files",
     "     to work around a refusal (a file outside the Action's scope refuses the completion).",
-    "     Before accepting it, the host runs every test file your criteria name; the pull request's",
+    "     Before accepting it, the host runs every test file your criteria name and every tests/ file you add or change",
+    "     (at most 10 in all, named files first); the pull request's",
     "     required CI runs lint, tsc and build before anything integrates.",
+    `     ${MET_REQUIRES_RUN_RULE}`,
     "     For checks you ran, record the command and observed result in the criterion's note.",
     `     Only for checks you did not run, say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
     "  3. Record completion without any shell quoting, in two steps:",
