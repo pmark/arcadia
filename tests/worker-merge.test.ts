@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -16,7 +17,11 @@ import {
   type WorkerMergeFacts,
   type WorkerMergeRefusalCode
 } from "../src/production/workerMerge.js";
-import { fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
+import { ensureProductionPolicyTables, fingerprintProductionScope, normalizeProductionScope } from "../src/production/policy.js";
+import { stringify as stringifyYaml } from "yaml";
+import { DELEGATION_SCOPE } from "../src/operatorActions/startRunDelegation.js";
+import type { GateSetDocument } from "../src/production/gateSet.js";
+import { evaluateStandingMerge, findAuthorizingDecision, planActionHash, type StandingMergeDeps, type StandingMergeInput } from "../src/production/standingMerge.js";
 import { describeWorkerPullRequestMerge } from "../src/commands/production.js";
 import type { VerdictGate } from "../src/sessions/roleLineage.js";
 import { FakeGitHub, git } from "./helpers/rehearsalHarness.js";
@@ -742,5 +747,290 @@ describe("the worker-merge opt-in in the production scope", () => {
   it("is refused without remote preservation", () => {
     expect(() => normalizeProductionScope({ ...base, remotePreservation: false, integrationGrant: { ...base.integrationGrant, mergeThroughPullRequest: true } }))
       .toThrow(/remote-preservation/);
+  });
+});
+
+/* ---------- standing in-run merge conditions (Action worker-applies-standing-merge-conditions) ---------- */
+
+const CARD = "start-run-fixture-20261101";
+const REVIEWED = "b".repeat(40);
+const MARKER_URL = "https://github.com/pmark/arcadia/pull/7#issuecomment-99";
+const BASE_ACTION = {
+  id: "first-action", title: "T", next_action: "Do the thing.", acceptance_criteria: ["A one.", "B two."], references: ["src/b.ts", "src/a.ts"],
+  depends_on: [], expected_artifact: "x"
+};
+
+function pinsFor(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    schema: "arcadia-start-run-v1", reviewedRevision: REVIEWED, executorSha256: "b".repeat(64), workspace: "martianrover", project: "arcadia",
+    plan: "fixture-plan", actions: ["first-action", "write-feature"], provider: "claude-code-cli",
+    transitions: ["validation", "acceptance", "pointer", "packet_approval"], concurrency: 1, packetApprovalHours: 24, intent: "A fixture run.",
+    spendDecision: "0130", integrationDecision: "0058",
+    requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162"],
+    requiredFiles: ["scripts/start-run.sh"], production: { revision: 83, epoch: 46 }, queueRevision: 290, workerLabel: "com.arcadia.local.1.worker",
+    gateCardId: "enable-capacity-gate-20261017", offId: "restore-off-production", grantedBy: "the operator",
+    consumedHistory: [{ path: "/abs/one.consumed.json", sha256: "c".repeat(64) }], ...over
+  };
+}
+const planText = (action: Record<string, unknown>, extra: Record<string, unknown>[] = []) => `---\n${stringifyYaml({ actions: [action, ...extra] })}---\n\n# Plan\n`;
+const GATES: GateSetDocument = {
+  gateSet: "v1",
+  projects: { arcadia: { repository: "pmark/arcadia", gateModules: [{ id: "w", path: "src/production/workerMerge.ts", imports: [] }], spend: ["src/spend/"], hardClasses: [{ name: "decisions", paths: ["docs/decisions/"] }], self: [] } }
+};
+const NO_HARD_CLASSES: GateSetDocument = { gateSet: "v1", projects: { arcadia: { ...GATES.projects.arcadia, hardClasses: [] } } };
+const decisionAnswering = (over: Record<string, unknown> = {}) => ({ id: "0260", status: "approved", question: `May Rowan merge for ${CARD}?`, answer: "A", ...over }) as { id: string; status: string; question: string; answer: string | null };
+const reviewComments = (body: string) => () => ({ status: 0, stdout: JSON.stringify({ comments: [{ body, url: MARKER_URL }] }), stderr: "" });
+const GOOD_REVIEW = `Independent review, head ${HEAD.slice(0, 12)}\nNo blocking findings.\nLoosens a gate: no\n`;
+
+describe("standing in-run merge conditions C1-C5", () => {
+  let dir: string;
+  let library: string;
+  let db: Database.Database;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(tmpdir(), "standing-merge-"));
+    library = path.join(dir, "operator-scripts");
+    mkdirSync(library);
+    db = new Database(":memory:");
+    ensureProductionPolicyTables(db);
+    activate(CARD);
+    writeCard(pinsFor());
+  });
+  afterEach(() => { db.close(); rmSync(dir, { recursive: true, force: true }); });
+
+  function activate(requestId: string | null): void {
+    const authority = requestId ? JSON.stringify({ requestId, grantedBy: "op", grantedAt: "2026-11-01T00:00:00Z", decisionRef: null, scopeFingerprint: "f" }) : null;
+    db.prepare("UPDATE production_policy SET desired_state = 'active', authority_json = ? WHERE id = 'workspace'").run(authority);
+  }
+  function writeCard(pins: unknown): void { writeFileSync(path.join(library, `${CARD}.json`), JSON.stringify({ startRun: pins })); }
+  const input = (over: Partial<StandingMergeInput> = {}): StandingMergeInput => ({
+    db, repoRoot: dir, baseBranch: "main", head: HEAD, actionKey: "arcadia/first-action", pullRequestUrl: URL,
+    changedPaths: ["apps/web/page.tsx"], runCommand: reviewComments(GOOD_REVIEW), ...over
+  });
+  /** Plan text at the approved revision and at merge-time main. */
+  const deps = (approved: string | null, current: string | null, over: StandingMergeDeps = {}): StandingMergeDeps => ({
+    libraryDir: () => library, decisions: () => [decisionAnswering()], gateSet: () => GATES,
+    showFile: (revision) => (revision === REVIEWED ? approved : current), mergeTimeMain: () => "main-now", ...over
+  });
+  const same = planText(BASE_ACTION);
+  const verdict = (current: string | null, over: Partial<StandingMergeInput> = {}, d: StandingMergeDeps = {}, approved: string | null = same) =>
+    evaluateStandingMerge(input(over), deps(approved, current, d));
+  const parkedAt = (v: ReturnType<typeof verdict>) => (v.ok ? "ok" : v.condition);
+
+  it("passes when every condition holds, returning the card, Decision and review marker", () => {
+    expect(verdict(same)).toMatchObject({ ok: true, cardId: CARD, decisionId: "0260", reviewMarkerUrl: MARKER_URL });
+  });
+
+  describe("C1: the approved requirement content", () => {
+    it("keeps approval across whitespace-only edits, reordered references, and title or dependency changes", () => {
+      const edited = planText({ ...BASE_ACTION, title: "New title", depends_on: ["other"], next_action: "  Do   the\nthing. ", acceptance_criteria: ["A   one.", "B two. "], references: ["src/a.ts", "src/b.ts"] });
+      expect(parkedAt(verdict(edited))).toBe("ok");
+    });
+    it("hashes the documented canonical object, sorts references by code unit and keeps duplicates", () => {
+      const got = planActionHash(planText({ id: "x", next_action: " a  b ", acceptance_criteria: ["z", "y"], references: ["b", "B", "b"] }), "x");
+      const expected = createHash("sha256").update(JSON.stringify({ next_action: "a b", acceptance_criteria: ["z", "y"], references: ["B", "b", "b"] }), "utf8").digest("hex");
+      expect(got).toEqual({ hash: expected });
+      const missing = planActionHash(planText({ id: "x", next_action: "a" }), "x");
+      expect(missing).toEqual({ hash: createHash("sha256").update(JSON.stringify({ next_action: "a", acceptance_criteria: [], references: [] }), "utf8").digest("hex") });
+    });
+    it.each([
+      ["next_action text", { next_action: "Do another thing." }],
+      ["an acceptance criterion", { acceptance_criteria: ["A one.", "B changed."] }],
+      ["a reordered acceptance_criteria", { acceptance_criteria: ["B two.", "A one."] }],
+      ["a newly named authority path in references", { references: ["src/b.ts", "src/a.ts", "docs/decisions/0001-x.md"] }]
+    ])("parks on %s", (_name, change) => {
+      const v = verdict(planText({ ...BASE_ACTION, ...change }));
+      expect(parkedAt(v)).toBe("C1");
+      if (!v.ok) expect(v.reason).toContain("requirement content changed");
+    });
+    it("parks added scope: an Action not pinned on the card", () => {
+      const v = verdict(same, { actionKey: "arcadia/surprise-action" });
+      expect(v).toMatchObject({ ok: false, condition: "C1" });
+      if (!v.ok) expect(v.reason).toContain("not pinned");
+    });
+    it("parks on a card pressed under a delegation, which records no operator-pressed content", () => {
+      writeCard(pinsFor({ plan: DELEGATION_SCOPE.plan, actions: [...DELEGATION_SCOPE.actions], requiredDecisions: ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143", "0161", "0162", "0163"], delegation: { decision: "0163", originatingCard: "start-run-origin-20261101", originatingRun: "20261101T010000Z-111", originatingReceiptSha256: "a".repeat(64), attempt: 2 } }));
+      const v = verdict(same, { actionKey: `arcadia/${DELEGATION_SCOPE.actions[0]}` });
+      expect(v).toMatchObject({ ok: false, condition: "C1" });
+      if (!v.ok) expect(v.reason).toContain("delegation");
+    });
+    it("parks on an unreadable library, card, pins or revision, and on an Action with no next_action", () => {
+      expect(parkedAt(evaluateStandingMerge(input(), deps(same, same, { libraryDir: () => path.join(dir, "missing") })))).toBe("C1");
+      writeFileSync(path.join(library, `${CARD}.json`), "{not json");
+      expect(parkedAt(verdict(same))).toBe("C1");
+      writeCard({ ...pinsFor(), extraKey: 1 });
+      expect(parkedAt(verdict(same))).toBe("C1");
+      writeCard(pinsFor());
+      expect(parkedAt(verdict(same, {}, {}, null))).toBe("C1");
+      expect(parkedAt(verdict(null))).toBe("C1");
+      expect(parkedAt(verdict("no front matter"))).toBe("C1");
+      const { next_action: _omitted, ...noNext } = BASE_ACTION;
+      expect(parkedAt(verdict(same, {}, {}, planText(noNext)))).toBe("C1");
+    });
+  });
+
+  describe("C2: the exact-head independent review marker", () => {
+    it("parks on a marker for another head, a missing Loosens line, a loosening review and an unreadable read", () => {
+      for (const body of [`Independent review, head ${"c".repeat(12)}\nLoosens a gate: no\n`, `Independent review, head ${HEAD.slice(0, 12)}\nAll good.\n`, `Independent review, head ${HEAD.slice(0, 12)}\nLoosens a gate: yes\n`, "no marker here"]) {
+        expect(parkedAt(verdict(same, { runCommand: reviewComments(body) }))).toBe("C2");
+      }
+      expect(parkedAt(verdict(same, { runCommand: () => ({ status: 1, stdout: "", stderr: "denied" }) }))).toBe("C2");
+      expect(parkedAt(verdict(same, { runCommand: () => ({ status: 0, stdout: "nope", stderr: "" }) }))).toBe("C2");
+    });
+  });
+
+  describe("C3: checks green and CLEAN (the pure worker gate, run after the standing lift)", () => {
+    it("still refuses a pending or failed check when the standing conditions pass", () => {
+      expect(codeOf(facts({ pullRequest: { ...facts().pullRequest!, mergeStateStatus: "BLOCKED" } }))).toBe("merge_state_not_clean");
+      expect(codeOf(facts({ pullRequest: { ...facts().pullRequest!, statusCheckRollup: [{ ...GREEN[0], conclusion: "FAILURE" }] } }))).toBe("check_failed");
+      expect(codeOf(facts())).toBe("ok");
+    });
+  });
+
+  describe("C4: no shared gate set or hard class", () => {
+    it("parks a diff that touches a gate module, the spend path, a gate-set hard class, or a batch-merge hard class", () => {
+      for (const file of ["src/production/workerMerge.ts", "src/spend/limit.ts", "docs/decisions/0001-x.md"]) {
+        expect(parkedAt(verdict(same, { changedPaths: ["apps/web/page.tsx", file] }))).toBe("C4");
+      }
+      const hard = classifyAuthorityPaths([".claude/settings.json"]);
+      expect(hard).toContain("agent_permissions");
+      const v = evaluateStandingMerge(input({ changedPaths: [".claude/settings.json"] }), deps(same, same, { gateSet: () => NO_HARD_CLASSES }));
+      expect(v).toMatchObject({ ok: false, condition: "C4" });
+    });
+    it("parks on an unreadable diff or gate set, and passes an unprotected authority-adjacent path", () => {
+      expect(parkedAt(verdict(same, { changedPaths: null }))).toBe("C4");
+      expect(parkedAt(verdict(same, {}, { gateSet: () => { throw new Error("unreadable"); } }))).toBe("C4");
+      expect(parkedAt(verdict(same, {}, { gateSet: () => ({ gateSet: "v1", projects: {} }) }))).toBe("C4");
+      expect(parkedAt(verdict(same, { changedPaths: ["apps/web/page.tsx"] }))).toBe("ok");
+    });
+  });
+
+  describe("C5: production still Active for the card", () => {
+    it("parks when production is Off, has no card, or the policy cannot be read", () => {
+      db.prepare("UPDATE production_policy SET desired_state = 'inactive'").run();
+      expect(parkedAt(verdict(same))).toBe("C5");
+      activate(null);
+      expect(parkedAt(verdict(same))).toBe("C5");
+      activate("Not A Slug!");
+      expect(parkedAt(verdict(same))).toBe("C5");
+      db.exec("DROP TABLE production_policy");
+      expect(parkedAt(verdict(same))).toBe("C5");
+    });
+  });
+
+  describe("the authorizing Decision (read from the Decision documents on main)", () => {
+    it("authorizes only an approved, answered Decision whose question or answer names this card", () => {
+      const named = (over: Record<string, unknown>) => findAuthorizingDecision([decisionAnswering(over)], CARD);
+      expect(named({})).toBe("0260");
+      expect(named({ question: "General question?", answer: `A for ${CARD}` })).toBe("0260");
+      expect(named({ question: "May Rowan merge for another-card-20261101?" })).toBeNull();
+      expect(named({ question: `May Rowan merge for ${CARD}-v2?` })).toBeNull();
+      expect(named({ answer: null })).toBeNull();
+      expect(named({ status: "open" })).toBeNull();
+    });
+    it("parks with a named reason for a Decision naming another card, none, or unreadable Decisions", () => {
+      for (const d of [() => [decisionAnswering({ question: "For some-other-card?" })], () => [], () => null]) {
+        const v = verdict(same, {}, { decisions: d });
+        expect(v).toMatchObject({ ok: false, condition: "authorization" });
+      }
+    });
+  });
+});
+
+describe("the standing merge in mergeCandidatePullRequest: receipt before the merge", () => {
+  let root: string;
+  let repo: string;
+  let library: string;
+  let github: FakeGitHub;
+  let db: Database.Database;
+  let head: string;
+  const branch = "claude/write-feature-20261121T000000000Z";
+
+  beforeEach(() => {
+    root = realpathSync(mkdtempSync(path.join(tmpdir(), "standing-merge-flow-")));
+    repo = path.join(root, "repo");
+    const origin = path.join(root, "origin.git");
+    git(root, ["init", "-q", "--bare", "-b", "main", origin]);
+    mkdirSync(repo);
+    git(repo, ["init", "-q", "-b", "main"]);
+    git(repo, ["config", "user.name", "Fixture"]);
+    git(repo, ["config", "user.email", "fixture@example.invalid"]);
+    git(repo, ["config", "commit.gpgsign", "false"]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: write-feature\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "genesis"]);
+    git(repo, ["remote", "add", "origin", origin]);
+    git(repo, ["push", "-q", "origin", "main"]);
+    github = new FakeGitHub(origin);
+    db = new Database(":memory:");
+    ensureProductionPolicyTables(db);
+    db.prepare("UPDATE production_policy SET desired_state = 'active', authority_json = ? WHERE id = 'workspace'")
+      .run(JSON.stringify({ requestId: CARD, grantedBy: "op", grantedAt: "2026-11-21T00:00:00Z", decisionRef: null, scopeFingerprint: "f" }));
+    library = path.join(root, "operator-scripts");
+    mkdirSync(library);
+    writeFileSync(path.join(library, `${CARD}.json`), JSON.stringify({ startRun: pinsFor({ actions: ["write-feature"] }) }));
+    // An authority-adjacent change: not on the worker-merge allowlist, but outside the shared gate set.
+    git(repo, ["checkout", "-q", "-b", branch]);
+    mkdirSync(path.join(repo, "apps/web"), { recursive: true });
+    writeFileSync(path.join(repo, "apps/web/page.tsx"), "export default 1;\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "agent work"]);
+    writeFileSync(path.join(repo, "PROJECT.md"), "# Project\n\ncurrent_action: next\n");
+    git(repo, ["commit", "-q", "-am", "settle completion"]);
+    head = git(repo, ["rev-parse", "HEAD"]).trim();
+    git(repo, ["checkout", "-q", "main"]);
+    git(repo, ["push", "-q", "origin", branch]);
+    github.prs.push({ number: 7, url: URL, branch, baseBranch: "main", isDraft: false });
+  });
+  afterEach(() => { db.close(); rmSync(root, { recursive: true, force: true }); });
+
+  const plan = planText({ ...BASE_ACTION, id: "write-feature" });
+  function run(standing: StandingMergeDeps = {}) {
+    const marker = `Independent review, head ${head.slice(0, 12)}\nLoosens a gate: no\n`;
+    return mergeCandidatePullRequest({
+      db, repoRoot: repo, baseBranch: "main", sessionId: "session_1", actionKey: "arcadia/write-feature", head,
+      settlementCommit: head, pullRequestUrl: URL, review: gateFor(head), now: new Date("2026-11-21T12:00:00Z")
+    }, {
+      runCommand: (call) => (call.args[0] === "pr" && call.args[1] === "view" && call.args.includes("comments") ? reviewComments(marker)() : github.runCommand(call)),
+      mergeFreeze: () => null, decisionIdClash: () => null,
+      standing: { libraryDir: () => library, showFile: () => plan, mergeTimeMain: () => "main", decisions: () => [decisionAnswering()], gateSet: () => GATES, releaseSha: () => "r".repeat(40), ...standing }
+    });
+  }
+  const ghIndex = (needle: string) => github.ghCalls.findIndex((call) => call.startsWith(needle));
+
+  it("posts the receipt comment before the merge call, with every receipt field", () => {
+    const outcome = run();
+    expect(outcome.kind).toBe("merged");
+    const comment = ghIndex("gh pr comment");
+    const merge = ghIndex("gh pr merge");
+    expect(comment).toBeGreaterThan(-1);
+    expect(merge).toBeGreaterThan(comment);
+    expect(github.ghCalls[merge]).toContain(`--match-head-commit ${head}`);
+    const body = github.comments[0].body;
+    for (const part of [CARD, head, MARKER_URL, "Loosens a gate: no", "SUCCESS", "CLEAN", "r".repeat(40), "0260"]) expect(body).toContain(part);
+  });
+
+  it("parks without a merge when the receipt cannot be posted", () => {
+    github.commentFailures.push("rate limited");
+    const outcome = run();
+    expect(outcome).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    expect(ghIndex("gh pr merge")).toBe(-1);
+  });
+
+  it("leaves behavior unchanged without a matching Decision: the authority-adjacent PR waits and nothing is posted or merged", () => {
+    for (const decisions of [() => [], () => [decisionAnswering({ question: "For another-card-20261101?" })]]) {
+      const outcome = run({ decisions });
+      expect(outcome).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+      if (outcome.kind === "refused") expect(outcome.reason).not.toContain("Standing merge parked");
+    }
+    expect(ghIndex("gh pr comment")).toBe(-1);
+    expect(ghIndex("gh pr merge")).toBe(-1);
+  });
+
+  it("parks a PR whose diff touches the shared gate set or a hard class, even with a matching Decision", () => {
+    const protectedApps: GateSetDocument = { gateSet: "v1", projects: { arcadia: { ...GATES.projects.arcadia, spend: ["apps/"] } } };
+    const outcome = run({ gateSet: () => protectedApps });
+    expect(outcome).toMatchObject({ kind: "refused", code: "authority_adjacent" });
+    if (outcome.kind === "refused") expect(outcome.reason).toContain("Standing merge parked at C4");
+    expect(ghIndex("gh pr merge")).toBe(-1);
   });
 });

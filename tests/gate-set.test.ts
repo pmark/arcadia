@@ -38,7 +38,7 @@ function tempRoot(files: Record<string, string>): string {
 }
 
 describe("the checked-in list", () => {
-  it("names the eight gate modules, spend, the hard classes and its own list, loader and test", () => {
+  it("names the nine gate modules, spend, the hard classes and its own list, loader and test", () => {
     const entry = arcadia();
     expect(entry.gateModules.map((m) => m.id)).toEqual([
       "workerMerge",
@@ -48,6 +48,7 @@ describe("the checked-in list", () => {
       "autoSettleBeforeDispatch",
       "candidateChangeGate",
       "mechanicalRepair",
+      "standingMerge",
       "start-run.sh",
     ]);
     expect(entry.spend).toEqual(["src/spend/"]);

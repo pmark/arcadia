@@ -9,6 +9,7 @@ import { isSettlementArchiveOf } from "../qa/patchApplicability.js";
 import { SETTLEMENT_RECORD_PATH } from "./candidateChangeGate.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
 import { workerMergeFreeze } from "../workMonitoring/runWindow.js";
+import { evaluateStandingMerge, renderStandingMergeReceipt, type StandingEvaluation, type StandingMergeDeps } from "./standingMerge.js";
 
 /**
  * The worker's automated review-and-merge (Decision 0097, Action
@@ -31,6 +32,13 @@ import { workerMergeFreeze } from "../workMonitoring/runWindow.js";
  * the same `--ff-only` sync the tick already runs every tick for an in-scope
  * Project (`detectBaseBranchAdvance`), so the next Action admits from the
  * merged main.
+ *
+ * Standing in-run merges (Action worker-applies-standing-merge-conditions):
+ * an authority-adjacent PR is merged only while an operator Decision answered
+ * on main authorizes in-run merges for the run's START card AND conditions
+ * C1-C5 hold on its exact head (standingMerge.ts); the receipt comment is
+ * posted before the merge call, and any failed or unreadable condition parks
+ * the PR exactly as before. With no such Decision nothing changes.
  *
  * Authority: this runs only when the Active production scope's Decision 0058
  * integration grant carries the opt-in `mergeThroughPullRequest: true`
@@ -476,6 +484,8 @@ export interface WorkerMergeDeps {
   mergeFreeze?: () => { message: string } | null;
   /** Duplicate Decision id check against current origin base, run immediately before the merge call: a non-null answer refuses it. */
   decisionIdClash?: (input: { repoRoot: string; baseBranch: string; head: string }) => string | null;
+  /** Injected inputs for the standing in-run merge conditions; the defaults read the card library, Git and the Decisions on main. */
+  standing?: StandingMergeDeps & { releaseSha?: () => string | null };
 }
 
 export interface WorkerMergeInput {
@@ -514,6 +524,20 @@ function defaultSyncBase({ repoRoot, baseBranch }: { repoRoot: string; baseBranc
   // Fast-forward, or reconcile when the only local-only commits are the
   // worker's own never-pushed pointer commits; any other divergence throws.
   syncBaseOrThrow({ repoRoot, baseBranch });
+}
+
+/** Every path the candidate touches, from the stewardship assessment and the diff itself; null when Git cannot say. */
+function standingChangedPaths(repoRoot: string, baseBranch: string, head: string, blastRadius: WorkerMergeBlastRadius): string[] | null {
+  try {
+    return [...new Set([...blastRadius.touchedPaths, ...diffPaths(repoRoot, [`${baseBranch}...${head}`])])];
+  } catch {
+    return null;
+  }
+}
+
+/** The release sha this code runs from (a go-broker release directory), or null. */
+function defaultReleaseSha(): string | null {
+  return /\/releases\/([0-9a-f]{40})\//.exec(import.meta.url)?.[1] ?? null;
 }
 
 /** The exact operator command for a refused worker merge. */
@@ -560,7 +584,7 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
     return refused("head_moved", `PR ${url} was merged at ${short(String(read.view.headRefOid))}, not the reviewed head ${short(head)}.`);
   }
   const blastRadius = assessWorkerMergeBlastRadius(repoRoot, baseBranch, head, input.settlementCommit);
-  const evaluation = evaluateWorkerMerge({
+  const gateFacts: WorkerMergeFacts = {
     expectedHead: head,
     baseBranch,
     review: input.review,
@@ -568,7 +592,25 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
     pullRequest: read.view,
     pullRequestReadError: read.error,
     blastRadius
-  });
+  };
+  let evaluation = evaluateWorkerMerge(gateFacts);
+  let standing: Extract<StandingEvaluation, { ok: true }> | null = null;
+  if (!evaluation.ok && evaluation.code === "authority_adjacent" && blastRadius && url) {
+    const verdict = evaluateStandingMerge({
+      db, repoRoot, baseBranch, head, actionKey: input.actionKey, pullRequestUrl: url, runCommand,
+      changedPaths: standingChangedPaths(repoRoot, baseBranch, head, blastRadius)
+    }, deps.standing);
+    if (verdict.ok) {
+      // Only the authority-adjacent refusal is lifted: every other fact (checks, CLEAN, base, head) is judged again.
+      const lifted = evaluateWorkerMerge({ ...gateFacts, blastRadius: { ...blastRadius, authorityAdjacent: false, reasons: [] } });
+      if (!lifted.ok) return refused(lifted.code, lifted.reason);
+      evaluation = lifted;
+      standing = verdict;
+    } else if (verdict.condition !== "authorization" && verdict.condition !== "C5") {
+      // With no authorizing Decision or Active card the refusal is exactly as before; otherwise it names the parked condition.
+      return refused("authority_adjacent", `${evaluation.reason} Standing merge parked at ${verdict.condition}: ${verdict.reason}`, blastRadius.boundaries);
+    }
+  }
   if (!evaluation.ok) return refused(evaluation.code, evaluation.reason, evaluation.code === "authority_adjacent" ? blastRadius?.boundaries ?? [] : []);
 
   // The duplicate check fetches and can be slow, so it runs first: the authority and freeze guards are the last reads before the merge call.
@@ -578,6 +620,17 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
   if (fenced) return { kind: "withheld", reason: `Withheld the worker merge of ${url}: ${fenced}.` };
   const freeze = (deps.mergeFreeze ?? (() => workerMergeFreeze(db, repoRoot)))();
   if (freeze) return refused("merge_freeze", freeze.message);
+  if (standing && read.view) {
+    const checks = read.view.statusCheckRollup.map((check) => `${String(check.name ?? check.context ?? "check")}: ${String(check.conclusion ?? check.status ?? "unknown")}`);
+    const receipt = renderStandingMergeReceipt({
+      cardId: standing.cardId, decisionId: standing.decisionId, head, reviewMarkerUrl: standing.reviewMarkerUrl, checkConclusions: checks,
+      mergeState: String(read.view.mergeStateStatus), classes: standing.classes, releaseSha: (deps.standing?.releaseSha ?? defaultReleaseSha)() ?? "unknown"
+    });
+    const posted = runCommand({ command: "gh", args: ["pr", "comment", evaluation.pullRequestUrl, "--body", receipt], cwd: repoRoot, timeoutMs: 30_000 });
+    if (posted.status !== 0) {
+      return refused("authority_adjacent", `Standing merge parked: the receipt comment could not be posted before the merge (${posted.error ?? (posted.stderr.trim() || `exit ${String(posted.status)}`)}).`, blastRadius?.boundaries ?? []);
+    }
+  }
   const merged = runCommand({ command: "gh", args: ["pr", "merge", evaluation.pullRequestUrl, "--merge", "--match-head-commit", head], cwd: repoRoot, timeoutMs: 120_000 });
   if (merged.status !== 0) {
     const detail = merged.error ?? (merged.stderr.trim() || `exit ${String(merged.status)}`);
