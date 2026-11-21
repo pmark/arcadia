@@ -61,7 +61,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask repair-red-candidates-with-a-bounded-session
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-six-bugs-and-2777-20261117e-alt2
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "Decision 0247 E: after deterministic fixes, a coding-agent repair Session produces a new reviewed head; the operator is pinged only when the attention criteria are met. Classification and fixture failures need judgment, not a generator."
     acceptance_criteria:
       - "The repair Session's brief contains the failing required checks' log excerpts and the classifier's verdict. A test asserts the brief text for the recorded #2744 lint-and-classification failure."
@@ -69,7 +69,7 @@ actions:
       - The repair runs on the light tier first, makes at most one attempt per candidate head, uses no paid fallback and stays inside the existing repair budget. A test shows a refused spend or capacity check launches nothing and leaves a receipt.
       - A successful repair's head is reviewed afresh by the worker and merges only under the 0060/0080 gate. A failed repair parks the candidate and sends exactly one ping that names the failing check, the attempted fix and the operator-attention criterion it meets.
       - A fixture run replays one recorded red candidate through both repair rounds to a green, reviewed head with zero operator touches, and the run record lists the touches as none.
-    depends_on: [repair-mechanical-check-failures-deterministically, wire-mechanical-repair-into-production, finish-wire-repair-verdict-case-and-absorb-proposal]
+    depends_on: [repair-mechanical-check-failures-deterministically, wire-mechanical-repair-into-production, finish-wire-repair-verdict-case-and-absorb-proposal, require-proof-for-every-met-criterion]
     decisions: []
     references: ["src/production/tick.ts", "src/production/independentReview.ts", "src/decisions/batchMerge.ts", "docs/decisions/0247-should-production-repair-a-candidate-that-fails-lint-budget-fingerprint-or.md", "docs/decisions/0181-decide-what-unattended-production-does-after-attempt-3-s-clean-run-re-deciding.md", "docs/decisions/0187-decide-what-unattended-production-does-after-a-delegated-batch-fails-under-the.md", "CONSTITUTION.md"]
   - id: queue-approved-plans-and-start-the-next
@@ -194,14 +194,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask reconcile-current-action-after-a-base-merge
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "Issue #2780: after #2745 merged, #2746's base merge kept a current_action that #2746 had marked done, failing the managed-documents contract and stalling the batch about 5 hours; the host refused the two-line hand fix."
     acceptance_criteria:
       - A test merges two sibling batch candidates in either order and shows main ends with a single valid current Action, with no manual edit.
       - The reconcile is the same governed implementation the stale-current-action repair class of repair-mechanical-check-failures-deterministically uses; a test or code reference shows there is one implementation, not two.
       - "A recorded fixture of the #2746 state (c23c38232 merged with main) passes tests/managed-documents-contract.test.ts after the reconcile."
       - No agent or operator hand-edits a pointer; the guidance names the governed command or settlement step that performs the reconcile.
-    depends_on: [repair-mechanical-check-failures-deterministically, verify-overnight-merges-at-8am]
+    depends_on: [repair-mechanical-check-failures-deterministically, verify-overnight-merges-at-8am, publish-governance-commits-from-the-clone]
     decisions: []
     references: ["src/ask/settlement.ts", "src/dispatch/pointer.ts", "tests/managed-documents-contract.test.ts"]
   - id: keep-pointer-commits-mergeable-across-a-date-change
@@ -445,13 +445,13 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask show-the-resulting-queue-order-in-settle-preview
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "Plan F's 2026-11-17 amendment took about seven versions because '--before' inside the active Plan and the Plan-file dependency order were discovered only at settle."
     acceptance_criteria:
       - agent-ask preview of a plan-intent Ask prints, for the target Plan, the dependency-ordered remaining Actions as dependencyOrderedActionIds would compute them after settlement, and the stored queue order for each placement it accepts; a test uses a fixture of Plan F's 2026-11-17 state and the e and e-alt amendments and shows both orders.
       - A '--before' or '--after' anchor that settlement would reject (for example an Action inside the active Plan's own segment) is refused by preview with the same reason settlement gives; a test covers it.
       - When the stored queue order and the Plan-file dependency order disagree, preview names the first differing position; a test covers it.
-    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action]
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action, publish-governance-commits-from-the-clone]
     decisions: []
     references: ["src/ask/settlement.ts", "src/dispatch/actionOrder.ts", "src/commands/agentAsk.ts"]
   - id: require-proof-for-every-met-criterion
@@ -464,14 +464,14 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask require-proof-for-every-met-criterion
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-gap-actions-20261118-b
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "#2777 was auto-settled with six criteria 'met' and empty evidence notes while its library had no caller, so 'done' did not mean wired in."
     acceptance_criteria:
       - "A test replays #2777's completion Ask (criteria 'met', no evidence notes) and shows auto-settle refuses it with a reason naming each criterion that lacks a proof."
       - A test shows a completion whose every 'met' note names a test file and test name, a receipt path or a commit that exists at the candidate revision settles as today; a note naming a missing file is refused.
       - A repository check fails when a module added under src/production, src/sessions or src/ask has no importer outside tests, naming the module, with an explicit allowlist for intentional entry points; a fixture shows it would have failed on c7d7fba5f.
       - The build Session brief asks for one proof per criterion in the completion evidence notes; a test asserts the line in a composed brief.
-    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action]
+    depends_on: [allocate-decision-numbers-on-main-and-refuse-duplicates, finish-allocate-push-ping-and-supersede-older-action, publish-governance-commits-from-the-clone]
     decisions: []
     references: ["src/ask/autoSettleBeforeDispatch.ts", "src/ask/agentAsk.ts", "src/ask/settlement.ts", "src/codex/packets.ts"]
   - id: check-tonights-card-at-noon
@@ -543,7 +543,7 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask run-production-in-its-own-clone
     clarification: clarified
     confidence: high
-    source: Agent Ask ellis-amend-plan-f-target-migration-20261119-aplus3b
+    source: Agent Ask ellis-amend-plan-f-friday-order-20261120g
     why: "On 2026-11-18 the shared primary checkout diverged (base_not_synced), needed a hand pointer commit under an operator exception (982e14733) and an operator-approved reset."
     acceptance_criteria:
       - A fixture replays the 2026-11-18 divergence against a clone-configured policy and shows the primary checkout unchanged and no base_not_synced; a human commit on the primary checkout no longer affects production.
@@ -552,7 +552,7 @@ actions:
       - Active refuses, with one page, unless keep-awake is on and free disk is above a named threshold; turning keep-awake on stays an operator host setting.
       - Each production receipt records the release sha. The live host step (pointing the installed policy at the clone) is a separate operator-approved step after this merges.
       - The clone path is per project and repository (workspace/clones/<project>/<repo>), and every production receipt records project, repository and attempt id explicitly, so the global concurrency limit of 1 is a setting, not an assumption in paths or receipts.
-    depends_on: [define-the-gate-set]
+    depends_on: [define-the-gate-set, verify-overnight-merges-at-8am]
     decisions: []
     references: ["scripts/services.sh", "src/production/policy.ts", "src/production/tick.ts", "src/production/runtimeCurrency.ts", "src/git/pointerReconcile.ts"]
   - id: worker-applies-standing-merge-conditions
@@ -642,14 +642,13 @@ actions:
     responsibility: agent
     execution: build
     effort: session
-    next_action: "A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route, and the older settlement-queue Action is closed as superseded with Issues #2369 and #1275 citing the merged PR."
+    next_action: A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route.
     expected_artifact: Evidence satisfying Agent Ask finish-allocate-push-ping-and-supersede-older-action
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan25-route-only-finish-allocate-20261119
+    source: Agent Ask ellis-amend-plan-f-split-finish-allocate-20261120
     acceptance_criteria:
       - A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.
-      - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
     depends_on: []
     decisions: []
     references: ["scripts/check-decision-ids.ts", ".github/workflows/ci.yml", "docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/pull/2880"]
@@ -672,9 +671,50 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/production/independentReview.ts", "src/production/mechanicalRepairWiring.ts", "tests/mechanical-repair-wiring.test.ts", "https://github.com/pmark/arcadia/pull/2887"]
+  - id: build-the-checkpoint-field
+    title: "A `plan` Agent Ask can set a Plan's ordered `checkpoints:` list, settlement validates it against the Plan's Actions, and docs sync reads it alongside `milestone:` during Decision 0274's read-compatibility window."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "A `plan` Agent Ask can set a Plan's ordered `checkpoints:` list, settlement validates it against the Plan's Actions, and docs sync reads it alongside `milestone:` during Decision 0274's read-compatibility window."
+    expected_artifact: Evidence satisfying Agent Ask build-the-checkpoint-field
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-checkpoint-field-20261120a
+    why: "Decision 0274 adopted Checkpoints as what a Plan reaches, but no governed path can write a list into a Plan today, so no Plan can carry one."
+    acceptance_criteria:
+      - "A fixture test shows a `plan` Agent Ask carrying a new top-level `checkpoints` field (accepted only for intent plan) is settled into the Plan frontmatter as an ordered `checkpoints:` list, each item recording its state text, `actions:` (Action ids) and `receipt:`, with the last item reported as the headline."
+      - "A fixture test shows settlement refuses a `checkpoints:` list that cites an Action id not in the Plan, or has an item without `receipt:`, and the refusal names that id or item."
+      - "Until 2026-12-07 (Pacific), docs sync reads both `milestone:` and `checkpoints:` for PROJECT.md, Plans and Actions (src/docs/parse.ts), and this Action never writes PROJECT.md; from that date a document with only `milestone:` is still read and docs sync reports it as deprecated; a test covers a date before and a date after."
+      - A docs sync test shows a cited Action id no longer in the Plan reported as 'unknown', never as done, and an open Action cited by no Checkpoint reported as a warning, not an error.
+      - A suggestion command prints the Plan's sink Actions (Actions with no dependents) as a Checkpoint skeleton, writes nothing to the Plan and makes no model call; a test shows the printed list and the unchanged file.
+      - "The PR description states what `checkpoints:` creates in the milestones table on docs sync (src/docs/sync.ts) and whether the Action-level `milestone` field is kept read-only or renamed, and a test covers the chosen behaviour."
+      - "The Milestone entry in docs/arcadia-semantics.md and a new Checkpoint entry quote Decision 0274's answered definitions word for word, docs/agent-guidance/source-references.json carries the edited file's new sha256, and `pnpm check:agent-guidance` passes."
+      - "During the window the existing `milestone:` writers (settlement activation, the plan amendment of `milestone`, and the `milestone` Agent Ask intent) keep their behaviour and their existing tests pass unchanged; the PR description lists each as follow-up for the rename after cutover."
+      - The PR changes no file under docs/decisions/, not PROJECT.md, and no docs/plans/ file other than the Plan F completion record that settlement writes for this Action; it ships no Roadmap view, and its description names the follow-up migration amendments.
+    depends_on: []
+    decisions: []
+    references: ["docs/decisions/0274-what-do-milestone-and-checkpoint-mean-in-arcadia-and-where-do-checkpoints-live.md", "src/ask/settlement.ts", "src/ask/agentAsk.ts", "src/docs/parse.ts", "src/docs/sync.ts", "src/docs/types.ts", "docs/arcadia-semantics.md"]
+  - id: supersede-older-allocate-action-and-cite-the-merged-pr
+    title: "After finish-allocate-push-ping-and-supersede-older-action merges, the older settlement-queue Action is closed as superseded through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
+    status: open
+    responsibility: requires_review
+    effort: session
+    next_action: "After finish-allocate-push-ping-and-supersede-older-action merges, the older settlement-queue Action is closed as superseded through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
+    expected_artifact: Evidence satisfying Agent Ask supersede-older-allocate-action-and-cite-the-merged-pr
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-split-finish-allocate-20261120
+    why: "These steps can only happen after the merge, so they cannot be proven inside the build session that produces it."
+    acceptance_criteria:
+      - "Action allocate-decision-numbers-from-origin-and-refuse-duplicates in Plan seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and is closed as superseded by this Action through a governed amendment, and Issues #2369 and #1275 cite the merged PR."
+    depends_on: [finish-allocate-push-ping-and-supersede-older-action]
+    decisions: []
+    references: ["docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/issues/2369", "https://github.com/pmark/arcadia/issues/1275"]
 questions: []
 decisions: []
-current_action: finish-allocate-push-ping-and-supersede-older-action
+current_action: worker-applies-standing-merge-conditions
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
