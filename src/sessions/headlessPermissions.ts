@@ -20,8 +20,8 @@ import { sessionRecordDirectory, sessionSettingsPath } from "./sessionRecording.
  *     `pnpm exec vitest run <file>` / `pnpm vitest run <file>` command (and
  *     the same followed by trailing arguments, `... <file> *`), plus
  *     the exact `node scripts/bridge-worktree-deps.mjs` a fresh worktree needs
- *     before any test can resolve its imports; no vitest or pnpm wildcard; and
- *   - `pnpm [exec] vitest run tests/*` and `pnpm [exec|-s] tsc --noEmit` for every
+ *     before any test can resolve its imports; and no other vitest or pnpm wildcard (but see `HEADLESS_WORKER_CHECK_RULES` below, which is a path-scoped `tests/*` wildcard); and
+ *   - `pnpm exec vitest run tests/*` (a path-scoped wildcard, see `HEADLESS_WORKER_CHECK_RULES`) and `pnpm exec tsc --noEmit` for every
  *     headless build Session (Issue #2905), so a test the Session adds is one it can run; and
  *   - `arcadia agent-ask draft`, the completion protocol's fallback that
  *     leaves a drafted Ask for the host to preserve and settle.
@@ -104,17 +104,19 @@ export function namedTestCommands(criteria: readonly string[]): string[] {
  * file. The 2026-11-20 worker added two tests the Action's criteria did not
  * name, the Project's only declared command was `node scripts/preservation-self-check.mjs`,
  * so every `pnpm vitest run tests/<new>.test.ts` and `pnpm tsc` was refused, and
- * it then marked the criteria met unrun. Path-scoped, not a vitest/pnpm wildcard:
- * only test files under `tests/` (with trailing arguments such as `-t`, `2>&1`)
- * and the typecheck. Lint, build and every other command stay refused.
+ * it then marked the criteria met unrun.
+ *
+ * This DEPARTS from Decision 0136 ("absent requirements grant no extra
+ * commands", "no wildcard shell/pnpm permission"): `pnpm exec vitest run tests/*`
+ * is a wildcard pnpm permission granted without any criterion naming the file.
+ * It is path-scoped (test files under `tests/`, with trailing arguments such as
+ * `-t`) plus the exact typecheck, and stands only until the operator rules on
+ * its scope. Lint, build and every other command stay refused.
  */
 export const HEADLESS_WORKER_CHECK_RULES: readonly string[] = Object.freeze([
   exactBashRule(HEADLESS_BRIDGE_DEPS_COMMAND),
   "Bash(pnpm exec vitest run tests/*)",
-  "Bash(pnpm vitest run tests/*)",
-  "Bash(pnpm exec tsc --noEmit)",
-  "Bash(pnpm tsc --noEmit)",
-  "Bash(pnpm -s tsc --noEmit)"
+  "Bash(pnpm exec tsc --noEmit)"
 ]);
 
 /** The complete allow list for a Session whose Project declares `validationCommands`. */

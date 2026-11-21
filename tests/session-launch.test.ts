@@ -2455,7 +2455,10 @@ describe("launch preflight and headless permission posture", () => {
   it("always lets a headless build Session run tests under tests/ and the typecheck, and nothing broader (Issue #2905)", () => {
     // The 2026-11-20 worker's Project declared one command and its criteria named no test file.
     const rules = headlessClaudeAllowList(["node scripts/preservation-self-check.mjs"], null, ["A new regression test exists."]);
-    expect(rules).toEqual(expect.arrayContaining(["Bash(pnpm exec vitest run tests/*)", "Bash(pnpm vitest run tests/*)", "Bash(pnpm -s tsc --noEmit)", "Bash(pnpm exec tsc --noEmit)", "Bash(node scripts/bridge-worktree-deps.mjs)"]));
+    expect(rules).toEqual(expect.arrayContaining(["Bash(pnpm exec vitest run tests/*)", "Bash(pnpm exec tsc --noEmit)", "Bash(node scripts/bridge-worktree-deps.mjs)"]));
+    expect(rules).not.toContain("Bash(pnpm vitest run tests/*)");
+    expect(rules).not.toContain("Bash(pnpm tsc --noEmit)");
+    expect(rules).not.toContain("Bash(pnpm -s tsc --noEmit)");
     for (const rule of rules.filter((r) => /vitest|tsc/.test(r))) expect(rule).toMatch(/^Bash\(pnpm (?:exec |-s )?(?:vitest run tests\/\*|tsc --noEmit(?: \*)?)\)$/);
     expect(rules.some((rule) => /\b(?:lint|build|commit|push|settle|bash|sh)\b|vitest run \*|vitest\b(?! run tests)/.test(rule))).toBe(false);
   });

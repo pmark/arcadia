@@ -27,6 +27,10 @@ describe("contradicted met criteria", () => {
     expect(contradictedCriteriaRefusal([entry("New test unrun: the sandbox refused vitest.")])).toContain("unrun");
     expect(contradictedCriteriaRefusal([entry("Unable to run the new test here.")])).toContain("Unable to run");
     expect(contradictedCriteriaRefusal([entry("pnpm vitest run was refused in this Session.")])).toContain("was refused");
+    expect(contradictedCriteriaRefusal([entry("The sandbox refused pnpm; the command was denied.")])).toContain("was denied");
+    expect(contradictedCriteriaRefusal([entry("vitest was blocked by the sandbox.")])).toContain("blocked by the sandbox");
+    expect(contradictedCriteriaRefusal([entry("The test asserts the merge was refused: 4 passed.")])).toBeNull();
+    expect(contradictedCriteriaRefusal([entry("Ran tests/x.test.ts: the denied request was refused as expected, 2 passed.")])).toBeNull();
     expect(contradictedCriteriaRefusal([entry("Nothing was refused; pnpm vitest run tests/x.test.ts: 3 passed.")])).toBeNull();
   });
 

@@ -1625,7 +1625,8 @@ function buildProviderLaunch(
   // (agent-editable) project settings into it, leaving only this file and managed
   // policy. `acceptEdits` also auto-approves mkdir/rm/mv/cp/sed in the working
   // directory, and the list is not a security boundary (validation commands run
-  // code the agent can edit). Only an explicit `arcadia go --launch --interactive`
+  // code the agent can edit; it also carries the path-scoped `pnpm exec vitest run
+  // tests/*` wildcard, see `HEADLESS_WORKER_CHECK_RULES`). Only an explicit `arcadia go --launch --interactive`
   // stays interactive.
   let args: string[];
   if (headless) {
