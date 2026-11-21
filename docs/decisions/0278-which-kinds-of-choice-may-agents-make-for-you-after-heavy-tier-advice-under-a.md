@@ -4,7 +4,7 @@ type: decision
 id: "0278"
 slug: which-kinds-of-choice-may-agents-make-for-you-after-heavy-tier-advice-under-a
 project: arcadia
-status: open
+status: approved
 question: Which kinds of choice may agents make for you after heavy-tier advice, under a watch layer, so that only the rest come to you?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-21
+answer: 1. Delegate four kinds of choice with watch layer
+decided: 2026-11-21
 ---
 
 # Decision 0278: Which kinds of choice may agents make for you after heavy-tier advice, under a watch layer, so that only the rest come to you?
