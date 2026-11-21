@@ -659,13 +659,13 @@ actions:
     responsibility: agent
     execution: build
     effort: session
-    next_action: "Finish the wired mechanical repair: an integration test through the worker tick shows #2766's fingerprint refresh run, commit and push a production-owned head for a candidate that changed the named guidance document; a test records a verdict on the old head first and shows the production-owned repair push is reviewed as a new head; proposal agentask_abd3a5e65938083517 is recorded as absorbed with its receipt id cited; and each criterion's evidence names the integration test, the repository test or the receipt that proves it."
+    next_action: "Finish the wired mechanical repair: an integration test through the worker tick shows #2766's fingerprint refresh run, commit and push a production-owned head for a candidate that changed an indexed procedure document outside docs/agent-guidance/ (a document under docs/agent-guidance/ stays gated); a test records a verdict on the old head first and shows the production-owned repair push is reviewed as a new head; proposal agentask_abd3a5e65938083517 is recorded as absorbed with its receipt id cited; and each criterion's evidence names the integration test, the repository test or the receipt that proves it."
     expected_artifact: Evidence satisfying Agent Ask finish-wire-repair-verdict-case-and-absorb-proposal
     clarification: clarified
     confidence: high
-    source: Agent Ask rowan25-route-only-finish-wire-repair-20261119
+    source: Agent Ask ellis-amend-plan-f-finish-wire-criterion-1-20261120
     acceptance_criteria:
-      - "An integration test drives the worker tick (not the library alone) with the recorded #2752 and #2766 check failures and shows one deterministic round runs, commits and pushes a production-owned head to the candidate branch. With the recorded #2758 and #2765 failures, the same test shows a hand-off to repair-red-candidates-with-a-bounded-session without running any generator."
+      - "An integration test drives the worker tick (not the library alone) with the recorded #2752 check failure, and with #2766's stale-fingerprint failure for a candidate that changed an indexed procedure document outside docs/agent-guidance/, and shows one deterministic round runs, commits and pushes a production-owned head to the candidate branch. For #2766's failure on a candidate that changed a document under docs/agent-guidance/, the same test file shows no generator runs and no production-owned head is pushed, so the Decision 0098 agent-guidance gate holds and the required-checks escalation stands for the operator. With the recorded #2758 and #2765 failures, the same test file shows a hand-off to repair-red-candidates-with-a-bounded-session without running any generator."
       - src/production/independentReview.ts treats a production-owned repair push after a recorded verdict as a new head to review, not review_head_moved; an integration test through the review path shows it, and any other moved head is still review_head_moved.
       - Proposal agentask_abd3a5e65938083517 is recorded as absorbed, with its receipt id cited in this Action's completion evidence.
       - Each criterion's completion evidence names the integration test, the repository test or the receipt that proves it, not a unit test of the library.
