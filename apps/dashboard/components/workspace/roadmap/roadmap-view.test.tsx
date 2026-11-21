@@ -59,4 +59,10 @@ describe("RoadmapStack", () => {
     expect(out.match(/rm-gate rm-gate-done/g)?.length).toBe(1);
     expect(readFileSync(new URL("./roadmap.css", import.meta.url), "utf8")).not.toMatch(/\.rm-plan \{[^}]*var\(--rm-done\)/);
   });
+
+  it("the page says it is interim and claims no Milestone", () => {
+    const live = readFileSync(new URL("./roadmap-live.tsx", import.meta.url), "utf8");
+    expect(live).toContain("Interim page");
+    expect(live).toContain("no Milestone is claimed or declared here");
+  });
 });

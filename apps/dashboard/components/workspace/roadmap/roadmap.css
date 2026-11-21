@@ -24,6 +24,7 @@
 .rm-card { position: relative; padding: 16px 18px; border-radius: 20px; margin-bottom: 10px; }
 .rm-kind { margin: 0; padding-right: 84px; font-size: 12px; color: var(--rm-soft); }
 .rm-title { margin: 4px 0 0; font-size: clamp(20px, 5.4vw, 26px); font-weight: 450; line-height: 1.25; }
+.rm-interim { margin: 8px 0 0; padding: 6px 10px; border: 1px dashed var(--rm-fog); border-radius: 8px; font-size: 12px; color: var(--rm-soft); }
 .rm-fresh { margin: 8px 0 0; font-size: 12px; color: var(--rm-soft); }
 .rm-refresh { position: absolute; top: 12px; right: 14px; min-height: 40px; padding: 0 12px; border-radius: 12px; border: 1px solid var(--rm-line); background: transparent; color: var(--rm-ink); font-size: 12px; cursor: pointer; }
 .rm-problem { margin: 10px 0 0; font-size: 13px; color: var(--rm-warn); }

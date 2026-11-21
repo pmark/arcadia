@@ -60,6 +60,7 @@ export function RoadmapLive({ project, initial, initialError }: { project: strin
       <button type="button" className="rm-refresh" onClick={() => { void read(true); }} disabled={reading}>{reading ? "Reading…" : "Refresh"}</button>
       <p className="rm-kind">Roadmap · {project} · a read-only view of checked-in records</p>
       <h1 className="rm-title">The route to the North Star</h1>
+      <p className="rm-interim" data-testid="roadmap-interim">Interim page: it shows Plans and counts from the records, and no Milestone is claimed or declared here.</p>
       {view && <p className="rm-fresh" data-testid="roadmap-freshness">Read at {clock(view.generatedAt)}. Updates about every {REFRESH_SECONDS} seconds while this page is open.</p>}
       {error && <p className="rm-problem" role="alert">{view ? "Could not read this again, so this is the last good read: " : "The Roadmap could not be read: "}{error}</p>}
       {view && view.warnings.length > 0 && <ul className="rm-warnings" aria-label="Sources that could not be used">
