@@ -672,6 +672,31 @@ actions:
     depends_on: []
     decisions: []
     references: ["src/production/independentReview.ts", "src/production/mechanicalRepairWiring.ts", "tests/mechanical-repair-wiring.test.ts", "https://github.com/pmark/arcadia/pull/2887"]
+  - id: build-the-checkpoint-field
+    title: "A `plan` Agent Ask can set a Plan's ordered `checkpoints:` list, settlement validates it against the Plan's Actions, and docs sync reads it alongside `milestone:` during Decision 0274's read-compatibility window."
+    status: open
+    responsibility: agent
+    execution: build
+    effort: session
+    next_action: "A `plan` Agent Ask can set a Plan's ordered `checkpoints:` list, settlement validates it against the Plan's Actions, and docs sync reads it alongside `milestone:` during Decision 0274's read-compatibility window."
+    expected_artifact: Evidence satisfying Agent Ask build-the-checkpoint-field
+    clarification: clarified
+    confidence: high
+    source: Agent Ask ellis-amend-plan-f-checkpoint-field-20261120a
+    why: "Decision 0274 adopted Checkpoints as what a Plan reaches, but no governed path can write a list into a Plan today, so no Plan can carry one."
+    acceptance_criteria:
+      - "A fixture test shows a `plan` Agent Ask carrying a new top-level `checkpoints` field (accepted only for intent plan) is settled into the Plan frontmatter as an ordered `checkpoints:` list, each item recording its state text, `actions:` (Action ids) and `receipt:`, with the last item reported as the headline."
+      - "A fixture test shows settlement refuses a `checkpoints:` list that cites an Action id not in the Plan, or has an item without `receipt:`, and the refusal names that id or item."
+      - "Until 2026-12-07 (Pacific), docs sync reads both `milestone:` and `checkpoints:` for PROJECT.md, Plans and Actions (src/docs/parse.ts), and this Action never writes PROJECT.md; from that date a document with only `milestone:` is still read and docs sync reports it as deprecated; a test covers a date before and a date after."
+      - A docs sync test shows a cited Action id no longer in the Plan reported as 'unknown', never as done, and an open Action cited by no Checkpoint reported as a warning, not an error.
+      - A suggestion command prints the Plan's sink Actions (Actions with no dependents) as a Checkpoint skeleton, writes nothing to the Plan and makes no model call; a test shows the printed list and the unchanged file.
+      - "The PR description states what `checkpoints:` creates in the milestones table on docs sync (src/docs/sync.ts) and whether the Action-level `milestone` field is kept read-only or renamed, and a test covers the chosen behaviour."
+      - "The Milestone entry in docs/arcadia-semantics.md and a new Checkpoint entry quote Decision 0274's answered definitions word for word, docs/agent-guidance/source-references.json carries the edited file's new sha256, and `pnpm check:agent-guidance` passes."
+      - "During the window the existing `milestone:` writers (settlement activation, the plan amendment of `milestone`, and the `milestone` Agent Ask intent) keep their behaviour and their existing tests pass unchanged; the PR description lists each as follow-up for the rename after cutover."
+      - The PR changes no file under docs/decisions/, not PROJECT.md, and no docs/plans/ file other than the Plan F completion record that settlement writes for this Action; it ships no Roadmap view, and its description names the follow-up migration amendments.
+    depends_on: []
+    decisions: []
+    references: ["docs/decisions/0274-what-do-milestone-and-checkpoint-mean-in-arcadia-and-where-do-checkpoints-live.md", "src/ask/settlement.ts", "src/ask/agentAsk.ts", "src/docs/parse.ts", "src/docs/sync.ts", "src/docs/types.ts", "docs/arcadia-semantics.md"]
 questions: []
 decisions: []
 current_action: finish-allocate-push-ping-and-supersede-older-action
