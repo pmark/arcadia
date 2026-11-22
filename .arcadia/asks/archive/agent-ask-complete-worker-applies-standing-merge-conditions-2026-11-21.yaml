@@ -1,0 +1,98 @@
+agent_ask: v1
+request_id: complete-worker-applies-standing-merge-conditions-2026-11-21
+project: arcadia
+intent: complete
+target_ref: action/worker-applies-standing-merge-conditions
+candidate_revision: 06ebbee105b472b56dbe46aa4de3b0b811def3fc
+evidence:
+  - criterion: Fixture tests cover a pass and a fail for each of C1-C5, and an
+      unreadable input, which parks. They live in at most 8 test files in total,
+      new plus modified, reusing tests/worker-merge.test.ts and
+      tests/gate-set.test.ts where they fit; if the change adds a first-order
+      import to src/production/workerMerge.ts, config/gate-set.json is updated
+      in the same PR and tests/gate-set.test.ts passes.
+    status: met
+    note: "Met. tests/worker-merge.test.ts and tests/gate-set.test.ts (2 files,
+      limit 8) carry pass+fail fixtures for C1-C5 and each unreadable input;
+      config/gate-set.json lists standingMerge.ts and the new gate module.
+      Proof: independent review PASS of head ae811fb4 (PR #2928, comment
+      7070666518), PR CI 19/19, main CI 19/19 at 2408a7158; local run of both
+      files 141 passed."
+  - criterion: "C1 passes only for an Action whose requirement content matches what
+      the operator approved. Approval is the START card the operator pressed for
+      the run: its id is the production policy's authority.requestId (set by
+      scripts/start-run.sh `production activate --request-id`), and its pins are
+      the startRun block of artifacts/generated/operator-scripts/<card id>.json
+      in the operator-script library of the Project's main checkout (its
+      registered repository path, not the candidate worktree or a production
+      clone), read with validateStartRunPins
+      (src/operatorActions/startRunPins.ts). The approved content of each Action
+      in pins.actions is the sha256 of a canonical JSON object {\"next_action\",
+      \"acceptance_criteria\", \"references\"}, keys in that order, built from
+      the values of that Action's next_action, acceptance_criteria and
+      references keys as parsed from the YAML front matter of the Plan file
+      docs/plans/<pins.plan>.md at pins.reviewedRevision (the slug convention of
+      src/commands/startRun.ts; quoting and YAML style do not matter); a missing
+      acceptance_criteria or references is an empty list. Each text item
+      (next_action, each acceptance criterion, each reference) has every run of
+      whitespace (JavaScript /\\s+/) collapsed to one space and is trimmed, with
+      no other Unicode normalization; acceptance_criteria keeps its order, and
+      references is sorted by UTF-16 code-unit order (the default JavaScript
+      sort), keeping duplicates. The object is serialized compactly with
+      JSON.stringify (keys in the stated order) and its UTF-8 bytes are hashed
+      with sha256, compared as lowercase hex. The worker computes it and
+      compares it with the same fields of the same Action at merge-time main;
+      title, expected_artifact, depends_on, decisions, execution, responsibility
+      and effort are deliberately not hashed (dependency changes are
+      ordering-only and do not void approval), a pinned Action with no
+      next_action field parks, and no new pin is written. A card whose pins
+      carry a delegation block (a card Rowan or the standing-grant timer
+      pressed) records no operator-pressed content for its Actions (the
+      standing-grant card carries no Action list or revision), so on such a run
+      C1 parks. Added scope (an Action not in pins.actions), any change to the
+      text of next_action, acceptance_criteria or references, or a reordering of
+      acceptance_criteria (a newly named authority path shows up as a references
+      change) voids that approval and parks the Action until the operator
+      re-approves; whitespace-only edits, reordering references, and queue-order
+      or ordering-only dependency changes do not. Tests cover each case,
+      including a delegated card, and an unreadable library, card, pins or
+      revision parks."
+    status: met
+    note: Met. C1 binds to the pressed START card (policy authority.requestId) and
+      its pins via validateStartRunPins, hashing the canonical {next_action,
+      acceptance_criteria, references} from the Plan at pins.reviewedRevision;
+      tests cover pass (whitespace, reorder references, title, depends_on) and
+      fail (next_action, acceptance_criteria, order, new authority-path
+      reference, unpinned Action, delegation card). Independent review table row
+      C1.
+  - criterion: A PR whose diff touches the shared gate set or a hard class parks for
+      the operator; a test covers each.
+    status: met
+    note: Met. Gate-set modules, the spend path, hard classes and
+      decisions/agent_permissions park; unreadable diff, gate set or project
+      parks; integration tests cover the gate-set path and a hard class.
+      Independent review row C4; CI green on the merged tip.
+  - criterion: The receipt comment (card or run id, head sha, review marker URL,
+      'Loosens a gate' line, check conclusions, merge state, classes, release
+      sha) is posted before the merge call; a test with injected GitHub
+      dependencies records the call order and shows the receipt post precedes
+      the merge call, with no live merge required.
+    status: met
+    note: Met. The receipt comment is posted after the duplicate-decision, fence and
+      freeze guards and immediately before gh pr merge --match-head-commit; a
+      test with injected GitHub dependencies records call order and a failed
+      post parks with no merge. Independent review row Receipt.
+  - criterion: "The worker applies these only while an operator Decision authorizing
+      in-run merges for that run is answered on main: an approved Decision with
+      a recorded answer whose question or answer names the run's START card id
+      (as in criterion 2), read-only from the Decision documents on main
+      (discoverDocs). With no such Decision, behavior is unchanged
+      (authority-adjacent PRs wait); a test covers a matching Decision, a
+      Decision naming another card and none. This adds no authority: the
+      Decision is the authority."
+    status: met
+    note: Met. Standing logic applies only with an answered Decision naming the run
+      card; tests cover a matching Decision, a Decision naming another card,
+      none and unreadable Decisions; with none, behavior is unchanged.
+      Independent review row Decision authorization.
+desired_result: Mark worker-applies-standing-merge-conditions complete.

@@ -7,7 +7,7 @@ status: active
 milestone: "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions"
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-21
+updated: 2026-11-22
 actions:
   - id: retry-successor-press-when-main-moves
     title: When main moves while the host timer is between derive and press, the timer retires that card and derives a fresh one on a later tick instead of ending the standing grant's loop, so the operator can merge to main freely while production runs.
@@ -557,11 +557,11 @@ actions:
     references: ["scripts/services.sh", "src/production/policy.ts", "src/production/tick.ts", "src/production/runtimeCurrency.ts", "src/git/pointerReconcile.ts"]
   - id: worker-applies-standing-merge-conditions
     title: The worker merges an in-run PR only when conditions C1-C5 hold on its exact head, writes the receipt before --match-head-commit, and parks it otherwise; C1 is bound to the Plan revision or Action-id list the operator approved; protection comes from the shared gate set.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: The worker merges an in-run PR only when conditions C1-C5 hold on its exact head, writes the receipt before --match-head-commit, and parks it otherwise; C1 is bound to the Plan revision or Action-id list the operator approved; protection comes from the shared gate set.
+    next_action: Completed via Agent Ask complete-worker-applies-standing-merge-conditions-2026-11-21; no further action.
     expected_artifact: Evidence satisfying Agent Ask worker-applies-standing-merge-conditions
     clarification: clarified
     confidence: high
@@ -715,7 +715,7 @@ actions:
     references: ["docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/issues/2369", "https://github.com/pmark/arcadia/issues/1275"]
 questions: []
 decisions: []
-current_action: worker-applies-standing-merge-conditions
+current_action: verify-overnight-merges-at-8am
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
