@@ -729,6 +729,46 @@ function transientEnvironmentWaitExpired(db: Database.Database, actionKey: strin
   return row?.dedupe_key === ENVIRONMENT_WALL_TRANSIENT_CODE && now.getTime() - Date.parse(row.first_at) >= PRESERVATION_RECHECK_CAP_MS;
 }
 
+/** Refusal code `prepareSession` raises when another Action's incomplete resumable candidate holds the repository. */
+const FOREIGN_HOLD_CODE = "foreign_resumable_candidate";
+/** A hold older than this (15 minutes) raises one operator ping per episode: short holds resolve themselves, long ones need an operator or governed step. */
+export const FOREIGN_HOLD_PING_AFTER_MS = 15 * 60 * 1000;
+
+export function foreignHoldDedupeKey(error: ArcadiaError): string {
+  return `${FOREIGN_HOLD_CODE}:${String(error.details?.sessionId ?? "unknown")}`;
+}
+
+function foreignHoldReason(error: ArcadiaError): string {
+  const d = error.details ?? {};
+  return `${error.message} Blocking Session ${String(d.sessionId ?? "unknown")} (Action ${String(d.actionId ?? "unknown")}), candidate ${String(d.worktreePath ?? "unknown")}. `
+    + "Remedy: an operator-authorized discard of that candidate or a handoff retire; no repair attempt is charged while it waits.";
+}
+
+/**
+ * One WAIT-class ping per hold episode once it has lasted `FOREIGN_HOLD_PING_AFTER_MS`. The episode is the refusal log's
+ * `first_at` for this Action; `episodeKey` makes the queue dedupe repeats. Spends no repair attempt and never touches the candidate.
+ */
+export function pingForeignHoldIfPersistent(db: Database.Database, input: { actionKey: string; error: ArcadiaError; now: Date; log: (line: string) => void }): void {
+  const row = db.prepare("SELECT dedupe_key, first_at FROM production_launch_refusal_log WHERE action_key = ?").get(input.actionKey) as { dedupe_key: string; first_at: string } | undefined;
+  if (!row || row.dedupe_key !== foreignHoldDedupeKey(input.error)) return;
+  if (input.now.getTime() - Date.parse(row.first_at) < FOREIGN_HOLD_PING_AFTER_MS) return;
+  const blockerId = String(input.error.details?.sessionId ?? "unknown");
+  const episodeKey = `Held by ${blockerId}`;
+  try {
+    queueOperatorPing(db, {
+      message: boundedPingMessage(`Production is WAITING on ${input.actionKey}: ${episodeKey} (Action ${String(input.error.details?.actionId ?? "unknown")}) holds an unmerged candidate. `
+        + "Remedy: operator-authorized discard of that candidate or handoff retire. No repair attempt is being spent."),
+      kind: "attention",
+      agent: "production-tick",
+      episodeKey,
+      episodeAfter: row.first_at,
+      now: input.now
+    });
+  } catch (pingError) {
+    input.log(`Could not queue the hold ping for ${input.actionKey}: ${pingError instanceof Error ? pingError.message : String(pingError)}`);
+  }
+}
+
 function clearLaunchRefusal(db: Database.Database, actionKey: string): void {
   db.prepare("DELETE FROM production_launch_refusal_log WHERE action_key = ?").run(actionKey);
 }
@@ -3127,6 +3167,9 @@ function attemptProjectLaunch(
       // A spend refusal (risk or unknown) is durable for the same reason: only a fix on the host clears it.
       if (rawCode === "provider_not_signed_in" || rawCode === "provider_binary_missing" || rawCode === "permission_posture_missing" || rawCode === "spend_risk" || rawCode === "spend_unknown") {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: error.message, actionKey, at: input.now });
+      } else if (rawCode === FOREIGN_HOLD_CODE) {
+        // Another Action's unmerged resumable candidate holds the repository: durable on `arcadia production status`, naming the blocker.
+        recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode, reason: foreignHoldReason(error), actionKey, at: input.now });
       } else if (claudeUsageRemedy) {
         recordLaunchBlocker(db, { projectSlug: input.projectSlug, code: rawCode!, reason: `${error.message} ${claudeUsageRemedy}`, actionKey, at: input.now });
       } else {
@@ -3149,7 +3192,10 @@ function attemptProjectLaunch(
       // stands in for the whole conflict -- excluding `error.message`, whose
       // `admission_expired` text embeds a fresh expiry timestamp every tick
       // and would otherwise never match its own prior episode.
-      const dedupeKey = prerequisites && prerequisites.length > 0 ? `${rawCode ?? ""}:${prerequisites.join("; ")}` : rawCode ?? refusalLine;
+      // A repository hold also names its blocking Session, so a different blocker is a new episode (new first_at, new ping clock).
+      const dedupeKey = rawCode === FOREIGN_HOLD_CODE
+        ? foreignHoldDedupeKey(error)
+        : prerequisites && prerequisites.length > 0 ? `${rawCode ?? ""}:${prerequisites.join("; ")}` : rawCode ?? refusalLine;
       if (recordLaunchRefusalIfNew(db, actionKey, dedupeKey, refusalLine, input.now)) {
         input.log(refusalLine);
         // A signed-out or expired provider login is the operator's to fix on the
@@ -3174,6 +3220,7 @@ function attemptProjectLaunch(
           }
         }
       }
+      if (rawCode === FOREIGN_HOLD_CODE) pingForeignHoldIfPersistent(db, { actionKey, error, now: input.now, log: input.log });
       const packetLifecycleKind = typeof error.details?.packetLifecycleKind === "string" ? error.details.packetLifecycleKind : null;
       // Issue #2217: the existing packet is bound to a provider the Active
       // policy does not permit. Its provider is immutable, so approving it can
