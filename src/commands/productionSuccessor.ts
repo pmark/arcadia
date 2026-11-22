@@ -81,6 +81,27 @@ function readMainChecks(repository: string): { green: boolean; detail: string } 
   }
 }
 
+/**
+ * The holds that still block a press: one line per `<id>.held.json` whose card can still be pressed. A hold on a consumed card, on a
+ * card whose descriptor is gone (a retired card leaves its hold behind) or whose `expires_at` has passed blocks nothing, the same
+ * cards the run window skips. A descriptor that cannot be judged (unreadable, no valid `expires_at`) keeps the hold: fail closed.
+ */
+export function blockingHolds(library: string, files: string[], now: Date): string[] {
+  const pressable = (id: string): boolean => {
+    if (existsSync(path.join(library, `${id}.consumed.json`))) return false;
+    const raw = readOrNull(path.join(library, `${id}.json`));
+    if (raw === null) return false;
+    try {
+      const expiresAt = (JSON.parse(raw) as { expires_at?: unknown } | null)?.expires_at;
+      const expiry = typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
+      return Number.isFinite(expiry) ? expiry > now.getTime() : true;
+    } catch {
+      return true;
+    }
+  };
+  return files.filter((name) => name.endsWith(".held.json")).map((name) => name.slice(0, -".held.json".length)).filter(pressable).map((id) => `START card ${id} is held`);
+}
+
 /** The real ports, over one workspace, repository and card library. Derivation is read once per run and shared by `batch` and `derive`. */
 export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Date, queuePing: (input: LivenessPingInput) => { id: string }, pins: StartRunPinsDeps = realStartRunPinsDeps): SuccessorPorts {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
@@ -113,10 +134,7 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
       try { return execFileSync("git", ["ls-remote", "--exit-code", "origin", "refs/heads/main"], { cwd: repository, encoding: "utf8", timeout: 30_000 }).split(/\s+/)[0] || null; } catch { return null; }
     },
     mainChecks: () => readMainChecks(repository),
-    holds: () => {
-      const names = (pins.listFiles(library) ?? []).filter((name) => name.endsWith(".held.json"));
-      return names.map((name) => name.slice(0, -".held.json".length)).filter((id) => !existsSync(path.join(library, `${id}.consumed.json`))).map((id) => `START card ${id} is held`);
-    },
+    holds: () => blockingHolds(library, pins.listFiles(library) ?? [], now),
     clearance: (press) => parseFailedBatchClearance(readOrNull(failedBatchClearancePath(library, press))),
     // The derive command reads a failed press's recorded clearance itself, so the argument is the step's own bookkeeping.
     derive: () => {
