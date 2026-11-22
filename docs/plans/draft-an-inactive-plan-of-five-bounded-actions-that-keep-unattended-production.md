@@ -578,11 +578,11 @@ actions:
     references: ["src/production/workerMerge.ts", "src/production/independentReview.ts", "src/decisions/batchMerge.ts", "docs/decisions/0260-may-rowan-merge-during-tonight-s-run-window-the-pull-requests-of-the-actions.md"]
   - id: park-and-continue
     title: A failed condition parks only that Action with a receipt and admission continues with the next Action that does not depend on it, under a night breaker that turns production Off and pages.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A failed condition parks only that Action with a receipt and admission continues with the next Action that does not depend on it, under a night breaker that turns production Off and pages.
+    next_action: Completed via Agent Ask auto-settle-arcadia-park-and-continue-a9abe27e18d1; no further action.
     expected_artifact: Evidence satisfying Agent Ask park-and-continue
     clarification: clarified
     confidence: high
@@ -715,7 +715,7 @@ actions:
     references: ["docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/issues/2369", "https://github.com/pmark/arcadia/issues/1275"]
 questions: []
 decisions: []
-current_action: park-and-continue
+current_action: finish-allocate-push-ping-and-supersede-older-action
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
