@@ -4,7 +4,7 @@ type: decision
 id: "0285"
 slug: carrying-out-a-gate-change-you-already-answered-may-signal-or-rowan-merge-a-pr
 project: arcadia
-status: open
+status: approved
 question: "Carrying out a gate change you already answered: may Signal or Rowan merge a PR that loosens a gate exactly as an answered Decision says?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-22
+answer: B. No; they collect into one merge-all list at noon Pacific
+decided: 2026-11-22
 ---
 
 # Decision 0285: Carrying out a gate change you already answered: may Signal or Rowan merge a PR that loosens a gate exactly as an answered Decision says?
