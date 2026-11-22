@@ -8,11 +8,23 @@ const script = resolve(__dirname, "../scripts/wait-for-event.sh");
 const dirs: string[] = [];
 const temp = () => { const d = mkdtempSync(join(tmpdir(), "wait-event-")); dirs.push(d); return d; };
 
-/** Fake `gh` (answers `pr view <n>` from a table) and `arcadia` (prints the file named by FAKE_PRODUCTION). */
+/**
+ * Fake `gh` (answers `pr view <n>` from a table) and `arcadia` (prints the file named by FAKE_PRODUCTION).
+ * With FAKE_GH_DIR set, `gh pr view <n>` prints view-<n>.json and `gh api .../issues/<n>/comments` prints
+ * comments-<n>.jsonl (a missing file is a failed read).
+ */
 function fakeBin(states: Record<string, string> = {}): string {
   const dir = temp();
   const cases = Object.entries(states).map(([n, s]) => `  ${n}) echo "${s}" ;;`).join("\n");
-  writeFileSync(join(dir, "gh"), `#!/usr/bin/env bash\ncase "$3" in\n${cases}\n  *) exit 1 ;;\nesac\n`);
+  const files = `if [ -n "\${FAKE_GH_DIR:-}" ]; then
+  case "$1" in
+    pr) cat "$FAKE_GH_DIR/view-$3.json" ;;
+    api) n=\${3%/comments}; cat "$FAKE_GH_DIR/comments-\${n##*/}.jsonl" ;;
+  esac
+  exit $?
+fi
+`;
+  writeFileSync(join(dir, "gh"), `#!/usr/bin/env bash\n${files}case "$3" in\n${cases}\n  *) exit 1 ;;\nesac\n`);
   writeFileSync(join(dir, "arcadia"), `#!/usr/bin/env bash\ncat "$FAKE_PRODUCTION"\n`);
   chmodSync(join(dir, "gh"), 0o755);
   chmodSync(join(dir, "arcadia"), 0o755);
@@ -50,6 +62,24 @@ const production = (state: string, revision: number, escalations: Array<[string,
       operatorEscalations: escalations.map(([actionKey, kind]) => ({ actionKey, kind, message: "m" })),
     },
   });
+
+// ready mode: the PR's two reads live in a directory the fake `gh` serves (FAKE_GH_DIR).
+const HEAD = "0123456789abcdef0123456789abcdef01234567";
+const OK = "PASS — Loosens a gate: no. Changes agent authority: no.";
+type Comment = { body: string; html_url: string };
+const view = (over: object = {}) => ({ state: "OPEN", isDraft: false, headRefOid: HEAD, mergeStateStatus: "CLEAN", mergeCommit: null,
+  statusCheckRollup: [{ status: "COMPLETED", conclusion: "SUCCESS" }, { state: "SUCCESS" }], ...over });
+const note = (body: string, id: string): Comment => ({ body, html_url: `https://github.com/o/r/pull/7#issuecomment-${id}` });
+const review = (verdict: string, head = HEAD): Comment => note(`Independent review, head ${head}: ${verdict}`, "9");
+const MARKER_URL = "https://github.com/o/r/pull/7#issuecomment-9";
+function served(v: object, comments: Comment[], dir = temp()): string {
+  writeFileSync(join(dir, "view-7.json"), JSON.stringify(v));
+  writeFileSync(join(dir, "comments-7.jsonl"), comments.map((c) => `${JSON.stringify(c)}\n`).join(""));
+  return dir;
+}
+const ready = (v: object, comments: Comment[]) =>
+  runSync(["ready", "o/r", "7"], envFor(fakeBin(), { FAKE_GH_DIR: served(v, comments), WAIT_TIMEOUT: "0" }));
+const mergeCheck = "next=arcadia work merge-check --pr 7";
 
 afterEach(() => { for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
@@ -153,5 +183,108 @@ describe("wait-for-event.sh", () => {
     const r = runSync(["nope"], envFor(fakeBin()));
     expect(r.status).toBe(2);
     expect(r.stdout).toContain("wait-for-event.sh production");
+    expect(r.stdout).toContain("wait-for-event.sh ready");
+    expect(r.stdout).toContain("--edges");
+  });
+
+  describe("ready", () => {
+    it("fires on a full-sha PASS for the exact head with green checks and CLEAN, naming the merge-check and the marker", () => {
+      const r = ready(view(), [review(OK)]);
+      expect(r.status).toBe(0);
+      expect(r.stdout.trim()).toBe(`EVENT ready 7 ${HEAD} ${mergeCheck} proof=${MARKER_URL}`);
+    });
+
+    it("hands the merge to the operator unless the marker says both authority phrases are no (R5)", () => {
+      const operator = `EVENT ready 7 ${HEAD} next=operator-merge proof=${MARKER_URL}`;
+      expect(ready(view(), [review("PASS — Loosens a gate: yes. Changes agent authority: no.")]).stdout.trim()).toBe(operator);
+      expect(ready(view(), [review("PASS")]).stdout.trim()).toBe(operator);
+      const prose = ready(view(), [review("PASS\n\nI checked that it Loosens a gate: no, in prose.\nChanges agent authority: no")]);
+      expect(prose.stdout.trim()).toBe(operator);
+      const lines = ready(view(), [review("PASS\nLoosens a gate: no\n**Changes agent authority: no**")]);
+      expect(lines.stdout.trim()).toBe(`EVENT ready 7 ${HEAD} ${mergeCheck} proof=${MARKER_URL}`);
+    });
+
+    it("keeps waiting on a PASS for an older head, then exits after a new marker", async () => {
+      const older = review(OK, "f".repeat(40));
+      const dir = served(view(), [older]);
+      expect(runSync(["ready", "o/r", "7"], envFor(fakeBin(), { FAKE_GH_DIR: dir, WAIT_TIMEOUT: "0" })).status).toBe(3);
+      const r = await runWithChange(["ready", "o/r", "7"], envFor(fakeBin(), { FAKE_GH_DIR: dir, WAIT_INTERVAL: "0.05", WAIT_TIMEOUT: "4" }),
+        () => served(view(), [older, review(OK)], dir));
+      expect(r.stdout.trim()).toBe(`EVENT ready 7 ${HEAD} ${mergeCheck} proof=${MARKER_URL}`);
+    });
+
+    it.each([
+      ["a marker sha shorter than 40 characters", view(), [review(OK, HEAD.slice(0, 12))]],
+      ["a draft PR", view({ isDraft: true }), [review(OK)]],
+      ["a marker quoted mid-text", view(), [note(`> as in: Independent review, head ${HEAD}: ${OK}`, "9")]],
+      ["PASS WITH FIXES", view(), [review("PASS WITH FIXES — Loosens a gate: no.")]],
+      ["pending checks", view({ statusCheckRollup: [{ status: "IN_PROGRESS", conclusion: "" }] }), [review(OK)]],
+      ["an empty rollup", view({ statusCheckRollup: [] }), [review(OK)]],
+      ["a BEHIND merge state", view({ mergeStateStatus: "BEHIND" }), [review(OK)]],
+    ])("keeps waiting on %s", (_name, v, comments) => {
+      const r = ready(v, comments);
+      expect(r.status).toBe(3);
+      expect(r.stdout.trim()).toBe("TIMEOUT waiting on ready 7");
+    });
+
+    const worker = note(`Arcadia worker: review of \`${HEAD}\` failed.\n\n**Do not merge** until repaired.`, "4");
+    it.each([
+      ["a FAIL marker", [review("FAIL")], view(), "review-fail", MARKER_URL],
+      ["a Blocking finding line", [review("PASS\n\n- Blocking finding: the guard is gone.")], view(), "review-fail", MARKER_URL],
+      ["a worker FAIL posted before a later PASS", [worker, review(OK)], view(), "worker-fail", "https://github.com/o/r/pull/7#issuecomment-4"],
+      ["a red check", [review(OK)], view({ statusCheckRollup: [{ status: "COMPLETED", conclusion: "TIMED_OUT" }] }), "checks-fail", "checks"],
+    ])("blocks on %s", (_name, comments, v, reason, proof) => {
+      const r = ready(v, comments);
+      expect(r.status).toBe(0);
+      expect(r.stdout.trim()).toBe(`EVENT blocked 7 ${HEAD} reason=${reason} proof=${proof}`);
+    });
+
+    it.each(["No blocking findings.", "Blocking: none", "Blocking findings: 0", "Non-blocking: rename a variable"])("still passes with %j", (line) => {
+      expect(ready(view(), [review(`${OK}\n\n${line}`)]).stdout.trim()).toBe(`EVENT ready 7 ${HEAD} ${mergeCheck} proof=${MARKER_URL}`);
+    });
+
+    it("prints the pr-mode line when the PR merges or closes, and skips a failed read", () => {
+      expect(ready(view({ state: "MERGED", mergeCommit: { oid: "abc123" } }), []).stdout.trim()).toBe("PR 7 MERGED abc123");
+      expect(ready(view({ state: "CLOSED" }), []).stdout.trim()).toBe("PR 7 CLOSED");
+      const r = runSync(["ready", "o/r", "7"], envFor(fakeBin(), { FAKE_GH_DIR: temp(), WAIT_TIMEOUT: "0" }));
+      expect(r.status).toBe(3);
+      expect(r.stderr).toContain("a ready read failed");
+    });
+  });
+
+  describe("production --edges", () => {
+    const run = (file: string, ...changes: Array<() => void>) =>
+      runWithChange(["production", "--edges"], envFor(fakeBin(), { FAKE_PRODUCTION: file, WAIT_INTERVAL: "0.05", WAIT_TIMEOUT: "6" }), ...changes);
+    const put = (file: string, ...args: Parameters<typeof production>) => () => writeFileSync(file, production(...args));
+
+    it("ignores an idle/building flip and a revision bump alone, and wakes on a class change", async () => {
+      const file = join(temp(), "status.json");
+      writeFileSync(file, production("active_idle", 98));
+      const building = put(file, "active_building", 98);
+      // each held about 150 ms, three polls, so a loaded host still sees it
+      const r = await run(file, building, put(file, "active_building", 99), building, building, building, put(file, "inactive_finishing", 99));
+      expect(r.stdout.trim()).toBe("PRODUCTION inactive_finishing rev 99 (was active_building rev 98)");
+    });
+
+    it("wakes on a changed scope, null included, and reports the new count", async () => {
+      const file = join(temp(), "status.json");
+      writeFileSync(file, production("active_idle", 98, [], ["arcadia/a"]));
+      const bump = put(file, "active_idle", 99, [], ["arcadia/a"]);
+      const r = await run(file, bump, bump, bump, put(file, "active_idle", 99, [], ["arcadia/a", "arcadia/b"]));
+      expect(r.stdout.trim()).toBe("PRODUCTION active_idle rev 99 SCOPE 2 actions (was 1)");
+    });
+
+    it("wakes on a new in-scope escalation, and on one that clears and returns", async () => {
+      const file = join(temp(), "status.json");
+      const scope = ["arcadia/a", "arcadia/b"];
+      const red: [string, string] = ["arcadia/b", "required_checks_failed"];
+      writeFileSync(file, production("active_idle", 98, [["other/x", "k"]], scope));
+      const first = await run(file, put(file, "active_idle", 98, [["other/y", "k"]], scope), put(file, "active_idle", 98, [red], scope));
+      expect(first.stdout.trim()).toBe("PRODUCTION active_idle rev 98 ESCALATION arcadia/b required_checks_failed");
+      writeFileSync(file, production("inactive_idle", 99, [red]));
+      const clear = put(file, "inactive_idle", 99);
+      const again = await run(file, clear, clear, clear, clear, clear, clear, clear, clear, put(file, "inactive_idle", 99, [red]));
+      expect(again.stdout.trim()).toBe("PRODUCTION inactive_idle rev 99 ESCALATION arcadia/b required_checks_failed");
+    });
   });
 });
