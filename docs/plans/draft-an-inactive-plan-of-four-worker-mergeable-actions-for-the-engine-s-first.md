@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-plan-of-four-worker-mergeable-actions-for-the-engine-s-first
 project: arcadia
-status: draft
+status: active
 milestone: "Draft an inactive Plan of four worker-mergeable Actions for the engine's first approved queue: the operator timeline shows who decided what (START presses, worker merges, the operator's recorded interactions and superseded Asks)"
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -91,6 +91,9 @@ actions:
     references: ["src/timeline/collectors/asks.ts", "src/db/schema.ts", "src/timeline/schema.ts", "src/timeline/classify.ts"]
 questions: []
 decisions: []
+current_action: timeline-reads-card-start-presses
+recommended_model: standard
+recommended_reasoning_effort: medium
 ---
 
 # Draft an inactive Plan of four worker-mergeable Actions for the engine's first approved queue: the operator timeline shows who decided what (START presses, worker merges, the operator's recorded interactions and superseded Asks)
