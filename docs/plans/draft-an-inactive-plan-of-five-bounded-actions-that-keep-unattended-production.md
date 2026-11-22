@@ -599,11 +599,11 @@ actions:
     references: ["src/production/tick.ts", "src/dispatch/actionOrder.ts", "src/production/capacityPreAdmission.ts"]
   - id: verify-overnight-merges-at-8am
     title: An 8 AM report re-verifies every overnight merge independently from GitHub, classifies each diff with the classifier pinned at the run's first-admission release sha, and leads with heartbeat age.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: An 8 AM report re-verifies every overnight merge independently from GitHub, classifies each diff with the classifier pinned at the run's first-admission release sha, and leads with heartbeat age.
+    next_action: Completed via Agent Ask auto-settle-arcadia-verify-overnight-merges-at-8am-93812f8ad68e; no further action.
     expected_artifact: Evidence satisfying Agent Ask verify-overnight-merges-at-8am
     clarification: clarified
     confidence: high
@@ -715,7 +715,7 @@ actions:
     references: ["docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/issues/2369", "https://github.com/pmark/arcadia/issues/1275"]
 questions: []
 decisions: []
-current_action: verify-overnight-merges-at-8am
+current_action: park-and-continue
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
