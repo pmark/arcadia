@@ -27,7 +27,10 @@ import { defaultRunWindowDeps } from "../workMonitoring/runWindow.js";
  * C3 required checks green and merge state CLEAN (the pure worker gate, run
  *    after this one lifts only the authority-adjacent refusal);
  * C4 the diff touches no shared gate-set path, hard class, or batch-merge
- *    decisions/agent_permissions path;
+ *    decisions/agent_permissions/ci_and_gates path. Only the agent's own work is
+ *    judged: a governed-record path (.arcadia/asks/, MISSION_LOG.md, PROJECT.md,
+ *    docs/plans/) is skipped only when every commit touching it is a real
+ *    Arcadia settlement (see `settlementExemptPaths`); anything else is judged;
  * C5 production is still Active for that card.
  */
 
@@ -68,7 +71,99 @@ export interface StandingMergeInput {
   pullRequestUrl: string;
   /** Every path the candidate diff touches (renames as both paths). */
   changedPaths: readonly string[] | null;
+  /** The candidate's commit history, to tell Arcadia's own settlement commits from the agent's work; null or absent exempts nothing. */
+  history?: CandidateHistory | null;
   runCommand: StandingRunCommand;
+}
+
+/** Read-only view of the commits a candidate adds beyond its base. */
+export interface CandidateHistory {
+  /** The commit the candidate diverged from (the base of the `base...head` diff). */
+  mergeBase: string;
+  /** Commits in mergeBase..head that touch the path; null when Git cannot say. */
+  commitsTouching(file: string): string[] | null;
+  /** A commit's full message; null when unreadable. */
+  message(sha: string): string | null;
+}
+
+/** Governed-record paths a real settlement commit may carry; docs/decisions/ and every governance file are deliberately absent. */
+const SETTLEMENT_RECORD_PATHS = [".arcadia/asks/", "MISSION_LOG.md", "PROJECT.md", "docs/plans/"];
+const SETTLEMENT_RECEIPT = /^Written by `arcadia agent-ask settle --apply` \((asksettle_[A-Za-z0-9]+)\)\.$/;
+const isSettlementRecordPath = (file: string): boolean =>
+  SETTLEMENT_RECORD_PATHS.some((allowed) => (allowed.endsWith("/") ? file.startsWith(allowed) : file === allowed));
+
+/** True only when the workspace recorded this receipt as an accepted, applied settlement for this Project whose documents commit is exactly `sha`. Read-only; any error is false. */
+export function settlementReceiptIsReal(db: Database.Database, receiptId: string, sha: string, project: string): boolean {
+  try {
+    const row = db.prepare("SELECT disposition, project_slug, receipt_json FROM agent_ask_settlements WHERE id = ?").get(receiptId) as
+      { disposition: string; project_slug: string; receipt_json: string } | undefined;
+    if (!row || row.disposition !== "accepted" || row.project_slug !== project) return false;
+    const receipt = JSON.parse(row.receipt_json) as { applied?: unknown; documentsCommit?: unknown };
+    return receipt.applied === true && receipt.documentsCommit === sha;
+  } catch {
+    return false;
+  }
+}
+
+function frontMatterOf(text: string): Record<string, unknown> | null {
+  const match = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text);
+  if (!match) return null;
+  try {
+    const parsed = parseYaml(match[1]) as unknown;
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The changed governed-record paths that only real settlement commits touch.
+ * A path is skipped only when ALL hold: it is a settlement record path, at
+ * exactly one commit touches it and that commit carries exactly one
+ * `Written by ... (asksettle_<id>)` line whose id the workspace recorded for
+ * this commit (so a hand-written line is not exempt), and, for PROJECT.md, any
+ * new current_action names an Action pinned on the card or is terminal (null).
+ * Everything unreadable is left judged.
+ */
+export function settlementExemptPaths(
+  input: { db: Database.Database; changedPaths: readonly string[]; history: CandidateHistory | null | undefined; head: string },
+  pins: Pick<StartRunPins, "project" | "actions">,
+  show: (revision: string, file: string) => string | null
+): { exempt: Set<string>; pointerParked: string | null } {
+  const exempt = new Set<string>();
+  const history = input.history;
+  if (!history) return { exempt, pointerParked: null };
+  const verified = new Map<string, boolean>();
+  const isRealSettlement = (sha: string): boolean => {
+    const cached = verified.get(sha);
+    if (cached !== undefined) return cached;
+    const message = history.message(sha);
+    const ids = message === null ? [] : [...new Set(message.split("\n").flatMap((line) => SETTLEMENT_RECEIPT.exec(line.trimEnd())?.[1] ?? []))];
+    const ok = ids.length === 1 && settlementReceiptIsReal(input.db, ids[0], sha, pins.project);
+    verified.set(sha, ok);
+    return ok;
+  };
+  let pointerParked: string | null = null;
+  for (const file of input.changedPaths) {
+    if (!isSettlementRecordPath(file)) continue;
+    const commits = history.commitsTouching(file);
+    if (!commits || commits.length !== 1 || !isRealSettlement(commits[0])) continue;
+    if (file === "PROJECT.md") {
+      const before = show(history.mergeBase, file);
+      const after = show(input.head, file);
+      const was = before === null ? null : frontMatterOf(before);
+      const now = after === null ? null : frontMatterOf(after);
+      if (!was || !now) continue;
+      const pointer = now.current_action;
+      const terminal = pointer === null || pointer === undefined || pointer === "";
+      if (pointer !== was.current_action && !terminal && !(typeof pointer === "string" && pins.actions.includes(pointer))) {
+        pointerParked = `the settlement moves current_action to ${JSON.stringify(pointer)}, which is not an Action pinned on the pressed card and not terminal`;
+        continue;
+      }
+    }
+    exempt.add(file);
+  }
+  return { exempt, pointerParked };
 }
 
 const SLUG = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -207,10 +302,14 @@ export function evaluateStandingMerge(input: StandingMergeInput, deps: StandingM
   } catch (error) {
     return park("C4", `the shared gate set could not be read: ${error instanceof Error ? error.message : String(error)}`);
   }
-  const protectedPaths = input.changedPaths.filter((file) => classifyGatePath(gates, file).protected);
+  // Judge only the agent's own work: governed-record paths that only real settlement commits touch are skipped.
+  const { exempt, pointerParked } = settlementExemptPaths({ db: input.db, changedPaths: input.changedPaths, history: input.history, head: input.head }, pins, show);
+  if (pointerParked) return park("C4", pointerParked);
+  const judged = input.changedPaths.filter((file) => !exempt.has(file));
+  const protectedPaths = judged.filter((file) => classifyGatePath(gates, file).protected);
   if (protectedPaths.length > 0) return park("C4", `the diff touches the shared gate set or a hard class: ${protectedPaths.join(", ")}`);
-  const classes = classifyAuthorityPaths([...input.changedPaths]);
-  const hard = classes.filter((cls) => cls === "decisions" || cls === "agent_permissions");
+  const classes = classifyAuthorityPaths(judged);
+  const hard = classes.filter((cls) => cls === "decisions" || cls === "agent_permissions" || cls === "ci_and_gates");
   if (hard.length > 0) return park("C4", `the diff touches a hard class: ${hard.join(", ")}`);
   return { ok: true, cardId, decisionId, reviewMarkerUrl: marker.url, classes };
 }

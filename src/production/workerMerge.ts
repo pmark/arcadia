@@ -9,7 +9,7 @@ import { isSettlementArchiveOf } from "../qa/patchApplicability.js";
 import { SETTLEMENT_RECORD_PATH } from "./candidateChangeGate.js";
 import type { VerdictGate } from "../sessions/roleLineage.js";
 import { workerMergeFreeze } from "../workMonitoring/runWindow.js";
-import { evaluateStandingMerge, renderStandingMergeReceipt, type StandingEvaluation, type StandingMergeDeps } from "./standingMerge.js";
+import { evaluateStandingMerge, renderStandingMergeReceipt, type CandidateHistory, type StandingEvaluation, type StandingMergeDeps } from "./standingMerge.js";
 
 /**
  * The worker's automated review-and-merge (Decision 0097, Action
@@ -535,6 +535,27 @@ function standingChangedPaths(repoRoot: string, baseBranch: string, head: string
   }
 }
 
+/** The candidate's own commits, so C4 can tell Arcadia's settlement commits from the agent's work; null when Git cannot say (C4 then exempts nothing). */
+export function standingCandidateHistory(repoRoot: string, baseBranch: string, head: string): CandidateHistory | null {
+  try {
+    const mergeBase = git(repoRoot, ["merge-base", baseBranch, head]).trim();
+    if (!/^[0-9a-f]{40}$/.test(mergeBase)) return null;
+    return {
+      mergeBase,
+      commitsTouching: (file) => {
+        try {
+          return git(repoRoot, ["-c", "core.quotepath=false", "log", "--no-renames", "--format=%H", `${mergeBase}..${head}`, "--", file]).split("\n").map((line) => line.trim()).filter(Boolean);
+        } catch { return null; }
+      },
+      message: (sha) => {
+        try { return git(repoRoot, ["log", "-1", "--format=%B", sha]); } catch { return null; }
+      }
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** The release sha this code runs from (a go-broker release directory), or null. */
 function defaultReleaseSha(): string | null {
   return /\/releases\/([0-9a-f]{40})\//.exec(import.meta.url)?.[1] ?? null;
@@ -598,7 +619,8 @@ export function mergeCandidatePullRequest(input: WorkerMergeInput, deps: WorkerM
   if (!evaluation.ok && evaluation.code === "authority_adjacent" && blastRadius && url) {
     const verdict = evaluateStandingMerge({
       db, repoRoot, baseBranch, head, actionKey: input.actionKey, pullRequestUrl: url, runCommand,
-      changedPaths: standingChangedPaths(repoRoot, baseBranch, head, blastRadius)
+      changedPaths: standingChangedPaths(repoRoot, baseBranch, head, blastRadius),
+      history: standingCandidateHistory(repoRoot, baseBranch, head)
     }, deps.standing);
     if (verdict.ok) {
       // Only the authority-adjacent refusal is lifted: every other fact (checks, CLEAN, base, head) is judged again.
