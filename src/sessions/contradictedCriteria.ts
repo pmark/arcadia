@@ -95,5 +95,5 @@ export function contradictedCriteriaRefusal(evidence: ReadonlyArray<EvidenceEntr
     return `"${shown}" is marked met but its own note says "${phrase}"`;
   });
   const more = contradicted.length > MAX_LISTED ? ` (and ${contradicted.length - MAX_LISTED} more)` : "";
-  return `Contradicted-criterion check refused the completion: ${described.join("; ")}${more}. Do the work and say so in the note, or mark the criterion skipped or failed; a completion cannot mark met what its own evidence says is not done.`;
+  return `Contradicted-criterion check refused the completion: ${described.join("; ")}${more}. Do the work and say so in the note, or mark the criterion skipped or failed; a completion cannot mark met what its own evidence says is not done. If the check is one the host runs for you (pnpm pre-pr, lint, tsc, build, or a test you added or changed), delete the words "not run" from the note and write exactly the words the brief gives for checks the host runs.`;
 }

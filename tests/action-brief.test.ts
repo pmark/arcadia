@@ -342,6 +342,8 @@ describe("renderActionBrief", () => {
       expect(protocol).toContain("With your Write tool (never Bash, echo, a heredoc or a script)");
       expect(protocol).toContain(`add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`);
       expect(CHECKS_VERIFIED_ELSEWHERE_NOTE).not.toMatch(/["\\]/);
+      // Issue #2931: the brief names the phrase the host refuses, so an honest worker does not write it.
+      expect(protocol).toContain('Never write "not run", "not done" or "not verified" in a `met` note');
       expect(protocol).toContain("whose target_ref is\n     action/define-contract, delete only that file");
       expect(protocol.split("arcadia agent-ask draft --dir").length - 1).toBe(1);
       const { dir, json, file } = draftCommand(protocol);

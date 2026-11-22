@@ -82,5 +82,21 @@ describe("contradicted met criteria", () => {
     expect(contradictedCriteriaRefusal([entry("No tests were left unrun: 4 passed.")])).toBeNull();
     expect(contradictedCriteriaRefusal([entry("The new test is unrun.")])).not.toBeNull();
   });
+  // Issue #2931: the three PR #2918 worker attempts (2026-11-21) were each refused for an honest note about pnpm pre-pr.
+  describe("an honest note about a check the host runs", () => {
+    const honest = "Both test files pass (141 passed). pnpm pre-pr was not run in this Session since no PR is opened by it; the host runs lint, tsc and build in required CI.";
+    it("is still refused (the guard is unchanged) and the refusal now names the exact remedy", () => {
+      const reason = contradictedCriteriaRefusal([entry(honest)]);
+      expect(reason).toContain("not run");
+      expect(reason).toContain("write exactly the words the brief gives for checks the host runs");
+    });
+    it("passes once reworded with the prescribed words, which no pattern matches", () => {
+      expect(contradictedCriteriaRefusal([entry(`Both test files pass (141 passed). ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`)])).toBeNull();
+    });
+    it("negative control: a bare 'Not run' without the prescribed words is refused", () => {
+      expect(contradictedCriteriaRefusal([entry("Not run")])).not.toBeNull();
+      expect(contradictedCriteriaRefusal([entry("Not run this Session: pnpm pre-pr (it required approval and was refused here)")])).not.toBeNull();
+    });
+  });
 });
 

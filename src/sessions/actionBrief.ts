@@ -196,6 +196,8 @@ function renderDraftOnlyCompletion(input: ActionBriefInput, action: { id: string
     `     ${MET_REQUIRES_RUN_RULE}`,
     "     For checks you ran, record the command and observed result in the criterion's note.",
     `     Only for checks you did not run, say what you inspected and add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`,
+    "     Never write \"not run\", \"not done\" or \"not verified\" in a `met` note: the host refuses the completion. Use only the words above for a check you did not run",
+    "     (for example pnpm pre-pr), and keep unrelated unrun checks out of a criterion's note.",
     "  3. Record completion without any shell quoting, in two steps:",
     "     a. With your Write tool (never Bash, echo, a heredoc or a script), create exactly this file:",
     "",
