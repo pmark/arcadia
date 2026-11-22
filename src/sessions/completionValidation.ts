@@ -69,6 +69,8 @@ export const COMPLETION_COMMAND_TIMEOUT_MS = 120_000;
 export const COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS: Readonly<Record<string, number>> = {
   "pnpm lint": 240_000,
   "pnpm exec tsc --noEmit": COMPLETION_COMMAND_TIMEOUT_MS,
+  // Type-aware lint of the changed files only (Issue #2947); the whole-repo `pnpm lint` bound above covers its worst case.
+  "pnpm exec eslint (changed files)": 240_000,
 };
 export const MAX_NAMED_TEST_FILES = 10;
 const MAX_REPORTED_FAILURES = 10;
@@ -202,15 +204,47 @@ export function changesTypeScript(worktree: string, base: string): boolean {
   return changedPaths(worktree, base).some((file) => TYPESCRIPT_FILE.test(file) && !file.split("/").includes("node_modules"));
 }
 
+const ESLINT_COMMAND = "pnpm exec eslint (changed files)";
+const LINTABLE_FILE = /\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
+// The same ignore set `pnpm pre-pr` applies (scripts/pre-pr.ts IGNORED_FOR_LINT), which mirrors eslint.config.mjs.
+const IGNORED_FOR_LINT = /^(?:config|database|artifacts|mission_logs|projects|tmp)\/|(?:^|\/)(?:node_modules|dist|\.next|coverage)\//;
+const ESLINT_CONFIGS = ["eslint.config.js", "eslint.config.mjs", "eslint.config.cjs", "eslint.config.ts", "eslint.config.mts", "eslint.config.cts"];
+
+/** Issue #2947: the files the candidate adds or changes that eslint covers (the file set `pnpm pre-pr` lints); never an unchanged file. */
+export function changedLintFiles(worktree: string, base: string): string[] {
+  return changedPaths(worktree, base).filter((file) => LINTABLE_FILE.test(file) && !IGNORED_FOR_LINT.test(file) && !file.startsWith("-"));
+}
+
+/**
+ * Error messages of eslint's `--format json` report as `file:line rule: message`, paths relative to `root`. Warnings are not
+ * failures (CI's `pnpm lint` has no --max-warnings). Unparseable text lists none; the caller then refuses on the exit status.
+ */
+export function eslintFailures(report: string, root: string): string[] {
+  let results: Array<{ filePath?: unknown; messages?: Array<{ line?: unknown; ruleId?: unknown; message?: unknown; severity?: unknown }> }>;
+  try { results = JSON.parse(report) as typeof results; } catch { return []; }
+  if (!Array.isArray(results)) return [];
+  const failures: string[] = [];
+  for (const result of results) {
+    const file = typeof result.filePath === "string" ? (path.isAbsolute(result.filePath) ? path.relative(root, result.filePath) : result.filePath) : "(unknown file)";
+    for (const message of Array.isArray(result.messages) ? result.messages : []) {
+      if (message.severity !== 2) continue;
+      failures.push(`${file}:${String(message.line ?? "?")} ${typeof message.ruleId === "string" ? message.ruleId : "error"}: ${typeof message.message === "string" ? message.message : "(no message)"}`);
+    }
+  }
+  return failures;
+}
+
 /**
  * The checks the host runs for a candidate beyond its Project's declared commands: those the criteria require, plus
  * (Issue #2919) a typecheck when it changes TypeScript in a Project with a root tsconfig.json (`tsc --noEmit` without
  * one prints usage and would refuse every candidate). Shared with the operator supplement so its recorded commands
- * match what the host ran.
+ * match what the host ran. (Issue #2947) Also an eslint run over the changed lintable files when the Project has an eslint
+ * config, so a lint error a headless worker cannot see is refused before acceptance instead of failing CI.
  */
 export function hostRequiredChecks(criteria: readonly string[], worktree: string, base: string): string[] {
   const required = criteriaValidationCommands(criteria);
   if (existsSync(path.join(worktree, "tsconfig.json")) && changesTypeScript(worktree, base) && !required.includes(TYPECHECK_COMMAND)) required.push(TYPECHECK_COMMAND);
+  if (ESLINT_CONFIGS.some((name) => existsSync(path.join(worktree, name))) && changedLintFiles(worktree, base).length > 0) required.push(ESLINT_COMMAND);
   return required;
 }
 
@@ -381,7 +415,8 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
   const added = changedTestFiles(candidate.worktree, candidate.base).filter((file) => !criteriaNamed.includes(file));
   let namedTests = [...criteriaNamed, ...added.slice(0, Math.max(0, MAX_NAMED_TEST_FILES - criteriaNamed.length))];
   const requiredChecks = hostRequiredChecks(candidate.acceptanceCriteria, candidate.worktree, candidate.base);
-  const typechecked = requiredChecks.includes(TYPECHECK_COMMAND);
+  // A host check (typecheck or changed-file lint) is itself a reason to validate, with no test file to run.
+  const typechecked = requiredChecks.includes(TYPECHECK_COMMAND) || requiredChecks.includes(ESLINT_COMMAND);
   const commands = [...new Set([...candidate.commands, ...requiredChecks])];
   if (namedTests.length === 0 && !typechecked) return { status: "not_required" };
   // Only candidate-changed tests (no criterion names a file): when the host cannot run them, the required CI checks stay the proof.
@@ -412,7 +447,9 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     tree = snapshotCandidate(candidate.worktree, candidate.base);
     // A check the candidate rewrote cannot judge it.
     // A required lint script is owned by the authorized base, never by its candidate.
-    bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands, ...(requiredChecks.includes("pnpm lint") ? ["node package.json"] : [])]);
+    bindCheckDefinitions(candidate.repository, candidate.base, tree, [...commands.filter((command) => command !== ESLINT_COMMAND), ...(requiredChecks.includes("pnpm lint") ? ["node package.json"] : []),
+      // The config that judges the candidate is the authorized base's, never one the candidate wrote (Issue #2947).
+      ...(requiredChecks.includes(ESLINT_COMMAND) ? ESLINT_CONFIGS.filter((name) => existsSync(path.join(candidate.worktree, name))).map((name) => `node ${name}`) : [])]);
   } catch (error) {
     return stopped("captured for validation", error) ?? deny(`the candidate could not be captured for validation (${untrusted(normalizeError(error).message, 300)}).`);
   }
@@ -435,6 +472,9 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
     // A changed test the materialized tree lacks (for example an ignored file) is skipped; a criteria-named one is still refused below.
     namedTests = namedTests.filter((file) => criteriaNamed.includes(file) || lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
     if (namedTests.length === 0 && !typechecked) { skipEvidence = true; return { status: "not_required" }; }
+    const lintFiles = requiredChecks.includes(ESLINT_COMMAND)
+      ? changedLintFiles(candidate.worktree, candidate.base).filter((file) => lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile())
+      : [];
     const missing = criteriaNamed.filter((file) => !lstatSync(path.join(source, file), { throwIfNoEntry: false })?.isFile());
     if (missing.length) return deny("the candidate does not contain every test file its acceptance criteria name.", missing.map((file) => `${file} (missing)`));
     const vitest = declaresVitest(source);
@@ -469,6 +509,11 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
         const compiler = path.join(source, "node_modules", "typescript", "bin", "tsc");
         if (!existsSync(compiler)) throw new Error("the Project's TypeScript compiler is not installed");
         requiredInvocations.set("pnpm exec tsc --noEmit", [process.execPath, compiler, "--noEmit"]);
+      }
+      if (requiredChecks.includes(ESLINT_COMMAND) && lintFiles.length > 0) {
+        const eslint = path.join(source, "node_modules", "eslint", "bin", "eslint.js");
+        if (!existsSync(eslint)) throw new Error("the Project's eslint is not installed");
+        requiredInvocations.set(ESLINT_COMMAND, [process.execPath, eslint, "--format", "json", "--output-file", path.join(scratch, "completion-eslint.json"), "--no-warn-ignored", "--", ...lintFiles]);
       }
     } catch (error) {
       return unavailable(`the required checks could not be prepared (${untrusted(error instanceof Error ? error.message : normalizeError(error).message, 200)}).`);
@@ -522,11 +567,23 @@ function runCompletionValidation(candidate: CompletionValidationCandidate, given
       : `${bound.command} did not finish within ${seconds(bound.ms)}s, its own per-command bound.`;
 
     for (const command of commands) {
+      if (command === ESLINT_COMMAND && lintFiles.length === 0) continue;
       const bound = requiredChecks.includes(command)
         ? options.requiredCommandTimeoutMs?.[command] ?? COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS[command] ?? COMPLETION_COMMAND_TIMEOUT_MS
         : COMPLETION_COMMAND_TIMEOUT_MS;
       const result = run(requiredInvocations.get(command) ?? ["/bin/sh", "-c", command], bound, command);
       if (result.timedOut) return timeout(timedOutWhy(result.bound), [`${command} (timed out)`]);
+      if (command === ESLINT_COMMAND) {
+        // Fail closed (Issue #2947): exit 0 is the only pass. Exit 1 names each error as file:line rule; any other outcome
+        // (config error, crash, no runner output) is a refusal naming the runner's own output, never a silent pass.
+        if (result.error) return deny(`the eslint runner failed to run (${untrusted(result.error, 200)}).`, [command]);
+        if (result.status === 0) continue;
+        let report = "";
+        try { report = readFileSync(path.join(scratch, "completion-eslint.json"), "utf8"); } catch { report = ""; }
+        const lint = result.status === 1 ? eslintFailures(report, source) : [];
+        if (lint.length) return deny(`eslint reports ${lint.length} error${lint.length === 1 ? "" : "s"} in the files this candidate changes; fix them before completing.`, lint);
+        return deny(`the eslint runner failed (exit ${result.status}) without reporting a lint error.${result.output ? ` ${result.output}` : ""}`, [command]);
+      }
       if (result.error) return unavailable(`the configured validation command could not run (${untrusted(result.error, 200)}).`, [command]);
       if (result.status !== 0) return deny(`the configured validation command exited ${result.status}.${result.output ? ` ${result.output}` : ""}`, [command]);
     }
