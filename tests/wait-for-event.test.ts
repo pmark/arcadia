@@ -204,6 +204,18 @@ describe("wait-for-event.sh", () => {
       expect(lines.stdout.trim()).toBe(`EVENT ready 7 ${HEAD} ${mergeCheck} proof=${MARKER_URL}`);
     });
 
+    it("never lets a later anchored no override a yes: any yes, for either phrase, is the operator's merge (R5)", () => {
+      const operator = `EVENT ready 7 ${HEAD} next=operator-merge proof=${MARKER_URL}`;
+      for (const verdict of [
+        "PASS — Loosens a gate: no. Changes agent authority: yes.\nChanges agent authority: no",
+        "PASS — Loosens a gate: yes. Changes agent authority: no.\nLoosens a gate: no",
+        "PASS\nLoosens a gate: no\nChanges agent authority: no\nChanges agent authority: yes",
+        "PASS\nLoosens a gate: no\nLoosens a gate: yes\nChanges agent authority: no",
+      ]) expect(ready(view(), [review(verdict)]).stdout.trim()).toBe(operator);
+      const agreeing = ready(view(), [review("PASS — Loosens a gate: no. Changes agent authority: no.\nLoosens a gate: no\nChanges agent authority: no")]);
+      expect(agreeing.stdout.trim()).toBe(`EVENT ready 7 ${HEAD} ${mergeCheck} proof=${MARKER_URL}`);
+    });
+
     it("keeps waiting on a PASS for an older head, then exits after a new marker", async () => {
       const older = review(OK, "f".repeat(40));
       const dir = served(view(), [older]);

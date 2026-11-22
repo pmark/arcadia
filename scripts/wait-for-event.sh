@@ -102,9 +102,12 @@ ready_event() { # <pr> <pr view json> <comments, one {body,html_url} per line>: 
     const green = states.length > 0 && states.every((s) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(s));
     if (v.isDraft || !pass || marker.sha !== head || !green || v.mergeStateStatus !== "CLEAN") process.exit(0); // R6, R1, R2: keep waiting
     const tail = (/PASS[*_`]*\s*[—–-]+\s*(.*)$/i.exec(line) || [])[1] || ""; // R5: anchored lines, or right after "PASS —" on the marker line
-    const lead = /^[*_`]*Loosens a gate:\s*no\b[.;,]?\s*(.*)$/i.exec(tail), auth = /^[*_`]*Changes agent authority:\s*no\b/i;
-    const loosens = /^\s*[*_`-]*\s*Loosens a gate:\s*no\b/im.test(marker.b) || !!lead;
-    const authority = /^\s*[*_`-]*\s*Changes agent authority:\s*no\b/im.test(marker.b) || auth.test(tail) || (!!lead && auth.test(lead[1]));
+    // Every occurrence of each phrase counts: it is "no" only if one exists and all of them read no (any yes wins).
+    const lead = /^[*_`]*Loosens a gate:\s*(\w+)[.;,]?\s*(.*)$/i.exec(tail), second = (s) => /^[*_`]*Changes agent authority:\s*(\w+)/i.exec(s);
+    const words = (re, onLine) => [...marker.b.matchAll(re)].map((m) => m[1]).concat(onLine.filter(Boolean).map((m) => m[1])).map((w) => w.toLowerCase());
+    const allNo = (w) => w.length > 0 && w.every((x) => x === "no");
+    const loosens = allNo(words(/^\s*[*_`-]*\s*Loosens a gate:\s*(\w+)/gim, [lead]));
+    const authority = allNo(words(/^\s*[*_`-]*\s*Changes agent authority:\s*(\w+)/gim, [second(tail), lead && second(lead[2])]));
     out(`EVENT ready ${n} ${head} next=${loosens && authority ? `arcadia work merge-check --pr ${n}` : "operator-merge"} proof=${url(marker.c)}`);
   ' "$@"
 }
@@ -163,7 +166,7 @@ case $kind in
   ready)
     [ "$#" -ge 2 ] || usage
     repo=$1; shift
-    tmp=$(mktemp -d) || exit 1
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/wait-for-event.XXXXXX") || exit 1 # plain `mktemp -d` ignores $TMPDIR on macOS
     trap 'rm -rf "$tmp"' EXIT
     echo "WATCHING ready $repo $*" >&2
     while :; do
