@@ -7,6 +7,27 @@ import { createFingerprintCache } from "./fingerprint-cache";
 
 export class RoadmapProjectNotFound extends Error {}
 
+/** The workspace could not be opened for reading (not set up, database missing or locked). Says so in words, without paths. */
+export class RoadmapWorkspaceUnavailable extends Error {}
+
+/**
+ * Read the workspace database, read-only, waiting briefly for a writer instead of failing at once. A read-only
+ * connection has no busy timeout of its own, so a service committing at that moment would otherwise surface as SQLITE_BUSY.
+ */
+function readWorkspace<T>(callback: (db: Parameters<Parameters<typeof withReadOnlyDatabase>[1]>[0]) => T): T {
+  try {
+    const { workspacePath } = resolveReadyWorkspace();
+    return withReadOnlyDatabase(workspacePath, (db) => {
+      db.pragma("busy_timeout = 5000");
+      return callback(db);
+    });
+  } catch (error) {
+    // The reader gets a plain sentence; the real cause (a SQL or schema fault, say) stays in the server log.
+    console.error("roadmap: workspace read failed", error);
+    throw new RoadmapWorkspaceUnavailable("The Arcadia workspace could not be read (it may not be set up, or its database is missing or busy). Nothing was changed; try again in a moment.");
+  }
+}
+
 /**
  * The Roadmap is derived from checked-in files only, in process (no CLI subprocess), and rebuilt only when a source's
  * size or modification time changes. A hit costs a stat walk at most every `CHECK_AFTER_MS`; an idle page is never
@@ -24,8 +45,7 @@ const roadmaps = createFingerprintCache<string, RoadmapView>({
 });
 
 function repoPathOf(projectSlug: string): string {
-  const { workspacePath } = resolveReadyWorkspace();
-  const found = withReadOnlyDatabase(workspacePath, (db) => {
+  const found = readWorkspace((db) => {
     const project = getProjectBySlug(db, projectSlug);
     return project ? { repoPath: getProjectMetadata(db, project.id)?.repo_path ?? null } : null;
   });
@@ -41,6 +61,5 @@ export async function loadRoadmap(projectSlug: string, options: { fresh?: boolea
 
 /** The Project slugs a Roadmap can open, for the bare `/workspace/roadmap` address. */
 export function roadmapProjectSlugs(): string[] {
-  const { workspacePath } = resolveReadyWorkspace();
-  return withReadOnlyDatabase(workspacePath, (db) => listProjects(db).filter((p) => getProjectMetadata(db, p.id)?.repo_path).map((p) => p.slug));
+  return readWorkspace((db) => listProjects(db).filter((p) => getProjectMetadata(db, p.id)?.repo_path).map((p) => p.slug));
 }

@@ -1,12 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { RoadmapView } from "../../../../../src/roadmap/derive";
+import { REFRESH_SECONDS, singleFlight, startPolling } from "./roadmap-poll";
 import { RoadmapStack } from "./roadmap-view";
 import "./roadmap.css";
-
-/** Data is at most about this old on a visible page (plus the server cache's own 2 s check). */
-export const REFRESH_SECONDS = 30;
 
 function clock(iso: string): string {
   // Fixed UTC so the server's and the browser's render agree (no hydration mismatch, no locale guess).
@@ -22,11 +20,8 @@ export function RoadmapLive({ project, initial, initialError }: { project: strin
   const [view, setView] = useState<RoadmapView | null>(initial);
   const [error, setError] = useState<string | null>(initialError);
   const [reading, setReading] = useState(false);
-  const inFlight = useRef(false);
 
-  const read = useCallback(async (fresh: boolean) => {
-    if (inFlight.current) return;
-    inFlight.current = true;
+  const fetchView = useCallback(async (fresh: boolean) => {
     setReading(true);
     try {
       const response = await fetch(`/api/roadmap/${encodeURIComponent(project)}${fresh ? "?fresh=1" : ""}`, { cache: "no-store" });
@@ -37,23 +32,12 @@ export function RoadmapLive({ project, initial, initialError }: { project: strin
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      inFlight.current = false;
       setReading(false);
     }
   }, [project]);
+  const read = useMemo(() => singleFlight(fetchView), [fetchView]);
 
-  useEffect(() => {
-    let timer: ReturnType<typeof setInterval> | undefined;
-    const start = () => { if (!timer) timer = setInterval(() => { void read(false); }, REFRESH_SECONDS * 1000); };
-    const stop = () => { if (timer) { clearInterval(timer); timer = undefined; } };
-    const onVisibility = () => {
-      if (document.visibilityState === "hidden") stop();
-      else { void read(false); start(); }
-    };
-    if (document.visibilityState !== "hidden") start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => { stop(); document.removeEventListener("visibilitychange", onVisibility); };
-  }, [read]);
+  useEffect(() => startPolling(read, document), [read]);
 
   return <main className="workspace-main route-main roadmap-main" data-roadmap-project={project}>
     <div className="rm-card">

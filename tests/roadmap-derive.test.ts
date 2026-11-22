@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, wr
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { deriveRoadmap, parseRoadmapOrder, roadmapFingerprint } from "../src/roadmap/derive.js";
+import { deriveRoadmap, describeFileError, parseRoadmapOrder, roadmapFingerprint, scrubPaths } from "../src/roadmap/derive.js";
 
 const roots: string[] = [];
 afterEach(() => {
@@ -149,11 +149,15 @@ describe("hostile Plan slugs", () => {
     writeFileSync(path.join(repo, "NORTH_STAR.md"), readFileSync(path.join(repo, "NORTH_STAR.md"), "utf8").replace("plan/plan-f#a0", `plan/${slug}#a0`));
     const view = deriveRoadmap(repo);
     const stop = view.sequence.find((s) => s.letter === "X");
-    if (stop) {
-      expect(stop.kind).toBe("unreadable");
-      expect(stop.kind === "unreadable" && stop.reason).toMatch(/unknown|does not exist/);
+    if (slug === "") {
+      // The order parser needs a non-empty slug, so an empty one never becomes a stop at all.
+      expect(stop).toBeUndefined();
+    } else {
+      expect(stop?.kind).toBe("unreadable");
+      expect(stop?.kind === "unreadable" && stop.reason).toMatch(/not a plain slug/);
     }
     expect(view.northStar?.gates[0].status).toBe("unknown");
+    expect(view.northStar?.gates[0].source).toBe("none");
     expect(view.sequence.find((s) => s.letter === "G")?.kind).toBe("plan");
   });
   it("accepts ordinary slugs only", async () => {
@@ -205,5 +209,27 @@ describe("freshness through the dashboard's fingerprint cache", () => {
     const second = await cache.get(repo);
     expect(second.sequence[1].kind === "plan" && second.sequence[1].counts.done).toBe(1);
     expect((await cache.get(repo, { fresh: true })).sequence[1].kind).toBe("plan");
+  });
+});
+
+describe("warnings carry no host paths", () => {
+  it("scrubs the repository root and other absolute paths from messages", () => {
+    expect(scrubPaths("ENOENT: open '/Users/someone/repo/docs/x.md' under /Users/someone/repo", "/Users/someone/repo")).toBe("ENOENT: open './docs/x.md' under .");
+    expect(scrubPaths("failed at /var/folders/ab/cd/T/x and docs/plans/a.md", "/nowhere")).toBe("failed at <path> and docs/plans/a.md");
+    expect(scrubPaths("open /a/bc/x and /a/b/y", "/a/b")).toBe("open <path> and ./y");
+    expect(describeFileError(Object.assign(new Error("EACCES: /secret/x"), { code: "EACCES" }), "/r")).toBe("is not readable (permission denied).");
+  });
+
+  it("an unreadable Plan and an unreadable source name repository-relative paths only", () => {
+    const repo = makeRepo();
+    rmSync(path.join(repo, "docs", "plans", "plan-g.md"));
+    mkdirSync(path.join(repo, "docs", "plans", "plan-g.md"));
+    rmSync(path.join(repo, "PROJECT.md"));
+    mkdirSync(path.join(repo, "PROJECT.md"));
+    const view = deriveRoadmap(repo);
+    const text = JSON.stringify(view);
+    expect(view.warnings.length).toBeGreaterThan(0);
+    expect(text).not.toContain(repo);
+    expect(text).not.toContain(path.dirname(repo));
   });
 });
