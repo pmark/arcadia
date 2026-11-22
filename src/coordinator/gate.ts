@@ -24,7 +24,7 @@ const BLOCKING_LINE = /^(?:Blocking findings?\b|Blocking:)[\s:*_`(-]*([A-Za-z0-9
 
 /** R0: a marker is a comment with a line that opens with the marker text; a quotation mid-text is not one. */
 function parseMarker(comment: GateComment): Marker | null {
-  for (const line of comment.body.split("\n")) {
+  for (const line of comment.body.split(/\r?\n/)) {
     const found = MARKER_LINE.exec(line);
     if (!found) continue;
     const verdict = VERDICT.exec(found[2]);
@@ -41,7 +41,7 @@ function isWorkerFail(body: string, head: string): boolean {
 
 /** R2: a line that, stripped of leading markdown, opens `Blocking finding` or `Blocking:` blocks unless the next word is none, 0 or no. */
 function hasBlockingLine(body: string): boolean {
-  return body.split("\n").some((line) => {
+  return body.split(/\r?\n/).some((line) => {
     const found = BLOCKING_LINE.exec(line.replace(/^[*_`\->#\s]+/, ""));
     return found !== null && !["none", "0", "no"].includes(found[1].toLowerCase());
   });

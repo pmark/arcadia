@@ -30,9 +30,10 @@ export interface CapsulePr {
   checks: "pass" | "fail" | "pending" | "none" | "unknown";
   mergeState: string | null;
   /**
-   * Advisory, read-only, never an authorization. It is a snapshot whose review part can lag a new marker by up to five minutes (the PR
-   * cache), and it never replaces `arcadia work merge-check`. The merger re-checks Decision 0230's list itself. Reads as
-   * `<unknown|blocked|waiting|frozen|operator|ready>: <reason>`, or null when none was derived.
+   * Advisory, read-only, never an authorization. It is a snapshot: all of it except the merge freeze (head, checks, merge state, draft,
+   * worker FAIL, review) can be up to five minutes old (the PR cache). `ready` does not cover Decision 0230 conditions 3 to 5 (head
+   * unchanged, production Off, exclusions), and it never replaces `arcadia work merge-check`. The merger re-checks Decision 0230's
+   * list itself. Reads as `<unknown|blocked|waiting|frozen|operator|ready>: <reason>`, or null when none was derived.
    */
   gate: string | null;
 }

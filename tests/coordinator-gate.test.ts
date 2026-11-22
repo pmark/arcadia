@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { buildCapsule, writeLiveCapsule, type CapsuleSources } from "../src/coordinator/capsule.js";
 import { deriveGate, type GateInput } from "../src/coordinator/gate.js";
 import { coordinatorPaths } from "../src/coordinator/paths.js";
-import { defaultCapsuleSources } from "../src/coordinator/sources.js";
+import { defaultCapsuleSources, readPrFromGh } from "../src/coordinator/sources.js";
 import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
@@ -80,6 +80,14 @@ describe("deriveGate", () => {
     expect(gate({ comments: [quoted] })).toMatch(/^waiting: no review marker/);
     const quotedBlock = { body: `> Independent review, head ${HEAD}: FAIL`, html_url: url() };
     expect(gate({ comments: [quotedBlock, marker(HEAD)] })).toMatch(/^ready: /);
+  });
+
+  it("CRLF bodies (the GitHub web UI) are read like LF ones", () => {
+    const crlf = (text: string) => ({ body: text.replace(/\n/g, "\r\n"), html_url: url() });
+    const pass = `Independent review, head ${HEAD}: PASS — Loosens a gate: no. Changes agent authority: no.`;
+    expect(gate({ comments: [marker(HEAD), crlf(`Independent review, head ${HEAD}: FAIL\n\nBlocking finding: x`)] })).toMatch(/^blocked: review FAIL/);
+    expect(gate({ comments: [crlf(pass)] })).toMatch(/^ready: /);
+    expect(gate({ comments: [crlf(`${pass}\n\nBlocking finding: x`)] })).toMatch(/^blocked: review names a blocking finding/);
   });
 
   it("checks: fail blocks; pending, none and unknown wait; a merge state other than CLEAN waits", () => {
@@ -182,5 +190,33 @@ exit 1
     const capsule = buildCapsule({ project: "arcadia", role: "rowan", generation: null, custodian: null, assignment: { briefPath: null, briefSha: null, directives: [] }, state: { journal: [], nextMove: null, subscriptions: [], chatOnlyApprovals: [], prs: [9] }, sources, now });
     writeLiveCapsule(paths, capsule);
     expect(readFileSync(paths.live, "utf8")).not.toContain(secret);
+  });
+
+  /** A fake `gh` whose comments call runs the given expression through jq over `comments`, or fails when `comments` is null. */
+  function readWithFakeGh(comments: unknown[] | null): string | null {
+    const root = mkdtempSync(path.join(tmpdir(), "arcadia-gate-gh-"));
+    roots.push(root);
+    writeFileSync(path.join(root, "comments.json"), JSON.stringify(comments ?? []));
+    writeFileSync(path.join(root, "view.json"), JSON.stringify({ headRefOid: HEAD, isDraft: false, mergeStateStatus: "CLEAN", statusCheckRollup: [{ conclusion: "SUCCESS" }] }));
+    writeFileSync(path.join(root, "gh"), `#!/usr/bin/env bash
+if [ "$1" = pr ]; then cat "${root}/view.json"; exit 0; fi
+${comments === null ? "exit 1" : `while [ $# -gt 0 ]; do if [ "$1" = --jq ]; then expr="$2"; fi; shift; done; jq -r "$expr" "${root}/comments.json"`}
+`);
+    chmodSync(path.join(root, "gh"), 0o755);
+    const before = process.env.PATH;
+    process.env.PATH = `${root}:${before}`;
+    restore.push(() => { process.env.PATH = before; });
+    return readPrFromGh(root, 9).gate;
+  }
+
+  it("a lowercase or CRLF FAIL marker survives the jq prefilter and beats an older PASS", () => {
+    const pass = { body: `Independent review, head ${HEAD}: PASS — Loosens a gate: no. Changes agent authority: no.`, html_url: "https://github.com/o/r/pull/9#issuecomment-1" };
+    const fail = { body: `independent review, head ${HEAD}: FAIL\r\n\r\nBlocking finding: x`, html_url: "https://github.com/o/r/pull/9#issuecomment-2" };
+    expect(readWithFakeGh([pass])).toMatch(/^ready: /);
+    expect(readWithFakeGh([pass, fail])).toMatch(/^blocked: review FAIL/);
+  });
+
+  it("reads unknown, not waiting, when the comments cannot be read", () => {
+    expect(readWithFakeGh(null)).toBe("unknown: the PR comments are unreadable");
   });
 });

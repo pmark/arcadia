@@ -44,7 +44,7 @@ function summarizeChecks(rollup: Array<{ conclusion?: string | null; status?: st
  * The comments the gate reads (review markers and the worker's FAIL comments) as one compact JSON `{body, html_url}` per line. The
  * filter is deliberately loose (anywhere in the body); `deriveGate` applies the anchored rules.
  */
-const GATE_COMMENTS_JQ = '.[] | select(((.body // "") | test("Independent review, head [0-9a-f]{7,40}")) or (((.body // "") | contains("Arcadia worker: ")) and ((.body // "") | contains("Do not merge")))) | {body, html_url} | tojson';
+const GATE_COMMENTS_JQ = '.[] | select(((.body // "") | test("Independent review, head [0-9a-f]{7,40}"; "i")) or (((.body // "") | contains("Arcadia worker: ")) and ((.body // "") | contains("Do not merge")))) | {body, html_url} | tojson';
 
 function parseGateComments(raw: string): GateComment[] {
   const comments: GateComment[] = [];
