@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { changedTestFiles, changesTypeScript, hostRequiredChecks, COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
+import { changedLintFiles, changedTestFiles, changesTypeScript, eslintFailures, hostRequiredChecks, COMPLETION_COMMAND_TIMEOUT_MS, COMPLETION_REQUIRED_COMMAND_TIMEOUT_MS, COMPLETION_VALIDATION_TIMEOUT_MS, namedTestFiles, validateCompletionCandidate } from "../src/sessions/completionValidation.js";
 import { MAX_TICK_DURATION_MS } from "../src/commands/worker.js";
 
 // Issue #1599: which test files an Action's acceptance criteria name. The
@@ -295,3 +295,90 @@ describe("host typecheck at pre-acceptance", () => {
   });
 });
 
+
+// Issue #2947: lint was CI-only, so a candidate with an eslint error (PR #2948, tests/park-and-continue.test.ts:42,
+// @typescript-eslint/no-unnecessary-type-assertion) passed pre-acceptance. The host now lints the files the candidate changes.
+describe("host eslint of changed files at pre-acceptance", () => {
+  const dirs: string[] = [];
+  afterEach(() => { for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
+  const tmp = (prefix: string) => { const dir = realpathSync(mkdtempSync(path.join(tmpdir(), prefix))); dirs.push(dir); return dir; };
+  const CONFIG = [
+    'import tseslint from "typescript-eslint";',
+    "export default tseslint.config({",
+    '  files: ["**/*.ts"],',
+    "  languageOptions: { parser: tseslint.parser, parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname } },",
+    '  plugins: { "@typescript-eslint": tseslint.plugin },',
+    '  rules: { "@typescript-eslint/no-unnecessary-type-assertion": "error" }',
+    "});", ""
+  ].join("\n");
+  // The regression shape: a non-null assertion on a value that cannot be null, at line 2 of a changed test file.
+  const UNNECESSARY = "const status: string = \"open\";\nexport const value = status!;\n";
+
+  function fixture(file: string, source: string, options: { config?: string; baseFiles?: Record<string, string>; candidateConfig?: string } = {}) {
+    const repository = tmp("eslint-repo-");
+    const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: repository, encoding: "utf8" }).trim();
+    git("init", "-q");
+    for (const dir of ["src", "tests"]) mkdirSync(path.join(repository, dir), { recursive: true });
+    writeFileSync(path.join(repository, "package.json"), JSON.stringify({ name: "fixture", private: true }, null, 2));
+    writeFileSync(path.join(repository, "tsconfig.json"), JSON.stringify({ compilerOptions: { strict: true, noEmit: true, target: "es2022", module: "esnext", moduleResolution: "bundler" }, include: ["src", "tests"] }));
+    writeFileSync(path.join(repository, "eslint.config.mjs"), options.config ?? CONFIG);
+    writeFileSync(path.join(repository, "src", "base.ts"), "export const base: number = 1;\n");
+    for (const [name, text] of Object.entries(options.baseFiles ?? {})) writeFileSync(path.join(repository, name), text);
+    git("add", "."); git("commit", "-q", "-m", "base");
+    const base = git("rev-parse", "HEAD");
+    mkdirSync(path.dirname(path.join(repository, file)), { recursive: true });
+    writeFileSync(path.join(repository, file), source);
+    if (options.candidateConfig !== undefined) writeFileSync(path.join(repository, "eslint.config.mjs"), options.candidateConfig);
+    git("add", "."); git("commit", "-q", "-m", "candidate");
+    return { repository, worktree: repository, base, workspace: tmp("eslint-workspace-"), commands: ["true"], acceptanceCriteria: ["The contract exists."] };
+  }
+  const validate = (candidate: ReturnType<typeof fixture>) => validateCompletionCandidate(candidate, { unconfinedForTests: true, dependencyRoot: process.cwd() });
+
+  it("refuses a candidate whose changed file has an eslint error, naming file:line:rule (not a host fault)", () => {
+    const result = validate(fixture("tests/park-and-continue.ts", UNNECESSARY));
+    expect(result).toMatchObject({ status: "refused", hostFault: false, failures: [expect.stringMatching(/^tests\/park-and-continue\.ts:2 @.?typescript-eslint\/no-unnecessary-type-assertion: /)] });
+    expect(result.status === "refused" && result.reason).toMatch(/eslint reports 1 error in the files this candidate changes/);
+  }, 240_000);
+
+  it("passes a candidate whose changed files lint clean, recording the lint command", () => {
+    expect(validate(fixture("tests/clean.ts", "export const clean: number = 2;\n"))).toMatchObject({ status: "passed", commands: expect.arrayContaining(["pnpm exec eslint (changed files)"]) });
+  }, 240_000);
+
+  it("never lints a file the candidate did not change, even one that already fails lint on the base", () => {
+    const result = validate(fixture("tests/clean.ts", "export const clean: number = 3;\n", { baseFiles: { "src/legacy.ts": UNNECESSARY } }));
+    expect(result).toMatchObject({ status: "passed" });
+  }, 240_000);
+
+  it("fails closed when the eslint runner itself fails (a broken config), refusing with the runner's reason", () => {
+    const result = validate(fixture("tests/clean.ts", "export const clean: number = 4;\n", { config: "export default (;\n" }));
+    expect(result).toMatchObject({ status: "refused", hostFault: false, failures: ["pnpm exec eslint (changed files)"], reason: expect.stringMatching(/eslint runner failed \(exit 2\) without reporting a lint error/) });
+  }, 240_000);
+
+  it("does not let a candidate rewrite the eslint config that judges it", () => {
+    const result = validate(fixture("tests/park-and-continue.ts", UNNECESSARY, { candidateConfig: "export default [];\n" }));
+    expect(result.status).toBe("refused");
+    expect(result.status === "refused" && result.reason).toMatch(/eslint\.config\.mjs/);
+  }, 240_000);
+
+  it("requires the lint only for a Project with an eslint config and a changed lintable file", () => {
+    const lintable = fixture("tests/clean.ts", "export const a: number = 1;\n");
+    expect(hostRequiredChecks(["The contract exists."], lintable.worktree, lintable.base)).toEqual(expect.arrayContaining(["pnpm exec eslint (changed files)"]));
+    const docs = fixture("README.md", "# notes\n");
+    expect(hostRequiredChecks(["The contract exists."], docs.worktree, docs.base)).not.toContain("pnpm exec eslint (changed files)");
+    const ignored = fixture("config/x.ts", "export const a = 1;\n");
+    expect(changedLintFiles(ignored.worktree, ignored.base)).toEqual([]);
+    expect(changedLintFiles(lintable.worktree, lintable.base)).toEqual(["tests/clean.ts"]);
+  });
+
+  it("reads eslint's JSON report into file:line rule: message and ignores warnings and unparseable text", () => {
+    const report = JSON.stringify([
+      { filePath: "/src-root/tests/a.ts", messages: [{ line: 42, ruleId: "@typescript-eslint/no-unnecessary-type-assertion", message: "This assertion is unnecessary.", severity: 2 }, { line: 3, ruleId: "no-unused-vars", message: "Unused.", severity: 1 }] },
+      { filePath: "/src-root/src/c.ts", messages: [{ line: 1, ruleId: null, message: "Parsing error: x", severity: 2 }] }
+    ]);
+    expect(eslintFailures(report, "/src-root")).toEqual([
+      "tests/a.ts:42 @typescript-eslint/no-unnecessary-type-assertion: This assertion is unnecessary.",
+      "src/c.ts:1 error: Parsing error: x"
+    ]);
+    expect(eslintFailures("not json", "/src-root")).toEqual([]);
+  });
+});
