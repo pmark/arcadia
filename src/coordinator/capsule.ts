@@ -29,7 +29,11 @@ export interface CapsulePr {
   verdictMarkerHead: string | null;
   checks: "pass" | "fail" | "pending" | "none" | "unknown";
   mergeState: string | null;
-  /** The durable approval or gate that governs the merge, when one is recorded. */
+  /**
+   * Advisory, read-only, never an authorization. It is a snapshot whose review part can lag a new marker by up to five minutes (the PR
+   * cache), and it never replaces `arcadia work merge-check`. The merger re-checks Decision 0230's list itself. Reads as
+   * `<unknown|blocked|waiting|frozen|operator|ready>: <reason>`, or null when none was derived.
+   */
   gate: string | null;
 }
 export interface CapsuleSession { id: string; owner: string; status: string; lastProgressAt: string | null }
