@@ -534,7 +534,7 @@ install_liveness_agent() {
   err="$(err_log_for "$LIVENESS_SERVICE")"
   while IFS= read -r line; do command_args+=("$line"); done < <(liveness_command_args "$REPO")
   if release="$(liveness_release_dir "$HOME")" && runtime="$(liveness_release_runtime "$release")"; then
-    path_value="/usr/bin:/bin:/usr/sbin:/sbin"
+    path_value="$(liveness_path_value)" || return 1
     node_path="$release/node_modules"
     prefix=("$runtime" "$release/dist/src/cli.js")
     revision="$(sed -n 's/.*"revision"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$release/broker-manifest.json" | head -n 1)"
@@ -547,7 +547,7 @@ install_liveness_agent() {
       return 1
     fi
     echo "note: no installed go-broker release has liveness-check yet, so it runs from this checkout until one does and services restart." >&2
-    path_value="${mise_bin%/*}:/usr/bin:/bin:/usr/sbin:/sbin"
+    path_value="$(liveness_path_value "${mise_bin%/*}")" || return 1
     prefix=("$mise_bin" -C "$REPO" exec -- node "$TSX_ENTRY" "$REPO/src/cli.ts")
     revision="$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)"
     liveness_release_has_retry "$REPO" "$revision" || return 1

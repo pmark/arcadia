@@ -88,6 +88,46 @@ liveness_production_is_off() {
   return 1
 }
 
+# <leading directory or ""> prints the PATH the timer runs under, so the tools its
+# code path starts by bare name resolve: gh (src/production/productionSuccessor.ts,
+# main's checks), node and pnpm (the replay step), and tmux and claude (a relay
+# launch, not wired yet). launchd gives a job nothing but this value. Directories
+# come from where the tools are now, so no user's home is assumed: the leading
+# one, the mise shims directory when it exists, each tool's directory, then the
+# system ones, each once. A missing gh, node or pnpm refuses, naming it: the timer
+# would otherwise skip every press in silence. Builtins only, so a test can run it
+# under a PATH of stubs.
+liveness_path_value() {
+  local lead="${1:-}" shims search="$PATH" spec tool need found dir path_value=""
+  local -a dirs=() parts=()
+  shims="${MISE_DATA_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/mise}/shims"
+  [[ -n "$lead" ]] && dirs+=("$lead")
+  if [[ -d "$shims" ]]; then dirs+=("$shims"); search="$shims:$search"; fi
+  IFS=: read -r -a parts <<<"$search"
+  for spec in "gh|required|the successor step reads main's checks with it" "node|required|the timer's arcadia commands run on it" "pnpm|required|the replay step runs it" "tmux|optional|a relay launch will need it, but is not wired yet" "claude|optional|a relay launch will need it, but is not wired yet"; do
+    IFS='|' read -r tool need _ <<<"$spec"
+    # Walk the directories, not `type -P`: bash 3.2 answers that from its hash
+    # table and ignores a temporary PATH.
+    found=""
+    for dir in ${parts[@]+"${parts[@]}"}; do
+      if [[ "$dir" == /* && -x "$dir/$tool" && ! -d "$dir/$tool" ]]; then found="$dir/$tool"; break; fi
+    done
+    if [[ "$found" == /* ]]; then
+      dirs+=("${found%/*}")
+    elif [[ "$need" == required ]]; then
+      echo "liveness-check not changed: required tool $tool was not found on PATH (${spec##*|}); install it, or run this from a shell where it resolves." >&2
+      return 1
+    else
+      echo "note: $tool was not found on PATH, so the timer's PATH omits it (${spec##*|})." >&2
+    fi
+  done
+  dirs+=(/usr/bin /bin /usr/sbin /sbin)
+  for dir in "${dirs[@]}"; do
+    [[ "$dir" == /* && ":$path_value:" != *":$dir:"* ]] && path_value="${path_value:+$path_value:}$dir"
+  done
+  printf '%s' "$path_value"
+}
+
 liveness_xml() {
   local s="$1"
   s="${s//&/&amp;}"

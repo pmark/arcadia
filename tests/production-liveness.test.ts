@@ -554,8 +554,31 @@ describe("the launchd agent", () => {
   const impl = path.join(repo, "scripts", "restart-services-impl.sh");
   const UID = String(process.getuid?.() ?? 0);
 
+  const TIMER_TOOLS = ["gh", "pnpm", "node", "tmux", "claude"];
+  const SYSTEM_DIRS = ["/usr/bin", "/bin", "/usr/sbin", "/sbin"];
+
+  /** One stub per tool, each in a directory of its own, so a PATH can be checked for every one. */
+  function toolDirs(root: string, names: string[] = TIMER_TOOLS): Record<string, string> {
+    const dirs: Record<string, string> = {};
+    for (const name of names) {
+      const dir = path.join(root, `tool-${name}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(path.join(dir, name), "#!/bin/sh\nexit 0\n");
+      chmodSync(path.join(dir, name), 0o755);
+      dirs[name] = dir;
+    }
+    return dirs;
+  }
+
+  /** The PATH builder alone, under a PATH of only the given tool directories: it needs no external command. */
+  function buildPath(root: string, home: string, names: string[], lead = "", before = "") {
+    const dirs = toolDirs(root, names);
+    const result = spawnSync("/bin/bash", ["-c", `source "$1"; ${before} liveness_path_value "$2"`, "--", lib, lead], { encoding: "utf8", env: { PATH: Object.values(dirs).join(":"), HOME: home } });
+    return { dirs, result };
+  }
+
   /** A host with every system command stubbed: nothing here can reach the real launchd, ports or processes. */
-  function host(options: { release?: boolean; loaded?: boolean; bootstrapFailures?: number } = {}) {
+  function host(options: { release?: boolean; loaded?: boolean; bootstrapFailures?: number; noTools?: boolean } = {}) {
     const root = tempDir("arcadia-liveness-host-");
     const bin = path.join(root, "bin");
     const home = path.join(root, "home");
@@ -586,6 +609,8 @@ describe("the launchd agent", () => {
     const statusFile = path.join(root, "status.json");
     writeFileSync(statusFile, JSON.stringify({ ok: true, data: { read: { status: "ok", policy: { desiredState: "inactive" } } } }));
     stub("mise", `cat "${statusFile}"`);
+    // The tools the timer's code path runs by bare name; the install resolves their directories.
+    if (!options.noTools) for (const tool of TIMER_TOOLS) stub(tool, "exit 0");
 
     // The checkout is a git repo whose base commit stands in for the successor-press retry commit.
     const git = (...args: string[]) => execFileSync("git", ["-C", fakeRepo, "-c", "user.name=t", "-c", "user.email=t@example.com", ...args], { encoding: "utf8" }).trim();
@@ -716,6 +741,83 @@ describe("the launchd agent", () => {
     expect(argv.slice(-2)).toEqual(["--stale-seconds", "420"]);
     expect(argv).toContain("liveness-check");
     expect(argv).toContain("--successor-press");
+  });
+
+  it("gives the timer a PATH that finds gh, pnpm, node, tmux and claude, with the system directories, once each", () => {
+    const fixture = host({ release: true, noTools: true });
+    const dirs = toolDirs(fixture.root);
+    const result = fixture.run("liveness", { PATH: `${Object.values(dirs).join(":")}:${fixture.bin}:/usr/bin:/bin` });
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const value = plistJson(fixture.plistPath()).EnvironmentVariables.PATH ?? "";
+    const segments = value.split(":");
+    for (const dir of [...Object.values(dirs), ...SYSTEM_DIRS]) expect(segments).toContain(dir);
+    expect(segments).not.toContain("");
+    expect(new Set(segments).size).toBe(segments.length);
+    // The timer's own environment: nothing but this PATH.
+    // One `command -v` per name: dash (ubuntu's sh) reports only the first of several.
+    const found = spawnSync("env", ["-i", `PATH=${value}`, "sh", "-c", "for t in gh pnpm node tmux claude; do command -v \"$t\"; done"], { encoding: "utf8" });
+    expect(found.stdout.trim().split("\n")).toEqual(TIMER_TOOLS.map((tool) => path.join(dirs[tool] ?? "", tool)));
+  });
+
+  it("puts the mise shims directory first when one exists, and still resolves each tool", () => {
+    const fixture = host({ release: true, noTools: true });
+    const dirs = toolDirs(fixture.root);
+    const shims = path.join(fixture.home, ".local", "share", "mise", "shims");
+    mkdirSync(shims, { recursive: true });
+    expect(fixture.run("liveness", { PATH: `${Object.values(dirs).join(":")}:${fixture.bin}:/usr/bin:/bin` }).status).toBe(0);
+    const segments = (plistJson(fixture.plistPath()).EnvironmentVariables.PATH ?? "").split(":");
+    expect(segments[0]).toBe(shims);
+    for (const dir of Object.values(dirs)) expect(segments).toContain(dir);
+  });
+
+  it("keeps the mise directory first when it falls back to the checkout, and finds the tools there too", () => {
+    const fixture = host({ noTools: true });
+    const dirs = toolDirs(fixture.root);
+    expect(fixture.run("liveness", { PATH: `${Object.values(dirs).join(":")}:${fixture.bin}:/usr/bin:/bin` }).status).toBe(0);
+    const segments = (plistJson(fixture.plistPath()).EnvironmentVariables.PATH ?? "").split(":");
+    expect(segments[0]).toBe(fixture.bin);
+    for (const dir of Object.values(dirs)) expect(segments).toContain(dir);
+  });
+
+  it("refuses, naming the tool and what needs it, when a required tool cannot be found", () => {
+    for (const missing of ["gh", "node", "pnpm"]) {
+      const fixture = host({ noTools: true });
+      const { result } = buildPath(fixture.root, fixture.home, TIMER_TOOLS.filter((tool) => tool !== missing));
+      expect(result.status).not.toBe(0);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(`liveness-check not changed: required tool ${missing} was not found on PATH`);
+    }
+    // The whole install refuses too, before it touches launchd. gh and node can sit in a CI image's system directories, pnpm cannot.
+    const fixture = host({ release: true, noTools: true });
+    const dirs = toolDirs(fixture.root, TIMER_TOOLS.filter((tool) => tool !== "pnpm"));
+    const refused = fixture.run("liveness", { PATH: `${Object.values(dirs).join(":")}:${fixture.bin}:/usr/bin:/bin` });
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain("required tool pnpm was not found on PATH");
+    expect(existsSync(fixture.plistPath())).toBe(false);
+    expect(fixture.launchctlCalls()).not.toContain("bootstrap");
+  });
+
+  it("finds a tool by walking PATH, whatever the shell has cached for its name", () => {
+    const fixture = host({ noTools: true });
+    // A stale hash entry, as bash 3.2 keeps for a name it has run before: `type -P` answers from it and ignores the PATH.
+    const { dirs, result } = buildPath(fixture.root, fixture.home, TIMER_TOOLS, "", "hash -p /nonexistent/gh gh;");
+    expect(result.status).toBe(0);
+    expect(result.stdout.split(":")).toContain(dirs["gh"]);
+    expect(result.stdout.split(":")).not.toContain("/nonexistent");
+  });
+
+  it("still installs without tmux or claude, noting each as not found", () => {
+    const fixture = host({ noTools: true });
+    // A leading directory that is also a system one must not appear twice.
+    const { dirs, result } = buildPath(fixture.root, fixture.home, ["gh", "pnpm", "node"], "/usr/bin");
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("note: tmux was not found on PATH");
+    expect(result.stderr).toContain("note: claude was not found on PATH");
+    const segments = result.stdout.split(":");
+    for (const dir of [...Object.values(dirs), ...SYSTEM_DIRS]) expect(segments).toContain(dir);
+    expect(segments).not.toContain("");
+    expect(new Set(segments).size).toBe(segments.length);
   });
 
   it("refuses a release without the successor-press retry commit, naming both, and accepts one that has it", () => {
