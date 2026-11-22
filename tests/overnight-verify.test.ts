@@ -79,7 +79,7 @@ describe("overnight report", () => {
       }
       return { status: 0, stderr: "", stdout: JSON.stringify({ comments: [{ url: "https://x/m", body: `Independent review, head ${HEAD_A.slice(0, 12)}\nLoosens a gate: no` }] }) };
     };
-    const got = ghPrReader(run as never, "/repo")(prA);
+    const got = ghPrReader(run, "/repo")(prA);
     expect(got).toMatchObject({ headSha: HEAD_A, files: ["src/a.ts"], reviewMarker: { url: "https://x/m" } });
     expect(calls).toHaveLength(2);
   });
