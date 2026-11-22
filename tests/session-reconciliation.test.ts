@@ -1492,7 +1492,7 @@ it("asserts the contract", () => {
     });
 
     it("(3) accepts a note that only mentions the file", () => {
-      const { fixture, sessionId } = claimingCandidate("Ran pnpm exec vitest run tests/contract.test.ts: 1 file, 1 test passed; a follow-up will update tests/contract.test.ts.");
+      const { fixture, sessionId } = claimingCandidate("Ran pnpm exec vitest run tests/contract.test.ts: 1 file, 1 test passed; a later commit will update tests/contract.test.ts.");
       const result = reconcile(fixture, sessionId, "reconcile-claimed-change-mention");
       expect(result.receipt.outcome).toBe("accepted_completion");
     });

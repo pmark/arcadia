@@ -93,6 +93,50 @@ describe("attemptAutoSettlePendingCompletion", () => {
     expect(result).toMatchObject({ settled: true, reason: AUTO_SETTLE_SETTLED });
   });
 
+  // PRs #2948/#2950: the real worker notes. Both marked the criterion met, the Action settled done, and nothing was wired.
+  const realNote = (file: string): string => (JSON.parse(readFileSync(path.join(import.meta.dirname, "fixtures", "met-criteria-proof", file), "utf8")) as { evidence: Array<{ note: string }> }).evidence[0]?.note ?? "";
+
+  it("refuses #2950's real completion note ('Not done here: scheduling the script ...') through the shared auto-settle path", () => {
+    const { repo, workspace } = fixture({ draftAsk: true, note: realNote("pr2950-completion-ask.json") });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+
+    expect(result).toMatchObject({ settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED });
+    const detail = (result as { detail?: string }).detail;
+    expect(detail).toContain("Met-criterion proof check refused the completion");
+    expect(detail).toContain("First proof exists.");
+    expect(detail).toContain('its own note says "Not done here"');
+    expect(execFileSync("git", ["ls-files", ".arcadia/asks/agent-ask-complete-first.yaml"], { cwd: repo, encoding: "utf8" })).toContain("agent-ask-complete-first.yaml");
+  });
+
+  it("refuses #2948's real completion note ('I inspected the code', no test title or result) and tells the Session what to supply", () => {
+    const { repo, workspace } = fixture({ draftAsk: true, note: realNote("pr2948-completion-ask.json") });
+
+    const result = withDatabase(workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }));
+
+    expect(result).toMatchObject({ settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED });
+    const detail = (result as { detail?: string }).detail;
+    expect(detail).toContain("is marked met on inspection");
+    expect(detail).toContain("a test file plus the quoted title of the test in it");
+  });
+
+  it("settles a completion whose note names a test file and the title of a test that exists at HEAD, and refuses one whose title does not", () => {
+    const committedFiles = { "tests/first.test.ts": 'it("first proof exists after the change", () => {});\n' };
+    const proved = fixture({ draftAsk: true, committedFiles, note: 'Inspected src/first.ts; tests/first.test.ts "first proof exists after the change" (the host runs it).' });
+    expect(withDatabase(proved.workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: proved.repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }))).toMatchObject({ settled: true, reason: AUTO_SETTLE_SETTLED });
+
+    const invented = fixture({ draftAsk: true, committedFiles, note: 'Inspected src/first.ts; tests/first.test.ts "a test nobody wrote".' });
+    expect(withDatabase(invented.workspace, (db) => attemptAutoSettlePendingCompletion(db, {
+      repoRoot: invented.repo, projectSlug: "demo", activePlanSlug: "demo-plan", action: ACTION
+    }))).toMatchObject({ settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED });
+  });
+
   it("replays #2777: a hand fix after the auto-settle leaves the record naming the evidenced head, not the merged head, by design", () => {
     const { repo, workspace, currentHead } = fixture({ draftAsk: true });
 
@@ -357,6 +401,8 @@ function fixture(options: {
   laterCodeCommit?: boolean;
   /** Files the later commit writes, instead of the default governance record. */
   laterCommitFiles?: string[];
+  /** Files (path to text) committed with the fixture itself, so they exist at the draft's revision. */
+  committedFiles?: Record<string, string>;
 }): { repo: string; workspace: string; draftHead: string; currentHead: string; divergentSha?: string } {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-auto-settle-"));
   roots.push(root);
@@ -368,6 +414,10 @@ function fixture(options: {
   if (options.withOpenDecision) mkdirSync(path.join(repo, "docs/decisions"), { recursive: true });
   writeFileSync(path.join(repo, "PROJECT.md"), projectDoc(), "utf8");
   writeFileSync(path.join(repo, "docs/plans/demo-plan.md"), planDoc({ withOpenDecision: options.withOpenDecision }), "utf8");
+  for (const [file, text] of Object.entries(options.committedFiles ?? {})) {
+    mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+    writeFileSync(path.join(repo, file), text, "utf8");
+  }
   if (options.withOpenDecision) {
     writeFileSync(path.join(repo, "docs/decisions/0001-review-first.md"), [
       "---", "arcadia: v1", "type: decision", 'id: "0001"', "slug: review-first", "project: demo",
