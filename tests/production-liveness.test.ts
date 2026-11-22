@@ -571,9 +571,9 @@ describe("the launchd agent", () => {
   }
 
   /** The PATH builder alone, under a PATH of only the given tool directories: it needs no external command. */
-  function buildPath(root: string, home: string, names: string[], lead = "") {
+  function buildPath(root: string, home: string, names: string[], lead = "", before = "") {
     const dirs = toolDirs(root, names);
-    const result = spawnSync("/bin/bash", ["-c", 'source "$1"; liveness_path_value "$2"', "--", lib, lead], { encoding: "utf8", env: { PATH: Object.values(dirs).join(":"), HOME: home } });
+    const result = spawnSync("/bin/bash", ["-c", `source "$1"; ${before} liveness_path_value "$2"`, "--", lib, lead], { encoding: "utf8", env: { PATH: Object.values(dirs).join(":"), HOME: home } });
     return { dirs, result };
   }
 
@@ -755,7 +755,8 @@ describe("the launchd agent", () => {
     expect(segments).not.toContain("");
     expect(new Set(segments).size).toBe(segments.length);
     // The timer's own environment: nothing but this PATH.
-    const found = spawnSync("env", ["-i", `PATH=${value}`, "sh", "-c", "command -v gh pnpm node tmux claude"], { encoding: "utf8" });
+    // One `command -v` per name: dash (ubuntu's sh) reports only the first of several.
+    const found = spawnSync("env", ["-i", `PATH=${value}`, "sh", "-c", "for t in gh pnpm node tmux claude; do command -v \"$t\"; done"], { encoding: "utf8" });
     expect(found.stdout.trim().split("\n")).toEqual(TIMER_TOOLS.map((tool) => path.join(dirs[tool] ?? "", tool)));
   });
 
@@ -795,6 +796,15 @@ describe("the launchd agent", () => {
     expect(refused.stderr).toContain("required tool pnpm was not found on PATH");
     expect(existsSync(fixture.plistPath())).toBe(false);
     expect(fixture.launchctlCalls()).not.toContain("bootstrap");
+  });
+
+  it("finds a tool by walking PATH, whatever the shell has cached for its name", () => {
+    const fixture = host({ noTools: true });
+    // A stale hash entry, as bash 3.2 keeps for a name it has run before: `type -P` answers from it and ignores the PATH.
+    const { dirs, result } = buildPath(fixture.root, fixture.home, TIMER_TOOLS, "", "hash -p /nonexistent/gh gh;");
+    expect(result.status).toBe(0);
+    expect(result.stdout.split(":")).toContain(dirs["gh"]);
+    expect(result.stdout.split(":")).not.toContain("/nonexistent");
   });
 
   it("still installs without tmux or claude, noting each as not found", () => {
