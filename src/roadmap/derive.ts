@@ -41,7 +41,8 @@ export interface RoadmapNorthStar {
   why: string;
   looksLike: string;
   updated: string | null;
-  gates: Array<{ id: string; title: string; status: string; basis: string }>;
+  /** `source` says where `status` came from: only "plan-record" is a recorded Action status; "declared" is prose in NORTH_STAR.md. */
+  gates: Array<{ id: string; title: string; status: string; basis: string; source: "plan-record" | "declared" | "none" }>;
 }
 
 export interface RoadmapPlanStop {
@@ -160,6 +161,24 @@ function newest(times: number[]): string | null {
   return times.length ? new Date(Math.max(...times)).toISOString() : null;
 }
 
+/**
+ * A reason a reader can act on, without the machine's paths. Node's messages carry absolute paths (`open '/Users/…'`),
+ * so known error codes get fixed wording and anything else has the repository root, and any other absolute path, removed.
+ */
+export function describeFileError(error: unknown, repoRoot: string): string {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === "ENOENT") return "does not exist.";
+  if (code === "EACCES" || code === "EPERM") return "is not readable (permission denied).";
+  if (code === "EISDIR") return "is a directory, not a file.";
+  return scrubPaths(error instanceof Error ? error.message : String(error), repoRoot);
+}
+
+export function scrubPaths(message: string, repoRoot: string): string {
+  let out = message;
+  for (const root of new Set([repoRoot, path.resolve(repoRoot)])) out = out.split(root).join(".");
+  return out.replace(/(?:^|(?<=[\s'"(]))\/(?:[\w.@-]+\/)+[\w.@-]*/g, "<path>");
+}
+
 function readText(repoRoot: string, relative: string, warnings: RoadmapWarning[], times: number[]): string | null {
   try {
     const absolute = path.join(repoRoot, relative);
@@ -167,7 +186,7 @@ function readText(repoRoot: string, relative: string, warnings: RoadmapWarning[]
     times.push(statSync(absolute).mtimeMs);
     return text;
   } catch (error) {
-    warnings.push({ source: relative, message: `Could not be read: ${error instanceof Error ? error.message : String(error)}` });
+    warnings.push({ source: relative, message: `Could not be read: ${describeFileError(error, repoRoot)}` });
     return null;
   }
 }
@@ -213,7 +232,7 @@ function loadPlan(repoRoot: string, slug: string): LoadedPlan {
     mtime = statSync(absolute).mtimeMs;
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
-    return { plan: null, reason: code === "ENOENT" ? `${relative} does not exist.` : `${relative} could not be read: ${error instanceof Error ? error.message : String(error)}`, mtime: null };
+    return { plan: null, reason: code === "ENOENT" ? `${relative} does not exist.` : `${relative} could not be read: ${describeFileError(error, repoRoot)}`, mtime: null };
   }
   const parsed = parseDoc(relative, absolute, content);
   if (!parsed.doc || parsed.doc.type !== "plan") {
@@ -235,8 +254,8 @@ function deriveGates(
     const ref = gate.actionRef ? GATE_ACTION_REF.exec(gate.actionRef) : null;
     if (!ref) {
       return gate.declaredStatus
-        ? { id: gate.id, title: gate.title, status: gate.declaredStatus, basis: "declared in NORTH_STAR.md" }
-        : { id: gate.id, title: gate.title, status: "unknown", basis: "names no Action" };
+        ? { id: gate.id, title: gate.title, status: gate.declaredStatus, basis: "declared in NORTH_STAR.md", source: "declared" as const }
+        : { id: gate.id, title: gate.title, status: "unknown", basis: "names no Action", source: "none" as const };
     }
     let loaded = cache.get(ref[1]);
     if (!loaded) {
@@ -244,8 +263,8 @@ function deriveGates(
       cache.set(ref[1], loaded);
     }
     const action = loaded.plan?.actions.find((candidate) => candidate.id === ref[2]);
-    if (!action) return { id: gate.id, title: gate.title, status: "unknown", basis: loaded.plan ? `${ref[2]} is not in its Plan` : "its Plan could not be read" };
-    return { id: gate.id, title: gate.title, status: action.status, basis: `Action ${ref[2]} in its Plan record` };
+    if (!action) return { id: gate.id, title: gate.title, status: "unknown", basis: loaded.plan ? `${ref[2]} is not in its Plan` : "its Plan could not be read", source: "none" as const };
+    return { id: gate.id, title: gate.title, status: action.status, basis: `Action ${ref[2]} in its Plan record`, source: "plan-record" as const };
   });
 }
 
@@ -322,7 +341,7 @@ export function deriveRoadmap(repoRoot: string, options: { now?: () => Date } = 
       warnings.push({ source: NORTH_STAR_FILE, message: "Does not exist, so the route has no target." });
     }
   } catch (error) {
-    warnings.push({ source: NORTH_STAR_FILE, message: error instanceof NorthStarParseError || error instanceof Error ? error.message : String(error) });
+    warnings.push({ source: NORTH_STAR_FILE, message: error instanceof NorthStarParseError ? scrubPaths(error.message, repoRoot) : `Could not be read: ${describeFileError(error, repoRoot)}` });
   }
 
   return {

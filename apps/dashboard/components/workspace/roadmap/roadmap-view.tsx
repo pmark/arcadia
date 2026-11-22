@@ -64,7 +64,7 @@ export function RoadmapStack({ view }: { view: RoadmapView }) {
         {view.northStar.why && <p className="rm-why">{view.northStar.why}</p>}
         {view.northStar.looksLike && <details><summary>What it looks like</summary><p className="rm-why">{view.northStar.looksLike}</p></details>}
         {view.northStar.gates.length > 0 && <ul className="rm-gates" aria-label="North Star gates">
-          {view.northStar.gates.map(g => <li key={g.id}><span className={`rm-gate${g.status === "done" && g.basis.startsWith("Action ") ? " rm-gate-done" : ""}`}>{g.status.replace("_", " ")}</span> {g.title}<small>{g.basis}</small></li>)}
+          {view.northStar.gates.map((g, i) => <li key={`${i}:${g.id}`}><span className={`rm-gate${g.status === "done" && g.source === "plan-record" ? " rm-gate-done" : ""}`}>{g.status.replace("_", " ")}</span> {g.title}<small>{g.basis}</small></li>)}
         </ul>}
         <small>Read from NORTH_STAR.md{view.northStar.updated ? `, updated ${view.northStar.updated}` : ""}. Shown as written.</small>
       </> : <p className="rm-fogtext">The North Star could not be read, so the route has no target.</p>}
@@ -84,8 +84,8 @@ export function RoadmapStack({ view }: { view: RoadmapView }) {
 
     {plans.length > 0 ? <ol className="rm-plans" aria-label="Plans, latest first">
       {plans.map(stop => stop.kind === "plan"
-        ? <PlanStopView key={stop.slug} stop={stop} currentAction={view.project?.currentAction ?? null} />
-        : <UnreadableStop key={stop.slug} stop={stop} />)}
+        ? <PlanStopView key={`${stop.order}:${stop.slug}`} stop={stop} currentAction={view.project?.currentAction ?? null} />
+        : <UnreadableStop key={`${stop.order}:${stop.slug}`} stop={stop} />)}
     </ol> : <div className="rm-fog" role="note"><b>No Plans can be sequenced</b><span>docs/roadmap.md lists no readable Plan order.</span></div>}
 
     {view.activePlanOffRoute && view.project?.activePlan && <p className="rm-here rm-off" role="status">● you are here, but the active Plan ({view.project.activePlan}) is not on this route.</p>}

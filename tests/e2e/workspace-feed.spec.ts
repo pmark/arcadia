@@ -86,6 +86,13 @@ test("workspace feed shows work over a status sky, the Journey one tap away, and
     await expect(journey.getByRole("heading", { name: "Journey" })).toBeFocused();
     await expect(feed).toBeHidden();
     await expect(journey.getByText("Sample data")).toBeVisible();
+    // The interim Roadmap page is one link inside the Journey panel (not in the shared header), and adds no sideways scroll.
+    const roadmapLink = journey.getByTestId("journey-roadmap-link");
+    await roadmapLink.scrollIntoViewIfNeeded();
+    await expect(roadmapLink).toBeVisible();
+    await expect(roadmapLink).toHaveAttribute("href", "/workspace/roadmap");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await journey.getByRole("heading", { name: "Journey" }).scrollIntoViewIfNeeded();
     await expect(journey.getByText("Your move: Answer Decision 0017: publish now or after review")).toBeVisible();
     await journey.getByRole("button", { name: /operator-presence/ }).click();
     await expect(page.getByRole("heading", { name: "operator-presence" })).toBeFocused();

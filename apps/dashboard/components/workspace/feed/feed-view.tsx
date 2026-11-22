@@ -74,7 +74,7 @@ function JourneyPanel({ rovers, screen, onScreen }: { rovers: Rover[]; screen: J
         <span className={`feed-phase phase-${r.phase}`}>{PHASE_LABEL[r.phase]}</span><span>{r.journey.plan.slug}{r.yourMove ? `: ${r.yourMove}` : ""}</span><span aria-hidden="true">→</span>
       </button>)}</div>}
     {current ? <MissionScreen rover={current} /> : <FleetScreen rovers={rovers} onOpen={id => onScreen({ kind: "mission", id })} />}
-    <p className="feed-note">Mission data is a fixture in the <code>arcadia-plan-journey-v1</code> shape. Live missions are on <Link href="/journey">Journey</Link>.</p>
+    <p className="feed-note">Mission data is a fixture in the <code>arcadia-plan-journey-v1</code> shape. Live missions are on <Link href="/journey">Journey</Link>. The route to the North Star, read from checked-in records, is on the <Link href="/workspace/roadmap" data-testid="journey-roadmap-link">Roadmap</Link> (interim, read-only).</p>
   </section>;
 }
 
