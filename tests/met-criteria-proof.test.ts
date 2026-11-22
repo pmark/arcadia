@@ -59,8 +59,7 @@ describe("not-done markers", () => {
     ["The module is complete but has no callers in src.", "no callers"],
     ["The function is not wired into the tick.", "not wired"],
     ["Added it; not yet scheduled on the timer.", "not yet scheduled"],
-    ["Added the module. Wiring it is a follow-up.", "follow-up"],
-    ["Written; left as a followup for the next Action.", "followup"]
+    ["Added the module; it is unwired.", "unwired"]
   ])("refuses a met note %j with the exact phrase", (note, phrase) => {
     const reason = metCriteriaProofRefusal([entry(note)]);
     expect(reason).toContain("The script is scheduled on the host timer.");
@@ -79,6 +78,17 @@ describe("not-done markers", () => {
       "The old path had no callers before the fix; now the tick calls it. 3 passed.",
       "The test asserts that a module with no importer outside tests fails the check: 2 passed.",
       "Ran pnpm exec vitest run tests/x.test.ts: 4 tests passed; no callers remain of the removed helper."
+    ]) {
+      expect(metCriteriaProofRefusal([entry(note)]), note).toBeNull();
+    }
+  });
+
+  it("does not treat 'follow-up' as a marker: an Issue or PR cross-reference, or adjacent work left out, next to a proof is not refused", () => {
+    for (const note of [
+      "Ran pnpm exec vitest run tests/a.test.ts: 3 passed. Follow-up Issue #2999 tracks the unrelated docs cleanup.",
+      "Ran pnpm exec vitest run tests/a.test.ts: 4 passed. Follow-up Issue #2999 tracks the unrelated docs cleanup.",
+      "Added the module and wired it into the tick (PR #2960). A follow-up PR #2961 adds the dashboard card.",
+      "Ran pnpm exec vitest run tests/a.test.ts: 5 passed. Wiring the probe into the preflight is left as a follow-up needing a new reviewed pin (stated in PR 2677)."
     ]) {
       expect(metCriteriaProofRefusal([entry(note)]), note).toBeNull();
     }

@@ -345,7 +345,8 @@ describe("renderActionBrief", () => {
       expect(CHECKS_VERIFIED_ELSEWHERE_NOTE).not.toMatch(/["\\]/);
       // PRs #2948/#2950: one proof per met criterion, and no met on a deliverable nothing calls or schedules.
       expect(protocol).toContain(`Each \`met\` note must ${MET_PROOF_REQUIRED}.`);
-      expect(protocol).toContain('"I inspected the code" alone is refused, and a criterion whose deliverable nothing calls or schedules is not met');
+      expect(protocol).toContain('"I inspected the code" alone is refused, and a criterion whose deliverable nothing calls or schedules is not met: do that work and re-submit');
+      expect(protocol).not.toContain("mark it failed or skipped and say so");
       // Issue #2931: the brief names the phrase the host refuses, so an honest worker does not write it.
       expect(protocol).toContain('Never write "not run", "not done" or "not verified" in a `met` note');
       expect(protocol).toContain("whose target_ref is\n     action/define-contract, delete only that file");

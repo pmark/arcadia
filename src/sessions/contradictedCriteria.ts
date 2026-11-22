@@ -111,7 +111,7 @@ export function contradictedCriteriaRefusal(evidence: ReadonlyArray<EvidenceEntr
  * refuses. Two checks, no model call:
  *
  * 1. A `met` note that says its own deliverable is incomplete ("Not done here", "nothing schedules", "not wired",
- *    "no caller", "follow-up" and close variants) is refused, with the exact phrase and the criterion.
+ *    "no caller" and close variants) is refused, with the exact phrase and the criterion.
  * 2. A `met` note that describes itself as inspection (inspected, read the code, reviewed the diff) and names no
  *    concrete proof is refused (except a note that only defers a lint, tsc, build or pre-pr check to the host with the
  *    brief's own words and claims no test). A proof is one of: a test file plus the quoted title of a test in it (the title must
@@ -122,7 +122,9 @@ export function contradictedCriteriaRefusal(evidence: ReadonlyArray<EvidenceEntr
  * Deliberately narrow, because a false refusal stalls a lane (the same trade as `contradictedCriteria`): a note that
  * is empty or that is not inspection prose and names no proof (for example "Verified in the candidate worktree.") is
  * NOT judged and still settles as it does today, because many callers and fixtures settle with such notes and the
- * check cannot tell a true one from a false one. Known limits: a module with no caller whose note says nothing about
+ * check cannot tell a true one from a false one. "Follow-up" is deliberately NOT a marker: it is an ordinary Issue or PR
+ * cross-reference ("Follow-up Issue #2999 tracks the unrelated docs cleanup", or adjacent work a criterion expressly
+ * leaves out), and refusing it would have rejected real merged completions; #2950 is caught by "Not done here". Known limits: a module with no caller whose note says nothing about
  * it is not detected (that needs the Action's separate importer check), and a marker phrased outside the list below
  * is missed.
  */
@@ -150,11 +152,10 @@ const NOT_DONE_MARKERS: ReadonlyArray<RegExp> = [
   /\bno\s+(?:callers?|importers?|call\s+sites?)\b/gi,
   /\bnot\s+(?:yet\s+)?(?:wired|hooked\s+up|plugged\s+in|integrated|scheduled)\b/gi,
   /\bunwired\b/gi,
-  /\bnot\s+(?:yet\s+)?(?:called|invoked|imported)\s+(?:by|from|anywhere|in)\b/gi,
-  /\bfollow-?ups?\b/gi
+  /\bnot\s+(?:yet\s+)?(?:called|invoked|imported)\s+(?:by|from|anywhere|in)\b/gi
 ];
 const COMPARISON_OR_DESCRIPTION = /\b(?:before|previous(?:ly)?|prior|old|baseline|unfixed|pre-fix|original(?:ly)?|would|could|if|unless|whether|remain(?:s|ed)?|other\s+than|anymore|longer|fail(?:s|ed|ing)?|refus(?:es|ed|ing)|reject(?:s|ed)|flag(?:s|ged)?|detect(?:s|ed)|assert(?:s|ed)?|report(?:s|ed)|throws?)\b/i;
-// "no follow-up is needed", "without a follow-up", "nothing ... follow-up" are denials.
+// "no caller is needed", "without a caller", "nothing ... no callers" are denials.
 const NEGATED_BEFORE_MARKER = /(?:\b(?:no|not|nothing|never|none|without)\b|\w+n['’]t\b)[^.;\n]*$/i;
 
 const INSPECTION = /\b(?:inspect(?:ed|ion)|by\s+reading|read\s+(?:through\s+)?(?:the\s+)?(?:code|diff|source)|reviewed\s+(?:the\s+)?(?:code|diff|source)|looked\s+at|examined|eyeballed)\b/i;
@@ -249,7 +250,7 @@ export function metCriteriaProofRefusal(evidence: ReadonlyArray<EvidenceEntry>, 
   const more = problems.length > MAX_LISTED ? ` (and ${problems.length - MAX_LISTED} more)` : "";
   const supply = [
     problems.some((problem) => problem.kind === "incomplete")
-      ? "For a criterion whose own note says part of it is not done, not wired or left to a follow-up: do that work and say so, or mark the criterion skipped or failed; a completion cannot mark met what its own note says is incomplete. A deliverable that nothing calls or schedules is not met."
+      ? "For a criterion whose own note says part of it is not done, or not wired: do that work and say so, or mark the criterion skipped or failed; a completion cannot mark met what its own note says is incomplete. A deliverable that nothing calls or schedules is not met."
       : null,
     problems.some((problem) => problem.kind === "unproved")
       ? `For a criterion marked met on inspection: ${MET_PROOF_REQUIRED}. A test file you added is a proof only with a quoted title that appears in it. A check only the host or CI runs (pnpm pre-pr, lint, tsc, build) may instead use the words the brief gives for checks the host runs, in a note that cites no test.`
