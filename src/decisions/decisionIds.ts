@@ -75,6 +75,53 @@ export function findPullRequestDecisionIdClashes(input: {
   return findDecisionIdClashes([...input.originFiles, ...input.headFiles], { added });
 }
 
+/**
+ * The one ping for duplicate ids on origin main. The episode key names every clashing id with both files, so a
+ * repeat run over the same main (or a later main still holding the same pair) is the same episode, never a second ping.
+ */
+export function duplicateDecisionIdPing(clashes: readonly DecisionIdClash[]): { message: string; episodeKey: string } | null {
+  if (clashes.length === 0) return null;
+  const episodeKey = `Duplicate Decision id on main: ${clashes.map((clash) => `${clash.id} (${clash.files.join(" and ")})`).join("; ")}`;
+  return { episodeKey, message: `${episodeKey}. Renumber the newer file to the next free id.` };
+}
+
+/** What the host-side main check does and says; the script only prints this and exits. */
+export interface MainDecisionIdCheckResult {
+  exitCode: 0 | 1 | 2;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * The host-side check behind `scripts/ping-main-decision-id-duplicates.ts`: reads origin main's Decision files and,
+ * when two share an id (grandfathered pairs aside), queues one deduplicated ping naming both files. The ping outbox
+ * must be named: with no workspace it fails closed (exit 2) instead of defaulting one. An unreadable origin main
+ * (exit 1) and a ping that cannot be queued (exit 1) are loud on stderr and never read as a clean main.
+ */
+export function checkMainDecisionIds(input: {
+  workspace: string | undefined;
+  files: readonly string[] | null;
+  send: (ping: { message: string; episodeKey: string; workspace: string }) => { pingId: string; deduplicated: boolean };
+}): MainDecisionIdCheckResult {
+  const workspace = input.workspace?.trim();
+  if (!workspace) {
+    return { exitCode: 2, stdout: "", stderr: "ARCADIA_WORKSPACE is not set: the ping outbox must be named, so no duplicate Decision id check ran\n" };
+  }
+  if (!input.files) {
+    return { exitCode: 1, stdout: "", stderr: "origin/main Decision files could not be read, so a duplicate Decision id cannot be ruled out\n" };
+  }
+  const ping = duplicateDecisionIdPing(findDecisionIdClashes(input.files));
+  if (!ping) {
+    return { exitCode: 0, stdout: `origin main Decision ids unique (grandfathered pairs aside): ${input.files.length} files\n`, stderr: "" };
+  }
+  try {
+    const queued = input.send({ message: ping.message, episodeKey: ping.episodeKey, workspace });
+    return { exitCode: 1, stdout: "", stderr: `${ping.message} (ping ${queued.pingId}${queued.deduplicated ? ", already queued" : ""})\n` };
+  } catch (error) {
+    return { exitCode: 1, stdout: "", stderr: `${ping.message} (the ping could not be queued: ${error instanceof Error ? error.message : String(error)})\n` };
+  }
+}
+
 export type DecisionGit = (args: string[]) => { status: number; stdout: string };
 
 export function systemDecisionGit(repoRoot: string): DecisionGit {
