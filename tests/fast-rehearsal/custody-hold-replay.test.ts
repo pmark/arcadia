@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { listLaunchBlockers } from "../../src/production/tick.js";
 import { withReadOnlyDatabase } from "../../src/db/connection.js";
 import { git } from "../helpers/rehearsalHarness.js";
 import { isolateProcess, type IsolatedProcess } from "./helpers/environment.js";
@@ -47,6 +48,8 @@ let heldHeadBefore: string;
 let heldHeadAfter: string;
 let blockerSessionStatus: string;
 let launchesForWaiting: number;
+let statusBlockers: Array<{ code: string; reason: string; actionKey: string | null }>;
+let holdPings: string[];
 let attemptsAfterLaunch: ReturnType<typeof attempts>;
 
 beforeAll(() => {
@@ -63,11 +66,14 @@ beforeAll(() => {
   heldHeadBefore = git(heldWorktree, ["rev-parse", "HEAD"]).trim();
   settleBlockerElsewhere();
   // Waiting Action: planning packet, packet approval, then the blocked launch, then more ticks while the hold persists.
-  world.ticks(12);
-  holdTicks = 12;
+  world.ticks(20); // one simulated minute per tick: the hold outlasts the 15-minute ping threshold
+  holdTicks = 20;
   holdLines = world.log.filter((line: string) => HOLD_LINE.test(line)).length;
   attemptsWhileWaiting = attempts();
   escalationKinds = world.escalations().filter((e: { actionKey: string }) => e.actionKey === world.actionKey(waiting)).map((e: { kind: string }) => e.kind);
+  statusBlockers = withReadOnlyDatabase(world.workspace, (db) => listLaunchBlockers(db));
+  holdPings = withReadOnlyDatabase(world.workspace, (db) =>
+    (db.prepare("SELECT message FROM operator_pings WHERE message LIKE 'Production is WAITING%'").all() as Array<{ message: string }>).map((r) => r.message));
   heldHeadAfter = git(heldWorktree, ["rev-parse", "HEAD"]).trim();
   blockerSessionStatus = withReadOnlyDatabase(world.workspace, (db) =>
     (db.prepare("SELECT status FROM agent_sessions WHERE action_id = ? ORDER BY rowid DESC LIMIT 1").get(blocker) as { status: string }).status);
@@ -97,6 +103,16 @@ describe("another Action's resumable candidate holds the repository while a diff
   it("spends zero repair attempts for the waiting Action and raises no repair_budget_exhausted escalation", () => {
     expect(attemptsWhileWaiting).toBeUndefined();
     expect(escalationKinds).not.toContain("repair_budget_exhausted");
+  });
+  it("shows the hold durably in production status, naming the blocking Session, Action and candidate", () => {
+    const hold = statusBlockers.find((b) => b.code === "foreign_resumable_candidate");
+    expect(hold?.actionKey).toBe(world.actionKey(waiting));
+    expect(hold?.reason).toContain(heldWorktree);
+    expect(hold?.reason).toContain(blocker);
+  });
+  it("raises exactly one WAIT ping for the episode after 15 minutes, naming the blocker and the remedy", () => {
+    expect(holdPings).toHaveLength(1);
+    expect(holdPings[0]).toContain("discard");
   });
   it("launches the waiting Action exactly once after the hold is lifted, still with zero attempts spent", () => {
     expect(launchesForWaiting).toBe(1);
