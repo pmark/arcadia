@@ -8,7 +8,7 @@ import { inspectDayGrantChain, standingGrantStatus } from "../operatorActions/st
 import { StartRunDelegationError } from "../operatorActions/startRunDelegation.js";
 import { checkReplayReceipt, replayCardIdentity, replayReceiptPath, type ReplayCheck } from "../operatorActions/startRunReplayReceipt.js";
 import { DERIVED_CARD_LIFETIME_MS, DERIVED_PROVIDER, answeredDecisionIds, failedBatchClearancePath, parseFailedBatchClearance, deriveStartCard, refuse, verifyDerivedCard, type CardVerification, type DeriveInput, type DeriveResult } from "../operatorActions/startRunDerive.js";
-import { START_RUN_DEFAULTS, frontmatter, mainCheckout, realStartRunPinsDeps, startRunCriteriaFindings, type StartRunPinsDeps } from "./startRun.js";
+import { START_RUN_DEFAULTS, frontmatter, mainCheckout, originMainReads, realStartRunPinsDeps, startRunCriteriaFindings, type StartRunPinsDeps } from "./startRun.js";
 import { createHash } from "node:crypto";
 
 /** The options `start-run derive` accepts: where to read, never what to derive. */
@@ -32,8 +32,9 @@ const sha256 = (value: Buffer): string => createHash("sha256").update(value).dig
 /**
  * `arcadia start-run derive`: the whole standing-grant START card (descriptor, launcher, reviewed manifest) computed from origin
  * main, the governed queue, the production policy and the open standing-grant receipt. Read-only: it reads the library, the
- * workspace database and origin main, writes nothing and grants nothing. No option names the Plan, Actions, count, provider,
- * concurrency, expiry, cause, Decision or card id; an unknown option is refused by name.
+ * workspace database and origin main. It first fetches origin main's objects (#2969), and writes no governed document, queue,
+ * receipt or card and grants nothing. No option names the Plan, Actions, count, provider, concurrency, expiry, cause, Decision
+ * or card id; an unknown option is refused by name.
  */
 export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): CommandSuccess<StartRunDeriveData> {
   if (options.unknownArguments?.length) {
@@ -44,11 +45,8 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
   catch { throw validationError("Run this inside the Arcadia repository or pass --repository."); }
   const originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? "";
   if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
-  const show = (file: string): Buffer => {
-    try { return deps.git(toplevel, ["show", `${originMain}:${file}`]); }
-    catch { throw validationError(`${file} is not readable at origin main ${originMain}; fetch origin (git fetch origin main) or merge it first.`); }
-  };
-  const decisionFiles = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").filter(Boolean);
+  const { show, tree } = originMainReads(toplevel, originMain, deps);
+  const decisionFiles = tree("docs/decisions/");
   const standingDecision = { paths: decisionFiles, read: (file: string) => text(show(file)) };
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const library = options.library ?? path.join(mainCheckout(toplevel, deps), "artifacts", "generated", "operator-scripts");

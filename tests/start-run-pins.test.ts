@@ -238,6 +238,27 @@ describe("arcadia start-run pins", () => {
     // Only read-only git verbs.
     expect(f.calls.every(([verb]) => ["ls-remote", "rev-parse", "ls-tree", "show"].includes(verb))).toBe(true);
   });
+  it("fetches origin main once before reading its tree, and names a failed fetch (#2969)", () => {
+    const f = fixture();
+    const expected = buildStartRunPins(f.args, f.deps);
+    const attempt = (fetchOriginMain: () => void) => {
+      let fetched = false;
+      const fetches: string[] = [];
+      const deps: StartRunPinsDeps = {
+        ...f.deps,
+        git: (repo, args) => { if (!fetched && (args[0] === "ls-tree" || args[0] === "show")) throw new Error("fatal: not a tree object"); return f.deps.git(repo, args); },
+        fetchOriginMain: (repo) => { fetches.push(repo); fetchOriginMain(); fetched = true; }
+      };
+      return { run: () => buildStartRunPins(f.args, deps), fetches };
+    };
+    const ok = attempt(() => undefined);
+    expect(ok.run()).toEqual(expected);
+    expect(ok.fetches).toHaveLength(1);
+    const failing = attempt(() => { throw new Error("fatal: could not resolve host"); });
+    expect(failing.run).toThrow(/not readable at origin main a{40}.*fetch itself failed.*git fetch origin main.*could not resolve host/s);
+    expect(failing.fetches).toHaveLength(1);
+  });
+
   function planWithCriteria(criteria: string[], nextAction = "Build the test."): string {
     return `---\n${stringify({
       slug: "fixture-plan",
