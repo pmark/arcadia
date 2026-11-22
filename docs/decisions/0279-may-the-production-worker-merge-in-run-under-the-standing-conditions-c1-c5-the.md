@@ -4,7 +4,7 @@ type: decision
 id: "0279"
 slug: may-the-production-worker-merge-in-run-under-the-standing-conditions-c1-c5-the
 project: arcadia
-status: open
+status: approved
 question: May the production worker merge in-run, under the standing conditions C1-C5, the non-protected pull requests of the two START cards named in option 1, each pressed by you?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
-updated: 2026-11-22
+updated: 2026-11-21
+answer: 1. Yes, for cards start-run-plan-f-verify-20261122a and start-run-plan-f-park-allocate-20261122b
+decided: 2026-11-21
 ---
 
 # Decision 0279: May the production worker merge in-run, under the standing conditions C1-C5, the non-protected pull requests of the two START cards named in option 1, each pressed by you?
