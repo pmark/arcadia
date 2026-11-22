@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 project: arcadia
-status: active
+status: draft
 milestone: "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions"
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -715,7 +715,6 @@ actions:
     references: ["docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/issues/2369", "https://github.com/pmark/arcadia/issues/1275"]
 questions: []
 decisions: []
-current_action: finish-allocate-push-ping-and-supersede-older-action
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
