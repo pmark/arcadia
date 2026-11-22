@@ -261,6 +261,42 @@ merge it anyway, so asking spends attention and protects nothing.
   spend, credentials, production access, messaging, or any other approval
   boundary in `CONSTITUTION.md`.
 
+### Merge under Decision 0230 (operator-authority paths)
+
+Decision 0230 A (and 0182 C for the current Rowan) lets Signal and Rowan merge a PR that touches
+an operator-authority or gate-set path, with no further word from the operator, when ALL hold. The
+operator adopted this as the operating rule on 2026-11-22 (relayed by Signal 17) to minimize requests
+for his attention:
+
+1. A separate read-only reviewer (not the implementer, not the recommender) posted
+   "Independent review, head <full sha>" on the exact current head, saying PASS, "Loosens a gate: no"
+   and "Changes agent authority: no", with no unresolved blocking finding.
+2. Every required check is green on that head, the merge state is CLEAN, `arcadia work merge-check
+   --pr <n>` exits 0, and the merge is pinned: `gh pr merge <n> --match-head-commit <sha>`.
+3. The head has not changed since review, except receipted settle commits and a conflict-free base merge.
+4. For a runtime-path PR, `arcadia production status` reads Off (read it yourself; merge-check treats
+   Active as advisory).
+5. The PR is not excluded (below).
+
+Definitions (Decision 0230 left them open; this guidance fixes them for agents):
+
+- **Gate change** (excluded; stays the operator's): the diff touches a gate-set named module or
+  self entry (`config/gate-set.json`, `src/production/gateSet.ts` classes), a batch-merge class
+  `ci_and_gates`, `agent_permissions`, `decisions` or `constitution`, or anything under `.github/`.
+- **Runtime path** (merges only while production is Off): any changed path off the worker's
+  allowlist (`src/production/workerMerge.ts`, allowed: tests, docs markdown outside decisions,
+  agent-guidance and plans, top-level non-governance markdown, unclassified src).
+
+Always the operator's (0230 exclusions and the Constitution): a PR that raises, carries or answers a
+Decision; changes what agents are authorized to do; START or activation; spend; credentials;
+branch-protection or gate changes; and `CONSTITUTION.md`.
+
+Before the merge, post a receipt comment: the Decision quoted (0230 A), the head sha, the reviewer
+marker URL, the checks, the production state read, and the line "Reply `revert` to undo."
+On `revert`, open a revert PR the same day. Record each merge in the day's digest.
+One revert, one invalid marker or one undelivered receipt sends this class back to asking until the
+operator answers again. When unsure whether a PR is excluded, treat it as the operator's.
+
 ## PR lifecycle notifications
 
 The operator has authorized this standing notification: whenever this session
