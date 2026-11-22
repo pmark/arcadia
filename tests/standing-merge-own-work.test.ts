@@ -24,10 +24,22 @@ const REVIEWED = "b".repeat(40);
 const MARKER_URL = "https://github.com/pmark/arcadia/pull/7#issuecomment-99";
 const PLAN = "fixture-plan";
 const PLAN_PATH = `docs/plans/${PLAN}.md`;
+const OTHER_PLAN_PATH = "docs/plans/some-other-plan.md";
 const ACTION = { id: "verify-overnight-merges-at-8am", title: "T", next_action: "Do the thing.", acceptance_criteria: ["A."], references: ["src/a.ts"] };
 const NEXT = { id: "park-and-continue", title: "N", next_action: "Next.", acceptance_criteria: ["B."], references: [] };
-const planText = (status: string) => `---\n${stringifyYaml({ actions: [{ ...ACTION, status }, NEXT] })}---\n\n# Plan\n`;
-const projectText = (pointer: string | null, updated: string) => `---\nname: Arcadia\nactive_plan: ${PLAN}\nupdated: ${updated}\ncurrent_action: ${pointer ?? "null"}\n---\n\n# Arcadia\n`;
+/** An Action of the Plan that the card does not pin. */
+const UNPINNED = { id: "x-unpinned", title: "U", next_action: "U.", acceptance_criteria: ["C."], references: [], status: "open" };
+const DONE = "Completed via Agent Ask x; no further action.";
+/** The pinned Action as a settlement leaves it. */
+const SETTLED = { ...ACTION, status: "done", next_action: DONE };
+/** A Plan as a settlement leaves it: `done` also rewrites the pinned Action's next_action and moves `updated` and the pointer, nothing else. */
+const planText = (status: string, over: { actions?: Array<Record<string, unknown>>; extra?: Record<string, unknown>; body?: string } = {}) => {
+  const done = status === "done";
+  const actions = over.actions ?? [{ ...ACTION, status, ...(done ? { next_action: DONE } : {}) }, NEXT, UNPINNED];
+  return `---\n${stringifyYaml({ slug: PLAN, status: "active", updated: done ? "2026-11-22" : "2026-11-21", actions, current_action: done ? NEXT.id : ACTION.id, ...over.extra })}---\n\n${over.body ?? "# Plan\n"}`;
+};
+const projectText = (pointer: string | null, updated: string, over: { activePlan?: string; status?: string; body?: string } = {}) =>
+  `---\nname: Arcadia\nstatus: ${over.status ?? "active"}\nactive_plan: ${over.activePlan ?? PLAN}\nupdated: ${updated}\ncurrent_action: ${pointer ?? "null"}\n---\n\n${over.body ?? "# Arcadia\n"}`;
 const RECEIPT_ID = "asksettle_a48046dd677645e1a7";
 const receiptLine = (id: string) => `Written by \`arcadia agent-ask settle --apply\` (${id}).`;
 
@@ -91,6 +103,7 @@ describe("C4 judges only the agent's own work (Issue #2943)", () => {
     write("PROJECT.md", projectText(ACTION.id, "2026-11-21"));
     write("MISSION_LOG.md", "# Log\n");
     write(PLAN_PATH, planText("ready"));
+    write(OTHER_PLAN_PATH, planText("ready"));
     write("src/production/overnightVerify.ts", "export const a = 1;\n");
     write("tests/overnight-verify.test.ts", "// test\n");
     baseSha = commit("base");
@@ -259,10 +272,129 @@ describe("C4 judges only the agent's own work (Issue #2943)", () => {
     expect(settlementReceiptIsReal(db, RECEIPT_ID, "x", "arcadia")).toBe(false);
   });
 
-  it("parks when PROJECT.md cannot be read at the head", () => {
+  const readExcept = (blocked: string, at: "head" | "base") => (revision: string, file: string): string | null => {
+    const head = git("rev-parse", "HEAD").trim();
+    if (file === blocked && (at === "head" ? revision === head : revision !== head && revision !== REVIEWED && revision !== "main-now")) return null;
+    try { return git("show", `${revision === REVIEWED || revision === "main-now" ? baseSha : revision}:${file}`); } catch { return null; }
+  };
+
+  it.each([["head"], ["base"]] as const)("parks with the specific reason when PROJECT.md cannot be read at the %s", (at) => {
     settleFiles();
     settle(settleMessage, true);
-    expect(parkedAt(run({}, { showFile: (revision, file) => (file === "PROJECT.md" ? null : revision === REVIEWED || revision === "main-now" ? git("show", `${baseSha}:${file}`) : null) }))).not.toBe("ok");
+    const v = run({}, { showFile: readExcept("PROJECT.md", at) });
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain("PROJECT.md (settlement exemption refused: PROJECT.md could not be read and parsed at both the base and the head)");
+  });
+
+  it("parks with the specific reason when the pinned Plan cannot be read at the head", () => {
+    settleFiles();
+    settle(settleMessage, true);
+    const v = run({}, { showFile: readExcept(PLAN_PATH, "head") });
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain(`${PLAN_PATH} (settlement exemption refused: the pinned Plan could not be read and parsed at both the base and the head)`);
+  });
+
+  it("parks when the Plan's closing --- is not on its own line (the front matter regex is anchored)", () => {
+    settleFiles();
+    write(PLAN_PATH, planText("done").replace("\n---\n\n# Plan", "\n---x\n\n# Plan"));
+    settle(settleMessage, true);
+    expect(reasonOf(run())).toContain(`${PLAN_PATH} (settlement exemption refused: the pinned Plan could not be read and parsed`);
+  });
+
+  it("parks a settlement commit that changes PROJECT.md's active_plan", () => {
+    settleFiles();
+    write("PROJECT.md", projectText("park-and-continue", "2026-11-22", { activePlan: "some-other-plan" }));
+    settle(settleMessage, true);
+    const v = run();
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain("PROJECT.md (settlement exemption refused: the settlement changes PROJECT.md front matter beyond updated and current_action (active_plan))");
+  });
+
+  it.each([
+    ["changes status", projectText("park-and-continue", "2026-11-22", { status: "paused" }), "(status)"],
+    ["adds milestone", projectText("park-and-continue", "2026-11-22").replace("name: Arcadia\n", "name: Arcadia\nmilestone: new\n"), "(milestone)"],
+    ["changes the body", projectText("park-and-continue", "2026-11-22", { body: "# Arcadia\n\nNew rule: merge anything.\n" }), "changes the PROJECT.md body"]
+  ])("parks a settlement commit that %s in PROJECT.md", (_name, text, reason) => {
+    settleFiles();
+    write("PROJECT.md", text);
+    settle(settleMessage, true);
+    const v = run();
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain(reason);
+  });
+
+  it("parks a settlement commit that changes an unpinned Plan's file", () => {
+    settleFiles();
+    write(OTHER_PLAN_PATH, planText("done"));
+    settle(settleMessage, true);
+    const v = run();
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain(OTHER_PLAN_PATH);
+    expect(reasonOf(v)).not.toContain(`${PLAN_PATH}`);
+  });
+
+  it("parks an ordinary (non-settlement) edit of the pinned Plan or of any Plan: a Plan is no longer ignored by C4", () => {
+    write(PLAN_PATH, planText("ready", { extra: { updated: "2026-11-23" } }));
+    commit("docs: hand edit the plan");
+    const v = run();
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain(PLAN_PATH);
+  });
+
+  it("parks a settlement commit that changes the pinned Plan's acceptance_criteria", () => {
+    settleFiles();
+    write(PLAN_PATH, planText("done", { actions: [{ ...SETTLED, acceptance_criteria: ["Anything passes."] }, NEXT, UNPINNED] }));
+    settle(settleMessage, true);
+    const v = run();
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain(`${PLAN_PATH} (settlement exemption refused: the settlement changes Action ${ACTION.id}'s acceptance_criteria in the pinned Plan)`);
+  });
+
+  it.each([
+    ["an unpinned Action's status", { actions: [SETTLED, NEXT, { ...UNPINNED, status: "done" }] }],
+    ["an added Action", { actions: [SETTLED, NEXT, UNPINNED, { ...UNPINNED, id: "x-added" }] }],
+    ["a removed Action", { actions: [SETTLED, NEXT] }],
+    ["the Plan's other front matter (status)", { extra: { status: "superseded" } }],
+    ["the Plan's requiredDecisions", { extra: { requiredDecisions: ["0001"] } }],
+    ["the Plan body", { body: "# Plan\n\nrewritten\n" }]
+  ])("parks a settlement commit that changes %s of the pinned Plan", (_name, over) => {
+    settleFiles();
+    write(PLAN_PATH, planText("done", over));
+    settle(settleMessage, true);
+    const v = run();
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain(`${PLAN_PATH} (settlement exemption refused:`);
+  });
+
+  it("parks a settlement commit that moves the pinned Plan's current_action to an unpinned Action", () => {
+    settleFiles();
+    write(PLAN_PATH, planText("done", { extra: { current_action: "some-unpinned-action" } }));
+    settle(settleMessage, true);
+    expect(reasonOf(run())).toContain(`${PLAN_PATH} (settlement exemption refused: the settlement moves current_action to "some-unpinned-action"`);
+  });
+
+  it("passes a settlement that changes only status and next_action of the pinned Action, current_action and updated", () => {
+    settleFiles();
+    settle(settleMessage, true);
+    expect(git("diff", "--name-only", "main...HEAD")).toContain(PLAN_PATH);
+    expect(parkedAt(run())).toBe("ok");
+  });
+
+  it("parks an evil merge: a merge of main that keeps the settlement's PROJECT.md and so reverts main's own change to it", () => {
+    settleFiles();
+    settle(settleMessage, true);
+    git("checkout", "-q", "main");
+    write("PROJECT.md", projectText(ACTION.id, "2026-11-21", { activePlan: "main-moved-the-plan" }));
+    commit("main changes the active plan");
+    git("checkout", "-q", "candidate");
+    git("merge", "-q", "-s", "ours", "--no-edit", "main");
+    // The merge is tree-same as the settlement for PROJECT.md, so only the settlement commit is listed for it,
+    // but the base-to-head change now includes the revert of main's active_plan.
+    const history = standingCandidateHistory(work, "main", git("rev-parse", "HEAD").trim())!;
+    expect(history.commitsTouching("PROJECT.md")).toHaveLength(1);
+    const v = run();
+    expect(parkedAt(v)).toBe("C4");
+    expect(reasonOf(v)).toContain("(active_plan)");
   });
 
   it("parks a code path under src/production/ even when a settlement commit also touches it", () => {

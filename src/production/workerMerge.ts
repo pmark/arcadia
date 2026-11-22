@@ -544,7 +544,7 @@ export function standingCandidateHistory(repoRoot: string, baseBranch: string, h
       mergeBase,
       commitsTouching: (file) => {
         try {
-          return git(repoRoot, ["-c", "core.quotepath=false", "log", "--no-renames", "--format=%H", `${mergeBase}..${head}`, "--", file]).split("\n").map((line) => line.trim()).filter(Boolean);
+          return git(repoRoot, ["--literal-pathspecs", "-c", "core.quotepath=false", "log", "--no-renames", "--format=%H", `${mergeBase}..${head}`, "--", file]).split("\n").map((line) => line.trim()).filter(Boolean);
         } catch { return null; }
       },
       message: (sha) => {
