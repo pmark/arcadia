@@ -391,8 +391,8 @@ pinned descriptor, so per-card review is small.
 - **The host timer presses the successor card (`--successor-press`).** While a
   standing grant is open, `arcadia production liveness-check --successor-press`
   (the existing timer; no agent session, no model call) issues Rowan's own Off at
-  scope complete (`production deactivate --rowan-off successor-press-scope-complete`,
-  which does not end the grant), then, only when production is Off, the previous
+  scope complete (`production deactivate --rowan-off successor-press-scope-complete-rev-<policy revision>`,
+  a request id of its own for each activation, which does not end the grant), then, only when production is Off, the previous
   batch reads clean, main's checks are green and no card hold exists, mints the
   derived card (at most 12 Actions, queue order), runs its replay and preflight,
   records the replay receipt path as the manifest's `premortem`, and presses it as
