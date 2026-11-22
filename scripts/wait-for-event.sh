@@ -16,8 +16,19 @@
 #       or when a new operator escalation appears for an in-scope Action (any Action while no
 #       scope is active), such as a red required check, which changes neither:
 #       "PRODUCTION <state> rev <n> ESCALATION <project/action> <kind>"
+#   scripts/wait-for-event.sh production --edges
+#       opt-in, quieter: exits only on a class change (active_* <-> inactive_*), the same new
+#       escalation, or a changed scope: "PRODUCTION <state> rev <n> SCOPE <k> actions (was <j>)".
+#       An idle/building flip or a revision bump alone does not exit
+#   scripts/wait-for-event.sh ready <owner/repo> <pr> [<pr>...]
+#       exits on the first PR that is ready to merge or dead, one line, proof= last:
+#       "EVENT ready <pr> <head> next=<arcadia work merge-check --pr <n>|operator-merge> proof=<url>"
+#       (open, not draft, newest marker "Independent review, head <full 40-char head>:" says PASS,
+#       no worker FAIL, every check green, merge state CLEAN), or
+#       "EVENT blocked <pr> <head> reason=<worker-fail|review-fail|checks-fail> proof=<url|checks>",
+#       or the pr-mode "PR <n> MERGED <sha>" / "PR <n> CLOSED"
 #
-# Read-only: it runs `gh pr view`, `arcadia production status --json` and reads
+# Read-only: it runs `gh pr view`, `gh api`, `arcadia production status --json` and reads
 # run receipts. Polls every WAIT_INTERVAL seconds (default 60) and skips a failed
 # read. After WAIT_TIMEOUT seconds (default 21600, 6 hours) it prints TIMEOUT and
 # exits 3, so silence never looks like success. Once its baseline is taken it
@@ -25,7 +36,7 @@
 # there too. A bounded watch the operator asked for (2026-11-06); it decides and
 # changes nothing.
 set -u
-usage() { sed -n '2,26p' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
+usage() { sed -n '2,/^[^#]/{/^#/p;}' "$0" | sed 's/^# \{0,1\}//'; exit 2; } # the whole leading comment block
 kind=${1:-}; [ -n "$kind" ] && shift
 interval=${WAIT_INTERVAL:-60}
 deadline=$(( $(date +%s) + ${WAIT_TIMEOUT:-21600} ))
@@ -33,7 +44,7 @@ timeout_check() { if [ "$(date +%s)" -ge "$deadline" ]; then echo "TIMEOUT waiti
 failed_once=""
 read_failed() { [ -n "$failed_once" ] || { failed_once=1; echo "wait-for-event: a $kind read failed; retrying until TIMEOUT" >&2; }; }
 
-production_snapshot() { # "<state> rev <n>", then ";<project/action> <kind>" per escalation, sorted
+production_snapshot() { # "<state> rev <n>", then ";<project/action> <kind>" per escalation, sorted; $1=edges leads with "scope=<sorted,joined|null>;"
   arcadia production status --json 2>/dev/null | node -e '
     let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => {
       try {
@@ -45,9 +56,60 @@ production_snapshot() { # "<state> rev <n>", then ";<project/action> <kind>" per
           .filter((e) => typeof e?.actionKey === "string" && typeof e?.kind === "string")
           .filter((e) => !scope || scope.includes(e.actionKey))
           .map((e) => `${e.actionKey} ${e.kind}`.replace(/;/g, ","));
-        process.stdout.write([`${state} rev ${rev}`, ...[...new Set(escalations)].sort()].join(";"));
+        const lead = process.argv[1] === "edges" ? [`scope=${scope ? [...scope].sort().join(",").replace(/;/g, ",") : "null"}`] : [];
+        process.stdout.write([...lead, `${state} rev ${rev}`, ...[...new Set(escalations)].sort()].join(";"));
       } catch { process.exit(1); }
-    });'
+    });' "${1:-}"
+}
+
+state_class() { case ${1%% *} in active_*) echo active ;; inactive_*) echo inactive ;; esac; } # observation_unavailable and the like have none
+
+scope_count() { case $1 in scope=null) echo null ;; scope=) echo 0 ;; *) local c=${1#scope=}; c=${c//[^,]/}; echo $(( ${#c} + 1 )) ;; esac; } # "scope=a,b" -> 2
+
+ready_event() { # <pr> <pr view json> <comments, one {body,html_url} per line>: the pr-mode line, an EVENT line, or nothing
+  node -e '
+    const fs = require("fs");
+    const [n, viewFile, commentsFile] = process.argv.slice(1);
+    const v = JSON.parse(fs.readFileSync(viewFile, "utf8"));
+    const comments = fs.readFileSync(commentsFile, "utf8").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+    const head = v.headRefOid, url = (c) => c.html_url || "none";
+    const out = (s) => { console.log(s); process.exit(0); };
+    const blocked = (reason, proof) => out(`EVENT blocked ${n} ${head} reason=${reason} proof=${proof}`);
+    if (v.state === "MERGED" || v.state === "CLOSED") out(`PR ${n} ${v.state}${v.mergeCommit?.oid ? ` ${v.mergeCommit.oid}` : ""}`);
+    if (v.state !== "OPEN") process.exit(0);
+    let worker = null, marker = null; // R4 any worker FAIL for the head; R0/R3 the newest anchored marker for it
+    for (const c of comments) {
+      const b = c.body || "";
+      if (/^\s*Arcadia worker: /.test(b) && b.includes("**Do not merge") && [...b.matchAll(/`([0-9a-f]{7,40})`/g)].some((m) => head.startsWith(m[1]))) worker = c;
+      const m = /^[*_\s]*Independent review, head ([0-9a-f]{7,40})/im.exec(b);
+      if (m && head.startsWith(m[1])) marker = { c, b, sha: m[1], rest: b.slice(m.index + m[0].length).split("\n")[0] };
+    }
+    if (worker) blocked("worker-fail", url(worker));
+    let pass = false, line = "";
+    if (marker) {
+      const w = /^\s*:[*_`\s]*([A-Za-z]+)[*_`]*\W*([A-Za-z]+)?/.exec(marker.rest) || [];
+      const verdict = (w[1] || "").toUpperCase();
+      pass = verdict === "PASS" && (w[2] || "").toUpperCase() !== "WITH";
+      const bad = marker.b.split("\n").some((l) => { // R2 a Blocking finding/Blocking: line, unless none, 0 or no
+        const m = /^(?:Blocking findings?\b|Blocking:)(.*)$/i.exec(l.replace(/^[*_`>#\- ]+/, ""));
+        return m && !["none", "0", "no"].includes(m[1].replace(/^[\s:*_`()-]+/, "").split(/\s/)[0].toLowerCase().replace(/[^a-z0-9]/g, ""));
+      });
+      if (verdict === "FAIL" || bad) blocked("review-fail", url(marker.c));
+      line = marker.rest;
+    }
+    const states = (v.statusCheckRollup || []).map((x) => (x.conclusion || x.state || x.status || "").toUpperCase());
+    if (states.some((s) => ["FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"].includes(s))) blocked("checks-fail", "checks");
+    const green = states.length > 0 && states.every((s) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(s));
+    if (v.isDraft || !pass || marker.sha !== head || !green || v.mergeStateStatus !== "CLEAN") process.exit(0); // R6, R1, R2: keep waiting
+    const tail = (/PASS[*_`]*\s*[—–-]+\s*(.*)$/i.exec(line) || [])[1] || ""; // R5: anchored lines, or right after "PASS —" on the marker line
+    // Every occurrence of each phrase counts: it is "no" only if one exists and all of them read no (any yes wins).
+    const lead = /^[*_`]*Loosens a gate:\s*(\w+)[.;,]?\s*(.*)$/i.exec(tail), second = (s) => /^[*_`]*Changes agent authority:\s*(\w+)/i.exec(s);
+    const words = (re, onLine) => [...marker.b.matchAll(re)].map((m) => m[1]).concat(onLine.filter(Boolean).map((m) => m[1])).map((w) => w.toLowerCase());
+    const allNo = (w) => w.length > 0 && w.every((x) => x === "no");
+    const loosens = allNo(words(/^\s*[*_`-]*\s*Loosens a gate:\s*(\w+)/gim, [lead]));
+    const authority = allNo(words(/^\s*[*_`-]*\s*Changes agent authority:\s*(\w+)/gim, [second(tail), lead && second(lead[2])]));
+    out(`EVENT ready ${n} ${head} next=${loosens && authority ? `arcadia work merge-check --pr ${n}` : "operator-merge"} proof=${url(marker.c)}`);
+  ' "$@"
 }
 
 new_escalation() { # first ";"-separated entry of $2 that $1 lacks
@@ -101,8 +163,40 @@ case $kind in
       [ -n "$new" ] && { echo "PRESS $card $new"; exit 0; }
       timeout_check "$card"; sleep "$interval"
     done ;;
+  ready)
+    [ "$#" -ge 2 ] || usage
+    repo=$1; shift
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/wait-for-event.XXXXXX") || exit 1 # plain `mktemp -d` ignores $TMPDIR on macOS
+    trap 'rm -rf "$tmp"' EXIT
+    echo "WATCHING ready $repo $*" >&2
+    while :; do
+      for n in "$@"; do
+        { gh pr view "$n" --repo "$repo" --json state,isDraft,headRefOid,mergeStateStatus,statusCheckRollup,mergeCommit >"$tmp/view" 2>/dev/null &&
+          gh api --paginate "repos/$repo/issues/$n/comments" --jq '.[] | {body, html_url}' >"$tmp/comments" 2>/dev/null &&
+          out=$(ready_event "$n" "$tmp/view" "$tmp/comments"); } || { read_failed; continue; }
+        [ -n "$out" ] && { echo "$out"; exit 0; }
+      done
+      timeout_check "$@"; sleep "$interval"
+    done ;;
   production)
+    edges=""; [ "${1:-}" = --edges ] && edges=edges
     before=""
+    if [ -n "$edges" ]; then # quieter: only a class change, a new escalation or a scope change exits; each other update replaces the baseline
+      until before=$(production_snapshot edges) && [ -n "$(state_class "${before#*;}")" ]; do read_failed; timeout_check; sleep "$interval"; done
+      echo "WATCHING production ${before#*;}" >&2
+      while :; do
+        sleep "$interval"
+        now=$(production_snapshot edges) || { read_failed; timeout_check; continue; }
+        [ -n "$(state_class "${now#*;}")" ] || { read_failed; timeout_check; continue; } # no class: keep the last known one
+        b=${before#*;} n=${now#*;}
+        [ "$(state_class "$b")" != "$(state_class "$n")" ] && { echo "PRODUCTION ${n%%;*} (was ${b%%;*})"; exit 0; }
+        added=$(new_escalation "${b#"${b%%;*}"}" "${n#"${n%%;*}"}") # the escalations alone: a state or revision change is not one
+        [ -n "$added" ] && { echo "PRODUCTION ${n%%;*} ESCALATION $added"; exit 0; }
+        [ "${before%%;*}" != "${now%%;*}" ] && { echo "PRODUCTION ${n%%;*} SCOPE $(scope_count "${now%%;*}") actions (was $(scope_count "${before%%;*}"))"; exit 0; }
+        before=$now
+        timeout_check
+      done
+    fi
     until before=$(production_snapshot); do read_failed; timeout_check; sleep "$interval"; done
     echo "WATCHING production ${before%%;*}" >&2
     while :; do
