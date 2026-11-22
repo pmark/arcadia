@@ -734,6 +734,10 @@ const FOREIGN_HOLD_CODE = "foreign_resumable_candidate";
 /** A hold older than this (15 minutes) raises one operator ping per episode: short holds resolve themselves, long ones need an operator or governed step. */
 export const FOREIGN_HOLD_PING_AFTER_MS = 15 * 60 * 1000;
 
+export function foreignHoldDedupeKey(error: ArcadiaError): string {
+  return `${FOREIGN_HOLD_CODE}:${String(error.details?.sessionId ?? "unknown")}`;
+}
+
 function foreignHoldReason(error: ArcadiaError): string {
   const d = error.details ?? {};
   return `${error.message} Blocking Session ${String(d.sessionId ?? "unknown")} (Action ${String(d.actionId ?? "unknown")}), candidate ${String(d.worktreePath ?? "unknown")}. `
@@ -744,9 +748,9 @@ function foreignHoldReason(error: ArcadiaError): string {
  * One WAIT-class ping per hold episode once it has lasted `FOREIGN_HOLD_PING_AFTER_MS`. The episode is the refusal log's
  * `first_at` for this Action; `episodeKey` makes the queue dedupe repeats. Spends no repair attempt and never touches the candidate.
  */
-function pingForeignHoldIfPersistent(db: Database.Database, input: { actionKey: string; error: ArcadiaError; now: Date; log: (line: string) => void }): void {
+export function pingForeignHoldIfPersistent(db: Database.Database, input: { actionKey: string; error: ArcadiaError; now: Date; log: (line: string) => void }): void {
   const row = db.prepare("SELECT dedupe_key, first_at FROM production_launch_refusal_log WHERE action_key = ?").get(input.actionKey) as { dedupe_key: string; first_at: string } | undefined;
-  if (!row || row.dedupe_key !== FOREIGN_HOLD_CODE) return;
+  if (!row || row.dedupe_key !== foreignHoldDedupeKey(input.error)) return;
   if (input.now.getTime() - Date.parse(row.first_at) < FOREIGN_HOLD_PING_AFTER_MS) return;
   const blockerId = String(input.error.details?.sessionId ?? "unknown");
   const episodeKey = `Held by ${blockerId}`;
@@ -3188,7 +3192,10 @@ function attemptProjectLaunch(
       // stands in for the whole conflict -- excluding `error.message`, whose
       // `admission_expired` text embeds a fresh expiry timestamp every tick
       // and would otherwise never match its own prior episode.
-      const dedupeKey = prerequisites && prerequisites.length > 0 ? `${rawCode ?? ""}:${prerequisites.join("; ")}` : rawCode ?? refusalLine;
+      // A repository hold also names its blocking Session, so a different blocker is a new episode (new first_at, new ping clock).
+      const dedupeKey = rawCode === FOREIGN_HOLD_CODE
+        ? foreignHoldDedupeKey(error)
+        : prerequisites && prerequisites.length > 0 ? `${rawCode ?? ""}:${prerequisites.join("; ")}` : rawCode ?? refusalLine;
       if (recordLaunchRefusalIfNew(db, actionKey, dedupeKey, refusalLine, input.now)) {
         input.log(refusalLine);
         // A signed-out or expired provider login is the operator's to fix on the
