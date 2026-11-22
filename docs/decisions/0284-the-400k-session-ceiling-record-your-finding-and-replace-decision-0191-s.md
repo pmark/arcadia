@@ -4,7 +4,7 @@ type: decision
 id: "0284"
 slug: the-400k-session-ceiling-record-your-finding-and-replace-decision-0191-s
 project: arcadia
-status: open
+status: approved
 question: "The 400k session ceiling: record your finding and replace Decision 0191's percent lines?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-22
+answer: A. Prepare 200k, due 260k, forced 320k, ceiling 400k (Rowan and builders now, Signal once relay-hosted)
+decided: 2026-11-22
 ---
 
 # Decision 0284: The 400k session ceiling: record your finding and replace Decision 0191's percent lines?
