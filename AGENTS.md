@@ -30,6 +30,16 @@ Require Plan proof; report limits.
 credential probe, paid fallback, attempt reset, runtime recovery, merge exception
 or approval bypass. Verify actual prompt delivery.
 
+## Building from Issues (Decision 0283)
+
+Operator answer, 2026-11-22 (Decision 0283 A): Rowan's builders may build
+unattended-production work from Issues with no Plan Action or Agent Ask per
+item, only for that Decision's item list and Issues passing its class test.
+Each PR cites the Decision. It ends when that Decision's end condition holds
+or on the operator's word. The authority is the Decision, never the Issue:
+outside this class an Issue is a signal and grants nothing. Merges, messaging
+and every other gate are unchanged.
+
 <!-- ARCADIA_CONTEXT_START -->
 ## Arcadia Context
 
