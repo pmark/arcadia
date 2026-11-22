@@ -3921,3 +3921,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "A park records (action, condition, cause) and leaves the Action open; admission skips its dependents and admits the next independent Action; a fixture shows both."; "The breaker pauses the affected lane or project, and pages, at 3 parks, at 3 merges on a lane's first 24 hours (6 after), or at the token ceiling (40M input tokens summed over the lane's Sessions, or the Claude 5-hour window at 70%, read through capacityPreAdmission). All counts are over a rolling 24 hours per project and lane, and tests cover each. Production-wide Off is kept for main going red and for the same cause twice (Decisions 0181 and 0187)."; "Sign-in holds, capacity holds and outages are holds, not parks; a second park with the same cause, or main going red, stops production."; "A park older than one night is re-reviewed at its current head and never merged as recorded."; "A park accepts an operator-cancel cause: cancel stops admission of that Action now, vetoes any pending merge, preserves the work as a draft and records the reason; a test covers it.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-park-and-continue-a9abe27e18d1).
+
+## 2026-11-22 — Completed arcadia/finish-allocate-push-ping-and-supersede-older-action
+
+- **Did:** Completed Action arcadia/finish-allocate-push-ping-and-supersede-older-action from accepted evidence (Candidate 859b1cefe1431d1c4bdd0aad3dea74780cc1c646).
+- **Result:** Every declared acceptance criterion was accepted as met: "A check on every push to main fails loudly, with one ping naming both files, if a duplicate id reaches main by any other route.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-finish-allocate-push-ping-and-supersede-older-action-8a90e0301c92).

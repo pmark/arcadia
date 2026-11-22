@@ -638,11 +638,11 @@ actions:
     references: ["src/git/pointerReconcile.ts", "src/production/startRunSignIn.ts", "src/production/tick.ts", "docs/decisions/0261-may-arcadia-fast-forward-publish-to-origin-main-the-arcadia-controller-s.md"]
   - id: finish-allocate-push-ping-and-supersede-older-action
     title: "A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route, and the older settlement-queue Action is closed as superseded with Issues #2369 and #1275 citing the merged PR."
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: A check on every push to main sends exactly one ping naming both files when a duplicate Decision id reaches main by any route.
+    next_action: Completed via Agent Ask auto-settle-arcadia-finish-allocate-push-ping-and-supersede-older-action-8a90e0301c92; no further action.
     expected_artifact: Evidence satisfying Agent Ask finish-allocate-push-ping-and-supersede-older-action
     clarification: clarified
     confidence: high
@@ -715,7 +715,7 @@ actions:
     references: ["docs/plans/seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and.md", "https://github.com/pmark/arcadia/issues/2369", "https://github.com/pmark/arcadia/issues/1275"]
 questions: []
 decisions: []
-current_action: finish-allocate-push-ping-and-supersede-older-action
+current_action: run-production-in-its-own-clone
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
