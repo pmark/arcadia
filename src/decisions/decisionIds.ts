@@ -75,6 +75,16 @@ export function findPullRequestDecisionIdClashes(input: {
   return findDecisionIdClashes([...input.originFiles, ...input.headFiles], { added });
 }
 
+/**
+ * The one ping for duplicate ids on origin main. The episode key names every clashing id with both files, so a
+ * repeat run over the same main (or a later main still holding the same pair) is the same episode, never a second ping.
+ */
+export function duplicateDecisionIdPing(clashes: readonly DecisionIdClash[]): { message: string; episodeKey: string } | null {
+  if (clashes.length === 0) return null;
+  const episodeKey = `Duplicate Decision id on main: ${clashes.map((clash) => `${clash.id} (${clash.files.join(" and ")})`).join("; ")}`;
+  return { episodeKey, message: `${episodeKey}. Renumber the newer file to the next free id.` };
+}
+
 export type DecisionGit = (args: string[]) => { status: number; stdout: string };
 
 export function systemDecisionGit(repoRoot: string): DecisionGit {
