@@ -4,7 +4,7 @@ type: decision
 id: "0282"
 slug: what-makes-a-batch-failed-and-a-night-clean
 project: arcadia
-status: open
+status: approved
 question: What makes a batch failed, and a night clean?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-22
+answer: A. Failed only if a pinned step is neither merged nor parked, an escalation is open, or main is red; cap of 3 parked PRs
+decided: 2026-11-22
 ---
 
 # Decision 0282: What makes a batch failed, and a night clean?
