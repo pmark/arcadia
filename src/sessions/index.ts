@@ -698,7 +698,12 @@ export function prepareSession(input: {
       ? handoffMergeEvidence(handoff.session)
       : null;
     if (handoff && handoff.session.action_id !== context.action.id && !mergedEvidence && !candidateWorktreeIsGone(handoff.session.worktree_path)) {
+      // A wait state, not a repair failure (Issue #2927 follow-up, agentask_d6bc1ad4e7cafd0967): the held candidate belongs to
+      // another Action and only an operator or a governed step can resolve it, so the tick must preserve it, report the hold
+      // once per episode and spend no repair attempt for the waiting Action (details.conflict, as the lease conflicts below).
       throw validationError("The repository holds an incomplete resumable candidate for a different Action; resolve or discard it before preparing a new one.", {
+        conflict: true,
+        code: "foreign_resumable_candidate",
         sessionId: handoff.session.id, actionId: handoff.session.action_id, worktreePath: handoff.session.worktree_path
       });
     }
