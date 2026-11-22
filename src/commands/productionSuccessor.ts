@@ -4,10 +4,11 @@ import path from "node:path";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
-import { parkedBatchEnabled, readLiveParkedBatch, type ParkedBatchDecisionSource } from "../production/parkedBatch.js";
+import { PARKED_BATCH_EXECUTOR_MARKER, parkedBatchEnabled, readLiveParkedBatch, type ParkedBatchDecisionSource } from "../production/parkedBatch.js";
 import {
   SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, SUCCESSOR_STATE_SCHEMA, emptySuccessorState, runSuccessorPressStep, type SuccessorOutcome, type SuccessorPorts, type SuccessorState
 } from "../production/successorPress.js";
+import { START_RUN_EXECUTOR_PATH } from "../operatorActions/startRunPins.js";
 import { failedBatchClearancePath, parseFailedBatchClearance } from "../operatorActions/startRunDerive.js";
 import { checkReplayReceipt, replayCardIdentity, replayReceiptPath } from "../operatorActions/startRunReplayReceipt.js";
 import { runProductionDeactivateCommand } from "./production.js";
@@ -91,13 +92,24 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
   let derivation: CommandSuccess<StartRunDeriveData> | null = null;
   const derivedOnce = (): CommandSuccess<StartRunDeriveData> => derivation ??= runStartRunDeriveCommand(base, pins);
   /** The Decisions on origin main as the derive command reads them; undefined when they cannot be read (the parked reading then stays off). */
+  const originMainSha = (): string | undefined => {
+    const sha = pins.git(repository, ["ls-remote", "origin", "refs/heads/main"]).toString("utf8").trim().split(/\s+/)[0] ?? "";
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : undefined;
+  };
   const decisionSource = (): ParkedBatchDecisionSource | undefined => {
     try {
-      const originMain = pins.git(repository, ["ls-remote", "origin", "refs/heads/main"]).toString("utf8").trim().split(/\s+/)[0] ?? "";
-      if (!/^[0-9a-f]{40}$/.test(originMain)) return undefined;
+      const originMain = originMainSha();
+      if (originMain === undefined) return undefined;
       const paths = pins.git(repository, ["ls-tree", "--name-only", originMain, "docs/decisions/"]).toString("utf8").split("\n").filter(Boolean);
       return { paths, read: (file) => pins.git(repository, ["show", `${originMain}:${file}`]).toString("utf8") };
     } catch { return undefined; }
+  };
+  /** The same read `derive` uses for EXECUTOR_LACKS_PARKED_FOR_YOU: the literal in the executor at origin main; unreadable reads false. */
+  const executorCarriesParked = (): boolean => {
+    try {
+      const originMain = originMainSha();
+      return originMain !== undefined && pins.git(repository, ["show", `${originMain}:${START_RUN_EXECUTOR_PATH}`]).toString("utf8").includes(PARKED_BATCH_EXECUTOR_MARKER);
+    } catch { return false; }
   };
   const release = (id: string): string[] => [path.join(library, `${id}.json`), path.join(library, `${id}.sh`), path.join(library, "reviewed", `${id}.json`)];
 
@@ -126,6 +138,7 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
     originMain: () => {
       try { return execFileSync("git", ["ls-remote", "--exit-code", "origin", "refs/heads/main"], { cwd: repository, encoding: "utf8", timeout: 30_000 }).split(/\s+/)[0] || null; } catch { return null; }
     },
+    executorCarriesParked,
     mainChecks: () => readMainChecks(repository),
     holds: () => {
       const names = (pins.listFiles(library) ?? []).filter((name) => name.endsWith(".held.json"));

@@ -47,6 +47,8 @@ interface World {
   /** origin main: derivations pin it, and `originMain` reads it at the failing check. */
   main: string;
   onMint?: () => void;
+  /** Whether scripts/start-run.sh at origin main carries the parked-for-you literal (the same read derive's refusal uses). */
+  executorHasParked: boolean;
   ports: SuccessorPorts;
 }
 
@@ -57,7 +59,7 @@ function world(options: { actions?: number; library?: string } = {}): World {
   mkdirSync(path.join(library, "reviewed"), { recursive: true });
   const w: World = {
     library, now: T0, production: { desiredState: "inactive", liveAdmissions: 0, scopeComplete: false, revision: 90 }, batch: null, checks: { green: true, detail: "green" }, holds: [], grantOpen: true,
-    actions: ids(options.actions ?? 14), done: new Set(), clearances: new Map(), pressRefusal: null, replayNoLaunch: false, pings: [], offs: [], minted: [], pressLog: [], main: MAIN, ports: undefined as never
+    actions: ids(options.actions ?? 14), done: new Set(), clearances: new Map(), pressRefusal: null, replayNoLaunch: false, pings: [], offs: [], minted: [], pressLog: [], main: MAIN, executorHasParked: true, ports: undefined as never
   };
   const deriveFor = (clearance: FailedBatchClearance | null) => {
     const planActions: DerivePlanAction[] = w.actions.map((id) => ({ id, status: w.done.has(id) ? "done" : "open", dependsOn: [], criteriaErrors: [] }));
@@ -81,7 +83,10 @@ function world(options: { actions?: number; library?: string } = {}): World {
     mainChecks: () => w.checks,
     holds: () => w.holds,
     clearance: (press) => w.clearances.get(press) ?? null,
-    derive: deriveFor,
+    executorCarriesParked: () => w.executorHasParked,
+    derive: (clearance) => w.batch?.kind === "parked-for-you" && !w.executorHasParked
+      ? { ok: false, reason: "EXECUTOR_LACKS_PARKED_FOR_YOU", message: "scripts/start-run.sh at origin main does not carry the parked-for-you outcome" }
+      : deriveFor(clearance),
     mint: (card) => {
       writeFileSync(path.join(library, `${card.id}.json`), card.descriptorBytes);
       writeFileSync(path.join(library, `${card.id}.sh`), card.launcher);
@@ -471,6 +476,63 @@ describe("successor press: a parked-for-you batch (the draft Decision 0282, opti
     w.production = { ...w.production, liveAdmissions: 0, parkedForYou: false };
     expect(step(w, first.state).outcome).toMatchObject({ kind: "skipped", reason: "PRODUCTION_NOT_OFF", detail: expect.stringContaining("scope is not complete"), offIssued: false });
     expect(w.offs).toEqual([]);
+  });
+
+  it("(1) executor lacks the parked-for-you literal: no Off is issued and the step is not ended, a quiet skip", () => {
+    const w = world({ actions: 3 });
+    writeDayApproval(w.library, { standing: true, card: GRANT_CARD, run: DAY_RUN, pressedAt: T0 - 60 * MINUTE });
+    const first = step(w, emptySuccessorState());
+    w.executorHasParked = false;
+    parkEverything(w);
+    const blocked = step(w, first.state);
+    expect(blocked.outcome).toMatchObject({ kind: "skipped", reason: "PRODUCTION_NOT_OFF", offIssued: false });
+    expect(w.offs).toEqual([]);
+    expect(w.pings).toEqual([]);
+    expect(blocked.state.ended).toBeNull();
+    expect(w.pressLog).toHaveLength(1);
+    // The executor then lands on main: the next tick turns production Off and presses, with no operator step in between.
+    w.executorHasParked = true;
+    const resumed = step(w, blocked.state);
+    expect(resumed.outcome).toMatchObject({ kind: "pressed", offIssued: true });
+    expect(w.offs).toEqual([`rowan-off-${SUCCESSOR_OFF_SLUG}`]);
+    expect(w.pings).toEqual([]);
+  });
+
+  it("(1b) a derive refusal EXECUTOR_LACKS_PARKED_FOR_YOU with production already Off is a quiet skip that re-derives next tick", () => {
+    const w = world({ actions: 3 });
+    writeDayApproval(w.library, { standing: true, card: GRANT_CARD, run: DAY_RUN, pressedAt: T0 - 60 * MINUTE });
+    const first = step(w, emptySuccessorState());
+    parkEverything(w, { desiredState: "inactive", parkedForYou: false });
+    w.executorHasParked = false;
+    const skipped = step(w, first.state);
+    expect(skipped.outcome).toMatchObject({ kind: "skipped", reason: "NOTHING_READY", detail: expect.stringContaining("EXECUTOR_LACKS_PARKED_FOR_YOU") });
+    expect(skipped.state.ended).toBeNull();
+    expect(w.pings).toEqual([]);
+    w.executorHasParked = true;
+    expect(step(w, skipped.state).outcome).toMatchObject({ kind: "pressed" });
+  });
+
+  it("(2) executor carries the literal: the Off is issued and the next derive proceeds to a pressed card", () => {
+    const w = world({ actions: 3 });
+    writeDayApproval(w.library, { standing: true, card: GRANT_CARD, run: DAY_RUN, pressedAt: T0 - 60 * MINUTE });
+    const first = step(w, emptySuccessorState());
+    parkEverything(w);
+    const second = step(w, first.state);
+    expect(second.outcome).toMatchObject({ kind: "pressed", offIssued: true });
+    expect(w.offs).toEqual([`rowan-off-${SUCCESSOR_OFF_SLUG}`]);
+    expect(second.state.ended).toBeNull();
+  });
+
+  it("(3) flag off (no answered Decision, so parkedForYou is false): no Off, production waits, whatever the executor reads", () => {
+    for (const executorHasParked of [true, false]) {
+      const w = world({ actions: 3 });
+      writeDayApproval(w.library, { standing: true, card: GRANT_CARD, run: DAY_RUN, pressedAt: T0 - 60 * MINUTE });
+      const first = step(w, emptySuccessorState());
+      w.executorHasParked = executorHasParked;
+      parkEverything(w, { parkedForYou: false });
+      expect(step(w, first.state).outcome).toMatchObject({ kind: "skipped", reason: "PRODUCTION_NOT_OFF", offIssued: false });
+      expect(w.offs).toEqual([]);
+    }
   });
 
   it("(5) still ends the step on a failed batch exactly as before, with no Off and no press", () => {

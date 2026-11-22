@@ -60,6 +60,11 @@ export interface SuccessorPorts {
   mainChecks(): { green: boolean; detail: string };
   /** Governed START card holds that are not yet consumed. */
   holds(): string[];
+  /**
+   * True when `scripts/start-run.sh` at origin main carries the parked-for-you outcome, read from the same source `derive` checks.
+   * The parked-for-you Off is issued only when this is true (absent reads false): without it the next card could not be derived.
+   */
+  executorCarriesParked?(): boolean;
   /** The recorded cause, pre-mortem pointer and merged fix for a failed press, or null. */
   clearance(press: string): FailedBatchClearance | null;
   derive(clearance: FailedBatchClearance | null): DeriveResult;
@@ -88,7 +93,7 @@ export type SuccessorOutcome =
 export interface SuccessorResult { state: SuccessorState; outcome: SuccessorOutcome }
 
 /** Derivation refusals that mean "nothing to press yet" rather than "something is wrong". */
-const QUIET_DERIVATIONS = new Set(["NO_READY_ACTIONS", "OPERATOR_ITEM_FIRST", "PRODUCTION_NOT_INACTIVE", "GRANT_NOT_OPEN"]);
+const QUIET_DERIVATIONS = new Set(["NO_READY_ACTIONS", "OPERATOR_ITEM_FIRST", "PRODUCTION_NOT_INACTIVE", "GRANT_NOT_OPEN", "EXECUTOR_LACKS_PARKED_FOR_YOU"]);
 
 const pinnedRevision = (card: DerivedCard): string | null => {
   const pins = (card.descriptor as { startRun?: { reviewedRevision?: unknown } }).startRun;
@@ -98,10 +103,15 @@ const pinnedRevision = (card: DerivedCard): string | null => {
 const refusalPing = (code: string, message: string, grant: string): string =>
   `🚨 Successor press refused (${code}): ${message.slice(0, 300)} The step is ended for standing grant ${grant}; nothing was pressed.`;
 
-/** The Off is issued at most once per policy revision, and only for a finished scope with no live admissions. */
+/**
+ * The Off is issued at most once per policy revision, and only for a finished scope with no live admissions. A parked-for-you
+ * batch ends the run only while the executor at origin main can press the card that follows it; otherwise `derive` would refuse
+ * and the Off would strand the grant with production Off and no card.
+ */
 function offAtScopeComplete(ports: SuccessorPorts, state: SuccessorState): { issued: boolean; production: SuccessorProduction } {
   const production = ports.production();
-  if (production.desiredState !== "active" || production.liveAdmissions !== 0 || !(production.scopeComplete || production.parkedForYou === true) || state.offs.includes(production.revision)) return { issued: false, production };
+  const parkedReady = production.parkedForYou === true && ports.executorCarriesParked?.() === true;
+  if (production.desiredState !== "active" || production.liveAdmissions !== 0 || !(production.scopeComplete || parkedReady) || state.offs.includes(production.revision)) return { issued: false, production };
   state.offs.push(production.revision);
   ports.off(SUCCESSOR_OFF_SLUG);
   return { issued: true, production: ports.production() };
@@ -160,7 +170,7 @@ export function runSuccessorPressStep(ports: SuccessorPorts, prior: SuccessorSta
     return { state, outcome: { kind: "refused", code, message, pingId, offIssued } };
   };
 
-  if (production.desiredState !== "inactive") return skip("PRODUCTION_NOT_OFF", `production is ${production.desiredState}${production.scopeComplete || production.parkedForYou ? "" : "; its scope is not complete"}`, offIssued);
+  if (production.desiredState !== "inactive") return skip("PRODUCTION_NOT_OFF", `production is ${production.desiredState}${production.scopeComplete ? "" : production.parkedForYou ? (ports.executorCarriesParked?.() === true ? "" : "; the batch is parked for you but the executor at origin main lacks that outcome, so production is left as it is") : "; its scope is not complete"}`, offIssued);
   const batch = ports.batch();
   const failed = batch?.kind === "failed-attempt";
   if (batch?.kind === "unsettled") return skip("BATCH_NOT_CLEAN", `the latest press ${batch.press} has not finished`, offIssued);
