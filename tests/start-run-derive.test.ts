@@ -258,6 +258,50 @@ describe("arcadia start-run derive --verify-card: the press-time CARD_NOT_DERIVE
   });
 });
 
+describe("arcadia start-run derive: origin main is fetched before its tree is read (#2969)", () => {
+  /** A checkout whose object store lacks origin main until `fetchOriginMain` succeeds, as on the host timer's checkout. */
+  const unfetched = (w: World, fetch: () => void = () => undefined) => {
+    let fetched = false;
+    const fetches: string[] = [];
+    const deps: StartRunPinsDeps = {
+      ...w.deps,
+      git: (repo, args) => {
+        if (!fetched && (args[0] === "ls-tree" || args[0] === "show")) throw new Error(`fatal: not a tree object: ${MAIN}`);
+        return w.deps.git(repo, args);
+      },
+      fetchOriginMain: (repo) => { fetches.push(repo); fetch(); fetched = true; }
+    };
+    return { w: { ...w, deps }, fetches };
+  };
+
+  it("derives the same card once, after exactly one fetch, when the commit was missing locally", () => {
+    const present = world();
+    const { w, fetches } = unfetched(present);
+    expect(derive(w).card).toEqual(derive(present).card);
+    expect(fetches).toHaveLength(1);
+  });
+
+  it("names the failed fetch, not a bare 'not a tree object', when the fetch fails", () => {
+    const { w, fetches } = unfetched(world(), () => { throw new Error("fatal: unable to access origin"); });
+    expect(() => derive(w)).toThrow(/not readable at origin main a{40}.*fetch itself failed.*git fetch origin main.*unable to access origin/s);
+    expect(fetches).toHaveLength(1);
+  });
+
+  it("keeps the unreadable-at-origin-main refusal when the fetch succeeds but the commit is still absent", () => {
+    const w = world();
+    const deps: StartRunPinsDeps = { ...w.deps, git: (repo, args) => { if (args[0] === "ls-tree") throw new Error("fatal: not a tree object"); return w.deps.git(repo, args); }, fetchOriginMain: () => undefined };
+    expect(() => derive({ ...w, deps })).toThrow(/docs\/decisions\/ is not readable at origin main a{40}; fetch origin \(git fetch origin main\) or merge it first\.$/);
+  });
+
+  it("is identical to today when the commit is already present, with one fetch per command run", () => {
+    const w = world();
+    const fetches: string[] = [];
+    const fetched = derive({ ...w, deps: { ...w.deps, fetchOriginMain: (repo) => { fetches.push(repo); } } });
+    expect(fetched).toEqual(derive(w));
+    expect(fetches).toHaveLength(1);
+  });
+});
+
 describe("deriveStartCard: property over generated Plans and queues", () => {
   let seed = 20261116;
   const random = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };

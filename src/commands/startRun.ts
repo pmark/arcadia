@@ -87,11 +87,14 @@ export interface StartRunPinsDeps {
   inspectDelegation?: typeof inspectDelegationChain;
   /** Decision 0173's production record, from the workspace database (fixtures replace it). */
   dayEvidence?: (workspacePath: string) => DayEvidence;
+  /** Fetch origin main so the commit `ls-remote` returned is in the local object store; throws when the fetch fails. Absent in a fixture: no fetch. */
+  fetchOriginMain?: (repository: string) => void;
 }
 
 export const realStartRunPinsDeps: StartRunPinsDeps = {
   git: (repository, args) => execFileSync("git", args, { cwd: repository, stdio: ["ignore", "pipe", "pipe"], timeout: 30_000, maxBuffer: 16 * 1024 * 1024 }),
   now: () => new Date(),
+  fetchOriginMain: (repository) => { execFileSync("git", ["fetch", "--quiet", "origin", "main"], { cwd: repository, stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 }); },
   launchctlList: () => execFileSync("launchctl", ["list"], { encoding: "utf8", timeout: 10_000 }),
   production: (workspace) => {
     const { workspacePath } = resolveReadyWorkspace(workspace);
@@ -168,6 +171,24 @@ export function startRunCriteriaFindings(action: StartRunPlanAction): { errors: 
   return { errors, warnings };
 }
 
+/**
+ * The reads of origin main's tree that every start-run command makes after `git ls-remote origin refs/heads/main`. That sha is
+ * often not in the local object store yet, and `ls-tree`/`show` then fail with "not a tree object" (#2969), so origin main is
+ * fetched once here, before any read. A failed fetch does not stop the reads (the commit may be present anyway); it is named in
+ * the refusal when a read fails. The fetch updates only the local object store and `origin/main`: no governed document, queue,
+ * receipt or card is written.
+ */
+export function originMainReads(toplevel: string, originMain: string, deps: StartRunPinsDeps): { show: (file: string) => Buffer; tree: (directory: string) => string[] } {
+  let fetchFailure = "";
+  try { deps.fetchOriginMain?.(toplevel); }
+  catch (error) { fetchFailure = ` The fetch itself failed (git fetch origin main: ${(error instanceof Error ? error.message : String(error)).replace(/\s+/g, " ").trim().slice(0, 300)}), so the commit may be missing locally.`; }
+  const unreadable = (what: string) => validationError(`${what} is not readable at origin main ${originMain}; fetch origin (git fetch origin main) or merge it first.${fetchFailure}`);
+  return {
+    show: (file) => { try { return deps.git(toplevel, ["show", `${originMain}:${file}`]); } catch { throw unreadable(file); } },
+    tree: (directory) => { try { return text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, directory])).split("\n").filter(Boolean); } catch { throw unreadable(directory); } }
+  };
+}
+
 /** The main checkout of the repository (ignored host files such as consumed markers live there, not in a worktree). */
 export function mainCheckout(repository: string, deps: StartRunPinsDeps): string {
   try {
@@ -195,10 +216,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   try { originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? ""; }
   catch { throw validationError("Origin main could not be observed (git ls-remote origin refs/heads/main failed)."); }
   if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
-  const show = (file: string): Buffer => {
-    try { return deps.git(toplevel, ["show", `${originMain}:${file}`]); }
-    catch { throw validationError(`${file} is not readable at origin main ${originMain}; fetch origin (git fetch origin main) or merge it first.`); }
-  };
+  const { show, tree } = originMainReads(toplevel, originMain, deps);
   const executorSha256 = sha256(show(START_RUN_EXECUTOR_PATH));
 
   const planFrontmatter = frontmatter(text(show(`docs/plans/${plan}.md`)), `Plan ${plan}`);
@@ -239,7 +257,7 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     if (pointer !== plan) throw validationError(`Plan ${plan} is not the Project's active Plan (${String(pointer)}); a Decision 0173 card needs the active Plan.`);
   }
   const requiredDecisions: string[] = [...START_RUN_DEFAULTS.requiredDecisions, ...(delegatedFrom ? ["0163"] : []), ...(dayGrantFrom ? ["0163", "0170", "0173", "0181"] : [])];
-  const decisionFiles = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n");
+  const decisionFiles = tree("docs/decisions/");
   for (const decision of requiredDecisions) {
     const file = decisionFiles.find((entry) => new RegExp(`^docs/decisions/${decision}-.*\\.md$`).test(entry));
     if (!file) throw validationError(`Decision ${decision} is not in docs/decisions at origin main.`);
@@ -399,11 +417,8 @@ export function buildStartRunDayPins(options: StartRunDayPinsOptions, deps: Star
   catch { throw validationError("Run this inside the Arcadia repository or pass --repository."); }
   const originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? "";
   if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
-  const show = (file: string): Buffer => {
-    try { return deps.git(toplevel, ["show", `${originMain}:${file}`]); }
-    catch { throw validationError(`${file} is not readable at origin main ${originMain}; fetch origin (git fetch origin main) or merge it first.`); }
-  };
-  const decisionFile = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").find((entry) => /^docs\/decisions\/0173-.*\.md$/.test(entry));
+  const { show, tree } = originMainReads(toplevel, originMain, deps);
+  const decisionFile = tree("docs/decisions/").find((entry) => /^docs\/decisions\/0173-.*\.md$/.test(entry));
   if (!decisionFile) throw validationError("Decision 0173 is not in docs/decisions at origin main.");
   const content = text(show(decisionFile));
   if (!isDayGrantAnswered(content)) throw validationError("Decision 0173 is not approved with option A at origin main.");
@@ -440,12 +455,13 @@ export function runStartRunGrantStatusCommand(options: StartRunGrantStatusOption
   catch { throw validationError("Run this inside the Arcadia repository or pass --repository."); }
   const originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? "";
   if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
-  const paths = text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").filter(Boolean);
+  const { show, tree } = originMainReads(toplevel, originMain, deps);
+  const paths = tree("docs/decisions/");
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const status = standingGrantStatus({
     library: options.library ?? path.join(mainCheckout(toplevel, deps), "artifacts", "generated", "operator-scripts"), now: deps.now(), offId: START_RUN_DEFAULTS.offId,
     evidence: (deps.dayEvidence ?? realStartRunPinsDeps.dayEvidence!)(workspacePath),
-    standingDecision: { paths, read: (file) => text(deps.git(toplevel, ["show", `${originMain}:${file}`])) }
+    standingDecision: { paths, read: (file) => text(show(file)) }
   });
   return createSuccess({ command: "start-run.grant-status", workspace: workspacePath, data: status });
 }
@@ -467,11 +483,8 @@ export function buildStartRunStandingPins(options: StartRunStandingPinsOptions, 
   catch { throw validationError("Run this inside the Arcadia repository or pass --repository."); }
   const originMain = text(deps.git(toplevel, ["ls-remote", "origin", "refs/heads/main"])).trim().split(/\s+/)[0] ?? "";
   if (!/^[0-9a-f]{40}$/.test(originMain)) throw validationError("Origin main did not return a commit id.");
-  const show = (file: string): Buffer => {
-    try { return deps.git(toplevel, ["show", `${originMain}:${file}`]); }
-    catch { throw validationError(`${file} is not readable at origin main ${originMain}; fetch origin (git fetch origin main) or merge it first.`); }
-  };
-  try { assertStandingDecision({ paths: text(deps.git(toplevel, ["ls-tree", "--name-only", originMain, "docs/decisions/"])).split("\n").filter(Boolean), read: (file) => text(show(file)) }); }
+  const { show, tree } = originMainReads(toplevel, originMain, deps);
+  try { assertStandingDecision({ paths: tree("docs/decisions/"), read: (file) => text(show(file)) }); }
   catch (error) { throw validationError(error instanceof Error ? error.message : String(error)); }
   const plan = frontmatter(text(show(`docs/plans/${options.plan}.md`)), `Plan ${options.plan}`);
   if (plan.status !== "active" || frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan !== options.plan) throw validationError(`Plan ${options.plan} is not the Project's active Plan at origin main.`);

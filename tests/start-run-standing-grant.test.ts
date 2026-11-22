@@ -252,6 +252,19 @@ describe("arcadia start-run grant-status", () => {
     expect([...stat(library), ...stat(workspace)]).toEqual(before);
   });
 
+  it("fetches origin main once before reading the Decision, so a commit missing locally is not 'not a tree object' (#2969)", () => {
+    const { repository, library, workspace, deps } = fixture({ label: "", code: "", approval: { pressedAt: NOW - 30 * DAY } });
+    let fetched = false;
+    const fetches: string[] = [];
+    const unfetched: StartRunPinsDeps = {
+      ...deps,
+      git: (repo, args) => { if (!fetched && (args[0] === "ls-tree" || args[0] === "show")) throw new Error("fatal: not a tree object"); return deps.git(repo, args); },
+      fetchOriginMain: (repo) => { fetches.push(repo); fetched = true; }
+    };
+    expect(runStartRunGrantStatusCommand({ repository, workspace, library }, unfetched).data).toMatchObject({ open: true, plan: DAY_PLAN });
+    expect(fetches).toHaveLength(1);
+  });
+
   it.each<[string, DayScenario, string | null, string | null]>([
     ["an operator STOP card", { label: "", code: "", after: (library, _a, now) => writeStopPress(library, now - 600_000) }, "stop-card", null],
     ["the revoke card", { label: "", code: "", after: (library, _a, now) => writeStopPress(library, now - 600_000, { card: "revoke-standing-grant-fixture" }) }, "revoke-card", null],
