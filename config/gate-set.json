@@ -14,6 +14,7 @@
             "src/git/pointerReconcile.ts",
             "src/git/worktrees.ts",
             "src/production/candidateChangeGate.ts",
+            "src/production/standingMerge.ts",
             "src/qa/patchApplicability.ts",
             "src/qa/prReview.ts",
             "src/sessions/roleLineage.ts",
@@ -95,6 +96,24 @@
             "node:fs",
             "node:path",
             "src/projects/agentGuidance.ts"
+          ]
+        },
+        {
+          "id": "standingMerge",
+          "path": "src/production/standingMerge.ts",
+          "imports": [
+            "better-sqlite3",
+            "node:child_process",
+            "node:crypto",
+            "node:fs",
+            "node:path",
+            "src/decisions/batchMerge.ts",
+            "src/docs/discover.ts",
+            "src/operatorActions/startRunPins.ts",
+            "src/production/gateSet.ts",
+            "src/production/policy.ts",
+            "src/workMonitoring/runWindow.ts",
+            "yaml"
           ]
         },
         {
