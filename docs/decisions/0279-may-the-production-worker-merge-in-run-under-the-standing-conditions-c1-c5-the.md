@@ -1,0 +1,35 @@
+---
+arcadia: v1
+type: decision
+id: "0279"
+slug: may-the-production-worker-merge-in-run-under-the-standing-conditions-c1-c5-the
+project: arcadia
+status: open
+question: May the production worker merge in-run, under the standing conditions C1-C5, the non-protected pull requests of the two START cards named in option 1, each pressed by you?
+gap_type: missing-decision
+gate_question: approval_boundary
+recommendation: 1. Yes, for cards start-run-plan-f-verify-20261122a and start-run-plan-f-park-allocate-20261122b
+options:
+  - label: 1. Yes, for cards start-run-plan-f-verify-20261122a and start-run-plan-f-park-allocate-20261122b
+    consequence: "During the runs of these two cards only, each pressed by you after Rowan reads its pins back to you, the worker merges a pull request itself when C1-C5 hold on its exact head and its diff touches no protected path; protected pull requests park for your morning merge as today. Each card must pin exactly the Actions at the top of the queue when it is pinned. Rowan re-reads each card's pins against the queue top and reads them back to you, and your press approves whatever that card pins at that time. Expected, but likely to shift as the queue moves: card 1 verify-overnight-merges-at-8am; card 2 park-and-continue and finish-allocate-push-ping-and-supersede-older-action. Nothing else changes: other cards, timer-pressed cards and later runs need a new Decision. Watch: the review marker's author is not checked by code, and protected pull requests (park-and-continue, finish-allocate) are expected to park. Consequence: the first unattended worker merge, most likely verify-overnight-merges-at-8am, and a clean batch to judge option 3 by. Reverse: answer 2 before the press, or press Off during the run."
+    recommended: true
+  - label: 2. No, park everything for me
+    consequence: "The cards may still run, but every pull request parks for your morning merge. Consequence: no in-run merges; option 3's clean-batch test waits."
+    recommended: false
+confidence: high
+plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
+updated: 2026-11-22
+---
+
+# Decision 0279: May the production worker merge in-run, under the standing conditions C1-C5, the non-protected pull requests of the two START cards named in option 1, each pressed by you?
+
+## Options
+
+- **1. Yes, for cards start-run-plan-f-verify-20261122a and start-run-plan-f-park-allocate-20261122b** (recommended): During the runs of these two cards only, each pressed by you after Rowan reads its pins back to you, the worker merges a pull request itself when C1-C5 hold on its exact head and its diff touches no protected path; protected pull requests park for your morning merge as today. Each card must pin exactly the Actions at the top of the queue when it is pinned. Rowan re-reads each card's pins against the queue top and reads them back to you, and your press approves whatever that card pins at that time. Expected, but likely to shift as the queue moves: card 1 verify-overnight-merges-at-8am; card 2 park-and-continue and finish-allocate-push-ping-and-supersede-older-action. Nothing else changes: other cards, timer-pressed cards and later runs need a new Decision. Watch: the review marker's author is not checked by code, and protected pull requests (park-and-continue, finish-allocate) are expected to park. Consequence: the first unattended worker merge, most likely verify-overnight-merges-at-8am, and a clean batch to judge option 3 by. Reverse: answer 2 before the press, or press Off during the run.
+- **2. No, park everything for me**: The cards may still run, but every pull request parks for your morning merge. Consequence: no in-run merges; option 3's clean-batch test waits.
+
+## Rationale
+
+Operator, 2026-11-21 (relayed by Signal 17), answering the route-to-24/7 menu: '1, then 3 after a clean batch'. Option 1 pre-approves named cards; option 3, restarting the timer, waits for a clean batch. Mechanism (ellis-option1-card-preapproval-mechanism-20261121.md): the worker merges in-run only when an approved, answered Decision on main names the pressed card's id (src/production/standingMerge.ts:113-120, 167-168), the card was pressed by you with no delegation block (:180), the PR's Action is pinned with unchanged requirement content (:181, :194), and the diff touches no protected path (:210-211; everything under scripts/, src/ask/, src/decisions/, src/operatorActions/ and src/production/ is protected, src/production/gateSet.ts:150-163). Protected PRs still park for your morning merge, so park-and-continue and finish-allocate (src/production/, scripts/) are expected to park, and verify is the likely in-run merge. The card ids appear only in option 1's label, never in the question, because the worker treats any approved, answered Decision whose question or answer names the card id as authorizing (standingMerge.ts:113-120); with the ids in the question, answering 2 would still authorize. The card ids are chosen now; each card is pinned only after this Decision is answered and its record merged, at the then-current main with production Off (Decision 0156 pins), and card 2 only after card 1's run is Off. For an active Plan a card must pin exactly the queue top (src/commands/startRun.ts:257-260), so the Actions follow the queue at pinning; the code checks the card's pins, not this Decision's list, so Rowan reads each card's pins back before your press. Today a deferred Action (keep-pointer-commits-mergeable-across-a-date-change) would sit at the queue top once worker-applies is done (advance queue, revision 338), so Rowan uses governed queue reorders (arcadia advance queue reorder, a queue receipt with no Plan edit; a plan-order choice that Decision 0278 (answer 1: reorder, split or defer existing Actions) delegates to agents): before card 1, move verify-overnight-merges-at-8am to directly after worker-applies, then settle worker-applies' completion (a hard gate); before card 2, move park-and-continue and then finish-allocate-push-ping-and-supersede-older-action to the queue top. Each card expires within 24 hours of pinning; an unused id needs a new Decision. This changes what agents may do, for these two runs only, so its record PR needs your merge (Decision 0273 excludes authority-changing records). Next free number: allocate from fresh origin/main at settle. An independent Sonnet plan-critic checked this draft against origin/main 06ebbee10 (PASS WITH FIXES; fixes applied). This draft grants nothing.
+
+Proposed by Agent Ask ellis-decision-inrun-merges-named-cards-20261122a.
