@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
+import { parkedBatchEnabled, type ParkedBatchDecisionSource, type ParkedBatchReading } from "../production/parkedBatch.js";
 import { DAY_GRANT_DECISION, StartRunDelegationError } from "./startRunDelegation.js";
 
 /**
@@ -126,8 +127,8 @@ export type DayGrantClearance =
  * What production's record makes a START press: it admitted no Session (`no-session`), or it admitted one and its batch
  * either reached scope complete with no escalation (`clean-batch`) or did not (`failed-attempt`). Decision 0181.
  */
-export type DayGrantPressKind = "failed-attempt" | "clean-batch" | "no-session";
-export const DAY_GRANT_PRESS_KINDS: readonly DayGrantPressKind[] = ["failed-attempt", "clean-batch", "no-session"];
+export type DayGrantPressKind = "failed-attempt" | "clean-batch" | "parked-for-you" | "no-session";
+export const DAY_GRANT_PRESS_KINDS: readonly DayGrantPressKind[] = ["failed-attempt", "clean-batch", "parked-for-you", "no-session"];
 
 /** Rowan's recorded judgement of the latest press: named, with an evidence pointer; recorded, not machine-proved. */
 export interface DayGrantPrevious {
@@ -171,6 +172,12 @@ export interface DayEvidenceActivation {
   admitted: number;
   endedAt: string | null;
   scopeComplete: { merged: number; escalated: number } | null;
+  /**
+   * Only when the run has no scope-complete record: what the worker's own merge records say about its pinned steps
+   * (`readParkedBatch`). Absent or malformed reads as not parked. It counts only when `isParkedForYouBatch` is told the
+   * parked-batch Decision is answered.
+   */
+  parked?: ParkedBatchReading | null;
 }
 
 /**
@@ -181,15 +188,29 @@ export interface DayEvidenceActivation {
  * open, or a record that does not say. An activation that admitted no Session is no batch. Fail closed: a missing or malformed
  * scope-complete record reads as failed, since a false failure stops for the operator and a false clean runs past the stop.
  */
-export function isFailedBatch(activation: Pick<DayEvidenceActivation, "admitted" | "scopeComplete">): boolean {
+export function isFailedBatch(activation: Pick<DayEvidenceActivation, "admitted" | "scopeComplete" | "parked">, parkedForYou = false): boolean {
   if (!(activation.admitted >= 1)) return false;
   const done = activation.scopeComplete;
-  return !(done && Number.isInteger(done.merged) && done.merged >= 1 && done.escalated === 0);
+  if (done && Number.isInteger(done.merged) && done.merged >= 1 && done.escalated === 0) return false;
+  return !isParkedForYouBatch(activation, parkedForYou);
+}
+
+/**
+ * Decision 0282's draft (option A): a batch that admitted a Session, announced no scope complete, and whose every pinned step is
+ * merged or parked for a policy reason with at least one parked, reads "parked for you" and is not a failed batch. It applies only
+ * when `enabled`, which callers set from `parkedBatchEnabled` (the Decision answered A on the pinned main); the default keeps
+ * today's reading exactly. Fail closed: a run that announced scope complete keeps the scope-complete reading (a run with an
+ * escalation stays failed), and a missing or malformed park reading is not parked.
+ */
+export function isParkedForYouBatch(activation: Pick<DayEvidenceActivation, "admitted" | "scopeComplete" | "parked">, enabled: boolean): boolean {
+  if (!enabled || !(activation.admitted >= 1) || activation.scopeComplete !== null) return false;
+  const reading = activation.parked;
+  return !!reading && reading.kind === "parked-for-you" && Array.isArray(reading.parked) && reading.parked.length >= 1 && Array.isArray(reading.merged);
 }
 
 /** The failed batches that count against a day: every one not over before the operator's press opened it. */
-export function failedBatchesInWindow(evidence: DayEvidence, opensAtMs: number): DayEvidenceActivation[] {
-  return evidence.activations.filter((a) => isFailedBatch(a) && !(typeof a.endedAt === "string" && Date.parse(a.endedAt) < opensAtMs));
+export function failedBatchesInWindow(evidence: DayEvidence, opensAtMs: number, parkedForYou = false): DayEvidenceActivation[] {
+  return evidence.activations.filter((a) => isFailedBatch(a, parkedForYou) && !(typeof a.endedAt === "string" && Date.parse(a.endedAt) < opensAtMs));
 }
 
 const refuse = (code: string, message: string): never => { throw new StartRunDelegationError(code, message); };
@@ -287,7 +308,7 @@ export function validateDayGrantPrevious(value: unknown): DayGrantPrevious {
   const p = value as DayGrantPrevious;
   if (!exactKeys(p, ["cause", "clearance", "evidence", "kind", "press"])) refuse("INVALID_DELEGATION", "startRun.delegation.previous needs exactly press, kind, cause, evidence, clearance.");
   if (typeof p.press !== "string" || !p.press.includes("/")) refuse("INVALID_DELEGATION", "previous.press must be <card>/<press run id>.");
-  if (!DAY_GRANT_PRESS_KINDS.includes(p.kind)) refuse("INVALID_DELEGATION", "previous.kind must be failed-attempt, clean-batch or no-session.");
+  if (!DAY_GRANT_PRESS_KINDS.includes(p.kind)) refuse("INVALID_DELEGATION", "previous.kind must be failed-attempt, clean-batch, parked-for-you or no-session.");
   if (typeof p.cause !== "string" || !slug.test(p.cause) || notAWord(p.cause)) refuse("INVALID_DELEGATION", "previous.cause must be a stable slug naming the cause.");
   if (!pointer(p.evidence)) refuse("INVALID_DELEGATION", "previous.evidence must be an https URL or a repository-relative path.");
   const c = p.clearance;
@@ -472,14 +493,14 @@ function assertPressRecordsReadable(library: string): void {
   }
 }
 
-interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string; kind?: unknown; clearance?: unknown } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean; failed: boolean }
+interface StartPress { card: string; pressId: string; key: string; startedAt: number; status: string; delegation: { decision?: string; previous?: { press?: string; cause?: string; kind?: unknown; clearance?: unknown } | null } | null; marker: { decision?: string } | null; receipt: StartReceipt | null; admitted: boolean; failed: boolean; parked: boolean }
 
 /**
  * Every /actions press of a START card since Decision 0170, oldest first, with whether that press admitted a Session. A card
  * is one-shot, so its activation belongs to the one press that consumed its allowance; a later refused press of the same
  * card admitted nothing. An admitted activation that no press of its card owns is refused rather than guessed at.
  */
-function startPresses(library: string, evidence: DayEvidence, excludePress: string | null): StartPress[] {
+function startPresses(library: string, evidence: DayEvidence, excludePress: string | null, parkedForYou: boolean): StartPress[] {
   const earliest = Date.parse(ATTEMPT_COUNT_EARLIEST);
   const operatorRuns = path.join(library, "runs", "operator");
   const presses: StartPress[] = [];
@@ -489,7 +510,8 @@ function startPresses(library: string, evidence: DayEvidence, excludePress: stri
     const consumedPath = path.join(library, `${card}.consumed.json`);
     const consumedRun = readJson<{ runId?: string }>(consumedPath)?.runId;
     const activation = evidence.activations.some((a) => a.requestId === card && a.admitted >= 1);
-    const batchFailed = evidence.activations.some((a) => a.requestId === card && isFailedBatch(a));
+    const batchFailed = evidence.activations.some((a) => a.requestId === card && isFailedBatch(a, parkedForYou));
+    const batchParked = evidence.activations.some((a) => a.requestId === card && isParkedForYouBatch(a, parkedForYou));
     const before = presses.length;
     for (const pressId of listDirectory(path.join(operatorRuns, card))) {
       if (pressId === excludePress) continue;
@@ -503,7 +525,7 @@ function startPresses(library: string, evidence: DayEvidence, excludePress: stri
       const owner = receipt?.allowanceConsumed === true || (!!receipt && !!consumedRun && receipt.runId === consumedRun) || (!receipt && existsSync(path.join(dir, "start-run.claimed")) && existsSync(consumedPath));
       const admitted = owner && activation;
       if (receipt?.outcome === "succeeded" && !evidence.activations.some((a) => a.requestId === card)) refuse("EVIDENCE_MISMATCH", `${card} recorded a successful START but production has no activation under its request id`);
-      presses.push({ card, pressId, key: `${card}/${pressId}`, startedAt, status: String(run.status), delegation: startRun.delegation ?? null, marker: run.press ?? null, receipt, admitted, failed: admitted && batchFailed });
+      presses.push({ card, pressId, key: `${card}/${pressId}`, startedAt, status: String(run.status), delegation: startRun.delegation ?? null, marker: run.press ?? null, receipt, admitted, failed: admitted && batchFailed, parked: admitted && batchParked });
     }
     if (activation && presses.length > before && !presses.slice(before).some((press) => press.admitted)) refuse("EVIDENCE_MISMATCH", `production records a Session admitted under ${card}, but no press of that card consumed its allowance`);
   }
@@ -605,6 +627,11 @@ export interface InspectDayGrantInput {
   /** Which grant the approval is: the 24-hour day grant (default) or the standing grant, which also needs `standingDecision`. */
   grant?: GrantKind;
   standingDecision?: StandingDecisionSource;
+  /**
+   * The Decisions on the pinned main, for the parked-batch Decision (0282's draft). Absent, or without that Decision answered A,
+   * a batch with an unlanded pinned step reads failed exactly as before.
+   */
+  parkedDecision?: ParkedBatchDecisionSource;
 }
 
 /**
@@ -626,8 +653,9 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
   const attemptsSoFar = input.evidence.activations.filter((a) => Date.parse(a.at) >= earliest && a.admitted >= 1).length;
   // Decision 0181: a batch that fails stops for the operator. Any failed batch not over before the day's press counts, whoever
   // started or stopped it.
-  const failed = failedBatchesInWindow(input.evidence, window.opensAtMs);
-  const presses = startPresses(input.library, input.evidence, input.excludePress);
+  const parkedForYou = parkedBatchEnabled(input.parkedDecision);
+  const failed = failedBatchesInWindow(input.evidence, window.opensAtMs, parkedForYou);
+  const presses = startPresses(input.library, input.evidence, input.excludePress, parkedForYou);
   const latest = presses.at(-1) ?? null;
   // Decision 0187: the card after a failed press may go on when it names a fix merged for that batch's cause. For the latest
   // press that card is this one; for an earlier failure it is the press that followed it, whose card this chain re-reads, and
@@ -651,7 +679,7 @@ export function inspectDayGrantChain(input: InspectDayGrantInput): DayGrantChain
   presses.forEach((press, index) => {
     if (press.startedAt >= window.opensAtMs && press.marker?.decision === DAY_GRANT_DECISION && index > 0 && noSession(presses[index - 1])) rePressesToday += 1;
   });
-  const kindOf = (press: StartPress): DayGrantPressKind => !press.admitted ? "no-session" : press.failed ? "failed-attempt" : "clean-batch";
+  const kindOf = (press: StartPress): DayGrantPressKind => !press.admitted ? "no-session" : press.failed ? "failed-attempt" : press.parked ? "parked-for-you" : "clean-batch";
   const latestSummary = latest ? { press: latest.key, kind: kindOf(latest) } : null;
   if (latest && noSession(latest) && rePressesToday >= DAY_GRANT_MAX_REPRESSES) refuse("REPRESSES_EXHAUSTED", `${rePressesToday} re-presses after a refusal already ran in this day; Decision 0173 allows at most ${DAY_GRANT_MAX_REPRESSES}, however the card is re-prepared`);
   if (latest && noSession(latest) && latest.startedAt >= window.opensAtMs) {

@@ -26,7 +26,7 @@ const PREVIOUS_EVIDENCE = "docs/agent-guidance/production-24x7.md";
 
 /** Why nothing was derived: one named reason, in the order the checks run. */
 export type DeriveRefusal =
-  | "GRANT_NOT_OPEN" | "PLAN_NOT_ACTIVE" | "PRODUCTION_NOT_INACTIVE" | "QUEUE_INVALID" | "NO_READY_ACTIONS" | "OPERATOR_ITEM_FIRST" | "FAILED_BATCH_NEEDS_FIX" | "CHAIN_REFUSED" | "CARD_INVALID";
+  | "GRANT_NOT_OPEN" | "PLAN_NOT_ACTIVE" | "PRODUCTION_NOT_INACTIVE" | "QUEUE_INVALID" | "NO_READY_ACTIONS" | "OPERATOR_ITEM_FIRST" | "FAILED_BATCH_NEEDS_FIX" | "CHAIN_REFUSED" | "EXECUTOR_LACKS_PARKED_FOR_YOU" | "CARD_INVALID";
 
 export interface DerivePlanAction { id: string; status: string; dependsOn: string[]; criteriaErrors: string[]; decisions?: string[]; references?: string[] }
 /** An Action the card stops before because it cites an unanswered Decision. */

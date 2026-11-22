@@ -269,8 +269,9 @@ describe("Decision 0173 production record", () => {
     admission.run("a3", "a3", 94, "released", null);
     const evidence = readDayGrantEvidence(db, "2026-11-03T19:26:51Z");
     expect(evidence.activations).toEqual([
-      { requestId: "start-a", revisionAfter: 92, at: "2026-11-04T08:45:00.000Z", admitted: 1, endedAt: "2026-11-04T10:00:00.000Z", scopeComplete: null },
-      { requestId: "start-b", revisionAfter: 94, at: "2026-11-04T11:00:00.000Z", admitted: 0, endedAt: null, scopeComplete: null }
+      // `parked` is the parked-for-you reading (tests/parked-batch.test.ts): not parked here, since the receipt names no pinned step.
+      { requestId: "start-a", revisionAfter: 92, at: "2026-11-04T08:45:00.000Z", admitted: 1, endedAt: "2026-11-04T10:00:00.000Z", scopeComplete: null, parked: { kind: "not-parked", reason: "the activation's pinned steps could not be read" } },
+      { requestId: "start-b", revisionAfter: 94, at: "2026-11-04T11:00:00.000Z", admitted: 0, endedAt: null, scopeComplete: null, parked: null }
     ]);
     expect(evidence.transitions.map((t) => t.requestId)).toEqual(["start-a", "rowan-off-a", "start-b"]);
     db.close();

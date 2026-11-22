@@ -359,6 +359,22 @@ pinned descriptor, so per-card review is small.
   (found by slug, whatever its number) is answered with option A there; otherwise the
   failed batch stops for the operator. A batch the operator pressed, or an observed
   clearance, never passes a failed batch.
+  **Parked for you (the Decision with the slug
+  `may-a-batch-whose-pinned-steps-all-parked-for-a-policy-reason-none-failed-read`,
+  inert until answered A on origin main; found by slug, whatever its number).** A
+  batch with no scope-complete record whose every pinned step is merged or parked for
+  a policy reason, with at least one parked, reads `parked-for-you`, not
+  `failed-attempt`, so the next card needs no clearance. Parked means the worker's
+  latest `production_worker_merges` row for the step, inside the run, is its
+  `authority_adjacent` refusal naming a C1 park (delegated card, Action not pinned,
+  requirement changed), a C4 park (protected path or hard class) or no authorizing
+  in-run Decision, with a pull request and an exact head, and no review recorded for
+  another head. Everything else is failed: a missing, partial or unreadable record, a
+  C2, C5 or unreadable-input park, any other refusal code, an escalation on a pinned
+  step, or a run that announced scope complete (its own count governs). `start-run
+  day-evidence` carries the reading as `parked`; without the Decision answered it is
+  ignored. `scripts/start-run.sh` keeps its own copy of the failed-batch rule and must
+  carry the outcome before a card is derived (`EXECUTOR_LACKS_PARKED_FOR_YOU`).
   Run the fresh pre-mortem, put its pointer in `reviewed/<id>.json` as `premortem`,
   preflight the card, then press it with
   `POST /api/operator-script {"id": "<card>", "delegation": {"decision": "0173", "agent": "rowan"}}`.
@@ -391,8 +407,9 @@ pinned descriptor, so per-card review is small.
 - **The host timer presses the successor card (`--successor-press`).** While a
   standing grant is open, `arcadia production liveness-check --successor-press`
   (the existing timer; no agent session, no model call) issues Rowan's own Off at
-  scope complete (`production deactivate --rowan-off successor-press-scope-complete`,
-  which does not end the grant), then, only when production is Off, the previous
+  scope complete, or, with the parked-for-you Decision answered, when every pinned
+  step is merged or parked (`production deactivate --rowan-off
+  successor-press-scope-complete`, which does not end the grant), then, only when production is Off, the previous
   batch reads clean, main's checks are green and no card hold exists, mints the
   derived card (at most 12 Actions, queue order), runs its replay and preflight,
   records the replay receipt path as the manifest's `premortem`, and presses it as

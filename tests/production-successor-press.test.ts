@@ -435,3 +435,53 @@ describe("successor press: runs from the existing timer", () => {
     expect(JSON.parse(readFileSync(path.join(workspace, ".arcadia", "successor-press.json"), "utf8")).pressed).toHaveLength(1);
   });
 });
+
+describe("successor press: a parked-for-you batch (the draft Decision 0282, option A)", () => {
+  /** The batch the last press started ended with every pinned step parked for the operator: nothing merged, nothing failed. */
+  function parkEverything(w: World, production: Partial<SuccessorProduction> = {}) {
+    const last = w.pressLog.at(-1)!;
+    w.production = { ...w.production, liveAdmissions: 0, scopeComplete: false, parkedForYou: true, ...production };
+    w.batch = { press: `${last.card}/run`, kind: "parked-for-you" };
+    w.now += 30 * MINUTE;
+  }
+
+  it("turns production Off when every pinned step is parked, then presses the next card with no clearance and no operator", () => {
+    const w = world({ actions: 14 });
+    writeDayApproval(w.library, { standing: true, card: GRANT_CARD, run: DAY_RUN, pressedAt: T0 - 60 * MINUTE });
+    let state = emptySuccessorState();
+    const first = step(w, state); state = first.state;
+    expect(first.outcome).toMatchObject({ kind: "pressed" });
+    parkEverything(w);
+    // The parked Actions stay unfinished (the operator merges them), so the same top of the queue is derived again; the
+    // one-shot card ids keep the two cards apart.
+    const second = step(w, state);
+    expect(second.outcome).toMatchObject({ kind: "pressed", offIssued: true });
+    expect(w.offs).toEqual([`rowan-off-${SUCCESSOR_OFF_SLUG}`]);
+    expect(w.pings).toEqual([]);
+    const descriptor = JSON.parse(readFileSync(path.join(w.library, `${(second.outcome as { card: string }).card}.json`), "utf8")) as { startRun: { delegation: { previous: { kind: string; clearance: { kind: string } } } } };
+    expect(descriptor.startRun.delegation.previous).toMatchObject({ kind: "parked-for-you", clearance: { kind: "observed-cleared" } });
+  });
+
+  it("does not turn production Off while a Session is live, or when the parked reading is not set (today's rule: it waits)", () => {
+    const w = world({ actions: 3 });
+    writeDayApproval(w.library, { standing: true, card: GRANT_CARD, run: DAY_RUN, pressedAt: T0 - 60 * MINUTE });
+    const first = step(w, emptySuccessorState());
+    w.production = { ...w.production, liveAdmissions: 1, parkedForYou: true };
+    expect(step(w, first.state).outcome).toMatchObject({ kind: "skipped", reason: "PRODUCTION_NOT_OFF", offIssued: false });
+    w.production = { ...w.production, liveAdmissions: 0, parkedForYou: false };
+    expect(step(w, first.state).outcome).toMatchObject({ kind: "skipped", reason: "PRODUCTION_NOT_OFF", detail: expect.stringContaining("scope is not complete"), offIssued: false });
+    expect(w.offs).toEqual([]);
+  });
+
+  it("(5) still ends the step on a failed batch exactly as before, with no Off and no press", () => {
+    const w = world({ actions: 3 });
+    writeDayApproval(w.library, { standing: true, card: GRANT_CARD, run: DAY_RUN, pressedAt: T0 - 60 * MINUTE });
+    const first = step(w, emptySuccessorState());
+    // An operator Off before any scope complete or parked reading: production is Off and the batch failed.
+    w.production = { ...w.production, desiredState: "inactive", liveAdmissions: 0, scopeComplete: false };
+    w.batch = { press: `${w.pressLog.at(-1)!.card}/run`, kind: "failed-attempt" };
+    const ended = step(w, first.state);
+    expect(ended.outcome).toMatchObject({ kind: "refused", code: "FAILED_BATCH_NEEDS_FIX", offIssued: false });
+    expect(w.pressLog).toHaveLength(1);
+  });
+});

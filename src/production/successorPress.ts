@@ -42,6 +42,11 @@ export interface SuccessorProduction {
   liveAdmissions: number;
   /** Active, nothing left in scope: the tick has recorded `managed_production.scope_complete` for the live policy revision. */
   scopeComplete: boolean;
+  /**
+   * Decision 0282's draft, option A answered: no scope-complete record, but every pinned step is merged or parked for a policy
+   * reason, with at least one parked. It ends the run (the same Off) and the batch then reads "parked for you", not failed.
+   */
+  parkedForYou?: boolean;
   revision: number;
 }
 export interface SuccessorPorts {
@@ -96,7 +101,7 @@ const refusalPing = (code: string, message: string, grant: string): string =>
 /** The Off is issued at most once per policy revision, and only for a finished scope with no live admissions. */
 function offAtScopeComplete(ports: SuccessorPorts, state: SuccessorState): { issued: boolean; production: SuccessorProduction } {
   const production = ports.production();
-  if (production.desiredState !== "active" || production.liveAdmissions !== 0 || !production.scopeComplete || state.offs.includes(production.revision)) return { issued: false, production };
+  if (production.desiredState !== "active" || production.liveAdmissions !== 0 || !(production.scopeComplete || production.parkedForYou === true) || state.offs.includes(production.revision)) return { issued: false, production };
   state.offs.push(production.revision);
   ports.off(SUCCESSOR_OFF_SLUG);
   return { issued: true, production: ports.production() };
@@ -155,7 +160,7 @@ export function runSuccessorPressStep(ports: SuccessorPorts, prior: SuccessorSta
     return { state, outcome: { kind: "refused", code, message, pingId, offIssued } };
   };
 
-  if (production.desiredState !== "inactive") return skip("PRODUCTION_NOT_OFF", `production is ${production.desiredState}${production.scopeComplete ? "" : "; its scope is not complete"}`, offIssued);
+  if (production.desiredState !== "inactive") return skip("PRODUCTION_NOT_OFF", `production is ${production.desiredState}${production.scopeComplete || production.parkedForYou ? "" : "; its scope is not complete"}`, offIssued);
   const batch = ports.batch();
   const failed = batch?.kind === "failed-attempt";
   if (batch?.kind === "unsettled") return skip("BATCH_NOT_CLEAN", `the latest press ${batch.press} has not finished`, offIssued);
