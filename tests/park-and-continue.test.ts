@@ -39,7 +39,7 @@ describe("park and continue", () => {
       { key: "c", status: "open", dependsOn: ["b"] },
       { key: "d", status: "open", dependsOn: [] }
     ];
-    expect(actions[0]!.status).toBe("open");
+    expect(actions[0].status).toBe("open");
     const result = admitNextIndependent(actions, out.state.parks);
     expect(result.admit).toBe("d");
     expect(result.skipped.map((s) => s.key)).toEqual(["a", "b", "c"]);
