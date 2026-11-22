@@ -4,7 +4,7 @@ type: decision
 id: "0283"
 slug: build-straight-from-issues-may-rowan-s-builders-build-unattended-production
 project: arcadia
-status: open
+status: approved
 question: "Build straight from Issues: may Rowan's builders build unattended-production work from Issues, with no Plan Action or Agent Ask per item?"
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production
 updated: 2026-11-22
+answer: A. Yes, for the playbook's item list and Issues that pass the class test
+decided: 2026-11-22
 ---
 
 # Decision 0283: Build straight from Issues: may Rowan's builders build unattended-production work from Issues, with no Plan Action or Agent Ask per item?
