@@ -216,6 +216,7 @@ describe("warnings carry no host paths", () => {
   it("scrubs the repository root and other absolute paths from messages", () => {
     expect(scrubPaths("ENOENT: open '/Users/someone/repo/docs/x.md' under /Users/someone/repo", "/Users/someone/repo")).toBe("ENOENT: open './docs/x.md' under .");
     expect(scrubPaths("failed at /var/folders/ab/cd/T/x and docs/plans/a.md", "/nowhere")).toBe("failed at <path> and docs/plans/a.md");
+    expect(scrubPaths("open /a/bc/x and /a/b/y", "/a/b")).toBe("open <path> and ./y");
     expect(describeFileError(Object.assign(new Error("EACCES: /secret/x"), { code: "EACCES" }), "/r")).toBe("is not readable (permission denied).");
   });
 

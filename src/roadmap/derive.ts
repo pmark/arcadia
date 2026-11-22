@@ -175,7 +175,11 @@ export function describeFileError(error: unknown, repoRoot: string): string {
 
 export function scrubPaths(message: string, repoRoot: string): string {
   let out = message;
-  for (const root of new Set([repoRoot, path.resolve(repoRoot)])) out = out.split(root).join(".");
+  for (const root of new Set([repoRoot, path.resolve(repoRoot)])) {
+    // Only a whole path segment: "/a/b" must not eat the start of "/a/bc/x".
+    const escaped = root.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    out = out.replace(new RegExp(`${escaped}(?=/|$|[^\\w.@-])`, "g"), ".");
+  }
   return out.replace(/(?:^|(?<=[\s'"(]))\/(?:[\w.@-]+\/)+[\w.@-]*/g, "<path>");
 }
 
@@ -237,7 +241,7 @@ function loadPlan(repoRoot: string, slug: string): LoadedPlan {
   const parsed = parseDoc(relative, absolute, content);
   if (!parsed.doc || parsed.doc.type !== "plan") {
     const first = parsed.errors[0];
-    return { plan: null, reason: `${relative} is not a readable Plan${first ? `: ${first.field}: ${first.message}` : "."}`, mtime };
+    return { plan: null, reason: `${relative} is not a readable Plan${first ? `: ${scrubPaths(`${first.field}: ${first.message}`, repoRoot)}` : "."}`, mtime };
   }
   return { plan: parsed.doc, reason: null, mtime };
 }
@@ -285,7 +289,7 @@ export function deriveRoadmap(repoRoot: string, options: { now?: () => Date } = 
       project = { slug: doc.slug, name: doc.name, activePlan: doc.activePlan, currentAction: doc.currentAction };
     } else {
       const first = parsed.errors[0];
-      warnings.push({ source: PROJECT_FILE, message: `Is not a readable Project record${first ? `: ${first.field}: ${first.message}` : "."}` });
+      warnings.push({ source: PROJECT_FILE, message: `Is not a readable Project record${first ? `: ${scrubPaths(`${first.field}: ${first.message}`, repoRoot)}` : "."}` });
     }
   }
 

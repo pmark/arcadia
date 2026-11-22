@@ -22,7 +22,8 @@ function readWorkspace<T>(callback: (db: Parameters<Parameters<typeof withReadOn
       return callback(db);
     });
   } catch (error) {
-    if (error instanceof RoadmapProjectNotFound) throw error;
+    // The reader gets a plain sentence; the real cause (a SQL or schema fault, say) stays in the server log.
+    console.error("roadmap: workspace read failed", error);
     throw new RoadmapWorkspaceUnavailable("The Arcadia workspace could not be read (it may not be set up, or its database is missing or busy). Nothing was changed; try again in a moment.");
   }
 }

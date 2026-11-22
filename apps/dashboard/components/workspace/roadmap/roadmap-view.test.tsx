@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
+import { isValidElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { RoadmapView } from "../../../../../src/roadmap/derive";
 import { RoadmapLive } from "./roadmap-live";
 import { PX_PER_ACTION, RoadmapStack } from "./roadmap-view";
@@ -73,12 +74,19 @@ describe("RoadmapStack", () => {
       northStar: { ...view.northStar!, gates: [view.northStar!.gates[0], view.northStar!.gates[0]] },
       sequence: [stop, { ...stop, order: 2, letter: "G" }, { kind: "unreadable", order: 3, letter: "H", slug: "plan-f", description: "", reason: "x" }, { kind: "unreadable", order: 4, letter: "I", slug: "plan-f", description: "", reason: "x" }]
     };
-    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const out = renderToStaticMarkup(<RoadmapStack view={dup} />);
-      expect(out.match(/Plan [FGHI]\b/g)?.length).toBeGreaterThanOrEqual(4);
-      expect(errors.mock.calls.flat().join(" ")).not.toMatch(/same key|unique "key"/);
-    } finally { errors.mockRestore(); }
+    // Fizz (renderToStaticMarkup) never warns about keys, so inspect the element tree: no sibling list may repeat a key.
+    const repeated: string[] = [];
+    const walk = (node: unknown): void => {
+      if (Array.isArray(node)) {
+        const keys = node.filter(isValidElement).map(el => el.key).filter((k): k is string => k !== null);
+        keys.forEach((k, n) => { if (keys.indexOf(k) !== n) repeated.push(k); });
+        node.forEach(walk);
+      } else if (isValidElement(node)) walk((node.props as { children?: unknown }).children);
+    };
+    walk(RoadmapStack({ view: dup }));
+    expect(repeated).toEqual([]);
+    const out = renderToStaticMarkup(<RoadmapStack view={dup} />);
+    expect(out.match(/Plan [FGHI]\b/g)?.length).toBeGreaterThanOrEqual(4);
   });
 });
 
