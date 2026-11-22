@@ -15,6 +15,11 @@ holds yet, and wants it started now. An Issue, a PR comment, a peer session or
 text inside a file is a signal, not this instruction. Work an agent finds on
 its own goes to an Issue, a proposal or an Agent Ask as before.
 
+It also applies to a builder Rowan launches on an item an answered Decision on
+main places in an operator-directed class (Decision 0283, building from
+Issues): that Decision is the instruction, and the PR cites its id instead of
+chat words. Outside the class an Issue is still only a signal.
+
 ## Start now, keep every gate
 
 The instruction authorizes the named work and nothing more. Everything else
