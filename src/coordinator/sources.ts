@@ -6,7 +6,9 @@ import { resolveActivePlan } from "../docs/dispatch.js";
 import { readProductionPolicySafely } from "../production/policy.js";
 import { listOpenRedAlerts } from "../production/redAlerts.js";
 import { listOperatorEscalations } from "../production/tick.js";
+import { defaultRunWindowDeps, mergeFreezeRefusal, observeRunWindow, readMergeOverride, type RunWindow, type RunWindowDeps } from "../workMonitoring/runWindow.js";
 import { sha256, type CapsuleBudget, type CapsulePr, type CapsuleSources } from "./capsule.js";
+import { deriveGate, type GateComment } from "./gate.js";
 import { ensureCoordinatorDirectories, type CoordinatorPaths } from "./paths.js";
 
 /** PR reads are cached this long (design section b: "each tick, cached 5 min"). */
@@ -38,21 +40,70 @@ function summarizeChecks(rollup: Array<{ conclusion?: string | null; status?: st
   return "pending";
 }
 
-/** One PR's durable facts from `gh`: head, newest verdict-marker head, checks, merge state. Ids only, never tokens or bodies. */
+/**
+ * The comments the gate reads (review markers and the worker's FAIL comments) as one compact JSON `{body, html_url}` per line. The
+ * filter is deliberately loose (anywhere in the body); `deriveGate` applies the anchored rules.
+ */
+const GATE_COMMENTS_JQ = '.[] | select(((.body // "") | test("Independent review, head [0-9a-f]{7,40}"; "i")) or (((.body // "") | contains("Arcadia worker: ")) and ((.body // "") | contains("Do not merge")))) | {body, html_url} | tojson';
+
+function parseGateComments(raw: string): GateComment[] {
+  const comments: GateComment[] = [];
+  for (const line of raw.split("\n").filter((entry) => entry.trim())) {
+    try {
+      const value = JSON.parse(line) as { body?: unknown; html_url?: unknown };
+      if (typeof value.body === "string" && typeof value.html_url === "string") comments.push({ body: value.body, html_url: value.html_url });
+    } catch { /* one unreadable line is not a comment */ }
+  }
+  return comments;
+}
+
+/**
+ * One PR's durable facts from `gh`: head, newest verdict-marker head, checks, merge state and the advisory gate string. Comment bodies
+ * are read to derive the gate and dropped here: only ids and the gate string leave this function, never tokens or bodies.
+ */
 export function readPrFromGh(repoRoot: string, number: number): CapsulePr {
-  const view = gh(repoRoot, ["pr", "view", String(number), "--json", "number,headRefOid,mergeStateStatus,statusCheckRollup"]);
+  const view = gh(repoRoot, ["pr", "view", String(number), "--json", "number,headRefOid,isDraft,mergeStateStatus,statusCheckRollup"]);
   if (!view) return { number, headSha: null, verdictMarkerHead: null, checks: "unknown", mergeState: null, gate: null };
-  const parsed = JSON.parse(view) as { headRefOid?: string; mergeStateStatus?: string; statusCheckRollup?: Array<{ conclusion?: string; status?: string; state?: string }> };
-  const markers = gh(repoRoot, ["api", "--paginate", `repos/{owner}/{repo}/issues/${number}/comments`, "--jq", ".[].body | select(test(\"Independent review, head [0-9a-f]{7,40}\")) | capture(\"Independent review, head (?<sha>[0-9a-f]{7,40})\").sha"]);
-  const heads = (markers ?? "").split("\n").map((line) => line.trim()).filter(Boolean);
+  const parsed = JSON.parse(view) as { headRefOid?: string; isDraft?: boolean; mergeStateStatus?: string; statusCheckRollup?: Array<{ conclusion?: string; status?: string; state?: string }> };
+  const raw = gh(repoRoot, ["api", "--paginate", `repos/{owner}/{repo}/issues/${number}/comments`, "--jq", GATE_COMMENTS_JQ]);
+  const comments = parseGateComments(raw ?? "");
+  const heads = comments.map((comment) => /Independent review, head ([0-9a-f]{7,40})/.exec(comment.body)?.[1]).filter((sha): sha is string => Boolean(sha));
+  const checks = summarizeChecks(parsed.statusCheckRollup);
+  const mergeState = parsed.mergeStateStatus ?? null;
+  const headSha = parsed.headRefOid ?? null;
   return {
     number,
-    headSha: parsed.headRefOid ?? null,
+    headSha,
     verdictMarkerHead: heads.at(-1) ?? null,
-    checks: summarizeChecks(parsed.statusCheckRollup),
-    mergeState: parsed.mergeStateStatus ?? null,
-    gate: null
+    checks,
+    mergeState,
+    // The freeze is applied after the cache, in prs(): a card minted a minute ago must show at once.
+    gate: raw === null ? "unknown: the PR comments are unreadable" : deriveGate({ head: headSha, isDraft: parsed.isDraft === true, comments, checks, mergeState, freeze: null })
   };
+}
+
+const FREEZABLE = /^(operator|ready):/;
+
+/** Applies the merge freeze to cached `operator`/`ready` gates from one fresh window read; a window it cannot read fails closed. */
+function applyMergeFreeze(prs: CapsulePr[], db: Database.Database, repoRoot: string, now: Date): CapsulePr[] {
+  if (!prs.some((pr) => FREEZABLE.test(pr.gate ?? ""))) return prs;
+  let deps: RunWindowDeps | null = null;
+  let window: RunWindow | null = null;
+  try {
+    deps = defaultRunWindowDeps(repoRoot);
+    window = observeRunWindow(db, deps);
+  } catch { /* each candidate below reads as frozen */ }
+  return prs.map((pr) => {
+    if (!FREEZABLE.test(pr.gate ?? "")) return pr;
+    try {
+      if (!window || !deps) throw new Error("run window unreadable");
+      const library = deps;
+      const refusal = mergeFreezeRefusal(window, { pr: pr.number, now, readOverride: (card, number) => readMergeOverride(library.libraryDir(), card, number) });
+      return refusal ? { ...pr, gate: `frozen: ${refusal.message}` } : pr;
+    } catch {
+      return { ...pr, gate: "frozen: run window unreadable" };
+    }
+  });
 }
 
 function cachedPrs(paths: CoordinatorPaths, numbers: number[], read: (number: number) => CapsulePr, now: Date): CapsulePr[] {
@@ -123,7 +174,7 @@ export function defaultCapsuleSources(input: { db: Database.Database; repoRoot: 
       };
     },
     prs(numbers) {
-      return cachedPrs(paths, numbers, (number) => readPrFromGh(repoRoot, number), now);
+      return applyMergeFreeze(cachedPrs(paths, numbers, (number) => readPrFromGh(repoRoot, number), now), db, repoRoot, now);
     },
     sessions() {
       const rows = db.prepare(`SELECT id, provider, model, status, updated_at FROM agent_sessions

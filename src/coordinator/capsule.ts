@@ -29,7 +29,12 @@ export interface CapsulePr {
   verdictMarkerHead: string | null;
   checks: "pass" | "fail" | "pending" | "none" | "unknown";
   mergeState: string | null;
-  /** The durable approval or gate that governs the merge, when one is recorded. */
+  /**
+   * Advisory, read-only, never an authorization. It is a snapshot: all of it except the merge freeze (head, checks, merge state, draft,
+   * worker FAIL, review) can be up to five minutes old (the PR cache). `ready` does not cover Decision 0230 conditions 3 to 5 (head
+   * unchanged, production Off, exclusions), and it never replaces `arcadia work merge-check`. The merger re-checks Decision 0230's
+   * list itself. Reads as `<unknown|blocked|waiting|frozen|operator|ready>: <reason>`, or null when none was derived.
+   */
   gate: string | null;
 }
 export interface CapsuleSession { id: string; owner: string; status: string; lastProgressAt: string | null }
