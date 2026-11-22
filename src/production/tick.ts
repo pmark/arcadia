@@ -2307,9 +2307,22 @@ export function runManagedProductionTick(
                   lastError: attempts.lastError, now, log });
               }
               unchangedResume = { actionKey };
-            } else if (receipt.outcome === "accepted_completion"
-              || (continuation !== null && receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision)) {
+            } else if (receipt.outcome === "accepted_completion") {
               resetRepairAttempts(db, actionKey);
+            } else if (continuation !== null && receipt.outcome === "incomplete_resumable" && receipt.candidate_revision !== continuation.candidate_revision) {
+              // The head moved, but a resume that ends in the same refusal as the one before it made no progress (#2927):
+              // the moved head is the drafted completion Ask naming the previous head, not repair. Count it; a different refusal resets.
+              const signature = repeatedRefusalSignature(receipt.reason);
+              if (getRepairAttempts(db, actionKey).lastError === signature) {
+                recordRepairAttempt(db, actionKey, signature, now, "action_local");
+                const attempts = getRepairAttempts(db, actionKey);
+                if (attempts.attempts >= PRODUCTION_CONTROL_DEADLINES.maxRepairAttemptsPerAction) {
+                  recordRepairBudgetExhaustedEscalation(db, { actionKey, attempts: attempts.attempts, lastError: attempts.lastError, now, log });
+                }
+              } else {
+                resetRepairAttempts(db, actionKey);
+                recordRefusalMarker(db, actionKey, signature, now);
+              }
             }
             // Tokens per attempt and the environment-wall stop commit with the
             // receipt, so a crash cannot lose the wall and relaunch into it.
@@ -3460,6 +3473,24 @@ function recordRepairAttempt(db: Database.Database, actionKey: string, error: st
      ON CONFLICT(action_key) DO UPDATE SET
        attempts = @attempts, last_error = @last_error, last_attempt_at = @last_attempt_at, updated_at = @updated_at, local_attempts = @local_attempts`
   ).run({ action_key: actionKey, attempts, last_error: error, last_attempt_at: at, updated_at: at, local_attempts: localAttempts });
+}
+
+/**
+ * The refusal a resumed Session ended on, normalized so the head and Session ids it names do not make
+ * two identical refusals look different (each attempt drafts a completion Ask named after the previous head).
+ */
+export function repeatedRefusalSignature(reason: string): string {
+  return `Resumed Session exited incomplete with the same refusal: ${reason.toLowerCase().replace(/[0-9a-f]{12,40}/g, "<rev>").replace(/session_[0-9a-f]+/g, "<session>").replace(/\s+/g, " ").trim()}`;
+}
+
+/** Remembers the last refusal without spending an attempt (attempts stay 0), so the next identical one is recognized. */
+function recordRefusalMarker(db: Database.Database, actionKey: string, signature: string, now: Date): void {
+  const at = now.toISOString();
+  db.prepare(
+    `INSERT INTO production_repair_attempts (action_key, attempts, last_error, last_attempt_at, updated_at, local_attempts)
+       VALUES (?, 0, ?, ?, ?, 0)
+     ON CONFLICT(action_key) DO UPDATE SET attempts = 0, last_error = excluded.last_error, last_attempt_at = excluded.last_attempt_at, updated_at = excluded.updated_at, local_attempts = 0`
+  ).run(actionKey, signature, at, at);
 }
 
 function resetRepairAttempts(db: Database.Database, actionKey: string): void {
