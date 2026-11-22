@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { normalizeError } from "../cli/errors.js";
 import { git, tryGit } from "../git/worktrees.js";
 import { evidenceHasPlaceholder, normalizeAgentAsk, setTopLevelAskScalar, type NormalizedAgentAsk } from "./agentAsk.js";
-import { contradictedCriteriaRefusal } from "../sessions/contradictedCriteria.js";
+import { contradictedCriteriaRefusal, metCriteriaProofRefusal } from "../sessions/contradictedCriteria.js";
 import { autoSettleRequestId } from "./autoSettleRequestId.js";
 import { previewAgentAskRequest } from "./preview.js";
 import { settleAgentAsk } from "./settlement.js";
@@ -255,6 +255,15 @@ function attemptSettleOneDraft(
   const contradiction = contradictedCriteriaRefusal(draft.normalized.evidence);
   if (contradiction) {
     return { settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED, detail: contradiction, askPath: draft.path };
+  }
+  // PRs #2948/#2950: a met criterion whose note admits the work is incomplete (not wired, not scheduled, left to a
+  // follow-up), or that rests on inspection prose alone, is refused for the same reason and at the same place. A named
+  // test is read at HEAD: that is the evidenced tree here (governance-only commits aside), the preserved candidate.
+  const unproved = metCriteriaProofRefusal(draft.normalized.evidence, {
+    readFileAtRevision: (file) => tryGit(input.repoRoot, ["show", `${head}:${file}`])
+  });
+  if (unproved) {
+    return { settled: false, reason: AUTO_SETTLE_VALIDATION_REFUSED, detail: unproved, askPath: draft.path };
   }
   const validation = input.validateBeforeSettle?.({ path: draft.path, evidence: draft.normalized.evidence });
   if (validation && !validation.ok) {

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ArcadiaError } from "../src/cli/errors.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
+import { MET_PROOF_REQUIRED } from "../src/sessions/contradictedCriteria.js";
 import { actionAcceptanceCriteria, CHECKS_VERIFIED_ELSEWHERE_NOTE, MET_REQUIRES_RUN_RULE, renderActionBrief, renderCallingInHelp } from "../src/sessions/actionBrief.js";
 import { headlessClaudeAllowList } from "../src/sessions/headlessPermissions.js";
 import { resolveAgentIdentity } from "../src/codingAgents/agentIdentity.js";
@@ -342,6 +343,9 @@ describe("renderActionBrief", () => {
       expect(protocol).toContain("With your Write tool (never Bash, echo, a heredoc or a script)");
       expect(protocol).toContain(`add the words: ${CHECKS_VERIFIED_ELSEWHERE_NOTE}`);
       expect(CHECKS_VERIFIED_ELSEWHERE_NOTE).not.toMatch(/["\\]/);
+      // PRs #2948/#2950: one proof per met criterion, and no met on a deliverable nothing calls or schedules.
+      expect(protocol).toContain(`Each \`met\` note must ${MET_PROOF_REQUIRED}.`);
+      expect(protocol).toContain('"I inspected the code" alone is refused, and a criterion whose deliverable nothing calls or schedules is not met');
       // Issue #2931: the brief names the phrase the host refuses, so an honest worker does not write it.
       expect(protocol).toContain('Never write "not run", "not done" or "not verified" in a `met` note');
       expect(protocol).toContain("whose target_ref is\n     action/define-contract, delete only that file");
