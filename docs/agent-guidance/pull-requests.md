@@ -219,7 +219,7 @@ merge it anyway, so asking spends attention and protects nothing.
   wakes the Session, and the Session makes the push, so the Session disarms
   first. If a push you did not make lands on an armed PR, disarm it as soon as
   you see it.
-  Merge by hand, or leave for the operator, in these special cases: a PR this
+  Merge by hand under the Decision 0230 section below, or leave for the operator, in these special cases: a PR this
   section excludes below; a path `classifyAuthorityPaths` gates; a publish that
   needs a merge commit; any merge while `arcadia work monitor` reports a run
   window; and a repository where merging deploys or publishes. Never enable it
@@ -260,6 +260,67 @@ merge it anyway, so asking spends attention and protects nothing.
 - **This is a merge authorization only.** It does not authorize deployment,
   spend, credentials, production access, messaging, or any other approval
   boundary in `CONSTITUTION.md`.
+
+### Merge under Decision 0230 (operator-authority paths)
+
+Decision 0230 A (decided 2026-11-13) lets Signal, and the current Rowan under Decision 0182 C, merge a PR
+that touches an operator-authority or gate-set path, with no further word from the operator, when ALL hold.
+These two Decisions are the whole authority; this section only makes them operable:
+
+1. A separate read-only reviewer (not the implementer, not the recommender) posted
+   "Independent review, head <full sha>" on the exact current head, saying PASS, "Loosens a gate: no"
+   and "Changes agent authority: no", with no unresolved blocking finding (and no unresolved governed
+   code-review verdict on that head).
+2. Every required check is green on that head, the merge state is CLEAN, `arcadia work merge-check
+   --pr <n>` exits 0, the merge is not inside a run window (Decision 0182 C), and the merge is pinned:
+   `gh pr merge <n> --squash --match-head-commit <sha>` (a merge method is required in a
+   non-interactive session).
+3. The head has not changed since review, except receipted settle commits and a conflict-free base merge.
+4. For a runtime-path PR, `arcadia production status` reads Off (read it yourself; merge-check treats
+   Active as advisory). Make this read the last check before `gh pr merge` and stop if it reads Active. No
+   gate refuses a merge while production is Active, so a window of seconds between the read and the merge
+   remains; do not widen it.
+5. The PR is not excluded (below).
+
+Definitions (Decision 0230 left them open; this guidance fixes them for agents):
+
+- **Gate change** (excluded; stays the operator's): Decision 0230's exclusion protects against *loosening*
+  safeguards, so a PR is a gate change only if it **loosens, removes or widens** a merge, review, admission
+  or authority safeguard, or edits CI-as-gate (`.github/`, the required checks), branch protection, agent
+  permissions, Decision records or the Constitution. A PR that only **tightens or adds** a safeguard, or
+  fixes a bug inside a gate module (a path `loadGateSet` lists in `gateModules` or `self`), is **not** a
+  gate change when a separate read-only reviewer states "Loosens a gate: no. Changes agent authority: no."
+  on the exact head; it merges under this section with the receipt below naming what it tightens or
+  fixes. A change that widens what merges in a run or redefines a gate's meaning (for example what counts
+  as a failed batch) is a gate change, and so is any PR you cannot confidently call a tightening. Paths in
+  `hardClasses` (governance files such as PROJECT.md, AGENTS.md, CLAUDE.md, NORTH_STAR.md,
+  docs/agents-context.md; Decision records; the Constitution) and `spend` stay the operator's unless the
+  diff is only a governed settlement commit with a verified receipt.
+- **Runtime path** (merges only while production is Off): any changed path the worker's allowlist
+  predicate does not allow (`src/production/workerMerge.ts`, `isWorkerMergeSafePath`; read the predicate, not
+  this summary). It allows tests except the shared helpers, harness fakes, fixtures and setup
+  (`tests/helpers/`, `tests/fast-rehearsal/helpers/`, `tests/setup*`, `tests/e2e/fixtures/`,
+  `tests/fixtures/`), docs markdown except `docs/decisions/`, `docs/agent-guidance/`, `docs/plans/`,
+  `docs/scout/`, `docs/agents-context.md` and `docs/managed-production-readiness.md` (and the indexed
+  procedure documents), top-level non-governance markdown, and unclassified `src/**`.
+
+Always the operator's (0230 exclusions and the Constitution): a PR that raises, carries or answers a
+Decision; changes what agents are authorized to do; START or activation; spend; credentials;
+branch-protection or gate changes; and `CONSTITUTION.md`.
+
+Before the merge, post a receipt comment: the Decision quoted (0230 A), the head sha, the reviewer
+marker URL, the checks, the production state read, what the PR tightens or fixes, and the line "Reply
+`revert` to undo." A receipt that cannot be posted blocks the merge. After it, log the merge sha in the
+session log and the day's digest. No handler reads a `revert` reply by itself: the session that merged owns
+it and watches the PR and the digest for one until the next day's digest. If that session has ended, the
+next Signal or Rowan owns it: it reads the digest and the PRs merged under this section at its start. On
+`revert`, open a revert PR the same day, put it on the operator's digest line as needing his attention,
+and merge it under this same section (a revert restores the reviewed state) with its own separate
+reviewer; if it cannot merge that day, say so in the digest. Who reads a `revert` reply is a policy choice
+the operator may change. One revert, one invalid marker or one
+undelivered receipt sends this class back to asking until the operator answers again: record that state
+with `arcadia learn` and in the digest so a successor session sees it, and clear it only on the
+operator's words. When unsure whether a PR is excluded, treat it as the operator's.
 
 ## PR lifecycle notifications
 
