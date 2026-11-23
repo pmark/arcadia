@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { readCodexRateLimitsLive } from "../src/codingAgents/availability.js";
-import { cardSimulatesGithubWrites, replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { cardGithubMode, replayGithubMode, cardSimulatesGithubWrites, replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
@@ -533,6 +533,18 @@ describe("production replay of a card never pressed (--card)", () => {
     expect(cardSimulatesGithubWrites({ card: "c" })).toBe(true);
     expect(cardSimulatesGithubWrites({ card: "c", simulateGithubWrites: false })).toBe(false);
     expect(cardSimulatesGithubWrites({})).toBeUndefined();
+  });
+
+  it("defaults --card to live GitHub reads; an explicit --github wins and non-card replays stay offline (Issue #2999)", () => {
+    expect(cardGithubMode({ card: "c" })).toBe("live");
+    expect(cardGithubMode({ card: "c", github: "offline" })).toBe("offline");
+    expect(cardGithubMode({ card: "c", github: "live" })).toBe("live");
+    expect(cardGithubMode({})).toBeUndefined();
+    expect(cardGithubMode({ github: "offline" })).toBe("offline");
+    expect(replayGithubMode({ card: "c" })).toBe("live");
+    expect(replayGithubMode({ card: "c", github: "offline" })).toBe("offline");
+    expect(replayGithubMode({})).toBe("offline");
+    expect(replayGithubMode({ github: "live" })).toBe("live");
   });
 
   it("refuses --grant for the same unpressed card (the gap this closes)", () => {
