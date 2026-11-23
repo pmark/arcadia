@@ -502,21 +502,24 @@ const rj=(f)=>{try{return JSON.parse(fs.readFileSync(f,"utf8"))}catch{return nul
 const ls=(f)=>{try{return fs.readdirSync(f)}catch(e){if(e.code==="ENOENT"||e.code==="ENOTDIR")return [];fail("PRESS_UNREADABLE: "+f+" cannot be listed ("+e.code+"), so earlier presses cannot be counted or ruled out; preserve it and stop for the operator")}};
 const EARLIEST=Date.parse("2026-11-03T19:26:51Z");
 const idTime=(name)=>{const m=/^([0-9]{4})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{2})([0-9]{3})-/.exec(name);return m?Date.UTC(+m[1],+m[2]-1,+m[3],+m[4],+m[5],+m[6],+m[7]):null};
-const scanPresses=(lib,opens,offId)=>{const ops=p.join(lib,"runs","operator");
+// `kind` is "day" (Decision 0173) or "standing" (Decision 0241): a standing grant is superseded only by a later standing approval and also ends on the revoke card.
+const scanPresses=(lib,opens,offId,kind)=>{const ops=p.join(lib,"runs","operator"),standing=kind==="standing",block=standing?"standingGrant":"dayGrant",claimedFile=standing?"standing-grant.claimed":"day-grant.claimed";
   // Fail closed: a press since Decision 0170 that cannot be read could be a re-press to count or a later approval.
   for(const card of ls(ops))for(const name of ls(p.join(ops,card))){const dir=p.join(ops,card,name);let isDir=false;
     try{isDir=fs.statSync(dir).isDirectory()}catch(e){if(e.code!=="ENOENT")fail("PRESS_UNREADABLE: the press record "+card+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator")}
     if(!isDir)continue;const time=idTime(name);if(time!==null&&time<EARLIEST)continue;
     const run=rj(p.join(dir,"run.json"));if(time===null&&run&&Date.parse(run.startedAt)<EARLIEST)continue;
     if(!run||!rj(p.join(dir,"descriptor.json"))||run.schema!=="arcadia-operator-script-run-v1"||run.scriptId!==card||run.runId!==name)fail("PRESS_UNREADABLE: the press record "+card+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator");}
-  for(const other of ls(ops))for(const op of ls(p.join(ops,other))){const dir=p.join(ops,other,op);if(!(rj(p.join(dir,"descriptor.json"))||{}).dayGrant)continue;const r=rj(p.join(dir,"run.json"))||{};
-    if(r.status==="succeeded"&&r.press===undefined&&r.browserPress===true&&fs.existsSync(p.join(dir,"day-grant.claimed"))&&Date.parse(r.startedAt)>opens)fail("APPROVAL_SUPERSEDED: the operator approved a later day with "+other+"/"+op+"; a card names the latest approval");}
+  for(const other of ls(ops))for(const op of ls(p.join(ops,other))){const dir=p.join(ops,other,op);if(!(rj(p.join(dir,"descriptor.json"))||{})[block])continue;const r=rj(p.join(dir,"run.json"))||{};
+    if(r.status==="succeeded"&&r.press===undefined&&r.browserPress===true&&fs.existsSync(p.join(dir,claimedFile))&&Date.parse(r.startedAt)>opens)fail("APPROVAL_SUPERSEDED: the operator approved a later "+(standing?"standing grant":"day")+" with "+other+"/"+op+"; a card names the latest approval");}
   // Any press of the STOP card since the approval ends the day; one before it does not, so a later approval opens a new day.
   // A STOP pressed while production is Off writes no policy receipt, so its press is the only record.
-  for(const stop of ls(ops)){if(stop!==offId&&!/^restore-off-production(?:-|$)/.test(stop))continue;
+  for(const stop of ls(ops)){const revoke=standing&&/^revoke-standing-grant(?:-|$)/.test(stop);if(stop!==offId&&!/^restore-off-production(?:-|$)/.test(stop)&&!revoke)continue;
     for(const name of ls(p.join(ops,stop))){const dir=p.join(ops,stop,name);if(!fs.statSync(dir).isDirectory())continue;const time=idTime(name);if(time!==null&&time<EARLIEST)continue;
       const t=Date.parse((rj(p.join(dir,"run.json"))||{}).startedAt);if(!Number.isFinite(t))fail("PRESS_UNREADABLE: the press record "+stop+"/"+name+" cannot be read, so it cannot be counted or ruled out; preserve it and stop for the operator");
-      if(t>=opens)fail("DAY_ENDED_BY_OPERATOR: the STOP card "+stop+" was pressed at "+new Date(t).toISOString()+": an operator STOP ends the day, even with production already Off");}}};
+      if(t>=opens){if(revoke)fail("GRANT_REVOKED: the revoke card "+stop+" was pressed at "+new Date(t).toISOString()+": the standing grant is revoked");
+        if(standing)fail("GRANT_ENDED_BY_STOP: the STOP card "+stop+" was pressed at "+new Date(t).toISOString()+": an operator STOP ends the standing grant, even with production already Off");
+        fail("DAY_ENDED_BY_OPERATOR: the STOP card "+stop+" was pressed at "+new Date(t).toISOString()+": an operator STOP ends the day, even with production already Off");}}}};
 '
 check_day_grant() {
   local out evidence
@@ -541,9 +544,11 @@ const rb=fs.readFileSync(rp);
 if(sha(rb)!==d.approvalReceiptSha256)fail("APPROVAL_CHANGED: the approval receipt changed since this card was pinned");
 let a;try{a=JSON.parse(rb)}catch{fail("APPROVAL_NOT_PRESSED: the approval receipt is unreadable")}
 const pressId=(a.record||{}).operatorRunId;
-if(a.schema!=="arcadia-day-grant-receipt-v1"||a.id!==d.approvalCard||a.runId!==d.approvalRun||a.mode!=="run"||a.outcome!=="approved"||a.allowanceConsumed!==true||typeof pressId!=="string")fail("APPROVAL_NOT_PRESSED: the approval is not a consumed, approved /actions press of a day-grant card");
+// The approval is a day grant (Decision 0173) or a standing grant (Decision 0241), by its own receipt schema; each is checked in full against its own rules.
+const STANDING=a.schema==="arcadia-standing-grant-receipt-v1",label=STANDING?"standing-grant":"day-grant";
+if((a.schema!=="arcadia-day-grant-receipt-v1"&&!STANDING)||a.id!==d.approvalCard||a.runId!==d.approvalRun||a.mode!=="run"||a.outcome!=="approved"||a.allowanceConsumed!==true||typeof pressId!=="string")fail("APPROVAL_NOT_PRESSED: the approval is not a consumed, approved /actions press of a "+label+" card");
 const cm=rj(p.join(lib,d.approvalCard+".consumed.json"))||{};
-if(cm.state!=="CONSUMED"||cm.requestId!==d.approvalCard||cm.runId!==d.approvalRun)fail("APPROVAL_NOT_PRESSED: the day-grant card one-shot marker does not name this run");
+if(cm.state!=="CONSUMED"||cm.requestId!==d.approvalCard||cm.runId!==d.approvalRun)fail("APPROVAL_NOT_PRESSED: the "+label+" card one-shot marker does not name this run");
 const pd=p.join(lib,"runs","operator",d.approvalCard,pressId),pp=p.join(pd,"run.json");
 if(!fs.existsSync(pp))fail("APPROVAL_NOT_OPERATOR: the approval has no /actions press record");
 const pb=fs.readFileSync(pp);
@@ -552,22 +557,25 @@ const pr=rj(pp)||{};
 if(pr.schema!=="arcadia-operator-script-run-v1"||pr.scriptId!==d.approvalCard||pr.runId!==pressId||pr.status!=="succeeded")fail("APPROVAL_NOT_OPERATOR: the approval press record is not this card finished /actions press");
 if(pr.press!==undefined)fail("APPROVAL_NOT_OPERATOR: a delegated press never counts as the operator day approval");
 if(pr.browserPress!==true)fail("APPROVAL_NOT_OPERATOR: the approval was not pressed from the /actions page in a browser");
-let claimed="";try{claimed=fs.readFileSync(p.join(pd,"day-grant.claimed"),"utf8").trim()}catch{}
+let claimed="";try{claimed=fs.readFileSync(p.join(pd,STANDING?"standing-grant.claimed":"day-grant.claimed"),"utf8").trim()}catch{}
 if(claimed!==d.approvalRun)fail("APPROVAL_NOT_OPERATOR: the approval press record was not claimed by this run");
-const g=(rj(p.join(pd,"descriptor.json"))||{}).dayGrant;
-if(keys(g)!=="concurrency,decision,executorSha256,plan,project,provider,schema,spendDecision"||g.schema!=="arcadia-day-grant-v1"||g.decision!=="0173"||!SHA.test(g.executorSha256)||!SLUG.test(g.project)||!SLUG.test(g.plan)||g.provider!=="claude-code-cli"||g.concurrency!==1||!/^[0-9]{4}$/.test(g.spendDecision))fail("APPROVAL_NOT_OPERATOR: the approval press did not run a day-grant card");
+const g=(rj(p.join(pd,"descriptor.json"))||{})[STANDING?"standingGrant":"dayGrant"];
+if(keys(g)!=="concurrency,decision,executorSha256,plan,project,provider,schema,spendDecision"||g.schema!==(STANDING?"arcadia-standing-grant-v1":"arcadia-day-grant-v1")||g.decision!==(STANDING?"0241":"0173")||!SHA.test(g.executorSha256)||!SLUG.test(g.project)||!SLUG.test(g.plan)||g.provider!=="claude-code-cli"||g.concurrency!==1||!/^[0-9]{4}$/.test(g.spendDecision))fail("APPROVAL_NOT_OPERATOR: the approval press did not run a "+label+" card");
 // The press snapshot is not hashed, the receipt is: what the operator approved is what the pinned receipt recorded.
-if(a.record.project!==g.project||a.record.plan!==g.plan||a.record.provider!==g.provider||a.record.spendDecision!==g.spendDecision)fail("APPROVAL_CHANGED: the approval press day-grant block is not the Project, Plan, provider and spend Decision its receipt recorded");
+if(a.record.project!==g.project||a.record.plan!==g.plan||a.record.provider!==g.provider||a.record.spendDecision!==g.spendDecision)fail("APPROVAL_CHANGED: the approval press "+label+" block is not the Project, Plan, provider and spend Decision its receipt recorded");
 const opens=Date.parse(pr.startedAt);
 if(!Number.isFinite(opens))fail("APPROVAL_NOT_OPERATOR: the approval press has no readable start time");
-const closes=opens+WINDOW,now=Date.now();
-if(a.record.pressStartedAt!==pr.startedAt||Date.parse(a.record.windowClosesAt)!==closes)fail("APPROVAL_CHANGED: the approval receipt window is not exactly 24 hours from the press");
-if(now>=closes)fail("WINDOW_EXPIRED: the day approved at "+pr.startedAt+" ended at "+new Date(closes).toISOString()+"; it never renews itself");
+// A standing grant has no window (Decision 0241): it is open until an operator STOP, an operator Off or a revoke card ends it, however long ago the press was.
+const closes=STANDING?Infinity:opens+WINDOW,now=Date.now();
+if(a.record.pressStartedAt!==pr.startedAt)fail("APPROVAL_CHANGED: the approval receipt press time is not the press record");
+if(STANDING){if(a.record.windowClosesAt!==undefined)fail("APPROVAL_CHANGED: a standing-grant receipt records no window end")}
+else{if(Date.parse(a.record.windowClosesAt)!==closes)fail("APPROVAL_CHANGED: the approval receipt window is not exactly 24 hours from the press");
+  if(now>=closes)fail("WINDOW_EXPIRED: the day approved at "+pr.startedAt+" ended at "+new Date(closes).toISOString()+"; it never renews itself")}
 if(now<opens)fail("WINDOW_EXPIRED: the approval press is in the future");
 const baseline=a.record.policyRevisionAtApproval;
 if(!Number.isInteger(baseline))fail("APPROVAL_NOT_PRESSED: the approval receipt records no policy revision");
 const ops=p.join(lib,"runs","operator");
-scanPresses(lib,opens,me.offId);
+scanPresses(lib,opens,me.offId,STANDING?"standing":"day");
 // The scope the operator approved. P1 and P2 prove the Plan is active and the pinned Actions head its governed queue.
 if(me.project!==g.project||me.plan!==g.plan||me.provider!==g.provider||me.concurrency!==g.concurrency||me.spendDecision!==g.spendDecision)fail("SCOPE_NOT_APPROVED: this card scope ("+me.project+"/"+me.plan+", "+me.provider+", concurrency "+me.concurrency+", spend Decision "+me.spendDecision+") is not the Plan, provider and spend Decision the operator approved");
 // Every move of production since the approval.
@@ -578,7 +586,7 @@ let revision=baseline;
 for(const t of [...ev.transitions].filter((x)=>x.revisionBefore>=baseline).sort((x,y)=>x.revisionBefore-y.revisionBefore)){
   if(t.revisionBefore!==revision)fail("PRODUCTION_CHANGED: production policy moved from "+revision+" with no receipt (next receipt is at "+t.revisionBefore+"); no card may follow an unexplained move");
   if(t.transition==="activate"){if(!startCards.has(t.requestId))fail("PRODUCTION_CHANGED: production was activated by "+t.requestId+", which is no pressed START card");}
-  else if(!ROWAN_OFF.test(t.requestId)&&!executorOff(t.requestId))fail("DAY_ENDED_BY_OPERATOR: production was turned Off by "+t.requestId+", not by this chain or Rowan: an operator STOP or operator-issued Off ends the day");
+  else if(!ROWAN_OFF.test(t.requestId)&&!executorOff(t.requestId))fail((STANDING?"GRANT_ENDED_BY_OFF":"DAY_ENDED_BY_OPERATOR")+": production was turned Off by "+t.requestId+", not by this chain or Rowan: an operator STOP or operator-issued Off ends the "+(STANDING?"standing grant":"day"));
   revision=t.revisionAfter;}
 if(((me.production)||{}).revision!==revision)fail("PRODUCTION_CHANGED: this card pins policy revision "+((me.production)||{}).revision+", but the chain since the approval reaches "+revision);
 // Attempts are still numbered as Decision 0170 counted them (every activation that admitted a Session, a dashboard reactivation
@@ -647,10 +655,11 @@ const m=rj(p.join(lib,"reviewed",id+".json"))||{};
 if(typeof m.premortem!=="string"||!m.premortem.trim())fail("PREMORTEM_REQUIRED: the reviewed manifest of this card names no fresh pre-mortem");
 if(mode==="run"){const fresh=ls(p.join(lib,"runs",id)).map((run)=>rj(p.join(lib,"runs",id,run,"receipt.json"))).some((x)=>x&&x.mode==="preflight"&&x.outcome==="preflight_ok"&&(x.record||{}).reviewedRevision===me.reviewedRevision&&now-Date.parse(x.updatedAt)<=Number(maxPreflightAge));
   if(!fresh)fail("PREFLIGHT_REQUIRED: this card has no passing preflight at its revision from the last 2 hours");}
-process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"+d.approvalRun,approvalPressAt:pr.startedAt,windowClosesAt:new Date(closes).toISOString(),attempt:d.attempt,attemptsBefore:attempts,failedBatchesToday:failed.length,clearedFailures:cleared,rePressesToday:rePresses,previous:prev||null,chainKey:latest?latest.card+"--"+latest.pr:"first",premortem:m.premortem,baselineRevision:baseline}));
+process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"+d.approvalRun,approvalPressAt:pr.startedAt,approvalKind:STANDING?"standing":"day",windowClosesAt:STANDING?null:new Date(closes).toISOString(),attempt:d.attempt,attemptsBefore:attempts,failedBatchesToday:failed.length,clearedFailures:cleared,rePressesToday:rePresses,previous:prev||null,chainKey:latest?latest.card+"--"+latest.pr:"first",premortem:m.premortem,baselineRevision:baseline}));
 ' "$LIBRARY_DIR" "$ID" "$DELEGATION" "$DESCRIPTOR" "$evidence" "${OPERATOR_RUN_ID:-}" "$MODE" "$DAY_GRANT_PREFLIGHT_MAX_AGE_MS")" || refuse "Decision 0173: $out"
   rec delegation "$out"
-  DAY_WINDOW_CLOSES="$(jq -r '.windowClosesAt' <<<"$out")"
+  DAY_WINDOW_CLOSES="$(jq -r '.windowClosesAt // "none"' <<<"$out")"  # "none": a standing grant has no window
+  DAY_APPROVAL_KIND="$(jq -r '.approvalKind' <<<"$out")"
   DAY_CHAIN_KEY="$(jq -r '.chainKey' <<<"$out")"
   DAY_APPROVAL_OPENS="$(jq -r '.approvalPressAt' <<<"$out")"
   DAY_CLEARED_FAILURES="$(jq -c '.clearedFailures' <<<"$out")"
@@ -660,8 +669,8 @@ process.stdout.write(JSON.stringify({decision:"0173",approval:d.approvalCard+"/"
 check_day_window() {
   local out
   [[ "$DELEGATION_DECISION" == 0173 ]] || return 0
-  node -e 'process.exit(Date.now() < Date.parse(process.argv[1]) ? 0 : 1)' "$DAY_WINDOW_CLOSES" || refuse "Decision 0173: WINDOW_EXPIRED: $1"
-  out="$(node -e "$DAY_PRESS_SCAN_JS"'scanPresses(process.argv[1],Date.parse(process.argv[2]),process.argv[3]);' "$LIBRARY_DIR" "$DAY_APPROVAL_OPENS" "$OFF_ID")" || refuse "Decision 0173: $out"
+  [[ "$DAY_WINDOW_CLOSES" == none ]] || node -e 'process.exit(Date.now() < Date.parse(process.argv[1]) ? 0 : 1)' "$DAY_WINDOW_CLOSES" || refuse "Decision 0173: WINDOW_EXPIRED: $1"
+  out="$(node -e "$DAY_PRESS_SCAN_JS"'scanPresses(process.argv[1],Date.parse(process.argv[2]),process.argv[3],process.argv[4]);' "$LIBRARY_DIR" "$DAY_APPROVAL_OPENS" "$OFF_ID" "${DAY_APPROVAL_KIND:-day}")" || refuse "Decision 0173: $out"
 }
 claim_operator_press_record() {  # exclusive; called once every other P0 check has passed
   [[ "$MODE" == run ]] || return 0
@@ -691,7 +700,7 @@ phase_p0() {
   check_card_rederived P0
   check_delegation
   if [[ "$MODE" == run && "$DELEGATION_DECISION" == 0173 ]]; then
-    rec_str authority "Rowan's delegated press of this START card from /actions under Decision 0173, within the operator's day approval $(jq -r '.approvalCard + "/" + .approvalRun' <<<"$DELEGATION") (the run's activation touch), open until $DAY_WINDOW_CLOSES; attempt $(jq -r '.attempt' <<<"$DELEGATION") (numbered since Decision 0170) if it admits a Session, under Decision 0181, which stops for the operator after a failed batch; never recorded as the operator's press"
+    rec_str authority "Rowan's delegated press of this START card from /actions under Decision 0173, within the operator's $([[ "$DAY_APPROVAL_KIND" == standing ]] && echo standing-grant || echo day) approval $(jq -r '.approvalCard + "/" + .approvalRun' <<<"$DELEGATION") (the run's activation touch), $([[ "$DAY_WINDOW_CLOSES" == none ]] && echo "open until an operator STOP, an operator Off or a revoke card ends it (Decision 0241, no 24-hour window)" || echo "open until $DAY_WINDOW_CLOSES"); attempt $(jq -r '.attempt' <<<"$DELEGATION") (numbered since Decision 0170) if it admits a Session, under Decision 0181, which stops for the operator after a failed batch; never recorded as the operator's press"
   elif [[ "$MODE" == run && "$DELEGATION" != null ]]; then
     rec_str authority "Rowan's delegated press of this successor START card from /actions under Decision 0163, delegated from the operator's originating press $(jq -r '.originatingCard + "/" + .originatingRun' <<<"$DELEGATION") (the one activation touch); attempt $(jq -r '.attempt' <<<"$DELEGATION") of at most 5; Decisions 0156, 0157, 0161, 0162 and 0163 are verified at the reviewed revision in P1"
   elif [[ "$MODE" == run ]]; then

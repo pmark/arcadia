@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import type { StartRunPins } from "../src/operatorActions/startRunPins.js";
 import { CONTINUE_ANSWER, CONTINUE_SLUG } from "../src/operatorActions/startRunDayGrant.js";
-import { DAY_CARD, DAY_RUN, dayScenarios, fixed, mergedFix, OLD_FIX_COMMIT, pressKey, STOP_ID, writeDayScenario, type DayScenario } from "./helpers/dayGrantFixture.js";
+import { DAY_CARD, DAY_RUN, dayScenarios, fixed, mergedFix, named, OLD_FIX_COMMIT, pressKey, STOP_ID, writeDayApproval, writeDayScenario, writeStopPress, type DayScenario } from "./helpers/dayGrantFixture.js";
 
 /**
  * Hermetic cases for scripts/start-run.sh, the shared executor of every per-run START card. Each case copies the real
@@ -1043,6 +1043,100 @@ describe("start-run executor: a standing-grant card is refused unless it re-deri
     const day = box({ dayGrant: FIRST });
     expect(day.run("preflight").status).toBe(0);
     expect(derives(day)).toHaveLength(0);
+  });
+});
+
+describe("start-run executor: a derived card under a standing grant passes the delegation check (Decision 0241 E, issue #3001)", () => {
+  const DAY = 24 * 3_600_000;
+  const STANDING = "standing-start-fixture0001";
+  const verdicts = (n: number) => (s: Record<string, any>) => { s.derive = { verdicts: Array(n).fill(null) }; };
+  /** The first scenario with its approval a real standing-grant press (receipt, one-shot marker, press record, claim marker), pressed `ageMs` ago. */
+  const standing = (ageMs: number, approval: Record<string, unknown> = {}, extra: Partial<DayScenario> = {}): DayScenario => {
+    const first = dayScenarios(Date.now())[0];
+    return { ...first, ...extra, approval: { ...first.approval, standing: true, pressedAt: Date.now() - ageMs, ...approval } };
+  };
+  const refusal = (scenario: DayScenario, code: string) => {
+    const b = box({ dayGrant: scenario, cardId: STANDING, state: verdicts(1) });
+    expectRefusedClean(b, b.run("preflight"), "P0", new RegExp(`^Decision 0173: ${code}: `), b.head());
+  };
+  it("passes P0 for a standing-grant approval, and records that it has no window", () => {
+    const b = box({ dayGrant: standing(3_600_000), cardId: STANDING, state: verdicts(1) });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt!.record.delegation).toMatchObject({ decision: "0173", approvalKind: "standing", windowClosesAt: null, attempt: 1, previous: null });
+  });
+  it("does not close a standing grant pressed days ago: it has no 24-hour window", () => {
+    const b = box({ dayGrant: standing(5 * DAY), cardId: STANDING, state: verdicts(1) });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt!.record.delegation).toMatchObject({ approvalKind: "standing", windowClosesAt: null });
+  });
+  it("keeps the day window for a day grant under a standing-start id: five days old still refuses", () => {
+    const first = dayScenarios(Date.now())[0];
+    refusal({ ...first, approval: { pressedAt: Date.now() - 5 * DAY } }, "WINDOW_EXPIRED");
+  });
+  it("runs the press to START for a standing grant: the window check again in P2 and P3, then activation", () => {
+    const b = box({ dayGrant: standing(5 * DAY), cardId: STANDING, state: verdicts(3) });
+    expect(b.run("preflight").status).toBe(0);
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", productionActivated: true });
+    expect(result.receipt!.record.authority).toContain("standing-grant approval");
+    expect(result.receipt!.record.authority).toContain("no 24-hour window");
+  }, 120_000);
+  it.each([
+    ["an unconsumed standing-grant card (no one-shot marker)", { noConsumedMarker: true }, "APPROVAL_NOT_PRESSED"],
+    ["a standing receipt whose outcome is not approved", { receipt: { outcome: "refused" } }, "APPROVAL_NOT_PRESSED"],
+    ["a standing receipt whose allowance was not consumed", { receipt: { allowanceConsumed: false } }, "APPROVAL_NOT_PRESSED"],
+    ["a standing receipt of a preflight, not a press", { receipt: { mode: "preflight" } }, "APPROVAL_NOT_PRESSED"],
+    ["a standing receipt whose id does not match the delegation", { receipt: { id: "another-standing-card" } }, "APPROVAL_NOT_PRESSED"],
+    ["a standing receipt whose run does not match the delegation", { receipt: { runId: "20261104T000000Z-1" } }, "APPROVAL_NOT_PRESSED"],
+    ["a standing receipt with no press record", { noPressRecord: true }, "APPROVAL_NOT_OPERATOR"],
+    ["a standing press not from a browser", { browser: false }, "APPROVAL_NOT_OPERATOR"],
+    ["a delegated press as the standing approval", { delegated: true }, "APPROVAL_NOT_OPERATOR"],
+    ["a standing press record its run never claimed", { noClaim: true }, "APPROVAL_NOT_OPERATOR"],
+    ["a standing press carrying a loose standing-grant block", { pins: { extra: 1 } }, "APPROVAL_NOT_OPERATOR"],
+    ["a standing receipt that records a 24-hour window", { record: { windowClosesAt: new Date(Date.now() + DAY).toISOString() } }, "APPROVAL_CHANGED"],
+    ["a standing press snapshot changed from what the receipt recorded", { record: { plan: "the-plan-the-receipt-names" } }, "APPROVAL_CHANGED"],
+    ["a standing grant for another Plan", { pins: { plan: "another-active-plan" } }, "SCOPE_NOT_APPROVED"]
+  ])("refuses %s in P0, before anything is consumed", (_label, approval, code) => {
+    refusal(standing(3_600_000, approval), code);
+  });
+  it("refuses a standing receipt whose press record carries a day-grant block instead of the standing one", () => {
+    refusal(standing(3_600_000, {}, { after: (_library, approval) => { const dir = path.dirname(approval.pressPath); const block = JSON.parse(readFileSync(path.join(dir, "descriptor.json"), "utf8")).standingGrant; writeFileSync(path.join(dir, "descriptor.json"), JSON.stringify({ dayGrant: { ...block, schema: "arcadia-day-grant-v1", decision: "0173" } })); } }), "APPROVAL_NOT_OPERATOR");
+  });
+  it("ends a standing grant on an operator STOP card pressed after it, and not on one pressed before", () => {
+    refusal(standing(DAY, {}, { after: (library) => writeStopPress(library, Date.now() - 20 * 60_000) }), "GRANT_ENDED_BY_STOP");
+    const b = box({ dayGrant: standing(DAY, {}, { after: (library) => writeStopPress(library, Date.now() - 2 * DAY) }), cardId: STANDING, state: verdicts(1) });
+    expect(b.run("preflight").status).toBe(0);
+  });
+  it("ends a standing grant on the revoke card, which a day grant does not read", () => {
+    const revoke = { after: (library: string) => writeStopPress(library, Date.now() - 20 * 60_000, { card: "revoke-standing-grant-20261123" }) };
+    refusal(standing(DAY, {}, revoke), "GRANT_REVOKED");
+    const first = dayScenarios(Date.now())[0];
+    const b = box({ dayGrant: { ...first, ...revoke }, cardId: STANDING, state: verdicts(1) });
+    expect(b.run("preflight").status).toBe(0);
+  });
+  it("ends a standing grant on an operator-issued Off", () => {
+    refusal(standing(3 * 3_600_000, {}, { attempt: 2, presses: [{ card: "start-a", at: Date.now() - 40 * 60_000, status: "succeeded", receipt: { outcome: "succeeded", reason: "", productionActivated: true, allowanceConsumed: true } }], steps: [{ activate: "start-a", clean: true }, { off: "dashboard-toggle-1-abcd" }], previous: named(pressKey("start-a"), "scope-complete", "clean-batch") }), "GRANT_ENDED_BY_OFF");
+  });
+  it("refuses a standing approval a later standing approval supersedes, and ignores a later day approval", () => {
+    const later = (spec: Record<string, unknown>) => (library: string) => { writeDayApproval(library, { card: "standing-later", run: "20261104T100000Z-888", press: "20261104100000000-later", pressedAt: Date.now() - 5 * 60_000, ...spec }); };
+    refusal(standing(DAY, {}, { after: later({ standing: true }) }), "APPROVAL_SUPERSEDED");
+    const b = box({ dayGrant: standing(DAY, {}, { after: later({}) }), cardId: STANDING, state: verdicts(1) });
+    expect(b.run("preflight").status).toBe(0);
+  });
+  it("still applies the chain checks to a standing grant: the pre-mortem pointer, attempt and previous-press cause", () => {
+    const noPremortem = box({ dayGrant: standing(3_600_000), cardId: STANDING, noPremortem: true, state: verdicts(1) });
+    expectRefusedClean(noPremortem, noPremortem.run("preflight"), "P0", /^Decision 0173: PREMORTEM_REQUIRED: /, noPremortem.head());
+    refusal(standing(3_600_000, {}, { attempt: 3 }), "ATTEMPT_MISMATCH");
+    refusal(standing(3_600_000, {}, { attempt: 1, previous: null, presses: [{ card: "start-a", at: Date.now() - 40 * 60_000, receipt: {} }] }), "PREVIOUS_CAUSE_REQUIRED");
+  });
+  it("still needs a fresh preflight before the press of a standing-grant card", () => {
+    const b = box({ dayGrant: standing(3_600_000), cardId: STANDING, state: verdicts(1) });
+    const result = b.run();
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P0", allowanceConsumed: false });
+    expect(result.receipt!.reason).toMatch(/^Decision 0173: PREFLIGHT_REQUIRED: /);
   });
 });
 
