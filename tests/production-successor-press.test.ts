@@ -8,7 +8,7 @@ import { ROWAN_OFF_REQUEST, standingGrantStatus, STANDING_SLUG, type DayGrantPre
 import { DERIVED_CARD_LIFETIME_MS, deriveStartCard, verifyDerivedCard, type DeriveInput, type DerivePlanAction, type FailedBatchClearance } from "../src/operatorActions/startRunDerive.js";
 import { delegatedPressMarker } from "../src/operatorActions/startRunDelegation.js";
 import { buildReplayReceipt, checkReplayReceipt, replayCardIdentity, replayReceiptPath } from "../src/operatorActions/startRunReplayReceipt.js";
-import { blockingHolds } from "../src/commands/productionSuccessor.js";
+import { blockingHolds, realSuccessorPorts } from "../src/commands/productionSuccessor.js";
 import { SUCCESSOR_MAIN_MOVED_RETRY_BOUND, SUCCESSOR_OFF_SLUG, SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, emptySuccessorState, runSuccessorPressStep, type SuccessorPorts, type SuccessorProduction, type SuccessorState } from "../src/production/successorPress.js";
 import { DAY_PLAN, DAY_RUN, STOP_ID, writeDayApproval, writeDayScenario } from "./helpers/dayGrantFixture.js";
 
@@ -252,6 +252,42 @@ describe("successor press: a hold only blocks a card that can still be pressed (
     expect(consumed.ports.holds()).toEqual([]);
     expect(step(consumed, emptySuccessorState()).outcome).toMatchObject({ kind: "pressed" });
     expect(heldWorld(null).ports.holds()).toEqual([]);
+  });
+
+  it("treats `expires_at == now` as expired and `expires_at == now + 1 ms` as still held (start-run.sh check_expiry: Date.now() < expires_at)", () => {
+    const w = heldWorld(card("2026-11-22T00:00:00.000Z"), "2026-11-22T00:00:00.000Z");
+    expect(w.ports.holds()).toEqual([]);
+    writeFileSync(path.join(w.library, `${HELD}.json`), card("2026-11-22T00:00:00.001Z"));
+    expect(w.ports.holds()).toEqual([`START card ${HELD} is held`]);
+  });
+
+  it("drops the hold only when the descriptor is absent (ENOENT); a descriptor that cannot be read keeps it", () => {
+    const w = heldWorld(null, "2026-11-22T15:00:00Z");
+    expect(w.ports.holds()).toEqual([]);
+    // EISDIR: the descriptor path is a directory.
+    mkdirSync(path.join(w.library, `${HELD}.json`));
+    expect(w.ports.holds()).toEqual([`START card ${HELD} is held`]);
+    rmSync(path.join(w.library, `${HELD}.json`), { recursive: true });
+    // EACCES: an unreadable file (root ignores the mode, so skip this half there).
+    if (process.getuid?.() !== 0) {
+      writeFileSync(path.join(w.library, `${HELD}.json`), card("2026-11-21T07:27:00Z"), { mode: 0o000 });
+      expect(w.ports.holds()).toEqual([`START card ${HELD} is held`]);
+    }
+  });
+
+  it("the real `holds` port over a temp library names only the holds on cards that can still be pressed", async () => {
+    const workspace = path.join(tempDir("arcadia-successor-ws-"), "workspace");
+    const { initWorkspace } = await import("../src/workspace/initWorkspace.js");
+    initWorkspace(workspace);
+    const library = tempDir("arcadia-successor-lib-");
+    const hold = (id: string, expiresAt: string) => {
+      writeFileSync(path.join(library, `${id}.held.json`), "{}");
+      writeFileSync(path.join(library, `${id}.json`), card(expiresAt));
+    };
+    hold("live-card", "2026-11-23T00:00:00Z");
+    hold("expired-card", "2026-11-21T07:27:00Z");
+    const ports = realSuccessorPorts({ workspace, repository: tempDir("arcadia-successor-repo-"), library }, new Date("2026-11-22T15:00:00Z"), () => ({ id: "ping" }));
+    expect(ports.holds()).toEqual(["START card live-card is held"]);
   });
 
   it.each([["unreadable", "{not json"], ["without expires_at", JSON.stringify({ startRun: {} })], ["with an unparseable expires_at", card("soon")]])("keeps the hold when the descriptor is %s (fail closed)", (_label, descriptor) => {

@@ -89,14 +89,13 @@ function readMainChecks(repository: string): { green: boolean; detail: string } 
 export function blockingHolds(library: string, files: string[], now: Date): string[] {
   const pressable = (id: string): boolean => {
     if (existsSync(path.join(library, `${id}.consumed.json`))) return false;
-    const raw = readOrNull(path.join(library, `${id}.json`));
-    if (raw === null) return false;
     try {
-      const expiresAt = (JSON.parse(raw) as { expires_at?: unknown } | null)?.expires_at;
+      const expiresAt = (JSON.parse(readFileSync(path.join(library, `${id}.json`), "utf8")) as { expires_at?: unknown } | null)?.expires_at;
       const expiry = typeof expiresAt === "string" ? Date.parse(expiresAt) : Number.NaN;
       return Number.isFinite(expiry) ? expiry > now.getTime() : true;
-    } catch {
-      return true;
+    } catch (error) {
+      // Only a descriptor that is absent (ENOENT) is gone; any other read error (EACCES, EISDIR, EIO) or bad JSON cannot be judged.
+      return (error as NodeJS.ErrnoException).code !== "ENOENT";
     }
   };
   return files.filter((name) => name.endsWith(".held.json")).map((name) => name.slice(0, -".held.json".length)).filter(pressable).map((id) => `START card ${id} is held`);
