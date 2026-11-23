@@ -1197,6 +1197,16 @@ export function cardSimulatesGithubWrites(options: Pick<ReplayOptions, "card" | 
   return options.simulateGithubWrites ?? (options.card ? true : undefined);
 }
 
+/** A `--card` replay reads GitHub live (reads only; writes stay refused or simulated) unless `--github` says otherwise: offline, the first tick's Project board read has no recorded answer and stops the replay (Issue #2999). */
+export function cardGithubMode(options: Pick<ReplayOptions, "card" | "github">): ReplayOptions["github"] {
+  return options.github ?? (options.card ? "live" : undefined);
+}
+
+/** The REPLAY_GH_MODE the child gets: other replays stay offline unless asked. */
+export function replayGithubMode(options: Pick<ReplayOptions, "card" | "github">): "offline" | "live" {
+  return cardGithubMode(options) ?? "offline";
+}
+
 /** Phase 1: build the replay root from the source, then run phase 2 in an isolated child. */
 export function runProductionReplay(options: ReplayOptions): ReplayReport {
   if (options.executor !== undefined && options.executor !== "scripted" && options.executor !== "real" && !(typeof options.executor === "string" && /^candidate:\S+$/.test(options.executor))) {
@@ -1361,7 +1371,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
       ARCADIA_REQUIRE_INLINE_WORKSPACE: "1",
       ARCADIA_PRESERVATION_HOST_TEST: "",
       REPLAY_EFFECTS_LOG: effectsLog,
-      REPLAY_GH_MODE: options.github ?? "offline",
+      REPLAY_GH_MODE: replayGithubMode(options),
       REPLAY_GH_RECORDING: recording,
       REPLAY_REAL_GH: realGh,
       REPLAY_REAL_HOME: realHome,
@@ -1389,6 +1399,10 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
     if (options.executor) {
       print(`EXECUTOR ${options.executor}: the Session's result is produced by the replay, then the real tick reconciles, validates, settles, preserves, opens a SIMULATED PR, reviews and worker-merges (simulated; only the replay's local origin moves).`);
       fidelity.push(`SIMULATION: --executor ${options.executor}; the pull request is simulated: required checks are green on the exact head by construction, \`gh pr merge\` fast-forwards only the replay's local bare origin, and branch protection, CI and conflicts are not replayed.`);
+    }
+    if (options.card && replayGithubMode(options) === "live") {
+      print("GITHUB READS ARE LIVE for this --card replay (gh reads only; every GitHub write is refused or simulated); pass --github offline to replay only recorded answers.");
+      fidelity.push("GITHUB READS LIVE: a --card replay reads real GitHub (Project items, Issues, pull requests) when --github is not given; reads are recorded, and no GitHub write is sent.");
     }
     if (options.simulateGithubWrites) {
       print("SIMULATION: gh pr ready/comment/close/edit/merge and gh project item-edit/item-add and gh issue create/edit/comment/close (Action mirror Issues) succeed without GitHub; later PR reads see the simulated state.");
