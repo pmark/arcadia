@@ -165,9 +165,9 @@ Compaction is strongly discouraged.
   After the handoff block and the mining pass:
   1. Start Signal n+1 with your runtime's session tool. In the Claude desktop app
      that is `start_session`: a fresh context, on the host, titled
-     `⭐ Signal n+1 · taking contact`. Use the model and effort that
-     `arcadia role brief` resolves for the coordinator role (see "Launching
-     agents"). The brief: "Be Signal n+1: load the arcadia-signal skill and read the
+     `⭐ Signal n+1 · taking contact`, on your own model and effort, passed
+     explicitly. A successor coordinator is not a helper: never resolve it with
+     `arcadia role brief` without `--tier`, which gives the light tier. The brief: "Be Signal n+1: load the arcadia-signal skill and read the
      HANDOFF TO SIGNAL n+1 block at <path> (sha256 <sha>). Your first act is to
      message Signal n (session <your local_… id>): 'Signal n+1 holds contact.'"
   2. When that message arrives:
@@ -182,6 +182,8 @@ Compaction is strongly discouraged.
      session tool exists (Codex, OpenCode). Put the quickest start at the top as a
      👆 banner and name the reason: a one-tap card if the tool offered one,
      otherwise a paste-ready prompt for the operator's own coding-agent app.
+     After a timeout, tell him Signal n+1 may still appear late: whichever one he
+     starts or answers holds contact, and the other is closed.
   4. **Not the relay.** `arcadia coordinator renew --role signal` waits for the
      separate Decision that Decision 0284 requires, and for phone visibility of
      tmux sessions (#2316).
