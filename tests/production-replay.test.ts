@@ -7,7 +7,7 @@ import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
 import { readCodexRateLimitsLive } from "../src/codingAgents/availability.js";
-import { replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { cardSimulatesGithubWrites, replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
@@ -526,6 +526,13 @@ describe("production replay of a card never pressed (--card)", () => {
   afterAll(() => {
     source?.dispose();
     if (parent) rmSync(parent, { recursive: true, force: true });
+  });
+
+  it("answers the Action mirror Issue writes as SIMULATED by default, and an explicit simulateGithubWrites: false still wins", () => {
+    expect(printed.join("\n")).toContain("gh issue create/edit/comment/close (Action mirror Issues) succeed without GitHub");
+    expect(cardSimulatesGithubWrites({ card: "c" })).toBe(true);
+    expect(cardSimulatesGithubWrites({ card: "c", simulateGithubWrites: false })).toBe(false);
+    expect(cardSimulatesGithubWrites({})).toBeUndefined();
   });
 
   it("refuses --grant for the same unpressed card (the gap this closes)", () => {

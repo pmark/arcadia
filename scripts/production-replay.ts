@@ -1192,6 +1192,11 @@ export function replaySpendCheck(executor: ReplayOptions["executor"], now: Date)
   return { report: (id) => ({ verdict: "clear", providers: [{ id, verdict: "clear", codes: [], probes: [] }], warnings: [], checkedAt: now.toISOString() }) as never };
 }
 
+/** A `--card` replay answers the Action mirror Issue writes itself (SIMULATED) unless the caller says otherwise; other replays only when asked. */
+export function cardSimulatesGithubWrites(options: Pick<ReplayOptions, "card" | "simulateGithubWrites">): boolean | undefined {
+  return options.simulateGithubWrites ?? (options.card ? true : undefined);
+}
+
 /** Phase 1: build the replay root from the source, then run phase 2 in an isolated child. */
 export function runProductionReplay(options: ReplayOptions): ReplayReport {
   if (options.executor !== undefined && options.executor !== "scripted" && options.executor !== "real" && !(typeof options.executor === "string" && /^candidate:\S+$/.test(options.executor))) {
@@ -1200,7 +1205,7 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
   if (options.reviewers !== undefined && options.reviewers !== "real" && options.reviewers !== "simulated") throw new Error("--reviewers is real or simulated.");
   if (options.executor && !options.simulateGithubWrites) throw new Error("--executor needs --simulate-github-writes: the pull request it opens and merges is simulated.");
   // A START card's first tick mirrors each Action as a GitHub Issue; the replay answers that write itself (SIMULATED, never GitHub).
-  if (options.card && options.simulateGithubWrites === undefined) options = { ...options, simulateGithubWrites: true };
+  options = { ...options, simulateGithubWrites: cardSimulatesGithubWrites(options) };
   const realCodex = options.reviewers === "real" ? which("codex") : null;
   if (options.reviewers === "real" && !realCodex) throw new Error("--reviewers real needs the codex CLI on PATH.");
   const realClaude = options.executor === "real" ? which("claude") : null;
