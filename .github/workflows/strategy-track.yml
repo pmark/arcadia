@@ -1,0 +1,35 @@
+name: Strategy track
+
+# Twice a day, is the current strategy (docs/strategy/current.json) on track?
+# Red when a runtime change reached main outside the engine freeze, when last
+# night produced no worker merge, or when the checkpoint passed with no verdict.
+# Read-only: it writes nothing to the repository and posts nothing.
+on:
+  schedule:
+    - cron: "15 16 * * *" # 8:15 AM PST (9:15 AM PDT): all checks, including last night's worker merges
+    - cron: "15 5 * * *" # 9:15 PM PST (10:15 PM PDT): freeze, strategy and checkpoint only; the night check runs in the morning
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  track:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: jdx/mise-action@5228313ee0372e111a38da051671ca30fc5a96db # v3
+        with:
+          install: true
+          cache: true
+      - run: mise exec -- corepack enable pnpm
+      - run: mise exec -- pnpm install --frozen-lockfile
+      - name: Is the strategy on track?
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mise exec -- node --import tsx .github/scripts/strategyGuard.ts track
