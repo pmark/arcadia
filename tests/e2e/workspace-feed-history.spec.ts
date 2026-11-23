@@ -43,7 +43,7 @@ test("consumed operator cards leave Your move and stay findable under the histor
     await expect(move.getByText("START batch E")).toHaveCount(0);
     await expect(feed.getByRole("region", { name: "History" })).toHaveCount(0);
 
-    await feed.getByRole("button", { name: "Show history (2 ended cards)" }).click();
+    await feed.getByRole("button", { name: "History (2 ended cards)" }).click();
     const history = feed.getByRole("region", { name: "History" });
     await expect(history.getByText("START batch E (voided)")).toBeVisible();
     await expect(history).toContainText("Voided");
@@ -52,7 +52,7 @@ test("consumed operator cards leave Your move and stay findable under the histor
     await expect(history).toContainText(/Nov 1[67], .* (AM|PM) \w+/);
     await expect(move.getByText("START batch E")).toHaveCount(0);
 
-    await feed.getByRole("button", { name: "Hide history" }).click();
+    await feed.getByRole("button", { name: "History (2 ended cards)" }).click();
     await expect(history).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await testInfo.attach("feed-history", { body: await page.screenshot(), contentType: "image/png" });

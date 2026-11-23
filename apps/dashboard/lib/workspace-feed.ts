@@ -46,11 +46,11 @@ export function buildFeed({ approvals, nextSteps, pullRequests, endedCards }: Fe
   const ended = new Map((endedCards ?? []).filter(c => c.state !== "actionable").map(c => [cardStepId(c.id), c]));
   const allSteps = nextSteps ? [...(nextSteps.nowStep ? [nextSteps.nowStep] : []), ...nextSteps.steps.filter(s => s.id !== nextSteps.nowStep?.id)] : [];
   const steps = allSteps.filter(s => !ended.has(s.id));
-  steps.forEach((step, index) => {
+  steps.forEach(step => {
     // A wait step has nothing for the operator to press: it names what the work is waiting on.
     const wait = step.kind === "wait";
     const href = wait ? null : stepHref(step.href);
-    const now = index === 0 && Boolean(nextSteps?.nowStep) && !wait;
+    const now = Boolean(nextSteps?.nowStep) && step.id === nextSteps?.nowStep?.id && !wait;
     items.push({
       key: `action:${step.id}`,
       kind: "action",
@@ -94,11 +94,13 @@ export function buildFeed({ approvals, nextSteps, pullRequests, endedCards }: Fe
   // Ended cards: newest end first. Each links to its card's page and never offers a press.
   const history = [...ended.values()].sort((a, b) => time(b.at) - time(a.at));
   for (const card of history) {
-    if (card.state === "actionable") continue;
     items.push({ key: `history:${card.id}`, kind: "action", section: HISTORY, title: card.title, detail: formatCardTime(card.at) || null, chip: CARD_STATE_LABEL[card.state], href: `/actions/${encodeURIComponent(card.id)}`, external: false, at: card.at, urgent: false });
   }
   return items;
 }
+
+/** The items that are live work: History is a filtered view, never a reason the feed is non-empty. */
+export const liveItems = (items: FeedItem[]) => items.filter(i => i.section !== HISTORY);
 
 export function feedSections(items: FeedItem[], includeHistory = false): Array<{ section: FeedSection; items: FeedItem[] }> {
   return (includeHistory ? [...SECTIONS, HISTORY] : SECTIONS).map(section => ({ section, items: items.filter(i => i.section === section) })).filter(s => s.items.length);

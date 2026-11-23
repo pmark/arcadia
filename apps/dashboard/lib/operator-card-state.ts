@@ -47,7 +47,9 @@ export function classifyCard(evidence: CardEvidence, now: Date): CardClassificat
   const held = evidence.heldHistory.filter(e => e.event === "held" && typeof e.reason === "string");
   const voided = [...held].reverse().find(e => VOIDED.test(e.reason!));
   if (voided) return { ...base, state: "voided", at: voided.at ?? null };
-  const superseded = [...held].reverse().find(e => SUPERSEDED.test(e.reason!));
+  // A later `unheld` reinstates a superseded card (the hold was lifted on purpose); it never un-voids one.
+  const lastUnheld = Math.max(-1, ...evidence.heldHistory.map((e, i) => (e.event === "unheld" ? i : -1)));
+  const superseded = [...evidence.heldHistory.entries()].reverse().find(([i, e]) => e.event === "held" && typeof e.reason === "string" && SUPERSEDED.test(e.reason) && i > lastUnheld)?.[1];
   if (superseded) return { ...base, state: "superseded", at: superseded.at ?? null };
   const expires = evidence.expiresAt ? Date.parse(evidence.expiresAt) : NaN;
   if (Number.isFinite(expires) && expires <= now.getTime()) return { ...base, state: "expired", at: new Date(expires).toISOString() };

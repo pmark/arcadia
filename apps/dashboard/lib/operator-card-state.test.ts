@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cardStepId, classifyCard, formatCardTime, type CardEvidence } from "./operator-card-state";
 import { readCardStates } from "./operator-card-state-server";
-import { buildFeed, feedSections } from "./workspace-feed";
+import { buildFeed, feedSections, liveItems } from "./workspace-feed";
 import type { NextStepsResponse } from "./next-steps-server";
 
 const NOW = new Date("2026-11-22T20:00:00Z");
@@ -75,7 +75,7 @@ describe("the feed with ended cards", () => {
     const sections = feedSections(items);
     expect(all.length).toBe(22);
     expect(sections.map(s => [s.section, s.items.length])).toEqual([["Your move", 2]]);
-    expect(sections[0].items.map(x => x.title)).toEqual(["Run start-run-live-1", "Run approve-live-2"].sort((a, b) => all.indexOf(a.replace("Run ", "")) - all.indexOf(b.replace("Run ", ""))));
+    expect(sections[0].items.map(x => x.title)).toEqual(["Run start-run-live-1", "Run approve-live-2"]);
     const history = feedSections(items, true).find(s => s.section === "History")!.items;
     expect(history).toHaveLength(20);
     expect(history.find(h => h.key === `history:${A}`)).toMatchObject({ chip: "Voided" });
@@ -84,6 +84,21 @@ describe("the feed with ended cards", () => {
     // Newest end first; nothing in the library was written, renamed or deleted.
     expect(history[0].chip).toBe("Expired");
     expect(await hash(dir)).toBe(before);
+  });
+
+  it("a superseded card is reinstated by a later unhold, a voided one is not; an ended nowStep does not promote the next step", () => {
+    const held = { event: "held", at: "2026-11-18T01:00:00Z", reason: "Superseded by the next batch card" };
+    expect(classifyCard(ev({ heldHistory: [held, { event: "unheld", at: "2026-11-18T02:00:00Z" }] }), NOW).state).toBe("actionable");
+    expect(classifyCard(ev({ heldHistory: [{ ...held, reason: "Voided: main moved" }, { event: "unheld", at: "2026-11-18T02:00:00Z" }] }), NOW).state).toBe("voided");
+    const now = runStep(A);
+    const items = buildFeed({ approvals: null, pullRequests: null, nextSteps: { nowStep: now, steps: [now, runStep("x")] } as unknown as NextStepsResponse, endedCards: [{ id: A, title: "A", state: "voided", at: null }] });
+    expect(items.find(i => i.key === "action:card-script-x")).toMatchObject({ chip: "run", urgent: false });
+  });
+
+  it("History alone never counts as live work", () => {
+    const items = buildFeed({ approvals: null, pullRequests: null, nextSteps: { nowStep: null, steps: [runStep(A)] } as unknown as NextStepsResponse, endedCards: [{ id: A, title: "A", state: "voided", at: null }] });
+    expect(items).toHaveLength(1);
+    expect(liveItems(items)).toEqual([]);
   });
 
   it("hides nothing when the ended-card read is absent", () => {

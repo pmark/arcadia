@@ -8,7 +8,7 @@ import { useNextSteps } from "../../../hooks/use-next-steps";
 import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
 import { JOURNEY_FIXTURE } from "../../../lib/journey-fixture";
 import { fleet, fleetPhrase, loadScreen, PHASE_LABEL, saveScreen, urgentRovers, type JourneyScreen, type Rover } from "../../../lib/journey-fleet";
-import { buildFeed, feedSections, type FeedItem } from "../../../lib/workspace-feed";
+import { buildFeed, feedSections, liveItems, type FeedItem } from "../../../lib/workspace-feed";
 import "./feed.css";
 
 const RING = 2 * Math.PI * 20;
@@ -110,7 +110,8 @@ export function FeedView() {
 
   const items = useMemo(() => buildFeed({ approvals: approvals.hasLoaded ? approvals.approvals : null, nextSteps: nextSteps.data, pullRequests: prs.data, endedCards }), [approvals.hasLoaded, approvals.approvals, nextSteps.data, prs.data, endedCards]);
   const sections = feedSections(items, history);
-  const endedCount = items.filter(i => i.section === "History").length;
+  const live = liveItems(items);
+  const endedCount = items.length - live.length;
   // A failed read is a finished read: the alert says so instead of an endless "Reading…".
   const loading = (!approvals.hasLoaded && !approvals.error) || (!nextSteps.data && !nextSteps.failed) || prs.loading;
   const problems = [approvals.error && "To-do list", nextSteps.failed && "next steps", prs.error && !prs.data && "pull requests"].filter((p): p is string => Boolean(p));
@@ -125,11 +126,11 @@ export function FeedView() {
     <div className="feed-grid">
       <section className="feed-feed" aria-labelledby="feed-title">
         <h1 id="feed-title" className="feed-sr">Messages from Arcadia</h1>
-        {endedCount > 0 && <button type="button" className="feed-history-toggle" aria-pressed={history} onClick={() => setHistory(h => !h)}>{history ? "Hide history" : `Show history (${endedCount} ended cards)`}</button>}
+        {endedCount > 0 && <button type="button" className="feed-history-toggle" aria-expanded={history} aria-controls="feed-history" onClick={() => setHistory(h => !h)}>{`History (${endedCount} ended cards)`}</button>}
         {problems.length > 0 && <p role="alert" className="feed-problem">Could not read {problems.join(", ")}. What is shown is the last good read.</p>}
-        {loading && !items.length ? <p role="status" className="feed-quiet">Reading your work…</p>
-          : !items.length && !problems.length ? <p className="feed-quiet">Nothing is waiting on you. Arcadia will say so here when something is.</p>
-          : sections.map(s => <section key={s.section} aria-label={s.section}><h2 className="feed-section">{s.section}</h2><ul className="feed-thread">{s.items.map(item => <FeedMessage key={item.key} item={item} />)}</ul></section>)}
+        {loading && !live.length ? <p role="status" className="feed-quiet">Reading your work…</p>
+          : !live.length && !problems.length ? <p className="feed-quiet">Nothing is waiting on you. Arcadia will say so here when something is.</p>
+          : sections.map(s => <section key={s.section} id={s.section === "History" ? "feed-history" : undefined} aria-label={s.section}><h2 className="feed-section">{s.section}</h2><ul className="feed-thread">{s.items.map(item => <FeedMessage key={item.key} item={item} />)}</ul></section>)}
       </section>
       {view === "journey" && <JourneyPanel rovers={rovers} screen={screen} onScreen={show} />}
     </div>
