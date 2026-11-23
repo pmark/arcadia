@@ -1,0 +1,24 @@
+{
+  "schema": "arcadia-strategy-v1",
+  "name": "Run what works, prove what's next",
+  "phase": "freeze-and-prove",
+  "adopted": "2026-11-22",
+  "explanation": "docs/strategy/current.md",
+  "freeze": {
+    "engineRevision": "a5f041066b1d50b4cfc1c4cad82290eb101d7b68",
+    "causeLabel": "phase-cause",
+    "workerBranchPattern": "^(claude|codex|opencode)/[a-z0-9-]+-[0-9]{8}T[0-9]{9}Z$",
+    "extraPaths": ["mise.toml", "mise.lock", "pnpm-workspace.yaml", "schemas"]
+  },
+  "nights": {
+    "timeZone": "America/Los_Angeles",
+    "start": "21:00",
+    "end": "08:00",
+    "minimumWorkerMerges": 1
+  },
+  "checkpoint": {
+    "at": "2026-11-25T16:00:00Z",
+    "graceHours": 4,
+    "verdict": null
+  }
+}

@@ -23,7 +23,9 @@ export default tseslint.config(
       "artifacts/**",
       "mission_logs/**",
       "projects/**",
-      "tmp/**"
+      "tmp/**",
+      // CI-only helpers live outside the runtime paths and the tsconfig on purpose (strategyGuard.ts header).
+      ".github/**"
     ]
   },
   js.configs.recommended,

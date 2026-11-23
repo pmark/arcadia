@@ -40,6 +40,14 @@ jobs:
         run: mise exec -- pnpm check:plan-close-outs
       - name: Validate Decision ids are unique (fails a pull request or a push to main that duplicates one)
         run: mise exec -- pnpm check:decision-ids
+      - name: Validate the strategy's engine freeze (docs/strategy/current.json)
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: mise exec -- node --import tsx .github/scripts/strategyGuard.ts pr
       - name: Validate no large files are tracked (#2488)
         run: mise exec -- pnpm check:large-files
       - name: Validate unit shard partition covers every test file once
