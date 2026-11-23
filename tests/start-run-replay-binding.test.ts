@@ -75,6 +75,10 @@ describe("a replay that stopped before a launch decision is inconclusive, not a 
     expect(check.detail).toContain("inconclusive");
     expect(check.detail).toContain("external_effect");
   });
+  it("treats an unknown or future stop reason as inconclusive, never a refusal or a launch", () => {
+    const predicted = predictOutcomes(["one", "two"], "arcadia", { ...refusedFirst, stop: { reason: "some_future_stop" } });
+    expect(predicted.map((p) => p.predicted)).toEqual(["inconclusive (some_future_stop)", "inconclusive (some_future_stop)"]);
+  });
   it("keeps a settled refusal a refusal, and predicts launch once tick 2 launched after the answered mirror Issue and Codex read", () => {
     expect(predictOutcomes(["one"], "arcadia", { ...refusedFirst, stop: { reason: "steady_state" } })[0].predicted).toBe("refused");
     const twoTicks = { activation: { ok: true }, stop: { reason: "launched" }, ticks: [refusedFirst.ticks[0], { launch: { outcome: "launched", actionKey: "arcadia/one" } }] };

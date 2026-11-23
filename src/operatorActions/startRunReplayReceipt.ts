@@ -55,8 +55,8 @@ export interface ReplayOutcomeSource {
   stop?: { reason: string } | null;
 }
 
-/** Stops that end the replay before it could settle a launch decision: the prediction is then unknown, never a refusal. */
-const INCONCLUSIVE_STOPS = new Set(["external_effect", "unrecorded_github_read", "tick_limit", "host_operation_timeout", "error"]);
+/** Stops that settled the replay's launch decision. Any other stop reason, including an unknown or future one, is inconclusive: never a refusal and never a launch. */
+const SETTLED_STOPS = new Set(["launched", "integrated", "all_merged", "steady_state", "activation_refused"]);
 
 /**
  * One predicted outcome per pinned Action. An Action a tick launched or refused carries that outcome. A later pinned Action the
@@ -65,7 +65,7 @@ const INCONCLUSIVE_STOPS = new Set(["external_effect", "unrecorded_github_read",
  */
 export function predictOutcomes(actions: string[], project: string, report: ReplayOutcomeSource): ReplayPrediction[] {
   const seen = new Map<string, string>();
-  const inconclusive = report.stop && INCONCLUSIVE_STOPS.has(report.stop.reason) ? `inconclusive (${report.stop.reason})` : null;
+  const inconclusive = report.stop && !SETTLED_STOPS.has(report.stop.reason) ? `inconclusive (${report.stop.reason})` : null;
   for (const tick of report.ticks) {
     const key = tick.launch?.actionKey;
     if (!tick.launch || !key) continue;
