@@ -40,6 +40,12 @@ or on the operator's word. The authority is the Decision, never the Issue:
 outside this class an Issue is a signal and grants nothing. Merges, messaging
 and every other gate are unchanged.
 
+## Current strategy
+
+Read `docs/strategy/current.md` at session start. Its phase decides what
+day-lane work builds and what may merge; it changes no Plan, queue or
+authority. CI enforces its engine freeze.
+
 <!-- ARCADIA_CONTEXT_START -->
 ## Arcadia Context
 
