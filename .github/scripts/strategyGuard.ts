@@ -109,16 +109,40 @@ export function judgePullRequest(input: {
 }
 
 /**
- * Did a commit loosen the strategy without recording a checkpoint verdict? Changing the phase, the
- * freeze revision, the cause label or the worker pattern, or dropping an extra engine path, loosens
- * or redefines it; adding extra engine paths only tightens it and needs no verdict.
+ * Did a change loosen the strategy outside its rule?
+ * - Recording the checkpoint verdict is the one way to change phase, and it counts only on or after
+ *   `checkpoint.at` (`at` is when the change was made).
+ * - Once a verdict is on record, the next change starts the next phase and is not judged here.
+ * - Otherwise loosening is: changing the phase, freeze revision, cause label or worker pattern;
+ *   dropping an extra engine path; moving the checkpoint later or widening its grace; removing the
+ *   night check, lowering its minimum or changing its window. Adding extra engine paths only tightens.
  */
-export function strategyChangeViolation(before: Strategy | null, after: Strategy | null): string | null {
+export function strategyChangeViolation(before: Strategy | null, after: Strategy | null, at: Date): string | null {
   if (!before) return null;
   if (!after) return "deleted the strategy";
-  if (after.checkpoint?.verdict) return null;
+  if (before.checkpoint?.verdict) return null;
+  if (after.checkpoint?.verdict) {
+    if (before.checkpoint && at.getTime() < new Date(before.checkpoint.at).getTime()) {
+      return `recorded a checkpoint verdict at ${at.toISOString()}, before the checkpoint ${before.checkpoint.at}`;
+    }
+    return null;
+  }
   const changed: string[] = [];
   if (before.phase !== after.phase) changed.push(`phase ${before.phase} → ${after.phase}`);
+  const bc = before.checkpoint;
+  const ac = after.checkpoint;
+  if (bc && !ac) changed.push("removed the checkpoint");
+  if (bc && ac) {
+    if (new Date(ac.at).getTime() > new Date(bc.at).getTime()) changed.push(`checkpoint moved ${bc.at} → ${ac.at}`);
+    if (ac.graceHours > bc.graceHours) changed.push(`checkpoint grace ${bc.graceHours} h → ${ac.graceHours} h`);
+  }
+  const bn = before.nights;
+  const an = after.nights;
+  if (bn && !an) changed.push("removed the night check");
+  if (bn && an) {
+    if (an.minimumWorkerMerges < bn.minimumWorkerMerges) changed.push(`night minimum ${bn.minimumWorkerMerges} → ${an.minimumWorkerMerges}`);
+    if (an.start !== bn.start || an.end !== bn.end || an.timeZone !== bn.timeZone) changed.push("night window");
+  }
   const b = before.freeze;
   const a = after.freeze;
   if (b && !a) changed.push("removed the freeze");
@@ -278,15 +302,25 @@ function summarize(lines: string[]): void {
   if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `### Strategy guard\n\n\`\`\`\n${text}\n\`\`\`\n`);
 }
 
+/** The commit the PR is judged against: the checkout merge commit's first parent (current main), else BASE_SHA. */
+function judgingBase(root: string, fallback: string): string {
+  const parents = (tryRun("git", ["-C", root, "cat-file", "-p", "HEAD"]) ?? "").split("\n").filter((l) => l.startsWith("parent ")).map((l) => l.slice(7).trim());
+  return parents.length >= 2 ? parents[0] : fallback;
+}
+
+function haveCommit(root: string, sha: string): boolean {
+  return tryRun("git", ["-C", root, "cat-file", "-e", `${sha}^{commit}`]) !== null || tryRun("git", ["-C", root, "fetch", "--no-tags", "--depth=1", "origin", sha]) !== null;
+}
+
 function mainPr(root: string, repo: string): number {
-  const base = process.env.BASE_SHA ?? "";
   const headRef = process.env.HEAD_REF ?? "";
   const number = Number(process.env.PR_NUMBER);
+  const base = judgingBase(root, process.env.BASE_SHA ?? "");
   if (!/^[0-9a-f]{40}$/.test(base) || !Number.isInteger(number) || number <= 0) {
     summarize(["Strategy guard: FAIL: BASE_SHA and PR_NUMBER must be set by the workflow"]);
     return 1;
   }
-  if (tryRun("git", ["-C", root, "cat-file", "-e", `${base}^{commit}`]) === null && tryRun("git", ["-C", root, "fetch", "--no-tags", "--depth=1", "origin", base]) === null) {
+  if (!haveCommit(root, base)) {
     summarize([`Strategy guard: FAIL: could not fetch the base revision ${base}; re-run this job`]);
     return 1;
   }
@@ -296,8 +330,16 @@ function mainPr(root: string, repo: string): number {
     summarize([`Strategy guard: FAIL: could not diff ${base}..HEAD; re-run this job`]);
     return 1;
   }
+  const files = diff.split("\n").filter(Boolean);
+  if (files.includes(STRATEGY_FILE)) {
+    const loosened = strategyChangeViolation(strategy, strategyAt(root, "HEAD"), new Date());
+    if (loosened) {
+      summarize([`Strategy guard: FAIL: this PR ${loosened}. A phase change needs the checkpoint verdict, recorded on or after the checkpoint (docs/strategy/current.md)`]);
+      return 1;
+    }
+  }
   try {
-    const verdict = judgePullRequest({ strategy, headRef, files: diff.split("\n").filter(Boolean), body: prBody(repo, number), labelsFor: issueLabels(repo) });
+    const verdict = judgePullRequest({ strategy, headRef, files, body: prBody(repo, number), labelsFor: issueLabels(repo) });
     summarize([`Strategy guard: ${verdict.ok ? "pass" : "FAIL"}: ${verdict.reason}`]);
     return verdict.ok ? 0 : 1;
   } catch (error) {
@@ -310,8 +352,9 @@ function mainTrack(root: string, repo: string): number {
   const now = new Date();
   const strategy = parseStrategy(tryRun("git", ["-C", root, "show", `HEAD:${STRATEGY_FILE}`]));
   const strategyViolations: string[] = [];
-  for (const sha of run("git", ["-C", root, "log", "--format=%H", "HEAD", "--", STRATEGY_FILE]).split("\n").filter(Boolean)) {
-    const violation = strategyChangeViolation(strategyAt(root, `${sha}^`), strategyAt(root, sha));
+  for (const line of run("git", ["-C", root, "log", "--format=%H %cI", "HEAD", "--", STRATEGY_FILE]).split("\n").filter(Boolean)) {
+    const [sha, when] = line.split(" ");
+    const violation = strategyChangeViolation(strategyAt(root, `${sha}^`), strategyAt(root, sha), new Date(when));
     if (violation) strategyViolations.push(`${sha.slice(0, 9)} ${violation}`);
   }
   const freezeViolations: string[] = [];

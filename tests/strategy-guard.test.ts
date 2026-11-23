@@ -105,14 +105,26 @@ describe("strategy guard: pull requests", () => {
     // The CLI passes the BASE revision's strategy. A PR that only edits current.json (no engine path)
     // passes; its new phase applies to later PRs, and track flags it unless a checkpoint verdict is recorded.
     expect(pr({ files: [STRATEGY_FILE] }).ok).toBe(true);
-    expect(strategyChangeViolation(strategy, { ...strategy, phase: "pin-and-promote" })).toContain("no checkpoint verdict");
-    expect(strategyChangeViolation(strategy, { ...strategy, freeze: { ...strategy.freeze!, workerBranchPattern: "." } })).toContain("no checkpoint verdict");
-    expect(strategyChangeViolation(strategy, null)).toBe("deleted the strategy");
-    expect(strategyChangeViolation(strategy, { ...strategy, phase: "pin-and-promote", checkpoint: { ...strategy.checkpoint!, verdict: "two clean nights" } })).toBeNull();
-    expect(strategyChangeViolation(null, strategy)).toBeNull();
+    const before = new Date("2026-11-24T00:00:00Z");
+    const after = new Date("2026-11-25T16:30:00Z");
+    const verdict = (s: Strategy, v: string) => ({ ...s, checkpoint: { ...s.checkpoint!, verdict: v } });
+    expect(strategyChangeViolation(strategy, { ...strategy, phase: "pin-and-promote" }, before)).toContain("no checkpoint verdict");
+    expect(strategyChangeViolation(strategy, { ...strategy, freeze: { ...strategy.freeze!, workerBranchPattern: "." } }, before)).toContain("worker branch pattern");
+    expect(strategyChangeViolation(strategy, null, before)).toBe("deleted the strategy");
+    expect(strategyChangeViolation(null, strategy, before)).toBeNull();
+    // The verdict is the way to change phase, but only on or after the checkpoint.
+    expect(strategyChangeViolation(strategy, verdict({ ...strategy, phase: "pin-and-promote" }, "two clean nights"), before)).toContain("before the checkpoint");
+    expect(strategyChangeViolation(strategy, verdict({ ...strategy, phase: "pin-and-promote" }, "two clean nights"), after)).toBeNull();
+    // After a verdict is on record, the next change starts the next phase.
+    expect(strategyChangeViolation(verdict(strategy, "two clean nights"), { ...strategy, phase: "pin-and-promote", checkpoint: { at: "2026-12-02T16:00:00Z", graceHours: 4, verdict: null } }, after)).toBeNull();
+    // Other loosenings without a verdict.
+    expect(strategyChangeViolation(strategy, { ...strategy, checkpoint: { ...strategy.checkpoint!, at: "2026-12-25T16:00:00Z" } }, before)).toContain("checkpoint moved");
+    expect(strategyChangeViolation(strategy, { ...strategy, checkpoint: { ...strategy.checkpoint!, graceHours: 400 } }, before)).toContain("grace");
+    expect(strategyChangeViolation(strategy, { ...strategy, nights: { ...strategy.nights!, minimumWorkerMerges: 0 } }, before)).toContain("night minimum");
+    expect(strategyChangeViolation(strategy, { ...strategy, nights: undefined }, before)).toContain("removed the night check");
     const tightened = { ...strategy, freeze: { ...strategy.freeze!, extraPaths: [...strategy.freeze!.extraPaths!, ".nvmrc"] } };
-    expect(strategyChangeViolation(strategy, tightened)).toBeNull();
-    expect(strategyChangeViolation(tightened, strategy)).toContain("dropped engine path(s) .nvmrc");
+    expect(strategyChangeViolation(strategy, tightened, before)).toBeNull();
+    expect(strategyChangeViolation(tightened, strategy, before)).toContain("dropped engine path(s) .nvmrc");
   });
 
   it("is inactive outside a freeze phase", () => {
