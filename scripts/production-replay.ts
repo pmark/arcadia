@@ -675,7 +675,8 @@ export function installGuards(root: string, effectsLog: string, simulateVerdict?
   --version|-v) echo "0.0.0 (production replay)"; exit 0 ;;
   auth) echo '{"loggedIn":true,"authMethod":"replay"}'; exit 0 ;;`,
     codex: `  --version) echo "codex 0.0.0 (production replay)"; exit 0 ;;
-  exec) case "$2" in --help|-h) echo "Usage: codex exec --json --sandbox"; exit 0 ;; esac ;;`,
+  exec) case "$2" in --help|-h) echo "Usage: codex exec --json --sandbox"; exit 0 ;; esac ;;
+  app-server) printf '{"id":2,"result":{"rateLimits":{"primary":{"usedPercent":0,"windowDurationMins":300},"planType":"replay"}}}\\n'; exit 0 ;;`,
     opencode: `  --version) echo "0.0.0 (production replay)"; exit 0 ;;`
   };
   if (simulateVerdict) {
@@ -1198,6 +1199,8 @@ export function runProductionReplay(options: ReplayOptions): ReplayReport {
   }
   if (options.reviewers !== undefined && options.reviewers !== "real" && options.reviewers !== "simulated") throw new Error("--reviewers is real or simulated.");
   if (options.executor && !options.simulateGithubWrites) throw new Error("--executor needs --simulate-github-writes: the pull request it opens and merges is simulated.");
+  // A START card's first tick mirrors each Action as a GitHub Issue; the replay answers that write itself (SIMULATED, never GitHub).
+  if (options.card && options.simulateGithubWrites === undefined) options = { ...options, simulateGithubWrites: true };
   const realCodex = options.reviewers === "real" ? which("codex") : null;
   if (options.reviewers === "real" && !realCodex) throw new Error("--reviewers real needs the codex CLI on PATH.");
   const realClaude = options.executor === "real" ? which("claude") : null;

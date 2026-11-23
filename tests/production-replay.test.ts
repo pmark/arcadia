@@ -6,6 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
+import { readCodexRateLimitsLive } from "../src/codingAgents/availability.js";
 import { replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
@@ -389,6 +390,20 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
     expect(run(["api", "graphql", "-f", "query=mutation { deleteProjectV2(input: {projectId: \"P\"}) { clientMutationId } }"]).status).toBe(1);
     expect(run(create, { ...env, REPLAY_SIMULATE_GH_WRITES: "" }).status).toBe(1);
     expect(effects().map((effect) => effect.kind)).toEqual([...Array(7).fill("simulated:github-write"), "github:write", "github:write"]);
+  });
+
+  it("answers the Codex capacity read (codex app-server) as available, readable by the real parser, without a recorded effect", () => {
+    const plain = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-capacity-")));
+    try {
+      const log = path.join(plain, "effects.jsonl");
+      writeFileSync(log, "");
+      installGuards(plain, log);
+      const answered = spawnSync("codex", ["app-server", "--listen", "stdio://"], { cwd: plain, env: { PATH: `${path.join(plain, "bin")}${path.delimiter}${process.env.PATH ?? ""}`, REPLAY_EFFECTS_LOG: log }, encoding: "utf8" });
+      expect(answered.status).toBe(0);
+      const read = readCodexRateLimitsLive(new Date("2026-11-22T00:00:00Z"), { run: () => answered.stdout });
+      expect(read).toMatchObject({ ok: true, telemetry: { availability: "available" } });
+      expect(readFileSync(log, "utf8")).toBe("");
+    } finally { rmSync(plain, { recursive: true, force: true }); }
   });
 
   it("answers the reviewer's sandbox probe and codex exec with a SIMULATED verdict, even with a stripped environment", () => {

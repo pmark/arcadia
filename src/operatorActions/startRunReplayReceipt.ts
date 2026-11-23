@@ -51,7 +51,12 @@ export function replayCardIdentity(descriptorBytes: string): { card: string; ide
 export interface ReplayOutcomeSource {
   activation: { ok: boolean };
   ticks: Array<{ launch: { outcome: string; actionKey: string | null } | null }>;
+  /** Why the replay ended; an early stop (external effect, tick limit, ...) means it never reached a launch decision. */
+  stop?: { reason: string } | null;
 }
+
+/** Stops that end the replay before it could settle a launch decision: the prediction is then unknown, never a refusal. */
+const INCONCLUSIVE_STOPS = new Set(["external_effect", "unrecorded_github_read", "tick_limit", "host_operation_timeout", "error"]);
 
 /**
  * One predicted outcome per pinned Action. An Action a tick launched or refused carries that outcome. A later pinned Action the
@@ -60,6 +65,7 @@ export interface ReplayOutcomeSource {
  */
 export function predictOutcomes(actions: string[], project: string, report: ReplayOutcomeSource): ReplayPrediction[] {
   const seen = new Map<string, string>();
+  const inconclusive = report.stop && INCONCLUSIVE_STOPS.has(report.stop.reason) ? `inconclusive (${report.stop.reason})` : null;
   for (const tick of report.ticks) {
     const key = tick.launch?.actionKey;
     if (!tick.launch || !key) continue;
@@ -70,6 +76,8 @@ export function predictOutcomes(actions: string[], project: string, report: Repl
   actions.forEach((action, index) => {
     if (!report.activation.ok) return out.push({ action, predicted: "activation_refused" });
     const own = seen.get(action);
+    if (own === "launch") return out.push({ action, predicted: "launch" });
+    if (inconclusive) return out.push({ action, predicted: inconclusive });
     if (own) return out.push({ action, predicted: own });
     out.push({ action, predicted: index > 0 && out[index - 1].predicted === "launch" ? "launch" : "not_reached" });
   });
@@ -96,6 +104,8 @@ export function checkReplayReceipt(receiptText: string | null, identity: ReplayC
   const missing = identity.actions.filter((action) => !predictions.some((entry) => entry?.action === action));
   if (missing.length) return refuse("REPLAY_MISMATCH", `the replay receipt predicts no outcome for ${missing.join(", ")}`);
   const noLaunch = identity.actions.filter((action) => predictions.find((entry) => entry.action === action)?.predicted !== "launch");
+  const inconclusive = noLaunch.filter((action) => String(predictions.find((entry) => entry.action === action)?.predicted).startsWith("inconclusive"));
+  if (inconclusive.length) return refuse("REPLAY_PREDICTS_NO_LAUNCH", `the replay was inconclusive (it stopped before a launch decision), not a predicted refusal, for ${inconclusive.map((action) => `${action} ${predictions.find((entry) => entry.action === action)?.predicted}`).join(", ")}; fix the stop and replay again`);
   if (noLaunch.length) return refuse("REPLAY_PREDICTS_NO_LAUNCH", `the replay does not predict a launch for ${noLaunch.map((action) => `${action} (${predictions.find((entry) => entry.action === action)?.predicted ?? "none"})`).join(", ")}`);
   return { ok: true, code: null, detail: "the replay receipt names this card and predicts a launch for every pinned Action" };
 }
