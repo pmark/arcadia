@@ -159,9 +159,33 @@ Compaction is strongly discouraged.
   skill's "Mine the shift before standing down" pass, as Rowan does: lessons with
   `arcadia learn`, bugs deduplicated and filed with evidence, ranked P1-P3 with
   opportunities, and the list linked from the handoff block.
-- **How to start the successor.** Starting a session can fail over Remote Control.
-  If it does, give the operator a paste-ready prompt to start Signal n+1 in the
-  desktop app, and put it at the top as a 👆 banner.
+- **How to start the successor: the relay, automatically.** Claude Code only, under
+  Decision 0191, which names Signal. Never ask the operator to start Signal n+1
+  while this route works.
+  1. **Once per Signal line:** if `arcadia coordinator budget` does not list Signal
+     under a registered generation, register yourself from your own Session:
+     `arcadia coordinator register --project arcadia --role signal --challenge`, then
+     `... --confirm <nonce> --session-id <your session id> --tier <tier> --identity "<your resolved identity>"`.
+  2. **At `due`** (or earlier at a natural break), write the handoff block and mine
+     the shift, as above.
+  3. Add the role to the snapshot, so the successor knows it is Signal:
+     `arcadia coordinator note --project arcadia --role signal "You are ⭐ Signal n+1: load the arcadia-signal skill, read the HANDOFF TO SIGNAL n+1 block at <path>, retitle yourself, then verify and accept."`
+  4. Run `arcadia coordinator renew --project arcadia --role signal`. It launches the
+     successor in tmux with Remote Control, on the same model, and verifies
+     the first prompt was delivered. It retries once and pings once on a second failure.
+  5. When the successor's `verify` passes, run `arcadia coordinator stand-down --project arcadia --role signal --successor <n>`
+     (a desktop custodian: `--challenge`, then `--confirm <nonce> --session-id <id>`).
+     The successor then runs `accept`. Retitle yourself `⭐✅ Signal n · stood down` and go quiet.
+  6. Tell the operator in one line where Signal n+1 is: the Remote Control session
+     `signal g<generation>` in the Claude app (tmux `arcadia-coord-signal-g<generation>`),
+     not the desktop sidebar. The generation number counts relay generations, not
+     the ⭐ Signal number.
+- **Fallback, only when `renew` refuses** (for example `decision_not_in_force`,
+  `folder_untrusted`, `start_in_progress`, the daily limit of 6, or a Codex or
+  OpenCode Signal, which the relay does not launch yet): start the successor with
+  the app's session tool. If that also fails over Remote Control, give the operator
+  a paste-ready prompt to start Signal n+1 in the desktop app, and put it at the top
+  as a 👆 banner. Name the refusal reason.
 - **Launching agents.** Resolve every launch with `arcadia role brief --role <id>
   --agent <agent> --json` and pass its `launch` model and effort explicitly;
   see [helper-launch.md](../../../docs/agent-guidance/helper-launch.md).
