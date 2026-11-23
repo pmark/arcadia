@@ -129,8 +129,9 @@ export function FeedView() {
         {endedCount > 0 && <button type="button" className="feed-history-toggle" aria-expanded={history} aria-controls="feed-history" onClick={() => setHistory(h => !h)}>{`History (${endedCount} ended cards)`}</button>}
         {problems.length > 0 && <p role="alert" className="feed-problem">Could not read {problems.join(", ")}. What is shown is the last good read.</p>}
         {loading && !live.length ? <p role="status" className="feed-quiet">Reading your work…</p>
-          : !live.length && !problems.length ? <p className="feed-quiet">Nothing is waiting on you. Arcadia will say so here when something is.</p>
-          : sections.map(s => <section key={s.section} id={s.section === "History" ? "feed-history" : undefined} aria-label={s.section}><h2 className="feed-section">{s.section}</h2><ul className="feed-thread">{s.items.map(item => <FeedMessage key={item.key} item={item} />)}</ul></section>)}
+          : !live.length && !problems.length && <p className="feed-quiet">Nothing is waiting on you. Arcadia will say so here when something is.</p>}
+        {/* With no live work the quiet message above replaces the sections, but History must still open. */}
+        {sections.filter(s => live.length > 0 || s.section === "History").map(s => <section key={s.section} id={s.section === "History" ? "feed-history" : undefined} aria-label={s.section}><h2 className="feed-section">{s.section}</h2><ul className="feed-thread">{s.items.map(item => <FeedMessage key={item.key} item={item} />)}</ul></section>)}
       </section>
       {view === "journey" && <JourneyPanel rovers={rovers} screen={screen} onScreen={show} />}
     </div>
