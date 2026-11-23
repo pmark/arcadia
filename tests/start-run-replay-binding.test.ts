@@ -64,6 +64,25 @@ describe("the replay receipt is bound to one card", () => {
   });
 });
 
+describe("a replay that stopped before a launch decision is inconclusive, not a refusal", () => {
+  const refusedFirst = { activation: { ok: true }, ticks: [{ launch: { outcome: "refused", actionKey: "arcadia/one" } }] };
+  const receiptFor = (report: Parameters<typeof buildReplayReceipt>[3]) => JSON.stringify(buildReplayReceipt("standing-start-fixture", identity, "arcadia", report, "2026-11-22T00:00:00Z"));
+  it("predicts inconclusive (<stop reason>) for every pinned Action when the replay stopped on an external effect", () => {
+    const stopped = { ...refusedFirst, stop: { reason: "external_effect" } };
+    expect(predictOutcomes(["one", "two"], "arcadia", stopped).map((p) => p.predicted)).toEqual(["inconclusive (external_effect)", "inconclusive (external_effect)"]);
+    const check = checkReplayReceipt(receiptFor(stopped), identity);
+    expect(check).toMatchObject({ ok: false, code: "REPLAY_PREDICTS_NO_LAUNCH" });
+    expect(check.detail).toContain("inconclusive");
+    expect(check.detail).toContain("external_effect");
+  });
+  it("keeps a settled refusal a refusal, and predicts launch once tick 2 launched after the answered mirror Issue and Codex read", () => {
+    expect(predictOutcomes(["one"], "arcadia", { ...refusedFirst, stop: { reason: "steady_state" } })[0].predicted).toBe("refused");
+    const twoTicks = { activation: { ok: true }, stop: { reason: "launched" }, ticks: [refusedFirst.ticks[0], { launch: { outcome: "launched", actionKey: "arcadia/one" } }] };
+    expect(predictOutcomes(["one", "two"], "arcadia", twoTicks).map((p) => p.predicted)).toEqual(["launch", "launch"]);
+    expect(checkReplayReceipt(receiptFor(twoTicks), identity).ok).toBe(true);
+  });
+});
+
 describe("the replay and the executor's P6 build one scope", () => {
   const NOW = new Date("2026-11-17T10:00:00.000Z");
   /** P6's own fingerprint snippet, run exactly as scripts/start-run.sh runs it, with the pinned values as its arguments. */
