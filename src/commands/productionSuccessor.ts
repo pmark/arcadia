@@ -230,15 +230,21 @@ export function runProductionSuccessorCommand(options: ProductionSuccessorOption
 /** Tracks the same port exception across timer runs; after ten minutes it pings once through the step's own ping port. Returns the error to rethrow. */
 function noteRepeatedException(error: unknown, ports: SuccessorPorts | null, now: Date, signals: SuccessorSignals, save: () => void): unknown {
   const text = tail(error);
-  const hash = createHash("sha256").update(text).digest("hex").slice(0, 12);
+  // The error names origin main's sha, which moves many times a day: the episode is the text with shas and numbers masked.
+  const normalised = text.replace(/\b[0-9a-f]{7,64}\b/gi, "<sha>").replace(/\d+/g, "<n>").replace(/\s+/g, " ").trim();
+  const hash = createHash("sha256").update(normalised).digest("hex").slice(0, 12);
   const tracked = signals.exception?.hash === hash ? signals.exception : { hash, since: now.toISOString(), pinged: false };
+  if (!Number.isFinite(Date.parse(tracked.since))) tracked.since = now.toISOString();
   signals.exception = tracked;
   let rethrown: unknown = error;
   const elapsed = now.getTime() - Date.parse(tracked.since);
   if (ports && !tracked.pinged && elapsed > SUCCESSOR_EXCEPTION_PING_MS) {
     const minutes = Math.floor(elapsed / 60_000);
+    const key = `successor-press-exception-${hash}`;
+    // The message is stable for the episode and carries the key, so the ping queue's own episode dedup holds if `pinged` cannot be saved.
+    const shown = text.replace(/\/(?:Users|home)\/[^/\s]+\//g, "~/").slice(0, 300);
     try {
-      const id = ports.ping({ message: `🚨 Successor press is failing: the same error for ${minutes} minutes, so no START card can be pressed. ${text.slice(0, 300)}`, key: `successor-press-exception-${hash}` });
+      const id = ports.ping({ message: `🚨 Successor press is failing: the same error for over ${SUCCESSOR_EXCEPTION_PING_MS / 60_000} minutes, so no START card can be pressed. [${key}] ${shown}`, key });
       tracked.pinged = true;
       rethrown = new Error(`${error instanceof Error ? error.message : String(error)} (same error for ${minutes} min; queued ping ${id})`, { cause: error });
     } catch { /* the next run tries again */ }
