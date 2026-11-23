@@ -6,8 +6,8 @@ name: Strategy track
 # Read-only: it writes nothing to the repository and posts nothing.
 on:
   schedule:
-    - cron: "15 16 * * *" # 8:15 AM PST (9:15 AM PDT): after the night ends
-    - cron: "15 5 * * *" # 9:15 PM PST (10:15 PM PDT): after the night starts
+    - cron: "15 16 * * *" # 8:15 AM PST (9:15 AM PDT): all checks, including last night's worker merges
+    - cron: "15 5 * * *" # 9:15 PM PST (10:15 PM PDT): freeze, strategy and checkpoint only; the night check runs in the morning
   workflow_dispatch:
 
 permissions:

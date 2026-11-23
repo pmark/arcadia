@@ -42,9 +42,9 @@ and every other gate are unchanged.
 
 ## Current strategy
 
-Read `docs/strategy/current.md` at session start. Its phase decides what
-day-lane work builds and what may merge; it changes no Plan, queue or
-authority. CI enforces its engine freeze.
+Read `docs/strategy/current.md` at session start. During a freeze it limits
+which engine changes may merge; the active Plan still chooses the work, and it
+changes no queue or authority. CI enforces the freeze.
 
 <!-- ARCADIA_CONTEXT_START -->
 ## Arcadia Context

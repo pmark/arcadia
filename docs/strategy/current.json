@@ -7,7 +7,8 @@
   "freeze": {
     "engineRevision": "a5f041066b1d50b4cfc1c4cad82290eb101d7b68",
     "causeLabel": "phase-cause",
-    "workerBranchPattern": "^(claude|codex|opencode)/[a-z0-9-]+-[0-9]{8}T[0-9]{9}Z$"
+    "workerBranchPattern": "^(claude|codex|opencode)/[a-z0-9-]+-[0-9]{8}T[0-9]{9}Z$",
+    "extraPaths": ["mise.toml", "mise.lock", "pnpm-workspace.yaml", "schemas"]
   },
   "nights": {
     "timeZone": "America/Los_Angeles",
