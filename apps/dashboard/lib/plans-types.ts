@@ -13,10 +13,12 @@ export interface PlanRow {
   governed: boolean;
   milestone: string | null;
   isActivePlan: boolean;
-  actionCounts: { open: number; in_progress: number; done: number; blocked: number } | null;
+  actionCounts: { open: number; in_progress: number; done: number; blocked: number; deferred?: number } | null;
   /** For an ungoverned plan, the paragraph under its own trigger heading, when it has one. */
   activationNote: string | null;
   relativePath: string;
+  /** The Plan document's `updated:` date; absent from an older CLI's answer. */
+  updated?: string | null;
 }
 
 export interface ProjectPlansResponse {

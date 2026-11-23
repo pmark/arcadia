@@ -1,0 +1,1058 @@
+{
+ "capturedFrom": "docs/plans at 2026-11-22",
+ "plans": [
+  {
+   "slug": "add-the-missing-plans-project-dashboard-route-that-lists-one-project-s-plans",
+   "status": "draft",
+   "milestone": "Add the missing /plans/<project> dashboard route that lists one Project's Plans.",
+   "updated": "2026-10-11",
+   "actionCounts": {
+    "open": 1,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "agent-advance-queue",
+   "status": "complete",
+   "milestone": "Ready plan Actions feed coding agents with visible attention stops",
+   "updated": "2026-08-02",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 2,
+    "blocked": 1,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "agent-ask-execution-queue",
+   "status": "draft",
+   "milestone": "Coding agents can Ask Arcadia to create governed Project progress, accepted Actions enter one operator-owned execution order, and Arcadia always explains which eligible Action is next",
+   "updated": "2026-09-25",
+   "actionCounts": {
+    "open": 1,
+    "in_progress": 0,
+    "done": 7,
+    "blocked": 1,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "agents-notice-governed-changes-on-main-at-their-existing-checkpoints-and-re",
+   "status": "complete",
+   "milestone": "Agents notice governed changes on main at their existing checkpoints and re-read the changed record before acting, using git alone.",
+   "updated": "2026-10-27",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 2,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "arcadia-ask-active-sessions",
+   "status": "superseded",
+   "milestone": "Every Arcadia Ask becomes a visible, corrigible working session that preserves text, links, and files, explains special processing, and commits only the operator-approved destinations and triggers",
+   "updated": "2026-09-01",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 2,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "arcadia-dispatches-a-different-ready-action-to-each-of-several-concurrent",
+   "status": "complete",
+   "milestone": "Arcadia dispatches a different ready Action to each of several concurrent coding-agent sessions automatically, and never dispatches the same Action to two sessions at once. Evidenced by a live collision on 2026-09-22 (PR #487/#496): two worktrees were independently dispatched to the identical Action, roughly two minutes apart, before either session noticed.",
+   "updated": "2026-09-23",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 2,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "arcadia-runs-production-unattended-on-its-own-repository-on-the-claude-provider",
+   "status": "complete",
+   "milestone": "Arcadia runs production unattended on its own repository on the Claude provider: the worker launches a Session, preserves a reviewed PR, merges it through the PR when it is not authority-adjacent, and continues to the next Action within a spend bound, with operator touches limited to authority-adjacent merges.",
+   "updated": "2026-11-06",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 34,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "arcadia-way-propagation",
+   "status": "complete",
+   "milestone": "No Arcadia project is silently stale on the Way, and no project's governance changes without review",
+   "updated": "2026-08-16",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "ask-queues-approved-work-or-admits-bounded-independent-sessions-without",
+   "status": "draft",
+   "milestone": "Ask queues approved work or admits bounded independent Sessions without disrupting in-flight work; first prove Codex Luna Hello World to an independently reviewed green PR with production Off.",
+   "updated": "2026-10-13",
+   "actionCounts": {
+    "open": 7,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "batch-1-of-2-three-independent-verified-bug-fix-actions-from-issues-1731-1976",
+   "status": "draft",
+   "milestone": "Batch 1 of 2: three independent, verified bug-fix Actions from Issues #1731, #1976 and #1765, proposed as an inactive draft Plan for operator acceptance under Decision 0226.",
+   "updated": "2026-11-13",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "batch-2-of-2-three-independent-verified-bug-fix-actions-from-issues-2403-2111",
+   "status": "draft",
+   "milestone": "Batch 2 of 2: three independent, verified bug-fix Actions from Issues #2403, #2111 and #1825, proposed as an inactive draft Plan for operator acceptance under Decision 0226.",
+   "updated": "2026-11-13",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "bootstrap-managed-production-to-build-flight-deck",
+   "status": "draft",
+   "milestone": "Bootstrap managed production to run unattended from the GitHub board",
+   "updated": "2026-11-01",
+   "actionCounts": {
+    "open": 58,
+    "in_progress": 0,
+    "done": 177,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "burn-down-three-small-verified-bug-issues-in-unattended-serial-production",
+   "status": "draft",
+   "milestone": "Burn down three small verified bug Issues in unattended serial production.",
+   "updated": "2026-11-11",
+   "actionCounts": {
+    "open": 2,
+    "in_progress": 0,
+    "done": 4,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "burn-down-three-verified-test-only-bug-issues-in-unattended-serial-production",
+   "status": "complete",
+   "milestone": "Burn down three verified test-only bug Issues in unattended serial production.",
+   "updated": "2026-11-14",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "carry-out-decision-0214-answer-a-unattended-production-s-worker-may-merge-src",
+   "status": "complete",
+   "milestone": "Carry out Decision 0214 answer A: unattended production's worker may merge src/** candidate changes that touch no authority boundary, after an audit proves the authority classifier covers every gate-enforcing source module.",
+   "updated": "2026-11-10",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 2,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "clarification-pass",
+   "status": "complete",
+   "milestone": "Clarification loop shipped",
+   "updated": "2026-10-12",
+   "actionCounts": {
+    "open": 1,
+    "in_progress": 0,
+    "done": 4,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "coding-agent-selection",
+   "status": "complete",
+   "milestone": "vendor-neutral coding-agent selection",
+   "updated": "2026-08-01",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 4,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "create-a-complete-inactive-draft-plan-titled-24-7-production-housekeeping-that",
+   "status": "draft",
+   "milestone": "Create a complete inactive draft Plan titled 24/7 production housekeeping that orders the Codex-corrected housekeeping list (priorities 0 to 8) for operator acceptance.",
+   "updated": "2026-11-13",
+   "actionCounts": {
+    "open": 8,
+    "in_progress": 0,
+    "done": 1,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "create-one-inactive-plan-for-on-demand-evidence-based-adversarial-review-of-a-se",
+   "status": "draft",
+   "milestone": "Every Arcadia coding-agent handoff gets an independent pre-PR code review from a fresh OpenCode session, falling back to the next configured provider, with findings fixed or declined within three rounds and a receipt pinned to the reviewed commit, while CodeRabbit remains the merge gate.",
+   "updated": "2026-09-24",
+   "actionCounts": {
+    "open": 6,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "decision-queue-reconciliation",
+   "status": "proposed",
+   "milestone": "The operator is asked exactly one question a day, and it is never one already answered",
+   "updated": "2026-08-30",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "deliver-one-authorized-action-through-a-persistent-go-conversation",
+   "status": "draft",
+   "milestone": "Deliver one authorized Action through a persistent Go conversation",
+   "updated": "2026-10-30",
+   "actionCounts": {
+    "open": 6,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "demo-first-delivery",
+   "status": "draft",
+   "milestone": "Every software Project always exposes a stable proof surface and a governed path from candidate demo through QA-verified release",
+   "updated": "2026-10-27",
+   "actionCounts": {
+    "open": 7,
+    "in_progress": 0,
+    "done": 4,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "dispatch-contract-enforcement",
+   "status": "complete",
+   "milestone": "Managed plans govern work from dispatch through acceptance",
+   "updated": "2026-08-01",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 4,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-10-plan-of-three-verified-small-reliability-fixes-with",
+   "status": "complete",
+   "milestone": "Draft an inactive batch 10 Plan of three verified small reliability fixes with failing-first tests (service restart main-checkout guard, Tailnet press-path probe, tidy test determinism)",
+   "updated": "2026-11-15",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-11-plan-of-four-bounded-actions-that-make-way",
+   "status": "draft",
+   "milestone": "Draft an inactive batch 11 Plan of four bounded Actions that make Way propagation automatic after every Arcadia main change (deterministic once-per-revision trigger, policy-respecting delivery, loud alerting plus per-project last-propagated revision, and Arcadia self-drift false positive)",
+   "updated": "2026-11-15",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-12-plan-of-six-bounded-actions-that-build-the-field",
+   "status": "draft",
+   "milestone": "Draft an inactive batch 12 Plan of six bounded Actions that build the Field Notes writer identity system for Decisions 0234 and 0235 (writer registry and shared token mapping, build-time writer validation, post layout furniture, index chip and feed attribution, Clara's style, Flynn's style held reserved) without pulling any cadence, reviewer, ping, retire or imitation behaviour into this batch",
+   "updated": "2026-11-15",
+   "actionCounts": {
+    "open": 6,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-3-plan-of-three-independently-verified-small-fixes-each",
+   "status": "draft",
+   "milestone": "Draft an inactive batch 3 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification.",
+   "updated": "2026-11-13",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-4-plan-of-three-independently-verified-small-fixes-each",
+   "status": "draft",
+   "milestone": "Draft an inactive batch 4 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification.",
+   "updated": "2026-11-13",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-5-plan-of-three-independently-verified-small-fixes-each",
+   "status": "complete",
+   "milestone": "Draft an inactive batch 5 Plan of three independently verified small fixes, each with a failing-first test, for operator ratification.",
+   "updated": "2026-11-14",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-6-test-stability-plan-of-three-verified-fixes-with",
+   "status": "complete",
+   "milestone": "Draft an inactive batch 6 test-stability Plan of three verified fixes with corrected premises",
+   "updated": "2026-11-14",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-7-plan-of-three-verified-small-fixes-with-failing-first",
+   "status": "draft",
+   "milestone": "Draft an inactive batch 7 Plan of three verified small fixes with failing-first tests (ping guard, work-scan label, gitignore)",
+   "updated": "2026-11-14",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-8-plan-of-three-verified-small-fixes-with-failing-first",
+   "status": "draft",
+   "milestone": "Draft an inactive batch 8 Plan of three verified small fixes with failing-first tests (bot revision log, Discord status reply, Tidy PR proof)",
+   "updated": "2026-11-14",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-batch-9-plan-of-three-verified-small-fixes-with-failing-first",
+   "status": "complete",
+   "milestone": "Draft an inactive batch 9 Plan of three verified small fixes with failing-first tests (park Issue, replay startRun cards, START merge-freeze check)",
+   "updated": "2026-11-14",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-plan-of-five-bounded-actions-that-keep-unattended-production",
+   "status": "draft",
+   "milestone": "Draft an inactive Plan of five bounded Actions that keep unattended production running between batches without a person: survive the operator's merges to main, repair mechanically red candidates, start the next approved Plan, and stop Decision-number collisions",
+   "updated": "2026-11-22",
+   "actionCounts": {
+    "open": 10,
+    "in_progress": 0,
+    "done": 23,
+    "blocked": 0,
+    "deferred": 2
+   }
+  },
+  {
+   "slug": "draft-an-inactive-plan-of-five-bounded-actions-that-replace-the-daily-start",
+   "status": "complete",
+   "milestone": "Draft an inactive Plan of five bounded Actions that replace the daily START approval with one standing grant the operator presses once, so production on the chosen Plan moves on its own and asks the operator only for decisive action",
+   "updated": "2026-11-18",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 9,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-plan-of-four-bounded-actions-that-make-the-arcadia-workspace",
+   "status": "draft",
+   "milestone": "Draft an inactive Plan of four bounded Actions that make the Arcadia Workspace the operator's planning surface: a smart picker over existing Plans that organizes, curates, archives, annotates, requests changes and queues them, plus settle, pause and resume and a clean feed in the same place",
+   "updated": "2026-11-17",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-plan-of-four-worker-mergeable-actions-for-the-engine-s-first",
+   "status": "active",
+   "milestone": "Draft an inactive Plan of four worker-mergeable Actions for the engine's first approved queue: the operator timeline shows who decided what (START presses, worker merges, the operator's recorded interactions and superseded Asks)",
+   "updated": "2026-11-22",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "draft-an-inactive-plan-of-seven-bounded-actions-that-host-the-coordinators",
+   "status": "draft",
+   "milestone": "Draft an inactive Plan of seven bounded Actions that host the coordinators (Rowan, then Signal and Flynn) as Arcadia-launched tmux sessions under the relay, with one live handoff and one worker-merged source change as proof",
+   "updated": "2026-11-17",
+   "actionCounts": {
+    "open": 15,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "enable-bounded-local-native-release-manager-coordination-with-durable-addressed",
+   "status": "draft",
+   "milestone": "Enable bounded local native Release Manager coordination with durable addressed messages, explicit checkpoint roundtrip proof, and explicit generation-fenced manager handoff.",
+   "updated": "2026-10-17",
+   "actionCounts": {
+    "open": 5,
+    "in_progress": 0,
+    "done": 1,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "every-open-github-issue-in-pmark-arcadia-is-classified-once-into-a-five-route",
+   "status": "draft",
+   "milestone": "Every open GitHub Issue in pmark/arcadia is classified once into a five-route vocabulary, reconciled both ways with governed Actions, the vital few (about 20 percent) are verified, and the top batches plus a Decision-ready change list are delivered as one local report, with no GitHub mutation.",
+   "updated": "2026-10-11",
+   "actionCounts": {
+    "open": 8,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "every-operator-decision-in-a-production-run-is-a-pinned-decision-card-on-a",
+   "status": "draft",
+   "milestone": "Every operator decision in a production run is a pinned decision card on a remote surface, and Plan-to-Plan handoff runs through a deterministic close-out record and next-Plan selector.",
+   "updated": "2026-10-14",
+   "actionCounts": {
+    "open": 8,
+    "in_progress": 0,
+    "done": 8,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "every-production-session-is-bounded-by-a-platform-token-ceiling-and-an-in",
+   "status": "draft",
+   "milestone": "Every production Session is bounded by a platform token ceiling and an in-Session environment probe, and every stop it raises clears from /todo in at most two clicks, proven by replays of recorded sessions and one validated ledger row per session.",
+   "updated": "2026-10-12",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 6,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "every-situation-class-an-unattended-production-run-can-hit-has-a-registered",
+   "status": "draft",
+   "milestone": "Every situation class an unattended production run can hit has a registered deterministic response, a retry budget and a one-click escalation, and a lost orchestrator or a red main never needs the operator to notice first.",
+   "updated": "2026-10-12",
+   "actionCounts": {
+    "open": 5,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "execute-one-approved-named-run-safely-with-production-off",
+   "status": "draft",
+   "milestone": "Execute one approved named Run safely with Production Off.",
+   "updated": "2026-10-16",
+   "actionCounts": {
+    "open": 1,
+    "in_progress": 0,
+    "done": 2,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "flight-deck-board-carries-the-whole-portfolio-on-one-surface",
+   "status": "draft",
+   "milestone": "Flight Deck board carries the whole portfolio on one surface",
+   "updated": "2026-09-05",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "give-production-a-queue-of-three-independent-verified-bug-fix-actions-so-a",
+   "status": "draft",
+   "milestone": "Give production a queue of three independent, verified bug-fix Actions so a serial run has ready work once the housekeeping hold is satisfied.",
+   "updated": "2026-11-13",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "give-the-mission-control-site-repository-currently-ungoverned-no-agents-md",
+   "status": "complete",
+   "milestone": "Give the mission-control-site repository (currently ungoverned: no AGENTS.md/CLAUDE.md/.arcadia workspace, only a bare .claude/launch.json) the same Arcadia-governed dev-agent tooling every other repo has, then place the operator-supplied session-naming sidebar screenshot as a real, tagged asset on the existing content page that already documents that exact behavior.",
+   "updated": "2026-09-25",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 2,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "governed-agent-roles-one-real-action-and-one-interactive-session-each-run-as-a",
+   "status": "draft",
+   "milestone": "Governed agent roles: one real Action and one interactive session each run as a light-tier session-start role that requests delegates through Arcadia, gets a deterministic model and effort or a recorded queue or decline, reports through its supervisor chain, stays inside the burn budget and operator reserve, and appears on /agents.",
+   "updated": "2026-10-11",
+   "actionCounts": {
+    "open": 18,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "guard-against-paid-usage",
+   "status": "draft",
+   "milestone": "Guard against paid usage",
+   "updated": "2026-11-10",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 5,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "guard-the-operator-s-machine-against-data-loss-from-arcadia-s-own-scripts-and",
+   "status": "draft",
+   "milestone": "Guard the operator's machine against data loss from Arcadia's own scripts and tests: shell scripts cannot delete through an empty path variable, the test suite cannot reach the live workspace, and unsaved or local-only working copies are surfaced as alerts.",
+   "updated": "2026-10-10",
+   "actionCounts": {
+    "open": 5,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "i-can-see-every-project-s-plans-and-actions-understand-what-is-selected-and",
+   "status": "draft",
+   "milestone": "I can see every Project's Plans and Actions, understand what is selected and what is actually running, and identify what needs me.",
+   "updated": "2026-10-02",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "idea-to-managed-build",
+   "status": "draft",
+   "milestone": "A raw software-project idea becomes governed, dispatchable coding-agent work without a manual planning-to-build handoff",
+   "updated": "2026-11-06",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 5,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "intelligence-decisions",
+   "status": "draft",
+   "milestone": "Intelligence decisions",
+   "updated": "2026-09-29",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "keep-unattended-serial-production-running-overnight-on-three-test-only-actions",
+   "status": "complete",
+   "milestone": "Keep unattended serial production running overnight on three test-only Actions that pin untested behaviour.",
+   "updated": "2026-11-06",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "let-the-operator-change-what-production-queues-from-the-production-project",
+   "status": "draft",
+   "milestone": "Let the operator change what production queues from the /production Project cards: which Projects are included, their order, and each Project's Plan, as light preferences that stay flexible until a Session starts and is locked in with a receipt.",
+   "updated": "2026-10-11",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "living-system-v1",
+   "status": "complete",
+   "milestone": "Every managed software Project can reveal what it is, what is changing, how it got here, and what proves that story through one free living-system navigator",
+   "updated": "2026-08-25",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 5,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "make-arcadia-go-orient-one-caller-truthfully-before-authorized-work",
+   "status": "draft",
+   "milestone": "Make Arcadia Go orient one caller truthfully before authorized work.",
+   "updated": "2026-10-30",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 6,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "make-ask-the-superpower-tool-for-planning-data-access-and-retrieval-and",
+   "status": "draft",
+   "milestone": "Make Ask the superpower tool for planning, data access and retrieval, and reporting: anything the operator asks is captured, classified, routed to the right Project, turned into governed work or an answer, and always traceable, so no Action or other entity is ever lost after an Ask. \\\"Ask Arcadia\\\" and \\\"Ask an agent\\\" are the complement of the managed production system.",
+   "updated": "2026-09-24",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "narrative-digests",
+   "status": "complete",
+   "milestone": "Arcadia narrates its own recent history automatically, for itself and every Project it manages",
+   "updated": "2026-08-08",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "operator-attention-routing",
+   "status": "draft",
+   "milestone": "Every Project can durably request operator attention through GitHub and Arcadia surfaces each meaningful next action once in Discord",
+   "updated": "2026-08-30",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "operator-to-do-list-with-ask-only-input",
+   "status": "draft",
+   "milestone": "Operator to-do list with Ask-only input",
+   "updated": "2026-10-09",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 11,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "plan-visibility",
+   "status": "complete",
+   "milestone": "The operator can see every plan a repository holds and why an ungoverned one has not started",
+   "updated": "2026-08-26",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 2,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "portfolio-continuity-view",
+   "status": "draft",
+   "milestone": "One portfolio or Project view tells the truthful story of past, current, planned, deferred, and Incubating work while conversation reliably preserves new ideas",
+   "updated": "2026-08-30",
+   "actionCounts": {
+    "open": 5,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "portfolio-docs-protocol",
+   "status": "draft",
+   "milestone": "docs sync ingests a real project's markdown",
+   "updated": "2026-11-07",
+   "actionCounts": {
+    "open": 1,
+    "in_progress": 0,
+    "done": 8,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "production-runs-on-arcadia-launch-with-zero-host-touches-stop-spending-into-the",
+   "status": "draft",
+   "milestone": "Production runs on Arcadia launch with zero host touches, stop spending into the same environment wall, name every stall with a one-click fix, and cannot be stranded by a Plan change under an Active scope: Actions A12, A3, A5 and A6 of the first supervised run plan are implemented and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal.",
+   "updated": "2026-10-12",
+   "actionCounts": {
+    "open": 2,
+    "in_progress": 0,
+    "done": 3,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "prove-the-rowan-supervisor-attention-loop",
+   "status": "complete",
+   "milestone": "Prove the Rowan supervisor attention loop",
+   "updated": "2026-11-15",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 1,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "provider-capacity-harvesting",
+   "status": "proposed",
+   "milestone": "Otherwise-expiring included coding-agent capacity advances the smallest safe Back Burner slice without silently spending credits or changing authority",
+   "updated": "2026-09-01",
+   "actionCounts": {
+    "open": 9,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "record-run-unattended-test-pins-20261107-part-2",
+   "status": "complete",
+   "milestone": "Record run unattended test pins 20261107 part 2",
+   "updated": "2026-11-10",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 20,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "record-run-unattended-test-pins-20261107",
+   "status": "draft",
+   "milestone": "Record run unattended test pins 20261107",
+   "updated": "2026-11-08",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 20,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "record-run-unattended-test-pins-20261113-part-3",
+   "status": "complete",
+   "milestone": "Record run unattended test pins 20261113 part 3",
+   "updated": "2026-11-15",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 20,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "recover-completed-governance-overlap-in-protected-go",
+   "status": "draft",
+   "milestone": "Recover completed governance overlap in protected Go",
+   "updated": "2026-10-13",
+   "actionCounts": {
+    "open": 1,
+    "in_progress": 0,
+    "done": 1,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "redesign-the-phone-dashboard-into-one-judgment-home-a-complete-operator-script",
+   "status": "draft",
+   "milestone": "Redesign the phone dashboard into one judgment home, a complete operator-script flow and a Runs home for in-flight work and queued Plan Actions.",
+   "updated": "2026-09-30",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "reduce-lead-friction-through-ten-bounded-session-trials",
+   "status": "draft",
+   "milestone": "Reduce Lead friction through ten bounded session trials",
+   "updated": "2026-10-15",
+   "actionCounts": {
+    "open": 5,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "relay-use-drives-planned-work-that-production-performs",
+   "status": "draft",
+   "milestone": "Relay use drives planned work that production performs",
+   "updated": "2026-11-09",
+   "actionCounts": {
+    "open": 2,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "reliable-single-session-launch-one-action-as-a-session-and-have-it-run-to",
+   "status": "draft",
+   "milestone": "Reliable single session: launch one Action as a session and have it run to completion, observably, every time",
+   "updated": "2026-10-09",
+   "actionCounts": {
+    "open": 8,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "seven-verified-settlement-queue-and-preservation-integrity-bugs-are-fixed-and",
+   "status": "draft",
+   "milestone": "Seven verified settlement, queue and preservation-integrity bugs are fixed and merged to main, one Action per merged PR, each with its regression test and a passing fast-rehearsal.",
+   "updated": "2026-10-11",
+   "actionCounts": {
+    "open": 7,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "turn-the-two-planning-agent-route-reviews-into-a-governed-draft-plan-that-repair",
+   "status": "draft",
+   "milestone": "Turn the two planning-agent-route reviews into a governed draft plan that repairs the provider-binding spawn defect, reconciles docs/model-selection.md with the provider-adapter registry, and revises the proposal to an acceptable, answerable form. Implementation of the planning route itself stays unplanned until the operator answers the revised proposal.",
+   "updated": "2026-09-16",
+   "actionCounts": {
+    "open": 3,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "unify-how-arcadia-agents-identify-themselves-and-their-teammates-and-make",
+   "status": "draft",
+   "milestone": "Unify how Arcadia agents identify themselves and their teammates, and make design help available by function from any supported surface with visible provenance.",
+   "updated": "2026-10-31",
+   "actionCounts": {
+    "open": 7,
+    "in_progress": 0,
+    "done": 1,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "unify-interactive-and-unattended-coordination-with-safe-concurrent-actions",
+   "status": "draft",
+   "milestone": "Unify interactive and unattended coordination with safe concurrent Actions",
+   "updated": "2026-10-25",
+   "actionCounts": {
+    "open": 4,
+    "in_progress": 0,
+    "done": 1,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "ux-improvements-make-every-operator-interaction-fast-phone-first-and-self",
+   "status": "draft",
+   "milestone": "UX improvements: make every operator interaction fast, phone-first, and self-updating, so the operator never waits on or hunts through a page.",
+   "updated": "2026-10-11",
+   "actionCounts": {
+    "open": 9,
+    "in_progress": 0,
+    "done": 0,
+    "blocked": 0,
+    "deferred": 0
+   }
+  },
+  {
+   "slug": "way-delivery",
+   "status": "complete",
+   "milestone": "Every adopting project receives Way changes and can ask for Way capabilities without anyone writing Arcadia twice",
+   "updated": "2026-09-05",
+   "actionCounts": {
+    "open": 0,
+    "in_progress": 0,
+    "done": 12,
+    "blocked": 0,
+    "deferred": 0
+   }
+  }
+ ]
+}
