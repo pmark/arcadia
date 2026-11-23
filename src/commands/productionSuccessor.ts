@@ -234,15 +234,17 @@ function noteRepeatedException(error: unknown, ports: SuccessorPorts | null, now
   const normalised = text.replace(/\b[0-9a-f]{7,64}\b/gi, "<sha>").replace(/\d+/g, "<n>").replace(/\s+/g, " ").trim();
   const hash = createHash("sha256").update(normalised).digest("hex").slice(0, 12);
   const tracked = signals.exception?.hash === hash ? signals.exception : { hash, since: now.toISOString(), pinged: false };
-  if (!Number.isFinite(Date.parse(tracked.since))) tracked.since = now.toISOString();
+  // An unparseable `since`, or one in the future (a clock that jumped back), restarts the clock now.
+  if (!Number.isFinite(Date.parse(tracked.since)) || Date.parse(tracked.since) > now.getTime()) tracked.since = now.toISOString();
   signals.exception = tracked;
   let rethrown: unknown = error;
   const elapsed = now.getTime() - Date.parse(tracked.since);
   if (ports && !tracked.pinged && elapsed > SUCCESSOR_EXCEPTION_PING_MS) {
     const minutes = Math.floor(elapsed / 60_000);
-    const key = `successor-press-exception-${hash}`;
+    // The key names the episode start: the queue's episode dedup has no end, so a fixed failure that returns gets a new key and a new ping.
+    const key = `successor-press-exception-${hash}-${tracked.since.slice(0, 16)}`;
     // The message is stable for the episode and carries the key, so the ping queue's own episode dedup holds if `pinged` cannot be saved.
-    const shown = text.replace(/\/(?:Users|home)\/[^/\s]+\//g, "~/").slice(0, 300);
+    const shown = text.replace(/\/(?:Users|home)\/[^/\s]+\//g, "~/").slice(0, 250);
     try {
       const id = ports.ping({ message: `🚨 Successor press is failing: the same error for over ${SUCCESSOR_EXCEPTION_PING_MS / 60_000} minutes, so no START card can be pressed. [${key}] ${shown}`, key });
       tracked.pinged = true;

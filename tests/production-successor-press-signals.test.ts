@@ -1,7 +1,9 @@
 import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
+import { ensureOperatorPingTable, queueOperatorPing } from "../src/ping/operatorPing.js";
 import { renderSuccessorLines, runProductionSuccessorCommand, type ProductionSuccessorData } from "../src/commands/productionSuccessor.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import type { SuccessorPorts } from "../src/production/successorPress.js";
@@ -23,13 +25,20 @@ function fixture() {
   directories.push(root);
   const workspace = path.join(root, "workspace");
   initWorkspace(workspace);
-  const w = { workspace, minutes: 0, grantOpen: false, active: false, error: null as string | null, pings: [] as Array<{ message: string; key: string }> };
+  const db = new Database(":memory:");
+  ensureOperatorPingTable(db);
+  const queued = () => (db.prepare("SELECT COUNT(*) AS n FROM operator_pings").get() as { n: number }).n;
+  const w = { workspace, queued, minutes: 0, grantOpen: false, active: false, error: null as string | null, pings: [] as Array<{ message: string; key: string }> };
   const ports = (now: Date): SuccessorPorts => ({
     now,
     grant: () => { if (w.error) throw new Error(w.error); return { open: w.grantOpen, plan: "plan", approvalCard: "card", approvalRun: "run" }; },
     production: () => ({ desiredState: w.active ? "active" : "inactive", liveAdmissions: 1, scopeComplete: false, revision: 1 }),
     batch: () => { throw new Error("unexpected batch read"); },
-    ping: (input) => { w.pings.push(input); return `ping-${w.pings.length}`; }
+    // The real queue (an in-memory outbox), so the episode dedup the step relies on is the repo's own.
+    ping: (input) => {
+      w.pings.push(input);
+      return queueOperatorPing(db, { message: input.message, kind: "attention", agent: "Successor press", episodeKey: input.key, now: new Date(T0 + w.minutes * MINUTE) }).ping.id;
+    }
   } as unknown as SuccessorPorts);
   /** One timer run `minutes` after the start; a thrown error is returned, not raised. */
   const run = (minutes: number) => {
@@ -88,9 +97,9 @@ describe("successor press: a repeated port exception", () => {
     expect(w.pings).toEqual([]);
     const pinged = run(11);
     expect(w.pings).toHaveLength(1);
-    expect(w.pings[0].key).toMatch(/^successor-press-exception-[0-9a-f]{12}$/);
+    expect(w.pings[0].key).toMatch(/^successor-press-exception-[0-9a-f]{12}-2026-11-22T20:00$/);
     expect(w.pings[0].message).toContain(ERROR);
-    expect(pinged.error?.message).toContain(`${ERROR} (same error for 11 min; queued ping ping-1)`);
+    expect(pinged.error?.message).toMatch(new RegExp(`${ERROR} \\(same error for 11 min; queued ping ping_[0-9a-f]+\\)`));
     for (let minute = 12; minute <= 40; minute += 1) expect(run(minute).error?.message).toBe(ERROR);
     expect(w.pings).toHaveLength(1);
     w.error = "a different failure";
@@ -195,5 +204,50 @@ describe("successor press: a repeated port exception", () => {
     writeFileSync(file, "{ not json");
     expect(run(42).error?.message).toContain(ERROR);
     expect(JSON.parse(readFileSync(file, "utf8")).exception.since).toBe(new Date(T0 + 42 * MINUTE).toISOString());
+  });
+
+  it("pings again when the same error returns 33 hours later, and the key carries the episode start", () => {
+    const { w, run } = fixture();
+    w.error = ERROR;
+    for (let minute = 0; minute <= 11; minute += 1) run(minute);
+    expect(w.queued()).toBe(1);
+    w.error = null;
+    expect(run(12).error).toBeNull();
+    w.error = ERROR;
+    const back = 33 * 60;
+    for (let minute = back; minute <= back + 11; minute += 1) run(minute);
+    expect(w.pings).toHaveLength(2);
+    expect(w.pings[1].key).not.toBe(w.pings[0].key);
+    expect(w.queued()).toBe(2);
+  });
+
+  it("keeps ONE key and one queued ping across a 24 hour episode whose sha moves every 30 minutes", () => {
+    const { w, run } = fixture();
+    for (let minute = 0; minute <= 24 * 60; minute += 1) { w.error = moved(hex(Math.floor(minute / 30) + 1)); run(minute); }
+    expect(w.pings).toHaveLength(1);
+    expect(w.queued()).toBe(1);
+  });
+
+  it("restarts the clock for a `since` in the future and for a clock that jumped back", () => {
+    const { w, run } = fixture();
+    const file = path.join(w.workspace, ".arcadia", "successor-press-signals.json");
+    w.error = ERROR;
+    run(0);
+    const tracked = JSON.parse(readFileSync(file, "utf8")) as { exception: { since: string } };
+    tracked.exception.since = new Date(T0 + 1000 * MINUTE).toISOString();
+    writeFileSync(file, JSON.stringify(tracked));
+    run(30);
+    expect(JSON.parse(readFileSync(file, "utf8")).exception.since).toBe(new Date(T0 + 30 * MINUTE).toISOString());
+    run(41);
+    expect(w.pings).toHaveLength(1);
+    // A clock that jumps back before the start of a fresh episode restarts it, never a negative elapsed time.
+    w.error = "a different failure";
+    run(100);
+    run(90);
+    expect(JSON.parse(readFileSync(file, "utf8")).exception.since).toBe(new Date(T0 + 90 * MINUTE).toISOString());
+    run(100);
+    expect(w.pings).toHaveLength(1);
+    run(101);
+    expect(w.pings).toHaveLength(2);
   });
 });
