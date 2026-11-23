@@ -342,7 +342,7 @@ function mainTrack(root: string, repo: string): number {
   if (strategy?.nights && freezeActive(strategy) && isMorningRun(now, strategy.nights)) {
     const night = lastNight(now, strategy.nights);
     const merged = ghJson<{ headRefName: string; mergedAt: string }[]>([
-      "pr", "list", "--repo", repo, "--state", "merged", "--limit", "200", "--json", "headRefName,mergedAt",
+      "pr", "list", "--repo", repo, "--state", "merged", "--base", "main", "--limit", "200", "--json", "headRefName,mergedAt",
       "--search", `merged:${night.start.toISOString().slice(0, 19)}Z..${night.end.toISOString().slice(0, 19)}Z`
     ]);
     workerMerges = merged.filter((p) => isWorkerBranch(strategy, p.headRefName)).length;
