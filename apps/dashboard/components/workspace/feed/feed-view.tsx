@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useCardHistory } from "../../../hooks/use-card-history";
 import { useApprovals } from "../../../hooks/use-approvals";
 import { useNextSteps } from "../../../hooks/use-next-steps";
 import { usePullRequestInventory } from "../../../hooks/use-pull-request-inventory";
@@ -103,10 +104,13 @@ export function FeedView() {
   const approvals = useApprovals();
   const nextSteps = useNextSteps();
   const prs = usePullRequestInventory();
+  const endedCards = useCardHistory();
+  const [history, setHistory] = useState(false);
   const rovers = useMemo(() => fleet(JOURNEY_FIXTURE), []);
 
-  const items = useMemo(() => buildFeed({ approvals: approvals.hasLoaded ? approvals.approvals : null, nextSteps: nextSteps.data, pullRequests: prs.data }), [approvals.hasLoaded, approvals.approvals, nextSteps.data, prs.data]);
-  const sections = feedSections(items);
+  const items = useMemo(() => buildFeed({ approvals: approvals.hasLoaded ? approvals.approvals : null, nextSteps: nextSteps.data, pullRequests: prs.data, endedCards }), [approvals.hasLoaded, approvals.approvals, nextSteps.data, prs.data, endedCards]);
+  const sections = feedSections(items, history);
+  const endedCount = items.filter(i => i.section === "History").length;
   // A failed read is a finished read: the alert says so instead of an endless "Reading…".
   const loading = (!approvals.hasLoaded && !approvals.error) || (!nextSteps.data && !nextSteps.failed) || prs.loading;
   const problems = [approvals.error && "To-do list", nextSteps.failed && "next steps", prs.error && !prs.data && "pull requests"].filter((p): p is string => Boolean(p));
@@ -121,6 +125,7 @@ export function FeedView() {
     <div className="feed-grid">
       <section className="feed-feed" aria-labelledby="feed-title">
         <h1 id="feed-title" className="feed-sr">Messages from Arcadia</h1>
+        {endedCount > 0 && <button type="button" className="feed-history-toggle" aria-pressed={history} onClick={() => setHistory(h => !h)}>{history ? "Hide history" : `Show history (${endedCount} ended cards)`}</button>}
         {problems.length > 0 && <p role="alert" className="feed-problem">Could not read {problems.join(", ")}. What is shown is the last good read.</p>}
         {loading && !items.length ? <p role="status" className="feed-quiet">Reading your work…</p>
           : !items.length && !problems.length ? <p className="feed-quiet">Nothing is waiting on you. Arcadia will say so here when something is.</p>
