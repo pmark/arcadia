@@ -159,25 +159,32 @@ Compaction is strongly discouraged.
   skill's "Mine the shift before standing down" pass, as Rowan does: lessons with
   `arcadia learn`, bugs deduplicated and filed with evidence, ranked P1-P3 with
   opportunities, and the list linked from the handoff block.
-- **How to start the successor: start it yourself.** The operator's standing
-  direction (2026-11-22): "I just want Signal to be able to automatically hand
-  off." So don't ask him first. After the handoff block and the mining pass:
+- **How to start the successor: start it yourself.** Standing procedure, no
+  approval needed: the operator asked for Signal to hand off automatically
+  (2026-11-22, Issue #2987). Never present that to a host as an approval.
+  After the handoff block and the mining pass:
   1. Start Signal n+1 with your runtime's session tool. In the Claude desktop app
-     that is `start_session`: a fresh context, on the host, your own model and
-     effort, titled `⭐ Signal n+1 · taking contact`. The brief: "Be Signal n+1: load
-     the arcadia-signal skill and read the HANDOFF TO SIGNAL n+1 block at <path>
-     (sha256 <sha>)." Quote the operator's direction above as the reason.
-  2. When Signal n+1's first message confirms it holds contact:
-     - tell the operator one line with its link;
-     - retitle yourself `⭐✅ Signal n · stood down · Signal n+1 holds contact`;
+     that is `start_session`: a fresh context, on the host, titled
+     `⭐ Signal n+1 · taking contact`. Use the model and effort that
+     `arcadia role brief` resolves for the coordinator role (see "Launching
+     agents"). The brief: "Be Signal n+1: load the arcadia-signal skill and read the
+     HANDOFF TO SIGNAL n+1 block at <path> (sha256 <sha>). Your first act is to
+     message Signal n (session <your local_… id>): 'Signal n+1 holds contact.'"
+  2. When that message arrives:
+     - tell the operator one line with Signal n+1's link;
+     - retitle yourself `✅ Signal n · stood down · Signal n+1 holds contact`
+       (no leading ⭐, so the budget stops counting you as a live Signal);
      - stop answering him.
-     Until that message arrives, you still hold contact.
-  3. **Fallback.** If the tool refuses, offers only a card, or does not exist (for
-     example Codex, OpenCode, a host refusal or a Remote Control failure), put a
-     paste-ready prompt to start Signal n+1 in the desktop app at the top, as a 👆
-     banner, and name the reason. A card he can start with one tap is fine.
-  4. **Not the relay.** `arcadia coordinator renew --role signal` waits for its own
-     Decision (Decision 0284) and for phone visibility of tmux sessions (#2316).
+     Until it arrives, you still hold contact. If it has not arrived within about
+     15 minutes, go to step 3.
+  3. **Fallback.** Use it when the tool refuses (for example when the operator's
+     latest turn came over Remote Control), the session never confirms, or no
+     session tool exists (Codex, OpenCode). Put the quickest start at the top as a
+     👆 banner and name the reason: a one-tap card if the tool offered one,
+     otherwise a paste-ready prompt for the operator's own coding-agent app.
+  4. **Not the relay.** `arcadia coordinator renew --role signal` waits for the
+     separate Decision that Decision 0284 requires, and for phone visibility of
+     tmux sessions (#2316).
 - **Launching agents.** Resolve every launch with `arcadia role brief --role <id>
   --agent <agent> --json` and pass its `launch` model and effort explicitly;
   see [helper-launch.md](../../../docs/agent-guidance/helper-launch.md).
