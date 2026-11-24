@@ -2153,6 +2153,21 @@ receipt (`already recorded`).
 A drafted completion Ask for the stalled candidate is separate: reject it through
 `agent-ask settle` before the next START so it cannot hold the Action.
 
+Automatic retirement of a stale base (Issue #3015). Any standing-policy launch
+(the managed tick, `session launch --standing-policy`, host enrollment) applies
+the same retirement itself, with request id `stale-base-<session-id>`, instead
+of resuming a same-Action handoff whose base and head both lack a main commit
+that touches a file the Action's criteria name; it then dispatches the Action
+fresh from current main. Unlike this verb it tolerates `production_active` (it
+runs only under an Active standing policy) and `preserved_candidate` (the
+commit is already pushed); every other refusal, or an undecidable check, keeps
+the resume. The receipt's reason lists the main commits and files, and, for a
+preserved candidate, its commit and pull request URL, which then needs closing
+or salvage by hand. A worktree whose resume chain ends in a retirement (A
+resumed as B, B retired) no longer counts as an orphan candidate for a later
+fresh launch or `arcadia go`. Look for `Retired the resumable handoff` in the
+worker log.
+
 Operator QA:
 
 1. With Production Off, run the preview for a Session whose exit is

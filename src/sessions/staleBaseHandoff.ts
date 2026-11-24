@@ -102,7 +102,8 @@ export function retireStaleBaseHandoff(input: {
   const listed = check.commits.slice(0, MAX_LISTED).map((commit) => `${commit.sha.slice(0, 12)} (${commit.files.slice(0, MAX_LISTED).join(", ")})`).join(", ");
   const more = check.commits.length > MAX_LISTED ? ` and ${check.commits.length - MAX_LISTED} more` : "";
   const reason = `Base ${input.session.base_revision.slice(0, 12)} lacks main commit(s) touching files the Action's criteria name: ${listed}${more}. `
-    + `Dispatched fresh from ${input.mainRevision.slice(0, 12)} instead of resuming; the old worktree and branch are kept (Issue #3015).`;
+    + `Dispatched fresh from ${input.mainRevision.slice(0, 12)} instead of resuming; the old worktree and branch are kept (Issue #3015).`
+    + preservedCandidateNote(input.db, input.session.id);
   let result: ReturnType<typeof retireHandoffForFreshDispatch>;
   try {
     result = retireHandoffForFreshDispatch({
@@ -118,4 +119,22 @@ export function retireStaleBaseHandoff(input: {
   }
   input.log?.(`Retired the resumable handoff of Session ${input.session.id} for ${label} (receipt ${result.retirement.id}): ${reason}`);
   return result.retirement;
+}
+
+/**
+ * A preserved candidate is retired too (its commit is already pushed), but the
+ * receipt names that commit and any open pull request, so the abandoned
+ * candidate is found by whoever reads the retirement. Empty when none.
+ */
+function preservedCandidateNote(db: Database.Database, sessionId: string): string {
+  try {
+    if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'candidate_preservation_receipts'").get()) return "";
+    const row = db.prepare("SELECT commit_sha, preservation_state, pull_request_url FROM candidate_preservation_receipts WHERE request_id = ?")
+      .get(`worker-tick-preserve-${sessionId}`) as { commit_sha: string; preservation_state: string; pull_request_url: string | null } | undefined;
+    if (!row) return "";
+    return ` The retired candidate was preserved as commit ${row.commit_sha.slice(0, 12)} (${row.preservation_state})`
+      + `${row.pull_request_url ? `, pull request ${row.pull_request_url}` : ""}; integrate, close or salvage it by hand.`;
+  } catch {
+    return "";
+  }
 }

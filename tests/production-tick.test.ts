@@ -3895,6 +3895,26 @@ describe("a resumable handoff whose base misses a fix to its own named files (Is
     expect(f.lease()?.action_id).toBe("second-action");
   });
 
+  // Review round 1, N2: a preserved candidate is retired too (its commit is pushed, so nothing is lost), but its
+  // commit and open PR must be named in the receipt so the next reader finds the abandoned candidate.
+  it("(f) names a preserved candidate's commit and pull request in the retirement reason", () => {
+    const f = staleHandoff({ criteria: NAMED_CRITERIA });
+    const commit = "c0ffee" + "0".repeat(34);
+    withDatabase(f.fixture.workspace, (db) => db.prepare(`INSERT INTO candidate_preservation_receipts (id, request_id, repository_path,
+      candidate_worktree_path, branch, base_branch, base_revision, action_id, packet_sha256, policy_epoch, policy_revision, candidate_fingerprint,
+      commit_sha, preservation_state, pull_request_number, pull_request_url, receipt_json, created_at)
+      VALUES ('cpr_1', ?, 'r', 'w', 'b', 'main', 'x', 'define-contract', 'p', 1, 1, 'f', ?, 'IN PR', 42, 'https://github.com/o/r/pull/42', '{}', 't')`)
+      .run(`worker-tick-preserve-${f.first.id}`, commit));
+    f.mainCommit("tests/contract.test.ts", "fix the named test");
+    f.wall(false);
+    f.tick();
+    const [retirement] = f.retirements();
+    expect(retirement.session_id).toBe(f.first.id);
+    expect(retirement.reason).toContain("https://github.com/o/r/pull/42");
+    expect(retirement.reason).toContain(commit.slice(0, 12));
+    expect(f.lease()!.worktree_path).not.toBe(f.first.worktree_path);
+  });
+
   // Review round 1, B1/N5: the ordinary multi-Session shape is A resumed as B in one worktree. Retiring B
   // left A superseded by B's real id, so #2492's retired-worktree check still counted the dirty worktree as
   // held and every later non-resume launch of the Action hit the orphan refusal, whose remedy only the
