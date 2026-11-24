@@ -59,7 +59,7 @@ function collectCardPresses(repository: TimelineRepository, runs: string, card: 
       if (!lstatSync(file).isFile()) continue;
       const parsed = JSON.parse(readFileSync(file, "utf8")) as unknown;
       if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
-      receipt = parsed as Receipt;
+      receipt = parsed;
       mtime = lstatSync(file).mtime;
     } catch {
       continue;
