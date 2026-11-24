@@ -3870,7 +3870,11 @@ describe("a resumable handoff whose base misses a fix to its own named files (Is
     expect(check(fix)).toEqual({ kind: "current" });
   });
 
-  it("(d) another Action is no longer blocked once the stale handoff is retired", () => {
+  // What (d) proves is narrow (review round 1, N4): the retired handoff itself no longer holds the next Action.
+  // second-action launches here only because the fresh Session made no commits, so its clean handoff, an ancestor
+  // of main, is dropped. A fresh Session that made progress and exited incomplete still holds the next Action with
+  // `foreign_resumable_candidate`, exactly as before this change.
+  it("(d) the retired stale handoff does not hold the next Action once the fresh Session that replaced it ends with no commits", () => {
     const f = staleHandoff({ criteria: NAMED_CRITERIA, secondAction: true });
     f.mainCommit("tests/contract.test.ts", "fix the named test");
     f.wall(false);
