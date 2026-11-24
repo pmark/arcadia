@@ -72,6 +72,7 @@ import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { renderSessionRetireHandoffSuccess, runSessionRetireHandoffCommand } from "../src/commands/handoffRetirement.js";
 import { applyHandoffRetirement, previewHandoffRetirement } from "../src/sessions/handoffRetirement.js";
 import { checkStaleBase, criteriaNamedFiles } from "../src/sessions/staleBaseHandoff.js";
+import { evaluateDraftOnlyCandidate } from "../src/sessions/draftOnlyCandidate.js";
 import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
@@ -3882,6 +3883,47 @@ describe("a resumable handoff whose base misses a fix to its own named files (Is
     f.tick(); f.tick();
     expect(f.lines.filter((line) => line.includes("foreign_resumable_candidate"))).toEqual([]);
     expect(f.lease()?.action_id).toBe("second-action");
+  });
+
+  // Review round 1, B1/N5: the ordinary multi-Session shape is A resumed as B in one worktree. Retiring B
+  // left A superseded by B's real id, so #2492's retired-worktree check still counted the dirty worktree as
+  // held and every later non-resume launch of the Action hit the orphan refusal, whose remedy only the
+  // operator can apply. Here the fresh launch after the retirement fails, and the next one must still launch.
+  it("(e) a retired resume chain (A resumed as B, B dirty) blocks neither a retried fresh launch nor the orphan check", () => {
+    const f = staleHandoff({ criteria: NAMED_CRITERIA });
+    f.mainCommit("unrelated/notes.md", "an unrelated change; the handoff still resumes");
+    f.wall(false);
+    f.tick();
+    const second = f.lease()!;
+    expect(second.id).not.toBe(f.first.id);
+    expect(second.worktree_path).toBe(f.first.worktree_path);
+    // B ends with uncommitted work while main gains a fix to a file the criteria name. The next tick
+    // reconciles B as incomplete_resumable, retires it as stale, and its fresh launch then fails after the
+    // retirement committed and before a Session row exists.
+    writeFileSync(path.join(second.worktree_path, "unsaved.txt"), "uncommitted work\n");
+    f.tmux.live.delete(second.tmux_session_name);
+    const fix = f.mainCommit("tests/contract.test.ts", "fix the named test (as #3014)");
+    f.tick(); // reconciles B; admission waits a tick
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => getSessionExitReceipt(db, second.id))?.outcome).toBe("incomplete_resumable");
+    chmodSync(f.fixture.agentWorktreeRoot, 0o555);
+    try {
+      expect(f.tick().projects[0].launch?.outcome).toBe("failed");
+    } finally {
+      chmodSync(f.fixture.agentWorktreeRoot, 0o755);
+    }
+    expect(f.retirements().map((row) => row.session_id)).toEqual([second.id]);
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get()) as { n: number })
+      .toEqual({ n: 2 });
+    expect(f.tick().projects[0].launch?.outcome).toBe("launched");
+    const fresh = f.lease()!;
+    expect(fresh.action_id).toBe("define-contract");
+    expect(fresh.worktree_path).not.toBe(f.first.worktree_path);
+    expect(fresh.base_revision).toBe(fix);
+    expect(f.lines.filter((line) => line.includes("already holds uncommitted changes"))).toEqual([]);
+    // The retired chain's worktree keeps its uncommitted work, and the orphan check (Go's too) no longer counts it.
+    expect(git(second.worktree_path, ["status", "--porcelain"])).toContain("unsaved.txt");
+    const lookup = { repositoryPath: f.fixture.repo, projectSlug: "test-project", actionId: "define-contract", agent: second.branch.split("/")[0], baseBranch: "main", now: f.fixture.now };
+    expect(withDatabase(f.fixture.workspace, (db) => evaluateDraftOnlyCandidate(db, lookup))).toEqual({ kind: "none" });
   });
 });
 

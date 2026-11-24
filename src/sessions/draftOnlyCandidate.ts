@@ -379,24 +379,31 @@ function dirtyPreparedCandidates(db: Database.Database, input: Pick<CandidateLoo
 }
 
 /**
- * True only when at least one Session row names this path or branch, every such
- * row's exit receipt carries the `retired:<request-id>` sentinel that
- * `arcadia session retire-handoff` writes, and no other row (a live successor,
- * or a predecessor a resume superseded by a real Session id) names it. A resume
- * also sets `superseded_by_session_id` and its successor reuses the directory,
- * so only the retired sentinel proves nobody holds it. The directory stays on
- * disk for manual salvage and must not block a fresh launch (#2492). Fails closed.
+ * True only when the Sessions that name this path or branch form a retired
+ * chain: at least one row names it, every row's exit receipt is superseded,
+ * each supersession is either the `retired:<request-id>` sentinel that
+ * `arcadia session retire-handoff` (or the tick's stale-base retirement,
+ * Issue #3015) writes or the id of another row in this same set (a resume in
+ * this worktree), and at least one row carries the sentinel. A row with no
+ * exit receipt (live), an unsuperseded exit, or a supersession by a Session
+ * elsewhere means someone may still hold it. So A resumed as B, then B
+ * retired, is retired; A alone superseded by a live B is not. The directory
+ * stays on disk for manual salvage and must not block a fresh launch (#2492).
+ * Fails closed.
  */
 function isRetiredHandoffWorktree(db: Database.Database, worktree: string, branchRef: string): boolean {
   try {
     const has = (name: string) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
     if (!has("agent_sessions") || !has("session_exit_receipts")) return false;
     const branch = branchRef.replace(/^refs\/heads\//, "");
-    const rows = db.prepare(`SELECT r.superseded_by_session_id AS superseded FROM agent_sessions s
+    const rows = db.prepare(`SELECT s.id AS id, r.superseded_by_session_id AS superseded FROM agent_sessions s
       LEFT JOIN session_exit_receipts r ON r.session_id = s.id
       WHERE s.worktree_path = ? OR s.worktree_path = ? OR s.branch IN (?, ?)`)
-      .all(worktree, canonicalPath(worktree), branch, `refs/heads/${branch}`) as Array<{ superseded: string | null }>;
-    return rows.length > 0 && rows.every((row) => row.superseded?.startsWith("retired:") === true);
+      .all(worktree, canonicalPath(worktree), branch, `refs/heads/${branch}`) as Array<{ id: string; superseded: string | null }>;
+    const inChain = new Set(rows.map((row) => row.id));
+    const retired = (row: { superseded: string | null }) => row.superseded?.startsWith("retired:") === true;
+    return rows.some(retired)
+      && rows.every((row) => retired(row) || (row.superseded !== null && row.superseded !== row.id && inChain.has(row.superseded)));
   } catch {
     return false;
   }
