@@ -1,10 +1,10 @@
 ---
 arcadia: v1
 type: decision
-id: "0288"
+id: "0290"
 slug: implementer-model-and-effort-rule-for-production-opus-high-for-source-work-and
 project: arcadia
-status: open
+status: approved
 question: "Implementer model and effort rule for production: Opus high for source work and every review repair, Sonnet medium for test, docs and config work, chosen by rule with no extra operator question."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,9 +22,11 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-four-worker-mergeable-actions-for-the-engine-s-first
 updated: 2026-11-24
+answer: "A. Rule-based hybrid: Opus high for source work and all review repairs, Sonnet medium for test, docs and config"
+decided: 2026-11-24
 ---
 
-# Decision 0288: Implementer model and effort rule for production: Opus high for source work and every review repair, Sonnet medium for test, docs and config work, chosen by rule with no extra operator question.
+# Decision 0290: Implementer model and effort rule for production: Opus high for source work and every review repair, Sonnet medium for test, docs and config work, chosen by rule with no extra operator question.
 
 ## Options
 
