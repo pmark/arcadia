@@ -155,6 +155,32 @@ export function collectProduction(context: CollectorContext): TimelineEvent[] {
     }
   }
 
+  if (hasTable(db, "production_worker_merges")) {
+    const rows = db.prepare(`
+      SELECT request_id, session_id, action_key, pull_request_url, head, outcome, code, updated_at FROM production_worker_merges
+      WHERE updated_at BETWEEN @since AND @until ORDER BY updated_at DESC LIMIT @cap`).all(params) as Array<{
+      request_id: string; session_id: string; action_key: string; pull_request_url: string | null; head: string; outcome: string; code: string | null; updated_at: string;
+    }>;
+    capped(rows, context, events, "production", "production_worker_merges");
+    for (const row of rows) {
+      const target = projectFromKey(row.action_key);
+      const pullRequest = prNumber(row.pull_request_url);
+      push({
+        id: `production:worker-merge:${row.request_id}`,
+        time: row.updated_at,
+        clock: "workspace-db",
+        source: "production",
+        kind: "production.worker_merge",
+        workKind: workKindFor("production.worker_merge"),
+        summary: `Worker merge of ${pullRequest ?? "a pull request"} for ${row.action_key}: ${row.outcome}${row.code ? ` (${row.code})` : ""}`,
+        subjects: { project: target.project, action: target.action, session: row.session_id, commit: row.head, pullRequest },
+        actor: worker.actor,
+        evidence: [{ kind: "row", value: `production_worker_merges/${row.request_id}` }],
+        provenance: { event: "production_worker_merges.updated_at (one row per request; a later outcome replaces the earlier one)", actor: worker.provenance }
+      });
+    }
+  }
+
   if (hasTable(db, "candidate_preservation_receipts")) {
     const rows = db.prepare(`
       SELECT id, repository_path, candidate_worktree_path, branch, action_id, commit_sha, preservation_state, pull_request_number, pull_request_url, created_at
@@ -246,7 +272,7 @@ export function collectQueue(context: CollectorContext): TimelineEvent[] {
 
 export const productionCollector: Collector = {
   source: "production",
-  describe: "production_policy_receipts, production_admissions, production_operator_escalations, production_launch_refusal_log, production_repair_attempts, production_review_steps, candidate_preservation_receipts",
+  describe: "production_policy_receipts, production_admissions, production_operator_escalations, production_launch_refusal_log, production_repair_attempts, production_review_steps, production_worker_merges, candidate_preservation_receipts",
   collect: collectProduction
 };
 

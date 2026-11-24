@@ -74,6 +74,7 @@ export const WORK_KIND_BY_EVENT_KIND: Readonly<Record<string, WorkKind>> = {
   "production.launch_refused": "operate",
   "production.repair_attempt": "operate",
   "production.review_step.pushed": "integrate",
+  "production.worker_merge": "integrate",
   "production.review_step.ready": "review",
   "production.preservation": "integrate",
   // queue and pointer receipts
