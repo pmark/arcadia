@@ -31,11 +31,11 @@ actions:
     references: ["src/timeline/collectors/operatorScripts.ts", "src/timeline/schema.ts", "artifacts/generated/operator-scripts/runs"]
   - id: timeline-reads-worker-merges
     title: The operator timeline shows each production worker merge attempt from production_worker_merges, with the Action, pull request, outcome and refusal code, so merged and parked work is visible beside its decisions.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: The operator timeline shows each production worker merge attempt from production_worker_merges, with the Action, pull request, outcome and refusal code, so merged and parked work is visible beside its decisions.
+    next_action: Completed via Agent Ask auto-settle-arcadia-timeline-reads-worker-merges-dc03e423b49f; no further action.
     expected_artifact: Evidence satisfying Agent Ask timeline-reads-worker-merges
     clarification: clarified
     confidence: high
@@ -91,7 +91,7 @@ actions:
     references: ["src/timeline/collectors/asks.ts", "src/db/schema.ts", "src/timeline/schema.ts", "src/timeline/classify.ts"]
 questions: []
 decisions: []
-current_action: timeline-reads-worker-merges
+current_action: timeline-reads-operator-interactions
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
