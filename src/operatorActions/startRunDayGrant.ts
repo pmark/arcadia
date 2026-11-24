@@ -492,7 +492,7 @@ function startPresses(library: string, evidence: DayEvidence, excludePress: stri
     const batchFailed = evidence.activations.some((a) => a.requestId === card && isFailedBatch(a));
     const before = presses.length;
     for (const pressId of listDirectory(path.join(operatorRuns, card))) {
-      if (pressId === excludePress) continue;
+      if (`${card}/${pressId}` === excludePress) continue;
       const dir = path.join(operatorRuns, card, pressId);
       const run = readJson<PressRecord & { press?: { decision?: string } }>(path.join(dir, "run.json"));
       const startRun = readJson<{ startRun?: { delegation?: StartPress["delegation"] } }>(path.join(dir, "descriptor.json"))?.startRun;
@@ -596,7 +596,7 @@ export interface InspectDayGrantInput {
   evidence: DayEvidence;
   /** The card's pinned policy revision; null while computing a card's pins before the revision is chosen. */
   policyRevision: number | null;
-  /** The press running right now, not an earlier one. */
+  /** The press running right now, as `<card>/<pressId>`: it is neither the latest nor a previous press. */
   excludePress: string | null;
   scope: { project: string; plan: string; provider: string; concurrency: number; spendDecision: string; offId: string };
   /** The card's named cause; undefined computes the chain before Rowan has named one. */

@@ -94,7 +94,16 @@ switch (key2) {
     // null (the card is what the deriver returns) or the differing fields. The real comparison is tested in start-run-derive.test.ts.
     if (state.derive?.fail) { process.stderr.write("the derivation could not run\n"); process.exit(1); }
     const verdicts = state.derive?.verdicts ?? [null];
-    const differs = verdicts.length > 1 ? verdicts.shift() : verdicts[0];
+    let differs = verdicts.length > 1 ? verdicts.shift() : verdicts[0];
+    // state.derive.chain: also refuse like the real chain check (PREVIOUS_UNSETTLED) while any press record other than --current-press
+    // is still running. The real chain is exercised in start-run-derive.test.ts; this only pins what the executor hands it.
+    if (state.derive?.chain && differs === null) {
+      const library = get("--library"), own = get("--current-press");
+      const operatorRuns = path.join(library, "runs", "operator");
+      const unsettled = (existsSync(operatorRuns) ? readdirSync(operatorRuns) : []).flatMap((card) => readdirSync(path.join(operatorRuns, card)).map((id) => `${card}/${id}`))
+        .filter((key) => key !== own && JSON.parse(readFileSync(path.join(operatorRuns, key, "run.json"), "utf8")).status === "running");
+      if (unsettled.length) differs = ["derivation"];
+    }
     save();
     // state.derive.replay: the replay receipt's verdict ({ ok, code, detail }); absent means a receipt that names this card. The real check is tested in start-run-replay-receipt.test.ts.
     ok({ derived: true, verification: { verified: differs === null, code: differs === null ? null : "CARD_NOT_DERIVED", differs: differs ?? [], derivedCardId: "standing-start-derived" }, replay: state.derive?.replay ?? { ok: true, code: null, detail: "the replay receipt names this card" } });

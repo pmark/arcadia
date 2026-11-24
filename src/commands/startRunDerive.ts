@@ -12,7 +12,7 @@ import { START_RUN_DEFAULTS, frontmatter, mainCheckout, originMainReads, realSta
 import { createHash } from "node:crypto";
 
 /** The options `start-run derive` accepts: where to read, never what to derive. */
-export interface StartRunDeriveOptions { repository?: string; workspace?: string; library?: string; verifyCard?: string; json?: boolean; unknownArguments?: string[] }
+export interface StartRunDeriveOptions { repository?: string; workspace?: string; library?: string; verifyCard?: string; currentPress?: string; json?: boolean; unknownArguments?: string[] }
 export interface StartRunDeriveData {
   derived: boolean;
   /** The named reason nothing was derived, or null. */
@@ -38,7 +38,15 @@ const sha256 = (value: Buffer): string => createHash("sha256").update(value).dig
  */
 export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: StartRunPinsDeps = realStartRunPinsDeps): CommandSuccess<StartRunDeriveData> {
   if (options.unknownArguments?.length) {
-    throw validationError(`DERIVE_OPTION_REFUSED: start-run derive derives every field and accepts no ${options.unknownArguments.filter((arg) => arg.startsWith("-")).join(", ") || "argument"}; only --repository, --workspace, --library and --json are read.`, { code: "DERIVE_OPTION_REFUSED" });
+    throw validationError(`DERIVE_OPTION_REFUSED: start-run derive derives every field and accepts no ${options.unknownArguments.filter((arg) => arg.startsWith("-")).join(", ") || "argument"}; only --repository, --workspace, --library, --verify-card, --current-press and --json are read.`, { code: "DERIVE_OPTION_REFUSED" });
+  }
+  // Run mode only (scripts/start-run.sh): this card's own in-flight press, `<card>/<pressId>`, is not a previous press. It must be a
+  // press of the card being verified; every other press still counts, so another unsettled press still refuses PREVIOUS_UNSETTLED.
+  if (options.currentPress !== undefined) {
+    const own = /^([a-z0-9]+(?:-[a-z0-9]+)*)\/([A-Za-z0-9][A-Za-z0-9._-]*)$/.exec(options.currentPress);
+    if (!options.verifyCard || !own || own[1] !== path.basename(options.verifyCard).replace(/\.json$/, "")) {
+      throw validationError("DERIVE_OPTION_REFUSED: --current-press <card>/<pressId> is read only with --verify-card and must name a press of that card.", { code: "DERIVE_OPTION_REFUSED" });
+    }
   }
   let toplevel: string;
   try { toplevel = realpathSync(options.repository ?? text(deps.git(process.cwd(), ["rev-parse", "--show-toplevel"])).trim()); }
@@ -101,7 +109,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
   try {
     chain = inspectDayGrantChain({
       library, approvalCard: grant.approvalCard, approvalRun: grant.approvalRun, approvalReceiptSha256: null, approvalPressSha256: null, now, evidence,
-      policyRevision: production.revision, excludePress: null, grant: "standing", standingDecision,
+      policyRevision: production.revision, excludePress: options.currentPress ?? null, grant: "standing", standingDecision,
       scope: { project, plan: grant.plan, provider: DERIVED_PROVIDER, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision, offId: START_RUN_DEFAULTS.offId }
     });
   } catch (error) {
