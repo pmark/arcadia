@@ -49,8 +49,13 @@ function strip(token: string): string {
   return token.replace(/^['"`(]+|['"`),:]+$/g, "");
 }
 
+/** Every repository path (with a directory and an extension) the Action's criteria mention, in first-mention order. */
+export function criteriaPathMentions(criteria: readonly string[]): string[] {
+  return pathsNamedElsewhere(criteria, null);
+}
+
 /** Paths named by the Action's criteria other than the scope criterion itself, in first-mention order. */
-function pathsNamedElsewhere(criteria: readonly string[], except: string): string[] {
+function pathsNamedElsewhere(criteria: readonly string[], except: string | null): string[] {
   const found: string[] = [];
   for (const criterion of criteria) {
     if (criterion === except) continue;
