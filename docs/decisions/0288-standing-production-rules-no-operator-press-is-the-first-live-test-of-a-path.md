@@ -4,7 +4,7 @@ type: decision
 id: "0288"
 slug: standing-production-rules-no-operator-press-is-the-first-live-test-of-a-path
 project: arcadia
-status: open
+status: approved
 question: "Standing production rules: no operator press is the first live test of a path, and a proven run shape repeats three times before production widens."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -22,6 +22,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-four-worker-mergeable-actions-for-the-engine-s-first
 updated: 2026-11-24
+answer: "A. Both rules: unstubbed dress rehearsal before any press request, and three clean runs of one shape before widening"
+decided: 2026-11-24
 ---
 
 # Decision 0288: Standing production rules: no operator press is the first live test of a path, and a proven run shape repeats three times before production widens.
