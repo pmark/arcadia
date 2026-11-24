@@ -20,10 +20,73 @@ interface Receipt {
   finishedAt?: unknown;
   outcome?: unknown;
   stage?: unknown;
+  mode?: unknown;
+  record?: { plan?: unknown; pressedBy?: unknown; authority?: unknown };
 }
 
 function str(value: unknown): string | null {
   return typeof value === "string" && value ? value : null;
+}
+
+function isRegularFile(file: string): boolean {
+  try {
+    return lstatSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** Each `runs/<card>/<run>/receipt.json` of mode run is one press; preflights and malformed receipts are skipped. */
+function collectCardPresses(repository: TimelineRepository, context: CollectorContext, runs: string, card: string): TimelineEvent[] {
+  const dir = path.join(runs, card);
+  const events: TimelineEvent[] = [];
+  let runIds: string[];
+  try {
+    runIds = readdirSync(dir).sort().reverse();
+  } catch {
+    return events;
+  }
+  for (const run of runIds) {
+    if (events.length >= context.maxPerSource) break;
+    const file = path.join(dir, run, "receipt.json");
+    if (!isRegularFile(file)) continue;
+    let receipt: Receipt;
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(file, "utf8"));
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+      receipt = parsed as Receipt;
+    } catch {
+      continue;
+    }
+    if (str(receipt.mode) !== "run") continue;
+    const recorded = normalizeTime(str(receipt.finishedAt) ?? str(receipt.startedAt));
+    const time = recorded ?? lstatSync(file).mtime.toISOString();
+    if (!inWindow(time, context.window)) continue;
+    const record = receipt.record && typeof receipt.record === "object" ? receipt.record : {};
+    const outcome = str(receipt.outcome) ?? "unknown outcome";
+    const plan = str(record.plan);
+    const presser = str(record.pressedBy) ?? str(record.authority);
+    const event = timelineEvent({
+      id: `operator-scripts:${repository.projectSlug}:${card}/${str(receipt.runId) ?? run}`,
+      time,
+      clock: recorded ? "receipt-file" : "file-mtime",
+      source: "operator-scripts",
+      kind: "operator-script.run",
+      workKind: workKindFor("operator-script.run"),
+      summary: `Card ${str(receipt.id) ?? card} pressed: ${outcome}`,
+      subjects: { project: repository.projectSlug, ...(plan ? { plan } : {}), repository: repository.path },
+      actor: { ...UNKNOWN_ACTOR, tool: "operator", name: presser, confidence: presser ? "medium" : "low" },
+      attention: outcome !== "succeeded" && outcome !== "unknown outcome",
+      evidence: [{ kind: "receipt", value: str(receipt.runId) ?? run }, { kind: "path", value: path.relative(repository.path, file) }],
+      provenance: {
+        event: `${str(receipt.schema) ?? "receipt"} ${recorded ? "finishedAt/startedAt" : "file modification time"}`,
+        actor: presser ? "the receipt's record names who pressed" : "the receipt does not name who pressed; the runner executes a card only on a press"
+      },
+      dedupeKeys: []
+    });
+    if (event) events.push(event);
+  }
+  return events;
 }
 
 export function collectOperatorScripts(repository: TimelineRepository, context: CollectorContext): TimelineEvent[] {
@@ -33,14 +96,12 @@ export function collectOperatorScripts(repository: TimelineRepository, context: 
   const firstSucceeded = new Map<string, TimelineEvent>();
   const entries = readdirSync(runs).sort().reverse().slice(0, context.maxPerSource);
   for (const entry of entries) {
+    if (entry === "operator") continue;
     const file = path.join(runs, entry, "receipt.json");
-    let isFile: boolean;
-    try {
-      isFile = lstatSync(file).isFile();
-    } catch {
-      isFile = false;
+    if (!isRegularFile(file)) {
+      if (events.length < context.maxPerSource) events.push(...collectCardPresses(repository, context, runs, entry));
+      continue;
     }
-    if (!isFile) continue;
     let receipt: Receipt;
     try {
       receipt = JSON.parse(readFileSync(file, "utf8")) as Receipt;
