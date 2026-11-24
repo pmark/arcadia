@@ -1,5 +1,5 @@
 {
-  "revision": "ca20b17e0a62ef20b40103ead4f086ea39114be8",
+  "revision": "c29db62800b10143262201bbbf97b03e33c9008b",
   "files": {
     ".agents/skills/arcadia-design/SKILL.md": "37fed7099f77d43fef3f1a69f3ea1ce8a8448593b10495ab913d5a789e4d27e6",
     ".agents/skills/arcadia-hacker/SKILL.md": "b91ec2dd3d0870d36ef7b66679605de3948a9337a1fc9692997032126fcc6d1f",
@@ -10,7 +10,7 @@
     ".agents/skills/arcadia-signal/SKILL.md": "6af46c0b5bb21d6dc4f86cf854e59cd14c5c1c4c9d06e75929ed8e670e5d5d52",
     ".agents/skills/arcadia-supervisor/SKILL.md": "3e6f0df13aed6c54f171390a781944a81dfa91f65ca78cdd5d2b26f2cfc36d81",
     "docs/AGENT_ORIENTATION.md": "e9e6d5ad3a12946281275bf59645fc712404bc921ecaa847e84830bcd9bdcc91",
-    "docs/COMMANDS.md": "204e0cdc2ad792887ec646f534c1e63c6873155498289c4fabb2e558241d3e1d",
+    "docs/COMMANDS.md": "9aec43af4ac80d9648643c04e99dc082a12e0fb9e6a48572279690f564b4d100",
     "docs/arcadia-semantics.md": "9c40f76a5e7a965ff9f47981cf6e1561488dec13800dee229e9f1f2d16c224d5",
     "docs/articles/README.md": "aa2a8688bb66e3bd37f2cbf0e75ee1d0b49749e14d57f8fb02744ba0eacabf4d",
     "docs/behavioral-testing.md": "9fa5bfe63ad4c2a4d7c42ab7b9625040804fd617f01cfda8826ff8f55a062ff8",
