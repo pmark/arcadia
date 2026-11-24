@@ -4,9 +4,11 @@ import path from "node:path";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
+import { PARKED_BATCH_EXECUTOR_MARKER, parkedBatchEnabled, readLiveParkedBatch, type ParkedBatchDecisionSource } from "../production/parkedBatch.js";
 import {
   SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, SUCCESSOR_STATE_SCHEMA, emptySuccessorState, runSuccessorPressStep, type SuccessorOutcome, type SuccessorPorts, type SuccessorState
 } from "../production/successorPress.js";
+import { START_RUN_EXECUTOR_PATH } from "../operatorActions/startRunPins.js";
 import { failedBatchClearancePath, parseFailedBatchClearance } from "../operatorActions/startRunDerive.js";
 import { checkReplayReceipt, replayCardIdentity, replayReceiptPath } from "../operatorActions/startRunReplayReceipt.js";
 import { runProductionDeactivateCommand } from "./production.js";
@@ -89,6 +91,26 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
   const base = { repository, workspace: workspacePath, library };
   let derivation: CommandSuccess<StartRunDeriveData> | null = null;
   const derivedOnce = (): CommandSuccess<StartRunDeriveData> => derivation ??= runStartRunDeriveCommand(base, pins);
+  /** The Decisions on origin main as the derive command reads them; undefined when they cannot be read (the parked reading then stays off). */
+  const originMainSha = (): string | undefined => {
+    const sha = pins.git(repository, ["ls-remote", "origin", "refs/heads/main"]).toString("utf8").trim().split(/\s+/)[0] ?? "";
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : undefined;
+  };
+  const decisionSource = (): ParkedBatchDecisionSource | undefined => {
+    try {
+      const originMain = originMainSha();
+      if (originMain === undefined) return undefined;
+      const paths = pins.git(repository, ["ls-tree", "--name-only", originMain, "docs/decisions/"]).toString("utf8").split("\n").filter(Boolean);
+      return { paths, read: (file) => pins.git(repository, ["show", `${originMain}:${file}`]).toString("utf8") };
+    } catch { return undefined; }
+  };
+  /** The same read `derive` uses for EXECUTOR_LACKS_PARKED_FOR_YOU: the literal in the executor at origin main; unreadable reads false. */
+  const executorCarriesParked = (): boolean => {
+    try {
+      const originMain = originMainSha();
+      return originMain !== undefined && pins.git(repository, ["show", `${originMain}:${START_RUN_EXECUTOR_PATH}`]).toString("utf8").includes(PARKED_BATCH_EXECUTOR_MARKER);
+    } catch { return false; }
+  };
   const release = (id: string): string[] => [path.join(library, `${id}.json`), path.join(library, `${id}.sh`), path.join(library, "reviewed", `${id}.json`)];
 
   return {
@@ -101,7 +123,11 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
       const production = pins.production(workspacePath);
       const scopeComplete = production.desiredState === "active" && withReadOnlyDatabase(workspacePath, (db) =>
         db.prepare("SELECT 1 FROM events WHERE event_type = 'managed_production.scope_complete' AND json_extract(payload_json, '$.policyRevision') = ? LIMIT 1").get(production.revision) !== undefined);
-      return { desiredState: production.desiredState === "active" ? "active" : production.desiredState === "inactive" ? "inactive" : "unknown", liveAdmissions: production.liveAdmissions, scopeComplete, revision: production.revision };
+      // Decision 0282's draft: with no scope-complete record, every pinned step merged or parked for a policy reason (read from the
+      // worker's own merge records) ends the run the same way, but only when that Decision is answered A on origin main.
+      const parkedForYou = production.desiredState === "active" && !scopeComplete && parkedBatchEnabled(decisionSource())
+        && withReadOnlyDatabase(workspacePath, (db) => readLiveParkedBatch(db, production.revision).kind === "parked-for-you");
+      return { desiredState: production.desiredState === "active" ? "active" : production.desiredState === "inactive" ? "inactive" : "unknown", liveAdmissions: production.liveAdmissions, scopeComplete, parkedForYou, revision: production.revision };
     },
     batch: () => {
       const data = derivedOnce().data;
@@ -112,6 +138,7 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
     originMain: () => {
       try { return execFileSync("git", ["ls-remote", "--exit-code", "origin", "refs/heads/main"], { cwd: repository, encoding: "utf8", timeout: 30_000 }).split(/\s+/)[0] || null; } catch { return null; }
     },
+    executorCarriesParked,
     mainChecks: () => readMainChecks(repository),
     holds: () => {
       const names = (pins.listFiles(library) ?? []).filter((name) => name.endsWith(".held.json"));
@@ -166,7 +193,7 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
     },
     retire: (card) => { for (const file of release(card)) rmSync(file, { force: true }); },
     ping: ({ message, key }) => queuePing({ workspace: workspacePath, message, kind: "attention", link: dashboardLink(options.dashboardUrl, "/actions"), agent: PING_AGENT, episodeKey: key, now }).id,
-    off: (slug) => { runProductionDeactivateCommand({ workspace: workspacePath, rowanOff: slug, reason: "Successor press: the batch reached scope complete; the standing grant stays open." }); }
+    off: (slug) => { runProductionDeactivateCommand({ workspace: workspacePath, rowanOff: slug, reason: "Successor press: the batch reached scope complete, or every pinned step is merged or parked for the operator (the parked-batch Decision); the standing grant stays open." }); }
   };
 }
 

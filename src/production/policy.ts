@@ -10,6 +10,7 @@ import { actionDocRef, parseActionDocRef } from "../docs/types.js";
 import type { WorkItem } from "../domain/types.js";
 import { createId } from "../utils/id.js";
 import { nowIso } from "../utils/time.js";
+import { readParkedBatch, scopeActionKeys, type ParkedBatchReading } from "./parkedBatch.js";
 
 /**
  * Managed production policy: the durable answer to "may Arcadia admit new
@@ -1847,7 +1848,7 @@ export function assertReceiptTransition(
  */
 export function readDayGrantEvidence(db: Database.Database, since: string): {
   transitions: Array<{ requestId: string; transition: "activate" | "deactivate"; revisionBefore: number; revisionAfter: number; at: string }>;
-  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number; endedAt: string | null; scopeComplete: { merged: number; escalated: number } | null }>;
+  activations: Array<{ requestId: string; revisionAfter: number; at: string; admitted: number; endedAt: string | null; scopeComplete: { merged: number; escalated: number } | null; parked: ParkedBatchReading | null }>;
 } {
   const earliest = Date.parse(since);
   const rows = db.prepare(
@@ -1881,7 +1882,12 @@ export function readDayGrantEvidence(db: Database.Database, since: string): {
       const count = (values: unknown[]): number => values.every((value) => Number.isInteger(value) && (value as number) >= 0) ? values.reduce<number>((sum, value) => sum + (value as number), 0) : Number.NaN;
       const proved = projects.length > 0 && projects.every((project) => done.some((event) => event.project === project));
       const scopeComplete = proved ? { merged: count(done.map((event) => event.merged)), escalated: count(done.map((event) => event.escalated)) } : null;
-      return { requestId: row.request_id, revisionAfter: row.revision_after, at: row.created_at, admitted, endedAt: off ? off.created_at : null, scopeComplete };
+      // Decision 0282's draft: with no scope-complete record, the batch's own worker-merge records say whether every pinned step
+      // merged or parked for a policy reason. This is only the reading; whether it counts is decided where the verdict is used.
+      const parked = scopeComplete === null && admitted >= 1
+        ? readParkedBatch(db, { scopeActions: scopeActionKeys(row.receipt_json), from: row.created_at, until: off ? off.created_at : null })
+        : null;
+      return { requestId: row.request_id, revisionAfter: row.revision_after, at: row.created_at, admitted, endedAt: off ? off.created_at : null, scopeComplete, parked };
     })
   };
 }

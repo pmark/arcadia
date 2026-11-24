@@ -3,6 +3,7 @@ import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { PARKED_BATCH_EXECUTOR_MARKER } from "../production/parkedBatch.js";
 import { START_RUN_EXECUTOR_PATH } from "../operatorActions/startRunPins.js";
 import { inspectDayGrantChain, standingGrantStatus } from "../operatorActions/startRunDayGrant.js";
 import { StartRunDelegationError } from "../operatorActions/startRunDelegation.js";
@@ -101,7 +102,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
   try {
     chain = inspectDayGrantChain({
       library, approvalCard: grant.approvalCard, approvalRun: grant.approvalRun, approvalReceiptSha256: null, approvalPressSha256: null, now, evidence,
-      policyRevision: production.revision, excludePress: null, grant: "standing", standingDecision,
+      policyRevision: production.revision, excludePress: null, grant: "standing", standingDecision, parkedDecision: standingDecision,
       scope: { project, plan: grant.plan, provider: DERIVED_PROVIDER, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision, offId: START_RUN_DEFAULTS.offId }
     });
   } catch (error) {
@@ -110,6 +111,11 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
   }
 
   latestPress = chain.latest;
+  // The press-time executor (scripts/start-run.sh) re-checks the chain with its own copy of the failed-batch rule. Until that copy
+  // names the parked-for-you outcome it would refuse this card at P0, so no card is derived (and no replay is spent) on its behalf.
+  if (chain.latest?.kind === "parked-for-you" && !text(show(START_RUN_EXECUTOR_PATH)).includes(PARKED_BATCH_EXECUTOR_MARKER)) {
+    return done(refuse("EXECUTOR_LACKS_PARKED_FOR_YOU", `the latest press ${chain.latest.press} reads parked-for-you, but ${START_RUN_EXECUTOR_PATH} at origin main does not carry that outcome and would refuse the card as a failed batch; nothing is derived until the executor is updated`), queue.revision, productionPins);
+  }
   const labels = deps.launchctlList().split("\n").map((line) => line.trim().split(/\s+/).pop() ?? "").filter((label) => /^com\.arcadia\.local\.[A-Za-z0-9._-]+\.worker$/.test(label));
   if (labels.length !== 1) throw validationError(`Expected exactly one com.arcadia.local.*.worker launchd job, found ${labels.length}; no worker label was guessed.`);
   const entries = new Set(deps.listFiles(library));

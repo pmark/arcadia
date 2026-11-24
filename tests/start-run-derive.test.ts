@@ -8,6 +8,7 @@ import { START_RUN_DEFAULTS, type StartRunPinsDeps } from "../src/commands/start
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { validateOperatorScriptContract } from "../src/operatorActions/libraryContract.js";
 import { STANDING_SLUG } from "../src/operatorActions/startRunDayGrant.js";
+import { PARKED_BATCH_SLUG, type ParkedBatchReading } from "../src/production/parkedBatch.js";
 import { START_RUN_KEYS, validateStartRunPins, startRunLauncher } from "../src/operatorActions/startRunPins.js";
 import {
   DERIVED_CARD_ID_PREFIX, DERIVED_CARD_LIFETIME_MS, DERIVED_CARD_MAX_ACTIONS, deriveStartCard, type DeriveInput, type DerivePlanAction
@@ -30,7 +31,7 @@ const planDoc = (actions: Array<{ id: string; status: string; depends_on?: strin
   `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${status}\nactions:\n${actions.map((a) => `  - id: ${a.id}\n    status: ${a.status}\n    depends_on: [${(a.depends_on ?? []).join(", ")}]\n    acceptance_criteria:\n      - "A criterion."\n`).join("")}---\n`;
 
 interface World { repository: string; library: string; workspace: string; deps: StartRunPinsDeps; before: () => string[] }
-function world(options: { scenario?: DayScenario; actions?: Array<{ id: string; status: string; depends_on?: string[] }>; queue?: string[]; now?: number; production?: Partial<{ desiredState: string; revision: number; epoch: number; liveAdmissions: number }> } = {}): World {
+function world(options: { scenario?: DayScenario; actions?: Array<{ id: string; status: string; depends_on?: string[] }>; queue?: string[]; now?: number; production?: Partial<{ desiredState: string; revision: number; epoch: number; liveAdmissions: number }>; extraFiles?: Record<string, string>; parkedReading?: ParkedBatchReading } = {}): World {
   const repository = tempDir("arcadia-derive-");
   const library = path.join(repository, "artifacts", "generated", "operator-scripts");
   mkdirSync(library, { recursive: true });
@@ -39,17 +40,19 @@ function world(options: { scenario?: DayScenario; actions?: Array<{ id: string; 
   const now = options.now ?? NOW;
   const scenario = options.scenario ?? { label: "", code: "" };
   const written = writeDayScenario(library, { ...scenario, approval: { standing: true, ...scenario.approval } }, now);
+  if (options.parkedReading) written.evidence.activations[0].parked = options.parkedReading;
   for (const card of [START_RUN_DEFAULTS.gateCardId, START_RUN_DEFAULTS.offId, STOP_ID]) writeFileSync(path.join(library, `${card}.json`), "{}");
   const actions = options.actions ?? [{ id: "one", status: "open" }, { id: "two", status: "open" }, { id: "three", status: "open", depends_on: ["two"] }];
   const files: Record<string, string> = {
     "scripts/start-run.sh": EXECUTOR, "src/sessions/tmuxLauncher.ts": "x", "src/production/workerMerge.ts": "y",
     "PROJECT.md": `---\nslug: arcadia\nactive_plan: ${DAY_PLAN}\n---\n`, [`docs/plans/${DAY_PLAN}.md`]: planDoc(actions),
-    [DECISION]: `---\nid: "0241"\nstatus: approved\nanswer: E. Standing grant over your approved work queue\n---\n`
+    [DECISION]: `---\nid: "0241"\nstatus: approved\nanswer: E. Standing grant over your approved work queue\n---\n`,
+    ...options.extraFiles
   };
   const deps: StartRunPinsDeps = {
     git: (_repo, args) => {
       if (args[0] === "ls-remote") return Buffer.from(`${MAIN}\trefs/heads/main\n`);
-      if (args[0] === "ls-tree") return Buffer.from(`${DECISION}\n`);
+      if (args[0] === "ls-tree") return Buffer.from(`${[DECISION, ...Object.keys(files).filter((file) => file.startsWith("docs/decisions/") && file !== DECISION)].join("\n")}\n`);
       const spec = args[1].slice(args[1].indexOf(":") + 1);
       if (files[spec] === undefined) throw new Error(`missing ${spec}`);
       return Buffer.from(files[spec]);
@@ -341,5 +344,50 @@ describe("deriveStartCard: property over generated Plans and queues", () => {
     }
     expect(derived).toBeGreaterThan(20);
     expect(refused).toBeGreaterThan(20);
+  });
+});
+
+describe("arcadia start-run derive: a parked-for-you batch (the draft Decision 0282, option A)", () => {
+  const m = (minutes: number) => NOW - minutes * MINUTE;
+  const PARKED_DECISION = `docs/decisions/0282-${PARKED_BATCH_SLUG}.md`;
+  const answered = (answer: string | null) => ({ [PARKED_DECISION]: `---\nid: "0282"\nstatus: ${answer === null ? "open" : "approved"}\n${answer === null ? "" : `answer: ${JSON.stringify(answer)}\n`}---\n` });
+  const A = "A. Approve: a parked step is not a failed batch";
+  const parkedReading: ParkedBatchReading = { kind: "parked-for-you", merged: [], parked: [{ action: "arcadia/one", head: "a".repeat(40), pullRequestUrl: "https://github.com/pmark/arcadia/pull/1", condition: "C4", at: "2026-11-10T11:00:00.000Z" }] };
+  // The batch ended by the successor's own Off with no scope-complete record: today that reads as a failed batch.
+  const parkedBatch: DayScenario = {
+    label: "", code: "", presses: [{ card: "start-a", at: m(40), status: "succeeded", receipt: { outcome: "succeeded", reason: "", productionActivated: true, allowanceConsumed: true } }],
+    steps: [{ activate: "start-a" }, { off: "rowan-off-successor-press-scope-complete" }]
+  };
+  const EXECUTOR_WITH = `${EXECUTOR}# parked-for-you is read here too\n`;
+
+  it("derives the next card, naming the batch parked-for-you, when the Decision is answered A and the executor carries the outcome", () => {
+    const data = derive(world({ scenario: parkedBatch, parkedReading, extraFiles: { ...answered(A), "scripts/start-run.sh": EXECUTOR_WITH } }));
+    expect(data).toMatchObject({ derived: true, observations: { latestPress: { press: pressKey("start-a"), kind: "parked-for-you" } } });
+    expect(data.card!.descriptor.startRun).toMatchObject({ delegation: { previous: { press: pressKey("start-a"), kind: "parked-for-you", cause: "parked-for-you", clearance: { kind: "observed-cleared" } } } });
+  });
+
+  it("(5) flag off: with the Decision open, answered otherwise, absent, or its record duplicated, the same batch is still a failed one and nothing is derived", () => {
+    for (const extraFiles of [
+      { "scripts/start-run.sh": EXECUTOR_WITH },
+      { ...answered(null), "scripts/start-run.sh": EXECUTOR_WITH },
+      { ...answered("B. Keep the rule"), "scripts/start-run.sh": EXECUTOR_WITH },
+      { ...answered(A), [`docs/decisions/0290-${PARKED_BATCH_SLUG}.md`]: answered(A)[PARKED_DECISION], "scripts/start-run.sh": EXECUTOR_WITH }
+    ]) {
+      const data = derive(world({ scenario: parkedBatch, parkedReading, extraFiles }));
+      expect(data).toMatchObject({ derived: false, observations: { latestPress: { kind: "failed-attempt" } } });
+      expect(data.reason).toBe("FAILED_BATCH_NEEDS_FIX");
+    }
+  });
+
+  it("derives nothing, naming why, while the press-time executor does not carry the parked-for-you outcome (it would refuse the card as a failed batch)", () => {
+    const data = derive(world({ scenario: parkedBatch, parkedReading, extraFiles: answered(A) }));
+    expect(data).toMatchObject({ derived: false, reason: "EXECUTOR_LACKS_PARKED_FOR_YOU" });
+    expect(data.message).toContain("scripts/start-run.sh");
+  });
+
+  it("(4) with the Decision answered, an absent, not-parked or empty reading still reads as a failed batch", () => {
+    for (const reading of [undefined, { kind: "not-parked", reason: "finish-allocate failed governed review" } as ParkedBatchReading, { kind: "parked-for-you", merged: [], parked: [] } as ParkedBatchReading]) {
+      expect(derive(world({ scenario: parkedBatch, parkedReading: reading, extraFiles: { ...answered(A), "scripts/start-run.sh": EXECUTOR_WITH } }))).toMatchObject({ derived: false, reason: "FAILED_BATCH_NEEDS_FIX" });
+    }
   });
 });
