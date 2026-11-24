@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -67,6 +67,42 @@ describe("operator-script card presses", () => {
   it("skips preflights, malformed receipts and the operator directory without throwing", () => {
     const ids = collectOperatorScripts(repository, context).map((event) => event.id).sort();
     expect(ids).toEqual(["operator-scripts:demo:20261006T010000Z-1", "operator-scripts:demo:start-demo:run-1", "operator-scripts:demo:start-named:run-2"]);
+  });
+
+  it("times a press by startedAt, not updatedAt", () => {
+    const press = collectOperatorScripts(repository, context).find((event) => event.id.endsWith(":start-demo:run-1"));
+    expect(Math.abs(Date.parse(String(press?.time)) - (Date.now() - 60_000))).toBeLessThan(5_000);
+  });
+
+  it("does not follow a symlinked run directory", () => {
+    const outside = mkdtempSync(path.join(os.tmpdir(), "timeline-card-outside-"));
+    writeFileSync(path.join(outside, "receipt.json"), JSON.stringify({ id: "start-link", runId: "run-9", mode: "run", startedAt: at(-20), outcome: "succeeded" }));
+    mkdirSync(path.join(runs, "start-link"), { recursive: true });
+    symlinkSync(outside, path.join(runs, "start-link", "run-9"));
+    try {
+      expect(collectOperatorScripts(repository, context).some((event) => event.id.includes("start-link"))).toBe(false);
+    } finally {
+      rmSync(path.join(runs, "start-link"), { recursive: true, force: true });
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the whole source within maxPerSource across cards and reports the cap", () => {
+    const capRoot = mkdtempSync(path.join(os.tmpdir(), "timeline-card-cap-"));
+    const capRuns = path.join(capRoot, OPERATOR_RUNS_DIR);
+    for (const card of ["start-a", "start-b", "start-c"]) {
+      for (const run of ["r1", "r2", "r3"]) {
+        mkdirSync(path.join(capRuns, card, run), { recursive: true });
+        writeFileSync(path.join(capRuns, card, run, "receipt.json"), JSON.stringify({ id: card, runId: run, mode: "run", startedAt: at(-30), outcome: "succeeded" }));
+      }
+    }
+    try {
+      const events = collectOperatorScripts({ ...repository, path: capRoot }, { ...context, maxPerSource: 4 });
+      expect(events.filter((event) => event.kind === "operator-script.run")).toHaveLength(4);
+      expect(events.some((event) => event.kind === "source.truncated")).toBe(true);
+    } finally {
+      rmSync(capRoot, { recursive: true, force: true });
+    }
   });
 
   it("keeps the one-level receipt's event as it was", () => {

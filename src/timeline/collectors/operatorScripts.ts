@@ -2,7 +2,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { workKindFor } from "../classify.js";
 import { UNKNOWN_ACTOR, inWindow, normalizeTime, timelineEvent, type TimelineEvent } from "../schema.js";
-import type { Collector, CollectorContext, TimelineRepository } from "./context.js";
+import { truncated, type Collector, type CollectorContext, type TimelineRepository } from "./context.js";
 
 /**
  * Operator-script run receipts written by the `/runs` runner under
@@ -41,17 +41,22 @@ function isDirectory(dir: string): boolean {
   }
 }
 
-/** One event per `mode: run` press under `runs/<card id>/<run id>/receipt.json`; a preflight or malformed receipt emits none. */
-function collectCardPresses(repository: TimelineRepository, runs: string, card: string, context: CollectorContext): TimelineEvent[] {
+/**
+ * One event per `mode: run` press under `runs/<card id>/<run id>/receipt.json`; a preflight or malformed receipt emits none.
+ * At most `limit` events are returned; `capped` reports that a further run directory was left unread.
+ */
+function collectCardPresses(repository: TimelineRepository, runs: string, card: string, context: CollectorContext, limit: number): { events: TimelineEvent[]; capped: boolean } {
   const events: TimelineEvent[] = [];
   let children: string[];
   try {
     children = readdirSync(path.join(runs, card)).sort().reverse();
   } catch {
-    return events;
+    return { events, capped: false };
   }
   for (const run of children) {
-    if (events.length >= context.maxPerSource) break;
+    if (events.length >= limit) return { events, capped: true };
+    // A run directory that is a symlink is not followed, matching the card-level check.
+    if (!isDirectory(path.join(runs, card, run))) continue;
     const file = path.join(runs, card, run, "receipt.json");
     let receipt: Receipt;
     let mtime: Date;
@@ -66,7 +71,7 @@ function collectCardPresses(repository: TimelineRepository, runs: string, card: 
     }
     if (receipt.mode !== "run") continue;
     const record = receipt.record && typeof receipt.record === "object" ? (receipt.record as { plan?: unknown; pressedBy?: unknown }) : {};
-    const recorded = normalizeTime(str(receipt.updatedAt) ?? str(receipt.finishedAt) ?? str(receipt.startedAt));
+    const recorded = normalizeTime(str(receipt.startedAt) ?? str(receipt.updatedAt) ?? str(receipt.finishedAt));
     const time = recorded ?? mtime.toISOString();
     if (!inWindow(time, context.window)) continue;
     const cardId = str(receipt.id) ?? card;
@@ -89,14 +94,14 @@ function collectCardPresses(repository: TimelineRepository, runs: string, card: 
         { kind: "row", value: runId }
       ],
       provenance: {
-        event: `${str(receipt.schema) ?? "receipt"} ${recorded ? "updatedAt/finishedAt/startedAt" : "file modification time"}`,
+        event: `${str(receipt.schema) ?? "receipt"} ${recorded ? "startedAt/updatedAt/finishedAt" : "file modification time"}`,
         actor: presser ? "the receipt names who pressed" : "the receipt does not name who pressed; the /runs runner executes a card only when the operator presses its button"
       },
       dedupeKeys: []
     });
     if (event) events.push(event);
   }
-  return events;
+  return { events, capped: false };
 }
 
 export function collectOperatorScripts(repository: TimelineRepository, context: CollectorContext): TimelineEvent[] {
@@ -114,7 +119,14 @@ export function collectOperatorScripts(repository: TimelineRepository, context: 
       isFile = false;
     }
     if (!isFile) {
-      if (entry !== "operator" && isDirectory(path.join(runs, entry))) events.push(...collectCardPresses(repository, runs, entry, context));
+      if (entry !== "operator" && isDirectory(path.join(runs, entry))) {
+        const presses = collectCardPresses(repository, runs, entry, context, context.maxPerSource - events.length);
+        events.push(...presses.events);
+        if (presses.capped || events.length >= context.maxPerSource) {
+          events.push(truncated("operator-scripts", "operator-script receipts", context));
+          break;
+        }
+      }
       continue;
     }
     let receipt: Receipt;
