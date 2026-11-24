@@ -51,11 +51,11 @@ actions:
     references: ["src/timeline/collectors/production.ts", "src/timeline/collectors/context.ts", "src/production/workerMerge.ts", "src/timeline/classify.ts"]
   - id: timeline-reads-operator-interactions
     title: The operator timeline shows each recorded operator interaction (what the operator's words unlocked, whether it was required or avoidable, and how long the work waited), so the operator's own decisions appear beside the work they released.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: The operator timeline shows each recorded operator interaction (what the operator's words unlocked, whether it was required or avoidable, and how long the work waited), so the operator's own decisions appear beside the work they released.
+    next_action: Completed via Agent Ask auto-settle-arcadia-timeline-reads-operator-interactions-ec4a2254107e; no further action.
     expected_artifact: Evidence satisfying Agent Ask timeline-reads-operator-interactions
     clarification: clarified
     confidence: high
@@ -91,7 +91,7 @@ actions:
     references: ["src/timeline/collectors/asks.ts", "src/db/schema.ts", "src/timeline/schema.ts", "src/timeline/classify.ts"]
 questions: []
 decisions: []
-current_action: timeline-reads-operator-interactions
+current_action: timeline-reads-ask-supersessions
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---

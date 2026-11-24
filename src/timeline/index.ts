@@ -17,6 +17,7 @@ import { decisionsCollector } from "./collectors/decisions.js";
 import { eventsTableCollector } from "./collectors/events.js";
 import { gitCollectors } from "./collectors/git.js";
 import { governedRecordCollectors } from "./collectors/governed.js";
+import { operatorInteractionsCollector } from "./collectors/operatorInteractions.js";
 import { operatorScriptCollectors } from "./collectors/operatorScripts.js";
 import { pingsCollector } from "./collectors/pings.js";
 import { productionCollector, queueCollector } from "./collectors/production.js";
@@ -85,6 +86,7 @@ export function defaultCollectors(repositories: TimelineRepository[]): Collector
     productionCollector,
     queueCollector,
     pingsCollector,
+    operatorInteractionsCollector,
     ...operatorScriptCollectors(repositories),
     ...pullRequestCollectors(repositories)
   ];

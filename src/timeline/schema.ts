@@ -43,6 +43,7 @@ export const TIMELINE_SOURCES = [
   "queue",
   "operator-scripts",
   "pings",
+  "operator-interactions",
   "pull-requests",
   "timeline"
 ] as const;

@@ -86,6 +86,8 @@ export const WORK_KIND_BY_EVENT_KIND: Readonly<Record<string, WorkKind>> = {
   "ping.created": "observe",
   "ping.sent": "observe",
   "notification.settlement_sent": "observe",
+  // operator interactions
+  "operator.interaction": "govern",
   // pull requests
   "pr.opened": "integrate",
   "pr.merged": "integrate",
