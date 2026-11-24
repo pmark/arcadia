@@ -4,7 +4,7 @@ type: decision
 id: "0289"
 slug: may-a-refused-successor-or-per-card-press-that-consumed-nothing-retry-under-the
 project: arcadia
-status: open
+status: approved
 question: May a refused successor or per-card press that consumed nothing retry under the same grant once a fix for its cause has merged, instead of needing a new card and a new operator press?
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -25,6 +25,8 @@ options:
 confidence: high
 plan: draft-an-inactive-plan-of-four-worker-mergeable-actions-for-the-engine-s-first
 updated: 2026-11-24
+answer: D. B now, then A after three clean runs of the per-card shape
+decided: 2026-11-24
 ---
 
 # Decision 0289: May a refused successor or per-card press that consumed nothing retry under the same grant once a fix for its cause has merged, instead of needing a new card and a new operator press?
