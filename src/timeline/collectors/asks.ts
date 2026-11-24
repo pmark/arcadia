@@ -42,10 +42,58 @@ function firstEffect(effectsJson: string): string | null {
   }
 }
 
+interface SupersessionRow {
+  id: string;
+  old_ask_request_id: string;
+  new_ask_request_id: string;
+  project_id: string | null;
+  old_kind: string;
+  old_disposition: string;
+  source: string;
+  created_at: string;
+}
+
+/** `arcadia ask correct` links a replaced Ask to its replacement; the table is additive and may be absent. */
+function collectSupersessions(
+  context: CollectorContext,
+  db: NonNullable<CollectorContext["db"]>,
+  params: ReturnType<typeof windowParams>,
+  events: TimelineEvent[]
+): void {
+  if (!hasTable(db, "ask_supersessions")) return;
+  const rows = db.prepare(`
+    SELECT id, old_ask_request_id, new_ask_request_id, project_id, old_kind, old_disposition, source, created_at
+    FROM ask_supersessions
+    WHERE created_at BETWEEN @since AND @until ORDER BY created_at DESC LIMIT @cap`).all(params) as SupersessionRow[];
+  capped(rows, context, events, "asks", "ask_supersessions");
+  for (const row of rows) {
+    const event = timelineEvent({
+      id: `asks:supersession:${row.id}`,
+      time: row.created_at,
+      clock: "workspace-db",
+      source: "asks",
+      kind: "ask.superseded",
+      workKind: "govern",
+      summary: `Ask ${row.new_ask_request_id} superseded ${row.old_ask_request_id} (replaced ${row.old_kind}, was ${row.old_disposition})`,
+      subjects: { project: (row.project_id && context.projectSlugById.get(row.project_id)) || row.project_id || undefined, ask: row.new_ask_request_id },
+      actor: { ...UNKNOWN_ACTOR },
+      evidence: [{ kind: "row", value: `ask_supersessions/${row.id}` }],
+      provenance: {
+        event: "ask_supersessions.created_at",
+        actor: "supersession rows record the correction source, not a verified actor",
+        workKind: `Ask correction via ${row.source}`
+      },
+      dedupeKeys: [`ask-supersession:${row.id}`]
+    });
+    if (event) events.push(event);
+  }
+}
+
 export function collectAsks(context: CollectorContext): TimelineEvent[] {
   const db = requireDb(context);
   const params = windowParams(context);
   const events: TimelineEvent[] = [];
+  collectSupersessions(context, db, params, events);
   if (!hasTable(db, "agent_ask_proposals")) return events;
 
   const proposals = db.prepare(`

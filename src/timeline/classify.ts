@@ -53,6 +53,7 @@ export const WORK_KIND_BY_EVENT_KIND: Readonly<Record<string, WorkKind>> = {
   "ask.proposed": "govern",
   "ask.settled": "govern",
   "ask.rejected": "govern",
+  "ask.superseded": "govern",
   // decisions and review items
   "decision.review_item.opened": "govern",
   "decision.review_item.decided": "govern",
