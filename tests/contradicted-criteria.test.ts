@@ -106,6 +106,35 @@ describe("contradicted met criteria", () => {
       expect(contradictedCriteriaRefusal([entry("I did not observe the test fail first.", "met", "The focused vitest run passes.")])).toBeNull();
     });
   });
+  // Issue #3017 review round 1: the remedy must pass, honest notes must pass, plain admissions must refuse.
+  describe("failing-first admissions: review round 1", () => {
+    const criterion = "A failing-first test proves the collector reads card start presses.";
+    const refused = (note: string, text = criterion) => contradictedCriteriaRefusal([entry(note, "met", text)]);
+    it("passes the remedy itself: written after the fix, then reverted and observed failing", () => {
+      expect(refused("The test was written after the fix; I then reverted the fix, ran it and saw it fail (1 failed), restored the fix: 3 passed.")).toBeNull();
+    });
+    it.each([
+      "It failed first (1 failed); after the fix I did not see any failing tests (1200 passed).",
+      "Failed first, then passed; with the guard we never see it fail in CI again.",
+      "The wider suite wasn't run before the fix, only after: 40 passed.",
+      "The existing test did not fail first, as expected; the new one did (1 failed).",
+      "The flake was not observed failing over 20 reruns."
+    ])("passes the honest note: %s", (note) => {
+      expect(refused(note)).toBeNull();
+    });
+    it.each([
+      "The failure was not observed.",
+      "I never observed the test failing.",
+      "I never saw it fail.",
+      "I did not run the test before the fix.",
+      "I wrote the test after the fix."
+    ])("refuses the admission: %s", (note) => {
+      expect(refused(note)).toContain("revert the fix");
+    });
+    it.each(["The test fails before the fix.", "Tests are written test-first.", "The test fails without the fix."])("treats %s as failing-first", (text) => {
+      expect(refused("I did not observe the test fail.", text)).not.toBeNull();
+    });
+  });
   // Issue #2931: the three PR #2918 worker attempts (2026-11-21) were each refused for an honest note about pnpm pre-pr.
   describe("an honest note about a check the host runs", () => {
     const honest = "Both test files pass (141 passed). pnpm pre-pr was not run in this Session since no PR is opened by it; the host runs lint, tsc and build in required CI.";

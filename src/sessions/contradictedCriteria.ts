@@ -57,13 +57,24 @@ const CONTRADICTIONS: ReadonlyArray<{ pattern: RegExp; negatable: boolean }> = [
 ];
 
 // Issue #3017: a criterion that demands the test fail before the fix, and a note that admits it never did.
-const FAILING_FIRST_CRITERION = /\b(?:failing[\s-]+first|fail(?:s|ed)?[\s-]+first|failing\s+test\s+first)\b/i;
+const FAILING_FIRST_CRITERION = /\b(?:failing[\s-]+first|fail(?:s|ed)?[\s-]+first|failing\s+test\s+first|test-first|fail(?:s|ed|ing)?\s+(?:before|without)\s+the\s+(?:fix|change))\b/i;
 const FAILURE_NOT_OBSERVED: ReadonlyArray<RegExp> = [
-  /\bnot\s+observed\s+(?:to\s+)?fail(?:ing|ed)?\b/i,
-  /\b(?:did\s+not|didn['\u2019]t|never)\s+(?:observe|see|watch|witness)\b[^.;\n]{0,40}?\bfail(?:ing|ed|ure)?\b/i,
+  // "the test / the failure / it was not observed (failing)"; not "the flake was not observed failing".
+  /\b(?:(?:the|this|new)\s+(?:test|failure)|it)\s+(?:was\s+|were\s+)?not\s+observed\b/i,
+  /\b(?:did\s+not|didn['’]t)\s+(?:observe|see|watch|witness)\s+(?:the\s+|that\s+|this\s+)?(?:new\s+)?(?:(?:test|it)\b[^.;\n]{0,20}?\bfail\w*|failure\b)/i,
+  /\bnever\s+(?:observed|saw|seen|watched|witnessed)\s+(?:the\s+|that\s+|this\s+)?(?:new\s+)?(?:(?:test|it)\b[^.;\n]{0,20}?\bfail\w*|failure\b)/i,
   /\bwritten\s+after\s+(?:the\s+)?(?:\w+\s+){0,3}?(?:fix|change|edit|implementation)\b/i,
-  /\b(?:did\s+not|didn['\u2019]t)\s+fail\s+first\b/i,
-  /\b(?:was\s+not|wasn['\u2019]t)\s+run\s+before\s+(?:the\s+)?(?:fix|change|edit|implementation)\b/i
+  /\b(?:wrote|added|created)\s+(?:the\s+|this\s+|a\s+)?(?:new\s+)?(?:\w+\s+){0,2}?test\b[^.;\n]{0,30}?\bafter\s+(?:the\s+)?(?:\w+\s+){0,3}?(?:fix|change|edit|implementation)\b/i,
+  /\b(?:test|it)\s+(?:did\s+not|didn['’]t)\s+fail\s+first\b/i,
+  /\b(?:(?:the|this|new)\s+test|it)\s+(?:was\s+not|wasn['’]t|was\s+never)\s+run\s+before\s+(?:the\s+)?(?:fix|change|edit|implementation)\b/i,
+  /\b(?:did\s+not|didn['’]t)\s+run\s+(?:the\s+|this\s+|that\s+)?(?:new\s+)?test\w*\s+before\s+(?:the\s+)?(?:fix|change|edit|implementation)\b/i
+];
+// A note that also records an observed failure (a failure count, "failed first", or a non-negated "saw|observed ... fail")
+// is a note that observed it: the remedy ("written after the fix; reverted, saw it fail (1 failed)") must pass.
+const OBSERVED_FAILURE: ReadonlyArray<RegExp> = [
+  /\b[1-9]\d*\s+(?:tests?\s+)?failed\b/gi,
+  /\bfailed\s+first\b/gi,
+  /\b(?:saw|observed|watched|seen)\b[^.;\n]{0,40}?\bfail\w*/gi
 ];
 
 // A sentence about another state of the code or a hypothetical is not an admission about this criterion.
@@ -88,7 +99,12 @@ export function contradictedMetCriteria(evidence: ReadonlyArray<EvidenceEntry>):
   return found;
 }
 
+function recordsObservedFailure(note: string): boolean {
+  return OBSERVED_FAILURE.some((pattern) => [...note.matchAll(pattern)].some((match) => !NEGATED_BEFORE.test(note.slice(0, match.index))));
+}
+
 function firstFailureNotObserved(note: string): string | null {
+  if (recordsObservedFailure(note)) return null;
   for (const sentence of note.split(/(?<=[.!?;])\s+|\n+/)) {
     for (const pattern of FAILURE_NOT_OBSERVED) {
       const match = pattern.exec(sentence);
