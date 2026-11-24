@@ -39,3 +39,7 @@ decided: 2026-11-24
 Operator, 2026-11-24 PST, in Signal 19's session (local_4ffd80da-08ca-4027-b1bc-8592a0208401), verbatim: 'Draft the standing rules on the retry decision for my approval.' Context: Mira (release investigator, Fable, read-only) forecast after four refused standing-grant presses (Nov 22-23) and a per-card run that stalled on an environment-dependent test (Nov 24): each first live use of a new path surfaced 3-5 defects, the rate is not falling, and 'your press stops being the test' plus 'repeat before widening' were the two changes most likely to shorten the path (clean supervised run 1-4 days; first zero-touch night 1-3 weeks; reliable week 6-12 weeks; inferred). Evidence: workspaces/serial-wait-log-20261122.md; Issues #2989, #2999, #3001, #3005, #3013, #3015-#3017. This record grants no new authority; it narrows when agents may ask for a press or widen scope. Nothing here is in force before the operator answers and merges its record PR.
 
 Proposed by Agent Ask signal19-rehearse-and-repeat-before-widening-20261124.
+
+## Operator answer
+
+Operator, 2026-11-24 PST, typed in Signal 19's own session (local_4ffd80da-08ca-4027-b1bc-8592a0208401), verbatim: "I definitely want them to be both standing rules, but help me think of the consequences for retrying a refusal that spent nothing." Recorded by Signal 19 as option A. In force only once its record pull request is merged by the operator.

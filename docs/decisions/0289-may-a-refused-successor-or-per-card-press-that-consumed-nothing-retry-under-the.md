@@ -43,3 +43,7 @@ decided: 2026-11-24
 Operator, 2026-11-24 PST, in Signal 19's session (local_4ffd80da-08ca-4027-b1bc-8592a0208401), verbatim: 'Draft the standing rules on the retry decision for my approval.' Today any refusal ends the grant run for good (src/production/successorPress.ts:112-128: an ended step resumes only for FAILED_BATCH_NEEDS_FIX with a recorded clearance; SAME_REFUSAL and REPRESSES_EXHAUSTED end it), so on Nov 22-23 three fixes each needed a new card and a new operator press (about half a day each). Mira's advice: 'a refusal that spent nothing should retry itself instead of waiting for you.' This changes how a press is authorized, so it needs your answer; the code is engine-path work, built after the Wed 2026-11-25 checkpoint under the freeze rules. Nothing here is in force before you answer and merge its record PR.
 
 Proposed by Agent Ask signal19-retry-a-refusal-that-spent-nothing-20261124b.
+
+## Operator answer
+
+Operator, 2026-11-24 PST, typed in Signal 19's own session (local_4ffd80da-08ca-4027-b1bc-8592a0208401), verbatim: "2D", after Signal 19 set out the consequences of A, B and D (approving code he has not seen, a fix that does not fix, judging "spent nothing", and a new first in press code). Option D was added to this record at that point, at his request for the consequences. Recorded by Signal 19 as option D. In force only once its record pull request is merged by the operator. Building B and later A is engine-path work after the Wed 2026-11-25 checkpoint, under the freeze rules.
