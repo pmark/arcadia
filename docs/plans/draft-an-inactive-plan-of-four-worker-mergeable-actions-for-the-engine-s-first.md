@@ -92,8 +92,8 @@ actions:
 questions: []
 decisions: []
 current_action: timeline-reads-ask-supersessions
-recommended_model: standard
-recommended_reasoning_effort: medium
+recommended_model: heavy
+recommended_reasoning_effort: high
 ---
 
 # Draft an inactive Plan of four worker-mergeable Actions for the engine's first approved queue: the operator timeline shows who decided what (START presses, worker merges, the operator's recorded interactions and superseded Asks)
