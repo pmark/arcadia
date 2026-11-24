@@ -176,7 +176,7 @@ export interface GuardedLaunchInput {
    * step (worktree creation, spawn) goes on to fail for an unrelated reason.
    */
   onProviderSignInConfirmed?: (provider: string) => void;
-  /** The caller's log (the managed tick's), for decisions it should see, such as a stale-base handoff retired or kept (Issue #3015). */
+  /** The caller's log (the managed tick's), for decisions it should see, such as a stale-base handoff a standing-policy launch retired or kept (Issue #3015). */
   log?: (line: string) => void;
   now?: Date;
   tmux?: TmuxAdapter;

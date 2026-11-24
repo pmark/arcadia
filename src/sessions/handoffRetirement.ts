@@ -12,8 +12,9 @@ import { getSessionExitReceipt } from "./reconciliation.js";
  * `incomplete_resumable` lease handoff that the tick resumes forever (the host
  * capture refuses the same tree each time). This is the one governed way to
  * retire exactly that handoff so the next tick dispatches the Action fresh;
- * the tick itself uses the same receipt for a base that misses a fix to a
- * criteria-named file (`retireHandoffForFreshDispatch`, Issue #3015).
+ * a standing-policy launch itself uses the same receipt for a base that
+ * misses a fix to a criteria-named file (`retireHandoffForFreshDispatch`,
+ * Issue #3015).
  *
  * It only stops a resume. It never touches the worktree, branch, files, Agent
  * Asks or Plan documents; the candidate stays on disk for manual salvage. The
@@ -230,14 +231,18 @@ export function applyHandoffRetirement(input: HandoffRetirementInput & { fingerp
 }
 
 /**
- * Issue #3015: the managed tick's own retirement of a handoff it must not
- * resume (its base misses a main fix to a file the Action's criteria name).
- * The same checks, effects and receipt as the operator's command, with two
- * differences: the tick is the one actor that would resume this handoff and
- * it runs only while Production is Active, so `production_active` is not a
- * refusal here; and a preserved candidate is already committed and pushed,
- * so retiring it loses nothing (`preserved_candidate` steers an operator
- * toward resume, which is exactly what must not happen). Any other refusal
+ * Issue #3015: a standing-policy launch's own retirement of a handoff it must
+ * not resume (its base misses a main fix to a file the Action's criteria
+ * name). Every launch that reaches it (the managed tick, `session launch
+ * --standing-policy`, host enrollment) holds an Active standing-policy
+ * admission and would otherwise resume this handoff itself; repair, `arcadia
+ * go` and operator-preview launches never call it. The same checks, effects
+ * and receipt as the operator's command, with two differences: it runs only
+ * while Production is Active, so `production_active` is not a refusal here;
+ * and a preserved candidate is already committed on its kept branch (and
+ * usually pushed), so retiring it loses nothing (`preserved_candidate` steers
+ * an operator toward resume, which is exactly what must not happen; the
+ * caller names that commit and pull request in the reason). Any other refusal
  * returns it, and the caller resumes as before (fail-closed).
  */
 export function retireHandoffForFreshDispatch(input: HandoffRetirementInput): HandoffRetirementResult | { refusal: HandoffRetirementRefusal } {

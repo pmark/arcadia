@@ -8,12 +8,14 @@ import { criteriaPathMentions, isGovernedRecordPath, scopeAllowances } from "./s
  * Issue #3015: a resumed `incomplete_resumable` candidate keeps its original
  * base, so a fix merged to main after the first attempt never reaches the
  * resume (live 2026-11-24: #3014 fixed the test every timeline Action required,
- * and Action 1's resume would still have run without it). Before the tick
- * resumes such a handoff it asks one question: did main gain a commit, absent
- * from both the candidate's base and its head, that touches a file the
- * Action's criteria name (paths they mention as work, including test files
- * their commands run, and "touches only ..." lists)? Only a definite yes stops the resume; anything
- * it cannot tell is `unknown`, and the tick resumes as before.
+ * and Action 1's resume would still have run without it). Before a
+ * standing-policy launch (the managed tick, `session launch
+ * --standing-policy`, host enrollment) resumes such a handoff it asks one
+ * question: did main gain a commit, absent from both the candidate's base and
+ * its head, that touches a file the Action's criteria name (paths they
+ * mention as work, including test files their commands run, and "touches
+ * only ..." lists)? Only a definite yes stops the resume; anything it cannot
+ * tell is `unknown`, and the launch resumes as before.
  */
 export type StaleBaseCheck =
   | { kind: "stale"; namedFiles: string[]; commits: Array<{ sha: string; files: string[] }> }
@@ -72,8 +74,8 @@ export function checkStaleBase(input: {
 }
 
 /**
- * The tick's decision for a same-Action resumable handoff. Returns the
- * retirement when the base misses a fix to a criteria-named file and the
+ * A standing-policy launch's decision for a same-Action resumable handoff.
+ * Returns the retirement when the base misses a fix to a criteria-named file and the
  * governed retirement succeeded (the caller then dispatches fresh from
  * current main); null in every other case, which resumes as before. Each
  * unknown or refused case is logged.
