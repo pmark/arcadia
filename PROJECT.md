@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: "Draft an inactive Plan of four worker-mergeable Actions for the engine's first approved queue: the operator timeline shows who decided what (START presses, worker merges, the operator's recorded interactions and superseded Asks)"
 active_plan: draft-an-inactive-plan-of-four-worker-mergeable-actions-for-the-engine-s-first
 updated: 2026-11-24
-current_action: timeline-reads-worker-merges
+current_action: timeline-reads-operator-interactions
 ---
 
 # Arcadia
