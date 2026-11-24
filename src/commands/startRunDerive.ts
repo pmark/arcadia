@@ -109,7 +109,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
   try {
     chain = inspectDayGrantChain({
       library, approvalCard: grant.approvalCard, approvalRun: grant.approvalRun, approvalReceiptSha256: null, approvalPressSha256: null, now, evidence,
-      policyRevision: production.revision, excludePress: options.currentPress ?? null, grant: "standing", standingDecision,
+      policyRevision: production.revision, excludePress: options.currentPress?.split("/")[1] ?? null, grant: "standing", standingDecision,
       scope: { project, plan: grant.plan, provider: DERIVED_PROVIDER, concurrency: 1, spendDecision: START_RUN_DEFAULTS.spendDecision, offId: START_RUN_DEFAULTS.offId }
     });
   } catch (error) {
