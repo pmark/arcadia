@@ -3843,6 +3843,16 @@ describe("a resumable handoff whose base misses a fix to its own named files (Is
   it("names criteria files without governed records, and a fix the candidate already carries is not stale", () => {
     expect(criteriaNamedFiles([...NAMED_CRITERIA, "PROJECT.md and docs/plans/copy-proof.md record it.", "The change touches only src/sessions/ and tests/x.test.ts."]))
       .toEqual(["tests/contract.test.ts", "docs/contract.md", "tests/x.test.ts", "src/sessions/"]);
+    // Review round 1, N1: a negated mention, a `path:line` reference and an append-only doc name no file this check
+    // compares; the same path named positively elsewhere still counts.
+    expect(criteriaNamedFiles(["Do not change src/production/tick.ts; extend src/timeline/collectors/x.ts."])).toEqual(["src/timeline/collectors/x.ts"]);
+    expect(criteriaNamedFiles(["The change must not edit src/a.ts or src/b.ts.", "Leave src/c.ts unchanged.", "Never modify tests/old.test.ts."])).toEqual([]);
+    expect(criteriaNamedFiles(["Without changing src/a.ts, add src/d.ts."])).toEqual(["src/d.ts"]);
+    expect(criteriaNamedFiles(["Follow the pattern at src/sessions/launch.ts:540 in src/new/thing.ts."])).toEqual(["src/new/thing.ts"]);
+    expect(criteriaNamedFiles(["The change touches only src/x.ts, docs/notes-to-self.md and docs/COMMANDS.md.", "Record it in docs/notes-to-self.md."]))
+      .toEqual(["src/x.ts"]);
+    expect(criteriaNamedFiles(["Do not change src/a.ts.", "`pnpm exec vitest run tests/a.test.ts` passes after src/a.ts is fixed."]))
+      .toEqual(["tests/a.test.ts", "src/a.ts"]);
     const repo = mkdtempSync(path.join(tmpdir(), "arcadia-stale-base-"));
     roots.push(repo);
     git(repo, ["init", "-q", "-b", "main"]);

@@ -49,13 +49,51 @@ function strip(token: string): string {
   return token.replace(/^['"`(]+|['"`),:]+$/g, "");
 }
 
-/** Every repository path (with a directory and an extension) the Action's criteria mention, in first-mention order. */
+// A clause boundary: `;`, a sentence end, or a contrastive "but"/"instead", so a negation reaches only its own clause.
+const CLAUSE_BREAK = /;|\.(?:\s|$)|\bbut\b|\binstead\b/gi;
+// "do not change", "must never be edited", "without touching": the verb a negation puts out of scope.
+const NEGATED_VERB = /\b(?:not|never|without|don['’]t|doesn['’]t|mustn['’]t|shouldn['’]t|cannot|can['’]t)\b(?:\s+\S+){0,2}?\s+(?:chang|edit|modif|touch|alter|rewrit|updat)\w*/gi;
+// After that verb, only a list of paths may stand before the mention for the negation to reach it ("not edit a.ts or b.ts").
+const LIST_WORDS = new Set(["the", "either", "any", "of", "or", "and", "nor", "file", "files"]);
+const onlyPathList = (text: string) => text.split(/[\s,`'"]+/).filter(Boolean)
+  .every((token) => LIST_WORDS.has(token.toLowerCase()) || token.includes("/") || ROOT_FILE.test(token));
+const NEGATED_AFTER = /^\S*(?:\s+(?:is|are|stays?|remains?|left))?\s+(?:unchanged|untouched|as\s+is)\b/i;
+
+const clauseStartBefore = (text: string) => Math.max(0, ...[...text.matchAll(CLAUSE_BREAK)].map((at) => at.index + at[0].length));
+
+function negatedMention(criterion: string, start: number, end: number): boolean {
+  const before = criterion.slice(clauseStartBefore(criterion.slice(0, start)), start);
+  const verb = [...before.matchAll(NEGATED_VERB)].pop();
+  if (verb && onlyPathList(before.slice(verb.index + verb[0].length))) return true;
+  const rest = criterion.slice(end);
+  const clauseEnd = rest.search(CLAUSE_BREAK);
+  return NEGATED_AFTER.test(clauseEnd === -1 ? rest : rest.slice(0, clauseEnd));
+}
+
+/**
+ * Every repository path (with a directory and an extension) the Action's
+ * criteria name as something to work on, in first-mention order. A mention in
+ * a negated clause ("do not change x", "leave x unchanged") or a `path:line`
+ * reference points at a file without making it the Action's, so it counts
+ * only when the same path is also named some other way (review round 1 of
+ * PR #3028).
+ */
 export function criteriaPathMentions(criteria: readonly string[]): string[] {
-  return pathsNamedElsewhere(criteria, null);
+  const found: string[] = [];
+  for (const criterion of criteria) {
+    for (const match of criterion.matchAll(PATH_MENTION)) {
+      const file = match[1];
+      const end = match.index + match[0].length;
+      if (!isPath(file) || found.includes(file)) continue;
+      if (/^:\d/.test(criterion.slice(end)) || negatedMention(criterion, match.index, end)) continue;
+      found.push(file);
+    }
+  }
+  return found;
 }
 
 /** Paths named by the Action's criteria other than the scope criterion itself, in first-mention order. */
-function pathsNamedElsewhere(criteria: readonly string[], except: string | null): string[] {
+function pathsNamedElsewhere(criteria: readonly string[], except: string): string[] {
   const found: string[] = [];
   for (const criterion of criteria) {
     if (criterion === except) continue;

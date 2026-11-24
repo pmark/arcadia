@@ -1,6 +1,5 @@
 import type Database from "better-sqlite3";
 import { tryGit } from "../git/worktrees.js";
-import { namedTestFiles } from "./completionValidation.js";
 import { retireHandoffForFreshDispatch, type HandoffRetirementRecord } from "./handoffRetirement.js";
 import type { AgentSession, TmuxAdapter } from "./index.js";
 import { criteriaPathMentions, isGovernedRecordPath, scopeAllowances } from "./scopeCriteria.js";
@@ -12,8 +11,8 @@ import { criteriaPathMentions, isGovernedRecordPath, scopeAllowances } from "./s
  * and Action 1's resume would still have run without it). Before the tick
  * resumes such a handoff it asks one question: did main gain a commit, absent
  * from both the candidate's base and its head, that touches a file the
- * Action's criteria name (paths they mention, test files their commands name,
- * "touches only ..." lists)? Only a definite yes stops the resume; anything
+ * Action's criteria name (paths they mention as work, including test files
+ * their commands run, and "touches only ..." lists)? Only a definite yes stops the resume; anything
  * it cannot tell is `unknown`, and the tick resumes as before.
  */
 export type StaleBaseCheck =
@@ -24,18 +23,27 @@ export type StaleBaseCheck =
 const MAX_LISTED = 5;
 
 /**
- * The files the criteria name. Governed records are left out: every
+ * Shared append-only docs: nearly every Action's scope lists them and main
+ * appends to them all day, so they would make most resumes look stale, and an
+ * appended note is not the source fix this check exists for.
+ */
+const APPEND_ONLY_DOCS = new Set(["docs/notes-to-self.md", "docs/COMMANDS.md"]);
+
+/**
+ * The files the criteria name: paths they mention as work (a negated or
+ * `path:line` mention does not count; a test file a command runs is a
+ * mention) and "touches only ..." lists. Governed records are left out: every
  * settlement on main writes PROJECT.md, the Plan and the Ask archive, so
  * naming one would make every resume look stale, and a records change is not
- * the source fix this check exists for. A `dir/` scope entry names a directory.
+ * the source fix this check exists for. Shared append-only docs are left out
+ * for the same reason. A `dir/` scope entry names a directory.
  */
 export function criteriaNamedFiles(criteria: readonly string[]): string[] {
   const named = [
     ...criteriaPathMentions(criteria),
-    ...namedTestFiles(criteria),
     ...scopeAllowances(criteria).flatMap((allowance) => allowance.allowed)
   ];
-  return [...new Set(named)].filter((file) => !isGovernedRecordPath(file));
+  return [...new Set(named)].filter((file) => !isGovernedRecordPath(file) && !APPEND_ONLY_DOCS.has(file));
 }
 
 export function checkStaleBase(input: {
