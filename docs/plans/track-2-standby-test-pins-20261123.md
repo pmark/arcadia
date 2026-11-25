@@ -131,11 +131,11 @@ actions:
     references: []
   - id: pin-claude-five-hour-window-label
     title: Pin which capacity window labels the night breaker reads as the Claude five-hour window, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which capacity window labels the night breaker reads as the Claude five-hour window, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-claude-five-hour-window-label-14476350bad4; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-claude-five-hour-window-label
     clarification: clarified
     confidence: high
@@ -211,7 +211,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-claude-five-hour-window-label
+current_action: pin-journey-log-fingerprint
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
