@@ -234,6 +234,20 @@ export async function loadPendingAgentAsks(): Promise<ArcadiaJsonSuccess<{ pendi
   return runArcadiaCliJson<{ pending: AgentAskPendingItem[] }>(["agent-ask", "pending"]);
 }
 
+export interface AgentAskPreviewResponse {
+  proposal: { id: string; fingerprint: string; effects: Array<{ operation: string; targetKind: string; targetRef: string | null }>; normalized: { requestId: string } };
+  replayed: boolean;
+  projectWritesPerformed: 0;
+}
+
+/**
+ * Record one strict Agent Ask through `arcadia agent-ask preview`, the governed submission path. Preview writes a
+ * capture and proposal receipt only: no Project document, queue or status changes, and it never settles.
+ */
+export async function previewAgentAsk(ask: Record<string, unknown>): Promise<ArcadiaJsonSuccess<AgentAskPreviewResponse>> {
+  return runArcadiaCliJson<AgentAskPreviewResponse>(["agent-ask", "preview", JSON.stringify(ask)], { timeoutMs: 60_000 });
+}
+
 export interface AgentAskSettleResponse {
   receipt: {
     id: string;

@@ -9,6 +9,7 @@ import { GO_STATE, WorkspaceNextMove, goReadTime, useGoRead, type GoRead } from 
 import { RouteBones, RouteLink, RouteReading } from "./routes/route-parts";
 import { ActionRecord, PlanRecord, ProjectRecord, RouteRecord } from "./routes/route-record";
 import { ActionRouteView, PlanRouteView, PortfolioRoutes, ProjectRoutes } from "./routes/route-views";
+import { PlanAsks } from "./plans/plan-asks";
 import "./routes/routes.css";
 import type { AllPlansResponse, PlanDetailResponse, PlanSummariesResponse } from "../../lib/plans-types";
 import { actionSummaryView, planSummaryView } from "../../lib/workspace-summaries";
@@ -119,6 +120,7 @@ export function WorkspaceView({ parts }: { parts: string[] }) {
             {!failure && !loading && level === "Action" && planDetail && action && scope.project && scope.plan && <RouteRecord key={scope.action}>{() => <ActionRecord project={scope.project!} plan={scope.plan!} actionKey={action.key} detail={planDetail} view={actionView} title={action.title} status={action.status} dependsOn={action.dependsOn} go={go} isGoCurrent={relation === "here"} />}</RouteRecord>}
           </div>}
         </div>
+        {!failure && !missing && !loading && level === "Plan" && planDetail && scope?.project && scope.plan && <div className="route-card"><PlanAsks project={scope.project} plan={scope.plan} revision={revision} /></div>}
         {!failure && !missing && !loading && level === "Portfolio" && portfolio.kind === "ready" && <PortfolioRoutes projects={portfolio.data.projects} />}
         {!failure && !missing && !loading && level === "Project" && listedProject && (listedProject.plans?.length ?? 0) > 0 && <div className="route-project"><ProjectRoutes project={listedProject.slug} plans={listedProject.plans ?? []} goPlan={goPlan} goNamedNone={move?.kind === "none"} stale={go.status === "error"} summaries={summaries} /></div>}
       </section>
