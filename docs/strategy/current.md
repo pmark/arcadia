@@ -25,6 +25,25 @@ Production runs a frozen engine, inside the envelope where it has worked: one Ac
 
 Then: three clean nights in a row on real work, with the four NORTH_STAR gates live, is done.
 
+## Checkpoint verdict (Wed 2026-11-25): stay in Freeze and prove, focused on the timer loop
+
+The operator answered the checkpoint menu with "1A 2A" (verbatim, a human-origin turn at 2026-11-25T17:01:37Z, 9:01 AM Pacific, in Signal 19's session `ed0f9865-5cd6-4d1b-824a-7ef2867a3e98`, uuid `4e9467f9-d440-4c55-a3bf-7fb393df3619`). Option 1A read: "stay frozen and prove, focused on the timer's self-pressing loop. The verdict also lists the reviewed timer-loop fixes as allowed through the freeze: #3033, #3036, #3006, #3028, #3025 and #2980." Every night delivered, but only when he pressed, which is the table's second row.
+
+- **The phase stays `freeze-and-prove`** and the engine stays frozen at `a5f041066`. Nothing else in `current.json` changes.
+- **Admitted through the freeze** (each Issue is the PR's stated cause; the guard admits a PR only by its `Phase-cause: #N` line and that Issue's `phase-cause` label, so Rowan or Signal labels these Issues and adds any missing line after this verdict merges):
+
+  | PR | What it fixes | Phase-cause |
+  |---|---|---|
+  | #3033 | the host timer stops a handed-off predecessor; START tolerates it meanwhile | #3029 |
+  | #3036 | START waits within a bound for a fresh worker heartbeat | #3030 |
+  | #3006 | run-mode re-derivation leaves out the run's own press | #3005 |
+  | #3028 | dispatch fresh instead of resuming a stale-base candidate | #3015 |
+  | #3025 | refuse a met failing-first criterion whose proof contradicts it | #3017 |
+  | #2980 | an expired, consumed or retired START card hold stops blocking | #2976 |
+
+- **Still frozen:** the Workspace Plan picker PRs #2996 and #3039, until the next step up.
+- Option 2A (one "merge all" in Rowan g7's simulated order, then one release install) is the operator's merge instruction for the admitted PRs; it is carried out PR by PR under the usual exact-head review, green-check and production-Off gates, and changes nothing here.
+
 ## How it is enforced
 
 | Guard | Where | What it does |
