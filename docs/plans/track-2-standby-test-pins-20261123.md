@@ -171,11 +171,11 @@ actions:
     references: []
   - id: pin-freeze-operation-names
     title: Pin the host-wide operations the production freeze guards and its receipt lines, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the host-wide operations the production freeze guards and its receipt lines, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-freeze-operation-names-d265d5af1115; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-freeze-operation-names
     clarification: clarified
     confidence: high
@@ -211,7 +211,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-freeze-operation-names
+current_action: pin-claude-auth-classification
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
