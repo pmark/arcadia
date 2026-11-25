@@ -111,11 +111,11 @@ actions:
     references: []
   - id: pin-repeated-park-cause-rules
     title: Pin when two parks share a cause that stops production, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin when two parks share a cause that stops production, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-repeated-park-cause-rules-6cdddfad858a; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-repeated-park-cause-rules
     clarification: clarified
     confidence: high
@@ -211,7 +211,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-repeated-park-cause-rules
+current_action: pin-claude-five-hour-window-label
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
