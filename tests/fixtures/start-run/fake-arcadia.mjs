@@ -25,10 +25,14 @@ const fail = (code, message, sequenceClaimed) => {
 };
 
 // A live worker beats continuously: refresh its heartbeat on every call unless the scenario freezes it.
+// Issue #3030, a slow-tick worker (one beat per tick, about 60 s under load): from its `from` point on, every executor step
+// finds the last beat 40 s old; only a wait (the fake `sleep`, fake-sleep.mjs) lets the next beat land, and only if it `recovers`.
 const heartbeatFile = path.join(state.workspace, ".arcadia", "worker-claude-usage-heartbeat.json");
+const slow = state.worker.slowTick;
+const slowNow = Boolean(slow) && (slow.from === "start" || (slow.from === "restart" && state.worker.pid === state.worker.newPid) || (slow.from === "sign-in" && state.worker.signedIn === true));
 if (state.worker.alive && state.worker.heartbeat === "fresh" && existsSync(heartbeatFile)) {
   const beat = JSON.parse(readFileSync(heartbeatFile, "utf8"));
-  beat.at = Date.now();
+  beat.at = slowNow ? Date.now() - 40_000 : Date.now();
   writeFileSync(heartbeatFile, JSON.stringify(beat));
 }
 
@@ -185,6 +189,8 @@ switch (key2) {
     const date = laDate();
     const ledger = path.join(workspace, ".arcadia", "claude-renewal-days");
     const binding = JSON.parse(readFileSync(heartbeatFile, "utf8")).binding;
+    state.worker.signedIn = true;  // a slow tick `from: "sign-in"` starts here (#3030)
+    save();
     const mode = signin.mode ?? "checked";
     if (mode !== "reused") {
       mkdirSync(ledger, { recursive: true });
