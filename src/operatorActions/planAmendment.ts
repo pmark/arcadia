@@ -167,7 +167,12 @@ function crossProjectCheckout(descriptor: object, activation: PlanActivationInpu
 }
 
 /** All settlement decisions live here. Generated scripts only identify their descriptor. */
-export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
+/** The checkout this runner's own source lives in (scripts/plan-amendment-worker.ts loads it from there), or null when unknown. */
+function runnerCheckout(override?: string): string | null {
+  try { return realpathSync(override ?? path.resolve(import.meta.dirname, "../..")); } catch { return null; }
+}
+
+export function runPlanAmendment(descriptorPath: string, options: { runnerCheckout?: string } = {}): PlanAmendmentResult {
   const library = path.dirname(path.resolve(descriptorPath));
   const id = path.basename(descriptorPath, ".json");
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(id)) throw new Error("Invalid operator action id.");
@@ -199,7 +204,8 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
     // A START card in Arcadia's library may activate another Project's Plan in that Project's own primary checkout, exactly the
     // one its startRun block pins (G1); it is verified below like any checkout and against the workspace registration. Every
     // other checkout outside the library's own is refused as before. A Project library can never hold a START card.
-    const crossProject = repo === libraryCheckout ? null : crossProjectCheckout(descriptor, activation, input, repo);
+    // The card must also live in the library of the very checkout this runner runs from (Arcadia's), never another checkout's.
+    const crossProject = repo === libraryCheckout || libraryCheckout !== runnerCheckout(options.runnerCheckout) ? null : crossProjectCheckout(descriptor, activation, input, repo);
     if (!crossProject) equal(repo, libraryCheckout, "WRONG_CHECKOUT", "Library checkout");
     equal(git(["rev-parse", "--show-toplevel"]), repo, "WRONG_CHECKOUT", "Git root");
     equal(realpathSync(path.resolve(repo, git(["rev-parse", "--git-common-dir"]))), path.join(repo, ".git"), "WRONG_CHECKOUT", "Primary checkout");
