@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: track-2-standby-test-pins-20261123
 project: arcadia
-status: draft
+status: active
 milestone: Track 2 standby test pins 20261123
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-23
+updated: 2026-11-25
 actions:
   - id: pin-successor-press-render-lines
     title: Pin the one line the successor press prints for a pressed, refused or skipped outcome, with a new test file.
@@ -211,6 +211,9 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: pin-successor-press-render-lines
+recommended_model: heavy
+recommended_reasoning_effort: high
 ---
 
 # Track 2 standby test pins 20261123
