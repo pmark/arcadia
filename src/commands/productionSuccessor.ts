@@ -1,11 +1,12 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import {
-  SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, SUCCESSOR_STATE_SCHEMA, emptySuccessorState, runSuccessorPressStep, type SuccessorOutcome, type SuccessorPorts, type SuccessorState
+  SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, SUCCESSOR_STATE_SCHEMA, emptySuccessorState, runSuccessorPressStep, type SuccessorOutcome, type SuccessorResult, type SuccessorPorts, type SuccessorState
 } from "../production/successorPress.js";
 import { failedBatchClearancePath, parseFailedBatchClearance } from "../operatorActions/startRunDerive.js";
 import { checkReplayReceipt, replayCardIdentity, replayReceiptPath } from "../operatorActions/startRunReplayReceipt.js";
@@ -35,7 +36,13 @@ export interface ProductionSuccessorDependencies {
   queuePing?: (input: LivenessPingInput) => { id: string };
   pins?: StartRunPinsDeps;
 }
-export interface ProductionSuccessorData { outcome: SuccessorOutcome }
+/** One log line per distinct skip reason per hour; a port exception that repeats longer than ten minutes pings once. */
+export const SUCCESSOR_SKIP_LOG_MS = 60 * 60_000;
+export const SUCCESSOR_EXCEPTION_PING_MS = 10 * 60_000;
+const SIGNALS_FILE = "successor-press-signals.json";
+export interface ProductionSuccessorData { outcome: SuccessorOutcome; /** Unstamped lines for the timer's out log: a skip reason's hourly line. */ notes?: string[] }
+/** Kept beside, not inside, the press state, so its grant, ended, pressed, offs and mainMoved semantics are untouched. */
+interface SuccessorSignals { skipLogged: Record<string, string>; exception: { hash: string; since: string; pinged: boolean } | null }
 
 const statePath = (workspacePath: string): string => path.join(workspacePath, ".arcadia", STATE_FILE);
 
@@ -51,10 +58,13 @@ export function readSuccessorState(workspacePath: string): SuccessorState {
 }
 
 function writeSuccessorState(workspacePath: string, state: SuccessorState): void {
-  const target = statePath(workspacePath);
+  writeJsonAtomic(statePath(workspacePath), state);
+}
+
+function writeJsonAtomic(target: string, value: unknown): void {
   mkdirSync(path.dirname(target), { recursive: true });
   const temporary = `${target}.${process.pid}.tmp`;
-  writeFileSync(temporary, `${JSON.stringify(state)}\n`, "utf8");
+  writeFileSync(temporary, `${JSON.stringify(value)}\n`, "utf8");
   try { renameSync(temporary, target); } finally { try { unlinkSync(temporary); } catch { /* renamed */ } }
 }
 
@@ -170,22 +180,86 @@ export function realSuccessorPorts(options: ProductionSuccessorOptions, now: Dat
   };
 }
 
+const signalsPath = (workspacePath: string): string => path.join(workspacePath, ".arcadia", SIGNALS_FILE);
+function readSignals(workspacePath: string): SuccessorSignals {
+  try {
+    const value = JSON.parse(readFileSync(signalsPath(workspacePath), "utf8")) as Partial<SuccessorSignals>;
+    const skipLogged = value.skipLogged && typeof value.skipLogged === "object" ? value.skipLogged : {};
+    const exception = value.exception && typeof value.exception.hash === "string" && typeof value.exception.since === "string" ? { hash: value.exception.hash, since: value.exception.since, pinged: value.exception.pinged === true } : null;
+    return { skipLogged, exception };
+  } catch { return { skipLogged: {}, exception: null }; }
+}
+/** A failed write only loses de-duplication (one repeated line or ping); it never changes what the step did. */
+function saveSignals(workspacePath: string, before: SuccessorSignals, after: SuccessorSignals): void {
+  if (JSON.stringify(before) === JSON.stringify(after)) return;
+  try { writeJsonAtomic(signalsPath(workspacePath), after); } catch { /* the next run repeats the line or ping */ }
+}
+
 /** One timer run of the step: reads its state, decides, writes the state back. Never throws for a refusal; it pings once and ends. */
 export function runProductionSuccessorCommand(options: ProductionSuccessorOptions, dependencies: ProductionSuccessorDependencies = {}): CommandSuccess<ProductionSuccessorData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const now = new Date((dependencies.now ?? Date.now)());
   const queue = dependencies.queuePing ?? ((input: LivenessPingInput) => runPingSendCommand(input).data.ping);
-  const ports = dependencies.ports ? dependencies.ports(now) : realSuccessorPorts({ ...options, workspace: workspacePath }, now, queue, dependencies.pins);
+  const signals = readSignals(workspacePath);
+  const next: SuccessorSignals = { skipLogged: { ...signals.skipLogged }, exception: signals.exception ? { ...signals.exception } : null };
   const prior = readSuccessorState(workspacePath);
-  const result = runSuccessorPressStep(ports, prior);
+  let ports: SuccessorPorts | null = null;
+  let result: SuccessorResult;
+  try {
+    ports = dependencies.ports ? dependencies.ports(now) : realSuccessorPorts({ ...options, workspace: workspacePath }, now, queue, dependencies.pins);
+    result = runSuccessorPressStep(ports, prior);
+  } catch (error) {
+    throw noteRepeatedException(error, ports, now, next, () => saveSignals(workspacePath, signals, next));
+  }
+  next.exception = null;
+  const notes: string[] = [];
+  const outcome = result.outcome;
+  // An Off already prints its own line; any other skip prints once per reason per hour.
+  if (outcome.kind === "skipped" && !outcome.offIssued) {
+    const last = next.skipLogged[outcome.reason];
+    if (last === undefined || !(now.getTime() - Date.parse(last) < SUCCESSOR_SKIP_LOG_MS)) {
+      next.skipLogged[outcome.reason] = now.toISOString();
+      notes.push(`skipped (${outcome.reason}): ${outcome.detail.slice(0, 300)}; repeats are logged once an hour`);
+    }
+  }
   if (JSON.stringify(result.state) !== JSON.stringify(prior)) writeSuccessorState(workspacePath, result.state);
-  return createSuccess({ command: "production.successor-press", workspace: workspacePath, data: { outcome: result.outcome } });
+  saveSignals(workspacePath, signals, next);
+  return createSuccess({ command: "production.successor-press", workspace: workspacePath, data: { outcome, ...(notes.length > 0 ? { notes } : {}) } });
+}
+
+/** Tracks the same port exception across timer runs; after ten minutes it pings once through the step's own ping port. Returns the error to rethrow. */
+function noteRepeatedException(error: unknown, ports: SuccessorPorts | null, now: Date, signals: SuccessorSignals, save: () => void): unknown {
+  const text = tail(error);
+  // The error names origin main's sha, which moves many times a day: the episode is the text with shas and numbers masked.
+  const normalised = text.replace(/\b[0-9a-f]{7,64}\b/gi, "<sha>").replace(/\d+/g, "<n>").replace(/\s+/g, " ").trim();
+  const hash = createHash("sha256").update(normalised).digest("hex").slice(0, 12);
+  const tracked = signals.exception?.hash === hash ? signals.exception : { hash, since: now.toISOString(), pinged: false };
+  // An unparseable `since`, or one in the future (a clock that jumped back), restarts the clock now.
+  if (!Number.isFinite(Date.parse(tracked.since)) || Date.parse(tracked.since) > now.getTime()) tracked.since = now.toISOString();
+  signals.exception = tracked;
+  let rethrown: unknown = error;
+  const elapsed = now.getTime() - Date.parse(tracked.since);
+  if (ports && !tracked.pinged && elapsed > SUCCESSOR_EXCEPTION_PING_MS) {
+    const minutes = Math.floor(elapsed / 60_000);
+    // The key names the episode start: the queue's episode dedup has no end, so a fixed failure that returns gets a new key and a new ping.
+    const key = `successor-press-exception-${hash}-${tracked.since.slice(0, 16)}`;
+    // The message is stable for the episode and carries the key, so the ping queue's own episode dedup holds if `pinged` cannot be saved.
+    const shown = text.replace(/\/(?:Users|home)\/[^/\s]+\//g, "~/").slice(0, 250);
+    try {
+      const id = ports.ping({ message: `🚨 Successor press is failing: the same error for over ${SUCCESSOR_EXCEPTION_PING_MS / 60_000} minutes, so no START card can be pressed. [${key}] ${shown}`, key });
+      tracked.pinged = true;
+      rethrown = new Error(`${error instanceof Error ? error.message : String(error)} (same error for ${minutes} min; queued ping ${id})`, { cause: error });
+    } catch { /* the next run tries again */ }
+  }
+  save();
+  return rethrown;
 }
 
 export function renderSuccessorLines(data: ProductionSuccessorData, stamp = new Date().toISOString()): string[] {
   const outcome = data.outcome;
   if (outcome.kind === "pressed") return [`${stamp} successor press: pressed ${outcome.card} (${outcome.actions.length} Action${outcome.actions.length === 1 ? "" : "s"}) as run ${outcome.runId}${outcome.offIssued ? "; issued the scope-complete Off first" : ""}`];
   if (outcome.kind === "refused") return [`${stamp} successor press: refused (${outcome.code}): ${outcome.message}${outcome.pingId ? `; queued ping ${outcome.pingId}` : ""}`];
-  // A skip is quiet unless it did something; the reason is on the data for the JSON caller.
-  return outcome.offIssued ? [`${stamp} successor press: issued the scope-complete Off; skipped the press (${outcome.reason})`] : [];
+  // A skip is quiet except for its hourly note (and an Off it issued); the reason is also on the data for the JSON caller.
+  const notes = (data.notes ?? []).map((note) => `${stamp} successor press: ${note}`);
+  return outcome.offIssued ? [`${stamp} successor press: issued the scope-complete Off; skipped the press (${outcome.reason})`, ...notes] : notes;
 }
