@@ -71,11 +71,11 @@ actions:
     references: []
   - id: pin-derive-operator-reasons
     title: Pin that a derived card stops only for unanswered cited Decisions, never for referenced paths, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a derived card stops only for unanswered cited Decisions, never for referenced paths, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-derive-operator-reasons-82cc135b96a2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-derive-operator-reasons
     clarification: clarified
     confidence: high
@@ -211,7 +211,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-derive-operator-reasons
+current_action: pin-worker-operator-merge-command
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
