@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { AllPlansResponse, PlanRow } from "../../../lib/plans-types";
 
 const requested: Array<string | null> = [];
-let answer: AllPlansResponse;
 vi.mock("../use-read", () => ({ useRead: (url: string | null) => { requested.push(url); return { kind: "ready", data: answer }; } }));
 vi.mock("next/navigation", () => ({ usePathname: () => "/workspace/plans" }));
 import { PlanPicker } from "./plan-picker";
@@ -12,7 +11,7 @@ import { PlanPicker } from "./plan-picker";
 interface FixturePlan { slug: string; status: string; milestone: string | null; updated: string | null; actionCounts: PlanRow["actionCounts"] }
 const fixture = JSON.parse(readFileSync(new URL("../../../lib/__fixtures__/arcadia-plans.json", import.meta.url), "utf8")) as { plans: FixturePlan[] };
 const rows: PlanRow[] = fixture.plans.map(p => ({ slug: p.slug, status: p.status, governed: true, milestone: p.milestone, isActivePlan: false, actionCounts: p.actionCounts, activationNote: null, relativePath: `docs/plans/${p.slug}.md`, updated: p.updated }));
-answer = { generatedAt: "2026-11-22T00:00:00Z", projects: [
+const answer: AllPlansResponse = { generatedAt: "2026-11-22T00:00:00Z", projects: [
   { id: "i1", slug: "arcadia", name: "Arcadia", status: "active", activePlan: null, plans: rows, error: null },
   { id: "i2", slug: "other", name: "Other", status: "active", activePlan: null, plans: [{ ...rows[0], slug: "other-plan", milestone: "Unrelated zebra work", status: "proposed", actionCounts: null }], error: null }
 ] };

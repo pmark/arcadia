@@ -117,7 +117,7 @@ describe("shapeFromCounts", () => {
     expect(shapeFromCounts({ open: 0, in_progress: 0, done: 3, blocked: 0 })).toMatchObject({ tone: "arrived", position: 2 });
   });
   it("counts deferred without calling it ahead", () => {
-    const shape = shapeFromCounts({ open: 0, in_progress: 0, done: 1, blocked: 0, deferred: 2 } as PlanRow["actionCounts"]);
+    const shape = shapeFromCounts({ open: 0, in_progress: 0, done: 1, blocked: 0, deferred: 2 });
     expect(shape).toMatchObject({ total: 3, tone: "open", position: 1, label: "1 of 3 done · 2 deferred" });
   });
   it("has no route without counts or stops", () => {
