@@ -90,8 +90,9 @@ liveness_production_is_off() {
 
 # <leading directory or ""> prints the PATH the timer runs under, so the tools its
 # code path starts by bare name resolve: gh (src/production/productionSuccessor.ts,
-# main's checks), node and pnpm (the replay step), and tmux and claude (a relay
-# launch, not wired yet). launchd gives a job nothing but this value. Directories
+# main's checks), node and pnpm (the replay step), tmux (the handed-off predecessor
+# stop, src/coordinator/predecessorStopTimer.ts) and claude (a relay launch, not
+# wired yet). launchd gives a job nothing but this value. Directories
 # come from where the tools are now, so no user's home is assumed: the leading
 # one, the mise shims directory when it exists, each tool's directory, then the
 # system ones, each once. A missing gh, node or pnpm refuses, naming it: the timer
@@ -104,7 +105,7 @@ liveness_path_value() {
   [[ -n "$lead" ]] && dirs+=("$lead")
   if [[ -d "$shims" ]]; then dirs+=("$shims"); search="$shims:$search"; fi
   IFS=: read -r -a parts <<<"$search"
-  for spec in "gh|required|the successor step reads main's checks with it" "node|required|the timer's arcadia commands run on it" "pnpm|required|the replay step runs it" "tmux|optional|a relay launch will need it, but is not wired yet" "claude|optional|a relay launch will need it, but is not wired yet"; do
+  for spec in "gh|required|the successor step reads main's checks with it" "node|required|the timer's arcadia commands run on it" "pnpm|required|the replay step runs it" "tmux|optional|the handed-off predecessor stop runs it; without it that stop fails closed and pages once" "claude|optional|a relay launch will need it, but is not wired yet"; do
     IFS='|' read -r tool need _ <<<"$spec"
     # Walk the directories, not `type -P`: bash 3.2 answers that from its hash
     # table and ignores a temporary PATH.

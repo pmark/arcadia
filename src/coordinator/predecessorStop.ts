@@ -46,6 +46,8 @@ export type PredecessorStopMethod = "tmux" | "bg" | "desktop" | "unrecorded";
 export type TmuxState = "present" | "absent" | "unknown";
 export type PaneIdentity = "match" | "mismatch" | "unknown";
 export type ClaudeStopResult = { ok: true } | { ok: false; notFound: boolean; error: string };
+/** Who ran the stop: `accept` (inside the incoming coordinator's own Session) or the host liveness timer (#3029 fix A). */
+export type PredecessorStopRunner = "accept" | "host-timer";
 
 const TERMINAL: ReadonlySet<PredecessorStopOutcome> = new Set(["stopped", "already_stopped", "manual_stop_required", "identity_mismatch"]);
 const SAFE_TMUX_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -102,6 +104,10 @@ interface Receipt {
   detail: string;
   startedAt: string;
   finishedAt: string;
+  /** Who wrote this receipt; a receipt written before #3029 has none and was written by accept. */
+  runner?: PredecessorStopRunner;
+  /** The non-terminal receipt this one replaced (for example accept's sandboxed `failed`), kept as evidence. */
+  supersedes?: { outcome: PredecessorStopOutcome; detail: string; finishedAt: string; runner: PredecessorStopRunner };
 }
 
 /** Live tmux: `has-session` exits 0 when present; tmux's own "no session" or "no server" answer is absent; anything else is unknown. */
@@ -252,6 +258,12 @@ function receiptPath(root: string, generation: number): string {
   return path.join(root, `predecessor-stop-g${generation}.json`);
 }
 
+/** The recorded outcome of generation N's stop receipt under `root` (a coordinator role directory); null when there is none or it is unreadable. */
+export function predecessorStopReceiptOutcome(root: string, generation: number): { outcome: PredecessorStopOutcome; terminal: boolean } | null {
+  const receipt = readReceipt(receiptPath(root, generation));
+  return receipt ? { outcome: receipt.outcome, terminal: TERMINAL.has(receipt.outcome) } : null;
+}
+
 function readReceipt(file: string): Receipt | null {
   if (!existsSync(file)) return null;
   try {
@@ -285,6 +297,12 @@ export interface StopPredecessorInput {
   predecessor: number;
   /** The main-checkout root for the START interlock; null when it could not be resolved (a deferral). */
   repoRoot: string | null;
+  /**
+   * Default `accept`. The host timer (`host-timer`) acts only on the exact-name tmux method: any other method returns
+   * `deferred` with no receipt, no command and no page (accept already reported it). Its deferrals are not paged either,
+   * since the timer retries every minute; its other outcomes are paged as accept's are.
+   */
+  runner?: PredecessorStopRunner;
 }
 
 /**
@@ -313,9 +331,17 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
     return { ...base, outcome: earlier.outcome, method: earlier.predecessor.method, command: earlier.command, detail: `${earlier.detail} (recorded ${earlier.finishedAt}; not run again)`, receipt: receiptPath(paths.root, input.predecessor), pinged: false, reused: true };
   }
 
-  // A non-terminal outcome with the same detail as the prior receipt is not pinged again.
+  const runner: PredecessorStopRunner = input.runner ?? "accept";
+  // The host timer stops only a tmux pane under the exact generation name; bg, desktop and unrecorded stay accept's report.
+  const timerMethod = runner === "host-timer" ? predecessorIdentity(predecessor, input.role, successor).method : null;
+  if (timerMethod !== null && timerMethod !== "tmux") {
+    return { ...base, outcome: "deferred", method: timerMethod, command: null, detail: `generation ${input.predecessor} has no exact-name tmux identity (arcadia-coord-${input.role}-g${input.predecessor}); the host timer stops nothing else`, receipt: null, pinged: false, reused: false };
+  }
+
+  // A non-terminal outcome with the same detail as the prior receipt is not pinged again; the timer's deferrals are never pinged.
   const notify = (outcome: PredecessorStopOutcome, detail: string, message: string): boolean => {
     if (earlier && earlier.outcome === outcome && earlier.detail === detail) return false;
+    if (runner === "host-timer" && outcome === "deferred") return false;
     deps.ping(message.slice(0, 500));
     return true;
   };
@@ -325,7 +351,10 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
       predecessor: fields.predecessor,
       successor: { generation: input.successor, tmuxName: successor.tmuxName, nativeSessionId: successor.nativeSessionId },
       outcome: fields.outcome, command: fields.command, detail: fields.detail,
-      startedAt: started.toISOString(), finishedAt: deps.now().toISOString()
+      startedAt: started.toISOString(), finishedAt: deps.now().toISOString(),
+      runner,
+      // The first non-terminal receipt is kept (accept's own failure, say), not each minute's deferral that followed it.
+      ...(earlier ? { supersedes: earlier.supersedes ?? { outcome: earlier.outcome, detail: earlier.detail, finishedAt: earlier.finishedAt, runner: earlier.runner ?? "accept" } } : {})
     };
     const written = writeReceipt(paths.root, input.predecessor, receipt);
     const detail = written.warning ? `${fields.detail}; ${written.warning}` : fields.detail;

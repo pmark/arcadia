@@ -525,8 +525,9 @@ export interface CoordinatorRelaySessionsData { project: string; allowed: string
 
 /**
  * `arcadia coordinator relay-sessions --project <slug>`: read-only. Names the
- * exact tmux sessions of registered, relay-launched, current custodians that
- * START's no-competing-Session check tolerates (see relayCoordinatorSessions).
+ * exact tmux sessions of registered, relay-launched, current custodians, and
+ * of each one's immediate handed-off predecessor until the host timer stops it,
+ * that START's no-competing-Session check tolerates (see relayCoordinatorSessions).
  * It starts, stops and records nothing.
  */
 export function runCoordinatorRelaySessionsCommand(options: { workspace: string; project: string }): CommandSuccess<CoordinatorRelaySessionsData> {

@@ -7,6 +7,12 @@ import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { resolveAcceptedReadiness } from "../docs/dispatch.js";
 import { repositoryRoot } from "./coordinator.js";
 import { currentCustodian } from "../coordinator/generations.js";
+import {
+  renderPredecessorStopTimerLines,
+  runPredecessorStopTimerStep,
+  type PredecessorStopTimerData,
+  type PredecessorStopTimerDependencies
+} from "../coordinator/predecessorStopTimer.js";
 import { findSessionTranscript } from "../coordinator/sessionIdentity.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { ARMED_WAKE_SCHEMA, type IdleFrontRow } from "../production/idleFront.js";
@@ -627,18 +633,21 @@ export interface LivenessTimerData extends ProductionLivenessData {
   momentum: ProductionMomentumData | null;
   /** The coordinator context budget (#2242); null when it failed this run. */
   coordinatorBudget: CoordinatorBudgetCheckData | null;
+  /** The handed-off predecessor coordinator stop (#3029 fix A); null when it failed this run. */
+  predecessorStop?: PredecessorStopTimerData | null;
 }
 
 /**
  * `arcadia production liveness-check`: the worker check first, unchanged, then
- * the momentum alarm, then the coordinator context budget (#2242). None can
- * stop another: a failure in any is collected, and the run throws once, after
- * all three, carrying any lines the others queued, so the log keeps every page
- * and the exit code is non-zero.
+ * the momentum alarm, then the coordinator context budget (#2242), then the
+ * handed-off predecessor coordinator stop (#3029 fix A), then the successor
+ * press when enabled. None can stop another: a failure in any is collected, and
+ * the run throws once, after all of them, carrying any lines the others queued,
+ * so the log keeps every page and the exit code is non-zero.
  */
 export async function runProductionLivenessTimerCommand(
   options: LivenessTimerOptions,
-  dependencies: { liveness?: ProductionLivenessDependencies; momentum?: ProductionMomentumDependencies; budget?: CoordinatorBudgetDependencies; successor?: ProductionSuccessorDependencies } = {}
+  dependencies: { liveness?: ProductionLivenessDependencies; momentum?: ProductionMomentumDependencies; budget?: CoordinatorBudgetDependencies; predecessorStop?: PredecessorStopTimerDependencies; successor?: ProductionSuccessorDependencies } = {}
 ): Promise<CommandSuccess<LivenessTimerData>> {
   // Refuse bad thresholds before either check runs, so a bad flag never half-runs the timer.
   parseIdleMinutes(options.idleMinutes);
@@ -671,6 +680,15 @@ export async function runProductionLivenessTimerCommand(
   } catch (error) {
     failures.push(`Coordinator budget: ${errorText(error)}`);
   }
+  // On the host timer, outside any agent sandbox: accept's own stop can see tmux as unknown there and kill nothing (#3029).
+  let predecessorStop: PredecessorStopTimerData | null = null;
+  try {
+    predecessorStop = runPredecessorStopTimerStep({ workspace: liveness?.workspace ?? options.workspace }, dependencies.predecessorStop);
+    const errors = predecessorStop.results.filter((entry) => entry.outcome === "error");
+    if (errors.length > 0) failures.push(`Predecessor stop: ${errors.map((entry) => `${entry.role} generation ${entry.predecessor} (${entry.project}): ${entry.detail}`).join("; ")}`);
+  } catch (error) {
+    failures.push(`Predecessor stop: ${errorText(error)}`);
+  }
   // The successor press runs last on the same timer run, never inside an agent session. Its own refusal is a page, not a failure.
   let successor: CommandSuccess<ProductionSuccessorData> | null = null;
   if (options.successorPress === true) {
@@ -687,13 +705,15 @@ export async function runProductionLivenessTimerCommand(
     // The worker check's own error, unchanged, when it is the only news.
     if (livenessError !== null && failures.length === 1
       && (momentum === null || renderProductionMomentumLines(momentum.data).length === 0)
-      && (budget === null || renderCoordinatorBudgetCheckLines(budget.data).length === 0)) {
+      && (budget === null || renderCoordinatorBudgetCheckLines(budget.data).length === 0)
+      && (predecessorStop === null || predecessorStop.results.length === 0)) {
       throw livenessError instanceof Error ? livenessError : new Error(String(livenessError));
     }
     const queued = [
       ...(liveness ? renderProductionLivenessCheckSuccess(liveness) : []),
       ...(momentum ? renderProductionMomentumLines(momentum.data) : []),
       ...(budget ? renderCoordinatorBudgetCheckLines(budget.data) : []),
+      ...(predecessorStop ? renderPredecessorStopTimerLines(predecessorStop) : []),
       ...(successor ? renderSuccessorLines(successor.data) : [])
     ];
     throw validationError([...failures, ...queued].join(" | "));
@@ -702,7 +722,7 @@ export async function runProductionLivenessTimerCommand(
   return createSuccess({
     command: "production.liveness-check",
     workspace: base.workspace,
-    data: { ...base.data, momentum: momentum?.data ?? null, coordinatorBudget: budget?.data ?? null, successor: successor?.data ?? null }
+    data: { ...base.data, momentum: momentum?.data ?? null, coordinatorBudget: budget?.data ?? null, predecessorStop, successor: successor?.data ?? null }
   });
 }
 
@@ -713,6 +733,7 @@ export function renderProductionLivenessTimerSuccess(response: CommandSuccess<Li
     ...renderProductionLivenessCheckSuccess(response),
     ...(response.data.momentum ? renderProductionMomentumLines(response.data.momentum, stamp) : []),
     ...(response.data.coordinatorBudget ? renderCoordinatorBudgetCheckLines(response.data.coordinatorBudget, stamp) : []),
+    ...(response.data.predecessorStop ? renderPredecessorStopTimerLines(response.data.predecessorStop, stamp) : []),
     ...(response.data.successor ? renderSuccessorLines(response.data.successor, stamp) : [])
   ];
 }

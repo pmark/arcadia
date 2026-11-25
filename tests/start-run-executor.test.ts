@@ -141,6 +141,8 @@ interface BoxOptions {
   relayPanes?: number;
   /** Whether a process of the registry's native session id (--session-id) runs under the relay pane (default true). */
   relayProcess?: boolean;
+  /** A second live relay session (the handed-off predecessor, pane 4342) and the session id its pane runs. */
+  predecessorPane?: { name: string; sessionId: string };
   config?: unknown;
   /** The card's id (default the fixture's); a `standing-start-` id makes it a standing-grant card (Decision 0241). */
   cardId?: string;
@@ -347,6 +349,7 @@ function box(options: BoxOptions = {}) {
   echo "  4242     1 tmux: pane shell"
   echo "  4243     1 bash stray-builder"
   ${options.relayProcess === false ? 'echo "  5151  4242 claude --session-id 99999999-9999-4999-8999-999999999999 --name other"' : 'echo "  5151  4242 claude --remote-control rowan --session-id 22222222-2222-4222-8222-222222222222 --name rowan"'}
+  ${options.predecessorPane ? `echo "  4342     1 tmux: pane shell"; echo "  6161  4342 claude --remote-control rowan --session-id ${options.predecessorPane.sessionId} --name rowan"` : ""}
   exit 0
 fi
 case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac`);
@@ -363,7 +366,7 @@ case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac`);
     : `if [ -n "$TMUX" ] || [ -n "$TMUX_TMPDIR" ]; then echo "TMUX leaked into the query" >&2; exit 1; fi
 case "$1" in
   ls) ${options.tmuxWarning ? 'echo "mise WARN a shim notice" >&2; ' : ""}${liveNames.length > 0 ? `printf '%s\\n' ${liveNames.map((name) => `'${name}'`).join(" ")}` : 'echo "no server running on /private/tmp/tmux-501/default" >&2; exit 1'} ;;
-  list-panes) if [ "$2" != "-s" ] || [ "$3 $4" != "-t =${liveNames[0] ?? "none"}:" ]; then echo "list-panes must use -s -t =name:" >&2; exit 1; fi; ${Array.from({ length: options.relayPanes ?? 1 }, (_, index) => `echo ${4242 + index}`).join("; ")} ;;
+  list-panes) ${options.predecessorPane ? `if [ "$2 $3 $4" = "-s -t =${options.predecessorPane.name}:" ]; then echo 4342; exit 0; fi; ` : ""}if [ "$2" != "-s" ] || [ "$3 $4" != "-t =${liveNames[0] ?? "none"}:" ]; then echo "list-panes must use -s -t =name:" >&2; exit 1; fi; ${Array.from({ length: options.relayPanes ?? 1 }, (_, index) => `echo ${4242 + index}`).join("; ")} ;;
 esac`);
   writeFileSync(path.join(bin, "fake-arcadia.mjs"), readFileSync(path.join(fixtures, "fake-arcadia.mjs")));
   writeFileSync(path.join(bin, "fake-plan-runner.mjs"), readFileSync(path.join(fixtures, "fake-plan-runner.mjs")));
@@ -628,6 +631,29 @@ describe("start-run executor: a registered relay coordinator under tmux is not a
       .filter((args) => args.slice(0, 2).join(" ") === "coordinator relay-sessions");
     expect(asked.length).toBeGreaterThan(0);
     expect(asked[0]).toContain("--project");
+  });
+  // #3029 fix A: the registry also allows the custodian's immediate handed-off predecessor, by its own exact name and session id,
+  // until the host timer stops it. START checks each allowed name against its own recorded id, never the custodian's.
+  const PREDECESSOR = "arcadia-coord-rowan-g1";
+  const PREDECESSOR_ID = "11111111-1111-4111-8111-111111111111";
+  const predecessorEntry = (allowed: boolean) => ({ generation: 1, tmuxName: PREDECESSOR, nativeSessionId: PREDECESSOR_ID, status: "handed_off", allowed });
+  it("tolerates the registry's handed-off predecessor beside the custodian, each running its own recorded session", () => {
+    const b = box({ scenario: "behind", tmuxLive: [RELAY, PREDECESSOR], predecessorPane: { name: PREDECESSOR, sessionId: PREDECESSOR_ID }, state: (s) => { s.relaySessions = [predecessorEntry(true), RELAY]; } });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", phase: "P2" });
+    expect(result.receipt!.record.relayCoordinatorSessions).toEqual([RELAY, PREDECESSOR]);
+  });
+  it.each<[string, BoxOptions]>([
+    ["a predecessor the registry holds (not handed off, a handoff in flight, or not the immediate one)", { predecessorPane: { name: PREDECESSOR, sessionId: PREDECESSOR_ID }, state: (s) => { s.relaySessions = [predecessorEntry(false), RELAY]; } }],
+    ["a predecessor the registry does not list", { predecessorPane: { name: PREDECESSOR, sessionId: PREDECESSOR_ID }, state: (s) => { s.relaySessions = [RELAY]; } }],
+    ["a predecessor-named pane running the custodian's session id", { predecessorPane: { name: PREDECESSOR, sessionId: "22222222-2222-4222-8222-222222222222" }, state: (s) => { s.relaySessions = [predecessorEntry(true), RELAY]; } }],
+    ["a predecessor-named pane running another process", { predecessorPane: { name: PREDECESSOR, sessionId: "99999999-9999-4999-8999-999999999999" }, state: (s) => { s.relaySessions = [predecessorEntry(true), RELAY]; } }]
+  ])("still refuses %s", (_label, options) => {
+    const b = box({ scenario: "behind", tmuxLive: [RELAY, PREDECESSOR], ...options });
+    const headBefore = b.head();
+    const result = b.run("preflight");
+    expectRefusedClean(b, result, "P2", /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g1\b/, headBefore);
   });
   it("a warning on stderr beside a successful tmux ls is not a session name", () => {
     const b = box({ scenario: "behind", tmuxLive: [RELAY], tmuxWarning: true, state: (s) => { s.relaySessions = [RELAY]; } });

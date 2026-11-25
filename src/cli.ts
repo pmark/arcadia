@@ -1482,7 +1482,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
 
   addJsonOption(coordinator.command("relay-sessions")
-    .description("Read-only: the exact tmux sessions of registered, relay-launched, current coordinator custodians that START's no-competing-Session check tolerates (none during a handoff)")
+    .description("Read-only: the exact tmux sessions of registered, relay-launched, current coordinator custodians, and of each one's immediate handed-off predecessor until the host liveness timer stops it, that START's no-competing-Session check tolerates (none during a handoff)")
     .requiredOption("--project <slug>", "Project slug, e.g. arcadia")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; project: string; json?: boolean }) =>
@@ -1829,7 +1829,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   addJsonOption(
     production
       .command("liveness-check")
-      .description("One timer run: page once when the worker stops making progress while production is Active, and once when it recovers; then the momentum alarm: page once when the critical path idles past the threshold or no Momentum Keeper heartbeat is live while a run window is open, and once when each clears. Reads the database read-only; restarts and starts nothing")
+      .description("One timer run: page once when the worker stops making progress while production is Active, and once when it recovers; then the momentum alarm: page once when the critical path idles past the threshold or no Momentum Keeper heartbeat is live while a run window is open, and once when each clears; then stop a handed-off predecessor coordinator's tmux after its successor accepted, only by its exact recorded name and pane session id (#3029). Restarts and starts nothing")
       .option("--workspace <path>", "Workspace path", defaultWorkspace())
       .option("--stale-seconds <seconds>", `Silence that counts as stuck, outside a code review (default ${LIVENESS_DEFAULT_STALE_SECONDS})`)
       .option("--idle-minutes <minutes>", `Critical-path idle that pages while a run window is open (default ${MOMENTUM_DEFAULT_IDLE_MINUTES})`)
