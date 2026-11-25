@@ -10,8 +10,13 @@ import type { ReplayCheck } from "../operatorActions/startRunReplayReceipt.js";
  * runs at the press still runs. A refusal is final for the grant until its recorded cause is cleared.
  */
 export const SUCCESSOR_STATE_SCHEMA = "arcadia-successor-press-state-v1";
-/** The only slug the step's own Off uses: the CLI composes the request id `rowan-off-<slug>`, which does not end a standing grant. */
-export const SUCCESSOR_OFF_SLUG = "successor-press-scope-complete";
+/**
+ * The slug of the step's own Off for the activation at policy revision `revision`: the CLI composes the request id
+ * `rowan-off-<slug>`, which does not end a standing grant. A request id is recorded once and replays silently afterwards, so each
+ * activation needs its own: the revision only grows, is the one the scope-complete reading is for, and is the same on a retry of
+ * the same activation. Lowercase words joined by `-`, as `ROWAN_OFF_REQUEST` requires.
+ */
+export const successorOffSlug = (revision: number): string => `successor-press-scope-complete-rev-${revision}`;
 /** Consecutive main-moved retirements the step tolerates; the next one ends the step with one ping. */
 export const SUCCESSOR_MAIN_MOVED_RETRY_BOUND = 3;
 /** Wall-clock limits of the two checks the step runs on a minted card; `src/commands/productionSuccessor.ts` passes them to the real runs. */
@@ -93,12 +98,12 @@ const pinnedRevision = (card: DerivedCard): string | null => {
 const refusalPing = (code: string, message: string, grant: string): string =>
   `🚨 Successor press refused (${code}): ${message.slice(0, 300)} The step is ended for standing grant ${grant}; nothing was pressed.`;
 
-/** The Off is issued at most once per policy revision, and only for a finished scope with no live admissions. */
+/** The Off is issued at most once per policy revision (under that revision's own request id), and only for a finished scope with no live admissions. */
 function offAtScopeComplete(ports: SuccessorPorts, state: SuccessorState): { issued: boolean; production: SuccessorProduction } {
   const production = ports.production();
   if (production.desiredState !== "active" || production.liveAdmissions !== 0 || !production.scopeComplete || state.offs.includes(production.revision)) return { issued: false, production };
   state.offs.push(production.revision);
-  ports.off(SUCCESSOR_OFF_SLUG);
+  ports.off(successorOffSlug(production.revision));
   return { issued: true, production: ports.production() };
 }
 
