@@ -8,10 +8,10 @@ import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
 import { withReadOnlyDatabase } from "../db/connection.js";
-import { getProjectMetadata, listProjects } from "../db/repositories.js";
+import { getProjectBySlug, getProjectMetadata, listProjects } from "../db/repositories.js";
 import { buildAgentQueue } from "../dispatch/queue.js";
 import { admitStartScope, resolveAcceptedReadiness, type AcceptedReadinessResolution, type StartScopeAdmission } from "../docs/dispatch.js";
-import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
+import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins, type StartRunProjectRepository } from "../operatorActions/startRunPins.js";
 import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
 import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, DAY_GRANT_EXECUTOR_PATH, STANDING_GRANT_DECISION, STANDING_GRANT_EXECUTOR_PATH, assertStandingDecision, findContinueDecision, inspectDayGrantChain, standingGrantStatus, validateDayGrantPins, validateDayGrantPrevious, validateStandingGrantPins, type StandingGrantPins, type StandingGrantStatus,type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
@@ -61,6 +61,8 @@ export interface StartRunPinsOptions {
   observedCleared?: string;
   repository?: string;
   workspace?: string;
+  /** The Plan's Project. When its registered repository is not `repository`, the Plan is read there and that repository is pinned too. */
+  project?: string;
 }
 export interface StartRunPinsData {
   startRun: StartRunPins;
@@ -89,6 +91,8 @@ export interface StartRunPinsDeps {
   dayEvidence?: (workspacePath: string) => DayEvidence;
   /** Fetch origin main so the commit `ls-remote` returned is in the local object store; throws when the fetch fails. Absent in a fixture: no fetch. */
   fetchOriginMain?: (repository: string) => void;
+  /** The Project's registered repository (workspace project metadata repo_path), or null; read-only (fixtures replace it). */
+  projectRepository?: (workspace: string | undefined, project: string) => string | null;
 }
 
 export const realStartRunPinsDeps: StartRunPinsDeps = {
@@ -104,6 +108,10 @@ export const realStartRunPinsDeps: StartRunPinsDeps = {
   },
   queue: (workspacePath) => withReadOnlyDatabase(workspacePath, (db) => buildAgentQueue(db)),
   dayEvidence: (workspacePath) => withReadOnlyDatabase(workspacePath, (db) => readDayGrantEvidence(db, ATTEMPT_COUNT_EARLIEST)),
+  projectRepository: (workspace, project) => withReadOnlyDatabase(resolveReadyWorkspace(workspace).workspacePath, (db) => {
+    const row = getProjectBySlug(db, project);
+    return row ? getProjectMetadata(db, row.id)?.repo_path ?? null : null;
+  }),
   listFiles: (directory) => { try { return readdirSync(directory); } catch { return []; } },
   sha256File: (file) => createHash("sha256").update(readFileSync(file)).digest("hex")
 };
@@ -219,9 +227,17 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   const { show, tree } = originMainReads(toplevel, originMain, deps);
   const executorSha256 = sha256(show(START_RUN_EXECUTOR_PATH));
 
-  const planFrontmatter = frontmatter(text(show(`docs/plans/${plan}.md`)), `Plan ${plan}`);
+  // A second Project's Plan lives in that Project's registered repository, read at its own origin main; null keeps this repository.
+  const projectSource = options.project === undefined ? null : projectRepositoryReads(options, toplevel, deps);
+  if (projectSource && (options.delegatedFrom !== undefined || options.dayGrantFrom !== undefined)) {
+    throw validationError(`A START card for Project ${options.project}, whose repository is not this one, is pressed by the operator only (Decisions 0156 and 0157); --delegated-from and --day-grant-from are refused.`);
+  }
+  const planShow = projectSource?.show ?? show;
+  const planFrontmatter = frontmatter(text(planShow(`docs/plans/${plan}.md`)), `Plan ${plan}`);
   const project = String(planFrontmatter.project ?? "");
   if (!slug.test(project)) throw validationError(`Plan ${plan} does not name its Project.`);
+  if (options.project !== undefined && project !== options.project) throw validationError(`Plan ${plan} belongs to Project ${project}, not --project ${options.project}.`);
+  if (projectSource) notes.push(`Project ${project}'s Plan is read from its registered repository ${projectSource.pin.path} at origin main ${projectSource.pin.reviewedRevision}; the executor and required Decisions stay at ${originMain}.`);
   const planStatus = String(planFrontmatter.status ?? "");
   if (planStatus !== "active" && planStatus !== "draft") throw validationError(`Plan ${plan} is ${planStatus || "of unknown status"}; a START card needs an active Plan or a draft with a pinned activation.`);
   const planActions = (Array.isArray(planFrontmatter.actions) ? planFrontmatter.actions : []) as StartRunPlanAction[];
@@ -374,11 +390,39 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
       ? `Rowan, pressing this successor START card from /actions under Decision 0163, delegated from the operator's originating press ${delegation.originatingCard}/${delegation.originatingRun}`
       : "P. Mark Anderson, by pressing this per-run START card from /actions under Decisions 0156 and 0157",
     consumedHistory: receipts.map((file) => ({ path: file, sha256: deps.sha256File(file) })),
-    ...(delegation ? { delegation } : {})
+    ...(delegation ? { delegation } : {}),
+    ...(projectSource ? { projectRepository: projectSource.pin } : {})
   };
   try { validateStartRunPins(startRun); }
   catch (error) { throw validationError(error instanceof StartRunPinsError ? error.message : String(error)); }
   return { startRun, expires_at: expiresAt, observations: { repository: toplevel, originMain, planStatus, queueTop, workerLabel: labels[0], notes } };
+}
+
+/**
+ * `--project`'s registered repository when it is not this one, with read access to its origin main; null when it is this
+ * repository (Arcadia's own card, computed exactly as without `--project`). Read-only and fail-closed: the registered path must
+ * be a primary checkout's toplevel with an origin whose main is observed fresh (and fetched, #2969) and pinned beside this one's.
+ */
+function projectRepositoryReads(options: StartRunPinsOptions, toplevel: string, deps: StartRunPinsDeps): { pin: StartRunProjectRepository; show: (file: string) => Buffer } | null {
+  const project = String(options.project);
+  if (!slug.test(project)) throw validationError("--project must be a Project slug.");
+  const registered = (deps.projectRepository ?? realStartRunPinsDeps.projectRepository!)(options.workspace, project);
+  if (!registered) throw validationError(`Project ${project} has no registered repository in the workspace; no pins were computed.`);
+  const real = (file: string): string | null => { try { return realpathSync(file); } catch { return null; } };
+  const checkout = real(registered);
+  if (!checkout) throw validationError(`Project ${project}'s registered repository ${registered} does not exist; no pins were computed.`);
+  if (checkout === toplevel || checkout === real(mainCheckout(toplevel, deps))) return null;
+  const git = (args: string[]): string => {
+    try { return text(deps.git(checkout, args)).trim(); }
+    catch { throw validationError(`Project ${project}'s repository ${checkout} could not be read (git ${args.join(" ")}); no pins were computed.`); }
+  };
+  if (real(git(["rev-parse", "--show-toplevel"])) !== checkout) throw validationError(`Project ${project}'s registered repository ${checkout} is not a checkout's toplevel; no pins were computed.`);
+  if (real(git(["rev-parse", "--path-format=absolute", "--git-common-dir"])) !== path.join(checkout, ".git")) throw validationError(`Project ${project}'s registered repository ${checkout} is not a primary checkout; no pins were computed.`);
+  const origin = git(["remote", "get-url", "origin"]);
+  if (!origin) throw validationError(`Project ${project}'s repository ${checkout} has no origin; no pins were computed.`);
+  const reviewedRevision = git(["ls-remote", "origin", "refs/heads/main"]).split(/\s+/)[0] ?? "";
+  if (!/^[0-9a-f]{40}$/.test(reviewedRevision)) throw validationError(`Project ${project}'s origin main did not return a commit id.`);
+  return { pin: { path: checkout, origin, reviewedRevision }, show: originMainReads(checkout, reviewedRevision, deps).show };
 }
 
 /** Rowan's named cause, from the flags; null when none was named (the chain refuses when one is needed). */
@@ -522,7 +566,7 @@ export function runStartRunUnholdCommand(options: StartRunUnholdOptions, now: Da
   return createSuccess({ command: "start-run.unhold", data: previous });
 }
 
-export interface StartRunGateCheckOptions { project: string; actions: string[]; repository?: string; workspace?: string }
+export interface StartRunGateCheckOptions { project: string; actions: string[]; repository?: string; workspace?: string; requireRegisteredRepository?: boolean }
 export interface StartRunGateCheckData {
   project: string;
   actions: string[];
@@ -539,6 +583,14 @@ export function runStartRunGateCheckCommand(options: StartRunGateCheckOptions): 
   if (options.actions.length === 0) throw validationError("start-run gate-check needs at least one --action");
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   const repoRoot = path.resolve(options.repository ?? process.cwd());
+  if (options.requireRegisteredRepository) {
+    // A second Project's START card reads that Project's Decisions from its pinned checkout: it must be the registered one.
+    const registered = withReadOnlyDatabase(workspacePath, (db) => { const row = getProjectBySlug(db, options.project); return row ? getProjectMetadata(db, row.id)?.repo_path ?? null : null; });
+    const real = (file: string | null): string | null => { try { return file ? realpathSync(file) : null; } catch { return null; } };
+    if (!real(registered) || real(registered) !== real(repoRoot)) {
+      throw validationError(`--repository ${repoRoot} is not Project ${options.project}'s registered repository (${registered ?? "none registered"}); no gate was read.`, { code: "WRONG_CHECKOUT" });
+    }
+  }
   const blocking = withReadOnlyDatabase(workspacePath, (db) => options.actions.flatMap((action) =>
     resolveOperatorGate({ db, repoRoot, projectSlug: options.project, selectedActionId: action }).blocking
       .map((item) => ({ action, kind: item.kind, id: item.id, title: item.title, settleCommand: item.settleCommand }))));

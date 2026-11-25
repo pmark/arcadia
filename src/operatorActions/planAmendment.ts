@@ -3,6 +3,7 @@ import { equal, fieldsMatch, hash, pinnedFieldsMatch, Refusal, refuse, validateP
 import { withinPlanAmendmentRunner } from "./operatorExecution.js";
 import { expectedActivationSegment } from "./libraryContract.js";
 import { readPlanQueue } from "./planQueue.js";
+import { validateStartRunPins, type StartRunPins, type StartRunProjectRepository } from "./startRunPins.js";
 
 import { claimRunnerLock } from "./runnerLock.js";
 export type { PlanActivationInput, PlanAmendmentInput } from "./planAmendmentContract.js";
@@ -149,6 +150,22 @@ function activationSettled(repo: string, input: PlanActivationInput): void {
   pinnedFieldsMatch(read(`docs/plans/${e.previousPlan}.md`), { slug: e.previousPlan, ...e.previousPlanAfter }, "Settled previous Plan");
 }
 
+/**
+ * The pinned Project repository when this descriptor is a START card whose Plan activation targets exactly that repository:
+ * a valid startRun block of the activated Project whose projectRepository names this checkout, its origin and its reviewed base.
+ * Null otherwise (the caller then refuses WRONG_CHECKOUT as for any checkout outside the library's own).
+ */
+function crossProjectCheckout(descriptor: object, activation: PlanActivationInput | undefined, input: PlanAmendmentInput | PlanActivationInput, repo: string): StartRunProjectRepository | null {
+  const startRun = (descriptor as { startRun?: unknown }).startRun;
+  if (!activation || startRun === undefined) return null;
+  let pins: StartRunPins;
+  try { pins = validateStartRunPins(startRun); } catch { return null; }
+  const pinned = pins.projectRepository;
+  if (!pinned || pins.project !== activation.envelope.project || pins.plan !== activation.envelope.plan) return null;
+  if (pinned.path !== repo || pinned.origin !== input.checkout.origin || pinned.reviewedRevision !== input.checkout.reviewedBase) return null;
+  return pinned;
+}
+
 /** All settlement decisions live here. Generated scripts only identify their descriptor. */
 export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
   const library = path.dirname(path.resolve(descriptorPath));
@@ -178,7 +195,12 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
     if (activation) validatePlanActivationInput(activation); else validatePlanAmendmentInput(amendment!);
     save();
     repo = realpathSync(input.checkout.path);
-    equal(repo, realpathSync(path.resolve(library, "../../..")), "WRONG_CHECKOUT", "Library checkout");
+    const libraryCheckout = realpathSync(path.resolve(library, "../../.."));
+    // A START card in Arcadia's library may activate another Project's Plan in that Project's own primary checkout, exactly the
+    // one its startRun block pins (G1); it is verified below like any checkout and against the workspace registration. Every
+    // other checkout outside the library's own is refused as before. A Project library can never hold a START card.
+    const crossProject = repo === libraryCheckout ? null : crossProjectCheckout(descriptor, activation, input, repo);
+    if (!crossProject) equal(repo, libraryCheckout, "WRONG_CHECKOUT", "Library checkout");
     equal(git(["rev-parse", "--show-toplevel"]), repo, "WRONG_CHECKOUT", "Git root");
     equal(realpathSync(path.resolve(repo, git(["rev-parse", "--git-common-dir"]))), path.join(repo, ".git"), "WRONG_CHECKOUT", "Primary checkout");
     equal(git(["remote", "get-url", "origin"]), input.checkout.origin, "WRONG_CHECKOUT", "Repository origin");
@@ -296,6 +318,8 @@ export function runPlanAmendment(descriptorPath: string): PlanAmendmentResult {
         if (error instanceof Refusal) throw error;
         refuse("PUBLICATION_UNAVAILABLE", "Origin cannot be reached before settlement.", "Restore origin connectivity and retry; no governance was changed.");
       }
+      // Another Project's checkout is settled only at exactly its pinned revision (a replay only needs to descend from it).
+      if (crossProject) equal(git(["rev-parse", "HEAD"]), crossProject.reviewedRevision, "WRONG_CHECKOUT", "Project checkout versus its pinned revision");
       if (git(["status", "--porcelain"])) refuse("DIRTY_CHECKOUT", "Checkout changed after preview.");
       equal(hash(readFileSync(source)), input.ask.sha256, "CHANGED_ASK", "Ask bytes after preview");
       equal(hash(readFileSync(descriptorPath)), result.descriptorSha256, "CHANGED_ENVELOPE", "Reviewed descriptor after preview");
