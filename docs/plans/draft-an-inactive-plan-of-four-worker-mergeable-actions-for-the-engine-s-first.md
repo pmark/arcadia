@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: draft-an-inactive-plan-of-four-worker-mergeable-actions-for-the-engine-s-first
 project: arcadia
-status: active
+status: complete
 milestone: "Draft an inactive Plan of four worker-mergeable Actions for the engine's first approved queue: the operator timeline shows who decided what (START presses, worker merges, the operator's recorded interactions and superseded Asks)"
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-24
+updated: 2026-11-25
 actions:
   - id: timeline-reads-card-start-presses
     title: The operator timeline shows each START card press from the operator-script library's per-card run receipts, with the card id, run id, who pressed it and its outcome, so a press appears beside the work it started.
@@ -71,11 +71,11 @@ actions:
     references: ["src/operatorInteractions/store.ts", "src/timeline/index.ts", "src/timeline/collectors/context.ts", "src/timeline/schema.ts", "src/timeline/classify.ts"]
   - id: timeline-reads-ask-supersessions
     title: The operator timeline shows when one Agent Ask superseded another (old and new request ids and what was replaced), so a changed or withdrawn proposal is visible beside the one that replaced it.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: The operator timeline shows when one Agent Ask superseded another (old and new request ids and what was replaced), so a changed or withdrawn proposal is visible beside the one that replaced it.
+    next_action: Completed via Agent Ask auto-settle-arcadia-timeline-reads-ask-supersessions-07eea64fac4c; no further action.
     expected_artifact: Evidence satisfying Agent Ask timeline-reads-ask-supersessions
     clarification: clarified
     confidence: high
@@ -91,7 +91,6 @@ actions:
     references: ["src/timeline/collectors/asks.ts", "src/db/schema.ts", "src/timeline/schema.ts", "src/timeline/classify.ts"]
 questions: []
 decisions: []
-current_action: timeline-reads-ask-supersessions
 recommended_model: standard
 recommended_reasoning_effort: medium
 ---
