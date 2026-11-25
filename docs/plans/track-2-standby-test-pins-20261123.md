@@ -51,11 +51,11 @@ actions:
     references: []
   - id: pin-failed-batch-window-boundary
     title: Pin which failed batches count against a grant window by their end time, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which failed batches count against a grant window by their end time, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-failed-batch-window-boundary-decafcd0a0ee; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-failed-batch-window-boundary
     clarification: clarified
     confidence: high
@@ -211,7 +211,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-failed-batch-window-boundary
+current_action: pin-derive-operator-reasons
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
