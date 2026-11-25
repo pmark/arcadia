@@ -13,7 +13,7 @@ import {
   DERIVED_CARD_ID_PREFIX, DERIVED_CARD_LIFETIME_MS, DERIVED_CARD_MAX_ACTIONS, deriveStartCard, type DeriveInput, type DerivePlanAction
 } from "../src/operatorActions/startRunDerive.js";
 import { runCli } from "./cli-response-fixture.js";
-import { DAY_PLAN, DAY_RUN, pressKey, STOP_ID, writeDayScenario, type DayScenario } from "./helpers/dayGrantFixture.js";
+import { DAY_PLAN, DAY_RUN, pressKey, STOP_ID, writeDayScenario, writeStartPress, type DayScenario } from "./helpers/dayGrantFixture.js";
 
 /** Decision 0241: `arcadia start-run derive` and the pure function behind it. */
 const directories: string[] = [];
@@ -251,6 +251,50 @@ describe("arcadia start-run derive --verify-card: the press-time CARD_NOT_DERIVE
     const { descriptorPath } = writeCard(w);
     const noReady = { ...w.deps, queue: (workspace: string) => ({ ...w.deps.queue(workspace), ordered: [] }) };
     expect(verify(w, descriptorPath, noReady)).toMatchObject({ verified: false, code: "CARD_NOT_DERIVED", derivedCardId: null, differs: [expect.stringContaining("NO_READY_ACTIONS")] });
+  });
+
+  describe("--current-press: the run-mode re-derivation leaves out this run's own in-flight press (#3005)", () => {
+    const OWN_ID = "20261110115955000-own-press";
+    /** This card's own press as the executor finds it in run mode: record running, receipt in progress, started after the card was minted. */
+    const writeOwnPress = (w: World, card: string) =>
+      writeStartPress(w.library, { card, id: OWN_ID, at: NOW - 5_000, status: "running", delegated: true, receipt: { outcome: "in_progress" } }, 0);
+    const verifyOwn = (w: World, descriptorPath: string, currentPress?: string) =>
+      runStartRunDeriveCommand({ repository: w.repository, workspace: w.workspace, library: w.library, verifyCard: descriptorPath, ...(currentPress ? { currentPress } : {}) }, w.deps).data;
+
+    it("refuses PREVIOUS_UNSETTLED for the card's own running press without it (tonight's CARD_NOT_DERIVED), and verifies byte for byte with it", () => {
+      const w = world();
+      const { card, descriptorPath } = writeCard(w);
+      writeOwnPress(w, card.id);
+      expect(verifyOwn(w, descriptorPath).verification).toMatchObject({ verified: false, code: "CARD_NOT_DERIVED", derivedCardId: null, differs: [expect.stringContaining("PREVIOUS_UNSETTLED")] });
+      const own = verifyOwn(w, descriptorPath, `${card.id}/${OWN_ID}`);
+      expect(own.verification).toEqual({ verified: true, code: null, differs: [], derivedCardId: card.id });
+      expect(own.observations.latestPress).toBeNull();
+    });
+
+    it("still refuses PREVIOUS_UNSETTLED for a different unsettled press, and ignores a press that is not the named one", () => {
+      const w = world();
+      const { card, descriptorPath } = writeCard(w);
+      writeOwnPress(w, card.id);
+      writeStartPress(w.library, { card: "start-other", at: NOW - 60_000, status: "running", receipt: { outcome: "in_progress" } }, 1);
+      expect(verifyOwn(w, descriptorPath, `${card.id}/${OWN_ID}`).verification).toMatchObject({ verified: false, differs: [expect.stringContaining("PREVIOUS_UNSETTLED")] });
+      expect(verifyOwn(w, descriptorPath, `${card.id}/${OWN_ID}-no`).verification).toMatchObject({ verified: false });
+    });
+
+    it("keeps the card's own previous press: a settled earlier press is still the card's previous, with its own press left out", () => {
+      const w = world({ scenario: { label: "", code: "", presses: [{ card: "start-a", at: NOW - 40 * MINUTE, receipt: {} }] } });
+      const { card, descriptorPath } = writeCard(w);
+      expect(card.descriptor.startRun).toMatchObject({ delegation: { previous: { kind: "no-session" } } });
+      writeOwnPress(w, card.id);
+      expect(verifyOwn(w, descriptorPath, `${card.id}/${OWN_ID}`).verification).toEqual({ verified: true, code: null, differs: [], derivedCardId: card.id });
+    });
+
+    it("is read only with --verify-card and only for a press of that card", () => {
+      const w = world();
+      const { card, descriptorPath } = writeCard(w);
+      expect(() => runStartRunDeriveCommand({ repository: w.repository, workspace: w.workspace, library: w.library, currentPress: `${card.id}/${OWN_ID}` }, w.deps)).toThrow(/DERIVE_OPTION_REFUSED/);
+      expect(() => verifyOwn(w, descriptorPath, `standing-start-other/${OWN_ID}`)).toThrow(/DERIVE_OPTION_REFUSED/);
+      expect(() => verifyOwn(w, descriptorPath, "not a press")).toThrow(/DERIVE_OPTION_REFUSED/);
+    });
   });
 
   it("is a real command option, and still derives nothing typed", () => {

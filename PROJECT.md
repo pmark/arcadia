@@ -6,9 +6,10 @@ name: Arcadia
 status: active
 goal: Turn stated outcomes into clarified, routed, executable work without the operator holding the whole portfolio in their head.
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
-milestone: "Draft an inactive Plan of four worker-mergeable Actions for the engine's first approved queue: the operator timeline shows who decided what (START presses, worker merges, the operator's recorded interactions and superseded Asks)"
-active_plan: draft-an-inactive-plan-of-four-worker-mergeable-actions-for-the-engine-s-first
+milestone: Track 2 standby test pins 20261123
+active_plan: track-2-standby-test-pins-20261123
 updated: 2026-11-25
+current_action: pin-worker-operator-merge-command
 ---
 
 # Arcadia

@@ -98,7 +98,16 @@ switch (key2) {
     // null (the card is what the deriver returns) or the differing fields. The real comparison is tested in start-run-derive.test.ts.
     if (state.derive?.fail) { process.stderr.write("the derivation could not run\n"); process.exit(1); }
     const verdicts = state.derive?.verdicts ?? [null];
-    const differs = verdicts.length > 1 ? verdicts.shift() : verdicts[0];
+    let differs = verdicts.length > 1 ? verdicts.shift() : verdicts[0];
+    // state.derive.chain: also refuse like the real chain check (PREVIOUS_UNSETTLED) while any press record other than --current-press
+    // is still running. The real chain is exercised in start-run-derive.test.ts; this only pins what the executor hands it.
+    if (state.derive?.chain && differs === null) {
+      const library = get("--library"), own = get("--current-press");
+      const operatorRuns = path.join(library, "runs", "operator");
+      const unsettled = (existsSync(operatorRuns) ? readdirSync(operatorRuns) : []).flatMap((card) => readdirSync(path.join(operatorRuns, card)).map((id) => `${card}/${id}`))
+        .filter((key) => key !== own && JSON.parse(readFileSync(path.join(operatorRuns, key, "run.json"), "utf8")).status === "running");
+      if (unsettled.length) differs = ["derivation"];
+    }
     save();
     // state.derive.replay: the replay receipt's verdict ({ ok, code, detail }); absent means a receipt that names this card. The real check is tested in start-run-replay-receipt.test.ts.
     ok({ derived: true, verification: { verified: differs === null, code: differs === null ? null : "CARD_NOT_DERIVED", differs: differs ?? [], derivedCardId: "standing-start-derived" }, replay: state.derive?.replay ?? { ok: true, code: null, detail: "the replay receipt names this card" } });
@@ -124,9 +133,15 @@ switch (key2) {
     ok(state.queue);
     break;
   case "coordinator relay-sessions":
-    // state.relaySessions: the exact tmux names the registry allows, or "unreadable" for a registry that cannot be read.
+    // state.relaySessions: the exact tmux names the registry allows, or "unreadable" for a registry that cannot be read. An entry
+    // is a name (the generation 2 custodian's recorded session) or a full verdict object (a handed-off predecessor, a held row).
     if (state.relaySessions === "unreadable") { process.stderr.write("the workspace database could not be read\n"); process.exit(1); }
-    ok({ project: get("--project"), allowed: state.relaySessions ?? [], sessions: (state.relaySessions ?? []).map((tmuxName) => ({ project: get("--project"), role: "rowan", generation: 2, tmuxName, nativeSessionId: "22222222-2222-4222-8222-222222222222", allowed: true, reason: "fixture" })) });
+    {
+      const sessions = (state.relaySessions ?? []).map((entry) => typeof entry === "string"
+        ? { project: get("--project"), role: "rowan", generation: 2, tmuxName: entry, nativeSessionId: "22222222-2222-4222-8222-222222222222", status: "custodian", allowed: true, reason: "fixture" }
+        : { project: get("--project"), role: "rowan", reason: "fixture", ...entry });
+      ok({ project: get("--project"), allowed: sessions.filter((session) => session.allowed).map((session) => session.tmuxName), sessions });
+    }
     break;
   case "production freeze-check":
     if (state.freeze === "refuse") { process.stderr.write("rehearsal freeze window: production is Active\n"); process.exit(1); }

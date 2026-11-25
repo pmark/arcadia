@@ -11,7 +11,10 @@ import { getSessionExitReceipt } from "./reconciliation.js";
  * Issue #2490: a worker that never preserved its candidate leaves an
  * `incomplete_resumable` lease handoff that the tick resumes forever (the host
  * capture refuses the same tree each time). This is the one governed way to
- * retire exactly that handoff so the next tick dispatches the Action fresh.
+ * retire exactly that handoff so the next tick dispatches the Action fresh;
+ * a standing-policy launch itself uses the same receipt for a base that
+ * misses a fix to a criteria-named file (`retireHandoffForFreshDispatch`,
+ * Issue #3015).
  *
  * It only stops a resume. It never touches the worktree, branch, files, Agent
  * Asks or Plan documents; the candidate stays on disk for manual salvage. The
@@ -223,45 +226,74 @@ export function applyHandoffRetirement(input: HandoffRetirementInput & { fingerp
         code: "stale_preview", fingerprint: preview.fingerprint
       });
     }
-    const binding = preview.binding!;
-    const at = (input.now ?? new Date()).toISOString();
-    // Fenced on the still-unsuperseded exit, so a resume that took the handoff
-    // first makes this a refusal, never a second takeover.
-    const superseded = input.db.prepare(`UPDATE session_exit_receipts SET superseded_by_session_id = ?, updated_at = ?
-      WHERE id = ? AND outcome = 'incomplete_resumable' AND superseded_by_session_id IS NULL`).run(binding.sentinel, at, binding.receiptId);
-    if (superseded.changes !== 1) {
-      throw validationError("Handoff retirement refused: the handoff was superseded while retiring it; preview again.", { code: "stale_preview" });
-    }
-    // The old candidate's claim would otherwise refuse the fresh dispatch. The
-    // fenced release clears claim columns only; the worktree reservation stays.
-    let released: string | null = null;
-    if (binding.claimGeneration && releaseActionClaim(input.db, {
-      repositoryPath: binding.repositoryPath, project: binding.projectSlug, actionId: binding.actionId, generation: binding.claimGeneration
-    })) released = binding.claimGeneration;
-    const row: HandoffRetirementRecord = {
-      id: createId("handoffRetirement"),
-      session_id: binding.sessionId,
-      request_id: binding.requestId,
-      receipt_id: binding.receiptId,
-      project_slug: binding.projectSlug,
-      plan_slug: binding.planSlug,
-      action_id: binding.actionId,
-      repository_path: binding.repositoryPath,
-      worktree_path: binding.worktreePath,
-      branch: binding.branch,
-      base_revision: binding.baseRevision,
-      candidate_revision: binding.candidateRevision,
-      claim_generation_released: released,
-      sentinel: binding.sentinel,
-      reason: binding.reason,
-      fingerprint: input.fingerprint,
-      created_at: at
-    };
-    input.db.prepare(`INSERT INTO ${TABLE}
-      (id, session_id, request_id, receipt_id, project_slug, plan_slug, action_id, repository_path, worktree_path, branch,
-       base_revision, candidate_revision, claim_generation_released, sentinel, reason, fingerprint, created_at)
-      VALUES (@id, @session_id, @request_id, @receipt_id, @project_slug, @plan_slug, @action_id, @repository_path, @worktree_path, @branch,
-       @base_revision, @candidate_revision, @claim_generation_released, @sentinel, @reason, @fingerprint, @created_at)`).run(row);
-    return { retirement: row, created: true };
+    return { retirement: recordRetirement(input.db, preview.binding!, input.fingerprint, input.now ?? new Date()), created: true };
   });
+}
+
+/**
+ * Issue #3015: a standing-policy launch's own retirement of a handoff it must
+ * not resume (its base misses a main fix to a file the Action's criteria
+ * name). Every launch that reaches it (the managed tick, `session launch
+ * --standing-policy`, host enrollment) holds an Active standing-policy
+ * admission and would otherwise resume this handoff itself; repair, `arcadia
+ * go` and operator-preview launches never call it. The same checks, effects
+ * and receipt as the operator's command, with two differences: it runs only
+ * while Production is Active, so `production_active` is not a refusal here;
+ * and a preserved candidate is already committed on its kept branch (and
+ * usually pushed), so retiring it loses nothing (`preserved_candidate` steers
+ * an operator toward resume, which is exactly what must not happen; the
+ * caller names that commit and pull request in the reason). Any other refusal
+ * returns it, and the caller resumes as before (fail-closed).
+ */
+export function retireHandoffForFreshDispatch(input: HandoffRetirementInput): HandoffRetirementResult | { refusal: HandoffRetirementRefusal } {
+  const tolerated: ReadonlySet<HandoffRetirementRefusalCode> = new Set(["production_active", "preserved_candidate"]);
+  return writeTransaction(input.db, () => {
+    const preview = previewHandoffRetirement(input);
+    const refusal = preview.refusals.find((entry) => !tolerated.has(entry.code));
+    if (refusal) return { refusal };
+    if (preview.retirement) return { retirement: preview.retirement, created: false };
+    return { retirement: recordRetirement(input.db, preview.binding!, preview.fingerprint!, input.now ?? new Date()), created: true };
+  });
+}
+
+function recordRetirement(db: Database.Database, binding: HandoffRetirementBinding, fingerprint: string, now: Date): HandoffRetirementRecord {
+  const at = now.toISOString();
+  // Fenced on the still-unsuperseded exit, so a resume that took the handoff
+  // first makes this a refusal, never a second takeover.
+  const superseded = db.prepare(`UPDATE session_exit_receipts SET superseded_by_session_id = ?, updated_at = ?
+    WHERE id = ? AND outcome = 'incomplete_resumable' AND superseded_by_session_id IS NULL`).run(binding.sentinel, at, binding.receiptId);
+  if (superseded.changes !== 1) {
+    throw validationError("Handoff retirement refused: the handoff was superseded while retiring it; preview again.", { code: "stale_preview" });
+  }
+  // The old candidate's claim would otherwise refuse the fresh dispatch. The
+  // fenced release clears claim columns only; the worktree reservation stays.
+  let released: string | null = null;
+  if (binding.claimGeneration && releaseActionClaim(db, {
+    repositoryPath: binding.repositoryPath, project: binding.projectSlug, actionId: binding.actionId, generation: binding.claimGeneration
+  })) released = binding.claimGeneration;
+  const row: HandoffRetirementRecord = {
+    id: createId("handoffRetirement"),
+    session_id: binding.sessionId,
+    request_id: binding.requestId,
+    receipt_id: binding.receiptId,
+    project_slug: binding.projectSlug,
+    plan_slug: binding.planSlug,
+    action_id: binding.actionId,
+    repository_path: binding.repositoryPath,
+    worktree_path: binding.worktreePath,
+    branch: binding.branch,
+    base_revision: binding.baseRevision,
+    candidate_revision: binding.candidateRevision,
+    claim_generation_released: released,
+    sentinel: binding.sentinel,
+    reason: binding.reason,
+    fingerprint,
+    created_at: at
+  };
+  db.prepare(`INSERT INTO ${TABLE}
+    (id, session_id, request_id, receipt_id, project_slug, plan_slug, action_id, repository_path, worktree_path, branch,
+     base_revision, candidate_revision, claim_generation_released, sentinel, reason, fingerprint, created_at)
+    VALUES (@id, @session_id, @request_id, @receipt_id, @project_slug, @plan_slug, @action_id, @repository_path, @worktree_path, @branch,
+     @base_revision, @candidate_revision, @claim_generation_released, @sentinel, @reason, @fingerprint, @created_at)`).run(row);
+  return row;
 }

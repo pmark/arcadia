@@ -20,6 +20,9 @@
  * could, if, unless, whether, because, "so that", should, must, "without the
  * fix") is not judged: "the old behavior was not run" is a comparison, not an
  * admission.
+ * Issue #3017: a criterion that requires a failing-first test is also judged for an explicit admission that the
+ * failure was not observed ("did not observe the test fail", "not observed failing", "written after the fix",
+ * "did not fail first", "wasn't run before the fix"). Only a `met` note on such a criterion is judged.
  * Known limitation: a sentence that legitimately says some unrelated step was
  * "not run" with none of those words (e.g. "pnpm build not run, unaffected")
  * is still refused, and a contradiction phrased in words outside the list
@@ -31,6 +34,8 @@ export interface ContradictedCriterion {
   criterion: string;
   /** The text that contradicts `met`. */
   phrase: string;
+  /** Set when the admission is that a failing-first test was never observed failing (Issue #3017). */
+  failingFirst?: true;
 }
 
 type EvidenceEntry = { criterion: string; status: string; note: string | null };
@@ -51,6 +56,27 @@ const CONTRADICTIONS: ReadonlyArray<{ pattern: RegExp; negatable: boolean }> = [
   { pattern: /\bwill\s+(?:be\s+)?(?:done|run|closed|merged|verified)\s+(?:after|once|when|upon)\b[^.;\n]*/gi, negatable: true }
 ];
 
+// Issue #3017: a criterion that demands the test fail before the fix, and a note that admits it never did.
+const FAILING_FIRST_CRITERION = /\b(?:failing[\s-]+first|fail(?:s|ed)?[\s-]+first|failing\s+test\s+first|test-first|fail(?:s|ed|ing)?\s+(?:before|without)\s+the\s+(?:fix|change))\b/i;
+const FAILURE_NOT_OBSERVED: ReadonlyArray<RegExp> = [
+  // "the test / the failure / it was not observed (failing)"; not "the flake was not observed failing".
+  /\b(?:(?:the|this|new)\s+(?:test|failure)|it)\s+(?:was\s+|were\s+)?not\s+observed\b/i,
+  /\b(?:did\s+not|didn['’]t)\s+(?:observe|see|watch|witness)\s+(?:the\s+|that\s+|this\s+)?(?:new\s+)?(?:(?:test|it)\b[^.;\n]{0,20}?\bfail\w*|failure\b)/i,
+  /\bnever\s+(?:observed|saw|seen|watched|witnessed)\s+(?:the\s+|that\s+|this\s+)?(?:new\s+)?(?:(?:test|it)\b[^.;\n]{0,20}?\bfail\w*|failure\b)/i,
+  /\bwritten\s+after\s+(?:the\s+)?(?:\w+\s+){0,3}?(?:fix|change|edit|implementation)\b/i,
+  /\b(?:wrote|added|created)\s+(?:the\s+|this\s+|a\s+)?(?:new\s+)?(?:\w+\s+){0,2}?test\b[^.;\n]{0,30}?\bafter\s+(?:the\s+)?(?:\w+\s+){0,3}?(?:fix|change|edit|implementation)\b/i,
+  /\b(?:test|it)\s+(?:did\s+not|didn['’]t)\s+fail\s+first\b/i,
+  /\b(?:(?:the|this|new)\s+test|it)\s+(?:was\s+not|wasn['’]t|was\s+never)\s+run\s+before\s+(?:the\s+)?(?:fix|change|edit|implementation)\b/i,
+  /\b(?:did\s+not|didn['’]t)\s+run\s+(?:the\s+|this\s+|that\s+)?(?:new\s+)?test\w*\s+before\s+(?:the\s+)?(?:fix|change|edit|implementation)\b/i
+];
+// A note that also records an observed failure (a failure count, "failed first", or a non-negated "saw|observed ... fail")
+// is a note that observed it: the remedy ("written after the fix; reverted, saw it fail (1 failed)") must pass.
+const OBSERVED_FAILURE: ReadonlyArray<RegExp> = [
+  /\b[1-9]\d*\s+(?:tests?\s+)?failed\b/gi,
+  /\bfailed\s+first\b/gi,
+  /\b(?:saw|observed|watched|seen)\b[^.;\n]{0,40}?\bfail\w*/gi
+];
+
 // A sentence about another state of the code or a hypothetical is not an admission about this criterion.
 const OTHER_CONTEXT = /\b(?:before|previous(?:ly)?|prior|old|baseline|unfixed|pre-fix|original(?:ly)?|would|could|if|unless|whether|because|so\s+that|should|must|without\s+the\s+(?:fix|change))\b/i;
 // A negation earlier in the clause ("no work is deferred", "isn't deferred", "none deferred").
@@ -61,12 +87,31 @@ export function contradictedMetCriteria(evidence: ReadonlyArray<EvidenceEntry>):
   const found: ContradictedCriterion[] = [];
   for (const entry of evidence) {
     if (entry.status !== "met" || !entry.note) continue;
+    const before = found.length;
     for (const sentence of entry.note.split(/(?<=[.!?;])\s+|\n+/)) {
       const phrase = firstContradiction(sentence);
       if (phrase) { found.push({ criterion: entry.criterion, phrase }); break; }
     }
+    if (found.length > before || !FAILING_FIRST_CRITERION.test(entry.criterion)) continue;
+    const admission = firstFailureNotObserved(entry.note);
+    if (admission) found.push({ criterion: entry.criterion, phrase: admission, failingFirst: true });
   }
   return found;
+}
+
+function recordsObservedFailure(note: string): boolean {
+  return OBSERVED_FAILURE.some((pattern) => [...note.matchAll(pattern)].some((match) => !NEGATED_BEFORE.test(note.slice(0, match.index))));
+}
+
+function firstFailureNotObserved(note: string): string | null {
+  if (recordsObservedFailure(note)) return null;
+  for (const sentence of note.split(/(?<=[.!?;])\s+|\n+/)) {
+    for (const pattern of FAILURE_NOT_OBSERVED) {
+      const match = pattern.exec(sentence);
+      if (match) return match[0].trim().slice(0, 80);
+    }
+  }
+  return null;
 }
 
 function firstContradiction(sentence: string): string | null {
@@ -95,7 +140,10 @@ export function contradictedCriteriaRefusal(evidence: ReadonlyArray<EvidenceEntr
     return `"${shown}" is marked met but its own note says "${phrase}"`;
   });
   const more = contradicted.length > MAX_LISTED ? ` (and ${contradicted.length - MAX_LISTED} more)` : "";
-  return `Contradicted-criterion check refused the completion: ${described.join("; ")}${more}. Do the work and say so in the note, or mark the criterion skipped or failed; a completion cannot mark met what its own evidence says is not done. If the check is one the host runs for you (pnpm pre-pr, lint, tsc, build, or a test you added or changed), delete the words "not run" from the note and write exactly the words the brief gives for checks the host runs.`;
+  const failingFirstRemedy = contradicted.some((item) => item.failingFirst)
+    ? " For a failing-first criterion whose note admits the failure was not observed: observe the failure (revert the fix, run the test, record the failure, restore the fix), or mark the criterion failed or skipped honestly."
+    : "";
+  return `Contradicted-criterion check refused the completion: ${described.join("; ")}${more}.${failingFirstRemedy} Do the work and say so in the note, or mark the criterion skipped or failed; a completion cannot mark met what its own evidence says is not done. If the check is one the host runs for you (pnpm pre-pr, lint, tsc, build, or a test you added or changed), delete the words "not run" from the note and write exactly the words the brief gives for checks the host runs.`;
 }
 
 // ---------------------------------------------------------------------------------------------------------

@@ -56,6 +56,7 @@ import {
 import { getResumableLeaseHandoff, getSessionContinuation, restoreLeaseHandoffIfSupersededBy, type SessionExitReceipt } from "./reconciliation.js";
 import { getSessionRepair, releaseRepairSession } from "./reviewRepair.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
+import { retireStaleBaseHandoff } from "./staleBaseHandoff.js";
 import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
 import { assertOperatorLaunchRequestAvailable, mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
 
@@ -175,6 +176,8 @@ export interface GuardedLaunchInput {
    * step (worktree creation, spawn) goes on to fail for an unrelated reason.
    */
   onProviderSignInConfirmed?: (provider: string) => void;
+  /** The caller's log (the managed tick's), for decisions it should see, such as a stale-base handoff a standing-policy launch retired or kept (Issue #3015). */
+  log?: (line: string) => void;
   now?: Date;
   tmux?: TmuxAdapter;
   testHooks?: {
@@ -539,7 +542,20 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
     // worktree (CodeRabbit, PR #696).
     const headProbe = tryGit(staleHandoff.session.worktree_path, ["rev-parse", "HEAD"]);
     const branchProbe = tryGit(staleHandoff.session.worktree_path, ["symbolic-ref", "--short", "HEAD"]);
-    if (headProbe !== null && branchProbe !== null && branchProbe.trim() === expectedBranch) {
+    // Issue #3015: under the standing policy, a base that misses a main fix to
+    // a file the Action's criteria name is retired (receipted, claim released,
+    // worktree and branch kept) and the Action is prepared fresh below from the
+    // current base. Unknown or refused keeps the resume.
+    const staleBaseRetired = headProbe !== null && branchProbe !== null && branchProbe.trim() === expectedBranch && input.standingPolicy
+      ? retireStaleBaseHandoff({
+        db: input.db, repoRoot, session: staleHandoff.session, candidateHead: headProbe.trim(), mainRevision: baseRevision,
+        criteria: dispatch.context.action.acceptanceCriteria, tmux, now, log: input.log
+      })
+      : null;
+    if (staleBaseRetired) {
+      // Nothing to resume or release here: the retirement released the claim
+      // this candidate held, and its superseded handoff no longer blocks anyone.
+    } else if (headProbe !== null && branchProbe !== null && branchProbe.trim() === expectedBranch) {
       resumableStaleClaim = { session: staleHandoff.session, receiptId: staleHandoff.receipt.id, branch: expectedBranch, headRevision: headProbe.trim() };
     } else {
       // Not safely resumable after all. Its stale claim would otherwise make

@@ -3,19 +3,19 @@ arcadia: v1
 type: plan
 slug: track-2-standby-test-pins-20261123
 project: arcadia
-status: draft
+status: active
 milestone: Track 2 standby test pins 20261123
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-23
+updated: 2026-11-25
 actions:
   - id: pin-successor-press-render-lines
     title: Pin the one line the successor press prints for a pressed, refused or skipped outcome, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the one line the successor press prints for a pressed, refused or skipped outcome, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-successor-press-render-lines-54145a7d7f48; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-successor-press-render-lines
     clarification: clarified
     confidence: high
@@ -31,11 +31,11 @@ actions:
     references: []
   - id: pin-failed-batch-clearance-parse
     title: Pin which failed-batch clearance records the START card derivation accepts, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which failed-batch clearance records the START card derivation accepts, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-failed-batch-clearance-parse-10ec23371cd6; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-failed-batch-clearance-parse
     clarification: clarified
     confidence: high
@@ -51,11 +51,11 @@ actions:
     references: []
   - id: pin-failed-batch-window-boundary
     title: Pin which failed batches count against a grant window by their end time, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which failed batches count against a grant window by their end time, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-failed-batch-window-boundary-decafcd0a0ee; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-failed-batch-window-boundary
     clarification: clarified
     confidence: high
@@ -71,11 +71,11 @@ actions:
     references: []
   - id: pin-derive-operator-reasons
     title: Pin that a derived card stops only for unanswered cited Decisions, never for referenced paths, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that a derived card stops only for unanswered cited Decisions, never for referenced paths, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-derive-operator-reasons-82cc135b96a2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-derive-operator-reasons
     clarification: clarified
     confidence: high
@@ -211,6 +211,9 @@ actions:
     references: []
 questions: []
 decisions: []
+current_action: pin-worker-operator-merge-command
+recommended_model: heavy
+recommended_reasoning_effort: high
 ---
 
 # Track 2 standby test pins 20261123
