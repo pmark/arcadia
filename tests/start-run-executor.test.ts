@@ -1084,6 +1084,35 @@ describe("start-run executor: a derived card under a standing grant passes the d
     expect(result.receipt!.record.authority).toContain("standing-grant approval");
     expect(result.receipt!.record.authority).toContain("no 24-hour window");
   }, 120_000);
+  // Issue #3005: in run mode this press's own record is already the latest START press when the card is re-derived.
+  const chained = (n: number) => (s: Record<string, any>) => { s.derive = { verdicts: Array(n).fill(null), chain: true }; };
+  const deriveArgs = (b: ReturnType<typeof box>) => b.calls().filter((call) => call.args.slice(0, 2).join(" ") === "start-run derive").map((call) => call.args);
+  it("re-derives in run mode leaving out exactly its own in-flight press, in P0 and again in P3 (#3005)", () => {
+    const b = box({ dayGrant: standing(5 * DAY), cardId: STANDING, state: chained(3) });
+    expect(b.run("preflight").status).toBe(0);
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", productionActivated: true });
+    const runId = result.receipt!.record.operatorRunId;
+    const own = deriveArgs(b).filter((args) => args.includes("--current-press"));
+    expect(own).toHaveLength(2);
+    for (const args of own) expect(args[args.indexOf("--current-press") + 1]).toBe(`${STANDING}/${runId}`);
+  }, 120_000);
+  it("passes no --current-press in preflight, where no press exists yet (#3005)", () => {
+    const b = box({ dayGrant: standing(5 * DAY), cardId: STANDING, state: chained(1) });
+    const result = b.run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(deriveArgs(b)).toHaveLength(1);
+    expect(deriveArgs(b)[0]).not.toContain("--current-press");
+  });
+  it("still refuses CARD_NOT_DERIVED when a different press of any card is unsettled, naming only this run's own press (#3005)", () => {
+    const b = box({ dayGrant: standing(5 * DAY), cardId: STANDING, state: chained(3) });
+    const other = path.join(b.library, "runs", "operator", "standing-start-other", "20261101000000000-other");
+    mkdirSync(other, { recursive: true });
+    writeFileSync(path.join(other, "run.json"), JSON.stringify({ schema: "arcadia-operator-script-run-v1", runId: "20261101000000000-other", scriptId: "standing-start-other", status: "running" }));
+    const headBefore = b.head();
+    expectRefusedClean(b, b.run(), "P0", /^CARD_NOT_DERIVED: \(P0\).*differing field: derivation/, headBefore);
+  });
   it.each([
     ["an unconsumed standing-grant card (no one-shot marker)", { noConsumedMarker: true }, "APPROVAL_NOT_PRESSED"],
     ["a standing receipt whose outcome is not approved", { receipt: { outcome: "refused" } }, "APPROVAL_NOT_PRESSED"],

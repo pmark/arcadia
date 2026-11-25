@@ -240,9 +240,12 @@ is_standing_grant_card() {
   [[ -f "$receipt" ]] && jq -e '.schema == "arcadia-standing-grant-receipt-v1"' "$receipt" >/dev/null 2>&1
 }
 check_card_rederived() {  # $1: P0 or P3
-  local out
+  local out own=()
   is_standing_grant_card || return 0
-  out="$(arcadia start-run derive --verify-card "$DESCRIPTOR" --library "$LIBRARY_DIR" --repository "$ARCADIA_REPO" --json)" \
+  # In run mode this press's own record (running, parented by this run) is already the latest START press, but it is not a previous
+  # press: tell the deriver to leave out exactly that one. Any other unsettled press still refuses PREVIOUS_UNSETTLED.
+  [[ "$MODE" == run && -n "$OPERATOR_RUN_ID" ]] && own=(--current-press "$ID/$OPERATOR_RUN_ID")
+  out="$(arcadia start-run derive --verify-card "$DESCRIPTOR" ${own[@]+"${own[@]}"} --library "$LIBRARY_DIR" --repository "$ARCADIA_REPO" --json)" \
     || refuse "CARD_NOT_DERIVED: ($1) the fresh derivation could not run, so the card cannot be shown to be derived; no allowance consumed"
   jq -e '.ok == true and (.data.verification.verified | type == "boolean")' <<<"$out" >/dev/null \
     || refuse "CARD_NOT_DERIVED: ($1) the fresh derivation returned no verdict on this card; no allowance consumed"
