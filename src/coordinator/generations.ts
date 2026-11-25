@@ -16,6 +16,7 @@ import {
 } from "./capsule.js";
 import { withRelayLock, type RelayLockDeps } from "./lock.js";
 import { coordinatorPaths, ensureCoordinatorDirectories, type CoordinatorPaths } from "./paths.js";
+import type { PredecessorStopReceiptState } from "./predecessorStop.js";
 import { cursorChanges, readCoordinatorState, unregisteredWatchers } from "./state.js";
 
 /**
@@ -31,6 +32,12 @@ export type GenerationStatus = (typeof GENERATION_STATUSES)[number];
 export const CLAIM_LAUNCHING_FRESH_MS = 15 * 60 * 1000;
 /** `accept` needs a passing `verify` on the same snapshot sha within this window. */
 export const ACCEPT_VERIFY_WINDOW_MS = 10 * 60 * 1000;
+/**
+ * How long after its successor's accept START tolerates a handed-off predecessor's live Session (#3029, R2-1). The host
+ * liveness timer retries the stop every minute, so a working timer ends it well inside this window. Past it,
+ * relay-sessions holds the predecessor (stop it by hand) and the timer pages the operator once for that generation.
+ */
+export const PREDECESSOR_TOLERANCE_WINDOW_MS = 30 * 60 * 1000;
 
 /** Set by the relay's launcher on the coordinator's process tree; child commands inherit them. */
 export const COORDINATOR_ENV = {
@@ -143,16 +150,55 @@ function maxGeneration(db: Database.Database, project: string, role: string): nu
   return row.max ?? 0;
 }
 
-export interface RelaySessionVerdict { project: string; role: string; generation: number; tmuxName: string; nativeSessionId: string | null; allowed: boolean; reason: string }
+export interface RelaySessionVerdict { project: string; role: string; generation: number; status: GenerationStatus; tmuxName: string; nativeSessionId: string | null; allowed: boolean; reason: string }
 
 const SAFE_TMUX_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SESSION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /**
+ * The custodian's immediate predecessor: the one `handed_off` row of the same Project and role whose stand-down names
+ * exactly that custodian's generation (accept requires it, and only one row can have held custody just before). Null
+ * when there is none. Older handed-off generations stood down for someone else and are never it.
+ */
+export function immediatePredecessor(rows: readonly GenerationRecord[], custodian: GenerationRecord): GenerationRecord | null {
+  return rows.find((row) => row.project === custodian.project && row.role === custodian.role && row.status === "handed_off"
+    && row.generation < custodian.generation && row.stoodDownFor === custodian.generation) ?? null;
+}
+
+/** Exactly the instant form `accept` writes (`toISOString`); anything else is unreadable, never coerced by Date.parse. */
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+
+/**
+ * Where `now` stands against the predecessor tolerance window that opens at the successor's recorded accept. `within`
+ * only when the accept time reads as an instant no later than `now` and at most PREDECESSOR_TOLERANCE_WINDOW_MS ago; a
+ * missing, unparsable or future accept time is `unmeasurable`, which callers treat like `expired` (fail closed).
+ */
+export type PredecessorToleranceWindow =
+  | { state: "within"; minutes: number }
+  | { state: "expired"; minutes: number; detail: string }
+  | { state: "unmeasurable"; minutes: null; detail: string };
+
+export function predecessorToleranceWindow(acceptedAt: string | null, now: Date): PredecessorToleranceWindow {
+  const limit = PREDECESSOR_TOLERANCE_WINDOW_MS / 60_000;
+  const accepted = acceptedAt !== null && ISO_INSTANT.test(acceptedAt) ? Date.parse(acceptedAt) : Number.NaN;
+  const elapsed = now.getTime() - accepted;
+  if (!Number.isFinite(elapsed)) {
+    const what = acceptedAt === null ? "is not recorded" : `(${JSON.stringify(acceptedAt).slice(0, 60)}) cannot be read`;
+    return { state: "unmeasurable", minutes: null, detail: `the successor's accept time ${what}, so the ${limit} min tolerance window cannot be measured` };
+  }
+  if (elapsed < 0) return { state: "unmeasurable", minutes: null, detail: `the successor's accept time ${acceptedAt} is later than now, so the ${limit} min tolerance window cannot be measured` };
+  const minutes = Math.floor(elapsed / 60_000);
+  if (elapsed > PREDECESSOR_TOLERANCE_WINDOW_MS) return { state: "expired", minutes, detail: `${minutes} min after accept (limit ${limit})` };
+  return { state: "within", minutes };
+}
+
+/**
  * Which tmux sessions START's no-competing-Session check (P2 and P4 of
  * scripts/start-run.sh) may tolerate for `project`: the live tmux name of a
- * registered, relay-launched, current custodian. Read-only; a decision input,
- * never authority. Everything else stays a competing Session.
+ * registered, relay-launched, current custodian, and of that custodian's
+ * immediate handed-off predecessor until the host liveness timer stops it
+ * (#3029 fix A). Read-only; a decision input, never authority. Everything else
+ * stays a competing Session.
  *
  * It is deliberately narrow:
  *  - exact names only, taken from the generation row, never a prefix or pattern;
@@ -160,26 +206,66 @@ const SESSION_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  *    a token hash), so a hand-started tmux session named like one is not allowed
  *    unless the registry already names it, and a desktop coordinator (no tmux
  *    name) never is;
+ *  - the one `handed_off` row allowed is the immediate predecessor of a current
+ *    custodian (its stand-down recorded for exactly that generation), relay
+ *    launched, under exactly `arcadia-coord-<role>-g<its generation>`, with its
+ *    own recorded session id (never the custodian's). Older handed-off rows are
+ *    not listed;
  *  - while any generation of that role is `launching` (a handoff in flight),
- *    nothing for that role is allowed, so a predecessor and its successor are
- *    never both tolerated and START cannot overlap a custody transfer;
+ *    nothing for that role is allowed, so START cannot overlap a custody transfer;
+ *  - that predecessor is tolerated only while the host timer will still act on
+ *    it: with no stop receipt or a non-terminal one (`failed`, `deferred`). A
+ *    terminal receipt (`stopped`, `already_stopped`, `identity_mismatch`,
+ *    `manual_stop_required`) ends the timer's retries, so the row is held and a
+ *    live session under that name is a competing Session (stop it by hand); an
+ *    unreadable receipt is held too. `stopReceipt` is required, so this
+ *    tolerance cannot be read without the receipt;
+ *  - and only within PREDECESSOR_TOLERANCE_WINDOW_MS (30 min) of the
+ *    custodian's recorded accept (R2-1): a timer that can never act (a
+ *    persistent `failed` or `deferred` receipt) must not leave the predecessor
+ *    tolerated forever. After the window, or with a missing, unparsable or
+ *    future accept time, the row is held (stop it by hand); the host timer
+ *    pages once. This check runs last, so it only narrows;
  *  - the name is only a candidate: START also requires the live pane to run
  *    the row's recorded `native_session_id` (`--session-id`), which also makes
  *    the lookup Project-safe (two Projects share the name but not the id).
  */
-export function relayCoordinatorSessions(db: Database.Database, project: string): RelaySessionVerdict[] {
-  const rows = (db.prepare("SELECT * FROM coordinator_generations WHERE project = ? AND status IN ('custodian', 'launching') ORDER BY role, generation").all(project) as Row[]).map(toRecord);
+export function relayCoordinatorSessions(db: Database.Database, project: string, stopReceipt: (role: string, generation: number) => PredecessorStopReceiptState, now: Date): RelaySessionVerdict[] {
+  const all = (db.prepare("SELECT * FROM coordinator_generations WHERE project = ? AND status IN ('custodian', 'launching', 'handed_off') ORDER BY role, generation").all(project) as Row[]).map(toRecord);
+  const custodians = all.filter((row) => row.status === "custodian");
+  const predecessors = new Map<GenerationRecord, GenerationRecord>();
+  for (const custodian of custodians) {
+    const predecessor = immediatePredecessor(all, custodian);
+    if (predecessor) predecessors.set(predecessor, custodian);
+  }
+  const rows = all.filter((row) => row.status !== "handed_off" || predecessors.has(row));
   const launching = new Set(rows.filter((row) => row.status === "launching").map((row) => row.role));
   const verdicts: RelaySessionVerdict[] = [];
   for (const row of rows) {
     if (!row.tmuxName) continue;
-    const verdict = (allowed: boolean, reason: string) => verdicts.push({ project, role: row.role, generation: row.generation, tmuxName: row.tmuxName as string, nativeSessionId: row.nativeSessionId, allowed, reason });
+    const verdict = (allowed: boolean, reason: string) => verdicts.push({ project, role: row.role, generation: row.generation, status: row.status, tmuxName: row.tmuxName as string, nativeSessionId: row.nativeSessionId, allowed, reason });
+    const successor = predecessors.get(row);
     if (row.status === "launching") verdict(false, `generation ${row.generation} of ${row.role} is launching: a handoff is in flight`);
     else if (!SAFE_TMUX_NAME.test(row.tmuxName)) verdict(false, `generation ${row.generation} of ${row.role} has a tmux name that is not a plain name`);
     else if (!row.nativeSessionId || !SESSION_UUID.test(row.nativeSessionId)) verdict(false, `generation ${row.generation} of ${row.role} has no recorded session id to match against the running process`);
     else if (!row.relayLaunched) verdict(false, `generation ${row.generation} of ${row.role} was not launched by the relay`);
     else if (launching.has(row.role)) verdict(false, `a successor of ${row.role} is launching: a handoff is in flight`);
-    else verdict(true, `registered relay-launched custodian: generation ${row.generation} of ${row.role}`);
+    else if (successor === undefined) verdict(true, `registered relay-launched custodian: generation ${row.generation} of ${row.role}`);
+    else if (row.stoodDownAt === null) verdict(false, `handed-off generation ${row.generation} of ${row.role} has no recorded stand-down time`);
+    else if (row.tmuxName !== `arcadia-coord-${row.role}-g${row.generation}`) verdict(false, `handed-off generation ${row.generation} of ${row.role} is not recorded under its own generation's exact name arcadia-coord-${row.role}-g${row.generation}`);
+    else if (row.nativeSessionId === successor.nativeSessionId || row.tmuxName === successor.tmuxName) verdict(false, `handed-off generation ${row.generation} of ${row.role} records the custodian's own session or name`);
+    else {
+      const receipt = stopReceipt(row.role, row.generation);
+      if (receipt.state === "unreadable") verdict(false, `handed-off generation ${row.generation} of ${row.role} has an unreadable stop receipt (${receipt.detail}); held`);
+      else if (receipt.state === "recorded" && receipt.terminal) verdict(false, `handed-off generation ${row.generation} of ${row.role} has a terminal stop receipt (${receipt.outcome}), so the host liveness timer will not stop it; held: stop it by hand`);
+      else {
+        // Last, so it only narrows: tolerance is bounded in time from the custodian's recorded accept (R2-1).
+        const window = predecessorToleranceWindow(successor.acceptedAt, now);
+        if (window.state === "expired") verdict(false, `handed-off predecessor generation ${row.generation} of ${row.role} still live ${window.detail}: stop it by hand`);
+        else if (window.state === "unmeasurable") verdict(false, `handed-off predecessor generation ${row.generation} of ${row.role} is held: ${window.detail}; stop it by hand`);
+        else verdict(true, `handed-off predecessor of custodian generation ${successor.generation} of ${row.role} (stand-down recorded, stop receipt ${receipt.state === "none" ? "not yet written" : receipt.outcome}, ${window.minutes} min after accept, limit ${PREDECESSOR_TOLERANCE_WINDOW_MS / 60_000}): tolerated until the host liveness timer stops it`);
+      }
+    }
   }
   return verdicts;
 }

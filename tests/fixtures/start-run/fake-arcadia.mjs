@@ -129,9 +129,15 @@ switch (key2) {
     ok(state.queue);
     break;
   case "coordinator relay-sessions":
-    // state.relaySessions: the exact tmux names the registry allows, or "unreadable" for a registry that cannot be read.
+    // state.relaySessions: the exact tmux names the registry allows, or "unreadable" for a registry that cannot be read. An entry
+    // is a name (the generation 2 custodian's recorded session) or a full verdict object (a handed-off predecessor, a held row).
     if (state.relaySessions === "unreadable") { process.stderr.write("the workspace database could not be read\n"); process.exit(1); }
-    ok({ project: get("--project"), allowed: state.relaySessions ?? [], sessions: (state.relaySessions ?? []).map((tmuxName) => ({ project: get("--project"), role: "rowan", generation: 2, tmuxName, nativeSessionId: "22222222-2222-4222-8222-222222222222", allowed: true, reason: "fixture" })) });
+    {
+      const sessions = (state.relaySessions ?? []).map((entry) => typeof entry === "string"
+        ? { project: get("--project"), role: "rowan", generation: 2, tmuxName: entry, nativeSessionId: "22222222-2222-4222-8222-222222222222", status: "custodian", allowed: true, reason: "fixture" }
+        : { project: get("--project"), role: "rowan", reason: "fixture", ...entry });
+      ok({ project: get("--project"), allowed: sessions.filter((session) => session.allowed).map((session) => session.tmuxName), sessions });
+    }
     break;
   case "production freeze-check":
     if (state.freeze === "refuse") { process.stderr.write("rehearsal freeze window: production is Active\n"); process.exit(1); }

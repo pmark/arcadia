@@ -840,9 +840,11 @@ phase_p1() {
 # under tmux, so a bare "no tmux session at all" refuses every START while a relay coordinator runs.
 #
 # The one tolerated case: a live tmux session that (1) has the EXACT name `arcadia coordinator relay-sessions` returns for a
-# registered, relay-launched, current custodian of this Project (none while a handoff is in flight), AND (2) is running the
-# very process that row was launched as: a descendant of that pane's PID whose arguments carry `--session-id <the row's
-# native_session_id>`. A row whose pane died, or a different process started under the same name, is a competing Session.
+# registered, relay-launched, current custodian of this Project, or for that custodian's immediate handed-off predecessor
+# (stand-down recorded, its own `arcadia-coord-<role>-g<N>`, until the host liveness timer stops it: #3029 fix A), none while a
+# handoff is in flight, AND (2) is running the very process that row was launched as: a descendant of that pane's PID whose
+# arguments carry `--session-id <the row's native_session_id>`. A row whose pane died, or a different process started under
+# the same name, is a competing Session.
 #
 # Reading tmux fails closed: only tmux's own "no server" answers mean "no sessions". A denied socket, any other tmux error, a
 # mise shim failure, or a missing tmux refuses. TMUX and TMUX_TMPDIR (which choose the server socket) are stripped, as the
