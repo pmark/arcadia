@@ -42,7 +42,26 @@ const ISOLATED_GIT = { GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" 
  * while the test is still building it (Issue #1154, Linux CI).
  */
 function git(cwd: string, args: string[], env: Record<string, string> = {}): string {
-  return execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "maintenance.auto=false", ...args], { cwd, encoding: "utf8", env: { ...process.env, ...ISOLATED_GIT, ...env } }).trim();
+  return execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "tag.gpgsign=false", "-c", "maintenance.auto=false", ...args], { cwd, encoding: "utf8", env: { ...hermeticEnv(), ...ISOLATED_GIT, ...env } }).trim();
+}
+
+/** Git identity variables a worker Session exports; none may reach the fixture's Git (#3013). */
+const INHERITED_IDENTITY = ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_AUTHOR_DATE", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "GIT_COMMITTER_DATE", "EMAIL"] as const;
+const SESSION_IDENTITY: Record<(typeof INHERITED_IDENTITY)[number], string> = {
+  GIT_AUTHOR_NAME: "Claudia Mason",
+  GIT_AUTHOR_EMAIL: "claudia.mason@agents.arcadia.local",
+  GIT_AUTHOR_DATE: "2026-11-24T00:00:00Z",
+  GIT_COMMITTER_NAME: "Claudia Mason",
+  GIT_COMMITTER_EMAIL: "claudia.mason@agents.arcadia.local",
+  GIT_COMMITTER_DATE: "2026-11-24T00:00:00Z",
+  EMAIL: "claudia.mason@agents.arcadia.local"
+};
+
+/** The process env without any inherited Git identity or date, so a commit with no explicit identity is the operator's. */
+function hermeticEnv(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const name of INHERITED_IDENTITY) delete env[name];
+  return env;
 }
 
 const agentEnv = (name: string) => {
@@ -93,6 +112,8 @@ function fingerprint(): Record<string, string> {
 }
 
 beforeAll(async () => {
+  // Regression for #3013: build and read the fixture as if inside a worker Session that exports its Git identity.
+  for (const name of INHERITED_IDENTITY) vi.stubEnv(name, SESSION_IDENTITY[name]);
   root = realpathSync(mkdtempSync(path.join(os.tmpdir(), "arcadia-timeline-")));
   workspace = path.join(root, "workspace");
   initWorkspace(workspace);
@@ -189,6 +210,7 @@ beforeAll(async () => {
 });
 
 afterAll(() => {
+  vi.unstubAllEnvs();
   rmSync(root, { recursive: true, force: true });
 });
 
@@ -284,7 +306,7 @@ describe("timeline collectors on a fixture workspace", () => {
     execFileSync("mkfifo", [path.join(elsewhere, "logs", "HEAD")]);
     rmSync(path.join(other, ".git", "logs", "HEAD"));
     execFileSync("mkfifo", [path.join(other, ".git", "logs", "HEAD")]);
-    const context = { workspacePath: workspace, db: null, repositories: [], projectSlugById: new Map(), operatorEmails: new Set<string>(), window, maxPerSource: 100, now: new Date(), git: (cwd: string, args: string[]) => ({ ok: true, stdout: execFileSync("git", args, { cwd, encoding: "utf8" }), stderr: "" }), includePullRequests: false, gh: () => ({ ok: false, stdout: "", stderr: "offline" }) };
+    const context = { workspacePath: workspace, db: null, repositories: [], projectSlugById: new Map(), operatorEmails: new Set<string>(), window, maxPerSource: 100, now: new Date(), git: (cwd: string, args: string[]) => ({ ok: true, stdout: execFileSync("git", args, { cwd, encoding: "utf8", env: { ...hermeticEnv(), ...ISOLATED_GIT } }), stderr: "" }), includePullRequests: false, gh: () => ({ ok: false, stdout: "", stderr: "offline" }) };
     const events = collectRepositoryGit({ projectSlug: "other", projectId: "proj_other", path: other }, context);
     expect(events.some((event) => event.subjects.worktree?.includes("nowhere"))).toBe(false);
     expect(events.filter((event) => event.kind === "git.commit")).toHaveLength(1);
@@ -370,7 +392,7 @@ describe("timeline collectors on a fixture workspace", () => {
 
   it("collectors stand alone with injected runners", () => {
     const context = { workspacePath: workspace, db: null, repositories: [], projectSlugById: new Map(), operatorEmails: new Set([OPERATOR_EMAIL]), window, maxPerSource: 1, now: new Date(), git: (cwd: string, args: string[]) => {
-      const result = execFileSync("git", args, { cwd, encoding: "utf8" });
+      const result = execFileSync("git", args, { cwd, encoding: "utf8", env: { ...hermeticEnv(), ...ISOLATED_GIT } });
       return { ok: true, stdout: result, stderr: "" };
     }, includePullRequests: false, gh: () => ({ ok: false, stdout: "", stderr: "offline" }) };
     const repository = { projectSlug: "demo", projectId: "proj_demo", path: repo };

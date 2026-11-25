@@ -3,13 +3,17 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { runProductionDeactivateCommand } from "../src/commands/production.js";
 import { runProductionLivenessTimerCommand } from "../src/commands/productionMomentum.js";
+import { withDatabase } from "../src/db/connection.js";
 import { ROWAN_OFF_REQUEST, standingGrantStatus, STANDING_SLUG, type DayGrantPressKind, type StandingDecisionSource } from "../src/operatorActions/startRunDayGrant.js";
 import { DERIVED_CARD_LIFETIME_MS, deriveStartCard, verifyDerivedCard, type DeriveInput, type DerivePlanAction, type FailedBatchClearance } from "../src/operatorActions/startRunDerive.js";
 import { delegatedPressMarker } from "../src/operatorActions/startRunDelegation.js";
 import { buildReplayReceipt, checkReplayReceipt, replayCardIdentity, replayReceiptPath } from "../src/operatorActions/startRunReplayReceipt.js";
 import { blockingHolds, realSuccessorPorts } from "../src/commands/productionSuccessor.js";
-import { SUCCESSOR_MAIN_MOVED_RETRY_BOUND, SUCCESSOR_OFF_SLUG, SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, emptySuccessorState, runSuccessorPressStep, type SuccessorPorts, type SuccessorProduction, type SuccessorState } from "../src/production/successorPress.js";
+import { activateProduction, findTransitionReceipt, fingerprintProductionScope, normalizeProductionScope, readProductionPolicy } from "../src/production/policy.js";
+import { SUCCESSOR_MAIN_MOVED_RETRY_BOUND, SUCCESSOR_PREFLIGHT_TIMEOUT_MS, SUCCESSOR_REPLAY_TIMEOUT_MS, emptySuccessorState, runSuccessorPressStep, successorOffSlug, type SuccessorPorts, type SuccessorProduction, type SuccessorState } from "../src/production/successorPress.js";
+import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { DAY_PLAN, DAY_RUN, STOP_ID, writeDayApproval, writeDayScenario } from "./helpers/dayGrantFixture.js";
 
 /**
@@ -160,7 +164,7 @@ describe("successor press: two batches on one Plan", () => {
     finishBatch(w);
     const third = step(w, state);
     expect(third.outcome).toMatchObject({ kind: "skipped", reason: "NOTHING_READY", offIssued: true });
-    expect(w.offs).toEqual([`rowan-off-${SUCCESSOR_OFF_SLUG}`, `rowan-off-${SUCCESSOR_OFF_SLUG}`]);
+    expect(w.offs).toEqual([`rowan-off-${successorOffSlug(91)}`, `rowan-off-${successorOffSlug(93)}`]);
     expect(w.done.size).toBe(14);
 
     const records = pressRecords(w.library);
@@ -473,7 +477,7 @@ describe("successor press: the Off at scope complete", () => {
     w.production = { desiredState: "active", liveAdmissions: 0, scopeComplete: true, revision: 91 };
     const result = step(w, emptySuccessorState());
     expect(result.outcome).toMatchObject({ offIssued: true });
-    expect(w.offs).toEqual([`rowan-off-${SUCCESSOR_OFF_SLUG}`]);
+    expect(w.offs).toEqual([`rowan-off-${successorOffSlug(91)}`]);
     expect(w.offs[0]).toMatch(ROWAN_OFF_REQUEST);
     // The same Off in production's record leaves the grant open; any other request id ends it.
     const decision: StandingDecisionSource = { paths: [`docs/decisions/0241-${STANDING_SLUG}.md`], read: () => `---\nid: "0241"\nstatus: approved\nanswer: E. Standing grant\n---\n` };
@@ -494,6 +498,71 @@ describe("successor press: the Off at scope complete", () => {
     w.production = { desiredState: "active", liveAdmissions: 0, scopeComplete: false, revision: 91 };
     step(w, emptySuccessorState());
     expect(w.offs).toEqual([]);
+  });
+});
+
+describe("successor press: each scope-complete Off is its own request", () => {
+  const scopeCompleteAt = (w: World, revision: number) => { w.production = { desiredState: "active", liveAdmissions: 0, scopeComplete: true, revision }; };
+
+  it("issues a different Rowan Off id for each activation, and the same one when the tick for one activation is retried", () => {
+    const w = world({ actions: 2 });
+    scopeCompleteAt(w, 91);
+    const first = step(w, emptySuccessorState());
+    expect(first.outcome).toMatchObject({ offIssued: true });
+    // The same grant opens a second activation (the fake Off and press moved the revision); it too reaches scope complete.
+    scopeCompleteAt(w, 95);
+    const second = step(w, first.state);
+    expect(second.outcome).toMatchObject({ offIssued: true });
+    expect(w.offs).toHaveLength(2);
+    expect(new Set(w.offs).size).toBe(2);
+    for (const id of w.offs) expect(id).toMatch(ROWAN_OFF_REQUEST);
+
+    // A tick whose Off failed writes no state, so its retry reads the same activation again and must name the same request.
+    const retry = world({ actions: 2 });
+    scopeCompleteAt(retry, 91);
+    const slugs: string[] = [];
+    const flaky: SuccessorPorts = { ...retry.ports, off: (slug) => { slugs.push(slug); if (slugs.length === 1) throw new Error("the Off command was killed"); } };
+    expect(() => runSuccessorPressStep(flaky, emptySuccessorState())).toThrow("killed");
+    runSuccessorPressStep(flaky, emptySuccessorState());
+    expect(slugs).toHaveLength(2);
+    expect(slugs[1]).toBe(slugs[0]);
+  });
+
+  it("turns production Off after each of two consecutive scope completes on the real policy store", () => {
+    const workspace = path.join(tempDir("arcadia-successor-policy-"), "workspace");
+    initWorkspace(workspace);
+    const policy = () => withDatabase(workspace, (db) => readProductionPolicy(db));
+    const scope = normalizeProductionScope({ intent: "Successor press proof.", projects: ["demo"], plans: ["demo/queue-plan"], actions: [], providers: ["claude-code-cli"], maxConcurrentSessions: 1, mechanicalTransitions: [] });
+    const w = world({ actions: 14 });
+    const fakePorts = { ...w.ports };
+    const pressFake = (card: string) => fakePorts.press(card);
+    const afterOff: Array<{ state: string; receipt: boolean }> = [];
+    // Production is the real policy row; only the press and the Off reach it, as in the timer (press activates, `--rowan-off` deactivates).
+    w.ports.production = () => { const read = policy(); w.production = { ...w.production, desiredState: read.desiredState === "active" ? "active" : "inactive", revision: read.revision }; return { ...w.production }; };
+    w.ports.press = (card) => {
+      const pressed = pressFake(card);
+      if (pressed.ok) withDatabase(workspace, (db) => activateProduction(db, { requestId: `press-${card}`, scope, scopeFingerprint: fingerprintProductionScope(scope), grantedBy: "operator" }));
+      return pressed;
+    };
+    w.ports.off = (slug) => {
+      runProductionDeactivateCommand({ workspace, rowanOff: slug, reason: "scope complete" });
+      afterOff.push({ state: policy().desiredState, receipt: withDatabase(workspace, (db) => findTransitionReceipt(db, `rowan-off-${slug}`)) !== undefined });
+    };
+
+    let state = emptySuccessorState();
+    const first = step(w, state); state = first.state;
+    expect(first.outcome).toMatchObject({ kind: "pressed" });
+    expect(policy().desiredState).toBe("active");
+    finishBatch(w);
+    const second = step(w, state); state = second.state;
+    expect(second.outcome).toMatchObject({ kind: "pressed", offIssued: true });
+    expect(policy().desiredState).toBe("active");
+    finishBatch(w);
+    const third = step(w, state);
+    expect(third.outcome).toMatchObject({ offIssued: true });
+
+    expect(afterOff).toEqual([{ state: "inactive", receipt: true }, { state: "inactive", receipt: true }]);
+    expect(policy().desiredState).toBe("inactive");
   });
 });
 

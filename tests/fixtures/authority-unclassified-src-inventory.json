@@ -487,6 +487,10 @@
       "reason": "Read-only projection of existing records for display.",
       "gateScanPatterns": []
     },
+    "src/timeline/collectors/operatorInteractions.ts": {
+      "reason": "Read-only projection of existing records for display.",
+      "gateScanPatterns": []
+    },
     "src/timeline/collectors/operatorScripts.ts": {
       "reason": "Read-only projection of existing records for display.",
       "gateScanPatterns": []

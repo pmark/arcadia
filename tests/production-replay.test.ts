@@ -6,7 +6,8 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Database from "better-sqlite3";
-import { replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
+import { readCodexRateLimitsLive } from "../src/codingAgents/availability.js";
+import { cardGithubMode, replayGithubMode, cardSimulatesGithubWrites, replaySpendCheck, cardGrantReceipt, installGuards, mapPath, NET_GUARD, orderMappings, retirePreservedCandidates, rewriteSnapshotPaths, runProductionReplay, scriptedReplayFiles, snapshotReplayDependencies, unconfinedPaths, type ReplayReport } from "../scripts/production-replay.js";
 import { git, LINE_A, LINE_B, Rehearsal } from "./helpers/rehearsalHarness.js";
 import { runAgentAskDraftCommand } from "../src/commands/agentAsk.js";
 
@@ -391,6 +392,20 @@ describe("production replay simulation guards (--simulate-verdict, --simulate-gi
     expect(effects().map((effect) => effect.kind)).toEqual([...Array(7).fill("simulated:github-write"), "github:write", "github:write"]);
   });
 
+  it("answers the Codex capacity read (codex app-server) as available, readable by the real parser, without a recorded effect", () => {
+    const plain = realpathSync(mkdtempSync(path.join(tmpdir(), "arcadia-replay-capacity-")));
+    try {
+      const log = path.join(plain, "effects.jsonl");
+      writeFileSync(log, "");
+      installGuards(plain, log);
+      const answered = spawnSync("codex", ["app-server", "--listen", "stdio://"], { cwd: plain, env: { PATH: `${path.join(plain, "bin")}${path.delimiter}${process.env.PATH ?? ""}`, REPLAY_EFFECTS_LOG: log }, encoding: "utf8" });
+      expect(answered.status).toBe(0);
+      const read = readCodexRateLimitsLive(new Date("2026-11-22T00:00:00Z"), { run: () => answered.stdout });
+      expect(read).toMatchObject({ ok: true, telemetry: { availability: "available" } });
+      expect(readFileSync(log, "utf8")).toBe("");
+    } finally { rmSync(plain, { recursive: true, force: true }); }
+  });
+
   it("answers the reviewer's sandbox probe and codex exec with a SIMULATED verdict, even with a stripped environment", () => {
     writeFileSync(effectsLog, "");
     const bare = { PATH: env.PATH };
@@ -511,6 +526,25 @@ describe("production replay of a card never pressed (--card)", () => {
   afterAll(() => {
     source?.dispose();
     if (parent) rmSync(parent, { recursive: true, force: true });
+  });
+
+  it("answers the Action mirror Issue writes as SIMULATED by default, and an explicit simulateGithubWrites: false still wins", () => {
+    expect(printed.join("\n")).toContain("gh issue create/edit/comment/close (Action mirror Issues) succeed without GitHub");
+    expect(cardSimulatesGithubWrites({ card: "c" })).toBe(true);
+    expect(cardSimulatesGithubWrites({ card: "c", simulateGithubWrites: false })).toBe(false);
+    expect(cardSimulatesGithubWrites({})).toBeUndefined();
+  });
+
+  it("defaults --card to live GitHub reads; an explicit --github wins and non-card replays stay offline (Issue #2999)", () => {
+    expect(cardGithubMode({ card: "c" })).toBe("live");
+    expect(cardGithubMode({ card: "c", github: "offline" })).toBe("offline");
+    expect(cardGithubMode({ card: "c", github: "live" })).toBe("live");
+    expect(cardGithubMode({})).toBeUndefined();
+    expect(cardGithubMode({ github: "offline" })).toBe("offline");
+    expect(replayGithubMode({ card: "c" })).toBe("live");
+    expect(replayGithubMode({ card: "c", github: "offline" })).toBe("offline");
+    expect(replayGithubMode({})).toBe("offline");
+    expect(replayGithubMode({ github: "live" })).toBe("live");
   });
 
   it("refuses --grant for the same unpressed card (the gap this closes)", () => {
