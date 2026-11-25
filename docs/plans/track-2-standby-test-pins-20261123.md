@@ -11,11 +11,11 @@ updated: 2026-11-25
 actions:
   - id: pin-successor-press-render-lines
     title: Pin the one line the successor press prints for a pressed, refused or skipped outcome, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the one line the successor press prints for a pressed, refused or skipped outcome, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-successor-press-render-lines-54145a7d7f48; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-successor-press-render-lines
     clarification: clarified
     confidence: high
@@ -211,7 +211,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-successor-press-render-lines
+current_action: pin-failed-batch-clearance-parse
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
