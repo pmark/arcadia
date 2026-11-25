@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: track-2-standby-test-pins-20261123
 project: arcadia
-status: active
+status: complete
 milestone: Track 2 standby test pins 20261123
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -191,11 +191,11 @@ actions:
     references: []
   - id: pin-claude-auth-classification
     title: Pin how a Claude sign-in status is classified as a subscription, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a Claude sign-in status is classified as a subscription, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-claude-auth-classification-a0a284378faf; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-claude-auth-classification
     clarification: clarified
     confidence: high
@@ -211,7 +211,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-claude-auth-classification
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
