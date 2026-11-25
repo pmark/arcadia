@@ -127,6 +127,9 @@ interface BoxOptions {
   pressMarker?: "omit" | "forge";
   /** The pre-restart worker: fresh and unbound by default (a source-run worker), or stale, or not the launchd PID. */
   preWorker?: "stale" | "pid-mismatch" | "source-child";
+  /** Issue #3030: a worker that beats once per slow tick. From `from` on, each executor step finds its last beat 40 s old;
+   * a wait (the fake `sleep`) lets the next beat land only if it `recovers`. */
+  slowTick?: { from: "start" | "restart" | "sign-in"; recovers: boolean };
   /** Earlier finished sequences of other cards recorded today in the ledger (Decision 0162: never a reason to refuse). */
   dayUsed?: boolean;
   plist?: boolean;
@@ -341,7 +344,7 @@ function box(options: BoxOptions = {}) {
   shim("launchctl", `exec node "${path.join(fixtures, "fake-launchctl.mjs")}" "$@"`);
   shim("fake-release-node", `exec node "${path.join(fixtures, "fake-release-node.mjs")}" "$@"`);
   shim("timeout", 'shift; exec "$@"');
-  shim("sleep", "exit 0");
+  shim("sleep", options.slowTick ? `exec node "${path.join(fixtures, "fake-sleep.mjs")}" "$@"` : "exit 0");
   // `ps -o ppid= -p <pid>`: 3333 is the source-run worker the tsx CLI (launchd PID 1111) runs as its direct child.
   shim("ps", `if [ "$1" = "-axo" ]; then
   echo "  4242     1 tmux: pane shell"
@@ -379,7 +382,7 @@ esac`);
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
     ensure: { fail: false }, activate: { mode: "ok" }, planRunner: { mode: "ok" },
-    worker: { pid: 1111, alive: true, heartbeat: options.preWorker === "stale" ? "frozen" : "fresh", newPid: process.pid }
+    worker: { pid: 1111, alive: true, heartbeat: options.preWorker === "stale" ? "frozen" : "fresh", newPid: process.pid, ...(options.slowTick ? { slowTick: options.slowTick } : {}) }
   };
   options.state?.(state);
   writeFileSync(path.join(root, "state.json"), JSON.stringify(state, null, 2));
@@ -1492,4 +1495,69 @@ describe("start-run executor: failures after the first mutation", () => {
     expect(receipt.reason).toMatch(/interrupted by a signal/);
     expect(b.readState().production.desiredState).toBe("inactive");
   }, 150_000);
+});
+
+describe("start-run executor: a slow-tick worker heartbeat (#3030)", () => {
+  // The worker writes its usage heartbeat once per tick, about 60 s under load, so one read against the 15 s window finds it
+  // stale by chance. Every read waits, within a bound, for a beat that is fresh AND bound; the window itself is unchanged.
+  // The fixture's bound is 4 s at a 2 s poll (.start-run-test-fixture): at most 3 live reads.
+  const BOUND_POLLS = 3;
+
+  it("P2 waits for the next beat of a slow-tick worker instead of refusing on one stale read", () => {
+    const b = box({ slowTick: { from: "start", recovers: true } });
+    const headBefore = b.head();
+    const result = b.run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", phase: "P2", allowanceConsumed: false, mutations: [] });
+    expect(result.receipt!.record.preRestartHeartbeatWait).toEqual({ outcome: "fresh", polls: 2 });
+    expect(result.receipt!.record.preRestartWorkerPid).toBe(1111);
+    expect(b.head()).toBe(headBefore);
+  });
+
+  it("the P4 sign-in and both P6 reads wait for the next beat after the card is consumed, then START", () => {
+    const b = box({ slowTick: { from: "restart", recovers: true } });
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", phase: "P6", allowanceConsumed: true, productionActivated: true });
+    expect(result.receipt!.record).toMatchObject({
+      signInHeartbeatWait: { outcome: "fresh", polls: 2 }, startHeartbeatWait: { outcome: "fresh", polls: 2 }, activationHeartbeatWait: { outcome: "fresh", polls: 2 }
+    });
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in", "production activate"]);
+  }, 120_000);
+
+  it("a pidfile that is not the launchd PID still refuses at once, without waiting", () => {
+    const b = box({ preWorker: "pid-mismatch" });
+    const headBefore = b.head();
+    const result = b.run("preflight");
+    expectRefusedClean(b, result, "P2", /stale or mismatched pre-restart worker heartbeat: the pidfile names 2222/, headBefore);
+    expect(result.receipt!.record.preRestartHeartbeatWait).toEqual({ outcome: "mismatch", polls: 1 });
+  });
+
+  it("a stale-forever pre-restart worker still refuses in P2 within the bound, consuming nothing", () => {
+    const b = box({ slowTick: { from: "start", recovers: false } });
+    const headBefore = b.head();
+    const result = b.run("preflight");
+    expectRefusedClean(b, result, "P2", /stale or mismatched pre-restart worker heartbeat: no beat younger than 15000 ms within 4 s/, headBefore);
+    expect(result.receipt!.record.preRestartHeartbeatWait).toEqual({ outcome: "stale", polls: BOUND_POLLS });
+  });
+
+  it("a worker stale forever after the restart refuses in P4 within the bound, before the sign-in is invoked", () => {
+    const b = box({ slowTick: { from: "restart", recovers: false } });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true, productionActivated: false });
+    expect(result.receipt!.reason).toMatch(/the bound worker.s heartbeat: no beat younger than 8000 ms within 4 s; the sign-in sequence was not invoked/);
+    expect(result.receipt!.record.signInHeartbeatWait).toEqual({ outcome: "stale", polls: BOUND_POLLS });
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+  }, 120_000);
+
+  it("a worker stale forever after the sign-in refuses in P6 within the bound, with no activation", () => {
+    const b = box({ slowTick: { from: "sign-in", recovers: false } });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
+    expect(result.receipt!.reason).toMatch(/the worker heartbeat stayed stale after the restart: no beat younger than 15000 ms within 4 s; no activation/);
+    expect(result.receipt!.record.startHeartbeatWait).toEqual({ outcome: "stale", polls: BOUND_POLLS });
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in"]);
+  }, 120_000);
 });
