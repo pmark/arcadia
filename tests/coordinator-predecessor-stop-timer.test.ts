@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,8 +11,9 @@ import {
   recordStandDown,
   seedCustodianGeneration
 } from "../src/coordinator/generations.js";
-import { stopPredecessorAfterAccept, type PredecessorStopDeps } from "../src/coordinator/predecessorStop.js";
+import { stopPredecessorAfterAccept, systemPaneIdentity, type PaneIdentity, type PredecessorStopDeps } from "../src/coordinator/predecessorStop.js";
 import { findPredecessorStopCandidates, renderPredecessorStopTimerLines, runPredecessorStopTimer } from "../src/coordinator/predecessorStopTimer.js";
+import { runCoordinatorRelaySessionsCommand } from "../src/commands/coordinator.js";
 import { runProductionLivenessTimerCommand } from "../src/commands/productionMomentum.js";
 import { withDatabase } from "../src/db/connection.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
@@ -54,7 +55,7 @@ function fresh(): string {
 type Fake = ReturnType<typeof fakeDeps>;
 
 /** A fake tmux server (a set of live names) plus spies for every other host effect. */
-function fakeDeps(options: { live?: string[]; unknown?: string[]; identity?: "match" | "mismatch" | "unknown"; press?: { inProgress: boolean; detail: string } } = {}) {
+function fakeDeps(options: { live?: string[]; unknown?: string[]; identity?: PaneIdentity; press?: { inProgress: boolean; detail: string } } = {}) {
   const sessions = new Set(options.live ?? []);
   const killed: string[] = [];
   const probed: string[] = [];
@@ -144,6 +145,33 @@ describe("#3029: the host timer stops a handed-off predecessor coordinator's tmu
     expect(timer(ws, fake).results[0]).toMatchObject({ outcome: "identity_mismatch" });
     expect(fake.killed).toEqual([]);
     expect(receiptOf(ws, 1)).toMatchObject({ outcome: "identity_mismatch", runner: "host-timer" });
+  });
+
+  it("a terminal receipt also ends START's tolerance: after identity_mismatch, relay-sessions holds the predecessor (N1)", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    // Before any receipt, and after a non-terminal one, START tolerates the predecessor while the timer retries.
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT }).data.allowed).toEqual([G1, G2]);
+    expect(timer(ws, fakeDeps({ live: [G1, G2], identity: "unknown" })).results[0]).toMatchObject({ outcome: "failed" });
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT }).data.allowed).toEqual([G1, G2]);
+    // A terminal identity_mismatch ends the retries, so START must hold it from then on.
+    expect(timer(ws, fakeDeps({ live: [G1, G2], identity: "mismatch" })).results[0]).toMatchObject({ outcome: "identity_mismatch" });
+    expect(timer(ws, fakeDeps({ live: [G1, G2] })).results).toEqual([]);
+    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT }).data;
+    expect(data.allowed).toEqual([G2]);
+    expect(data.sessions.find((session) => session.tmuxName === G1)).toMatchObject({ allowed: false, reason: expect.stringMatching(/terminal stop receipt \(identity_mismatch\)/) });
+  });
+
+  it("never kills a session with more than one pane or window: failed, nothing killed, and a later single-pane run stops it (N3)", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    const crowded = fakeDeps({ live: [G1, G2], identity: "multiple_panes" });
+    expect(timer(ws, crowded).results[0]).toMatchObject({ outcome: "failed", command: null, detail: expect.stringMatching(/more than one pane/) });
+    expect(crowded.killed).toEqual([]);
+    expect(receiptOf(ws, 1)).toMatchObject({ outcome: "failed", runner: "host-timer" });
+    const single = fakeDeps({ live: [G1, G2] });
+    expect(timer(ws, single).results[0]).toMatchObject({ outcome: "stopped" });
+    expect(single.killed).toEqual([G1]);
   });
 
   it("refuses an unreadable pane identity as failed, and a later readable run stops it", () => {
@@ -279,5 +307,53 @@ describe("#3029: the host timer stops a handed-off predecessor coordinator's tmu
     expect(response).toBeInstanceOf(Error);
     expect((response as Error).message).toMatch(/predecessor rowan generation 1 \(arcadia\): stopped/);
     expect(fake.killed).toEqual([G1]);
+  });
+});
+
+describe("#3029 N3: systemPaneIdentity reads every pane of the session, as kill-session ends them all", () => {
+  const SESSION = "44444444-4444-4444-8444-444444444444";
+  const NAME = "arcadia-coord-rowan-g1";
+  let savedPath: string | undefined;
+  afterEach(() => { if (savedPath !== undefined) process.env.PATH = savedPath; savedPath = undefined; });
+
+  /**
+   * Fake `tmux` and `ps` first on PATH. tmux models windows: without `-s`, list-panes answers only the current (first)
+   * window's pane; with `-s`, every pane of every window. `ps` reports pane 5001 running the recorded session and each
+   * other pane running a builder.
+   */
+  function fakeHost(panes: number[]): void {
+    const bin = path.join(mkdtempSync(path.join(tmpdir(), "arcadia-pane-identity-")), "bin");
+    roots.push(path.dirname(bin));
+    mkdirSync(bin);
+    const all = panes.map(String).join("\\n");
+    writeFileSync(path.join(bin, "tmux"), `#!/bin/sh
+[ "$1" = "list-panes" ] || exit 1
+if [ "$2" = "-s" ]; then [ "$3 $4" = "-t =${NAME}:" ] || exit 1; printf '${all}${panes.length ? "\\n" : ""}'; exit 0; fi
+[ "$2 $3" = "-t =${NAME}:" ] || exit 1
+${panes.length ? `echo ${panes[0]}` : ""}
+`);
+    const rows = panes.map((pid) => `${pid} 1 zsh`).concat(panes.map((pid, index) => `${pid + 100} ${pid} ${pid === 5001 ? `claude --session-id ${SESSION}` : `node builder-${index}`}`));
+    writeFileSync(path.join(bin, "ps"), `#!/bin/sh\nprintf '${rows.join("\\n")}\\n'\n`);
+    chmodSync(path.join(bin, "tmux"), 0o755);
+    chmodSync(path.join(bin, "ps"), 0o755);
+    savedPath = process.env.PATH;
+    process.env.PATH = `${bin}:${savedPath ?? ""}`;
+  }
+
+  it("matches a one-pane session whose pane runs the recorded session id", () => {
+    fakeHost([5001]);
+    expect(systemPaneIdentity(NAME, SESSION)).toBe("match");
+  });
+
+  it("answers multiple_panes, never match, when the first window runs the predecessor and another window runs other work", () => {
+    fakeHost([5001, 5002]);
+    expect(systemPaneIdentity(NAME, SESSION)).toBe("multiple_panes");
+  });
+
+  it("answers mismatch for one pane that runs something else, and unknown for no pane at all", () => {
+    fakeHost([5002]);
+    expect(systemPaneIdentity(NAME, SESSION)).toBe("mismatch");
+    fakeHost([]);
+    expect(systemPaneIdentity(NAME, SESSION)).toBe("unknown");
   });
 });

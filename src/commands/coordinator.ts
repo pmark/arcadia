@@ -47,7 +47,7 @@ import {
   writeCoordinatorState
 } from "../coordinator/state.js";
 import { verifyGeneration, type VerifyResult } from "../coordinator/verify.js";
-import { interlockRepository, registeredPrimaryCheckout, runPredecessorStopAfterAccept, stopPressInterlock, systemClaudeStop, systemPredecessorStopTmux, verifiedPrimaryCheckout, type AfterAcceptStop, type PredecessorStopDeps } from "../coordinator/predecessorStop.js";
+import { interlockRepository, registeredPrimaryCheckout, runPredecessorStopAfterAccept, stopPressInterlock, systemClaudeStop, systemPredecessorStopTmux, verifiedPrimaryCheckout, workspacePredecessorStopReceipts, type AfterAcceptStop, type PredecessorStopDeps } from "../coordinator/predecessorStop.js";
 import { RELAY_ROLES, renewCoordinator, startPressInProgressIn, systemRelayDeps, type RelayDeps, type RenewResult, type StartPressStatus } from "../coordinator/relay.js";
 import { PEER_WATCH_PROVIDER_IDS } from "../agentWatch/classify.js";
 import { observeProviderCapacity } from "../codingAgents/capacity.js";
@@ -526,15 +526,16 @@ export interface CoordinatorRelaySessionsData { project: string; allowed: string
 /**
  * `arcadia coordinator relay-sessions --project <slug>`: read-only. Names the
  * exact tmux sessions of registered, relay-launched, current custodians, and
- * of each one's immediate handed-off predecessor until the host timer stops it,
- * that START's no-competing-Session check tolerates (see relayCoordinatorSessions).
+ * of each one's immediate handed-off predecessor while the host timer will still
+ * stop it (no stop receipt, or a non-terminal one), that START's no-competing-Session check tolerates (see relayCoordinatorSessions).
  * It starts, stops and records nothing.
  */
 export function runCoordinatorRelaySessionsCommand(options: { workspace: string; project: string }): CommandSuccess<CoordinatorRelaySessionsData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
   // Read-only open: START's P2 is documented as making no mutation. A workspace that predates the table has no relay session.
   const sessions = withReadOnlyDatabase(workspacePath, (db) => {
-    try { return relayCoordinatorSessions(db, options.project); } catch (error) {
+    // The handed-off predecessor's tolerance is read with its stop receipt (#3029 fix A): a terminal or unreadable receipt holds it.
+    try { return relayCoordinatorSessions(db, options.project, workspacePredecessorStopReceipts(workspacePath, options.project)); } catch (error) {
       if (error instanceof Error && /no such table/i.test(error.message)) return [];
       throw error;
     }

@@ -44,7 +44,8 @@ export const PREDECESSOR_STOP_SCHEMA = "arcadia-coordinator-predecessor-stop-v1"
 export type PredecessorStopOutcome = "stopped" | "already_stopped" | "manual_stop_required" | "identity_mismatch" | "failed" | "deferred";
 export type PredecessorStopMethod = "tmux" | "bg" | "desktop" | "unrecorded";
 export type TmuxState = "present" | "absent" | "unknown";
-export type PaneIdentity = "match" | "mismatch" | "unknown";
+/** `multiple_panes`: the session has more than one pane across its windows, while the relay launches exactly one (START's own check). */
+export type PaneIdentity = "match" | "mismatch" | "multiple_panes" | "unknown";
 export type ClaudeStopResult = { ok: true } | { ok: false; notFound: boolean; error: string };
 /** Who ran the stop: `accept` (inside the incoming coordinator's own Session) or the host liveness timer (#3029 fix A). */
 export type PredecessorStopRunner = "accept" | "host-timer";
@@ -60,7 +61,7 @@ export interface PredecessorStopDeps {
     state(name: string): TmuxState;
     /** Ends the named session; throws when tmux refuses, so the caller reports failed. */
     killSession(name: string): void;
-    /** Whether the live pane runs the recorded `--session-id`, found through its descendant processes. */
+    /** Whether the session's one live pane runs the recorded `--session-id`, found through its descendant processes. */
     paneIdentity(name: string, sessionId: string): PaneIdentity;
   };
   /** `claude stop <id>`. Only a notFound answer (the host's own "session not found") counts as already gone. */
@@ -130,18 +131,23 @@ export function systemTmuxKill(name: string): void {
 }
 
 /**
- * Whether the pane of exactly `name` runs `claude --session-id <sessionId>`: the pane pid and its descendants are
- * searched in `ps` output. Any read failure is unknown, never a guess.
+ * Whether exactly `name` is one pane that runs `claude --session-id <sessionId>`: the pane pid and its descendants are
+ * searched in `ps` output. Every pane of every window is listed (`-s`), because `kill-session` ends them all: more than
+ * one pane is `multiple_panes` (START's pane_runs_session also requires exactly one), never a match on the first pane.
+ * Any read failure, or no pane at all, is unknown, never a guess.
  */
 export function systemPaneIdentity(name: string, sessionId: string): PaneIdentity {
   if (!SESSION_UUID.test(sessionId)) return "unknown";
-  let panePid: number;
+  let panes: string[];
   try {
-    const out = execFileSync("tmux", ["list-panes", "-t", `=${name}:`, "-F", "#{pane_pid}"], { ...TMUX_LIMITS, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: tmuxQueryEnv() });
-    panePid = Number(out.split("\n")[0]);
+    const out = execFileSync("tmux", ["list-panes", "-s", "-t", `=${name}:`, "-F", "#{pane_pid}"], { ...TMUX_LIMITS, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], env: tmuxQueryEnv() });
+    panes = out.split("\n").filter((line) => line.length > 0);
   } catch {
     return "unknown";
   }
+  if (panes.length > 1) return "multiple_panes";
+  if (panes.length === 0 || !/^\d+$/.test(panes[0])) return "unknown";
+  const panePid = Number(panes[0]);
   if (!Number.isInteger(panePid) || panePid <= 1) return "unknown";
   let table: string;
   try {
@@ -262,6 +268,34 @@ function receiptPath(root: string, generation: number): string {
 export function predecessorStopReceiptOutcome(root: string, generation: number): { outcome: PredecessorStopOutcome; terminal: boolean } | null {
   const receipt = readReceipt(receiptPath(root, generation));
   return receipt ? { outcome: receipt.outcome, terminal: TERMINAL.has(receipt.outcome) } : null;
+}
+
+/**
+ * What START's relay-sessions answer reads for a handed-off predecessor (#3029 fix A): `none` (no receipt yet),
+ * `recorded` (a valid receipt, terminal or not), or `unreadable` (a file exists but is not a valid receipt, or the path
+ * could not be resolved). START tolerates the live predecessor only while the timer will still act on it, so only `none`
+ * and a non-terminal `recorded` keep that tolerance.
+ */
+export type PredecessorStopReceiptState =
+  | { state: "none" }
+  | { state: "recorded"; outcome: PredecessorStopOutcome; terminal: boolean }
+  | { state: "unreadable"; detail: string };
+
+export function predecessorStopReceiptState(root: string, generation: number): PredecessorStopReceiptState {
+  const file = receiptPath(root, generation);
+  if (!existsSync(file)) return { state: "none" };
+  const receipt = readReceipt(file);
+  if (!receipt || typeof receipt.outcome !== "string") return { state: "unreadable", detail: `${file} is not a readable ${PREDECESSOR_STOP_SCHEMA} receipt` };
+  return { state: "recorded", outcome: receipt.outcome, terminal: TERMINAL.has(receipt.outcome) };
+}
+
+/** The receipt lookup relay-sessions passes to relayCoordinatorSessions for one workspace and Project. A path error is unreadable. */
+export function workspacePredecessorStopReceipts(workspacePath: string, project: string): (role: string, generation: number) => PredecessorStopReceiptState {
+  return (role, generation) => {
+    try { return predecessorStopReceiptState(coordinatorPaths(workspacePath, project, role).root, generation); } catch (error) {
+      return { state: "unreadable", detail: `the stop receipt path could not be resolved (${errorText(error)})` };
+    }
+  };
 }
 
 function readReceipt(file: string): Receipt | null {
@@ -407,6 +441,8 @@ export function stopPredecessorAfterAccept(db: Database.Database, input: StopPre
       return fail(`the pane identity check for ${name} raised an error (${errorText(error)}); nothing was killed`, null);
     }
     if (pane === "unknown") return fail(`the pane identity of ${name} could not be read; nothing was killed`, null);
+    // kill-session ends every window, so a session with a second pane or window (other work, or a stranger) is never killed.
+    if (pane === "multiple_panes") return fail(`tmux session ${name} has more than one pane across its windows, and the relay launches exactly one; kill-session would end them all, so nothing was killed`, null);
     if (pane === "mismatch") {
       const detail = `tmux session ${name} is live but its pane does not run the recorded session ${sessionId} of generation ${identity.generation}; it is not the predecessor, so nothing was killed`;
       return finish({ outcome: "identity_mismatch", command: null, detail, predecessor: identity }, notify("identity_mismatch", detail, `Coordinator relay refused to stop ${name} (${input.project}): the live session does not run the recorded predecessor session ${sessionId}. Nothing was killed.`));

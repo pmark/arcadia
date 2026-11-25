@@ -16,6 +16,7 @@ import {
 } from "./capsule.js";
 import { withRelayLock, type RelayLockDeps } from "./lock.js";
 import { coordinatorPaths, ensureCoordinatorDirectories, type CoordinatorPaths } from "./paths.js";
+import type { PredecessorStopReceiptState } from "./predecessorStop.js";
 import { cursorChanges, readCoordinatorState, unregisteredWatchers } from "./state.js";
 
 /**
@@ -179,11 +180,18 @@ export function immediatePredecessor(rows: readonly GenerationRecord[], custodia
  *    not listed;
  *  - while any generation of that role is `launching` (a handoff in flight),
  *    nothing for that role is allowed, so START cannot overlap a custody transfer;
+ *  - that predecessor is tolerated only while the host timer will still act on
+ *    it: with no stop receipt or a non-terminal one (`failed`, `deferred`). A
+ *    terminal receipt (`stopped`, `already_stopped`, `identity_mismatch`,
+ *    `manual_stop_required`) ends the timer's retries, so the row is held and a
+ *    live session under that name is a competing Session (stop it by hand); an
+ *    unreadable receipt is held too. `stopReceipt` is required, so this
+ *    tolerance cannot be read without the receipt;
  *  - the name is only a candidate: START also requires the live pane to run
  *    the row's recorded `native_session_id` (`--session-id`), which also makes
  *    the lookup Project-safe (two Projects share the name but not the id).
  */
-export function relayCoordinatorSessions(db: Database.Database, project: string): RelaySessionVerdict[] {
+export function relayCoordinatorSessions(db: Database.Database, project: string, stopReceipt: (role: string, generation: number) => PredecessorStopReceiptState): RelaySessionVerdict[] {
   const all = (db.prepare("SELECT * FROM coordinator_generations WHERE project = ? AND status IN ('custodian', 'launching', 'handed_off') ORDER BY role, generation").all(project) as Row[]).map(toRecord);
   const custodians = all.filter((row) => row.status === "custodian");
   const predecessors = new Map<GenerationRecord, GenerationRecord>();
@@ -207,7 +215,12 @@ export function relayCoordinatorSessions(db: Database.Database, project: string)
     else if (row.stoodDownAt === null) verdict(false, `handed-off generation ${row.generation} of ${row.role} has no recorded stand-down time`);
     else if (row.tmuxName !== `arcadia-coord-${row.role}-g${row.generation}`) verdict(false, `handed-off generation ${row.generation} of ${row.role} is not recorded under its own generation's exact name arcadia-coord-${row.role}-g${row.generation}`);
     else if (row.nativeSessionId === successor.nativeSessionId || row.tmuxName === successor.tmuxName) verdict(false, `handed-off generation ${row.generation} of ${row.role} records the custodian's own session or name`);
-    else verdict(true, `handed-off predecessor of custodian generation ${successor.generation} of ${row.role} (stand-down recorded): tolerated until the host liveness timer stops it`);
+    else {
+      const receipt = stopReceipt(row.role, row.generation);
+      if (receipt.state === "unreadable") verdict(false, `handed-off generation ${row.generation} of ${row.role} has an unreadable stop receipt (${receipt.detail}); held`);
+      else if (receipt.state === "recorded" && receipt.terminal) verdict(false, `handed-off generation ${row.generation} of ${row.role} has a terminal stop receipt (${receipt.outcome}), so the host liveness timer will not stop it; held: stop it by hand`);
+      else verdict(true, `handed-off predecessor of custodian generation ${successor.generation} of ${row.role} (stand-down recorded, stop receipt ${receipt.state === "none" ? "not yet written" : receipt.outcome}): tolerated until the host liveness timer stops it`);
+    }
   }
   return verdicts;
 }
