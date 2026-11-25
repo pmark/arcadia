@@ -233,7 +233,12 @@ describe("arcadia start-run gate-check --require-registered-repository", () => {
 // with an Arcadia checkout holding the executor and the card, and a Rebuster checkout holding the Plan.
 // ---------------------------------------------------------------------------------------------------------------------------
 type ProjectScenario = "same" | "origin-moved" | "behind" | "ahead" | "dirty" | "untracked" | "branch" | "other-origin" | "worktree" | "arcadia-path";
-interface RigOptions { planStatus?: "active" | "draft"; project?: ProjectScenario; registered?: "project" | "elsewhere" }
+/**
+ * G4: live tmux sessions. `panes` maps a session name to the `--session-id` its one pane runs (a name without one has no pane);
+ * `registries` is `arcadia coordinator relay-sessions --project <slug>`'s rows per slug (a fake-arcadia relay entry, or "unreadable").
+ */
+interface TmuxScenario { live: string[]; panes?: Record<string, string>; registries?: Record<string, unknown> }
+interface RigOptions { planStatus?: "active" | "draft"; project?: ProjectScenario; registered?: "project" | "elsewhere"; tmux?: TmuxScenario; arcadiaCard?: boolean }
 const ID = "start-rebuster-fixture-20261125";
 
 function rig(options: RigOptions = {}) {
@@ -247,9 +252,13 @@ function rig(options: RigOptions = {}) {
   const decisions = Object.fromEntries(DECISIONS.map((id) => [`docs/decisions/${id}-fixture.md`, `---\nid: "${id}"\nstatus: approved\nanswer: Yes\n---\n`]));
   const arcadia = repository(root, "arcadia", { ".gitignore": "artifacts/generated/\nnode_modules\n", "README.md": "base\n" });
   const installed = arcadia.head;
+  // An Arcadia card (G4's control): the same Plan, held in Arcadia's own checkout, with no projectRepository.
+  const arcadiaPlan = options.arcadiaCard
+    ? { [`docs/plans/${PLAN}.md`]: `---\nslug: ${PLAN}\nproject: arcadia\nstatus: active\nactions:\n${ACTIONS.map((a) => `  - id: ${a}\n    status: open\n`).join("")}---\nbody\n` }
+    : {};
   const pin = commitAll(arcadia.dir, {
     "scripts/start-run.sh": EXECUTOR_SOURCE, "src/sessions/tmuxLauncher.ts": "export {};\n", "src/production/workerMerge.ts": "export {};\n",
-    "PROJECT.md": "---\nslug: arcadia\nactive_plan: arcadia-own-plan\n---\n", ...decisions
+    "PROJECT.md": `---\nslug: arcadia\nactive_plan: ${options.arcadiaCard ? PLAN : "arcadia-own-plan"}\n---\n`, ...decisions, ...arcadiaPlan
   }, "reviewed main");
   git(arcadia.dir, "push", "origin", "main");
   symlinkSync(path.join(repoRoot, "node_modules"), path.join(arcadia.dir, "node_modules"));
@@ -284,8 +293,11 @@ function rig(options: RigOptions = {}) {
   writeFileSync(history, '{"state":"CONSUMED"}\n');
   const pins = basePins({
     reviewedRevision: pin, executorSha256: sha(EXECUTOR_SOURCE), consumedHistory: [{ path: history, sha256: sha('{"state":"CONSUMED"}\n') }],
-    projectRepository: { path: pinnedPath, origin: project.origin, reviewedRevision: projectPin }
+    projectRepository: { path: pinnedPath, origin: project.origin, reviewedRevision: projectPin },
+    ...(options.arcadiaCard ? { project: "arcadia" } : {})
   });
+  if (options.arcadiaCard) delete pins.projectRepository;
+  const scoped = options.arcadiaCard ? ACTIONS.map((a) => `arcadia/${a}`) : SCOPED;
   const activation: PlanActivationInput = {
     schema: "arcadia-plan-activation-v1",
     checkout: { path: project.dir, origin: project.origin, branch: "main", reviewedBase: projectPin },
@@ -334,8 +346,17 @@ function rig(options: RigOptions = {}) {
   shim("fake-release-node", `exec node "${path.join(fixtures, "fake-release-node.mjs")}" "$@"`);
   shim("timeout", 'shift; exec "$@"');
   shim("sleep", "exit 0");
-  shim("ps", 'if [ "$1" = "-axo" ]; then exit 0; fi\necho " 1"');
-  shim("tmux", 'echo "no server running on /private/tmp/tmux-501/default" >&2; exit 1');
+  // Each pane is a shell (PID 4242, 4342, ...) whose child runs its recorded `--session-id`, as a relay-launched coordinator does.
+  const panes = Object.entries(options.tmux?.panes ?? {}).map(([name, sessionId], index) => ({ name, sessionId, pid: 4242 + 100 * index }));
+  const processes = panes.map(({ sessionId, pid }) => `echo "  ${pid}     1 tmux: pane shell"; echo "  ${pid + 1}  ${pid} claude --remote-control rowan --session-id ${sessionId} --name rowan"`).join("; ");
+  shim("ps", `if [ "$1" = "-axo" ]; then ${processes ? `${processes}; ` : ""}exit 0; fi\necho " 1"`);
+  const live = options.tmux?.live ?? [];
+  shim("tmux", live.length === 0 ? 'echo "no server running on /private/tmp/tmux-501/default" >&2; exit 1'
+    : `if [ -n "$TMUX" ] || [ -n "$TMUX_TMPDIR" ]; then echo "TMUX leaked into the query" >&2; exit 1; fi
+case "$1" in
+  ls) printf '%s\\n' ${live.map((name) => `'${name}'`).join(" ")} ;;
+  list-panes) case "$2 $3 $4" in ${panes.map(({ name, pid }) => `"-s -t =${name}:") echo ${pid} ;;`).join(" ")} *) echo "can't find session: $4" >&2; exit 1 ;; esac ;;
+esac`);
   // The fakes, as copied into this rig: the gate read also answers the registered-repository requirement, and the Plan-activation
   // stand-in settles in the Project's checkout (state.planRepository), as the real runner does for this card.
   const fakeArcadia = readFileSync(path.join(fixtures, "fake-arcadia.mjs"), "utf8").replace('case "start-run gate-check": {',
@@ -348,11 +369,12 @@ function rig(options: RigOptions = {}) {
     workspace, repository: arcadia.dir, planRepository: project.dir, plan: PLAN,
     registeredRepository: options.registered === "elsewhere" ? path.join(root, "elsewhere") : project.dir,
     production: { desiredState: "inactive", revision: 83, epoch: 46, liveAdmissions: 0, authority: null },
-    queue: { revision: 290, orderValid: true, unpositionedCount: 0, ordered: SCOPED.map((orderKey) => ({ orderKey })) },
+    queue: { revision: 290, orderValid: true, unpositionedCount: 0, ordered: scoped.map((orderKey) => ({ orderKey })) },
     capacity: { observation: { providers: [{ providerId: "claude-code-cli", admitted: true, code: null, reason: "5-hour 20%", receipt: { source: "claude_status_line" } }] } },
     freeze: "allow", broker: { revision: installed, ready: true, transports: true },
     ensure: { fail: false }, activate: { mode: "ok" }, planRunner: { mode: "ok" },
-    worker: { pid: 1111, alive: true, heartbeat: "fresh", newPid: process.pid }
+    worker: { pid: 1111, alive: true, heartbeat: "fresh", newPid: process.pid },
+    relaySessionsByProject: options.tmux?.registries ?? {}
   };
   writeFileSync(path.join(root, "state.json"), JSON.stringify(state, null, 2));
 
@@ -452,6 +474,60 @@ describe("start-run executor: a second Project's card (G1)", () => {
     const activate = r.calls().find((call) => call.args.slice(0, 2).join(" ") === "production activate")!;
     expect(activate.args).toEqual(expect.arrayContaining(["--project", PROJECT, "--plan", `${PROJECT}/${PLAN}`, "--repository", r.arcadia.dir]));
   }, 180_000);
+});
+
+describe("start-run executor: Arcadia's relay coordinator is not a competing Session for a second Project's card (G4)", () => {
+  const ROWAN = "arcadia-coord-rowan-g7";
+  const ROWAN_ID = "77777777-7777-4777-8777-777777777777";
+  const PREDECESSOR = "arcadia-coord-rowan-g6";
+  const PREDECESSOR_ID = "66666666-6666-4666-8666-666666666666";
+  const custodian = { generation: 7, tmuxName: ROWAN, nativeSessionId: ROWAN_ID, status: "custodian", allowed: true };
+  const predecessor = (allowed: boolean) => ({ generation: 6, tmuxName: PREDECESSOR, nativeSessionId: PREDECESSOR_ID, status: "handed_off", allowed });
+  const relayReads = (r: Rig) => r.calls().filter((call) => call.args.slice(0, 2).join(" ") === "coordinator relay-sessions").map((call) => call.args[call.args.indexOf("--project") + 1]);
+
+  it("tolerates Arcadia's registered custodian, and its immediate handed-off predecessor, running their recorded sessions", () => {
+    const r = rig({ tmux: { live: [ROWAN, PREDECESSOR], panes: { [ROWAN]: ROWAN_ID, [PREDECESSOR]: PREDECESSOR_ID }, registries: { arcadia: [predecessor(true), custodian] } } });
+    const result = r.run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "preflight_ok", phase: "P2", allowanceConsumed: false, mutations: [] });
+    expect(result.receipt!.record).toMatchObject({ coordinatorProject: "arcadia", relayCoordinatorSessions: [ROWAN, PREDECESSOR] });
+    // Both registries are read: the card's own Project's first, then Arcadia's (taken from Arcadia's PROJECT.md at the pin).
+    expect(relayReads(r)).toEqual([PROJECT, "arcadia"]);
+  }, 120_000);
+
+  it.each<[string, TmuxScenario, RegExp]>([
+    ["an unrelated tmux session beside Arcadia's custodian", { live: [ROWAN, "stray-builder"], panes: { [ROWAN]: ROWAN_ID }, registries: { arcadia: [custodian] } },
+      /not a registered relay coordinator running its recorded session: stray-builder\)/],
+    ["Arcadia's custodian name whose pane runs another session id", { live: [ROWAN], panes: { [ROWAN]: "99999999-9999-4999-8999-999999999999" }, registries: { arcadia: [custodian] } },
+      /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g7\)/],
+    ["Arcadia's custodian name with no live pane", { live: [ROWAN], registries: { arcadia: [custodian] } },
+      /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g7\)/],
+    ["a predecessor Arcadia's registry holds (a handoff in flight, a timer that stopped)", { live: [ROWAN, PREDECESSOR], panes: { [ROWAN]: ROWAN_ID, [PREDECESSOR]: PREDECESSOR_ID }, registries: { arcadia: [predecessor(false), custodian] } },
+      /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g6\)/],
+    ["a session only a third Project's registry lists", { live: [ROWAN], panes: { [ROWAN]: ROWAN_ID }, registries: { "someone-else": [custodian] } },
+      /not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g7\)/],
+    ["an unreadable Arcadia registry", { live: [ROWAN], panes: { [ROWAN]: ROWAN_ID }, registries: { arcadia: "unreadable" } },
+      /running its recorded session: arcadia-coord-rowan-g7; the relay registry of arcadia could not be read: /]
+  ])("refuses in P2 %s, consuming nothing", (_label, tmux, reason) => {
+    const r = rig({ tmux });
+    expectRefusedClean(r, r.run(), "P2", reason, r.project.head);
+  }, 120_000);
+
+  it("leaves an Arcadia card unchanged: it reads only Arcadia's registry, and tolerates only Arcadia's custodian", () => {
+    const tolerated = rig({ arcadiaCard: true, tmux: { live: [ROWAN], panes: { [ROWAN]: ROWAN_ID }, registries: { arcadia: [custodian], [PROJECT]: [] } } });
+    const result = tolerated.run("preflight");
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt!.record).toMatchObject({ project: "arcadia", relayCoordinatorSessions: [ROWAN] });
+    expect(result.receipt!.record).not.toHaveProperty("coordinatorProject");
+    expect(result.receipt!.record).not.toHaveProperty("projectRepository");
+    expect(relayReads(tolerated)).toEqual(["arcadia"]);
+    // A session another Project's registry lists is still a competing Session for an Arcadia card, and the message is as before.
+    const refused = rig({ arcadiaCard: true, tmux: { live: [ROWAN], panes: { [ROWAN]: ROWAN_ID }, registries: { [PROJECT]: [custodian] } } });
+    expectRefusedClean(refused, refused.run(), "P2", /\(not a registered relay coordinator running its recorded session: arcadia-coord-rowan-g7\)$/, refused.project.head);
+    expect(relayReads(refused)).toEqual(["arcadia"]);
+    const unreadable = rig({ arcadiaCard: true, tmux: { live: [ROWAN], panes: { [ROWAN]: ROWAN_ID }, registries: { arcadia: "unreadable" } } });
+    expectRefusedClean(unreadable, unreadable.run(), "P2", /running its recorded session: arcadia-coord-rowan-g7; the relay registry could not be read: /, unreadable.project.head);
+  }, 240_000);
 });
 
 // ---------------------------------------------------------------------------------------------------------------------------
