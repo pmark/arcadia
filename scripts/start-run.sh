@@ -889,7 +889,14 @@ phase_p1() {
   done
   # The Plan and PROJECT.md: at the pin here, or in a second Project's checkout at its own pin (PLAN_REPO, PLAN_PIN).
   check_project_checkout ""
-  if [[ "$PROJECT_REPOSITORY" != null ]]; then rec projectRepository "$PROJECT_REPOSITORY"; fi
+  if [[ "$PROJECT_REPOSITORY" != null ]]; then
+    rec projectRepository "$PROJECT_REPOSITORY"
+    # The in-card sign-in sequence (P4) records its Decision 0161 diagnostic in this checkout, so it runs under the Project this
+    # checkout holds (PROJECT.md at the pin), never the second Project: settlement would route that Ask into the other repository.
+    SIGN_IN_PROJECT="$(git_repo show "$PIN:PROJECT.md" | frontmatter_json | jq -r '.slug // ""')" || refuse "PROJECT.md frontmatter could not be read at $PIN"
+    [[ "$SIGN_IN_PROJECT" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ && "$SIGN_IN_PROJECT" != "$PROJECT" ]] || refuse "PROJECT.md at $PIN names no Project other than $PROJECT for the sign-in sequence"
+    rec_str signInProject "$SIGN_IN_PROJECT"
+  fi
   plan_git cat-file -e "$PLAN_PIN:docs/plans/$PLAN.md" 2>/dev/null || refuse "the Plan file docs/plans/$PLAN.md is missing at $PLAN_PIN"  # REF:L203
   if [[ "$DELEGATION_DECISION" == 0173 ]]; then check_day_grant_at_pin "$tree"; fi
   plan_fm="$(plan_git show "$PLAN_PIN:docs/plans/$PLAN.md" | frontmatter_json)" || refuse "the Plan frontmatter could not be read at $PLAN_PIN"
@@ -1022,7 +1029,7 @@ phase_p2() {
   rec preRestartWorkerPid "$PRE_WORKER_PID"
   rec preRestartBinding "$(jq -c '.binding' <<<"$PRE_BINDING")"
   # The read-only checks that must hold before the sign-in sequence may claim the day (grant and request slots, request ignored by Git).
-  SIGN_IN_ARGS=(start-run sign-in --repository "$ARCADIA_REPO" --workspace "$WORKSPACE" --project "$PROJECT" --card "$ID" --run-id "$RUN_ID"
+  SIGN_IN_ARGS=(start-run sign-in --repository "$ARCADIA_REPO" --workspace "$WORKSPACE" --project "$SIGN_IN_PROJECT" --card "$ID" --run-id "$RUN_ID"
     --run-directory "$RUN_DIR" --release "$PIN" --policy-revision "$PROD_REVISION" --policy-epoch "$PROD_EPOCH")
   arcadia "${SIGN_IN_ARGS[@]}" --check-only --json > "$RUN_DIR/sign-in-check.json" 2> "$RUN_DIR/sign-in-check.stderr" \
     && jq -e '.ok == true and .data.mode == "check-only"' "$RUN_DIR/sign-in-check.json" >/dev/null \
@@ -1469,6 +1476,7 @@ run_phases() {
   DELEGATION="$(jq -c '.startRun.delegation // null' "$DESCRIPTOR")"
   DELEGATION_DECISION="$(jq -r '.decision // ""' <<<"$DELEGATION")"
   PROJECT_REPOSITORY="$(jq -c '.startRun.projectRepository // null' "$DESCRIPTOR")"
+  SIGN_IN_PROJECT="$PROJECT"  # a second Project's card replaces it in P1 with the Project of this checkout
   if [[ "$PROJECT_REPOSITORY" == null ]]; then PLAN_REPO="$ARCADIA_REPO"; PLAN_PIN="$PIN"
   else PLAN_REPO="$(jq -r '.path // ""' <<<"$PROJECT_REPOSITORY")"; PLAN_PIN="$(jq -r '.reviewedRevision // ""' <<<"$PROJECT_REPOSITORY")"; fi
   export START_RUN_POLICY_REVISION="$PROD_REVISION"

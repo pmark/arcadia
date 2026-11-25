@@ -3,15 +3,19 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { stringify } from "yaml";
+import { runAgentAskPreviewCommand, runAgentAskSettleCommand } from "../src/commands/agentAsk.js";
 import { buildStartRunPins, runStartRunGateCheckCommand, type StartRunPinsDeps, type StartRunPinsOptions } from "../src/commands/startRun.js";
 import { withDatabase } from "../src/db/connection.js";
 import { upsertProject, upsertProjectMetadata } from "../src/db/repositories.js";
 import { arrangeActionOrder, loadActionOrder } from "../src/dispatch/order.js";
 import { assertProjectLibraryEntry, startRunLauncher, validateOperatorScriptContract, type OperatorScriptDescriptor } from "../src/operatorActions/libraryContract.js";
 import { documentState, runPlanAmendment, type PlanActivationInput } from "../src/operatorActions/planAmendment.js";
+import { assertOperatorSettlementContract } from "../src/operatorActions/operatorExecution.js";
 import { validateStartRunPins, type StartRunPins } from "../src/operatorActions/startRunPins.js";
+import { buildDiagnosticAsk, governingDecisionReferences, GOVERNING_DECISIONS } from "../src/production/startRunSignIn.js";
+import { normalizeAgentAsk } from "../src/ask/agentAsk.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 /**
@@ -232,7 +236,7 @@ describe("arcadia start-run gate-check --require-registered-repository", () => {
 // The executor (scripts/start-run.sh) for a second Project's card: a hermetic rig like tests/start-run-executor.test.ts's box,
 // with an Arcadia checkout holding the executor and the card, and a Rebuster checkout holding the Plan.
 // ---------------------------------------------------------------------------------------------------------------------------
-type ProjectScenario = "same" | "origin-moved" | "behind" | "ahead" | "dirty" | "untracked" | "branch" | "other-origin" | "worktree" | "arcadia-path";
+type ProjectScenario = "same" | "origin-moved" | "behind" | "ahead" | "dirty" | "untracked" | "branch" | "other-origin" | "worktree" | "arcadia-path" | "symlink-arcadia";
 interface RigOptions { planStatus?: "active" | "draft"; project?: ProjectScenario; registered?: "project" | "elsewhere" }
 const ID = "start-rebuster-fixture-20261125";
 
@@ -277,6 +281,7 @@ function rig(options: RigOptions = {}) {
   else if (scenario === "other-origin") git(project.dir, "remote", "set-url", "origin", path.join(root, "somewhere-else.git"));
   else if (scenario === "worktree") { pinnedPath = path.join(root, "rebuster-worktree"); git(project.dir, "worktree", "add", "--detach", pinnedPath, "HEAD"); pinnedPath = realpathSync(pinnedPath); git(pinnedPath, "switch", "-c", "main-copy"); }
   else if (scenario === "arcadia-path") pinnedPath = arcadia.dir;
+  else if (scenario === "symlink-arcadia") { pinnedPath = path.join(root, "rebuster-link"); symlinkSync(arcadia.dir, pinnedPath); }
 
   const library = path.join(arcadia.dir, "artifacts", "generated", "operator-scripts");
   mkdirSync(library, { recursive: true });
@@ -407,6 +412,10 @@ describe("start-run executor: a second Project's card (G1)", () => {
     // The operator gate reads the Project's Decisions in its checkout and requires it to be the registered repository.
     const gate = r.calls().find((call) => call.args.slice(0, 2).join(" ") === "start-run gate-check")!;
     expect(gate.args).toEqual(expect.arrayContaining(["--project", PROJECT, "--repository", r.project.dir, "--require-registered-repository"]));
+    // B1: the sign-in sequence runs under the Project of the checkout that holds the executor (PROJECT.md at the pin), never Rebuster.
+    const signIn = r.calls().find((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in")!;
+    expect(signIn.args).toEqual(expect.arrayContaining(["--project", "arcadia", "--repository", r.arcadia.dir, "--check-only"]));
+    expect(result.receipt!.record.signInProject).toBe("arcadia");
     expect(r.mutating()).toEqual([]);
   }, 120_000);
 
@@ -418,7 +427,8 @@ describe("start-run executor: a second Project's card (G1)", () => {
     ["untracked", /the Project checkout .* must be clean/],
     ["branch", /the Project checkout .* must be on main/],
     ["other-origin", /origin is not the pinned origin/],
-    ["worktree", /is not a primary checkout/]
+    ["worktree", /is not a primary checkout/],
+    ["symlink-arcadia", /is not a checkout's toplevel/]
   ])("refuses in P1 when the Project checkout is %s, consuming nothing", (scenario, reason) => {
     const r = rig({ project: scenario });
     const head = git(r.project.dir, "rev-parse", "HEAD");
@@ -449,6 +459,8 @@ describe("start-run executor: a second Project's card (G1)", () => {
     // Arcadia moved only by the sign-in sequence's diagnostic Decision; it never holds the Rebuster Plan.
     expect(git(r.arcadia.dir, "diff", "--name-only", r.pin, "HEAD").split("\n").every((file) => file.startsWith("docs/decisions/"))).toBe(true);
     expect(existsSync(path.join(r.arcadia.dir, "docs", "plans", `${PLAN}.md`))).toBe(false);
+    const signIn = r.calls().find((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && !call.args.includes("--check-only"))!;
+    expect(signIn.args).toEqual(expect.arrayContaining(["--project", "arcadia", "--repository", r.arcadia.dir]));
     const activate = r.calls().find((call) => call.args.slice(0, 2).join(" ") === "production activate")!;
     expect(activate.args).toEqual(expect.arrayContaining(["--project", PROJECT, "--plan", `${PROJECT}/${PLAN}`, "--repository", r.arcadia.dir]));
   }, 180_000);
@@ -514,11 +526,14 @@ function activationFixture() {
     if (options.pinned === null) delete startRun.projectRepository;
     writeFileSync(descriptorPath, JSON.stringify({ schema: "arcadia-operator-script-v1", id, script: `${id}.sh`, kind: "grant", title: "START: demo", problem: "p", desired_effect: "e", authority: { does: ["d"], never_does: ["n"] }, success: { effect: "s", next: "n" }, failure: { effect: "f", next: "n" }, repeatable: false, expires_at: "2099-01-01T00:00:00Z", startRun, planActivation: input(options.checkout) }, null, 2) + "\n");
   };
+  // The runner's own checkout: Arcadia's, which holds the card's library (scripts/plan-amendment-worker.ts runs from there).
+  let runnerCheckout = path.join(root, "arcadia");
+  const runFrom = (dir: string) => { runnerCheckout = dir; };
   const run = () => {
     const names = ["ARCADIA_WORKSPACE", "ARCADIA_CONFIG_PATH", "ARCADIA_OPERATOR_SCRIPT_ID", "ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR"];
     const previous = names.map((name) => process.env[name]);
     Object.assign(process.env, { ARCADIA_WORKSPACE: workspace, ARCADIA_CONFIG_PATH: path.join(root, "no-host-config.json"), ARCADIA_OPERATOR_SCRIPT_ID: id, ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR: descriptorPath });
-    try { return runPlanAmendment(descriptorPath); }
+    try { return runPlanAmendment(descriptorPath, { runnerCheckout }); }
     finally { names.forEach((name, i) => { if (previous[i] === undefined) delete process.env[name]; else process.env[name] = previous[i]; }); }
   };
   const count = () => withDatabase(workspace, (db) => (db.prepare("SELECT count(*) AS count FROM agent_ask_settlements").get() as { count: number }).count);
@@ -536,7 +551,7 @@ function activationFixture() {
     expect(count()).toBe(0);
     return result;
   };
-  return { root, repo, clone, origin: created.origin, base: created.head, workspace, card, run, count, noMutation, descriptorPath };
+  return { root, repo, clone, origin: created.origin, base: created.head, workspace, card, run, runFrom, count, noMutation, descriptorPath };
 }
 
 describe("Plan activation from a START card in Arcadia's library, in another Project's registered checkout (G2)", () => {
@@ -586,10 +601,106 @@ describe("Plan activation from a START card in Arcadia's library, in another Pro
     expect(result.message).toContain("Project checkout versus its pinned revision");
   });
 
+  it("refuses WRONG_CHECKOUT for a card in another checkout's library than the runner's own (N1)", () => {
+    const f = activationFixture();
+    f.card();
+    f.runFrom(repoRoot);  // the runner runs from a different checkout than the one holding the card's library
+    expect(f.noMutation("WRONG_CHECKOUT").message).toContain("Library checkout");
+  });
+
   it("still refuses DIRTY_CHECKOUT in the Project checkout", () => {
     const f = activationFixture();
     f.card();
     writeFileSync(path.join(f.repo, "unrelated.txt"), "Unsaved work");
     f.noMutation("DIRTY_CHECKOUT");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------
+// B1 (round-1 review): a second Project's card records its Decision 0161 sign-in diagnostic in Arcadia, through the REAL Agent
+// Ask route (assertOperatorSettlementContract, then settlement's own Project repository resolution and Decision numbering).
+// ---------------------------------------------------------------------------------------------------------------------------
+describe("a second Project's START card files its sign-in diagnostic Decision in Arcadia through the real settlement route (B1)", () => {
+  afterEach(() => { vi.unstubAllEnvs(); });
+  const CARD = "start-rebuster-signin-20261125";
+  const projectDoc = (slug: string) => ["---", "arcadia: v1", "type: project", `slug: ${slug}`, `name: ${slug}`, "status: active",
+    "mission: m.", "goal: g.", "active_plan: p", "current_action: a", "updated: 2026-11-25", "---", "", `# ${slug}`, ""].join("\n");
+  const planDoc = (slug: string) => ["---", "arcadia: v1", "type: plan", "slug: p", `project: ${slug}`, "status: active", "milestone: M", "current_action: a",
+    "token_impact: small", "token_budget: Deterministic.", "recommended_model: gpt-5.6-sol", "updated: 2026-11-25", "actions:", "  - id: a", "    title: A", "    status: open", "    responsibility: agent",
+    "    effort: session", "    next_action: Do a.", "    expected_artifact: Proof", "    clarification: clarified", "    confidence: high",
+    "    acceptance_criteria:", "      - Proof exists.", "    depends_on: []", "    decisions: []", "    references: []", "questions: []", "---", "", "# P", ""].join("\n");
+  const decisionDoc = (id: string, slug: string) => ["---", "arcadia: v1", "type: decision", `id: "${id}"`, `slug: d-${id}`, `project: ${slug}`,
+    "status: approved", "question: q?", "options:", "  - label: A", "    consequence: c", "answer: A", "updated: 2026-11-25", "---", "", "# D", ""].join("\n");
+
+  function fixture() {
+    const root = temp("arcadia-second-signin-");
+    const workspace = path.join(root, "workspace");
+    // Arcadia numbers its Decisions up to 0293; Rebuster only to 0006 (the live counts the review found).
+    const arcadia = repository(root, "arcadia", {
+      ".gitignore": "artifacts/generated/\n", "PROJECT.md": projectDoc("arcadia"), "docs/plans/p.md": planDoc("arcadia"), ".arcadia/asks/archive/.gitkeep": "",
+      ...Object.fromEntries([...GOVERNING_DECISIONS, "0293"].map((id) => [`docs/decisions/${id}-d-${id}.md`, decisionDoc(id, "arcadia")]))
+    });
+    const rebuster = repository(root, "rebuster", {
+      "PROJECT.md": projectDoc(PROJECT), "docs/plans/p.md": planDoc(PROJECT), ".arcadia/asks/archive/.gitkeep": "",
+      ...Object.fromEntries(["0001", "0006"].map((id) => [`docs/decisions/${id}-d-${id}.md`, decisionDoc(id, PROJECT)]))
+    });
+    for (const dir of [arcadia.dir, rebuster.dir]) {
+      for (const [key, value] of [["user.email", "t@example.invalid"], ["user.name", "T"], ["commit.gpgsign", "false"]]) git(dir, "config", key, value);
+    }
+    initWorkspace(workspace);
+    withDatabase(workspace, (db) => {
+      for (const [name, dir] of [["arcadia", arcadia.dir], [PROJECT, rebuster.dir]] as const) {
+        const row = upsertProject(db, { name, mission: "m.", goal: "g.", status: "active", currentMilestone: "M", nextAction: "N", workClassification: "agent" });
+        upsertProjectMetadata(db, { projectId: row.id, repoPath: dir });
+      }
+    });
+    const library = path.join(arcadia.dir, "artifacts", "generated", "operator-scripts");
+    mkdirSync(library, { recursive: true });
+    const write = (pins: StartRunPins) => {
+      writeFileSync(path.join(library, `${CARD}.json`), JSON.stringify({ schema: "arcadia-operator-script-v1", id: CARD, kind: "grant", title: "START", script: `${CARD}.sh`, repeatable: false,
+        problem: "p", desired_effect: "e", authority: { does: ["d"], never_does: ["n"] }, success: { effect: "s", next: "n" }, failure: { effect: "f", next: "n" }, expires_at: "2099-01-01T00:00:00Z", startRun: pins }));
+      writeFileSync(path.join(library, `${CARD}.sh`), startRunLauncher(CARD));
+      vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_ID", CARD);
+      vi.stubEnv("ARCADIA_OPERATOR_SCRIPT_DESCRIPTOR", path.join(library, `${CARD}.json`));
+    };
+    const diagnostic = (project: string) => buildDiagnosticAsk({
+      context: { project, cardId: CARD, runId: "20261125T060326Z-62346", policyRevision: 83, policyEpoch: 46 },
+      date: "2026-11-25", nonce: "57aeaf14-1111-4222-8333-444455556666", binding: { release: "a".repeat(40), handlerHash: "b".repeat(64) },
+      answer: `A grant digest ${"c".repeat(64)}`, digest: "c".repeat(64), expiresAt: "2026-11-26T06:13:00.000Z", references: governingDecisionReferences(arcadia.dir)
+    });
+    const crossPins = () => basePins({ projectRepository: { path: rebuster.dir, origin: rebuster.origin, reviewedRevision: rebuster.head } });
+    return { workspace, arcadia, rebuster, write, diagnostic, crossPins };
+  }
+
+  it("numbers and commits the Decision in Arcadia's repository, and leaves Rebuster untouched", () => {
+    const f = fixture();
+    f.write(f.crossPins());
+    const d = f.diagnostic("arcadia");
+    runAgentAskPreviewCommand({ workspace: f.workspace, request: JSON.stringify(d.ask) });
+    const flags = { workspace: f.workspace, proposal: d.requestId, requestId: d.settlementRequestId, disposition: "accepted" as const, cwd: f.arcadia.dir };
+    const preview = runAgentAskSettleCommand(flags).data.receipt;
+    expect(preview.projectSlug).toBe("arcadia");
+    const created = (preview.review!.documents as Array<{ path: string; before: string | null }>).filter((doc) => doc.before === null && doc.path.startsWith("docs/decisions/"));
+    expect(created.map((doc) => doc.path)).toEqual(["docs/decisions/0294-authorize-one-start-card-worker-claude-usage-diagnostic-2026-11-25-57aeaf14.md"]);
+    const applied = runAgentAskSettleCommand({ ...flags, preview: preview.previewFingerprint, apply: true }).data.receipt;
+    expect(applied.applied).toBe(true);
+    expect(existsSync(path.join(f.arcadia.dir, created[0].path))).toBe(true);
+    expect(git(f.arcadia.dir, "log", "-1", "--name-only", "--format=")).toContain(created[0].path);
+    expect(git(f.rebuster.dir, "rev-parse", "HEAD")).toBe(f.rebuster.head);
+    expect(readdirSync(path.join(f.rebuster.dir, "docs", "decisions")).sort()).toEqual(["0001-d-0001.md", "0006-d-0006.md"]);
+  });
+
+  it("refuses a diagnostic under the second Project for such a card, and an Arcadia card keeps its own Project", () => {
+    const f = fixture();
+    f.write(f.crossPins());
+    const ask = (project: string) => normalizeAgentAsk({ request: JSON.stringify(f.diagnostic(project).ask) });
+    expect(() => assertOperatorSettlementContract(ask(PROJECT))).toThrow(/only its own Decision 0161/);
+    expect(() => assertOperatorSettlementContract(ask("arcadia"))).not.toThrow();
+    // An Arcadia card (no projectRepository): its own Project only, exactly as before.
+    const own = basePins({ project: "arcadia" });
+    delete own.projectRepository;
+    f.write(own);
+    expect(() => assertOperatorSettlementContract(ask("arcadia"))).not.toThrow();
+    expect(() => assertOperatorSettlementContract(ask(PROJECT))).toThrow(/only its own Decision 0161/);
   });
 });
