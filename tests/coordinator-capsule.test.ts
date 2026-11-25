@@ -512,7 +512,7 @@ describe("repositoryRoot", () => {
 });
 
 describe("coordinator relay-sessions: which tmux sessions START tolerates (#2286 item 7)", () => {
-  const verdicts = (ws: string) => withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia", workspacePredecessorStopReceipts(ws, "arcadia"))).map((entry) => [entry.tmuxName, entry.allowed]);
+  const verdicts = (ws: string) => withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia", workspacePredecessorStopReceipts(ws, "arcadia"), T0)).map((entry) => [entry.tmuxName, entry.allowed]);
   const NEXT = "arcadia production status";
 
   it("allows nothing for a desktop-seeded custodian, which has no tmux session", () => {
@@ -550,10 +550,10 @@ describe("coordinator relay-sessions: which tmux sessions START tolerates (#2286
     withDatabase(ws, (db) => {
       db.prepare("UPDATE coordinator_generations SET tmux_name = ?, token_hash = 'x', native_session_id = ? WHERE project = 'arcadia' AND role = 'rowan'").run("a\nb", null);
     });
-    const [entry] = withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia", workspacePredecessorStopReceipts(ws, "arcadia")));
+    const [entry] = withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia", workspacePredecessorStopReceipts(ws, "arcadia"), T0));
     expect(entry).toMatchObject({ allowed: false });
     withDatabase(ws, (db) => { db.prepare("UPDATE coordinator_generations SET tmux_name = 'arcadia-coord-rowan-g1' WHERE role = 'rowan'").run(); });
-    expect(withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia", workspacePredecessorStopReceipts(ws, "arcadia")))[0]).toMatchObject({ allowed: false, reason: expect.stringMatching(/no recorded session id/) });
+    expect(withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia", workspacePredecessorStopReceipts(ws, "arcadia"), T0))[0]).toMatchObject({ allowed: false, reason: expect.stringMatching(/no recorded session id/) });
   });
 });
 
@@ -564,7 +564,7 @@ describe("coordinator relay-sessions: a handed-off predecessor until the host ti
   const G1 = "arcadia-coord-rowan-g1";
   const G2 = "arcadia-coord-rowan-g2";
   const G3 = "arcadia-coord-rowan-g3";
-  const verdicts = (ws: string) => withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia", workspacePredecessorStopReceipts(ws, "arcadia"))).map((entry) => [entry.tmuxName, entry.allowed]);
+  const verdicts = (ws: string) => withDatabase(ws, (db) => relayCoordinatorSessions(db, "arcadia", workspacePredecessorStopReceipts(ws, "arcadia"), T0)).map((entry) => [entry.tmuxName, entry.allowed]);
   const relayClaim = (ws: string, generation: number, nativeSessionId: string) =>
     withDatabase(ws, (db) => claimNextGeneration(db, ws, { ...base, ...launch, tmuxName: `arcadia-coord-rowan-g${generation}`, nativeSessionId, sources: sources(), now: T0 }));
   const relayAccept = (ws: string) => withDatabase(ws, (db) => acceptGeneration(db, coordinatorPaths(ws, "arcadia", "rowan"), newestLaunching(db, "arcadia", "rowan")!, T0));
@@ -581,7 +581,7 @@ describe("coordinator relay-sessions: a handed-off predecessor until the host ti
     const ws = workspace();
     handedOff(ws);
     expect(verdicts(ws)).toEqual([[G1, true], [G2, true]]);
-    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia" }).data;
+    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia", now: T0 }).data;
     expect(data.allowed).toEqual([G1, G2]);
     expect(data.sessions.find((session) => session.tmuxName === G1)).toMatchObject({ generation: 1, nativeSessionId: S1, status: "handed_off", reason: expect.stringMatching(/handed-off predecessor of custodian generation 2/) });
     expect(data.sessions.find((session) => session.tmuxName === G2)).toMatchObject({ generation: 2, nativeSessionId: S2, status: "custodian" });
@@ -625,7 +625,7 @@ describe("coordinator relay-sessions: a handed-off predecessor until the host ti
     handedOff(ws);
     writeStopReceipt(ws, receiptBody(outcome));
     expect(verdicts(ws)).toEqual([[G1, false], [G2, true]]);
-    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia" }).data;
+    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia", now: T0 }).data;
     expect(data.allowed).toEqual([G2]);
     expect(data.sessions.find((session) => session.tmuxName === G1)).toMatchObject({ allowed: false, reason: expect.stringContaining(`terminal stop receipt (${outcome})`) });
   });
@@ -635,7 +635,7 @@ describe("coordinator relay-sessions: a handed-off predecessor until the host ti
     handedOff(ws);
     writeStopReceipt(ws, receiptBody(outcome));
     expect(verdicts(ws)).toEqual([[G1, true], [G2, true]]);
-    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia" }).data.allowed).toEqual([G1, G2]);
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia", now: T0 }).data.allowed).toEqual([G1, G2]);
   });
 
   it.each<[string, string]>([
@@ -646,7 +646,7 @@ describe("coordinator relay-sessions: a handed-off predecessor until the host ti
     const ws = workspace();
     handedOff(ws);
     writeStopReceipt(ws, body);
-    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia" }).data;
+    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: "arcadia", now: T0 }).data;
     expect(data.allowed).toEqual([G2]);
     expect(data.sessions.find((session) => session.tmuxName === G1)).toMatchObject({ allowed: false, reason: expect.stringMatching(/unreadable stop receipt/) });
   });

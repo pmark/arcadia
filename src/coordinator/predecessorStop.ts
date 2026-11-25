@@ -68,7 +68,11 @@ export interface PredecessorStopDeps {
   claudeStop(stopId: string): ClaudeStopResult;
   /** Whether a START press is running (or unreadable) in the primary checkout. Required: the interlock cannot be omitted. */
   startPressInProgress(repoRoot: string): StartPressStatus;
-  ping(message: string): void;
+  /**
+   * Queues an operator page. `episode.key` (text the message contains) makes it one page per episode, whatever its age:
+   * the outbox reuses an earlier row from the same agent that contains the key (queueOperatorPing's `episodeKey`).
+   */
+  ping(message: string, episode?: { key: string }): void;
   now(): Date;
 }
 

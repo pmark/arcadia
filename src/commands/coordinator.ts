@@ -527,15 +527,18 @@ export interface CoordinatorRelaySessionsData { project: string; allowed: string
  * `arcadia coordinator relay-sessions --project <slug>`: read-only. Names the
  * exact tmux sessions of registered, relay-launched, current custodians, and
  * of each one's immediate handed-off predecessor while the host timer will still
- * stop it (no stop receipt, or a non-terminal one), that START's no-competing-Session check tolerates (see relayCoordinatorSessions).
- * It starts, stops and records nothing.
+ * stop it (no stop receipt, or a non-terminal one) and for at most
+ * PREDECESSOR_TOLERANCE_WINDOW_MS after the accept, that START's no-competing-Session check tolerates (see relayCoordinatorSessions).
+ * It starts, stops and records nothing. `now` is a test seam (default: the clock).
  */
-export function runCoordinatorRelaySessionsCommand(options: { workspace: string; project: string }): CommandSuccess<CoordinatorRelaySessionsData> {
+export function runCoordinatorRelaySessionsCommand(options: { workspace: string; project: string; now?: Date }): CommandSuccess<CoordinatorRelaySessionsData> {
   const { workspacePath } = resolveReadyWorkspace(options.workspace);
+  const now = options.now ?? new Date();
   // Read-only open: START's P2 is documented as making no mutation. A workspace that predates the table has no relay session.
   const sessions = withReadOnlyDatabase(workspacePath, (db) => {
-    // The handed-off predecessor's tolerance is read with its stop receipt (#3029 fix A): a terminal or unreadable receipt holds it.
-    try { return relayCoordinatorSessions(db, options.project, workspacePredecessorStopReceipts(workspacePath, options.project)); } catch (error) {
+    // The handed-off predecessor's tolerance is read with its stop receipt (#3029 fix A): a terminal or unreadable receipt holds it,
+    // and so does the end of its tolerance window after the accept (R2-1).
+    try { return relayCoordinatorSessions(db, options.project, workspacePredecessorStopReceipts(workspacePath, options.project), now); } catch (error) {
       if (error instanceof Error && /no such table/i.test(error.message)) return [];
       throw error;
     }

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CapsuleSources } from "../src/coordinator/capsule.js";
 import { coordinatorPaths } from "../src/coordinator/paths.js";
 import {
+  PREDECESSOR_TOLERANCE_WINDOW_MS,
   acceptGeneration,
   claimNextGeneration,
   newestLaunching,
@@ -12,7 +13,14 @@ import {
   seedCustodianGeneration
 } from "../src/coordinator/generations.js";
 import { stopPredecessorAfterAccept, systemPaneIdentity, type PaneIdentity, type PredecessorStopDeps } from "../src/coordinator/predecessorStop.js";
-import { findPredecessorStopCandidates, renderPredecessorStopTimerLines, runPredecessorStopTimer } from "../src/coordinator/predecessorStopTimer.js";
+import {
+  findPredecessorStopCandidates,
+  predecessorStopOutboxPing,
+  predecessorToleranceEpisodeKey,
+  renderPredecessorStopTimerLines,
+  runPredecessorStopTimer
+} from "../src/coordinator/predecessorStopTimer.js";
+import { queueOperatorPing } from "../src/ping/operatorPing.js";
 import { runCoordinatorRelaySessionsCommand } from "../src/commands/coordinator.js";
 import { runProductionLivenessTimerCommand } from "../src/commands/productionMomentum.js";
 import { withDatabase } from "../src/db/connection.js";
@@ -55,7 +63,7 @@ function fresh(): string {
 type Fake = ReturnType<typeof fakeDeps>;
 
 /** A fake tmux server (a set of live names) plus spies for every other host effect. */
-function fakeDeps(options: { live?: string[]; unknown?: string[]; identity?: PaneIdentity; press?: { inProgress: boolean; detail: string } } = {}) {
+function fakeDeps(options: { live?: string[]; unknown?: string[]; identity?: PaneIdentity; press?: { inProgress: boolean; detail: string }; now?: Date } = {}) {
   const sessions = new Set(options.live ?? []);
   const killed: string[] = [];
   const probed: string[] = [];
@@ -68,7 +76,7 @@ function fakeDeps(options: { live?: string[]; unknown?: string[]; identity?: Pan
   const claudeStop = vi.fn((_id: string) => ({ ok: true as const }));
   const ping = vi.fn((_message: string) => undefined);
   const press = vi.fn((_repo: string) => options.press ?? { inProgress: false, detail: "no START press in progress" });
-  const stopDeps: PredecessorStopDeps = { tmux, claudeStop, startPressInProgress: press, ping, now: () => NOW };
+  const stopDeps: PredecessorStopDeps = { tmux, claudeStop, startPressInProgress: press, ping, now: () => options.now ?? NOW };
   return { stopDeps, sessions, killed, probed, identityChecks, claudeStop, ping, press };
 }
 
@@ -151,13 +159,13 @@ describe("#3029: the host timer stops a handed-off predecessor coordinator's tmu
     const ws = fresh();
     handedOffRelayPredecessor(ws);
     // Before any receipt, and after a non-terminal one, START tolerates the predecessor while the timer retries.
-    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT }).data.allowed).toEqual([G1, G2]);
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT, now: NOW }).data.allowed).toEqual([G1, G2]);
     expect(timer(ws, fakeDeps({ live: [G1, G2], identity: "unknown" })).results[0]).toMatchObject({ outcome: "failed" });
-    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT }).data.allowed).toEqual([G1, G2]);
+    expect(runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT, now: NOW }).data.allowed).toEqual([G1, G2]);
     // A terminal identity_mismatch ends the retries, so START must hold it from then on.
     expect(timer(ws, fakeDeps({ live: [G1, G2], identity: "mismatch" })).results[0]).toMatchObject({ outcome: "identity_mismatch" });
     expect(timer(ws, fakeDeps({ live: [G1, G2] })).results).toEqual([]);
-    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT }).data;
+    const data = runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT, now: NOW }).data;
     expect(data.allowed).toEqual([G2]);
     expect(data.sessions.find((session) => session.tmuxName === G1)).toMatchObject({ allowed: false, reason: expect.stringMatching(/terminal stop receipt \(identity_mismatch\)/) });
   });
@@ -307,6 +315,131 @@ describe("#3029: the host timer stops a handed-off predecessor coordinator's tmu
     expect(response).toBeInstanceOf(Error);
     expect((response as Error).message).toMatch(/predecessor rowan generation 1 \(arcadia\): stopped/);
     expect(fake.killed).toEqual([G1]);
+  });
+});
+
+describe("#3029 R2-1: START tolerates a handed-off predecessor only for a bounded window, and the timer pages once when it ends", () => {
+  /** Minutes after the accept (handedOffRelayPredecessor accepts generation 2 at NOW). */
+  const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
+  const KEY = predecessorToleranceEpisodeKey(PROJECT, ROLE, 1);
+  /** The timer with the real coordinator-relay outbox as its page, so the outbox's own episode dedup is what is tested. */
+  const outboxTimer = (ws: string, fake: Fake, repoRoot: string | null = REPO) =>
+    runPredecessorStopTimer(ws, { stopDeps: (db) => ({ ...fake.stopDeps, ping: predecessorStopOutboxPing(db) }), repoRoot: () => repoRoot });
+  const tolerancePages = (ws: string) => withDatabase(ws, (db) => db.prepare("SELECT message, agent FROM operator_pings WHERE instr(message, ?) > 0").all(KEY) as Array<{ message: string; agent: string }>);
+  const sessionsAt = (ws: string, minutes: number) => runCoordinatorRelaySessionsCommand({ workspace: ws, project: PROJECT, now: at(minutes) }).data;
+  const g1 = (data: ReturnType<typeof sessionsAt>) => data.sessions.find((session) => session.tmuxName === G1);
+
+  it("names the window as one constant, 30 minutes", () => {
+    expect(PREDECESSOR_TOLERANCE_WINDOW_MS).toBe(30 * 60 * 1000);
+  });
+
+  it("tolerates the predecessor inside the window while the timer keeps failing (probe unknown), and holds it after the window", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    expect(outboxTimer(ws, fakeDeps({ live: [G1, G2], unknown: [G1], now: at(5) })).results[0]).toMatchObject({ outcome: "failed", toleranceExpired: false });
+    expect(sessionsAt(ws, 5).allowed).toEqual([G1, G2]);
+    expect(sessionsAt(ws, 30).allowed).toEqual([G1, G2]);
+    const after = sessionsAt(ws, 31);
+    expect(after.allowed).toEqual([G2]);
+    expect(g1(after)).toMatchObject({ allowed: false, reason: "handed-off predecessor generation 1 of rowan still live 31 min after accept (limit 30): stop it by hand" });
+    // The custodian is never affected by the window.
+    expect(sessionsAt(ws, 600).allowed).toEqual([G2]);
+  });
+
+  it("holds a predecessor whose timer is persistently deferred (no registered primary checkout) once the window ends", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    expect(outboxTimer(ws, fakeDeps({ live: [G1, G2], now: at(10) }), null).results[0]).toMatchObject({ outcome: "deferred" });
+    expect(sessionsAt(ws, 10).allowed).toEqual([G1, G2]);
+    expect(sessionsAt(ws, 45).allowed).toEqual([G2]);
+  });
+
+  it.each<[string, string | null]>([
+    ["missing", null],
+    ["not an instant", "yesterday"],
+    ["a local time without its zone", "2026-11-24 22:00:00"],
+    ["an epoch number", "1764021600000"],
+    ["later than now", "2026-11-24T23:00:00.000Z"]
+  ])("holds the predecessor, failing closed, when the custodian's accept time is %s", (_label, acceptedAt) => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    withDatabase(ws, (db) => db.prepare("UPDATE coordinator_generations SET accepted_at = ? WHERE project = ? AND role = ? AND generation = 2").run(acceptedAt, PROJECT, ROLE));
+    const data = sessionsAt(ws, 1);
+    expect(data.allowed).toEqual([G2]);
+    expect(g1(data)).toMatchObject({ allowed: false, reason: expect.stringMatching(/^handed-off predecessor generation 1 of rowan is held: the successor's accept time .* so the 30 min tolerance window cannot be measured; stop it by hand$/) });
+  });
+
+  it("pages exactly once past the window, across many timer minutes and alternating failure details, and never inside the window", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    // Inside the window: failing runs page nothing for the window (the stop's own failure page is accept's, unchanged).
+    for (const minute of [1, 10, 30]) {
+      expect(outboxTimer(ws, fakeDeps({ live: [G1, G2], unknown: [G1], now: at(minute) })).results[0]).toMatchObject({ outcome: "failed", toleranceExpired: false });
+    }
+    expect(tolerancePages(ws)).toEqual([]);
+    const failures: Array<Parameters<typeof fakeDeps>[0]> = [{ unknown: [G1] }, { identity: "unknown" }, { identity: "multiple_panes" }];
+    for (let minute = 31; minute <= 39; minute += 1) {
+      const fake = fakeDeps({ live: [G1, G2], ...failures[minute % failures.length], now: at(minute) });
+      const [entry] = outboxTimer(ws, fake).results;
+      expect(entry).toMatchObject({ outcome: "failed", toleranceExpired: true, pingError: null });
+      expect(fake.killed).toEqual([]);
+    }
+    const pages = tolerancePages(ws);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].agent).toBe("coordinator-relay");
+    expect(pages[0].message).toMatch(/^\[predecessor-tolerance-expired arcadia\/rowan\/g1\] Coordinator predecessor arcadia-coord-rowan-g1 \(arcadia\) is not confirmed stopped 31 min after generation 2's accept \(limit 30\);.*START now holds it.*tmux kill-session -t =arcadia-coord-rowan-g1$/);
+  });
+
+  it("pages once for a persistently deferred predecessor past the window", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    for (let minute = 31; minute <= 35; minute += 1) {
+      expect(outboxTimer(ws, fakeDeps({ live: [G1, G2], now: at(minute) }), null).results[0]).toMatchObject({ outcome: "deferred", toleranceExpired: true });
+    }
+    expect(tolerancePages(ws)).toHaveLength(1);
+  });
+
+  it("pages once, fail closed, when the custodian's accept time cannot be read", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    withDatabase(ws, (db) => db.prepare("UPDATE coordinator_generations SET accepted_at = NULL WHERE project = ? AND role = ? AND generation = 2").run(PROJECT, ROLE));
+    for (const minute of [1, 2, 3]) outboxTimer(ws, fakeDeps({ live: [G1, G2], unknown: [G1], now: at(minute) }));
+    const pages = tolerancePages(ws);
+    expect(pages).toHaveLength(1);
+    expect(pages[0].message).toMatch(/is held because the successor's accept time is not recorded/);
+  });
+
+  it("pages nothing once the predecessor is gone: stopped or already stopped past the window, and no candidate afterwards", () => {
+    const stopped = fresh();
+    handedOffRelayPredecessor(stopped);
+    expect(outboxTimer(stopped, fakeDeps({ live: [G1, G2], now: at(45) })).results[0]).toMatchObject({ outcome: "stopped", toleranceExpired: false });
+    expect(outboxTimer(stopped, fakeDeps({ live: [G2], now: at(46) })).results).toEqual([]);
+    expect(tolerancePages(stopped)).toEqual([]);
+    const gone = fresh();
+    handedOffRelayPredecessor(gone);
+    expect(outboxTimer(gone, fakeDeps({ live: [G2], now: at(45) })).results[0]).toMatchObject({ outcome: "already_stopped", toleranceExpired: false });
+    expect(outboxTimer(gone, fakeDeps({ live: [G2], now: at(46) })).results).toEqual([]);
+    expect(tolerancePages(gone)).toEqual([]);
+  });
+
+  it("a page the outbox refuses (the hourly cap) is retried on a later minute and then queued once", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    const capped = fakeDeps({ live: [G1, G2], unknown: [G1], now: at(31) });
+    capped.stopDeps.ping = () => { throw new Error("Ping not sent: hourly cap"); };
+    expect(timer(ws, capped).results[0]).toMatchObject({ outcome: "failed", toleranceExpired: true, pingError: expect.stringMatching(/hourly cap/) });
+    expect(tolerancePages(ws)).toEqual([]);
+    for (const minute of [32, 33, 34]) outboxTimer(ws, fakeDeps({ live: [G1, G2], unknown: [G1], now: at(minute) }));
+    expect(tolerancePages(ws)).toHaveLength(1);
+  });
+
+  it("one episode per generation: an earlier page for g12 does not suppress g1's", () => {
+    const ws = fresh();
+    handedOffRelayPredecessor(ws);
+    withDatabase(ws, (db) => { queueOperatorPing(db, { message: `${predecessorToleranceEpisodeKey(PROJECT, ROLE, 12)} earlier episode`, kind: "attention", agent: "coordinator-relay" }); });
+    outboxTimer(ws, fakeDeps({ live: [G1, G2], unknown: [G1], now: at(31) }));
+    expect(tolerancePages(ws)).toHaveLength(1);
+    expect(tolerancePages(ws)[0].message).toContain(KEY);
   });
 });
 

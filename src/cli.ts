@@ -1482,7 +1482,7 @@ the fingerprint hashes them, so any change between preview and apply is refused.
   );
 
   addJsonOption(coordinator.command("relay-sessions")
-    .description("Read-only: the exact tmux sessions of registered, relay-launched, current coordinator custodians, and of each one's immediate handed-off predecessor until the host liveness timer stops it, that START's no-competing-Session check tolerates (none during a handoff)")
+    .description("Read-only: the exact tmux sessions of registered, relay-launched, current coordinator custodians, and of each one's immediate handed-off predecessor until the host liveness timer stops it (at most 30 min after the accept), that START's no-competing-Session check tolerates (none during a handoff)")
     .requiredOption("--project <slug>", "Project slug, e.g. arcadia")
     .option("--workspace <path>", "Workspace path", defaultWorkspace())
   ).action((options: { workspace: string; project: string; json?: boolean }) =>
