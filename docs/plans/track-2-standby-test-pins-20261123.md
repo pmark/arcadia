@@ -151,11 +151,11 @@ actions:
     references: []
   - id: pin-journey-log-fingerprint
     title: Pin which fields make a production journey log entry new, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which fields make a production journey log entry new, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-journey-log-fingerprint-7ac15cf2cf2a; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-journey-log-fingerprint
     clarification: clarified
     confidence: high
@@ -211,7 +211,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-journey-log-fingerprint
+current_action: pin-freeze-operation-names
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
