@@ -91,11 +91,11 @@ actions:
     references: []
   - id: pin-worker-operator-merge-command
     title: Pin the exact operator merge command a refused worker merge reports, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the exact operator merge command a refused worker merge reports, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-worker-operator-merge-command-9c70b76c9f02; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-worker-operator-merge-command
     clarification: clarified
     confidence: high
@@ -211,7 +211,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-worker-operator-merge-command
+current_action: pin-repeated-park-cause-rules
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---

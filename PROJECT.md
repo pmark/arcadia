@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Track 2 standby test pins 20261123
 active_plan: track-2-standby-test-pins-20261123
 updated: 2026-11-25
-current_action: pin-worker-operator-merge-command
+current_action: pin-repeated-park-cause-rules
 ---
 
 # Arcadia
