@@ -3116,6 +3116,7 @@ function attemptProjectLaunch(
       adapters: input.options.adapters,
       now: input.now,
       tmux: input.tmux,
+      log: input.log,
       capacityObservation: input.options.capacityObservation,
       agentWorktreeRoot: input.options.agentWorktreeRoot,
       providerSignIn: input.options.providerSignIn,

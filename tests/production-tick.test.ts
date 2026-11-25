@@ -71,6 +71,8 @@ import { getRepositoryLease, reserveAgentWorktree, systemTmux, type TmuxAdapter 
 import { getSessionExitReceipt } from "../src/sessions/reconciliation.js";
 import { renderSessionRetireHandoffSuccess, runSessionRetireHandoffCommand } from "../src/commands/handoffRetirement.js";
 import { applyHandoffRetirement, previewHandoffRetirement } from "../src/sessions/handoffRetirement.js";
+import { checkStaleBase, criteriaNamedFiles } from "../src/sessions/staleBaseHandoff.js";
+import { evaluateDraftOnlyCandidate } from "../src/sessions/draftOnlyCandidate.js";
 import { getSchedulingProject } from "../src/scheduling/store.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 import { workItemInputRevision } from "../src/sessions/packetInputRevision.js";
@@ -3725,6 +3727,240 @@ describe("session retire-handoff (Issue #2490)", () => {
   });
 });
 
+// Issue #3015: a resumed incomplete_resumable candidate keeps its original
+// base, so a fix merged to main after the first attempt never reaches the
+// resume (live: #3014 fixed the test every timeline Action required). When
+// main gained a commit touching a file the Action's criteria name, the tick
+// retires that handoff (receipted, claim released, worktree and branch kept)
+// and dispatches the Action fresh from current main. Unknown means resume.
+describe("a resumable handoff whose base misses a fix to its own named files (Issue #3015)", () => {
+  const NAMED_CRITERIA = [
+    "`pnpm exec vitest run tests/contract.test.ts` passes.",
+    "The change touches only docs/contract.md and tests/contract.test.ts."
+  ];
+  function staleHandoff(options: { criteria?: string[]; secondAction?: boolean } = {}) {
+    const fixture = preparedFixture({ criteria: options.criteria, secondAction: options.secondAction });
+    const tmux = new FakeTmux();
+    activatePolicy(fixture);
+    let walled = false;
+    let tickNumber = 0;
+    const lines: string[] = [];
+    const tick = () => withDatabase(fixture.workspace, (db) => runManagedProductionTick(db, fixture.workspace, {
+      profiles, adapters, tmux, now: new Date(fixture.now.getTime() + tickNumber++ * 1000), log: (line: string) => { lines.push(line); },
+      capacityObservation: fixtureCapacityObservation(), agentWorktreeRoot: fixture.agentWorktreeRoot,
+      workerCapability: (_workspace: string, sandbox?: string | null) => walled && sandbox !== undefined
+        ? [{ wallClass: "preservation" as const, evidence: "The preservation route heartbeat is stale (33s old, limit 15s)", remedy: "Restart the worker." }]
+        : []
+    }));
+    tick();
+    const first = withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo))!;
+    writeFileSync(path.join(first.worktree_path, "partial.txt"), "first step\n");
+    git(first.worktree_path, ["add", "partial.txt"]);
+    git(first.worktree_path, ["commit", "-m", "Partial progress"]);
+    walled = true; // hold the resume until main has moved
+    tmux.live.delete(first.tmux_session_name);
+    tick(); tick();
+    expect(withReadOnlyDatabase(fixture.workspace, (db) => getSessionExitReceipt(db, first.id))?.outcome).toBe("incomplete_resumable");
+    const mainCommit = (file: string, message: string) => {
+      mkdirSync(path.dirname(path.join(fixture.repo, file)), { recursive: true });
+      writeFileSync(path.join(fixture.repo, file), `${message}\n`);
+      git(fixture.repo, ["add", "."]);
+      git(fixture.repo, ["commit", "-m", message]);
+      return git(fixture.repo, ["rev-parse", "HEAD"]).trim();
+    };
+    const lease = () => withReadOnlyDatabase(fixture.workspace, (db) => getRepositoryLease(db, fixture.repo));
+    const retirements = () => withReadOnlyDatabase(fixture.workspace, (db) =>
+      db.prepare("SELECT * FROM session_handoff_retirements").all()) as Array<Record<string, string | null>>;
+    const wall = (on: boolean) => { walled = on; };
+    return { fixture, tmux, tick, first, mainCommit, lease, retirements, lines, wall };
+  }
+
+  it("(a) retires the handoff with a receipt and dispatches fresh from current main when main fixed a criteria-named file", () => {
+    const f = staleHandoff({ criteria: NAMED_CRITERIA });
+    const oldHead = git(f.first.worktree_path, ["rev-parse", "HEAD"]).trim();
+    const oldStatus = git(f.first.worktree_path, ["status", "--porcelain"]);
+    const fix = f.mainCommit("tests/contract.test.ts", "fix the named test (as #3014)");
+    f.wall(false);
+    const result = f.tick();
+    expect(result.projects.find((p) => p.projectSlug === "test-project")?.launch?.outcome).toBe("launched");
+    const fresh = f.lease()!;
+    expect(fresh.id).not.toBe(f.first.id);
+    expect(fresh.action_id).toBe("define-contract");
+    expect(fresh.worktree_path).not.toBe(f.first.worktree_path);
+    expect(fresh.branch).not.toBe(f.first.branch);
+    expect(fresh.base_revision).toBe(fix);
+    expect(existsSync(path.join(fresh.worktree_path, "partial.txt"))).toBe(false);
+    const [retirement] = f.retirements();
+    expect(f.retirements()).toHaveLength(1);
+    expect(retirement).toMatchObject({ session_id: f.first.id, action_id: "define-contract", base_revision: f.first.base_revision, worktree_path: f.first.worktree_path });
+    expect(retirement.reason).toContain(fix.slice(0, 12));
+    expect(retirement.reason).toContain("tests/contract.test.ts");
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => getSessionExitReceipt(db, f.first.id))?.superseded_by_session_id).toBe(retirement.sentinel);
+    expect(f.lines.some((line) => line.includes("Retired") && line.includes(f.first.id) && line.includes("tests/contract.test.ts"))).toBe(true);
+    // Never deleted: the old worktree, its work and its branch are exactly as the worker left them.
+    expect(git(f.first.worktree_path, ["rev-parse", "HEAD"]).trim()).toBe(oldHead);
+    expect(git(f.first.worktree_path, ["status", "--porcelain"])).toBe(oldStatus);
+    expect(git(f.fixture.repo, ["rev-parse", "--verify", `refs/heads/${f.first.branch}`]).trim()).toBe(oldHead);
+  });
+
+  it("(b) resumes as today when main gained only commits that touch no criteria-named file", () => {
+    const f = staleHandoff({ criteria: NAMED_CRITERIA });
+    f.mainCommit("unrelated/notes.md", "an unrelated fix");
+    f.wall(false);
+    f.tick();
+    const resumed = f.lease()!;
+    expect(resumed.id).not.toBe(f.first.id);
+    expect(resumed.worktree_path).toBe(f.first.worktree_path);
+    expect(resumed.base_revision).toBe(f.first.base_revision);
+    expect(f.retirements()).toHaveLength(0);
+  });
+
+  it("(c) resumes and logs when the mapping is unknown: criteria that name no file, or a base that cannot be read", () => {
+    const unnamed = staleHandoff();
+    unnamed.mainCommit("tests/contract.test.ts", "a fix the criteria never name");
+    unnamed.wall(false);
+    unnamed.tick();
+    expect(unnamed.lease()!.worktree_path).toBe(unnamed.first.worktree_path);
+    expect(unnamed.retirements()).toHaveLength(0);
+    expect(unnamed.lines.some((line) => line.includes(unnamed.first.id) && /unknown/i.test(line) && /resum/i.test(line))).toBe(true);
+
+    const unreadable = staleHandoff({ criteria: NAMED_CRITERIA });
+    unreadable.mainCommit("tests/contract.test.ts", "fix the named test");
+    withDatabase(unreadable.fixture.workspace, (db) =>
+      db.prepare("UPDATE agent_sessions SET base_revision = ? WHERE id = ?").run("0123456789abcdef0123456789abcdef01234567", unreadable.first.id));
+    unreadable.wall(false);
+    unreadable.tick();
+    // It took the resume path (the unreadable base the fixture forced then fails that resume downstream, as it would today):
+    // no fresh worktree was prepared, nothing was retired, and the handoff is still there to resume.
+    const worktrees = withReadOnlyDatabase(unreadable.fixture.workspace, (db) =>
+      db.prepare("SELECT DISTINCT worktree_path FROM agent_sessions").all()) as Array<{ worktree_path: string }>;
+    expect(worktrees.map((row) => row.worktree_path)).toEqual([unreadable.first.worktree_path]);
+    expect(withReadOnlyDatabase(unreadable.fixture.workspace, (db) => getSessionExitReceipt(db, unreadable.first.id))?.superseded_by_session_id).toBeNull();
+    expect(unreadable.retirements()).toHaveLength(0);
+    expect(unreadable.lines.some((line) => line.includes(unreadable.first.id) && /unknown/i.test(line) && /resum/i.test(line))).toBe(true);
+  });
+
+  it("names criteria files without governed records, and a fix the candidate already carries is not stale", () => {
+    expect(criteriaNamedFiles([...NAMED_CRITERIA, "PROJECT.md and docs/plans/copy-proof.md record it.", "The change touches only src/sessions/ and tests/x.test.ts."]))
+      .toEqual(["tests/contract.test.ts", "docs/contract.md", "tests/x.test.ts", "src/sessions/"]);
+    // Review round 1, N1: a negated mention, a `path:line` reference and an append-only doc name no file this check
+    // compares; the same path named positively elsewhere still counts.
+    expect(criteriaNamedFiles(["Do not change src/production/tick.ts; extend src/timeline/collectors/x.ts."])).toEqual(["src/timeline/collectors/x.ts"]);
+    expect(criteriaNamedFiles(["The change must not edit src/a.ts or src/b.ts.", "Leave src/c.ts unchanged.", "Never modify tests/old.test.ts."])).toEqual([]);
+    expect(criteriaNamedFiles(["Without changing src/a.ts, add src/d.ts."])).toEqual(["src/d.ts"]);
+    expect(criteriaNamedFiles(["Follow the pattern at src/sessions/launch.ts:540 in src/new/thing.ts."])).toEqual(["src/new/thing.ts"]);
+    expect(criteriaNamedFiles(["The change touches only src/x.ts, docs/notes-to-self.md and docs/COMMANDS.md.", "Record it in docs/notes-to-self.md."]))
+      .toEqual(["src/x.ts"]);
+    expect(criteriaNamedFiles(["Do not change src/a.ts.", "`pnpm exec vitest run tests/a.test.ts` passes after src/a.ts is fixed."]))
+      .toEqual(["tests/a.test.ts", "src/a.ts"]);
+    const repo = mkdtempSync(path.join(tmpdir(), "arcadia-stale-base-"));
+    roots.push(repo);
+    git(repo, ["init", "-q", "-b", "main"]);
+    const commit = (file: string, message: string) => {
+      mkdirSync(path.dirname(path.join(repo, file)), { recursive: true });
+      writeFileSync(path.join(repo, file), `${message}\n`);
+      git(repo, ["add", "."]);
+      git(repo, ["-c", "user.name=T", "-c", "user.email=t@example.test", "commit", "-q", "-m", message]);
+      return git(repo, ["rev-parse", "HEAD"]).trim();
+    };
+    const base = commit("README.md", "base");
+    const fix = commit("src/sessions/index.ts", "fix");
+    const check = (candidateHead: string) => checkStaleBase({ repoRoot: repo, baseRevision: base, candidateHead, mainRevision: fix, criteria: ["The change touches only src/sessions/."] });
+    expect(check(base)).toMatchObject({ kind: "stale", commits: [{ sha: fix, files: ["src/sessions/index.ts"] }] });
+    expect(check(fix)).toEqual({ kind: "current" });
+  });
+
+  // What (d) proves is narrow (review round 1, N4): the retired handoff itself no longer holds the next Action.
+  // second-action launches here only because the fresh Session made no commits, so its clean handoff, an ancestor
+  // of main, is dropped. A fresh Session that made progress and exited incomplete still holds the next Action with
+  // `foreign_resumable_candidate`, exactly as before this change.
+  it("(d) the retired stale handoff does not hold the next Action once the fresh Session that replaced it ends with no commits", () => {
+    const f = staleHandoff({ criteria: NAMED_CRITERIA, secondAction: true });
+    f.mainCommit("tests/contract.test.ts", "fix the named test");
+    f.wall(false);
+    f.tick();
+    const second = f.lease()!;
+    expect(second.action_id).toBe("define-contract");
+    // That Session ends; then define-contract is settled elsewhere and the pointer moves on.
+    f.wall(true);
+    f.tmux.live.delete(second.tmux_session_name);
+    f.tick(); f.tick();
+    const planPath = path.join(f.fixture.repo, "docs", "plans", "copy-proof.md");
+    const plan = readFileSync(planPath, "utf8").split("  - id: ")
+      .map((entry) => entry.startsWith("define-contract\n") ? entry.replace("status: open", "status: done") : entry).join("  - id: ");
+    writeFileSync(planPath, plan.replace("current_action: define-contract", "current_action: second-action"));
+    const projectPath = path.join(f.fixture.repo, "PROJECT.md");
+    writeFileSync(projectPath, readFileSync(projectPath, "utf8").replace("current_action: define-contract", "current_action: second-action"));
+    git(f.fixture.repo, ["add", "-A"]);
+    git(f.fixture.repo, ["commit", "-m", "settle define-contract elsewhere"]);
+    f.wall(false);
+    f.tick(); f.tick();
+    expect(f.lines.filter((line) => line.includes("foreign_resumable_candidate"))).toEqual([]);
+    expect(f.lease()?.action_id).toBe("second-action");
+  });
+
+  // Review round 1, N2: a preserved candidate is retired too (its commit is pushed, so nothing is lost), but its
+  // commit and open PR must be named in the receipt so the next reader finds the abandoned candidate.
+  it("(f) names a preserved candidate's commit and pull request in the retirement reason", () => {
+    const f = staleHandoff({ criteria: NAMED_CRITERIA });
+    const commit = "c0ffee" + "0".repeat(34);
+    withDatabase(f.fixture.workspace, (db) => db.prepare(`INSERT INTO candidate_preservation_receipts (id, request_id, repository_path,
+      candidate_worktree_path, branch, base_branch, base_revision, action_id, packet_sha256, policy_epoch, policy_revision, candidate_fingerprint,
+      commit_sha, preservation_state, pull_request_number, pull_request_url, receipt_json, created_at)
+      VALUES ('cpr_1', ?, 'r', 'w', 'b', 'main', 'x', 'define-contract', 'p', 1, 1, 'f', ?, 'IN PR', 42, 'https://github.com/o/r/pull/42', '{}', 't')`)
+      .run(`worker-tick-preserve-${f.first.id}`, commit));
+    f.mainCommit("tests/contract.test.ts", "fix the named test");
+    f.wall(false);
+    f.tick();
+    const [retirement] = f.retirements();
+    expect(retirement.session_id).toBe(f.first.id);
+    expect(retirement.reason).toContain("https://github.com/o/r/pull/42");
+    expect(retirement.reason).toContain(commit.slice(0, 12));
+    expect(f.lease()!.worktree_path).not.toBe(f.first.worktree_path);
+  });
+
+  // Review round 1, B1/N5: the ordinary multi-Session shape is A resumed as B in one worktree. Retiring B
+  // left A superseded by B's real id, so #2492's retired-worktree check still counted the dirty worktree as
+  // held and every later non-resume launch of the Action hit the orphan refusal, whose remedy only the
+  // operator can apply. Here the fresh launch after the retirement fails, and the next one must still launch.
+  it("(e) a retired resume chain (A resumed as B, B dirty) blocks neither a retried fresh launch nor the orphan check", () => {
+    const f = staleHandoff({ criteria: NAMED_CRITERIA });
+    f.mainCommit("unrelated/notes.md", "an unrelated change; the handoff still resumes");
+    f.wall(false);
+    f.tick();
+    const second = f.lease()!;
+    expect(second.id).not.toBe(f.first.id);
+    expect(second.worktree_path).toBe(f.first.worktree_path);
+    // B ends with uncommitted work while main gains a fix to a file the criteria name. The next tick
+    // reconciles B as incomplete_resumable, retires it as stale, and its fresh launch then fails after the
+    // retirement committed and before a Session row exists.
+    writeFileSync(path.join(second.worktree_path, "unsaved.txt"), "uncommitted work\n");
+    f.tmux.live.delete(second.tmux_session_name);
+    const fix = f.mainCommit("tests/contract.test.ts", "fix the named test (as #3014)");
+    f.tick(); // reconciles B; admission waits a tick
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => getSessionExitReceipt(db, second.id))?.outcome).toBe("incomplete_resumable");
+    chmodSync(f.fixture.agentWorktreeRoot, 0o555);
+    try {
+      expect(f.tick().projects[0].launch?.outcome).toBe("failed");
+    } finally {
+      chmodSync(f.fixture.agentWorktreeRoot, 0o755);
+    }
+    expect(f.retirements().map((row) => row.session_id)).toEqual([second.id]);
+    expect(withReadOnlyDatabase(f.fixture.workspace, (db) => db.prepare("SELECT COUNT(*) AS n FROM agent_sessions").get()) as { n: number })
+      .toEqual({ n: 2 });
+    expect(f.tick().projects[0].launch?.outcome).toBe("launched");
+    const fresh = f.lease()!;
+    expect(fresh.action_id).toBe("define-contract");
+    expect(fresh.worktree_path).not.toBe(f.first.worktree_path);
+    expect(fresh.base_revision).toBe(fix);
+    expect(f.lines.filter((line) => line.includes("already holds uncommitted changes"))).toEqual([]);
+    // The retired chain's worktree keeps its uncommitted work, and the orphan check (Go's too) no longer counts it.
+    expect(git(second.worktree_path, ["status", "--porcelain"])).toContain("unsaved.txt");
+    const lookup = { repositoryPath: f.fixture.repo, projectSlug: "test-project", actionId: "define-contract", agent: second.branch.split("/")[0], baseBranch: "main", now: f.fixture.now };
+    expect(withDatabase(f.fixture.workspace, (db) => evaluateDraftOnlyCandidate(db, lookup))).toEqual({ kind: "none" });
+  });
+});
+
 describe("red alerts from the worker tick", () => {
   function tickAt(fixture: ReturnType<typeof preparedFixture>, tmux: FakeTmux, offsetMs: number, capacity = false) {
     return withDatabase(fixture.workspace, (db) =>
@@ -4060,6 +4296,8 @@ function preparedFixture(
     dependsOnUnresolved?: boolean;
     /** Record a packet input revision that no longer matches the Action. */
     staleInputRevision?: boolean;
+    /** define-contract's acceptance criteria (default: one that names no file). */
+    criteria?: string[];
   } = {}
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "arcadia-production-tick-"));
@@ -4071,7 +4309,7 @@ function preparedFixture(
   writeFileSync(path.join(repo, "PROJECT.md"), projectDocument);
   writeFileSync(
     path.join(repo, "docs", "plans", "copy-proof.md"),
-    planDocument(options.secondAction ?? false, options.buildAction ?? false, options.dependsOnUnresolved ?? false)
+    planDocument(options.secondAction ?? false, options.buildAction ?? false, options.dependsOnUnresolved ?? false, options.criteria)
   );
   writeFileSync(path.join(repo, "docs", "decisions", "0001-authorize.md"), decisionDocument);
   git(repo, ["init", "-q", "-b", "main"]);
@@ -4198,7 +4436,7 @@ updated: 2026-08-30
 # Test Project
 `;
 
-function planDocument(secondAction: boolean, buildAction = false, dependsOnUnresolved = false): string {
+function planDocument(secondAction: boolean, buildAction = false, dependsOnUnresolved = false, criteria?: string[]): string {
   const second = secondAction
     ? `
   - id: second-action
@@ -4246,7 +4484,7 @@ actions:
     next_action: ${nextAction}
     expected_artifact: docs/contract.md
     acceptance_criteria:
-      - The contract exists.
+${criteria ? criteria.map((criterion) => `      - ${JSON.stringify(criterion)}`).join("\n") : "      - The contract exists."}
     decisions: ["0001"]${dependsOn}${second}
 ---
 
