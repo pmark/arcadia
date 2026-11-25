@@ -5,6 +5,7 @@ import { useRead } from "../use-read";
 import { RouteLink } from "../routes/route-parts";
 import "../routes/routes.css";
 import "./plan-picker.css";
+import { PlanActions, WithheldPlanActions } from "./plan-actions";
 import type { AllPlansResponse } from "../../../lib/plans-types";
 import { workspaceHref } from "../../../lib/workspace-scope";
 import {
@@ -34,10 +35,14 @@ function PlanItem({ plan, dupes, titles }: { plan: PickerPlan; dupes: DuplicateP
     </p>
     {plan.doneButNotClosed && <p className="plan-picker-flag done" role="note">Done but not closed: every Action is done or deferred, yet the Plan is still {plan.row.status}.</p>}
     {others.length > 0 && <p className="plan-picker-flag dup" role="note">Likely duplicate of {others.map(o => `${short(titles.get(o.slug) ?? o.slug)} (similarity ${o.score.toFixed(2)})`).join("; ")}</p>}
+    <PlanActions project={plan.project.slug} plan={plan.row.slug} planName={short(plan.title)} />
   </li>;
 }
 
-/** Every Project's Plans from one `/api/plans` read. Display only: nothing here writes, queues or asks a model. */
+/**
+ * Every Project's Plans from one `/api/plans` read; first paint writes nothing, queues nothing and asks no model.
+ * Each Plan's actions compose a governed Agent Ask only when tapped, and never settle one.
+ */
 export function PlanPicker({ initial }: { initial?: { filters?: Partial<PickerFilters>; sort?: PlanSort; group?: PlanGroup } } = {}) {
   const [revision, setRevision] = useState(0);
   // The only read the picker makes: one /api/plans answer, however many Plans it holds.
@@ -60,7 +65,7 @@ export function PlanPicker({ initial }: { initial?: { filters?: Partial<PickerFi
         <button type="button" className="route-refresh" onClick={() => setRevision(v => v + 1)}>Refresh</button>
         <p className="route-kind">Plans · every Project</p>
         <h1 id="workspace-title" className="route-title">Choose a Plan</h1>
-        <p className="route-source">Read-only. Flags are computed from the Plan documents, not by a model.</p>
+        <p className="route-source">Flags are computed from the Plan documents, not by a model. Actions submit Agent Asks for the operator to settle; none changes a Plan by itself.</p>
         {read.kind === "loading" && <p className="route-note" role="status">Reading Plans…</p>}
         {read.kind === "error" && <div className="route-problem" role="alert"><h2>Plans unavailable</h2><p>{read.message}</p><p>Refresh to try again.</p></div>}
         {unreadable.length > 0 && <p className="route-note" role="status">Couldn&apos;t read: {unreadable.map(p => p.name).join(", ")}.</p>}
@@ -75,6 +80,7 @@ export function PlanPicker({ initial }: { initial?: { filters?: Partial<PickerFi
             <label>Sort<select value={sort} onChange={e => setSort(e.target.value as PlanSort)}>{SORTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
             <label>Group<select value={group} onChange={e => setGroup(e.target.value as PlanGroup)}>{GROUPS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
           </form>
+          <WithheldPlanActions />
           <p className="route-note" role="status">{count} of {all.length} Plans</p>
           {count === 0 && <p className="route-empty">No Plan matches these filters.</p>}
           {shown.filter(g => g.plans.length > 0).map(g => <section key={g.key} className="plan-picker-group" aria-label={g.label}>

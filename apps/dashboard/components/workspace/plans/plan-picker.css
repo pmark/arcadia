@@ -13,3 +13,24 @@
 .plan-picker-group { margin-top: 14px; }
 .plan-picker-group-title { margin: 0 0 6px; font-size: 13px; color: var(--route-soft); text-transform: capitalize; }
 .plan-picker-group-title span { font-weight: 400; }
+.plan-actions { margin-top: 8px; }
+.plan-actions-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.plan-actions-button { min-height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--route-line); background: rgb(255 255 255 / .06); color: var(--route-ink); font-size: 12px; }
+.plan-actions-button[aria-pressed="true"] { border-color: var(--route-tone-moving); }
+.plan-actions-button:disabled { opacity: .45; cursor: not-allowed; }
+.plan-actions-button.quiet { background: transparent; }
+.plan-actions-panel { margin-top: 8px; padding: 8px 10px; border: 1px dashed var(--route-line); border-radius: 10px; font-size: 12px; line-height: 1.45; }
+.plan-actions-consequence { margin: 0 0 6px; }
+.plan-actions-label { display: flex; flex-direction: column; gap: 4px; margin: 6px 0 2px; color: var(--route-soft); font-size: 11px; }
+.plan-actions-label textarea { width: 100%; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--route-line); background: rgb(255 255 255 / .06); color: var(--route-ink); font: inherit; font-size: 13px; padding: 6px; }
+.plan-actions-effects { margin: 2px 0 6px; padding-left: 18px; font-family: ui-monospace, monospace; font-size: 11px; overflow-wrap: anywhere; }
+.plan-actions-note, .plan-actions-receipt { margin: 4px 0; color: var(--route-soft); }
+.plan-actions-error { margin: 4px 0; color: var(--route-tone-blocked); }
+.plan-actions-withheld { margin: 8px 0; padding-left: 18px; font-size: 11px; line-height: 1.45; color: var(--route-soft); }
+.plan-asks-title { margin: 0 0 8px; font-size: 14px; color: var(--route-ink); }
+.plan-asks-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.plan-asks-item { padding: 8px 10px; border: 1px solid var(--route-line); border-radius: 10px; overflow-wrap: anywhere; }
+.plan-asks-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; font-size: 11px; color: var(--route-soft); }
+.plan-asks-state { text-transform: uppercase; letter-spacing: .04em; }
+.plan-asks-item[data-state="pending"] .plan-asks-state { color: var(--route-tone-open); }
+.plan-asks-text { margin: 4px 0 0; font-size: 13px; color: var(--route-ink); white-space: pre-wrap; }

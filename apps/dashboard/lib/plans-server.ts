@@ -1,5 +1,6 @@
 import { resolveReadyWorkspace } from "../../../src/cli/workspace";
-import { withDatabase } from "../../../src/db/connection";
+import { withDatabase, withReadOnlyDatabase } from "../../../src/db/connection";
+import type { PlanAsk } from "../../../src/plans/planAsks";
 import { getProjectBySlug, getProjectMetadata, listProjects } from "../../../src/db/repositories";
 import type { ArcadiaError } from "../../../src/cli/errors";
 import { ArcadiaCliError } from "./arcadia-cli";
@@ -67,6 +68,28 @@ export async function loadPlanDetail(projectSlug: string, planSlug: string, opti
     plan: list?.plans.find((plan) => plan.slug === planSlug) ?? null,
     progress
   };
+}
+
+/** The Project and Plan a picker action targets, confirmed against the Project's own Plan list. Throws PlanNotFound. */
+export async function resolvePlanTarget(projectSlug: string, planSlug: string): Promise<{ project: string; plan: string }> {
+  const { workspacePath } = resolveReadyWorkspace();
+  const found = withReadOnlyDatabase(workspacePath, (db) => {
+    const project = getProjectBySlug(db, projectSlug);
+    return project ? { slug: project.slug, repoPath: getProjectMetadata(db, project.id)?.repo_path ?? null } : null;
+  });
+  if (!found) throw new PlanNotFound(`No Project "${projectSlug}" is in this workspace.`);
+  if (!found.repoPath) throw new PlanNotFound(`Project "${projectSlug}" has no repository path, so its plans cannot be read.`);
+  const list = await readProjectPlans(found.repoPath, found.slug);
+  if (!list.plans.some((plan) => plan.slug === planSlug)) throw new PlanNotFound(`Plan "${planSlug}" is not in Project "${found.slug}".`);
+  return { project: found.slug, plan: planSlug };
+}
+
+/** The Asks that target one Plan in one Project, newest first. Read-only over the existing Ask receipts. */
+export async function loadPlanAsks(projectSlug: string, planSlug: string): Promise<PlanAsk[]> {
+  // Loaded on demand, so the settlement reader stays out of /api/plans' own cold start.
+  const { listPlanAsks } = await import("../../../src/plans/planAsks");
+  const { workspacePath } = resolveReadyWorkspace();
+  return withReadOnlyDatabase(workspacePath, (db) => listPlanAsks(db, projectSlug, planSlug));
 }
 
 /**
