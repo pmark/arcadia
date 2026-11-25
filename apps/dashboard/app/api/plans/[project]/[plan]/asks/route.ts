@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { ArcadiaCliError, previewAgentAsk } from "../../../../../../lib/arcadia-cli";
+import { isSameOriginRequest } from "../../../../../../lib/originGuard";
 import { cliMessage, loadPlanAsks, PlanNotFound, resolvePlanTarget } from "../../../../../../lib/plans-server";
 import { effectLine, planActionConsequence, type PlanAskKind, type PlanAskRequest, type PlanAsksResponse } from "../../../../../../lib/plan-picker-actions";
 
@@ -37,6 +38,9 @@ export async function GET(_request: Request, context: Context) {
  * `submit` records the same Ask through `agent-ask preview`. Nothing here settles an Ask: the operator does.
  */
 export async function POST(request: Request, context: Context) {
+  if (!isSameOriginRequest(request)) {
+    return NextResponse.json({ error: "Cross-origin Plan Ask requests are refused.", details: null }, { status: 403 });
+  }
   const { project, plan } = await context.params;
   let body: Partial<PlanAskRequest>;
   try {

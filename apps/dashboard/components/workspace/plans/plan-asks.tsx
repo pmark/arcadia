@@ -4,7 +4,8 @@ import { useRead } from "../use-read";
 import "./plan-picker.css";
 import type { PlanAskRow, PlanAsksResponse } from "../../../lib/plan-picker-actions";
 
-const STATE_WORD: Record<PlanAskRow["state"], string> = { previewed: "Previewed", pending: "Pending", settled: "Settled" };
+/** A previewed picker Ask is not inert: it waits in the operator's pending Asks until accepted (kept as evidence) or rejected. */
+const STATE_WORD: Record<PlanAskRow["state"], string> = { previewed: "Previewed · in your pending Asks, evidence only", pending: "Pending", settled: "Settled" };
 
 function kindWord(ask: PlanAskRow): string {
   if (ask.requestId.startsWith("workspace-annotate-")) return "Annotation";

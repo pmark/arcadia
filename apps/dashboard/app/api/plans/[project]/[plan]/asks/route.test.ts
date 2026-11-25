@@ -19,7 +19,7 @@ import { GET, POST } from "./route";
 import { planAskRequestId } from "../../../../../../lib/plan-picker-actions";
 
 const context = { params: Promise.resolve({ project: "arcadia", plan: "plan-g" }) };
-const post = (body: unknown) => POST(new Request("http://127.0.0.1/api/plans/arcadia/plan-g/asks", { method: "POST", body: JSON.stringify(body) }), context);
+const post = (body: unknown, headers: Record<string, string> = {}) => POST(new Request("http://127.0.0.1/api/plans/arcadia/plan-g/asks", { method: "POST", headers, body: JSON.stringify(body) }), context);
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -36,20 +36,33 @@ describe("/api/plans/[project]/[plan]/asks", () => {
     const response = await post({ mode: "check", kind: "annotate", text: "Revisit after Plan F.", requestId });
     const body = await response.json();
     expect(response.status).toBe(200);
-    expect(body.consequence).toMatch(/^Records your note on plan-g .*changes no Plan, queue or status\.$/);
+    expect(body.consequence).toMatch(/^Records your note on plan-g .*waits in your pending Asks, where accepting keeps it as evidence; it changes no Plan, queue or status\.$/);
     expect(body.ask).toMatchObject({ intent: "proposal", project: "arcadia", target_ref: "plan/plan-g", request_id: requestId, requested_authority: "propose" });
     // Arcadia's own effect wording, as `agent-ask pending` prints it; a proposal settles as evidence only.
     expect(body.effects).toEqual(["update proposal plan/plan-g"]);
     expect(cli.previewAgentAsk).not.toHaveBeenCalled();
   });
 
-  it("check shows Request change as a targeted Plan amendment with its effects before submission", async () => {
+  it("check shows Request change as an evidence-only proposal on the Plan, never a Plan amendment, before submission", async () => {
     const response = await post({ mode: "check", kind: "request-change", text: "Split the second Action.", requestId: planAskRequestId("request-change", "plan-g") });
     const body = await response.json();
-    expect(body.ask).toMatchObject({ intent: "plan", target_ref: "plan/plan-g", desired_result: "Split the second Action." });
-    expect(body.effects).toEqual(["update plan plan/plan-g"]);
-    expect(body.consequence).toMatch(/nothing changes until the operator settles it/);
+    expect(body.ask).toMatchObject({ intent: "proposal", target_ref: "plan/plan-g", project: "arcadia", requested_authority: "propose", desired_result: "Split the second Action." });
+    expect(body.effects).toEqual(["update proposal plan/plan-g"]);
+    expect(body.consequence).toBe("Submits your words as a change request on plan-g; accepting it records the request for the Lead to turn into governed Plan changes and changes no Plan, Milestone, queue or status.");
     expect(cli.previewAgentAsk).not.toHaveBeenCalled();
+  });
+
+  it("refuses a cross-origin POST and records nothing (review 3039 N3)", async () => {
+    const body = { mode: "submit", kind: "annotate", text: "Junk.", requestId: planAskRequestId("annotate", "plan-g") };
+    for (const headers of [{ "sec-fetch-site": "cross-site" }, { origin: "https://evil.example", host: "127.0.0.1" }]) {
+      const response = await post(body, headers);
+      expect(response.status).toBe(403);
+    }
+    expect(server.resolvePlanTarget).not.toHaveBeenCalled();
+    expect(cli.previewAgentAsk).not.toHaveBeenCalled();
+    expect(cli.settlePendingAgentAsk).not.toHaveBeenCalled();
+    // The page's own same-origin request still goes through.
+    expect((await post(body, { "sec-fetch-site": "same-origin" })).status).toBe(200);
   });
 
   it("submit records the same Ask through agent-ask preview once and never settles it", async () => {
@@ -103,6 +116,10 @@ describe("no route under the picker settles an Ask", () => {
   it.each(files.map((file) => [path.relative(repo, file), file]))("%s never calls agent-ask settle --apply", (_name, file) => {
     const text = readFileSync(file, "utf8");
     expect(text).not.toMatch(/["'`]settle["'`]|--apply|settlePendingAgentAsk|settleAgentAsk|runAgentAskSettleCommand/);
+  });
+  it.each(files.map((file) => [path.relative(repo, file), file]))("%s never composes intent: plan (review 3039 B1)", (_name, file) => {
+    const text = readFileSync(file, "utf8");
+    expect(text).not.toMatch(/intent["']?\s*:[^,\n]*["'`]plan["'`]/);
   });
   it("covers the picker's own route", () => {
     expect(files.some((file) => file.endsWith(path.join("asks", "route.ts")))).toBe(true);

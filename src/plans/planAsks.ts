@@ -7,7 +7,11 @@ import { listUnsettledAgentAskProposals } from "../ask/settlement.js";
  * `agent_ask_proposals` and `agent_ask_settlements` tables, so an annotation needs no store of its own.
  */
 
-/** `previewed`: a recorded note that changes nothing when left alone. `pending`: awaits the operator's settlement to change records. `settled`: has a terminal disposition. */
+/**
+ * `previewed`: an evidence-only Ask (a picker annotation or change request) that waits in the operator's pending Asks;
+ * accepting it keeps it as evidence and changes no record. `pending`: awaits the operator's settlement to change
+ * records. `settled`: has a terminal disposition.
+ */
 export type PlanAskState = "previewed" | "pending" | "settled";
 
 export interface PlanAsk {
@@ -75,8 +79,11 @@ export interface ComposedPlanAsk {
 
 /**
  * Compose the Agent Ask for a picker action and derive its effects exactly as preview will, without recording
- * anything. Annotate is an evidence-only `proposal`; Request change is a targeted `plan` amendment. Both carry
- * `requested_authority: propose`, so neither can apply itself.
+ * anything. Both are evidence-only `proposal` Asks targeting `plan/<slug>` with `requested_authority: propose`.
+ * Request change is deliberately never a plan-intent Ask. A targeted plan-intent Ask with no Actions settles by
+ * replacing the Plan's Milestone with its desired result (`src/ask/settlement.ts`), so one Accept tap on the operator's words
+ * would overwrite a governed record (review of #3039, B1). A `proposal` settles as preserved evidence only; the Lead
+ * turns it into governed Plan changes.
  */
 export function composePlanAsk(input: { kind: PlanAskKind; project: string; plan: string; text: string; requestId: string }): ComposedPlanAsk {
   const text = input.text.trim();
@@ -85,13 +92,13 @@ export function composePlanAsk(input: { kind: PlanAskKind; project: string; plan
     agent_ask: "v1",
     request_id: input.requestId,
     project: input.project,
-    intent: input.kind === "annotate" ? "proposal" : "plan",
+    intent: "proposal",
     target_ref: `plan/${input.plan}`,
     requested_authority: "propose",
     desired_result: text,
     rationale: input.kind === "annotate"
       ? "Annotation recorded from the Workspace Plan picker. Evidence only; it asks for no change."
-      : "Change requested from the Workspace Plan picker in the operator's words. Settlement stays the operator's."
+      : "Change requested from the Workspace Plan picker in the operator's words, for the Lead to turn into governed Plan changes. Evidence only; accepting it changes no Plan, Milestone, queue or status."
   };
   const normalized = normalizeAgentAsk({ request: JSON.stringify(ask) });
   const built = buildAgentAskEffects(normalized);

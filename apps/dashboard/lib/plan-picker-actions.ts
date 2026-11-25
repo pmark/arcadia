@@ -24,8 +24,8 @@ export const PLAN_ACTIONS: readonly PlanActionSpec[] = [
 /** The one-sentence consequence shown before the action runs. */
 export function planActionConsequence(kind: PlanActionKind, planName: string): string {
   switch (kind) {
-    case "annotate": return `Records your note on ${planName} as an Agent Ask receipt; it changes no Plan, queue or status.`;
-    case "request-change": return `Submits your words as a change request for ${planName}; nothing changes until the operator settles it, and accepting it unchanged would set the Plan's milestone to these words.`;
+    case "annotate": return `Records your note on ${planName} as an Agent Ask that waits in your pending Asks, where accepting keeps it as evidence; it changes no Plan, queue or status.`;
+    case "request-change": return `Submits your words as a change request on ${planName}; accepting it records the request for the Lead to turn into governed Plan changes and changes no Plan, Milestone, queue or status.`;
     case "queue-next":
     case "archive": return PLAN_ACTIONS.find(a => a.kind === kind)!.unavailable!;
   }

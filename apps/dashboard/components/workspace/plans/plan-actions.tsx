@@ -73,7 +73,7 @@ export function PlanActions({ project, plan, planName, initial }: { project: str
           <button type="button" className="plan-actions-button quiet" disabled={step.kind === "submitting"} onClick={() => setStep({ kind: "write", ask: step.ask, requestId: step.requestId })}>Edit</button>
         </div>
       </>}
-      {step.kind === "done" && <p className="plan-actions-receipt" role="status">Recorded as {step.result.proposalId}{step.result.replayed ? " (already recorded)" : ""}. {step.ask === "annotate" ? "It shows on the Plan page as a note." : "It waits for the operator's settlement and shows on the Plan page."}</p>}
+      {step.kind === "done" && <p className="plan-actions-receipt" role="status">Recorded as {step.result.proposalId}{step.result.replayed ? " (already recorded)" : ""}. {step.ask === "annotate" ? "It shows on the Plan page and waits in your pending Asks, where accepting keeps it as evidence." : "It shows on the Plan page and waits in your pending Asks; accepting it keeps it as evidence for the Lead and changes no Plan."}</p>}
       {error && <p className="plan-actions-error" role="alert">{error}</p>}
     </div>}
   </div>;

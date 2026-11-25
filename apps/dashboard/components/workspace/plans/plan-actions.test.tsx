@@ -35,11 +35,22 @@ describe("PlanActions", () => {
   });
 
   it("shows the composed Ask's effects and says nothing is recorded until Submit", () => {
-    const check = { mode: "check" as const, consequence: "c", ask: {}, effects: ["update plan plan/plan-g"], requiredDecisions: [] };
+    const check = { mode: "check" as const, consequence: "c", ask: {}, effects: ["update proposal plan/plan-g"], requiredDecisions: [] };
     const html = renderToStaticMarkup(<PlanActions project="arcadia" plan="plan-g" planName="Plan G" initial={{ kind: "review", ask: "request-change", requestId: "workspace-request-change-plan-g-1", check }} />);
-    expect(html).toContain("update plan plan/plan-g");
+    expect(html).toContain("update proposal plan/plan-g");
     expect(html).toContain("Nothing is recorded yet");
     expect(html).toContain(">Submit<");
+  });
+
+  it("says truthfully that an Ask waits in the operator's pending Asks and accepting it changes no Plan (review 3039 B1, N1)", () => {
+    expect(planActionConsequence("annotate", "Plan G")).toContain("waits in your pending Asks, where accepting keeps it as evidence");
+    expect(planActionConsequence("request-change", "Plan G")).toContain("changes no Plan, Milestone, queue or status");
+    expect(planActionConsequence("request-change", "Plan G")).not.toMatch(/milestone to these words/i);
+    for (const ask of ["annotate", "request-change"] as const) {
+      const result = { mode: "submit" as const, consequence: "c", proposalId: "agentask_1", requestId: `workspace-${ask}-plan-g-1`, replayed: false, effects: [] };
+      const html = renderToStaticMarkup(<PlanActions project="arcadia" plan="plan-g" planName="Plan G" initial={{ kind: "done", ask, result }} />);
+      expect(html).toContain("waits in your pending Asks");
+    }
   });
 
   it("makes request ids the route accepts", () => {
@@ -52,12 +63,16 @@ describe("PlanActions", () => {
 describe("PlanAsks", () => {
   it("lists the Plan's Asks in the order read (newest first) with their state", () => {
     asks = { project: "arcadia", plan: "plan-g", asks: [
-      { proposalId: "a2", requestId: "workspace-request-change-plan-g-2", intent: "plan", targetRef: "plan/plan-g", desiredResult: "Split it.", rationale: null, createdAt: "2026-11-24T02:00:00Z", state: "pending", disposition: null, settledAt: null },
+      { proposalId: "a3", requestId: "lead-amend-plan-g-3", intent: "plan", targetRef: "plan/plan-g", desiredResult: "Ship the split.", rationale: null, createdAt: "2026-11-24T03:00:00Z", state: "pending", disposition: null, settledAt: null },
+      { proposalId: "a2", requestId: "workspace-request-change-plan-g-2", intent: "proposal", targetRef: "plan/plan-g", desiredResult: "Split it.", rationale: null, createdAt: "2026-11-24T02:00:00Z", state: "previewed", disposition: null, settledAt: null },
       { proposalId: "a1", requestId: "workspace-annotate-plan-g-1", intent: "proposal", targetRef: "plan/plan-g", desiredResult: "A note.", rationale: null, createdAt: "2026-11-24T01:00:00Z", state: "settled", disposition: "accepted", settledAt: "2026-11-24T03:00:00Z" }
     ] };
     const html = renderToStaticMarkup(<PlanAsks project="arcadia" plan="plan-g" revision={0} />);
+    expect(html.indexOf("Ship the split.")).toBeLessThan(html.indexOf("Split it."));
     expect(html.indexOf("Split it.")).toBeLessThan(html.indexOf("A note."));
     expect(html).toContain("Pending");
+    // A picker Ask is not inert: it waits in the operator's pending Asks until accepted or rejected (review 3039 N1).
+    expect(html).toContain("Previewed · in your pending Asks, evidence only");
     expect(html).toContain("Settled · accepted");
     expect(html).toContain("Change request");
     expect(html).toContain("Annotation");
