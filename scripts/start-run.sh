@@ -891,6 +891,10 @@ phase_p1() {
   check_project_checkout ""
   if [[ "$PROJECT_REPOSITORY" != null ]]; then
     rec projectRepository "$PROJECT_REPOSITORY"
+    # G4: Arcadia's own Project (its PROJECT.md at the reviewed revision), whose relay coordinators coordinate every Project.
+    COORDINATOR_PROJECT="$(git_repo show "$PIN:PROJECT.md" | frontmatter_json | jq -er '.slug | select(type == "string" and length > 0)')" \
+      || refuse "Arcadia's PROJECT.md slug could not be read at $PIN"
+    rec_str coordinatorProject "$COORDINATOR_PROJECT"
     # The in-card sign-in sequence (P4) records its Decision 0161 diagnostic in this checkout, so it runs under the Project this
     # checkout holds (PROJECT.md at the pin), never the second Project: settlement would route that Ask into the other repository.
     SIGN_IN_PROJECT="$(git_repo show "$PIN:PROJECT.md" | frontmatter_json | jq -r '.slug // ""')" || refuse "PROJECT.md frontmatter could not be read at $PIN"
@@ -944,7 +948,8 @@ phase_p1() {
 # (stand-down recorded, its own `arcadia-coord-<role>-g<N>`, until the host liveness timer stops it: #3029 fix A), none while a
 # handoff is in flight, AND (2) is running the very process that row was launched as: a descendant of that pane's PID whose
 # arguments carry `--session-id <the row's native_session_id>`. A row whose pane died, or a different process started under
-# the same name, is a competing Session.
+# the same name, is a competing Session. G4: a second Project's card (startRun.projectRepository) also tolerates, by the same
+# rules, Arcadia's own registered relay coordinators (Rowan, Signal coordinate every Project); an Arcadia card reads only its own.
 #
 # Reading tmux fails closed: only tmux's own "no server" answers mean "no sessions". A denied socket, any other tmux error, a
 # mise shim failure, or a missing tmux refuses. TMUX and TMUX_TMPDIR (which choose the server socket) are stripped, as the
@@ -970,7 +975,7 @@ if(new RegExp("(^|\\s)--session-id "+uuid+"(\\s|$)").test(cmd.get(pid)??""))proc
 process.exit(1)' "$2" $panes <<<"$procs"
 }
 check_no_competing_session() {
-  local when="$1" live="" out err why rc=0 name uuid stray="" registry note="" pairs="" tolerated=""
+  local when="$1" live="" out err why rc=0 name uuid stray="" registry note="" pairs="" tolerated="" slug errfile label matched slugs=("$PROJECT") registries=()
   # stdout alone is the session list; stderr (a shim's warning, say) is kept apart for the message and never becomes a name.
   out="$(tmux_q ls -F '#{session_name}' 2> "$RUN_DIR/tmux-ls.stderr")" || rc=$?
   err="$(head -c 400 "$RUN_DIR/tmux-ls.stderr" 2>/dev/null)"
@@ -983,16 +988,29 @@ check_no_competing_session() {
     live="$out"
   fi
   if [[ -z "$live" ]]; then rec relayCoordinatorSessions '[]'; return 0; fi
-  if registry="$(arcadia coordinator relay-sessions --project "$PROJECT" --json 2> "$RUN_DIR/relay-sessions.stderr")" \
-    && jq -e '.ok == true and (.data.sessions | type == "array")' <<<"$registry" >/dev/null 2>&1; then
-    pairs="$(jq -r '.data.sessions[] | select(.allowed == true) | [.tmuxName, .nativeSessionId] | @tsv' <<<"$registry")"
-  else
-    note="; the relay registry could not be read: $(cli_failure "$RUN_DIR/relay-sessions.stderr")"
-  fi
+  # G4: a second Project's card (COORDINATOR_PROJECT set in P1) also reads Arcadia's registry, since Arcadia's relay coordinators
+  # coordinate every Project. Each registry is matched on its own, under the same identity checks; nothing else is tolerated.
+  [[ -z "$COORDINATOR_PROJECT" || "$COORDINATOR_PROJECT" == "$PROJECT" ]] || slugs+=("$COORDINATOR_PROJECT")
+  for slug in "${slugs[@]}"; do
+    errfile="$RUN_DIR/relay-sessions.stderr"; [[ "$slug" == "$PROJECT" ]] || errfile="$RUN_DIR/relay-sessions-$slug.stderr"
+    pairs=""
+    if registry="$(arcadia coordinator relay-sessions --project "$slug" --json 2> "$errfile")" \
+      && jq -e '.ok == true and (.data.sessions | type == "array")' <<<"$registry" >/dev/null 2>&1; then
+      pairs="$(jq -r '.data.sessions[] | select(.allowed == true) | [.tmuxName, .nativeSessionId] | @tsv' <<<"$registry")"
+    else
+      label=""; (( ${#slugs[@]} == 1 )) || label=" of $slug"
+      note+="; the relay registry$label could not be read: $(cli_failure "$errfile")"
+    fi
+    registries+=("$pairs")
+  done
   while IFS= read -r name; do
     [[ -n "$name" ]] || continue
-    uuid="$(awk -F'\t' -v n="$name" '$1 == n { print $2; exit }' <<<"$pairs")"
-    if [[ -n "$uuid" ]] && pane_runs_session "$name" "$uuid"; then tolerated+="$name"$'\n'; else stray+="$name "; fi
+    matched=false
+    for pairs in "${registries[@]}"; do
+      uuid="$(awk -F'\t' -v n="$name" '$1 == n { print $2; exit }' <<<"$pairs")"
+      if [[ -n "$uuid" ]] && pane_runs_session "$name" "$uuid"; then matched=true; break; fi
+    done
+    if [[ "$matched" == true ]]; then tolerated+="$name"$'\n'; else stray+="$name "; fi
   done <<<"$live"
   [[ -z "$stray" ]] || refuse "a tmux server with live sessions exists; no competing Session may run${when:+ $when} (not a registered relay coordinator running its recorded session: ${stray% }${note})"
   rec relayCoordinatorSessions "$(jq -Rn '[inputs | select(length > 0)]' <<<"$tolerated")"
@@ -1479,6 +1497,7 @@ run_phases() {
   SIGN_IN_PROJECT="$PROJECT"  # a second Project's card replaces it in P1 with the Project of this checkout
   if [[ "$PROJECT_REPOSITORY" == null ]]; then PLAN_REPO="$ARCADIA_REPO"; PLAN_PIN="$PIN"
   else PLAN_REPO="$(jq -r '.path // ""' <<<"$PROJECT_REPOSITORY")"; PLAN_PIN="$(jq -r '.reviewedRevision // ""' <<<"$PROJECT_REPOSITORY")"; fi
+  COORDINATOR_PROJECT=""  # G4: set in P1 for a second Project's card only
   export START_RUN_POLICY_REVISION="$PROD_REVISION"
   rec_str id "$ID"; rec_str project "$PROJECT"; rec_str plan "$PLAN"; rec_str provider "$PROVIDER"
   rec actionIds "$ACTION_IDS_JSON"; rec_str transitions "$TRANSITIONS"
