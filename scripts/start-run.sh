@@ -45,6 +45,9 @@ HEARTBEAT_POLL_SECONDS=2
 # `start-run sign-in` reads the heartbeat once, after its own CLI start-up, against the same 15 s window; the card starts it
 # on a beat at most this old so that start-up has the rest of the window.
 HEARTBEAT_SIGN_IN_LEAD_MS=8000
+# The wait for that lead runs after the sign-in guards, so it is bounded by about one normal tick: the guards are then never more
+# than one tick older than the claim. The slow tick itself is waited out, up to HEARTBEAT_WAIT_SECONDS, before the guards.
+HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS=16
 ACTIVATION_RUNNER_TIMEOUT_SECONDS=300
 PRESS_RECORD_MAX_AGE_MS=120000
 WORKER_INSTALL_TIMEOUT_SECONDS=180
@@ -375,15 +378,17 @@ const own=JSON.parse(fs.readFileSync(p.join(ws,".arcadia/worker.pid")));
 process.stdout.write(JSON.stringify({heartbeatAt:h.at,ageMs:Date.now()-h.at,binding:h.binding,workerPid:own.pid,ownerSha256:c.createHash("sha256").update(String(own.owner)).digest("hex")}));
 ' "$WORKSPACE"
 }
-# Issue #3030: wait, within HEARTBEAT_WAIT_SECONDS, for a live heartbeat that passes the binding test $1 (a function that reads
-# HB) and is younger than $2 ms when read. Every poll is one whole read_worker_binding, so each field is re-read together; the
-# freshness window is never widened. A readable beat that fails the binding test returns at once: a changed worker never
-# changes back, so only an unreadable or stale beat is waited on. Sets HB (the last read), HB_POLLS and HB_OUTCOME (fresh,
-# unreadable, stale or mismatch); returns 0 only for fresh. Read-only.
+# Issue #3030: wait, within $3 seconds (HEARTBEAT_WAIT_SECONDS by default), for a live heartbeat that passes the binding test $1
+# (a function that reads HB) and is younger than $2 ms when read. Every poll is one whole read_worker_binding, so each field is
+# re-read together; the freshness window is never widened. A readable beat that fails the binding test returns at once: a
+# changed worker never changes back, so only an unreadable or stale beat is waited on. Sets HB (the last read), HB_POLLS,
+# HB_BUDGET and HB_OUTCOME (fresh, unreadable, stale or mismatch); returns 0 only for fresh. Read-only. A caller whose wait
+# polled more than once (HB_POLLS > 1) re-runs every check it made before the wait that must be fresh at the step it guards.
 await_fresh_heartbeat() {
   local matches="$1" max_age_ms="$2" deadline limit
-  deadline=$(( $(date +%s) + HEARTBEAT_WAIT_SECONDS ))
-  limit=$(( HEARTBEAT_WAIT_SECONDS / HEARTBEAT_POLL_SECONDS + 1 ))
+  HB_BUDGET="${3:-$HEARTBEAT_WAIT_SECONDS}"
+  deadline=$(( $(date +%s) + HB_BUDGET ))
+  limit=$(( HB_BUDGET / HEARTBEAT_POLL_SECONDS + 1 ))
   HB=""; HB_POLLS=0; HB_OUTCOME=unreadable
   while (( HB_POLLS < limit )); do
     HB_POLLS=$(( HB_POLLS + 1 ))
@@ -405,8 +410,8 @@ heartbeat_wait_result() {
 }
 heartbeat_wait_reason() {  # $1: the freshness bound in ms
   case "$HB_OUTCOME" in
-    unreadable) echo "the heartbeat could not be read within ${HEARTBEAT_WAIT_SECONDS} s" ;;
-    *) echo "no beat younger than $1 ms within ${HEARTBEAT_WAIT_SECONDS} s" ;;
+    unreadable) echo "the heartbeat could not be read within ${HB_BUDGET} s" ;;
+    *) echo "no beat younger than $1 ms within ${HB_BUDGET} s" ;;
   esac
 }
 # Decision 0161: the pre-restart worker's launchd PID is unchanged and its pidfile is that PID or that PID's direct child.
@@ -1116,19 +1121,29 @@ phase_p4_sign_in() {
   local out decision changed bound
   phase P4 sign_in
   BOUND_HANDLER="$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
-  # Decision 0143's Off / zero-admission / no-Session guards, fresh, before the day can be claimed.
+  # Issue #3030: wait out a slow tick first, for a beat of the bound worker inside the 15 s window, so that the guards below run
+  # next to a beat and not up to HEARTBEAT_WAIT_SECONDS before the day is claimed. Nothing of the sequence has been invoked yet.
+  bound="$(cat "$RUN_DIR/worker-binding.json")"
+  if ! await_fresh_heartbeat bound_worker_matches "$HEARTBEAT_FRESH_MS"; then
+    heartbeat_wait_result signInHeartbeatWait
+    [[ "$HB_OUTCOME" != mismatch ]] || refuse "the worker changed after the restart; the sign-in sequence was not invoked"
+    refuse "the bound worker's heartbeat: $(heartbeat_wait_reason "$HEARTBEAT_FRESH_MS"); the sign-in sequence was not invoked"
+  fi
+  heartbeat_wait_result signInHeartbeatWait
+  # Decision 0143's Off / zero-admission / no-Session guards, fresh, before the day can be claimed: after the slow-tick wait, since
+  # `start-run sign-in` re-checks none of them.
   check_production_off
   check_no_competing_session "before the sign-in sequence"
   check_capacity
-  # Issue #3030: the sequence reads the heartbeat once, after its CLI start-up, against the 15 s window; start it on a beat of the
-  # bound worker at most HEARTBEAT_SIGN_IN_LEAD_MS old. Nothing of the sequence has been invoked yet.
-  bound="$(cat "$RUN_DIR/worker-binding.json")"
-  if ! await_fresh_heartbeat bound_worker_matches "$HEARTBEAT_SIGN_IN_LEAD_MS"; then
-    heartbeat_wait_result signInHeartbeatWait
-    [[ "$HB_OUTCOME" != mismatch ]] || refuse "the worker changed after the restart; the sign-in sequence was not invoked"
-    refuse "the bound worker's heartbeat: $(heartbeat_wait_reason "$HEARTBEAT_SIGN_IN_LEAD_MS"); the sign-in sequence was not invoked"
+  # The sequence reads the heartbeat once, after its CLI start-up, against the 15 s window; start it on a beat of the bound worker
+  # at most HEARTBEAT_SIGN_IN_LEAD_MS old. This wait is bounded by about one normal tick (HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS),
+  # so the guards above are never more than one tick older than the claim.
+  if ! await_fresh_heartbeat bound_worker_matches "$HEARTBEAT_SIGN_IN_LEAD_MS" "$HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS"; then
+    heartbeat_wait_result signInLeadHeartbeatWait
+    [[ "$HB_OUTCOME" != mismatch ]] || refuse "the worker changed after the sign-in guards; the sign-in sequence was not invoked"
+    refuse "the bound worker's heartbeat after the sign-in guards: $(heartbeat_wait_reason "$HEARTBEAT_SIGN_IN_LEAD_MS"); the sign-in sequence was not invoked"
   fi
-  heartbeat_wait_result signInHeartbeatWait
+  heartbeat_wait_result signInLeadHeartbeatWait
   SIGN_IN_ATTEMPTED=true
   mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims this press's own sequence record before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes this press's sequence, with no retry"
   checkpoint
@@ -1194,8 +1209,23 @@ check_packet_approval_window() {
   node -e 'const left = Date.parse(process.argv[1]) - Date.now(), full = Number(process.argv[2]) * 3600e3; process.exit(left > full - 300e3 && left <= full ? 0 : 1)' "$1" "$PACKET_APPROVAL_HOURS" \
     || refuse "the packet-approval expiry $1 is no longer within five minutes of $PACKET_APPROVAL_HOURS hours from now"
 }
+# REF:L346-L357, L360: `production activate` recomputes its scope and has no expected-fingerprint option, and binds neither the
+# queue nor main, so immediately before activating: main unmoved and clean, the packet window, a second preview with the
+# identical fingerprint, revision and all-ready Actions, and the unmoved queue. Reads phase_p6's head_now, expires, fingerprint
+# and first_queue_revision; $1 is the file the preview is kept in. Read-only.
+p6_activation_recheck() {
+  local recheck
+  [[ "$(git_repo rev-parse HEAD)" == "$head_now" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main moved or became dirty between the preconditions and activation"
+  check_packet_approval_window "$expires"
+  recheck="$(arcadia production preview "${ARGS[@]}" --json)" || refuse "the production preview recheck failed"
+  printf '%s\n' "$recheck" > "$RUN_DIR/$1"
+  jq -e --arg f "$fingerprint" --argjson rev "$PROD_REVISION" --argjson n "$N" '.ok == true and .data.preview.scopeFingerprint == $f and .data.preview.expectedRevision == $rev and ([.data.preview.orderedActions[]? | .state] == [range($n) | "ready"])' <<<"$recheck" >/dev/null \
+    || refuse "the scope fingerprint or policy revision changed between preview and activation"
+  check_queue after
+  [[ "$QUEUE_REVISION_OBSERVED" == "$first_queue_revision" ]] || refuse "queue moved after preview; no activation"  # REF:L360
+}
 phase_p6() {
-  local expires args_ok preview recheck fingerprint head_now bound activation action_list first_queue_revision
+  local expires args_ok preview fingerprint head_now bound activation action_list first_queue_revision start_polls
   phase P6 start
   head_now="$(git_repo rev-parse HEAD)"
   git_repo merge-base --is-ancestor "$PIN" "$head_now" || refuse "main does not descend from the reviewed revision"
@@ -1215,6 +1245,7 @@ phase_p6() {
     refuse "the worker heartbeat stayed stale after the restart: $(heartbeat_wait_reason "$HEARTBEAT_FRESH_MS"); no activation"
   fi
   heartbeat_wait_result startHeartbeatWait
+  start_polls="$HB_POLLS"
   # REF:L291-L299
   expires="$(node -e 'process.stdout.write(new Date(Date.now() + Number(process.argv[1]) * 3600e3).toISOString())' "$PACKET_APPROVAL_HOURS")"
   ARGS=(--project "$PROJECT" --plan "$PROJECT/$PLAN")
@@ -1261,17 +1292,8 @@ process.stdout.write(require("crypto").createHash("sha256").update(canonical).di
   fingerprint="$(jq -r '.data.preview.scopeFingerprint' <<<"$preview")"
   rec_str scopeFingerprint "$fingerprint"
   rec_str packetApprovalExpiresAt "$expires"
-  # REF:L346-L357: `production activate` recomputes its scope and has no expected-fingerprint option, so preview again immediately
-  # before activating and require the identical fingerprint and revision.
   phase P6 start_recheck
-  [[ "$(git_repo rev-parse HEAD)" == "$head_now" && -z "$(git_repo status --porcelain=v1 --untracked-files=all)" ]] || refuse "main moved or became dirty between the preconditions and activation"
-  check_packet_approval_window "$expires"
-  recheck="$(arcadia production preview "${ARGS[@]}" --json)" || refuse "the production preview recheck failed"
-  printf '%s\n' "$recheck" > "$RUN_DIR/preview-recheck.json"
-  jq -e --arg f "$fingerprint" --argjson rev "$PROD_REVISION" --argjson n "$N" '.ok == true and .data.preview.scopeFingerprint == $f and .data.preview.expectedRevision == $rev and ([.data.preview.orderedActions[]? | .state] == [range($n) | "ready"])' <<<"$recheck" >/dev/null \
-    || refuse "the scope fingerprint or policy revision changed between preview and activation"
-  check_queue after
-  [[ "$QUEUE_REVISION_OBSERVED" == "$first_queue_revision" ]] || refuse "queue moved after preview; no activation"  # REF:L360
+  p6_activation_recheck preview-recheck.json
   if ! await_fresh_heartbeat bound_worker_matches "$HEARTBEAT_FRESH_MS"; then  # Issue #3030: wait out a slow tick
     heartbeat_wait_result activationHeartbeatWait
     [[ "$HB_OUTCOME" != mismatch ]] || refuse "worker changed after preview; no activation"
@@ -1279,6 +1301,18 @@ process.stdout.write(require("crypto").createHash("sha256").update(canonical).di
     refuse "the worker heartbeat stayed stale after the preview: $(heartbeat_wait_reason "$HEARTBEAT_FRESH_MS"); no activation"
   fi
   heartbeat_wait_result activationHeartbeatWait
+  # Issue #3030: a wait that polled more than once may have taken up to HEARTBEAT_WAIT_SECONDS, so nothing checked before it is
+  # left that old at the activation: the whole recheck again after the activation wait, and after either P6 wait the sign-in and
+  # credential-expiry gate (five minutes left), Off with zero live admissions, and capacity. One poll each changes nothing.
+  if (( HB_POLLS > 1 )); then
+    phase P6 start_recheck_after_wait
+    p6_activation_recheck preview-recheck-after-wait.json
+  fi
+  if (( start_polls > 1 || HB_POLLS > 1 )); then
+    check_signin_receipt
+    check_production_off
+    check_capacity
+  fi
   check_packet_approval_window "$expires"  # again, since the wait above may have taken up to HEARTBEAT_WAIT_SECONDS
   check_expiry "START card expired during preflight; no activation"
   check_day_window "the day ended before activation; no activation"
@@ -1342,7 +1376,8 @@ main() {
   # check-operator-scripts fails if the marker exists in a real library, so a real run can never take this branch.
   if [[ -f "$LIBRARY_DIR/.start-run-test-fixture" ]]; then
     local fixture_wait; fixture_wait="$(<"$LIBRARY_DIR/.start-run-test-fixture")"
-    if [[ "$fixture_wait" =~ ^[0-9]+$ ]]; then WORKER_WAIT_SECONDS="$fixture_wait"; TRANSPORT_WAIT_SECONDS="$fixture_wait"; HEARTBEAT_WAIT_SECONDS="$fixture_wait"; fi
+    if [[ "$fixture_wait" =~ ^[0-9]+$ ]]; then WORKER_WAIT_SECONDS="$fixture_wait"; TRANSPORT_WAIT_SECONDS="$fixture_wait"; HEARTBEAT_WAIT_SECONDS="$fixture_wait"
+      (( fixture_wait >= HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS )) || HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS="$fixture_wait"; fi
   fi
   mkdir -p "$RUN_DIR"
   # The phases run as a background stage whose output goes through a FIFO into tee -a run.log (no process substitution, so it also

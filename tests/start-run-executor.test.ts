@@ -89,6 +89,14 @@ const DECISIONS = ["0130", "0058", "0097", "0134", "0156", "0157", "0141", "0143
 const DECISION_ANSWERS: Record<string, string> = { "0173": '"A. Daily grant: START and routine run operations"', "0181": "A. Continued serial runs" };
 
 type Scenario = "same" | "behind" | "pin-unfetched" | "origin-moved" | "diverged" | "ahead";
+/** Issue #3030: what changes on the host at the first sleep of one wait (tests/fixtures/start-run/fake-sleep.mjs). */
+interface SlowTickDuring {
+  stage: "sign-in" | "start" | "activation";
+  liveAdmissions?: number;
+  queueRevision?: number;
+  tmuxSession?: string;
+  clockJumpMs?: number;
+}
 interface BoxOptions {
   scenario?: Scenario;
   planStatus?: "active" | "draft";
@@ -129,7 +137,7 @@ interface BoxOptions {
   preWorker?: "stale" | "pid-mismatch" | "source-child";
   /** Issue #3030: a worker that beats once per slow tick. From `from` on, each executor step finds its last beat 40 s old;
    * a wait (the fake `sleep`) lets the next beat land only if it `recovers`. */
-  slowTick?: { from: "start" | "restart" | "sign-in"; recovers: boolean };
+  slowTick?: { from: "start" | "restart" | "sign-in"; recovers: boolean; during?: SlowTickDuring };
   /** Earlier finished sequences of other cards recorded today in the ledger (Decision 0162: never a reason to refuse). */
   dayUsed?: boolean;
   plist?: boolean;
@@ -365,7 +373,7 @@ case "$4" in 3333) echo " 1111" ;; *) echo " 1" ;; esac`);
   shim("tmux", options.tmuxError ? tmuxFailure[options.tmuxError]
     : `if [ -n "$TMUX" ] || [ -n "$TMUX_TMPDIR" ]; then echo "TMUX leaked into the query" >&2; exit 1; fi
 case "$1" in
-  ls) ${options.tmuxWarning ? 'echo "mise WARN a shim notice" >&2; ' : ""}${liveNames.length > 0 ? `printf '%s\\n' ${liveNames.map((name) => `'${name}'`).join(" ")}` : 'echo "no server running on /private/tmp/tmux-501/default" >&2; exit 1'} ;;
+  ls) if [ -f "$FAKE_ROOT/tmux-live" ]; then cat "$FAKE_ROOT/tmux-live"; exit 0; fi; ${options.tmuxWarning ? 'echo "mise WARN a shim notice" >&2; ' : ""}${liveNames.length > 0 ? `printf '%s\\n' ${liveNames.map((name) => `'${name}'`).join(" ")}` : 'echo "no server running on /private/tmp/tmux-501/default" >&2; exit 1'} ;;
   list-panes) if [ "$2" != "-s" ] || [ "$3 $4" != "-t =${liveNames[0] ?? "none"}:" ]; then echo "list-panes must use -s -t =name:" >&2; exit 1; fi; ${Array.from({ length: options.relayPanes ?? 1 }, (_, index) => `echo ${4242 + index}`).join("; ")} ;;
 esac`);
   writeFileSync(path.join(bin, "fake-arcadia.mjs"), readFileSync(path.join(fixtures, "fake-arcadia.mjs")));
@@ -419,7 +427,7 @@ esac`);
     const base: NodeJS.ProcessEnv = {
       ...process.env, ...GIT_ENV, PATH: `${bin}:${process.env.PATH}`, HOME: home, FAKE_ROOT: root, FAKE_BIN: bin, FAKE_ARCADIA_ROOT: repoRoot,
       ...(options.delegation === "before-decision" ? clockEnv(BEFORE_DECISION_NOW) : {}),
-      ...(options.clockJump ? {
+      ...(options.clockJump || options.slowTick?.during?.clockJumpMs !== undefined ? {
         START_RUN_CLOCK_OFFSET_FILE: path.join(root, "clock-offset"),
         NODE_OPTIONS: [process.env.NODE_OPTIONS, `--import=${pathToFileURL(path.join(fixtures, "fake-clock-offset.mjs")).href}`].filter(Boolean).join(" ")
       } : {}),
@@ -1502,6 +1510,7 @@ describe("start-run executor: a slow-tick worker heartbeat (#3030)", () => {
   // stale by chance. Every read waits, within a bound, for a beat that is fresh AND bound; the window itself is unchanged.
   // The fixture's bound is 4 s at a 2 s poll (.start-run-test-fixture): at most 3 live reads.
   const BOUND_POLLS = 3;
+  const previewCalls = (b: Box) => b.calls().filter((call) => call.tool === "arcadia" && call.args.slice(0, 2).join(" ") === "production preview").length;
 
   it("P2 waits for the next beat of a slow-tick worker instead of refusing on one stale read", () => {
     const b = box({ slowTick: { from: "start", recovers: true } });
@@ -1520,9 +1529,30 @@ describe("start-run executor: a slow-tick worker heartbeat (#3030)", () => {
     expect(result.status, result.stderr + result.stdout).toBe(0);
     expect(result.receipt).toMatchObject({ outcome: "succeeded", phase: "P6", allowanceConsumed: true, productionActivated: true });
     expect(result.receipt!.record).toMatchObject({
-      signInHeartbeatWait: { outcome: "fresh", polls: 2 }, startHeartbeatWait: { outcome: "fresh", polls: 2 }, activationHeartbeatWait: { outcome: "fresh", polls: 2 }
+      signInHeartbeatWait: { outcome: "fresh", polls: 2 }, signInLeadHeartbeatWait: { outcome: "fresh", polls: 2 },
+      startHeartbeatWait: { outcome: "fresh", polls: 2 }, activationHeartbeatWait: { outcome: "fresh", polls: 2 }
     });
     expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in", "production activate"]);
+    // The activation wait polled twice, so the whole recheck ran again after it (a third preview) before the activation.
+    expect(previewCalls(b)).toBe(3);
+    expect(existsSync(path.join(result.dir!, "preview-recheck-after-wait.json"))).toBe(true);
+  }, 120_000);
+
+  it("a beat on the first read at every site keeps the single-poll path: two previews, no second recheck", () => {
+    const b = box();
+    const result = b.run();
+    expect(result.status, result.stderr + result.stdout).toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "succeeded", phase: "P6", productionActivated: true });
+    expect(result.receipt!.record).toMatchObject({
+      signInHeartbeatWait: { outcome: "fresh", polls: 1 }, signInLeadHeartbeatWait: { outcome: "fresh", polls: 1 },
+      startHeartbeatWait: { outcome: "fresh", polls: 1 }, activationHeartbeatWait: { outcome: "fresh", polls: 1 }
+    });
+    expect(previewCalls(b)).toBe(2);
+    expect(existsSync(path.join(result.dir!, "preview-recheck-after-wait.json"))).toBe(false);
+    // After the sign-in, P6 reads production status, capacity and the queue as before: once each before the previews, the queue again in the recheck.
+    const afterSignIn = b.calls().slice(b.calls().findIndex((call) => call.args.slice(0, 2).join(" ") === "start-run sign-in" && !call.args.includes("--check-only")) + 1);
+    const count = (key: string) => afterSignIn.filter((call) => call.args.slice(0, 2).join(" ") === key).length;
+    expect([count("production capacity"), count("advance queue")]).toEqual([1, 2]);
   }, 120_000);
 
   it("a pidfile that is not the launchd PID still refuses at once, without waiting", () => {
@@ -1546,7 +1576,7 @@ describe("start-run executor: a slow-tick worker heartbeat (#3030)", () => {
     const result = b.run();
     expect(result.status).not.toBe(0);
     expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true, productionActivated: false });
-    expect(result.receipt!.reason).toMatch(/the bound worker.s heartbeat: no beat younger than 8000 ms within 4 s; the sign-in sequence was not invoked/);
+    expect(result.receipt!.reason).toMatch(/the bound worker.s heartbeat: no beat younger than 15000 ms within 4 s; the sign-in sequence was not invoked/);
     expect(result.receipt!.record.signInHeartbeatWait).toEqual({ outcome: "stale", polls: BOUND_POLLS });
     expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
   }, 120_000);
@@ -1559,5 +1589,39 @@ describe("start-run executor: a slow-tick worker heartbeat (#3030)", () => {
     expect(result.receipt!.reason).toMatch(/the worker heartbeat stayed stale after the restart: no beat younger than 15000 ms within 4 s; no activation/);
     expect(result.receipt!.record.startHeartbeatWait).toEqual({ outcome: "stale", polls: BOUND_POLLS });
     expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in"]);
+  }, 120_000);
+
+  // Review B2 of PR #3036: the Off / zero-admission / no-Session guards run after the slow-tick wait, next to the claim.
+  it.each<[string, SlowTickDuring, RegExp]>([
+    ["a production admission", { stage: "sign-in", liveAdmissions: 1 }, /production must be Inactive at policy revision 83 \/ epoch 46 with zero live admissions/],
+    ["a tmux Session", { stage: "sign-in", tmuxSession: "stray-builder" }, /no competing Session may run before the sign-in sequence .*stray-builder/]
+  ])("%s appearing during the P4 slow-tick wait refuses before the sign-in claims the day", (_label, during, reason) => {
+    const b = box({ slowTick: { from: "restart", recovers: true, during } });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P4", allowanceConsumed: true, productionActivated: false });
+    expect(result.receipt!.reason).toMatch(reason);
+    expect(result.receipt!.record.signInHeartbeatWait).toEqual({ outcome: "fresh", polls: 2 });
+    expect(b.calls().some((call) => call.tool === "sleep-during" && call.args[0] === "sign-in")).toBe(true);
+    // No sequence claimed and no credential refresh: the sign-in was never invoked.
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install"]);
+    expect(existsSync(path.join(b.workspace, ".arcadia", "claude-renewal-days"))).toBe(false);
+  }, 120_000);
+
+  // Review B1 of PR #3036: after an activation wait that polled more than once, nothing checked before it is that old at the activation.
+  it.each<[string, SlowTickDuring, Record<string, unknown> | undefined, RegExp]>([
+    ["the queue moves", { stage: "activation", queueRevision: 291 }, undefined, /queue revision changed from the reviewed 290 to 291|queue moved after preview; no activation/],
+    ["the credential window shrinks below five minutes", { stage: "activation", clockJumpMs: 120_000 }, { expiresInMs: 6 * 60_000 }, /credential expiry: the sign-in has expired or expires within 5 minutes/],
+    ["a production admission appears", { stage: "activation", liveAdmissions: 1 }, undefined, /production must be Inactive at policy revision 83 \/ epoch 46 with zero live admissions/]
+  ])("%s during the P6 activation wait refuses with no activation", (_label, during, signin, reason) => {
+    const b = box({ slowTick: { from: "sign-in", recovers: true, during }, ...(signin ? { state: (s: Record<string, any>) => { s.signin = signin; } } : {}) });
+    const result = b.run();
+    expect(result.status).not.toBe(0);
+    expect(result.receipt).toMatchObject({ outcome: "refused", phase: "P6", allowanceConsumed: true, productionActivated: false, offCleanup: "not_attempted" });
+    expect(result.receipt!.reason).toMatch(reason);
+    expect(result.receipt!.record.activationHeartbeatWait).toEqual({ outcome: "fresh", polls: 2 });
+    expect(b.calls().some((call) => call.tool === "sleep-during" && call.args[0] === "activation")).toBe(true);
+    expect(b.sequence()).toEqual(["go-broker ensure", "worker-install", "start-run sign-in"]);
+    expect(b.readState().production.desiredState).toBe("inactive");
   }, 120_000);
 });
