@@ -111,11 +111,11 @@ actions:
     references: []
   - id: pin-budget-exhausted-wording
     title: Pin the message and remedy recorded for a Session stopped at its input-token ceiling, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin the message and remedy recorded for a Session stopped at its input-token ceiling, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-budget-exhausted-wording-c0e6a5a6bd36; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-budget-exhausted-wording
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-budget-exhausted-wording
+current_action: pin-coordinator-note-pr-parse
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
