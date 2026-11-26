@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Track 4 standby test pins 20261126
 active_plan: track-4-standby-test-pins-20261126
 updated: 2026-11-26
-current_action: pin-pr-decision-id-clashes
+current_action: pin-authority-path-normalization
 ---
 
 # Arcadia
