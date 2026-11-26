@@ -13,6 +13,7 @@ import { buildAgentQueue } from "../dispatch/queue.js";
 import { admitStartScope, resolveAcceptedReadiness, type AcceptedReadinessResolution, type StartScopeAdmission } from "../docs/dispatch.js";
 import { START_RUN_EXECUTOR_PATH, StartRunPinsError, validateStartRunPins, type StartRunPins } from "../operatorActions/startRunPins.js";
 import { inspectDelegationChain, type StartRunDelegation } from "../operatorActions/startRunDelegation.js";
+import { dispatchAdmitsResponsibility, passedOverByDispatch } from "../operatorActions/startRunDerive.js";
 import { ATTEMPT_COUNT_EARLIEST, CONTINUE_ANSWER, DAY_GRANT_EXECUTOR_PATH, STANDING_GRANT_DECISION, STANDING_GRANT_EXECUTOR_PATH, assertStandingDecision, findContinueDecision, inspectDayGrantChain, standingGrantStatus, validateDayGrantPins, validateDayGrantPrevious, validateStandingGrantPins, type StandingGrantPins, type StandingGrantStatus,type DayEvidence, type DayGrantClearance, type DayGrantDelegation, type DayGrantPins, type DayGrantPrevious } from "../operatorActions/startRunDayGrant.js";
 import { controllerIdentityDefaults } from "../git/askIsolation.js";
 import { runClaudeCliHeadless } from "../production/capacityPreAdmission.js";
@@ -138,6 +139,7 @@ export function frontmatter(content: string, label: string): Record<string, unkn
 interface StartRunPlanAction {
   id?: string;
   status?: string;
+  responsibility?: unknown;
   next_action?: string;
   acceptance_criteria?: unknown[];
 }
@@ -151,6 +153,10 @@ export function startRunCriteriaFindings(action: StartRunPlanAction): { errors: 
     const invisible = value.match(/[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/gu) ?? [];
     const codes = [...new Set(invisible)].map((char) => `U+${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
     if (codes.length) errors.push(`${label} contains invisible characters (${codes.join(", ")}); spell out the escape.`);
+    // #2847: the production-run playbook fails a card on any visible character outside printable ASCII, so it is refused here.
+    const visible = [...new Set([...value].filter((char) => !/[\t\n\r\x20-\x7e]/.test(char) && !(invisible as string[]).includes(char)))];
+    const visibleCodes = visible.map((char) => `U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`);
+    if (visibleCodes.length) errors.push(`${label} contains non-ASCII characters (${visibleCodes.join(", ")}); the production-run playbook fails such a card, so spell it in ASCII.`);
   };
   checkText("next_action", action.next_action);
   const textCriteria = criteria.filter((criterion): criterion is string => typeof criterion === "string");
@@ -231,6 +237,8 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
     const found = planActions.find((entry) => entry.id === action);
     if (!found) throw validationError(`Action ${action} is not in Plan ${plan} at origin main.`);
     if (found.status === "done") throw validationError(`Action ${action} is already done; a START card pins only open Actions.`);
+    if (found.status === "deferred") throw validationError(`NOT_ADMITTED: Action ${action} is deferred; dispatch never admits it, so a START card never pins it.`);
+    if (!dispatchAdmitsResponsibility(found.responsibility)) throw validationError(`NOT_ADMITTED: Action ${action} has responsibility ${String(found.responsibility ?? "(none)")}; dispatch admits only agent or autonomous work, so a START card never pins it.`);
     const { errors, warnings } = startRunCriteriaFindings(found);
     criteriaErrors.push(...errors.map((finding) => `${action}: ${finding}`));
     criteriaWarnings.push(...warnings.map((finding) => `${action}: ${finding}`));
@@ -272,7 +280,12 @@ export function buildStartRunPins(options: StartRunPinsOptions, deps: StartRunPi
   if (production.desiredState !== "inactive" || production.liveAdmissions !== 0) throw validationError("Production must be Inactive with zero live admissions to prepare a START card.");
   const queue = deps.queue(production.workspacePath);
   if (!queue.orderValid || queue.unpositionedCount !== 0) throw validationError("The Action queue is invalid or has unpositioned Actions.");
-  const queueTop = queue.ordered.slice(0, actions.length).map((entry) => entry.orderKey ?? "");
+  // The stored top N, passing over the entries dispatch never runs, as the deriver's walk does (#2865, #2901).
+  const passedOver = (key: string): boolean => {
+    const entry = key.startsWith(`${project}/`) ? planActions.find((candidate) => candidate.id === key.slice(project.length + 1)) : undefined;
+    return !!entry && passedOverByDispatch({ status: String(entry.status ?? ""), responsibility: typeof entry.responsibility === "string" ? entry.responsibility : "" });
+  };
+  const queueTop = queue.ordered.map((entry) => entry.orderKey ?? "").filter((key) => !passedOver(key)).slice(0, actions.length);
   if (planStatus === "active" && queueTop.join("\n") !== actions.map((a) => `${project}/${a}`).join("\n")) {
     throw validationError(`The top ${actions.length} queue entries are not the pinned Actions in order: ${queueTop.join(", ") || "(empty)"}.`);
   }

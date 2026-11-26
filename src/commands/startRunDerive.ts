@@ -98,7 +98,7 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
 
   const planFile = frontmatter(text(show(`docs/plans/${grant.plan}.md`)), `Plan ${grant.plan}`);
   const project = String(planFile.project ?? "");
-  const planActions = (Array.isArray(planFile.actions) ? planFile.actions : []) as Array<{ id?: string; status?: string; depends_on?: unknown; next_action?: string; acceptance_criteria?: unknown[]; decisions?: unknown; references?: unknown }>;
+  const planActions = (Array.isArray(planFile.actions) ? planFile.actions : []) as Array<{ id?: string; status?: string; responsibility?: unknown; depends_on?: unknown; next_action?: string; acceptance_criteria?: unknown[]; decisions?: unknown; references?: unknown }>;
   const strings = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : []);
   const answeredDecisions = answeredDecisionIds(planActions.flatMap((action) => strings(action.decisions)), decisionFiles, (file) => text(show(file)));
   const production = deps.production(options.workspace);
@@ -138,7 +138,8 @@ export function runStartRunDeriveCommand(options: StartRunDeriveOptions, deps: S
       isProjectActivePlan: frontmatter(text(show("PROJECT.md")), "PROJECT.md").active_plan === grant.plan,
       actions: planActions.filter((action): action is { id: string } & typeof action => typeof action.id === "string").map((action) => ({
         id: action.id, status: String(action.status ?? ""), dependsOn: Array.isArray(action.depends_on) ? action.depends_on.map(String) : [],
-        criteriaErrors: startRunCriteriaFindings(action).errors, decisions: strings(action.decisions), references: strings(action.references)
+        criteriaErrors: startRunCriteriaFindings(action).errors, decisions: strings(action.decisions), references: strings(action.references),
+        responsibility: typeof action.responsibility === "string" ? action.responsibility : ""
       }))
     },
     answeredDecisions,

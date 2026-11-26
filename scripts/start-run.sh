@@ -359,7 +359,9 @@ check_queue() {  # REF:L286-L289, L359-L360. $1 = "before" or "after" the option
     else
       (( QUEUE_REVISION_OBSERVED == QUEUE_REVISION )) || refuse "queue revision changed from the reviewed $QUEUE_REVISION to $QUEUE_REVISION_OBSERVED"
     fi
-    jq -e --argjson actions "$SCOPED_ACTIONS_JSON" --argjson n "$N" '[.data.ordered[0:$n][] | .orderKey] == $actions' <<<"$queue" >/dev/null || refuse "the exact contiguous pinned Actions are not at the top of the queue in the pinned order"
+    # The top N passes over entries dispatch never runs (deferred, done, not coding-agent work), as `start-run pins` and the
+    # deriver do (#2865, #2901); every other entry above a pinned Action still refuses.
+    jq -e --argjson actions "$SCOPED_ACTIONS_JSON" --argjson n "$N" '[.data.ordered[] | select(.status != "deferred" and .status != "done" and (.responsibility == null or .responsibility == "agent" or .responsibility == "autonomous" or .responsibility == "codex")) | .orderKey][0:$n] == $actions' <<<"$queue" >/dev/null || refuse "the pinned Actions are not the top of the queue in the pinned order (deferred and not coding-agent entries passed over)"
   fi
   rec queueRevisionObserved "$QUEUE_REVISION_OBSERVED"
 }

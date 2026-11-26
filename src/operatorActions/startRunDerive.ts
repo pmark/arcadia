@@ -28,7 +28,8 @@ const PREVIOUS_EVIDENCE = "docs/agent-guidance/production-24x7.md";
 export type DeriveRefusal =
   | "GRANT_NOT_OPEN" | "PLAN_NOT_ACTIVE" | "PRODUCTION_NOT_INACTIVE" | "QUEUE_INVALID" | "NO_READY_ACTIONS" | "OPERATOR_ITEM_FIRST" | "FAILED_BATCH_NEEDS_FIX" | "CHAIN_REFUSED" | "CARD_INVALID";
 
-export interface DerivePlanAction { id: string; status: string; dependsOn: string[]; criteriaErrors: string[]; decisions?: string[]; references?: string[] }
+/** `responsibility` is the Plan's value as dispatch reads it; the derive command always passes it (a missing one as ""). */
+export interface DerivePlanAction { id: string; status: string; dependsOn: string[]; criteriaErrors: string[]; decisions?: string[]; references?: string[]; responsibility?: string }
 /** An Action the card stops before because it cites an unanswered Decision. */
 export interface OperatorItem { action: string; reasons: string[] }
 export interface DeriveInput {
@@ -92,6 +93,15 @@ export const refuse = (reason: DeriveRefusal, message: string): DeriveResult => 
 const minuteOf = (now: Date): number => Math.floor(now.getTime() / 60_000) * 60_000;
 const iso = (ms: number): string => new Date(ms).toISOString().replace(/\.\d{3}Z$/, "Z");
 
+/** Whether dispatch admits this responsibility as coding-agent work (`src/docs/parse.ts` reads `codex` as `agent` and a missing value as `requires_review`). */
+export const dispatchAdmitsResponsibility = (responsibility: unknown): boolean => responsibility === "agent" || responsibility === "autonomous" || responsibility === "codex";
+/**
+ * An Action the walk passes over (#2901, #2865): dispatch never runs it, so it is never pinned and holds back none of the Actions
+ * queued after it. Done and deferred Actions, and any responsibility dispatch does not admit (`requires_review` among them).
+ */
+export const passedOverByDispatch = (action: { status: string; responsibility?: string }): boolean =>
+  action.status === "done" || action.status === "deferred" || (action.responsibility !== undefined && !dispatchAdmitsResponsibility(action.responsibility));
+
 /** The first unfinished ready Actions of the Plan at the top of the queue, in queue order, stopping before the first that is not. */
 export function deriveActions(project: string, planActions: DerivePlanAction[], queueKeys: string[], answeredDecisions: string[] = []): string[] {
   return deriveActionsAndOperatorItem(project, planActions, queueKeys, answeredDecisions).actions;
@@ -121,7 +131,8 @@ export function operatorReasons(action: DerivePlanAction, answeredDecisions: str
 
 /**
  * The same walk as `deriveActions`, which also stops before the first ready Action that needs the operator (an unanswered Decision
- * in its `decisions`) and returns it as the one operator item. Nothing is derived past it.
+ * in its `decisions`) and returns it as the one operator item. Nothing is derived past it. An Action dispatch never runs is passed
+ * over, not a stop; one that is not ready yet (a dependency not done, blocked, criteria errors) still stops the walk.
  */
 export function deriveActionsAndOperatorItem(project: string, planActions: DerivePlanAction[], queueKeys: string[], answeredDecisions: string[]): { actions: string[]; operatorItem: OperatorItem | null } {
   const byId = new Map(planActions.map((action) => [action.id, action]));
@@ -132,6 +143,7 @@ export function deriveActionsAndOperatorItem(project: string, planActions: Deriv
   for (const key of queueKeys) {
     if (picked.length >= DERIVED_CARD_MAX_ACTIONS || !key.startsWith(`${project}/`)) break;
     const action = byId.get(key.slice(project.length + 1));
+    if (action && passedOverByDispatch(action)) continue;
     if (!action || !ready(action)) break;
     const reasons = operatorReasons(action, answeredDecisions);
     if (reasons.length) return { actions: picked, operatorItem: { action: action.id, reasons } };

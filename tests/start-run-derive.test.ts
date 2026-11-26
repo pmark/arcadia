@@ -26,11 +26,12 @@ const MAIN = "a".repeat(40);
 const DECISION = `docs/decisions/0241-${STANDING_SLUG}.md`;
 const EXECUTOR = "#!/usr/bin/env bash\n# the START executor\n";
 
-const planDoc = (actions: Array<{ id: string; status: string; depends_on?: string[] }>, status = "active") =>
-  `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${status}\nactions:\n${actions.map((a) => `  - id: ${a.id}\n    status: ${a.status}\n    depends_on: [${(a.depends_on ?? []).join(", ")}]\n    acceptance_criteria:\n      - "A criterion."\n`).join("")}---\n`;
+type PlanFixtureAction = { id: string; status: string; depends_on?: string[]; responsibility?: string; criterion?: string };
+const planDoc = (actions: PlanFixtureAction[], status = "active") =>
+  `---\nslug: ${DAY_PLAN}\nproject: arcadia\nstatus: ${status}\nactions:\n${actions.map((a) => `  - id: ${a.id}\n    status: ${a.status}\n    responsibility: ${a.responsibility ?? "agent"}\n    depends_on: [${(a.depends_on ?? []).join(", ")}]\n    acceptance_criteria:\n      - "${a.criterion ?? "A criterion."}"\n`).join("")}---\n`;
 
 interface World { repository: string; library: string; workspace: string; deps: StartRunPinsDeps; before: () => string[] }
-function world(options: { scenario?: DayScenario; actions?: Array<{ id: string; status: string; depends_on?: string[] }>; queue?: string[]; now?: number; production?: Partial<{ desiredState: string; revision: number; epoch: number; liveAdmissions: number }> } = {}): World {
+function world(options: { scenario?: DayScenario; actions?: PlanFixtureAction[]; queue?: string[]; now?: number; production?: Partial<{ desiredState: string; revision: number; epoch: number; liveAdmissions: number }> } = {}): World {
   const repository = tempDir("arcadia-derive-");
   const library = path.join(repository, "artifacts", "generated", "operator-scripts");
   mkdirSync(library, { recursive: true });
@@ -94,6 +95,29 @@ describe("arcadia start-run derive: derivation", () => {
     // Queue order, not Plan order, and a Plan Action below an unready one is left out.
     expect(derive(world({ queue: ["two", "one", "three"] })).card!.actions).toEqual(["two", "one"]);
     expect(derive(world({ queue: ["one", "other-plan-action", "two"] })).card!.actions).toEqual(["one"]);
+  });
+
+  // B12 (#2901): the walk uses dispatch's readiness. A deferred Action is skipped, not a wall, and an Action dispatch never admits
+  // (responsibility requires_review, or none) is never pinned. A dependency that is not done, and an unanswered Decision, still stop it.
+  it("skips a deferred Action between two ready ones and derives both", () => {
+    const actions = [{ id: "one", status: "open" }, { id: "parked", status: "deferred" }, { id: "two", status: "open" }];
+    expect(derive(world({ actions, queue: ["one", "parked", "two"] })).card!.actions).toEqual(["one", "two"]);
+    // A deferred Action at the head of the queue no longer empties every derived card.
+    expect(derive(world({ actions, queue: ["parked", "one", "two"] })).card!.actions).toEqual(["one", "two"]);
+  });
+
+  it("never pins an Action dispatch would not admit (requires_review), and pins the ready ones around it", () => {
+    const actions = [{ id: "one", status: "open" }, { id: "review", status: "open", responsibility: "requires_review" }, { id: "two", status: "open" }];
+    expect(derive(world({ actions, queue: ["one", "review", "two"] })).card!.actions).toEqual(["one", "two"]);
+    expect(derive(world({ actions: [{ id: "review", status: "open", responsibility: "requires_review" }], queue: ["review"] }))).toMatchObject({ derived: false, reason: "NO_READY_ACTIONS" });
+    // An Action whose dependency is the skipped one is still not ready: the walk stops there.
+    const dependent = [{ id: "one", status: "open" }, { id: "parked", status: "deferred" }, { id: "after", status: "open", depends_on: ["parked"] }, { id: "two", status: "open" }];
+    expect(derive(world({ actions: dependent, queue: ["one", "parked", "after", "two"] })).card!.actions).toEqual(["one"]);
+  });
+
+  it("stops before an Action whose pinned criteria carry visible non-ASCII (#2847)", () => {
+    const actions = [{ id: "one", status: "open" }, { id: "dots", status: "open", criterion: "Run [<doc>\u2026] once." }, { id: "two", status: "open" }];
+    expect(derive(world({ actions, queue: ["one", "dots", "two"] })).card!.actions).toEqual(["one"]);
   });
 
   it("caps a card at 12 Actions", () => {
@@ -365,7 +389,7 @@ describe("deriveStartCard: property over generated Plans and queues", () => {
       const count = 1 + Math.floor(random() * 18);
       const actions: DerivePlanAction[] = Array.from({ length: count }, (_, i) => ({
         id: `action-${i}`, status: pick(["open", "open", "open", "done", "blocked", "deferred"]), criteriaErrors: random() < 0.05 ? ["bad"] : [],
-        dependsOn: i > 0 && random() < 0.3 ? [`action-${Math.floor(random() * i)}`] : []
+        dependsOn: i > 0 && random() < 0.3 ? [`action-${Math.floor(random() * i)}`] : [], responsibility: pick(["agent", "agent", "agent", "autonomous", "requires_review"])
       }));
       const keys = [...actions.map((a) => `arcadia/${a.id}`), "arcadia/foreign", "other/action-0"].sort(() => random() - 0.5).slice(0, 1 + Math.floor(random() * (count + 2)));
       const result = deriveStartCard(base({ plan: { slug: DAY_PLAN, project: "arcadia", status: "active", isProjectActivePlan: true, actions }, queue: { revision: 290, orderValid: true, unpositionedCount: 0, keys } }));
@@ -376,9 +400,16 @@ describe("deriveStartCard: property over generated Plans and queues", () => {
       expect(startRun.actions.length).toBeGreaterThanOrEqual(1);
       expect(startRun.actions.length).toBeLessThanOrEqual(12);
       const byId = new Map(actions.map((a) => [a.id, a]));
+      // The walk passes over entries dispatch never runs (done, deferred, not coding-agent work); every other entry is in order.
+      const walked = keys.filter((key) => {
+        const action = key.startsWith("arcadia/") ? byId.get(key.slice("arcadia/".length)) : undefined;
+        return !action || !(["done", "deferred"].includes(action.status) || action.responsibility === "requires_review");
+      });
       startRun.actions.forEach((id, position) => {
-        expect(keys[position]).toBe(`arcadia/${id}`);
+        expect(walked[position]).toBe(`arcadia/${id}`);
         expect(byId.get(id)!.status).not.toBe("done");
+        expect(byId.get(id)!.status).not.toBe("deferred");
+        expect(byId.get(id)!.responsibility).not.toBe("requires_review");
         expect(byId.get(id)!.dependsOn.every((dependency) => byId.get(dependency)?.status === "done")).toBe(true);
       });
       expect(validateStartRunPins(startRun)).toBeDefined();
