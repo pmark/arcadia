@@ -4,7 +4,7 @@ type: decision
 id: "0296"
 slug: amend-decision-0288-rule-2-record-the-operator-s-answer-1a-2a-which-defines-a
 project: arcadia
-status: open
+status: approved
 question: "Amend Decision 0288 rule 2: record the operator's answer \"1A 2A\", which defines a clean run as no touch from him after the press, with any agent help being only the logged mechanical kinds and the strict, nobody-touched count shown beside it, and counts Track 3 as the same kind of run as Track 2."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -24,7 +24,9 @@ options:
     recommended: false
 confidence: high
 plan: track-3-standby-test-pins-20261125
-updated: 2026-11-26
+updated: 2026-11-25
+answer: "A. 1A 2A: adopt Nadia's agent-help rule, and Track 3 is the same kind of run as Track 2"
+decided: 2026-11-25
 ---
 
 # Decision 0296: Amend Decision 0288 rule 2: record the operator's answer "1A 2A", which defines a clean run as no touch from him after the press, with any agent help being only the logged mechanical kinds and the strict, nobody-touched count shown beside it, and counts Track 3 as the same kind of run as Track 2.
