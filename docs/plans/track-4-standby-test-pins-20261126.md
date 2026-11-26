@@ -111,11 +111,11 @@ actions:
     references: ["src/dispatch/pointer.ts", "tests/pin-pointer-replace-current-action.test.ts"]
   - id: pin-frontmatter-field-set
     title: Pin how Plan activation sets a top-level frontmatter field such as active_plan or status, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how Plan activation sets a top-level frontmatter field such as active_plan or status, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-frontmatter-field-set-ffd044d6b375; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-frontmatter-field-set
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-frontmatter-field-set
+current_action: pin-stop-production-question
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
