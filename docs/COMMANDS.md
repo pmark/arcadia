@@ -1920,15 +1920,6 @@ threshold per session through `arcadia ping` (agent `Coordinator budget`, kind
   with the reason and the main-chain turn count as a labelled coarse proxy,
   never a percentage. A session with no usage at all is held for its first 60
   minutes, and one just compacted with no new count for 10 minutes.
-- **Registered custodians (#3077).** Each Project's current custodian in the
-  generations registry is also measured, whatever its title and however long
-  it has been silent, from its recorded `transcriptPath` (else its session id
-  under `~/.claude/projects`). Its own API-error reply matching the existing
-  context-exhaustion wording (`src/production/sessionSignals.ts`), with no real
-  turn or compaction after it, is `forced`: `👆👆👆 HANDOFF OVERDUE: <title> hit
-  its context limit — …`. An unreadable transcript is unmeasured. A transcript
-  untouched for more than 120 minutes while custody is held pages once on the
-  unmeasured line. Nothing is renewed, replaced or messaged.
 - **Marker.** Each coordinator past prepare, or unmeasured, has
   `<workspace>/.arcadia/coordinator-budget/<agent>-<session>.json` (level,
   `handoff_due`, tokens, window, next step, pings sent), removed when it is
