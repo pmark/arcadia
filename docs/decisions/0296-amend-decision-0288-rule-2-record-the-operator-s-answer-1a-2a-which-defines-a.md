@@ -4,7 +4,7 @@ type: decision
 id: "0296"
 slug: amend-decision-0288-rule-2-record-the-operator-s-answer-1a-2a-which-defines-a
 project: arcadia
-status: open
+status: approved
 question: "Amend Decision 0288 rule 2: record the operator's answer \"1A 2A\", which defines a clean run by Nadia's C0-C5 intervention taxonomy (logged C1 or C2 agent help stays clean; the strict untouched count is always reported beside it) and counts Track 3 as the same shape as Track 2."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -24,7 +24,9 @@ options:
     recommended: false
 confidence: high
 plan: track-3-standby-test-pins-20261125
-updated: 2026-11-26
+updated: 2026-11-25
+answer: "A. 1A 2A: adopt the intervention taxonomy, and Track 3 counts as Track 2's shape"
+decided: 2026-11-25
 ---
 
 # Decision 0296: Amend Decision 0288 rule 2: record the operator's answer "1A 2A", which defines a clean run by Nadia's C0-C5 intervention taxonomy (logged C1 or C2 agent help stays clean; the strict untouched count is always reported beside it) and counts Track 3 as the same shape as Track 2.
