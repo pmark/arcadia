@@ -46,6 +46,40 @@ The operator answered the checkpoint menu with "1A 2A" (verbatim, a human-origin
 - **The guard after a verdict:** once `checkpoint.verdict` is set, the lint and track jobs stop judging later changes to the strategy ("the next change starts the next phase"). Until a new checkpoint is recorded, a PR that loosens the strategy is not machine-refused: it is the operator's merge, checked against his words.
 - Option 2A (one "merge all" in Rowan g7's simulated order, then one release install) is the operator's merge instruction for the admitted PRs; it is carried out PR by PR under the usual exact-head review, green-check and production-Off gates, and changes nothing here.
 
+## Admission (Thu 2026-11-26): "1B 2B, sequenced"
+
+The operator answered the freeze-admission menu with "1B 2B, sequenced" (verbatim, a human-origin turn at 2026-11-26T16:45:06Z, 8:45 AM Pacific, in Signal 20's session `e1a83b65-af47-4256-b2f1-b001ded2f2a7`, line 4876, uuid `a6d36052-0e24-4211-a20e-aac3634674c2`). He was answering Signal's message at line 4870, which recommended "1B 2B, with Rebuster waiting" and gave this order:
+
+> **Now:** coding sessions build the safety set, starting with those two fixes. Each PR is held for its turn, and test-only runs keep going at night.
+> **Once both fixes have merged:** production starts building these plans overnight. It first passes a full dress rehearsal, as every new kind of run must. Its clean-run count starts fresh at 0.
+> **Keeping-nights-going pieces** (the plan queue, the timer starting the next plan, one-tap retry): they follow the safety set, and their new press code needs a full rehearsal before live use.
+
+"Those two fixes" are Plan A Action 2 (`continue-past-a-stopped-action`) and Plan B Action 4 (`launch-production-builds-on-the-plan-model-rule`). The menu options 1B and 2B are from Ellis's checkpoint-admission menu of 2026-11-26 (host-local `workspaces/ellis-plans-20261126/checkpoint-admission-menu.md`). The Plans are the drafts registered by #3114 on his "Approve plans A through D".
+
+- **The phase stays `freeze-and-prove`** and the engine stays frozen at `a5f041066`. `current.json` does not change.
+- **Admitted through the freeze** (option 1B), each PR citing `Phase-cause: #3116`, the admission Issue. Rowan or Signal labels #3116 `phase-cause` only after this section merges:
+
+  | Plan or PR | Admitted Actions |
+  |---|---|
+  | Plan A `one-stop-never-ends-the-card-20261126` | 1 `wire-night-breaker-into-tick`, 2 `continue-past-a-stopped-action`, 3 `end-the-card-when-every-pin-is-merged-or-parked` |
+  | Plan B `production-runs-clean-by-itself-20261126` | 1 to 4 |
+  | Plan C `nights-never-run-empty-20261126` | 1 to 4 |
+  | Plan D `coordinator-and-refusals-recover-without-the-operator-20261126` | 2 and 3; Action 1 is #3080, once its N2 is repaired |
+  | #3083 (B12) | as reviewed |
+  | #2960 (B9) | after its rebase |
+
+- **Only these are admitted.** An engine PR citing #3116 must name its admitted Plan Action or PR in its body. The morning audit checks each one against this table.
+- **Not admitted:** Rebuster's engine PRs (#3071, #3074, G5 #3078, G7 #3079), which wait by his answer, and every other held engine PR, including #2996 and #3039.
+- **Each admitted PR still lands one at a time:**
+  - on its own exact-head independent review and green checks;
+  - in an Off window, with a release install before the next card;
+  - by its stated merge route, so a PR that loosens a gate or changes authority stays the operator's merge.
+- **Option 2B, who builds:**
+  - Day-lane coding sessions build these items now, starting with the two fixes. Each PR is held until #3116 is labelled.
+  - After both fixes merge, production may build these Plans' Actions overnight, as a new run shape under Decision 0288 rule 2. It needs a full rule-1 dress rehearsal first, and its clean-run count starts at 0. Its PRs park for the operator's merge or a C-03 merge.
+  - The night-continuity pieces (Plan C Actions 3 and 4, Plan D Action 3) add new press-path code, which needs an unstubbed rule-1 rehearsal before live use.
+- Test-only night cards continue meanwhile.
+
 ## How it is enforced
 
 | Guard | Where | What it does |
