@@ -4,6 +4,7 @@ import { MODEL_TIERS, tierOfModel, type ModelTierRegistry } from "../codingAgent
 import type { ProviderAdapterRegistry } from "../codingAgents/providerAdapters.js";
 import { REASONING_EFFORTS, type ReasoningEffort } from "../execution/profiles.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
+import { criteriaPathMentions, scopeIntersection } from "./scopeCriteria.js";
 
 /**
  * Decision 0290 A, the implementer model and effort rule for production:
@@ -22,11 +23,21 @@ import type { CodingAgentProfile } from "../intent/registries.js";
  */
 export const MODEL_RULE_LABEL = "Decision 0290 A" as const;
 
-/** A path the Action is expected to change that makes it source work. */
-const SOURCE_PATH = /(?<![\w./-])(?:\.\/)?((?:src|scripts|apps)\/[^\s`'",;)]+)/;
+/** A real file or directory under src/, scripts/ or apps/ (never the bare directory itself). */
+const SOURCE_PATH = /^(?:\.\/)?(?:src|scripts|apps)\/[A-Za-z0-9_.-]+/;
+const isSourcePath = (file: string) => SOURCE_PATH.test(file);
+// "imports only vitest and src/x.ts": a file the work reads or imports, not one it changes.
+const IMPORT_VERB = /\bimport(?:s|ed|ing)?\b/gi;
+const CHANGE_VERB = /\b(?:chang|edit|modif|touch|alter|rewrit|updat|add|implement|fix|creat|writ|delet|remov|replac|refactor)\w*/i;
+const CLAUSE_BREAK = /;|\.(?:\s|$)|\bbut\b|\binstead\b/gi;
 const SOURCE_CRITERIA_THRESHOLD = 4;
 
-export type ModelRuleClass = "repair" | "source" | "non_source";
+/**
+ * `source`: the Action is expected to change a src/, scripts/ or apps/ file.
+ * `criteria_count`: four or more acceptance criteria, Decision 0290 A's other
+ * Opus clause, recorded apart so it is never mistaken for source work.
+ */
+export type ModelRuleClass = "repair" | "source" | "criteria_count" | "non_source";
 
 export interface ModelRuleClassification {
   ruleClass: ModelRuleClass;
@@ -55,29 +66,63 @@ export function classifyModelRule(input: {
   if (input.repair) {
     return { ruleClass: "repair", tier: "heavy", effort: "e3_deep", reason: "a review repair Session: every repair round after a failed independent review runs on Opus" };
   }
-  const named = firstSourcePath(input.action.acceptanceCriteria, "acceptance criteria")
-    ?? firstSourcePath(input.action.references, "references");
+  const named = sourceWork(input.action);
   if (named) {
-    return { ruleClass: "source", tier: "heavy", effort: "e3_deep", reason: `source work: the Action's ${named.where} name ${named.path}` };
+    return { ruleClass: "source", tier: "heavy", effort: "e3_deep", reason: `source work: ${named}` };
   }
   const count = input.action.acceptanceCriteria.length;
   if (count >= SOURCE_CRITERIA_THRESHOLD) {
-    return { ruleClass: "source", tier: "heavy", effort: "e3_deep", reason: `the Action has ${count} acceptance criteria (four or more)` };
+    return {
+      ruleClass: "criteria_count",
+      tier: "heavy",
+      effort: "e3_deep",
+      reason: `four or more acceptance criteria (the Action has ${count}); it is not expected to change a src/, scripts/ or apps/ file`
+    };
   }
   return {
     ruleClass: "non_source",
     tier: "standard",
     effort: "e2_standard",
-    reason: `test, docs or config work: the Action names no src/, scripts/ or apps/ path in its acceptance criteria or references and has ${count} acceptance criteria (fewer than four)`
+    reason: `test, docs or config work: the Action is not expected to change a src/, scripts/ or apps/ file and has ${count} acceptance criteria (fewer than four)`
   };
 }
 
-function firstSourcePath(values: string[], where: string): { path: string; where: string } | null {
-  for (const value of values) {
-    const match = SOURCE_PATH.exec(value);
-    if (match) return { path: match[1].replace(/[.:]+$/, ""), where };
+/**
+ * Why the Action is expected to change a src/, scripts/ or apps/ file, or null.
+ *
+ * A readable "touches only <paths>" scope (scopeCriteria.ts) decides alone:
+ * it is the Action's own exact statement of what it changes. Otherwise a
+ * criterion counts a source file only as `criteriaPathMentions` would -- never
+ * in a negated clause ("No src/ change", "leave src/x.ts unchanged") or as a
+ * `path:line` pointer -- and not as a file the work only imports. A source
+ * path in the Action's references counts, as the Plan's first criterion says.
+ */
+function sourceWork(action: { acceptanceCriteria: string[]; references: string[] }): string | null {
+  const scope = scopeIntersection(action.acceptanceCriteria);
+  if (scope) {
+    const inScope = scope.find(isSourcePath);
+    return inScope ? `its scope criterion lets it change ${inScope}` : null;
   }
-  return null;
+  for (const criterion of action.acceptanceCriteria) {
+    const changed = criteriaPathMentions([criterion]).find((file) => isSourcePath(file) && !onlyImported(criterion, file));
+    if (changed) return `its acceptance criteria name ${changed} as work`;
+  }
+  const reference = action.references.map((entry) => entry.trim()).find(isSourcePath);
+  return reference ? `its references name ${reference}` : null;
+}
+
+/** Every mention of `file` in `criterion` sits after an import verb, with no change verb between, inside its clause. */
+function onlyImported(criterion: string, file: string): boolean {
+  let at = criterion.indexOf(file);
+  if (at < 0) return false;
+  while (at >= 0) {
+    const before = criterion.slice(0, at);
+    const clause = before.slice(Math.max(0, ...[...before.matchAll(CLAUSE_BREAK)].map((m) => m.index + m[0].length)));
+    const verb = [...clause.matchAll(IMPORT_VERB)].pop();
+    if (!verb || CHANGE_VERB.test(clause.slice(verb.index + verb[0].length))) return false;
+    at = criterion.indexOf(file, at + file.length);
+  }
+  return true;
 }
 
 /**

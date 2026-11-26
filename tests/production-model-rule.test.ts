@@ -72,10 +72,46 @@ describe("classifyModelRule (Decision 0290 A)", () => {
     }
   });
 
-  it("selects Opus high for four or more acceptance criteria even when no source path is named", () => {
+  it("selects Opus high for four or more acceptance criteria even when no source path is named, with its own reason", () => {
     const choice = classifyModelRule({ action: action(["one", "two", "three", "four"], ["docs/x.md"]), repair: false });
-    expect(choice).toMatchObject({ ruleClass: "source", tier: "heavy", effort: "e3_deep" });
-    expect(choice.reason).toContain("4 acceptance criteria");
+    expect(choice).toMatchObject({ ruleClass: "criteria_count", tier: "heavy", effort: "e3_deep" });
+    expect(choice.reason).toContain("four or more acceptance criteria");
+    expect(choice.reason).not.toContain("source work");
+  });
+
+  // Review round 1 of PR #3119 (B1): only a src/ file the Action is expected to change makes it source work.
+  const TEST_PIN = [
+    "tests/pin-duty-alarms.test.ts exists and passes under `pnpm exec vitest run tests/pin-duty-alarms.test.ts`.",
+    "No src/ change is made: the pin records today's behaviour instead of changing src/.",
+    "The test imports only vitest and src/production/dutyAlarms.ts."
+  ];
+
+  it("selects Sonnet medium for a three-criteria test-pin Action that forbids src/ changes and only imports a src/ file", () => {
+    const choice = classifyModelRule({ action: action(TEST_PIN), repair: false });
+    expect(choice).toMatchObject({ ruleClass: "non_source", tier: "standard", effort: "e2_standard" });
+    expect(choice.reason).not.toContain("src/production/dutyAlarms.ts");
+    for (const negated of [
+      ["Leave src/sessions/launch.ts unchanged.", "tests/a.test.ts passes."],
+      ["Do not change src/sessions/launch.ts or src/codex/packets.ts.", "tests/a.test.ts passes."],
+      ["The change touches only tests/a.test.ts and docs/a.md.", "tests/a.test.ts pins what src/sessions/launch.ts does today."],
+      ["src/sessions/launch.ts:452 is where the start tier is chosen; tests/a.test.ts pins it."]
+    ]) {
+      expect(classifyModelRule({ action: action(negated), repair: false }).tier, negated[0]).toBe("standard");
+    }
+  });
+
+  it("selects Opus high with the reason \"four or more acceptance criteria\" for the same test-pin Action with a fourth criterion", () => {
+    const choice = classifyModelRule({ action: action([...TEST_PIN, "docs/pins.md lists the new pin."]), repair: false });
+    expect(choice).toMatchObject({ ruleClass: "criteria_count", tier: "heavy", effort: "e3_deep" });
+    expect(choice.reason).toMatch(/^four or more acceptance criteria/);
+  });
+
+  it("still counts a src/ file the work changes alongside an import, and a scope that allows a src/ file", () => {
+    expect(classifyModelRule({ action: action(["The test imports src/a.ts and the change edits src/a.ts to fix it."]), repair: false }).ruleClass).toBe("source");
+    expect(classifyModelRule({ action: action(["The change touches only src/sessions/modelRule.ts and tests/a.test.ts."]), repair: false }))
+      .toMatchObject({ ruleClass: "source", reason: expect.stringContaining("src/sessions/modelRule.ts") });
+    // A bare directory is not a file the Action changes.
+    expect(classifyModelRule({ action: action(["Nothing outside src/ is touched by this docs pass."], ["src/"]), repair: false }).tier).toBe("standard");
   });
 
   it("selects Sonnet medium (standard, e2_standard) for an Action naming only tests/, docs/ or config paths", () => {
@@ -84,7 +120,7 @@ describe("classifyModelRule (Decision 0290 A)", () => {
       repair: false
     });
     expect(choice).toMatchObject({ ruleClass: "non_source", tier: "standard", effort: "e2_standard" });
-    expect(choice.reason).toContain("names no src/, scripts/ or apps/ path");
+    expect(choice.reason).toContain("not expected to change a src/, scripts/ or apps/ file");
   });
 
   it("selects Opus high for every review repair, whatever the Action names", () => {

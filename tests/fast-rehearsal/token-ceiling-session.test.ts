@@ -4,18 +4,21 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withReadOnlyDatabase } from "../../src/db/connection.js";
 import { sessionLogPath } from "../../src/sessions/sessionRecording.js";
 import { listProductionAttemptTokens } from "../../src/production/tick.js";
+import { SESSION_INPUT_TOKEN_CEILING_DEFAULTS } from "../../src/production/sessionTokenCeiling.js";
 import { isolateProcess, type IsolatedProcess } from "./helpers/environment.js";
 import { ACTION_1, FastRehearsal, SCENARIO_TIMEOUT_MS } from "./helpers/world.js";
 
 /**
  * The same spend as the environment-wall replay but with NO wall text in the
  * log: only the platform token ceiling can stop it. The Session exits without
- * a diff after ~9M input tokens (above the 3M light-tier default (the rehearsal model)); the
- * lifecycle must record both counts, write the `budget_exhausted` stop, raise
- * one blocker and never relaunch.
+ * a diff after ~9M input tokens, above the standard-tier default: Decision
+ * 0290 A launches this one-criterion MARKER.md Action on Sonnet medium (6M).
+ * The lifecycle must record both counts, write the `budget_exhausted` stop,
+ * raise one blocker and never relaunch.
  */
 const UNCACHED = 600_000;
 const CACHED = 8_400_000;
+const CEILING = SESSION_INPUT_TOKEN_CEILING_DEFAULTS.standard;
 let isolation: IsolatedProcess;
 let world: FastRehearsal;
 let sessionId: string;
@@ -43,11 +46,14 @@ afterAll(() => {
 
 describe("a Session over the platform token ceiling with no wall text", () => {
   it("stops at the ceiling: one budget_exhausted blocker, no relaunch", () => {
+    // The rule's Sonnet Session, and a spend that really is over its ceiling.
+    expect(world.sessions().find((s) => s.id === sessionId)).toMatchObject({ model: "sonnet", effort: "e2_standard" });
+    expect(UNCACHED + CACHED).toBeGreaterThan(CEILING);
     expect(world.tmux.launches).toHaveLength(1);
     const escalations = world.escalations();
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({ actionKey: world.actionKey(ACTION_1), kind: "budget_exhausted" });
-    expect(escalations[0]?.message).toContain("ceiling of 3000000");
+    expect(escalations[0]?.message).toContain(`ceiling of ${CEILING}`);
     expect(escalations[0]?.remedy).toContain("/todo");
     expect(world.planAction(world.repo, ACTION_1)).toBe("open");
   });
@@ -58,7 +64,7 @@ describe("a Session over the platform token ceiling with no wall text", () => {
     ) as { reason: string };
     expect(receipt.reason).toContain("budget_exhausted");
     expect(receipt.reason).toContain(`${UNCACHED} uncached + ${CACHED} cached`);
-    expect(receipt.reason).toContain("ceiling of 3000000");
+    expect(receipt.reason).toContain(`ceiling of ${CEILING}`);
     const rows = withReadOnlyDatabase(world.workspace, (db) => listProductionAttemptTokens(db, world.actionKey(ACTION_1)));
     expect(rows).toEqual([expect.objectContaining({ sessionId, inputTokens: UNCACHED, cachedInputTokens: CACHED })]);
   });
