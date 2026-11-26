@@ -4,6 +4,9 @@ import path from "node:path";
 import { validationError } from "../cli/errors.js";
 import { createSuccess, type CommandSuccess } from "../cli/response.js";
 import { resolveReadyWorkspace } from "../cli/workspace.js";
+import { currentCustodian } from "../coordinator/generations.js";
+import { findSessionTranscript } from "../coordinator/sessionIdentity.js";
+import { withReadOnlyDatabase } from "../db/connection.js";
 import {
   COORDINATOR_BUDGET_SCHEMA,
   budgetEpisodeKey,
@@ -48,6 +51,8 @@ const STATE_FILE = "state.json";
 const PING_AGENT = "Coordinator budget";
 /** A transcript untouched this long is not a live coordinator: a waiting coordinator still wakes within 55 minutes. */
 export const COORDINATOR_LIVE_MINUTES = 120;
+/** A registered custodian whose transcript is untouched this long while it holds custody pages once (#3077): the live window's own bound. */
+export const CUSTODIAN_SILENT_MINUTES = COORDINATOR_LIVE_MINUTES;
 /** State for a session not seen for a week is dropped. */
 const STATE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 /** The title is re-appended on every turn, so the tail finds it; a megabyte covers a large tool result. */
@@ -77,11 +82,26 @@ export function defaultBudgetSources(env: NodeJS.ProcessEnv = process.env): Budg
   };
 }
 
+export interface CustodyScope {
+  project: string;
+  role: string;
+  generation: number;
+}
+
+/** The current custodian of one Project and role, from the generations registry. */
+export interface RegisteredCustodian extends CustodyScope {
+  provider: string;
+  sessionId: string | null;
+  transcriptPath: string | null;
+}
+
 export interface DiscoveredSession {
   read: SessionRead & { sessionId: string };
   role: CoordinatorRole | null;
   transcript: string;
   fileAgeMinutes: number;
+  /** Set when this session holds custody in the registry. */
+  custody?: CustodyScope;
 }
 
 export interface Discovery {
@@ -144,6 +164,8 @@ function readStatusLineHint(file: string | null): ClaudeWindowHint | null {
 interface DiscoverOptions {
   now: Date;
   liveMinutes?: number;
+  /** Registered custodians, measured whatever their title and however long they have been silent (#3077). */
+  custodians?: readonly RegisteredCustodian[];
   /** Also measure this session id when it is not coordinator-titled (the read-only command's `--session`). */
   alsoSession?: string | null;
 }
@@ -286,10 +308,77 @@ function discoverCodex(sources: BudgetSources, options: DiscoverOptions, problem
   return found;
 }
 
-/** Every live coordinator on this host, by title, measured from its own file. Read-only. */
+/**
+ * Each Project's current custodian, read-only. The registry is the custody
+ * record, so a custodian is measured with no 🚦 title and past the live window
+ * (11-22: an untitled, dead Rowan g2 held custody for 3 h 13 min unseen).
+ */
+export function readRegisteredCustodians(workspacePath: string): { custodians: RegisteredCustodian[]; problems: string[] } {
+  try {
+    const custodians = withReadOnlyDatabase(workspacePath, (db) => {
+      if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'coordinator_generations'").get()) return [];
+      const scopes = db.prepare("SELECT DISTINCT project, role FROM coordinator_generations WHERE status = 'custodian' ORDER BY project, role").all() as Array<{ project: string; role: string }>;
+      return scopes.flatMap(({ project, role }) => {
+        const custodian = currentCustodian(db, project, role);
+        return custodian
+          ? [{ project, role, generation: custodian.generation, provider: custodian.provider, sessionId: custodian.nativeSessionId, transcriptPath: custodian.transcriptPath }]
+          : [];
+      });
+    });
+    return { custodians, problems: [] };
+  } catch (error) {
+    return { custodians: [], problems: [`The coordinator custody registry could not be read: ${errorText(error)}`] };
+  }
+}
+
+function discoverCustodians(sources: BudgetSources, options: DiscoverOptions, found: DiscoveredSession[], problems: string[]): void {
+  for (const custodian of options.custodians ?? []) {
+    const agent: CoordinatorAgent = custodian.provider === "codex" ? "codex" : "claude";
+    // A null source skips its provider, custodians included, so a test never reads a real session.
+    const home = agent === "codex" ? sources.codexHome : sources.claudeProjectsDir;
+    if (!home) continue;
+    const custody: CustodyScope = { project: custodian.project, role: custodian.role, generation: custodian.generation };
+    const role: CoordinatorRole = custodian.role === "signal" ? "signal" : "rowan";
+    const listed = custodian.sessionId ? found.find((session) => session.read.agent === agent && session.read.sessionId === custodian.sessionId) : undefined;
+    if (listed) {
+      listed.custody = custody;
+      listed.role ??= role;
+      continue;
+    }
+    const file = custodian.transcriptPath ?? (agent === "claude" && custodian.sessionId ? findSessionTranscript(home, custodian.sessionId) : null);
+    const sessionId = custodian.sessionId ?? (file ? path.basename(file, ".jsonl") : `${custodian.project}-${custodian.role}-g${custodian.generation}`);
+    const name = `${custodian.role} g${custodian.generation} custodian (${custodian.project})`;
+    let read: SessionRead;
+    let silentMinutes = 0;
+    try {
+      if (!file) throw new Error("the registry records no transcript path and none was found for its session id");
+      silentMinutes = (options.now.getTime() - statSync(file).mtimeMs) / 60_000;
+      const content = readFileSync(file, "utf8");
+      read = agent === "codex" ? readCodexRollout(content, null) : readClaudeTranscript(content, { statusLine: readStatusLineHint(sources.claudeStatusLinePath) });
+    } catch (error) {
+      read = unreadableRead(agent, sessionId, null, error);
+      problems.push(`The ${name} transcript ${file ?? "(none recorded)"} could not be read: ${errorText(error)}`);
+    }
+    // Silence while holding custody is treated as due, once, on the unmeasured page; a context limit stays forced.
+    if (read.occupancy.kind !== "limit" && read.occupancy.kind !== "unmeasured" && silentMinutes > CUSTODIAN_SILENT_MINUTES) {
+      read = { ...read, occupancy: { kind: "unmeasured", reason: `it has written nothing for ${Math.floor(silentMinutes)} min (bound ${CUSTODIAN_SILENT_MINUTES} min) while it holds ${custodian.role} custody for ${custodian.project}` } };
+    }
+    found.push({
+      read: { ...read, title: read.title ?? name, sessionId: read.sessionId ?? sessionId },
+      role,
+      transcript: file ?? "",
+      fileAgeMinutes: file ? fileAgeMinutes(file, options.now) : Number.POSITIVE_INFINITY,
+      custody
+    });
+  }
+}
+
+/** Every live coordinator on this host, by title, and every registered custodian, measured from its own file. Read-only. */
 export function discoverCoordinators(sources: BudgetSources, options: DiscoverOptions): Discovery {
   const problems: string[] = [];
-  const sessions = [...discoverClaude(sources, options, problems), ...discoverCodex(sources, options, problems)]
+  const found = [...discoverClaude(sources, options, problems), ...discoverCodex(sources, options, problems)];
+  discoverCustodians(sources, options, found, problems);
+  const sessions = found
     .sort((a, b) => sessionKey(a.read.agent, a.read.sessionId).localeCompare(sessionKey(b.read.agent, b.read.sessionId)));
   return { sessions, problems };
 }
@@ -344,6 +433,8 @@ export interface CoordinatorBudgetRow {
   sessionId: string;
   title: string | null;
   role: CoordinatorRole | null;
+  /** The custody this session holds in the registry, if any. */
+  custodian: CustodyScope | null;
   model: string | null;
   level: BudgetLevel;
   handoffDue: boolean;
@@ -384,13 +475,14 @@ function rowOf(found: DiscoveredSession, marker: string | null, pings: Partial<R
     sessionId: read.sessionId,
     title: read.title,
     role: found.role,
+    custodian: found.custody ?? null,
     model: read.model,
     level,
     handoffDue: handoffDue(level),
     percent: read.occupancy.kind === "measured" ? Math.round(read.occupancy.percent * 10) / 10 : null,
     tokens: read.occupancy.kind === "measured" ? read.occupancy.tokens : null,
     window: read.occupancy.kind === "measured" ? read.occupancy.window : null,
-    unmeasuredReason: read.occupancy.kind === "unmeasured" ? read.occupancy.reason : null,
+    unmeasuredReason: read.occupancy.kind === "measured" ? null : read.occupancy.reason,
     transcript: found.transcript,
     marker,
     page: null,
@@ -398,6 +490,11 @@ function rowOf(found: DiscoveredSession, marker: string | null, pings: Partial<R
     message: null,
     pings
   };
+}
+
+/** The registry is read only when a provider source is set, so a test process with null sources opens nothing. */
+function registryOf(workspacePath: string, sources: BudgetSources): { custodians: RegisteredCustodian[]; problems: string[] } {
+  return sources.claudeProjectsDir || sources.codexHome ? readRegisteredCustodians(workspacePath) : { custodians: [], problems: [] };
 }
 
 function queueThroughPing(input: LivenessPingInput): { id: string; deduplicated?: boolean } {
@@ -420,7 +517,9 @@ export function runCoordinatorBudgetCheck(
   const now = new Date((dependencies.now ?? Date.now)());
   const sources = dependencies.sources ?? defaultBudgetSources();
   const { state, problem: stateProblem } = readState(workspacePath);
-  const discovery = discoverCoordinators(sources, { now });
+  const registry = registryOf(workspacePath, sources);
+  const discovery = discoverCoordinators(sources, { now, custodians: registry.custodians });
+  discovery.problems.unshift(...registry.problems);
   const queue = dependencies.queuePing ?? queueThroughPing;
   const failures: string[] = [];
   const next: CoordinatorBudgetState = { schema: COORDINATOR_BUDGET_SCHEMA, sessions: {} };
@@ -563,7 +662,10 @@ export function runCoordinatorBudgetCommand(
   const now = new Date((dependencies.now ?? Date.now)());
   const self = options.session?.trim() || env["CLAUDE_CODE_SESSION_ID"]?.trim() || env["CODEX_THREAD_ID"]?.trim() || null;
   if (self !== null && !/^[A-Za-z0-9._-]{1,128}$/.test(self)) throw validationError("--session must be a session id.", { session: self });
-  const discovery = discoverCoordinators(dependencies.sources ?? defaultBudgetSources(env), { now, alsoSession: self });
+  const sources = dependencies.sources ?? defaultBudgetSources(env);
+  const registry = registryOf(workspacePath, sources);
+  const discovery = discoverCoordinators(sources, { now, alsoSession: self, custodians: registry.custodians });
+  discovery.problems.unshift(...registry.problems);
   const rows = discovery.sessions.map((found) => {
     const marker = markerPath(workspacePath, found.read.agent, found.read.sessionId);
     const written = readMarker(marker);
@@ -581,7 +683,7 @@ function describe(row: CoordinatorBudgetRow): string {
   const name = row.title ?? `${row.agent} session`;
   const reading = row.percent !== null && row.tokens !== null && row.window !== null
     ? `${Math.floor(row.percent)}% context (${row.tokens.toLocaleString("en-US")} of ${row.window.toLocaleString("en-US")} tokens)`
-    : `context unmeasured (${row.unmeasuredReason ?? "unknown"})`;
+    : `${row.level === "forced" ? "context limit" : "context unmeasured"} (${row.unmeasuredReason ?? "unknown"})`;
   const pinged = Object.keys(row.pings);
   return `${name} [${row.agent} ${row.sessionId}]: ${reading} · ${row.level}${pinged.length > 0 ? ` · paged: ${pinged.join(", ")}` : ""}`;
 }
@@ -595,7 +697,7 @@ export function renderCoordinatorBudgetSuccess(response: CommandSuccess<Coordina
   } else if (self) {
     lines.push(`This session (${self}) has no transcript this command can read, so its budget is unmeasured.`);
   }
-  if (coordinators.length === 0) lines.push(`No live coordinator (a ⭐ or 🚦 title, written to within ${COORDINATOR_LIVE_MINUTES} min) was found.`);
+  if (coordinators.length === 0) lines.push(`No live coordinator (a ⭐ or 🚦 title, written to within ${COORDINATOR_LIVE_MINUTES} min) or registered custodian was found.`);
   for (const row of coordinators) lines.push(`- ${describe(row)}`);
   for (const problem of problems) lines.push(`Problem: ${problem}`);
   return lines;

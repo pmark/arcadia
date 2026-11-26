@@ -21,6 +21,7 @@ import {
   type BudgetSources
 } from "../src/commands/coordinatorBudget.js";
 import { renderProductionLivenessTimerSuccess, runProductionLivenessTimerCommand } from "../src/commands/productionMomentum.js";
+import { seedCustodianGeneration } from "../src/coordinator/generations.js";
 import { initWorkspace } from "../src/workspace/initWorkspace.js";
 
 const roots: string[] = [];
@@ -340,6 +341,137 @@ describe("the liveness timer pages each threshold once per session", () => {
     } finally {
       chmodSync(file, 0o644);
     }
+  });
+});
+
+const CUSTODIAN = "55555555-5555-4555-8555-555555555555";
+
+/** Registers `sessionId` as the arcadia rowan custodian, as `coordinator register` does for a desktop session. */
+function seedCustodian(root: string, sessionId: string, transcriptPath: string | null): void {
+  withDatabase(root, (db) => seedCustodianGeneration(db, root, {
+    project: "arcadia", role: "rowan", provider: "claude", model: "claude-sonnet-5-5", tier: "standard", identity: "Claudia Atlas", nativeSessionId: sessionId, transcriptPath
+  }));
+}
+
+/** The synthetic API-error reply Claude Code writes when a turn no longer fits (observed in the 11-22 Rowan g2 transcript). */
+function apiError(sessionId: string, said: string, at: string): string {
+  return JSON.stringify({
+    type: "assistant", sessionId, isSidechain: false, timestamp: at, isApiErrorMessage: true, error: "invalid_request",
+    message: { id: `err_${at}`, model: "<synthetic>", role: "assistant", content: [{ type: "text", text: said }], usage: { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 } }
+  });
+}
+
+function writeRaw(home: string, sessionId: string, content: string, mtime: Date): string {
+  const directory = path.join(home, "-Users-someone-project");
+  mkdirSync(directory, { recursive: true });
+  const file = path.join(directory, `${sessionId}.jsonl`);
+  writeFileSync(file, content);
+  utimesSync(file, mtime, mtime);
+  return file;
+}
+
+describe("the registered custodian is measured whatever its title or silence (M4a, #3077)", () => {
+  it("lists a custodian with no 🚦 title, found by its session id when the registry records no path", () => {
+    const root = workspace();
+    const home = claudeHome();
+    writeClaude(home, CUSTODIAN, null, [{ tokens: 300_000 }]);
+    seedCustodian(root, CUSTODIAN, null);
+    const rows = check(root, sources(home)).data.coordinators;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ sessionId: CUSTODIAN, role: "rowan", level: "ok", page: null, custodian: { project: "arcadia", role: "rowan", generation: 1 } });
+    expect(pending(root)).toHaveLength(0);
+    const view = runCoordinatorBudgetCommand({ workspace: root }, { sources: sources(home), env: {} });
+    expect(view.data.coordinators.map((row) => row.sessionId)).toEqual([CUSTODIAN]);
+  });
+
+  it("lists a custodian silent for 3 h and pages it once, at the unmeasured level", () => {
+    const root = workspace();
+    const home = claudeHome();
+    const file = writeClaude(home, CUSTODIAN, null, [{ tokens: 300_000 }], 180);
+    seedCustodian(root, CUSTODIAN, file);
+    const first = check(root, sources(home)).data.coordinators;
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ sessionId: CUSTODIAN, level: "unmeasured", page: "unmeasured", handoffDue: true });
+    expect(check(root, sources(home)).data.coordinators[0]?.page).toBeNull();
+    const pings = pending(root);
+    expect(pings).toHaveLength(1);
+    expect(pings[0]?.message).toMatch(/^👆👆 HANDOFF DUE: rowan g1 custodian \(arcadia\) context unmeasured — treat it as due/);
+    expect(pings[0]?.message).toContain("written nothing for 180 min");
+    expect(pings[0]?.agent).toBe("Coordinator budget");
+  });
+
+  it("pages a \"Context limit reached\" tail at forced once, and deduplicates on the next tick", () => {
+    const root = workspace();
+    const home = claudeHome();
+    const content = `${claudeTranscript(CUSTODIAN, null, [{ tokens: 400_000 }])}${apiError(CUSTODIAN, "Context limit reached · /compact or /clear to continue", new Date().toISOString())}\n`;
+    seedCustodian(root, CUSTODIAN, writeRaw(home, CUSTODIAN, content, new Date()));
+    const first = check(root, sources(home)).data.coordinators[0];
+    expect(first).toMatchObject({ level: "forced", page: "forced", handoffDue: true, percent: null });
+    expect(check(root, sources(home)).data.coordinators[0]?.page).toBeNull();
+    const pings = pending(root);
+    expect(pings).toHaveLength(1);
+    expect(pings[0]?.message).toMatch(/^👆👆👆 HANDOFF OVERDUE: rowan g1 custodian \(arcadia\) hit its context limit — start its successor now: /);
+    expect(pings[0]?.message).toContain("Context limit reached");
+    expect(marker(root, CUSTODIAN)).toMatchObject({ level: "forced", handoff_due: true });
+  });
+
+  it("clears the context limit once a real turn or a compaction follows it", () => {
+    const limit = apiError(CUSTODIAN, "Prompt is too long", "2026-11-23T01:24:52.452Z");
+    const base = claudeTranscript(CUSTODIAN, null, [{ tokens: 400_000 }]);
+    expect(levelOf(readClaudeTranscript(`${base}${limit}\n`).occupancy)).toBe("forced");
+    const after = claudeTranscript(CUSTODIAN, null, [{ tokens: 120_000 }]).split("\n").slice(1).join("\n");
+    expect(readClaudeTranscript(`${base}${limit}\n${after}`).occupancy).toMatchObject({ kind: "measured", tokens: 120_000 });
+    // A tool result quoting the phrase is not the session's own limit.
+    const quoted = JSON.stringify({ type: "user", sessionId: CUSTODIAN, message: { role: "user", content: "pattern: /context limit reached|prompt is too long/" } });
+    expect(readClaudeTranscript(`${base}${quoted}\n`).occupancy.kind).toBe("measured");
+  });
+
+  it("pages unmeasured when the custodian's registered transcript cannot be read", () => {
+    const root = workspace();
+    const home = claudeHome();
+    seedCustodian(root, CUSTODIAN, path.join(home, "gone", `${CUSTODIAN}.jsonl`));
+    expect(() => check(root, sources(home))).toThrow(/rowan g1 custodian \(arcadia\) transcript .* could not be read/);
+    expect(pending(root)).toHaveLength(1);
+    expect(pending(root)[0]?.message).toMatch(/^👆👆 HANDOFF DUE: rowan g1 custodian \(arcadia\) context unmeasured .*could not be read/);
+  });
+
+  it("still ignores an untitled session that is not the custodian", () => {
+    const root = workspace();
+    const home = claudeHome();
+    writeClaude(home, "44444444-4444-4444-8444-444444444444", null, [{ tokens: 900_000 }]);
+    writeClaude(home, ROWAN, "🚦 Rowan: stale", [{ tokens: 900_000 }], 180);
+    seedCustodian(root, CUSTODIAN, writeClaude(home, CUSTODIAN, null, [{ tokens: 200_000 }]));
+    expect(check(root, sources(home)).data.coordinators.map((row) => row.sessionId)).toEqual([CUSTODIAN]);
+    expect(pending(root)).toHaveLength(0);
+  });
+
+  it("marks a 🚦-titled live custodian once, not twice", () => {
+    const root = workspace();
+    const home = claudeHome();
+    seedCustodian(root, ROWAN, writeClaude(home, ROWAN, "🚦 Rowan g8", [{ tokens: 620_000 }]));
+    const rows = check(root, sources(home)).data.coordinators;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ sessionId: ROWAN, title: "🚦 Rowan g8", page: "due", custodian: { generation: 1 } });
+  });
+
+  it("replays 11-22: the untitled Rowan g2 custodian past its context limit pages forced once, not 3 h 13 min of silence", () => {
+    const root = workspace();
+    const home = claudeHome();
+    const fixture = readFileSync(path.join(__dirname, "fixtures", "coordinator-budget", "rowan-g2-context-limit-20261122.jsonl"), "utf8");
+    const session = "f9544a39-cb57-499c-aa80-21bd49fdb873";
+    const file = writeRaw(home, session, fixture, new Date("2026-11-23T02:41:26.825Z"));
+    seedCustodian(root, session, file);
+    // Before the fix `coordinator budget` did not list it at all: "rowan g2" has no 🚦.
+    const ticks = ["2026-11-23T01:30:00.000Z", "2026-11-23T02:45:00.000Z", "2026-11-23T04:30:00.000Z"].map((at) => check(root, sources(home), Date.parse(at)).data.coordinators);
+    expect(ticks.map((rows) => rows.map((row) => [row.title, row.level, row.page]))).toEqual([
+      [["rowan g2", "forced", "forced"]],
+      [["rowan g2", "forced", null]],
+      [["rowan g2", "forced", null]]
+    ]);
+    const pings = pending(root);
+    expect(pings).toHaveLength(1);
+    expect(pings[0]?.message).toMatch(/^👆👆👆 HANDOFF OVERDUE: rowan g2 hit its context limit/);
+    expect(pings[0]?.message).toContain("Prompt is too long");
   });
 });
 
