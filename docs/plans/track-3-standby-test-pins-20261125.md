@@ -11,11 +11,11 @@ updated: 2026-11-26
 actions:
   - id: pin-predecessor-tolerance-window
     title: Pin how long START tolerates a handed-off predecessor after its successor accepts, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how long START tolerates a handed-off predecessor after its successor accepts, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-predecessor-tolerance-window-7235d862c90b; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-predecessor-tolerance-window
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-predecessor-tolerance-window
+current_action: pin-duty-unknown-transitions
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
