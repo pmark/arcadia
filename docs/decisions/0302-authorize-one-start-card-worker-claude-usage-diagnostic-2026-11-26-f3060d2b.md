@@ -4,7 +4,7 @@ type: decision
 id: "0302"
 slug: authorize-one-start-card-worker-claude-usage-diagnostic-2026-11-26-f3060d2b
 project: arcadia
-status: open
+status: approved
 question: Authorize one START card worker Claude usage diagnostic 2026-11-26 f3060d2b
 gap_type: missing-decision
 gate_question: resists_reversal
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: track-4-standby-test-pins-20261126
 updated: 2026-11-26
+answer: Authorize one worker Claude usage diagnostic bf6cf239f1d65b13a0d08105d3f27c5989aec5b485e96f7103d8b86181545b53
+decided: 2026-11-26
 ---
 
 # Decision 0302: Authorize one START card worker Claude usage diagnostic 2026-11-26 f3060d2b
