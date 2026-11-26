@@ -20,6 +20,7 @@ import { getSchedulingProject } from "../scheduling/store.js";
 import { git, isAncestor, projectCheckoutFor, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { syncBaseWithOwnPointerCommits } from "../git/pointerReconcile.js";
 import { markCaughtUpWorkerMerges } from "./workerMerge.js";
+import { applyNightBreaker, type NightBreakerPass } from "./nightBreaker.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
@@ -540,6 +541,8 @@ export interface ManagedProductionTickResult {
   scheduling: SchedulingPassResult | null;
   schedulingError: string | null;
   projects: ManagedProductionTickProjectResult[];
+  /** The night breaker's pass, run before everything else (src/production/nightBreaker.ts); null when it failed to run. */
+  nightBreaker: NightBreakerPass | null;
 }
 
 export function ensureProductionTickTables(db: Database.Database): void {
@@ -2107,6 +2110,14 @@ export function runManagedProductionTick(
   const clock = options.clock ?? (options.now ? () => now : () => new Date());
   const log = options.log ?? (() => {});
   const tmux = options.tmux ?? systemTmux;
+  // The night breaker runs first on every pass (#3047), so a trip's Off commits before this pass reads the policy and
+  // nothing below admits under it. A failure to run is logged and leaves production as it is.
+  let nightBreaker: NightBreakerPass | null = null;
+  try {
+    nightBreaker = applyNightBreaker(db, { now, log });
+  } catch (error) {
+    log(`Night breaker pass failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
   const policyRead = readProductionPolicySafely(db);
   const active = policyRead.status === "ok" && policyRead.policy.desiredState === "active";
 
@@ -2608,7 +2619,7 @@ export function runManagedProductionTick(
     projects.push({ projectSlug: project.slug, repositoryRoot: repoRoot, baseBranchAdvance, askSurfacing, reconciled, handoff, launch });
   }
 
-  return { policyActive: active, scheduling, schedulingError, projects };
+  return { policyActive: active, scheduling, schedulingError, projects, nightBreaker };
 }
 
 /**
