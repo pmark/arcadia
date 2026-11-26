@@ -71,7 +71,9 @@ export function ensureNightBreakerTables(db: Database.Database): void {
       condition TEXT NOT NULL,
       cause TEXT NOT NULL,
       receipt_id TEXT NOT NULL,
-      parked_at INTEGER NOT NULL
+      parked_at INTEGER NOT NULL,
+      ref TEXT,
+      head TEXT
     );
   `);
 }
@@ -132,7 +134,7 @@ export function listProductionParks(db: Database.Database, now: number): ParkRec
  * a third park or the same cause twice is issued by `applyNightBreaker`, which the tick runs on every pass, so a caller
  * that admits more work in the same pass runs it right after recording.
  */
-export function recordProductionPark(db: Database.Database, failure: FailedCondition): ReturnType<typeof recordFailedCondition> {
+export function recordProductionPark(db: Database.Database, failure: FailedCondition, ref: string | null = null): ReturnType<typeof recordFailedCondition> {
   ensureNightBreakerTables(db);
   return writeTransaction(db, () => {
     const outcome = recordFailedCondition({ parks: listProductionParks(db, failure.now) }, failure);
@@ -144,9 +146,10 @@ export function recordProductionPark(db: Database.Database, failure: FailedCondi
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).run(id, r.actionKey, r.condition, r.cause, r.causeKind, r.project, r.lane, r.head, r.reason ?? null, r.parkedAt, new Date(failure.now).toISOString());
     db.prepare(
-      `INSERT INTO production_action_parks (action_key, condition, cause, receipt_id, parked_at) VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(action_key) DO UPDATE SET condition = excluded.condition, cause = excluded.cause, receipt_id = excluded.receipt_id, parked_at = excluded.parked_at`
-    ).run(r.actionKey, r.condition, r.cause, id, r.parkedAt);
+      `INSERT INTO production_action_parks (action_key, condition, cause, receipt_id, parked_at, ref, head) VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(action_key) DO UPDATE SET condition = excluded.condition, cause = excluded.cause, receipt_id = excluded.receipt_id,
+           parked_at = excluded.parked_at, ref = excluded.ref, head = excluded.head`
+    ).run(r.actionKey, r.condition, r.cause, id, r.parkedAt, ref, r.head);
     return outcome;
   });
 }
