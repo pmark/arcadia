@@ -79,16 +79,16 @@ actions:
     expected_artifact: Evidence satisfying Agent Ask pin-momentum-ping-fit
     clarification: clarified
     confidence: high
-    source: Agent Ask plan-track-3-standby-test-pins-20261125
+    source: Agent Ask amend-track-3-pin-momentum-ping-fit-ascii-20261125
     why: "formatAge and fitPing (src/production/momentumWatch.ts:184-188 and 228-233) shape every momentum, keeper and duty page, and no test file names either, so the cut that keeps each page's head and episode key is pinned only through whole messages."
     acceptance_criteria:
       - tests/pin-momentum-ping-fit.test.ts is a new test file that imports formatAge and fitPing from ../src/production/momentumWatch.js (lines 184-188 and 228-233) and asserts formatAge gives "0 min" for 0 and 29,999 ms, "1 min" for 30,000 ms, "59 min" for 59 minutes, "1 h 0 min" for 60 minutes and "2 h 5 min" for 125 minutes, and that fitPing returns "H", "-detail-", "T" whole and returns "HH", "dddddd", "TT" whole at a limit of exactly 10.
-      - "The same test file asserts formatAge gives \"0 min\" for minus 5 minutes, and that fitPing cuts only the detail and marks the cut with an ellipsis: \"HEAD\", 600 d's and \"TAIL\" give the 500 characters `HEAD`, 491 d's and `…TAIL`, and \"HH\", \"dddddddd\", \"TT\" at a limit of 10 give \"HHddddd…TT\"."
+      - "The same test file asserts formatAge gives \"0 min\" for minus 5 minutes, and that fitPing cuts only the detail and marks the cut with the single character U+2026 (horizontal ellipsis), which the test writes as the JavaScript escape \\u2026: \"HEAD\", 600 d characters and \"TAIL\" give 500 characters made of HEAD, then 491 d characters, then U+2026, then TAIL; and \"HH\", \"dddddddd\", \"TT\" at a limit of 10 give HH, then 5 d characters, then U+2026, then TT."
       - No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/.
       - Apart from the settlement records Arcadia writes, the change touches only tests/pin-momentum-ping-fit.test.ts, a new test file of at most 50 lines that imports only vitest and src/production/momentumWatch.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.
     depends_on: []
     decisions: []
-    references: []
+    references: ["src/production/momentumWatch.ts"]
   - id: pin-momentum-slot-transitions
     title: Pin when a momentum alarm slot pages, closes or holds, with a new test file.
     status: open
