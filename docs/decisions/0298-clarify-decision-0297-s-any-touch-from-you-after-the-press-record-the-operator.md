@@ -4,7 +4,7 @@ type: decision
 id: "0298"
 slug: clarify-decision-0297-s-any-touch-from-you-after-the-press-record-the-operator
 project: arcadia
-status: open
+status: approved
 question: "Clarify Decision 0297's \"any touch from you after the press\": record the operator's answer \"2A\", under which his answers about other work while a run is going do not count as touches on that run."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -18,7 +18,9 @@ options:
     recommended: false
 confidence: high
 plan: track-3-standby-test-pins-20261125
-updated: 2026-11-26
+updated: 2026-11-25
+answer: "A. 2A: no, answers about other work during a run are not touches on it"
+decided: 2026-11-25
 ---
 
 # Decision 0298: Clarify Decision 0297's "any touch from you after the press": record the operator's answer "2A", under which his answers about other work while a run is going do not count as touches on that run.
