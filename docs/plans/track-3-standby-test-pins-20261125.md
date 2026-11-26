@@ -91,11 +91,11 @@ actions:
     references: ["src/production/momentumWatch.ts"]
   - id: pin-momentum-slot-transitions
     title: Pin when a momentum alarm slot pages, closes or holds, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin when a momentum alarm slot pages, closes or holds, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-momentum-slot-transitions-edd75f4fb58e; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-momentum-slot-transitions
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-momentum-slot-transitions
+current_action: pin-budget-exhausted-wording
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
