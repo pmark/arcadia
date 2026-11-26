@@ -71,11 +71,11 @@ actions:
     references: []
   - id: pin-momentum-ping-fit
     title: Pin how momentum and duty pages render an age and fit the 500-character ping limit, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how momentum and duty pages render an age and fit the 500-character ping limit, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-momentum-ping-fit-6483f940e807; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-momentum-ping-fit
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-momentum-ping-fit
+current_action: pin-momentum-slot-transitions
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
