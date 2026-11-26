@@ -4,7 +4,7 @@ type: decision
 id: "0301"
 slug: record-the-operator-s-answer-yes-a-a-standing-approval-under-which-rowan
 project: arcadia
-status: open
+status: approved
 question: "Record the operator's answer \"Yes, A\": a standing approval under which Rowan registers each new test-only standby track of the same kind without asking him."
 gap_type: missing-decision
 gate_question: approval_boundary
@@ -19,6 +19,8 @@ options:
 confidence: high
 plan: track-4-standby-test-pins-20261126
 updated: 2026-11-26
+answer: "A. Yes, as a standing approval: Rowan registers same-kind test-only tracks without asking"
+decided: 2026-11-26
 ---
 
 # Decision 0301: Record the operator's answer "Yes, A": a standing approval under which Rowan registers each new test-only standby track of the same kind without asking him.
