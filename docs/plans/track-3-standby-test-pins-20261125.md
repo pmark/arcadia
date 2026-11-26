@@ -51,11 +51,11 @@ actions:
     references: []
   - id: pin-duty-healthy-running-boundary
     title: Pin when a running Action counts as healthy and so silences the duty ready-floor alarm, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin when a running Action counts as healthy and so silences the duty ready-floor alarm, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-duty-healthy-running-boundary-1a2edb3961d5; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-duty-healthy-running-boundary
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-duty-healthy-running-boundary
+current_action: pin-momentum-ping-fit
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
