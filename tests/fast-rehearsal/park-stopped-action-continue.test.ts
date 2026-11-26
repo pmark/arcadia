@@ -2,6 +2,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runSessionReconcileCommand } from "../../src/commands/advance.js";
+import { runAgentAskPendingCommand, runAgentAskSettleCommand } from "../../src/commands/agentAsk.js";
 import { runDocsSyncCommand } from "../../src/commands/docs.js";
 import { withDatabase, withReadOnlyDatabase } from "../../src/db/connection.js";
 import { listProductionParks } from "../../src/production/nightBreaker.js";
@@ -71,13 +72,16 @@ function build(name: string, dependencies: Record<string, string[]> = {}): FastR
 }
 
 /** Card B (#3107): the first Action settles, then a commit lands on top of its settlement, so the terminal guard refuses it. */
-function stopFirstAsTerminal(world: FastRehearsal): void {
+function stopFirstAsTerminal(world: FastRehearsal): ReturnType<FastRehearsal["execute"]> {
   world.expectError(/reconciliation outcome was incomplete_resumable|differs from its exact canonical completion settlement/);
   world.start();
   const { launch } = world.untilLaunched(STOPPED, 3);
-  world.execute(launch, STOPPED, "extra-commit-after-settle", work(STOPPED));
+  const result = world.execute(launch, STOPPED, "extra-commit-after-settle", work(STOPPED));
   world.tickUntil(() => world.escalations().some((e) => e.kind === "terminal_candidate_not_integrable"), 6);
+  return result;
 }
+const parkRows = (world: FastRehearsal) => withReadOnlyDatabase(world.workspace, (db) =>
+  db.prepare("SELECT action_key FROM production_action_parks").all() as Array<{ action_key: string }>);
 
 function runIndependent(world: FastRehearsal, ids: readonly string[]): void {
   for (const id of ids) {
@@ -151,10 +155,47 @@ describe("an Action that depends on the parked one is never admitted", () => {
   });
 });
 
+// #3136 review round 1: a park ends when its own cause stops holding, never only on done-in-base.
+describe("a terminal park ends when its own cause stops holding", () => {
+  let world: FastRehearsal;
+  let result: ReturnType<FastRehearsal["execute"]>;
+  beforeAll(() => {
+    world = build("park-terminal-release");
+    result = stopFirstAsTerminal(world);
+    runIndependent(world, [SECOND, THIRD]);
+  }, SCENARIO_TIMEOUT_MS);
+
+  it("ends the park when the candidate moves off the refused head, and judges the new head afresh", () => {
+    expect(parkRows(world)).toEqual([{ action_key: world.actionKey(STOPPED) }]);
+    writeFileSync(path.join(result.brief.worktree, "SECOND-EXTRA.md"), "another commit\n");
+    git(result.brief.worktree, ["add", "SECOND-EXTRA.md"]);
+    git(result.brief.worktree, ["-c", "user.name=Arcadia Rehearsal Fixture", "-c", "user.email=rehearsal@localhost", "commit", "-qm", "second extra commit"]);
+    const newHead = git(result.brief.worktree, ["rev-parse", "HEAD"]).trim();
+    world.ticks(3);
+    expect(world.log.filter((line) => line.includes(`Released the park of ${world.actionKey(STOPPED)}: its candidate moved off the refused head`))).toHaveLength(1);
+    const [entry] = world.escalations();
+    expect(entry).toMatchObject({ actionKey: world.actionKey(STOPPED), kind: "terminal_candidate_not_integrable" });
+    expect(entry.message).toContain(`at ${newHead})`);
+    // Judged afresh at the new head: the same Action-local refusal parks it again, with a second receipt.
+    expect(parkReceipts(world).map((r) => r.action_key)).toEqual([world.actionKey(STOPPED), world.actionKey(STOPPED)]);
+  });
+
+  it("ends the park once the candidate is no longer pending (the operator lands its settlement commit)", () => {
+    git(world.repo, ["merge", "--ff-only", "--quiet", result.settlementCommit!]);
+    git(world.repo, ["push", "-q", "origin", "refs/heads/main:refs/heads/main"]);
+    world.ticks(3);
+    expect(world.planAction(world.repo, STOPPED)).toBe("done");
+    expect(parkRows(world)).toEqual([]);
+    expect(world.escalations()).toEqual([]);
+  });
+});
+
 describe("an Action gated only on its own pending completion Ask is parked and admission continues", () => {
   let world: FastRehearsal;
   let parksWhileHeld: ParkRow[];
   let launchedWhileHeld: string[];
+  let branch: string;
+  let branchHead: string;
   beforeAll(() => {
     world = build("park-own-completion-gate");
     world.start();
@@ -167,7 +208,9 @@ describe("an Action gated only on its own pending completion Ask is parked and a
     world.ticks(3);
     parksWhileHeld = parkReceipts(world);
     launchedWhileHeld = world.sessions().map((s) => s.action_id);
-    // Its candidate is discarded as prepareSession's refusal says; the Ask still gates the Action.
+    // Its candidate is discarded as prepareSession's refusal says (its branch is kept); the Ask still gates the Action.
+    branch = first.session.branch;
+    branchHead = git(world.repo, ["rev-parse", `refs/heads/${branch}`]).trim();
     git(world.repo, ["worktree", "remove", "--force", result.brief.worktree]);
     runIndependent(world, [SECOND, THIRD]);
   }, SCENARIO_TIMEOUT_MS);
@@ -183,6 +226,19 @@ describe("an Action gated only on its own pending completion Ask is parked and a
     expect(world.planAction(world.repo, STOPPED)).toBe("open");
     expect(escalationKinds(world)).toEqual([[world.actionKey(STOPPED), "operator_gate_pending"]]);
     expect(parkReceipts(world).map((r) => [r.action_key, r.condition])).toEqual([[world.actionKey(STOPPED), "operator_gate_pending"]]);
+    expect(git(world.repo, ["rev-parse", `refs/heads/${branch}`]).trim()).toBe(branchHead);
+  });
+
+  // #3136 review round 1: rejecting the own completion Ask (the governed reset) ends the park; a fresh attempt follows.
+  it("ends the park once its own completion Ask is rejected, and admits a fresh attempt", () => {
+    const [pending] = runAgentAskPendingCommand({ workspace: world.workspace }).data.pending;
+    const preview = runAgentAskSettleCommand({ workspace: world.workspace, proposal: pending.requestId, requestId: "reject-own-completion", disposition: "rejected" });
+    runAgentAskSettleCommand({ workspace: world.workspace, proposal: pending.requestId, requestId: "reject-own-completion", disposition: "rejected",
+      preview: preview.data.receipt.previewFingerprint, apply: true });
+    world.untilLaunched(STOPPED, 6);
+    expect(world.log.filter((line) => line.includes(`Released the park of ${world.actionKey(STOPPED)}: its own completion Ask is no longer pending`))).toHaveLength(1);
+    expect(parkRows(world)).toEqual([]);
+    expect(world.sessions().filter((s) => s.action_id === STOPPED)).toHaveLength(2);
   });
 });
 
