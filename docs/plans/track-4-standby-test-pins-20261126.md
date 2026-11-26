@@ -91,11 +91,11 @@ actions:
     references: ["src/ask/agentAsk.ts", "tests/pin-ask-draft-scalar-rewrite.test.ts"]
   - id: pin-pointer-replace-current-action
     title: Pin how the queue rewrites or inserts a document's current_action pointer, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the queue rewrites or inserts a document's current_action pointer, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-pointer-replace-current-action-eb4c1a39f7a5; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-pointer-replace-current-action
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-pointer-replace-current-action
+current_action: pin-frontmatter-field-set
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
