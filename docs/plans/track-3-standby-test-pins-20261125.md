@@ -131,11 +131,11 @@ actions:
     references: []
   - id: pin-coordinator-note-pr-parse
     title: Pin which coordinator notes and pull request numbers the coordinator journal accepts, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which coordinator notes and pull request numbers the coordinator journal accepts, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-coordinator-note-pr-parse-23897ac3bf30; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-coordinator-note-pr-parse
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-coordinator-note-pr-parse
+current_action: pin-standing-grant-answered
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
