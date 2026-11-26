@@ -33,7 +33,8 @@ import { launchGuardedHostSession, type GuardedLaunchInput } from "./launch.js";
 import { buildLaunchPreview, type LaunchPreview } from "./launchPreview.js";
 import { requirementIdentity } from "./roleLineage.js";
 import { readProjectPartners, renderDispatchIdentityBlock } from "./partners.js";
-import { TIER_AGENTS, describeSessionStart, loadModelTierRegistry, sessionStartBinding, type TierAgent } from "../codingAgents/modelTiers.js";
+import { BUNDLED_MODEL_TIERS, TIER_AGENTS, describeSessionStart, loadModelTierRegistry, sessionStartBinding, type TierAgent } from "../codingAgents/modelTiers.js";
+import { applyModelRule, describeModelRuleChoice } from "./modelRule.js";
 
 export interface HostEnrollmentInput {
   source: string;
@@ -201,8 +202,20 @@ export function executeHostEnrollment(input: HostEnrollmentInput): EnrollmentRec
       const tierRegistry = (() => { try { return loadModelTierRegistry(workspace); } catch { return undefined; } })();
       const selectedAgent = selection ? sessionAgentForProvider(selection.provider) : null;
       const tierAgent = selectedAgent && (TIER_AGENTS as readonly string[]).includes(selectedAgent) ? (selectedAgent as TierAgent) : null;
-      const startBinding = tierAgent ? sessionStartBinding(tierAgent, tierRegistry) : null;
-      const startNote = selection && tierAgent ? describeSessionStart(tierAgent, selection.model, tierRegistry) : null;
+      // A managed launch runs under the standing policy, so the launched Session
+      // takes Decision 0290 A's model and effort (src/sessions/modelRule.ts);
+      // a refusal is left to the launch itself to report.
+      const modelRule = mode === "managed-launch" && selection && tierAgent && registries?.adapters
+        ? (() => {
+          try {
+            return applyModelRule({ agent: tierAgent, provider: selection.provider, action: dispatch.action, repair: false,
+              adapters: registries.adapters, profiles: registries.profiles, registry: tierRegistry ?? BUNDLED_MODEL_TIERS,
+              fallback: { model: selection.model, effort: selection.effort ?? null, bindingId: selection.bindingId } });
+          } catch { return null; }
+        })()
+        : null;
+      const startBinding = modelRule ? { model: modelRule.used.model, effort: modelRule.used.effort } : tierAgent ? sessionStartBinding(tierAgent, tierRegistry) : null;
+      const startNote = modelRule ? describeModelRuleChoice(modelRule) : selection && tierAgent ? describeSessionStart(tierAgent, selection.model, tierRegistry) : null;
       return {
         projectSlug: dispatch.projectSlug,
         planSlug: dispatch.activePlan,

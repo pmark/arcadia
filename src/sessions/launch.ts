@@ -57,6 +57,7 @@ import { getResumableLeaseHandoff, getSessionContinuation, restoreLeaseHandoffIf
 import { getSessionRepair, releaseRepairSession } from "./reviewRepair.js";
 import { buildAgentLaunchCommand, prepareAgentWorktree, type PreparedAgentWorktree } from "./worktreePreparation.js";
 import { retireStaleBaseHandoff } from "./staleBaseHandoff.js";
+import { applyModelRule, describeModelRuleChoice } from "./modelRule.js";
 import { verifyFixtureStandingLaunch, type FetchDecisionFile, type FixtureStandingBasis } from "./fixtureStandingLaunch.js";
 import { assertOperatorLaunchRequestAvailable, mintOperatorLaunchAuthorization, refuseInsideArcadiaSession, voidOperatorLaunchAuthorization, type OperatorLaunchSource } from "./operatorLaunch.js";
 
@@ -453,8 +454,20 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
   // provider; the packet-bound selection stays the plan's tier, which the brief
   // names as the escalation target. The fixture provider has no tier.
   const startBinding = (TIER_AGENTS as readonly string[]).includes(agent) ? sessionStartBinding(agent as TierAgent, registry) : null;
-  const model = startBinding?.model ?? preview.selection.model;
-  const effort = startBinding ? startBinding.effort : (preview.selection.effort ?? null);
+  // A production (standing-policy) Claude Session instead launches on the
+  // model and effort Decision 0290 A selects for its Action (src/sessions/modelRule.ts),
+  // or records its departure from the rule; it refuses here, before any
+  // admission, rather than fall back to a stronger model than the rule's.
+  const modelRule = input.standingPolicy
+    ? applyModelRule({
+      agent, provider: preview.selection.provider, action: dispatch.context.action, repair: Boolean(input.repair),
+      adapters: input.adapters, profiles: input.profiles, registry,
+      fallback: { model: preview.selection.model, effort: preview.selection.effort ?? null, bindingId: preview.selection.bindingId }
+    })
+    : null;
+  if (modelRule) input.log?.(`${preview.projectSlug}/${preview.actionId}: ${describeModelRuleChoice(modelRule)}`);
+  const model = modelRule?.used.model ?? startBinding?.model ?? preview.selection.model;
+  const effort = modelRule ? modelRule.used.effort : startBinding ? startBinding.effort : (preview.selection.effort ?? null);
 
   // Checked from this worker process's own context, before issueAdmission
   // reserves a concurrency slot and before any worktree or lease is created:
@@ -808,6 +821,7 @@ export function launchGuardedHostSession(input: GuardedLaunchInput): GuardedLaun
       agent,
       model,
       effort,
+      modelRule,
       baseRevision: sessionBaseRevision,
       launchRevision: sessionLaunchRevision,
       timeLimitMs: input.timeLimitMs,

@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withReadOnlyDatabase } from "../../src/db/connection.js";
 import { listProductionAttemptTokens } from "../../src/production/tick.js";
+import { SESSION_INPUT_TOKEN_CEILING_DEFAULTS } from "../../src/production/sessionTokenCeiling.js";
 import { git } from "../helpers/rehearsalHarness.js";
 import { isolateProcess, type IsolatedProcess } from "./helpers/environment.js";
 import { ENVIRONMENT_WALL_SESSION, writeEnvironmentWallSessionLog } from "./helpers/environmentWall.js";
@@ -14,7 +15,10 @@ import { ACTION_1, FastRehearsal, SCENARIO_TIMEOUT_MS } from "./helpers/world.js
  * `budget_exhausted`, which also names the walls the log shows), no second
  * launch, the attempt's tokens recorded, nothing integrated. Without the
  * environment-wall stop the tick relaunches the Action every few ticks.
+ * Decision 0290 A launches this one-criterion MARKER.md Action on Sonnet
+ * medium, so the standard-tier ceiling (6M) applies; ~11M is over it.
  */
+const CEILING = SESSION_INPUT_TOKEN_CEILING_DEFAULTS.standard;
 let isolation: IsolatedProcess;
 let world: FastRehearsal;
 let sessionId: string;
@@ -44,11 +48,14 @@ afterAll(() => {
 describe("the recorded environment-wall Session", () => {
   it("keeps one token-ceiling blocker without borrowing unproven wall attribution or relaunching", () => {
     expect(world.tmux.launches).toHaveLength(1);
+    // The rule's Sonnet Session, and a recorded spend that really is over its ceiling.
+    expect(world.sessions().find((s) => s.id === sessionId)).toMatchObject({ model: "sonnet", effort: "e2_standard" });
+    expect(ENVIRONMENT_WALL_SESSION.totalInputTokens).toBeGreaterThan(CEILING);
     expect(world.sessions().map((s) => [s.action_id, s.status])).toEqual([[ACTION_1, expect.any(String)]]);
     const escalations = world.escalations();
     expect(escalations).toHaveLength(1);
     expect(escalations[0]).toMatchObject({ actionKey: world.actionKey(ACTION_1), kind: "budget_exhausted" });
-    expect(escalations[0]?.message).toContain("3000000");
+    expect(escalations[0]?.message).toContain(String(CEILING));
     expect(escalations[0]?.message).not.toContain("workspace_write");
     expect(escalations[0]?.message).not.toContain("host_validation");
     expect(escalations[0]?.message).not.toContain("preservation");
@@ -65,7 +72,7 @@ describe("the recorded environment-wall Session", () => {
     const uncached = ENVIRONMENT_WALL_SESSION.totalInputTokens - ENVIRONMENT_WALL_SESSION.cachedInputTokens;
     expect(receipt.reason).toContain("budget_exhausted");
     expect(receipt.reason).toContain(`${uncached} uncached + ${ENVIRONMENT_WALL_SESSION.cachedInputTokens} cached`);
-    expect(receipt.reason).toContain("ceiling of 3000000");
+    expect(receipt.reason).toContain(`ceiling of ${CEILING}`);
     expect(JSON.parse(receipt.evidence_json).stopReason).toContain("budget_exhausted");
   });
 
