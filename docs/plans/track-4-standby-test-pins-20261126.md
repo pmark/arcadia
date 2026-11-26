@@ -31,11 +31,11 @@ actions:
     references: ["src/decisions/decisionIds.ts", "tests/pin-pr-decision-id-clashes.test.ts"]
   - id: pin-authority-path-normalization
     title: Pin how the authority classifier reduces a changed path before matching it, and which paths it refuses to reduce, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the authority classifier reduces a changed path before matching it, and which paths it refuses to reduce, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-authority-path-normalization-00eff8954f4c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-authority-path-normalization
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-authority-path-normalization
+current_action: pin-review-attempt-receipt-flags
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
