@@ -71,11 +71,11 @@ actions:
     references: ["src/sessions/roleLineage.ts", "tests/pin-review-attempt-receipt-flags.test.ts"]
   - id: pin-ask-draft-scalar-rewrite
     title: Pin how an Agent Ask draft's request id or candidate revision is rewritten before settlement, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how an Agent Ask draft's request id or candidate revision is rewritten before settlement, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-ask-draft-scalar-rewrite-a1058ea75319; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-ask-draft-scalar-rewrite
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-ask-draft-scalar-rewrite
+current_action: pin-pointer-replace-current-action
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
