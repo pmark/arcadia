@@ -16,7 +16,7 @@ import { DAY_CARD, DAY_PLAN, DAY_RUN, dayGrantPins, dayScenarios, evidenceOf, fi
 
 /**
  * Decision 0173: the computation behind `start-run pins --day-grant-from`, the day-grant card and its executor, the press
- * marker, the production record, and the same scenario table the executor runs in tests/start-run-executor.test.ts.
+ * marker, the production record, and the same scenario table the executor runs in tests/start-run-executor-day-grant.test.ts.
  */
 const repoRoot = path.resolve(import.meta.dirname, "..");
 const fixtures = path.join(repoRoot, "tests", "fixtures", "start-run");
