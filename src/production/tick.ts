@@ -463,7 +463,7 @@ function parkStoppedAction(
   if (open?.kind !== input.kind || parkedActionCondition(db, input.actionKey)?.condition === input.kind) return false;
   recordProductionPark(db, { actionKey: input.actionKey, condition: input.kind, cause: input.cause, project: input.projectSlug,
     lane: PRODUCTION_PARK_LANE, now: input.now.getTime(), head: input.head });
-  input.log(`Parked ${input.actionKey} (${input.kind}): ${input.cause} Its escalation and candidate stay; admission continues with the next Action that does not depend on it.`);
+  input.log(`Parked ${input.actionKey}: ${input.cause} Its escalation and candidate stay; admission continues with the next Action that does not depend on it.`);
   return true;
 }
 
