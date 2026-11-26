@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: track-3-standby-test-pins-20261125
 project: arcadia
-status: active
+status: complete
 milestone: Track 3 standby test pins 20261125
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -151,11 +151,11 @@ actions:
     references: []
   - id: pin-standing-grant-answered
     title: Pin which Decision frontmatter reads as an answered standing START grant, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which Decision frontmatter reads as an answered standing START grant, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-standing-grant-answered-7b19c441ec54; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-standing-grant-answered
     clarification: clarified
     confidence: high
@@ -171,7 +171,6 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-standing-grant-answered
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
