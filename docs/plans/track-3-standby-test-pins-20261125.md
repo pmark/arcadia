@@ -31,11 +31,11 @@ actions:
     references: []
   - id: pin-duty-unknown-transitions
     title: Pin when the duty alarm's cannot-judge page opens, holds and closes, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin when the duty alarm's cannot-judge page opens, holds and closes, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-duty-unknown-transitions-3ced25dc18a2; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-duty-unknown-transitions
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: []
 questions: []
 decisions: []
-current_action: pin-duty-unknown-transitions
+current_action: pin-duty-healthy-running-boundary
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
