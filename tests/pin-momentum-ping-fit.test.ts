@@ -27,7 +27,7 @@ describe("fitPing", () => {
   it("cuts only the detail and marks the cut with an ellipsis", () => {
     const out = fitPing("HEAD", "d".repeat(600), "TAIL");
     expect(out).toHaveLength(500);
-    expect(out).toBe("HEAD" + "d".repeat(491) + "…" + "TAIL");
-    expect(fitPing("HH", "dddddddd", "TT", 10)).toBe("HH" + "d".repeat(5) + "…" + "TT");
+    expect(out).toBe("HEAD" + "d".repeat(491) + "\u2026" + "TAIL");
+    expect(fitPing("HH", "dddddddd", "TT", 10)).toBe("HH" + "d".repeat(5) + "\u2026" + "TT");
   });
 });
