@@ -380,8 +380,9 @@ describe("the registered custodian is measured whatever its title or silence (M4
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ sessionId: CUSTODIAN, role: "rowan", level: "ok", page: null, custodian: { project: "arcadia", role: "rowan", generation: 1 } });
     expect(pending(root)).toHaveLength(0);
-    const view = runCoordinatorBudgetCommand({ workspace: root }, { sources: sources(home), env: {} });
-    expect(view.data.coordinators.map((row) => row.sessionId)).toEqual([CUSTODIAN]);
+    // The read-only view opens no workspace database, so it measures an untitled custodian only by --session.
+    const view = runCoordinatorBudgetCommand({ workspace: root, session: CUSTODIAN }, { sources: sources(home), env: {} });
+    expect(view.data.selfRow).toMatchObject({ sessionId: CUSTODIAN, level: "ok" });
   });
 
   it("lists a custodian silent for 3 h and pages it once, at the unmeasured level", () => {

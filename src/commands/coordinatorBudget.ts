@@ -662,10 +662,9 @@ export function runCoordinatorBudgetCommand(
   const now = new Date((dependencies.now ?? Date.now)());
   const self = options.session?.trim() || env["CLAUDE_CODE_SESSION_ID"]?.trim() || env["CODEX_THREAD_ID"]?.trim() || null;
   if (self !== null && !/^[A-Za-z0-9._-]{1,128}$/.test(self)) throw validationError("--session must be a session id.", { session: self });
-  const sources = dependencies.sources ?? defaultBudgetSources(env);
-  const registry = registryOf(workspacePath, sources);
-  const discovery = discoverCoordinators(sources, { now, alsoSession: self, custodians: registry.custodians });
-  discovery.problems.unshift(...registry.problems);
+  // The view reads no workspace state (tests/activity-no-record-commands.test.ts), so it does not open the custody
+  // registry: the timer's markers carry a custodian's pages, and `--session` still measures any session by id.
+  const discovery = discoverCoordinators(dependencies.sources ?? defaultBudgetSources(env), { now, alsoSession: self });
   const rows = discovery.sessions.map((found) => {
     const marker = markerPath(workspacePath, found.read.agent, found.read.sessionId);
     const written = readMarker(marker);
