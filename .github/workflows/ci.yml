@@ -60,7 +60,9 @@ jobs:
     # unit-N gate jobs below keep those names and fail unless every shard passed.
     name: unit-shard-${{ matrix.shard }}
     runs-on: ubuntu-24.04 # pinned: 26.04 ships uutils timeout, which the durable executor refuses (#2527)
-    timeout-minutes: 10
+    # 15, not 10 (#3073): the slowest shard takes about 7 min on main, and runner variance pushed
+    # unit-shard-1 past 10 min twice on 2026-11-25 with no failing test, escalating unattended runs.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
