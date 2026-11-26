@@ -51,11 +51,11 @@ actions:
     references: ["src/decisions/batchMerge.ts", "tests/pin-authority-path-normalization.test.ts"]
   - id: pin-review-attempt-receipt-flags
     title: Pin which failed review-lineage attempts count as a never-started repair or an unavailable reviewer, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which failed review-lineage attempts count as a never-started repair or an unavailable reviewer, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-review-attempt-receipt-flags-50119f5bc04c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-review-attempt-receipt-flags
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-review-attempt-receipt-flags
+current_action: pin-ask-draft-scalar-rewrite
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
