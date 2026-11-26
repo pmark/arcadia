@@ -89,18 +89,48 @@ export function repairBudgetCauseIsActionLocal(db: Database.Database, actionKey:
   } catch { return false; }
 }
 
-/** Whether an escalation of this kind on this Action is an Action-local hold (held, not run-stopping). */
-export function isActionLocalHeldKind(db: Database.Database, actionKey: string, kind: string): boolean {
-  return ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || (kind === REPAIR_BUDGET_EXHAUSTED_KIND && repairBudgetCauseIsActionLocal(db, actionKey));
+/**
+ * Plan one-stop-never-ends-the-card-20261126 (#3107): the stop kinds the tick parks when their cause is Action-local
+ * (src/production/tick.ts, `parkStoppedAction`): a terminal guard that judged only this candidate, or an operator gate
+ * whose only item is the Action's own pending completion Ask. Such a row holds its Action only while the Action's
+ * durable park record names that same kind; any other row of these kinds still stops the scope.
+ */
+export const PARKABLE_STOP_KINDS: ReadonlySet<string> = new Set(["terminal_candidate_not_integrable", "operator_gate_pending"]);
+
+/**
+ * The condition this Action is parked on, or null (#3118 review N4). Unlike `listProductionParks`, the night breaker's
+ * count, which drops parks older than 24 hours or recorded before the latest trip, this per-Action record
+ * (src/production/nightBreaker.ts) lasts until the Action is done in the base (`releaseActionPark`), so a parked Action
+ * and its dependents are never admitted again meanwhile. Read-only; a missing table answers null (nothing is passed over).
+ */
+export function parkedActionCondition(db: Database.Database, actionKey: string): { condition: string; parkedAt: number } | null {
+  try {
+    const row = db.prepare("SELECT condition, parked_at FROM production_action_parks WHERE action_key = ?").get(actionKey) as { condition: string; parked_at: number } | undefined;
+    return row ? { condition: row.condition, parkedAt: row.parked_at } : null;
+  } catch { return null; }
 }
 
-/** This Action's open escalation when it is one of the Action-local held classes, or null. Read-only; a missing table answers null. */
+/** Whether an escalation of this kind on this Action is an Action-local hold (held, not run-stopping). */
+export function isActionLocalHeldKind(db: Database.Database, actionKey: string, kind: string): boolean {
+  return ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || (kind === REPAIR_BUDGET_EXHAUSTED_KIND && repairBudgetCauseIsActionLocal(db, actionKey))
+    || (PARKABLE_STOP_KINDS.has(kind) && parkedActionCondition(db, actionKey)?.condition === kind);
+}
+
+/**
+ * This Action's open escalation when it is one of the Action-local held classes, or null. With no escalation row at all,
+ * a durable park still holds the Action (N4); any other open row is judged by its own kind, so a global row stops.
+ * Read-only; a missing table answers null.
+ */
 function actionLocalHold(db: Database.Database, actionKey: string): { kind: string; firstDetectedAt: string } | null {
   let row: { kind: string; first_detected_at: string } | undefined;
   try {
     row = db.prepare("SELECT kind, first_detected_at FROM production_operator_escalations WHERE action_key = ?").get(actionKey) as { kind: string; first_detected_at: string } | undefined;
   } catch { return null; }
-  return row && isActionLocalHeldKind(db, actionKey, row.kind) ? { kind: row.kind, firstDetectedAt: row.first_detected_at } : null;
+  if (!row) {
+    const parked = parkedActionCondition(db, actionKey);
+    return parked ? { kind: parked.condition, firstDetectedAt: new Date(parked.parkedAt).toISOString() } : null;
+  }
+  return isActionLocalHeldKind(db, actionKey, row.kind) ? { kind: row.kind, firstDetectedAt: row.first_detected_at } : null;
 }
 
 /** What a caller knows about the Action now, so the staleness check need not rediscover it. */

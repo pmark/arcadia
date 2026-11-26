@@ -66,7 +66,25 @@ export function ensureNightBreakerTables(db: Database.Database): void {
       tripped_at INTEGER NOT NULL,
       ping_id TEXT
     );
+    CREATE TABLE IF NOT EXISTS production_action_parks (
+      action_key TEXT PRIMARY KEY,
+      condition TEXT NOT NULL,
+      cause TEXT NOT NULL,
+      receipt_id TEXT NOT NULL,
+      parked_at INTEGER NOT NULL
+    );
   `);
+}
+
+/**
+ * End this Action's park (read by `parkedActionCondition`, src/production/terminalCandidates.ts), if it has one; reads
+ * first so an idle pass writes nothing. The receipts stay as history. A missing table has nothing to end.
+ */
+export function releaseActionPark(db: Database.Database, actionKey: string): void {
+  try {
+    if (!db.prepare("SELECT 1 FROM production_action_parks WHERE action_key = ?").get(actionKey)) return;
+  } catch { return; }
+  db.prepare("DELETE FROM production_action_parks WHERE action_key = ?").run(actionKey);
 }
 
 interface ParkRow {
@@ -120,10 +138,15 @@ export function recordProductionPark(db: Database.Database, failure: FailedCondi
     const outcome = recordFailedCondition({ parks: listProductionParks(db, failure.now) }, failure);
     if (outcome.kind !== "park") return outcome;
     const r = outcome.receipt;
+    const id = `park_${randomUUID().replaceAll("-", "").slice(0, 18)}`;
     db.prepare(
       `INSERT INTO production_park_receipts (id, action_key, condition, cause, cause_kind, project, lane, head, reason, parked_at, recorded_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).run(`park_${randomUUID().replaceAll("-", "").slice(0, 18)}`, r.actionKey, r.condition, r.cause, r.causeKind, r.project, r.lane, r.head, r.reason ?? null, r.parkedAt, new Date(failure.now).toISOString());
+    ).run(id, r.actionKey, r.condition, r.cause, r.causeKind, r.project, r.lane, r.head, r.reason ?? null, r.parkedAt, new Date(failure.now).toISOString());
+    db.prepare(
+      `INSERT INTO production_action_parks (action_key, condition, cause, receipt_id, parked_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(action_key) DO UPDATE SET condition = excluded.condition, cause = excluded.cause, receipt_id = excluded.receipt_id, parked_at = excluded.parked_at`
+    ).run(r.actionKey, r.condition, r.cause, id, r.parkedAt);
     return outcome;
   });
 }
@@ -179,13 +202,19 @@ export function applyNightBreaker(db: Database.Database, input: { now: Date; log
       const parked = parks.map((p) => `${p.actionKey} (${p.cause})`).join(", ");
       // The request id comes first so truncation never drops the ping's one-page episode key.
       const message = bounded(`🛑 Production is Off (${requestId}). ${reason} Like an operator Off, this ends a day or standing grant. Parked: ${parked}.`);
-      writeTransaction(db, () => {
+      const tripped = writeTransaction(db, () => {
+        // #3118 review N1: production may have turned Off (or been granted again) since the read above; trip only while it
+        // is still Active at the revision this verdict was read under.
+        const current = readProductionPolicySafely(db);
+        if (current.status !== "ok" || current.policy.desiredState !== "active" || current.policy.revision !== read.policy.revision) return false;
         db.prepare(
           `INSERT OR IGNORE INTO production_night_breaker_trips (request_id, policy_revision, trips_json, reasons_json, message, tripped_at, ping_id)
              VALUES (?, ?, ?, ?, ?, ?, NULL)`
         ).run(requestId, read.policy.revision, JSON.stringify(trips), JSON.stringify(verdict.reasons), message, now);
         deactivateProduction(db, { requestId, reason, now: input.now });
+        return true;
       });
+      if (!tripped) break;
       log(message);
       result = { evaluated: true, tripped: true, trips, reasons: verdict.reasons, requestId };
       break;

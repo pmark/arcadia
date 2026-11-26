@@ -20,11 +20,11 @@ import { getSchedulingProject } from "../scheduling/store.js";
 import { git, isAncestor, projectCheckoutFor, resolveBaseBranch, tryGit } from "../git/worktrees.js";
 import { syncBaseWithOwnPointerCommits } from "../git/pointerReconcile.js";
 import { markCaughtUpWorkerMerges } from "./workerMerge.js";
-import { applyNightBreaker, type NightBreakerPass } from "./nightBreaker.js";
+import { applyNightBreaker, recordProductionPark, releaseActionPark, type NightBreakerPass } from "./nightBreaker.js";
 import type { DispatchBlocker } from "../docs/dispatch.js";
 import type { OperatorGateItem } from "../docs/operatorGate.js";
 import type { CodingAgentProfile } from "../intent/registries.js";
-import { isActionLocalHeldKind, recordRepairBudgetParkIssues, type RepairBudgetCause, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
+import { isActionLocalHeldKind, parkedActionCondition, recordRepairBudgetParkIssues, type RepairBudgetCause, latestCandidateSettlementCommit, listPendingTerminalCandidates, pendingTerminalCandidateFor, reviewRepairEscalationState } from "./terminalCandidates.js";
 import { activeActionScopeGate, policyAuthorizesRemotePreservation, PRODUCTION_CONTROL_DEADLINES, SCOPE_HELD_CODE, readProductionPolicySafely, resolveWorkItemPolicyIdentity, SIGN_IN_ESCALATION_EXITS, SIGN_IN_ESCALATION_MS, SIGN_IN_FAILURE_HOLD_MS, selectPolicyPermittedProfileName } from "./policy.js";
 import { decodeStringArray } from "../projects/setup.js";
 import {
@@ -46,7 +46,7 @@ import { canonicalPath, getActiveActionClaim, getRepositoryLease, resolveProject
 import { launchGuardedHostSession, resumedSessionSupersededAskIds } from "../sessions/launch.js";
 import { formatLaunchFailure } from "../sessions/launchFailure.js";
 import { clearPreservationRefusal } from "../sessions/preservationRefusalBudget.js";
-import { COMPLETION_LOOPBACK_DENIED_ESCALATION, COMPLETION_REFUSED_REPEATEDLY_ESCALATION, COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, draftedCompletionRefusalSubject, draftedCompletionTimeoutSubject, findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
+import { COMPLETION_LOOPBACK_DENIED_ESCALATION, COMPLETION_REFUSED_REPEATEDLY_ESCALATION, COMPLETION_VALIDATION_UNAVAILABLE_ESCALATION, draftedCompletionRefusalSubject, draftedCompletionTimeoutSubject, findAcceptedTerminalCompletion, findCandidateSettledCompletion, PROVIDER_SIGN_IN_FAILURE_PREFIX, getResumableLeaseHandoff, getSessionContinuation, reconcileSessionExit } from "../sessions/reconciliation.js";
 import { refreshPreservedPullRequestBody, systemPreservationRemote, type CandidatePreservationReceipt, type CandidatePreservationRemote } from "../sessions/candidatePreservation.js";
 import { discoverDocs } from "../docs/discover.js";
 import { observeSessionActivity } from "./stallDetection.js";
@@ -318,7 +318,7 @@ function recoverTerminalHandoff(
   }
   const head = tryGit(session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null;
   const status = tryGit(session.worktree_path, ["status", "--porcelain", "--untracked-files=all"]);
-  if (!head || status === null || status.trim()) return refused("The terminal candidate worktree is missing or changed.", { head });
+  if (!head || status === null || status.trim()) return refused(WORKTREE_CHANGED_REFUSAL, { head });
   let settlement = findCandidateSettledCompletion(db, session, head);
   if (!settlement) {
     // Production's own deterministic repair head (src/production/mechanicalRepair.ts) is one commit on the settled
@@ -330,7 +330,7 @@ function recoverTerminalHandoff(
     }
   }
   if (!settlement || head !== settlement.documentsCommit || !isAncestor(session.worktree_path, preserved.commitSha, head)) {
-    return refused("The terminal candidate differs from its exact canonical completion settlement.", {
+    return refused(SETTLEMENT_DIFFERS_REFUSAL, {
       head, settlementCommit: settlement?.documentsCommit ?? null
     });
   }
@@ -435,6 +435,42 @@ interface TerminalHandoffRecovery {
  * refusal visible in `arcadia production status` instead of the log alone.
  */
 const TERMINAL_CANDIDATE_ESCALATION = "terminal_candidate_not_integrable";
+const SETTLEMENT_DIFFERS_REFUSAL = "The terminal candidate differs from its exact canonical completion settlement.";
+const WORKTREE_CHANGED_REFUSAL = "The terminal candidate worktree is missing or changed.";
+/**
+ * Plan one-stop-never-ends-the-card-20261126 (#3107; Decisions 0181, 0187, 0223): the terminal-guard refusals that judge
+ * only this one candidate's own content, so an in-scope Action they stop is parked and admission continues past it. Every
+ * other refusal (Inactive production, a missing or lapsed Grant, an ambiguous repository, a preservation or validation
+ * refusal) still holds the scope, as do the global stops of terminalCandidates.ts (sign-in, authority, STOP, storage,
+ * custody, environment wall).
+ */
+const ACTION_LOCAL_TERMINAL_REFUSALS: ReadonlySet<string> = new Set([SETTLEMENT_DIFFERS_REFUSAL, WORKTREE_CHANGED_REFUSAL]);
+/** The night breaker counts parks per project and lane; the tick has one lane, production itself. */
+const PRODUCTION_PARK_LANE = "production";
+
+/**
+ * Park an in-scope Action whose open escalation of `kind` has an Action-local cause (Decisions 0181 and 0187): one
+ * receipt through `recordFailedCondition`, counted by the night breaker, and the durable per-Action park that lets the
+ * scheduler pass over it to the next Action that does not depend on it. Its escalation and preserved candidate stay;
+ * the park ends only when the Action is done in the base. Once per park; a third park or the same cause twice turns
+ * production Off on the breaker's next pass, before anything is admitted. Returns true when it parked.
+ */
+function parkStoppedAction(
+  db: Database.Database,
+  input: { actionKey: string; kind: string; cause: string; projectSlug: string; head: string | null; now: Date; log: (message: string) => void }
+): boolean {
+  const open = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(input.actionKey) as { kind: string } | undefined;
+  if (open?.kind !== input.kind || parkedActionCondition(db, input.actionKey)?.condition === input.kind) return false;
+  recordProductionPark(db, { actionKey: input.actionKey, condition: input.kind, cause: input.cause, project: input.projectSlug,
+    lane: PRODUCTION_PARK_LANE, now: input.now.getTime(), head: input.head });
+  input.log(`Parked ${input.actionKey} (${input.kind}): ${input.cause} Its escalation and candidate stay; admission continues with the next Action that does not depend on it.`);
+  return true;
+}
+
+/** End a park of `kind` whose cause is no longer Action-local, so the Action stops the scope again (fail closed). */
+function releaseStalePark(db: Database.Database, actionKey: string, kind: string): void {
+  if (parkedActionCondition(db, actionKey)?.condition === kind) releaseActionPark(db, actionKey);
+}
 /** Escalation kind for a provider login that keeps killing launched Sessions (Issue #1249). */
 export const PROVIDER_SIGN_IN_DEAD_ESCALATION = "provider_sign_in_dead";
 
@@ -1301,7 +1337,8 @@ function clearTerminalCandidateEscalation(db: Database.Database, actionKey: stri
 function clearProjectEscalationsOfKind(db: Database.Database, kind: string, projectSlug: string, keepActionKey: string | null): void {
   const rows = db.prepare("SELECT action_key FROM production_operator_escalations WHERE kind = ? AND action_key LIKE ? AND action_key != ?")
     .all(kind, `${projectSlug}/%`, keepActionKey ?? "") as Array<{ action_key: string }>;
-  for (const row of rows) clearOperatorEscalation(db, row.action_key);
+  // A parked Action keeps its escalation while the pointer is elsewhere: the operator resolves it.
+  for (const row of rows) if (parkedActionCondition(db, row.action_key)?.condition !== kind) clearOperatorEscalation(db, row.action_key);
 }
 
 /** Clear every terminal-candidate escalation in this Project except `keepActionKey`'s. */
@@ -1584,6 +1621,26 @@ function escalateStalledPlanningGate(
  * rejects or answers the item itself.
  */
 const OPERATOR_GATE_ESCALATION = "operator_gate_pending";
+const OWN_COMPLETION_ASK_CAUSE = "Gated only on its own pending completion Agent Ask.";
+
+/** Whether this Action's incomplete resumable candidate still holds the repository (prepareSession refuses any other Action then). Fails closed (true). */
+function holdsResumableCandidate(db: Database.Database, repoRoot: string, actionId: string): boolean {
+  try {
+    const handoff = getResumableLeaseHandoff(db, repoRoot);
+    return handoff !== null && handoff.session.action_id === actionId && existsSync(handoff.session.worktree_path);
+  } catch { return true; }
+}
+
+/** Whether this gate item is a pending `complete` Agent Ask whose target is exactly this Action. Fails closed (false). */
+function isOwnCompletionAsk(db: Database.Database, item: OperatorGateItem, planSlug: string, actionId: string): boolean {
+  if (item.kind !== "agent_ask") return false;
+  try {
+    const row = db.prepare("SELECT intent_kind, proposal_json FROM agent_ask_proposals WHERE id = ?").get(item.id) as { intent_kind: string; proposal_json: string } | undefined;
+    if (row?.intent_kind !== "complete") return false;
+    const targetRef = (JSON.parse(row.proposal_json) as { normalized?: { targetRef?: string | null } }).normalized?.targetRef;
+    return targetRef === `action/${actionId}` || targetRef === `plan/${planSlug}#${actionId}`;
+  } catch { return false; }
+}
 
 /**
  * Record the gate on `actionKey` as its one operator escalation. An
@@ -1778,7 +1835,7 @@ function terminalCandidateRemedy(db: Database.Database, facts: TerminalRefusalFa
   const actionKey = `${session.project_slug}/${session.action_id}`;
   const retry = "The tick re-checks every tick and integrates on its own once the cause clears.";
   const blocked = `Blocked: ${reason}`;
-  if (reason === "The terminal candidate differs from its exact canonical completion settlement.") {
+  if (reason === SETTLEMENT_DIFFERS_REFUSAL) {
     const settlementCommit = facts.settlementCommit ?? latestCandidateSettlementCommit(db, session, repoRoot);
     const inspect = settlementCommit
       ? `Inspect with \`git -C ${worktree} status --porcelain\` and \`git -C ${worktree} log --oneline ${settlementCommit}..HEAD\`.`
@@ -1811,7 +1868,7 @@ function terminalCandidateRemedy(db: Database.Database, facts: TerminalRefusalFa
         ? `\`${landing}\` (the base has advanced past the candidate, so a fast-forward would fail); the extra commit stays preserved on ${session.branch}.`
         : `\`git -C ${repoRoot} merge --ff-only ${settlementCommit}\` (then push ${baseBranch}); the extra commit stays preserved on ${session.branch}.`);
   }
-  if (reason === "The terminal candidate worktree is missing or changed.") {
+  if (reason === WORKTREE_CHANGED_REFUSAL) {
     const status = tryGit(worktree, ["status", "--porcelain", "--untracked-files=all"]);
     if (status === null) {
       return `${blocked} The worktree ${worktree} is missing or unreadable as a Git checkout. Restore it at ${session.branch} without changing its commits. ${retry} `
@@ -2522,6 +2579,11 @@ export function runManagedProductionTick(
         reason: "Project is outside the standing production policy scope; production does not launch here.",
         actionKey: null
       };
+    } else if (mayLaunch && nightBreaker === null) {
+      // #3118 review N3: fail closed. Admission now continues past parks, so a pass whose night breaker could not run
+      // admits nothing: no launch, no review repair launch. Everything else on this pass (reconciliation, escalation
+      // bookkeeping) runs as usual, and the next pass whose breaker runs admits again.
+      launch = { attempted: false, outcome: "skipped", reason: "The night breaker could not run on this pass; admission is withheld until it does.", actionKey: null };
     } else if (mayLaunch && handoff !== null && handoffIntegrated(handoff)) {
       // The candidate is preserved and its exact branch is now on the governed
       // base branch, carrying the completion and pointer settlement. Admit the
@@ -2603,7 +2665,14 @@ export function runManagedProductionTick(
       clearProjectEscalationsOfKind(db, OPERATOR_GATE_ESCALATION, project.slug, gate.actionKey);
       if (mayLaunch && terminalRefusal) {
         recordTerminalCandidateEscalation(db, { facts: terminalRefusal, repoRoot, now, log });
-        clearProjectTerminalCandidateEscalations(db, project.slug, `${terminalRefusal.session.project_slug}/${terminalRefusal.session.action_id}`);
+        const { session: refused } = terminalRefusal;
+        const refusedKey = `${refused.project_slug}/${refused.action_id}`;
+        if (ACTION_LOCAL_TERMINAL_REFUSALS.has(terminalRefusal.reason) && actionInActiveScope(db, refused.project_slug, refused.plan_slug, refused.action_id)) {
+          parkStoppedAction(db, { actionKey: refusedKey, kind: TERMINAL_CANDIDATE_ESCALATION, cause: terminalRefusal.reason, projectSlug: refused.project_slug, head: terminalRefusal.head, now, log });
+        } else {
+          releaseStalePark(db, refusedKey, TERMINAL_CANDIDATE_ESCALATION);
+        }
+        clearProjectTerminalCandidateEscalations(db, project.slug, refusedKey);
       } else {
         clearProjectTerminalCandidateEscalations(db, project.slug, null);
       }
@@ -2974,6 +3043,16 @@ function attemptProjectLaunch(
       try {
         recordOperatorGateEscalation(db, { actionKey: currentActionKey, item: gateItem, repoRoot: input.repoRoot,
           acceptanceCriteria: context.action.acceptanceCriteria, now: input.now, log: input.log });
+        // Plan one-stop-never-ends-the-card-20261126: gated only on its own pending completion Ask, the Action is parked
+        // and admission moves on; any other gate (an unanswered Decision, another Ask, more than one item) stops as before.
+        // So does one whose Action still holds the repository's resumable candidate: that custody stays a global stop.
+        if (transition.kind === "decision" && transition.operatorGate?.blocking.length === 1 && isOwnCompletionAsk(db, gateItem, context.activePlan, context.action.id)
+          && !holdsResumableCandidate(db, input.repoRoot, context.action.id)) {
+          parkStoppedAction(db, { actionKey: currentActionKey, kind: OPERATOR_GATE_ESCALATION, cause: OWN_COMPLETION_ASK_CAUSE,
+            projectSlug: input.projectSlug, head: null, now: input.now, log: input.log });
+        } else {
+          releaseStalePark(db, currentActionKey, OPERATOR_GATE_ESCALATION);
+        }
       } catch (error) {
         input.log(`Operator-gate bookkeeping failed for ${currentActionKey}: ${error instanceof Error ? error.message : String(error)}`);
       }
@@ -2982,6 +3061,9 @@ function attemptProjectLaunch(
   }
 
   const actionKey = `${input.projectSlug}/${transition.dispatch.context.action.id}`;
+  // A parked Action is never admitted again while its park lasts (N4): the park ends when the Action is done in the base.
+  const parked = parkedActionCondition(db, actionKey);
+  if (parked) return { attempted: false, outcome: "skipped", reason: `${actionKey} is parked (${parked.condition}); production does not relaunch it.`, actionKey: null };
   pruneStaleOperatorEscalations(db, input.projectSlug, actionKey);
   // Reaching a "launch" transition means every depends_on entry resolved and
   // finished; drop any dependency-unresolved bookkeeping left from an earlier
