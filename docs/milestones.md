@@ -19,6 +19,16 @@ a Milestone's name, order or "done when" test needs the operator's words or a
 Decision. The stopgap tracker page is private to the operator and refreshed by
 hand until the Roadmap page (`/workspace/roadmap/arcadia`) reads this file.
 
+**Agent help classes.** Decision 0288 rule 2 as amended by the operator's "1A
+2A" (2026-11-26T03:43:49Z; governed record pending): C0 worker self-recovery
+and C1 (one mechanical retry per head, all tests passed or an infrastructure
+cancel) or C2 (host repair, no repository or governed-record change) agent help
+keep a run clean when logged with class, cause Issue and minutes; C3 content or
+code repair, C4 mid-run governance (a scheduled Off at scope complete is
+procedure, not C4) and C5 any operator touch after the press do not. A cause
+recurring a third time without a fix is not clean. The strict untouched count
+is always reported beside the clean count.
+
 **Status values:** `not reached`, `ready to celebrate` (its test passes,
 waiting for the operator), `declared` (the operator declared it, with the date
 and the operator's words).
@@ -29,16 +39,16 @@ Milestones 4 and 5 can be worked beside 1 to 3; the rest are in order.
 
 | # | Milestone | Done when | Status | Evidence, 2026-11-25 |
 |---|---|---|---|---|
-| 1 | Three clean supervised runs | Three per-card runs of one shape each finish every step with no escalation and no operator touch beyond the press (Decision 0288 rule 2). | not reached | Two runs clean on the strict reading, of two different shapes: card c `start-run-timeline-ask-supersessions-20261124a` (small source, 1 of 1 merged) and `start-run-track-2-standby-pins-20261125a` (test-only, 4 of 4 merged, worker log "4 merged, 0 escalated" at 07:38:58Z). One of three for each shape. |
+| 1 | Three clean supervised runs | Three per-card runs of one shape each finish every step with no operator touch beyond the press, and only logged C1 or C2 agent help (Decision 0288 rule 2 as amended). | not reached | Track 2 shape (start-run card path, test-only pins, concurrency 1; Track 3 counts as this shape under the operator's "1A 2A", 2026-11-26T03:43:49Z, governed record pending from Agent Ask `rowan-g8-rule2-intervention-taxonomy-20261125`). Track 2 card A `start-run-track-2-standby-pins-20261125a` (strict clean: 4 of 4 merged, worker log "4 merged, 0 escalated" at 07:38:58Z). Track 2 card B `start-run-track-2-standby-pins-20261125b` (clean-as-assisted: one C1, Rowan's single CI re-run on #3072 after unit-shard-1's 10-minute timeout with no test failure, cause #3073). Track 2 card C `start-run-track-2-standby-pins-20261125c` (strict clean: 2 of 2 merged, "2 merged, 0 escalated" at 22:41:09Z). Track 3 card A (run 20261126T024306Z-53685): pending scope complete; one C1 so far (#3073). Earlier small-source card c `start-run-timeline-ask-supersessions-20261124a` (strict clean) is a different shape. |
 | 2 | Dress rehearsal passes unstubbed | A full rehearsal of the standing-grant self-press runs every stage in a disposable clone without stubs, and passes (Decision 0288 rule 1). | not reached | No unstubbed rehearsal on record. |
-| 3 | First self-pressed night | The timer presses under the standing grant (Decision 0241) and that night (9 PM to 8 AM Pacific) merges at least one Action, with no operator step, not even the 9 PM press. | not reached | Grant `standing-grant-20261123b` is open (`arcadia start-run grant-status`); the self-press has never run live. The night of 11-24 merged 4 Actions after the operator's press. |
+| 3 | First self-pressed night | The timer presses under the standing grant (Decision 0241) and that night (9 PM to 8 AM Pacific) merges at least one Action, with no operator step, not even the 9 PM press, and agent help C1 or C2 only, logged (Decision 0288 rule 2 as amended). | not reached | Grant `standing-grant-20261123b` is open (`arcadia start-run grant-status`); the self-press has never run live. The night of 11-24 merged 4 Actions after the operator's press. |
 | 4 | Coordinator never dies silently | A Rowan that runs out of context or stalls during a night is replaced within minutes, with an alert and no operator action. | not reached | 11-22 lost 3 h 13 min to a dead coordinator (host-local `serial-wait-log-20261122.md` in the workspaces folder beside this repository). Related fix PR #3033 is open. |
 | 5 | Refusals retry themselves | A refused press that consumed nothing is retried by one operator tap, and automatically after three clean runs (Decision 0289 D). | not reached | Decision 0289 D approved 11-24; not built. |
 | 6 | One failure never ends the night | A night with one failed step parks it and still merges the rest (North Star gate 2). | not reached | Plan F `park-and-continue` is built (#2948); not yet proven on a live night. |
 | 7 | Nights never run empty | A Plan finishing mid-night starts the next approved Plan with no touch, and the 8 AM report shows zero empty nights in a week (North Star gate 3). | not reached | Plan F `queue-approved-plans-and-start-the-next` is open. Nights 11-22 and 11-23 had no worker merge. |
 | 8 | Merges rechecked each morning | The 8 AM report re-verifies every overnight merge on main (North Star gate 4). | not reached | Plan F `verify-overnight-merges-at-8am` (gate 4) is built (done); not yet proven on a live night. |
-| 9 | Real work runs unattended | A night of source-changing Actions, run under Decision 0290 A's model rule, merges through the worker gate with no operator touch (North Star gate 1). | not reached | Plan F `worker-applies-standing-merge-conditions` (gate 1) is built (done). The live proof is missing: on 11-24, three small source Actions merged through the worker gate, but in pressed daytime runs. |
-| 10 | **Unattended Production Fully Achieved** | Three clean nights in a row on real work, with all four North Star gates live (`docs/strategy/current.md`). | not reached | 0 of 3 nights. |
+| 9 | Real work runs unattended | A night of source-changing Actions, run under Decision 0290 A's model rule, merges through the worker gate with no operator touch and agent help C1 or C2 only, logged (North Star gate 1). | not reached | Plan F `worker-applies-standing-merge-conditions` (gate 1) is built (done). The live proof is missing: on 11-24, three small source Actions merged through the worker gate, but in pressed daytime runs. |
+| 10 | **Unattended Production Fully Achieved** | Three nights in a row on real work with zero operator touch, all four North Star gates live (`docs/strategy/current.md`), and no cause Issue recurring across the three nights without a merged fix. | not reached | 0 of 3 nights. |
 
 ## Forecast
 
