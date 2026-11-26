@@ -68,7 +68,9 @@ The operator answered the freeze-admission menu with "1B 2B, sequenced" (verbati
   | #3083 (B12) | as reviewed |
   | #2960 (B9) | after its rebase |
 
+- **This section is the checkpoint admission** that the label rules above refer to ("the PRs a checkpoint verdict admits").
 - **Only these are admitted.** An engine PR citing #3116 must name its admitted Plan Action or PR in its body. The morning audit checks each one against this table.
+- **When the admission closes:** every row has merged or been dropped, and Rowan or Signal notes that on #3116 and here. After that, a new engine PR citing #3116 is not admitted. The label stays on, so the audit can still re-judge the merged PRs.
 - **Not admitted:** Rebuster's engine PRs (#3071, #3074, G5 #3078, G7 #3079), which wait by his answer, and every other held engine PR, including #2996 and #3039.
 - **Each admitted PR still lands one at a time:**
   - on its own exact-head independent review and green checks;
