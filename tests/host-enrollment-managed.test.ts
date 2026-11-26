@@ -199,12 +199,13 @@ describe("host enrollment: managed launch through the guarded launcher", () => {
       admission: { requestId: "enroll:claude:runtime-0001:admission", status: "committed" }
     });
     expect(receipt.canonicalBrief).toContain("Current action: define-contract");
-    // The enrolling brief and the launched Session both start on the light tier (the
-    // packet-bound sonnet is the escalation target, which the brief states).
-    expectIdentityBlock(receipt.canonicalBrief, "claude", "light");
-    expect(receipt.canonicalBrief).toContain("The Session will start on haiku (light tier, effort e1_brief); sonnet is its escalation target.");
+    // A managed launch runs under the standing policy, so the enrolling brief and
+    // the launched Session both take Decision 0290 A's choice: Sonnet medium for
+    // this one-criterion Action that names no source path.
+    expectIdentityBlock(receipt.canonicalBrief, "claude", "standard");
+    expect(receipt.canonicalBrief).toContain("Decision 0290 A chose sonnet at e2_standard");
     expect(f.tmux.launches).toHaveLength(1);
-    expectIdentityBlock(String(f.tmux.launches[0].args.at(-1)), "claude", "light");
+    expectIdentityBlock(String(f.tmux.launches[0].args.at(-1)), "claude", "standard");
     expect(state(f)).toMatchObject({ liveAdmissions: 1, sessions: 1, enrollments: 1, pending: 0 });
 
     expect(enroll(f)).toEqual(receipt);

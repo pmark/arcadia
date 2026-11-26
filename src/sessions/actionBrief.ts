@@ -15,6 +15,7 @@ import { renderIdentityBlock, renderSessionIdentityBlock, type AgentGitIdentity,
 import { resolveEscalationTarget, type ModelTierRegistry } from "../codingAgents/modelTiers.js";
 import type { SessionAgent } from "./index.js";
 import { renderRepairBrief, type ReviewRepairRow } from "./reviewRepair.js";
+import { renderModelRuleBrief, type ModelRuleChoice } from "./modelRule.js";
 import { renderStateSignalInstructions, sessionTitlesByState } from "./sessionTitle.js";
 import { scopeIntersection } from "./scopeCriteria.js";
 
@@ -65,6 +66,8 @@ export interface ActionBriefInput {
    * when the Session already runs the plan's model).
    */
   model?: string | null;
+  /** The Decision 0290 A choice a production launch recorded; the brief then names its model, effort and rule. */
+  modelRule?: ModelRuleChoice | null;
   registry?: ModelTierRegistry;
   /**
    * The Session runs headless (no operator at its terminal). Claude's headless
@@ -369,6 +372,7 @@ export function renderActionBrief(input: ActionBriefInput): string {
     );
   }
   if (input.repair) lines.push(...renderRepairBrief(input.repair));
+  if (input.modelRule) lines.push(...renderModelRuleBrief(input.modelRule));
   if (pinned) {
     lines.push("", `The repository's CONSTITUTION.md (sha256 ${pinned.sha256.slice(0, 12)}) also binds this action:`, "", ...constraints);
   }

@@ -33,6 +33,7 @@ import { isAncestor, isPatchEquivalent, mergedPullRequests, refExists, resolveBa
 import { actionAcceptanceCriteria, renderActionBrief } from "./actionBrief.js";
 import { verifyMaterializedPromotion } from "./promotionAssignment.js";
 import { bindRepairSession, getSessionRepair } from "./reviewRepair.js";
+import { parseModelRuleChoice, type ModelRuleChoice } from "./modelRule.js";
 import { sessionDevelopedForSupersededInput } from "./roleLineage.js";
 import { getResumableLeaseHandoff, getSessionContinuation, supersedeLeaseHandoff } from "./reconciliation.js";
 import { formatSessionTitle } from "./sessionTitle.js";
@@ -139,6 +140,8 @@ export interface AgentSession {
   is_simulated: number;
   /** Host-owned launch requirement; legacy rows predate source-only completion contracts. */
   completion_capability_mode: "legacy" | "source_only" | "direct_required";
+  /** The Decision 0290 A model and effort choice a production launch recorded (src/sessions/modelRule.ts); null or absent otherwise. */
+  model_rule_json?: string | null;
 }
 
 export type SessionAgent = "codex" | "claude" | "opencode";
@@ -582,6 +585,12 @@ export function prepareSession(input: {
   agent: LaunchAgent;
   model: string;
   effort: string | null;
+  /**
+   * A production launch's Decision 0290 A choice (src/sessions/modelRule.ts):
+   * its used model is also accepted for the packet's provider, and the choice
+   * is recorded on the Session row.
+   */
+  modelRule?: ModelRuleChoice | null;
   baseRevision: string;
   /** The worktree HEAD to verify immediately before launch; defaults to `baseRevision` when omitted (an ordinary fresh worktree, where the two are identical). */
   launchRevision?: string;
@@ -640,9 +649,12 @@ export function prepareSession(input: {
   }
   // The packet binds the plan's tier model; a Session may instead start on the
   // registry's start-tier model for the same provider (smallest model first),
-  // with the packet's model as its escalation target. Nothing else is accepted.
+  // with the packet's model as its escalation target, or, in production, on the
+  // model Decision 0290 A chose from an enabled binding of the same provider.
+  // Nothing else is accepted.
   const startModel = input.agent === FIXTURE_AGENT ? null : sessionStartBinding(input.agent, loadModelTierRegistry(input.workspace))?.model ?? null;
-  if (selected.model !== input.model && startModel !== input.model) {
+  const ruleModel = input.modelRule?.used.model ?? null;
+  if (selected.model !== input.model && startModel !== input.model && ruleModel !== input.model) {
     throw validationError("The pinned model does not match the packet's selected provider binding.", { selectedModel: selected.model, requestedModel: input.model });
   }
   if (selected.mappingId !== invocation.provider_mapping_id || selected.bindingId !== invocation.provider_binding_id) {
@@ -745,7 +757,8 @@ export function prepareSession(input: {
       last_pane_signature: null, last_run_signature: null, last_activity_at: null, stall_flagged_at: null,
       admission_request_id: null, time_limit_ms: input.timeLimitMs ?? null, stop_reason: null,
       is_simulated: input.agent === FIXTURE_AGENT ? 1 : 0,
-      completion_capability_mode: "legacy"
+      completion_capability_mode: "legacy",
+      model_rule_json: input.modelRule ? JSON.stringify(input.modelRule) : null
     } satisfies AgentSession;
     input.db.prepare(`INSERT INTO agent_sessions (${Object.keys(row).join(", ")}) VALUES (${Object.keys(row).map((key) => `@${key}`).join(", ")})`).run(row);
     input.terminalRecovery?.record(row);
@@ -1575,6 +1588,7 @@ function buildProviderLaunch(
     // name the agent is told and the name on its commits cannot diverge.
     identity,
     model: session.model,
+    modelRule: parseModelRuleChoice(session.model_rule_json),
     registry,
     headless,
     probeCommand: probe?.command,

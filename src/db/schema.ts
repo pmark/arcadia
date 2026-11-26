@@ -104,6 +104,7 @@ export function applyMigrations(db: Database.Database): void {
   ensureAgentSessionLifetimeColumns(db);
   ensureAgentSessionSimulatedColumn(db);
   ensureAgentSessionCompletionCapabilityMode(db);
+  ensureAgentSessionModelRuleColumn(db);
   ensureAgentWorktreeReservationsTable(db);
   ensureManualPreservationTable(db);
   ensureCandidatePreservationTable(db);
@@ -594,6 +595,21 @@ function ensureAgentSessionCompletionCapabilityMode(db: Database.Database): void
   );
   if (!columns.has("completion_capability_mode")) {
     db.prepare("ALTER TABLE agent_sessions ADD COLUMN completion_capability_mode TEXT NOT NULL DEFAULT 'legacy' CHECK (completion_capability_mode IN ('legacy', 'source_only', 'direct_required'))").run();
+  }
+}
+
+/**
+ * The Decision 0290 A model and effort choice a production launch recorded
+ * (src/sessions/modelRule.ts): the rule, its reason, the model and effort it
+ * selected, the ones actually used and any departure. NULL for a Session
+ * launched without the rule, including every row from before this column.
+ */
+function ensureAgentSessionModelRuleColumn(db: Database.Database): void {
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(agent_sessions)").all() as Array<{ name: string }>).map((column) => column.name)
+  );
+  if (!columns.has("model_rule_json")) {
+    db.prepare("ALTER TABLE agent_sessions ADD COLUMN model_rule_json TEXT").run();
   }
 }
 
