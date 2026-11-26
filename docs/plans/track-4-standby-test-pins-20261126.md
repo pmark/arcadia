@@ -11,11 +11,11 @@ updated: 2026-11-26
 actions:
   - id: pin-pr-decision-id-clashes
     title: Pin how a Decision file name gives its id and which ids a pull request would duplicate on main, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a Decision file name gives its id and which ids a pull request would duplicate on main, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-pr-decision-id-clashes-ec4047a8a2f8; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-pr-decision-id-clashes
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-pr-decision-id-clashes
+current_action: pin-authority-path-normalization
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
