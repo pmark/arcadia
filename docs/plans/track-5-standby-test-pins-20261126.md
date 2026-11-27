@@ -131,11 +131,11 @@ actions:
     references: ["src/learning/lessons.ts", "tests/pin-notes-entry-ranges.test.ts"]
   - id: pin-review-item-work-kind
     title: Pin how the timeline names the kind of work a review item asks for, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the timeline names the kind of work a review item asks for, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-review-item-work-kind-852512a5794f; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-review-item-work-kind
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
-current_action: pin-review-item-work-kind
+current_action: pin-execution-tier-stronger-of
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
