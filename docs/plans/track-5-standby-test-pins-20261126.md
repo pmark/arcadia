@@ -91,11 +91,11 @@ actions:
     references: ["src/sessions/packetLifecycle.ts", "tests/pin-build-route-declaration.test.ts"]
   - id: pin-defect-evidence-merge
     title: Pin how defect and lesson evidence lists are merged and which summary words count for duplicate detection, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how defect and lesson evidence lists are merged and which summary words count for duplicate detection, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-defect-evidence-merge-7c8a9255eaef; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-defect-evidence-merge
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
-current_action: pin-defect-evidence-merge
+current_action: pin-notes-entry-ranges
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
