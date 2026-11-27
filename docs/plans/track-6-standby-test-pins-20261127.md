@@ -31,11 +31,11 @@ actions:
     references: ["src/orientation/urgency.ts", "tests/pin-orientation-urgency-score.test.ts"]
   - id: pin-scout-clock-validity
     title: Pin which clock samples Scout admission accepts as proof of boot and monotonic clock continuity, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which clock samples Scout admission accepts as proof of boot and monotonic clock continuity, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-scout-clock-validity-f5524ed97c58; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-scout-clock-validity
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/intelligence/validation/validateRequirements.ts", "tests/pin-intelligence-requirement-checks.test.ts"]
 questions: []
 decisions: []
-current_action: pin-scout-clock-validity
+current_action: pin-intelligence-resource-group
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
