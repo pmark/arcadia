@@ -51,11 +51,11 @@ actions:
     references: ["src/scout/admissionClock.ts", "tests/pin-scout-clock-validity.test.ts"]
   - id: pin-intelligence-resource-group
     title: Pin which scheduler resource group each Intelligence route competes for, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which scheduler resource group each Intelligence route competes for, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-intelligence-resource-group-10e1d11c02e6; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-intelligence-resource-group
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/intelligence/validation/validateRequirements.ts", "tests/pin-intelligence-requirement-checks.test.ts"]
 questions: []
 decisions: []
-current_action: pin-intelligence-resource-group
+current_action: pin-direction-target-parsing
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
