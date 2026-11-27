@@ -71,11 +71,11 @@ actions:
     references: ["src/projects/setup.ts", "tests/pin-github-repository-url-check.test.ts"]
   - id: pin-build-route-declaration
     title: Pin which Actions count as declaring the build route that skips planning runs, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which Actions count as declaring the build route that skips planning runs, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-build-route-declaration-1ba5f79a7c81; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-build-route-declaration
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
-current_action: pin-build-route-declaration
+current_action: pin-defect-evidence-merge
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
