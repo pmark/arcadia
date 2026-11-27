@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: track-4-standby-test-pins-20261126
 project: arcadia
-status: active
+status: complete
 milestone: Track 4 standby test pins 20261126
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -151,11 +151,11 @@ actions:
     references: ["src/way/lookup.ts", "tests/pin-stop-production-question.test.ts"]
   - id: pin-evidence-secret-redaction
     title: Pin which credential shapes are redacted from recorded command output, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which credential shapes are redacted from recorded command output, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-evidence-secret-redaction-35432926fe4e; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-evidence-secret-redaction
     clarification: clarified
     confidence: high
@@ -171,7 +171,6 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-evidence-secret-redaction
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
