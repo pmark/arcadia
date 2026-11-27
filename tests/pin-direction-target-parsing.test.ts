@@ -16,7 +16,8 @@ describe("direction target parsing", () => {
     expect(parseDirectionTarget(full)).toEqual(full);
   });
 
-  it.each([null, [], "arcadia"])("rejects non-object target %j", (value) => {
+  // Each case is wrapped so it.each does not spread [] into zero arguments.
+  it.each([[null], [[]], ["arcadia"]])("rejects non-object target %j", (value) => {
     expect(() => parseDirectionTarget(value)).toThrow(notObject);
   });
 
