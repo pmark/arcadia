@@ -77,10 +77,15 @@ jobs:
       - run: mise exec -- pnpm install --frozen-lockfile
       # tmux-gated tests (describe.skipIf(!tmuxBinary)) skip silently without tmux
       # (#2515). Retry apt up to 3 times (#1697 flake: apt can exit 100).
+      # `apt-get update` exits non-zero when any one source fails, such as the runner's
+      # packages.microsoft.com source answering 403 (#3165), yet it still refreshes every
+      # source it reached. So its failure is only a warning, and the install decides.
       - name: Install tmux for tmux-gated unit tests
         run: |
           for attempt in 1 2 3; do
-            if sudo apt-get update && sudo apt-get install -y tmux; then
+            sudo apt-get update -o Acquire::Retries=3 ||
+              echo "::warning::apt-get update failed (attempt $attempt); installing tmux from the package lists it refreshed"
+            if sudo apt-get install -y --no-install-recommends tmux; then
               break
             fi
             if [ "$attempt" = 3 ]; then
