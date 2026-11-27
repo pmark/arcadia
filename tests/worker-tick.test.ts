@@ -320,7 +320,8 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
       killGraceMs: 50,
       // A real beacon would fork an actual OS process; this test only cares
       // about the recovery that happens before the beacon or the tick loop.
-      startHeartbeatBeacon: () => ({ stop: () => {}, onUnexpectedExit: () => {} })
+      startHeartbeatBeacon: () => ({ stop: () => {}, onUnexpectedExit: () => {} }),
+      startUsagePoller: () => ({ envelope: async (run) => run(), stop: () => {} })
     }));
     intervals.mockRestore();
     timeouts.mockRestore();
@@ -400,7 +401,8 @@ describe("worker stale-heartbeat recovery (Issue #485)", () => {
       defaultWorkspace: () => root,
       terminateGraceMs: 50,
       killGraceMs: 50,
-      startHeartbeatBeacon: () => ({ stop: () => {}, onUnexpectedExit: () => {} })
+      startHeartbeatBeacon: () => ({ stop: () => {}, onUnexpectedExit: () => {} }),
+      startUsagePoller: () => ({ envelope: async (run) => run(), stop: () => {} })
     }));
     intervals.mockRestore();
     timeouts.mockRestore();
@@ -616,7 +618,8 @@ describe("worker heartbeat beacon (Issue #617)", () => {
     const resume = vi.spyOn(process.stdin, "resume").mockReturnValue(process.stdin);
     dropSignalHandlersInstalledBy(() => runWorkerStartCommand({ workspace: root }, {
       defaultWorkspace: () => root,
-      startHeartbeatBeacon: fakeStart
+      startHeartbeatBeacon: fakeStart,
+      startUsagePoller: () => ({ envelope: async (run) => run(), stop: () => {} })
     }));
     intervals.mockRestore();
     timeouts.mockRestore();

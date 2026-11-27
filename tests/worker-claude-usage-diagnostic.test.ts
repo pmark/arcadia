@@ -4,7 +4,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createWorkerTick, pollWorkerClaudeUsageDiagnostics } from "../src/commands/worker.js";
+import { createWorkerTick, pollWorkerClaudeUsageDiagnostics, runUsagePollLoop, withTickEnvelope } from "../src/commands/worker.js";
 import { readProviderUsage, type ProviderUsageDependencies } from "../src/codingAgents/providerUsage.js";
 import { signInReceiptRefusal } from "../src/production/startRunSignIn.js";
 import { captureDiagnosticWorkerBinding, CLAUDE_DIAGNOSTIC_ENDPOINT, CLAUDE_DIAGNOSTIC_REQUEST, diagnosticGrantAnswer, diagnosticGrantPath, diagnosticResponsePath, publishDiagnosticAttempt, processWorkerClaudeUsageRequest, type ClaudeDiagnosticGrant, type DiagnosticPolicy } from "../src/production/workerClaudeUsageDiagnostic.js";
@@ -300,34 +300,44 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     expect(f.deps.loadClaude).toHaveBeenCalledTimes(1);
     expect(f.deps.requestClaude).not.toHaveBeenCalled();
   });
-  it("runs the diagnostic inside the serial worker envelope and rechecks ownership after await", async () => {
+  it("answers a pending request inside the tick envelope, so no tick body runs during the check (#3122)", async () => {
     const f = fixture();
     vi.stubEnv("CODEX_SANDBOX", "");
-    let owns = true;
-    let finish!: () => void;
-    const diagnostic = vi.fn(async () => {
-      await pollWorkerClaudeUsageDiagnostics(f.workspace, () => owns, { binding: f.binding, repositories: [f.repository], policy: () => f.policy, dependencies: { now: () => now, usage: f.deps } });
-      await new Promise<void>(resolve => {
-        finish = resolve;
-      });
-    });
-    const preAdmission = vi.fn(async () => {
-    });
-    const openDb = vi.fn(() => {
-      throw new Error("must not open after ownership lost");
-    });
-    const lost = vi.fn();
-    const tick = createWorkerTick({ workspacePath: f.workspace, pid: process.pid, logfile: path.join(f.root, "worker.log"), diagnostic, preAdmission, openDb, ownsWorker: () => owns, onOwnershipLost: lost });
+    const cell = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    let open!: () => void;
+    const gate = new Promise<void>(resolve => { open = resolve; });
+    let entered!: () => void;
+    const checking = new Promise<void>(resolve => { entered = resolve; });
+    const answer = f.deps.requestClaude!;
+    f.deps.requestClaude = vi.fn(async (token: string, signal?: AbortSignal) => { entered(); await gate; return answer(token, signal); });
+    const poll = pollWorkerClaudeUsageDiagnostics(f.workspace, () => true, { binding: f.binding, repositories: [f.repository], policy: () => f.policy, dependencies: { now: () => now, usage: f.deps } }, { exclusive: run => withTickEnvelope(cell, 2, run) });
+    await checking;
+    const body = vi.fn();
+    const tick = createWorkerTick({ workspacePath: f.workspace, pid: process.pid, logfile: path.join(f.root, "worker.log"), schedule: () => {}, envelope: run => withTickEnvelope(cell, 1, run), openDb: () => {
+        body();
+        throw new Error("fixture database unavailable");
+      } });
     tick();
-    await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
-    owns = false;
-    finish();
-    await vi.waitFor(() => expect(lost).toHaveBeenCalled());
-    expect(diagnostic).toHaveBeenCalledTimes(1);
-    expect(preAdmission).not.toHaveBeenCalled();
-    expect(openDb).not.toHaveBeenCalled();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(body).not.toHaveBeenCalled();
+    open();
+    await poll;
+    await vi.waitFor(() => expect(body).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(readFileSync(diagnosticResponsePath(f.workspace, f.nonce), "utf8"))).toMatchObject({ success: true, requestAttempted: true });
     expect(f.deps.requestClaude).toHaveBeenCalledTimes(1);
-    vi.unstubAllEnvs();
+    expect(Atomics.load(cell, 0)).toBe(0);
+  });
+  it("writes a routine beat without waiting for a tick that holds the envelope", async () => {
+    const f = fixture();
+    vi.stubEnv("CODEX_SANDBOX", "");
+    rmSync(path.join(f.repository, CLAUDE_DIAGNOSTIC_REQUEST));
+    const cell = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    Atomics.store(cell, 0, 1);
+    const exclusive = vi.fn((run: () => Promise<void>) => withTickEnvelope(cell, 2, run));
+    await pollWorkerClaudeUsageDiagnostics(f.workspace, () => true, { binding: f.binding, repositories: [f.repository], policy: () => f.policy, dependencies: { now: () => now, usage: f.deps } }, { exclusive });
+    expect(exclusive).not.toHaveBeenCalled();
+    expect(Date.now() - JSON.parse(readFileSync(path.join(f.workspace, ".arcadia/worker-claude-usage-heartbeat.json"), "utf8")).at).toBeLessThan(4000);
+    expect(f.deps.loadClaude).not.toHaveBeenCalled();
   });
   it("retains interrupted consume after caller restart without a new helper call", async () => {
     const f = fixture();
@@ -445,14 +455,15 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
         throw new Error(secret);
     });
     const logfile = path.join(f.root, "tick.log");
-    const tick = createWorkerTick({ workspacePath: f.workspace, pid: process.pid, logfile, diagnostic, schedule: () => {
-      }, openDb: () => {
-        throw new Error("fixture database unavailable");
-      } });
-    for (let i = 0; i < 62; i++) {
-      tick();
-      await new Promise<void>(resolve => setImmediate(resolve));
+    let next: (() => void) | null = null;
+    runUsagePollLoop({ poll: diagnostic, logfile, schedule: callback => { next = callback; } });
+    for (let i = 1; i < 62; i++) {
+      await vi.waitFor(() => expect(next).not.toBeNull());
+      const run = next!;
+      next = null;
+      run();
     }
+    await vi.waitFor(() => expect(next).not.toBeNull());
     const log = readFileSync(logfile, "utf8");
     expect(log.split("Worker Claude diagnostic polling unavailable.").length - 1).toBe(4);
     expect(log).not.toContain(secret);
