@@ -3,7 +3,7 @@ arcadia: v1
 type: log
 slug: arcadia-mission-log
 project: arcadia
-updated: 2026-11-26
+updated: 2026-11-27
 ---
 
 # Mission Log: Arcadia
@@ -4145,3 +4145,10 @@ Pinned management route before adoption: Node /Users/pmark/.local/share/mise/ins
 - **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-frontmatter-field-set.test.ts is a new test file that imports setFrontmatterField from ../src/dispatch/planActivationApply.js (lines 366-379) and asserts that for frontmatter lines slug: p, status: draft and updated: x followed by a body, setting status to active changes only that line, to status: active, and that setting active_plan to track-4 on frontmatter holding only slug: p appends active_plan: track-4 as the last frontmatter line, directly before the closing marker."; "The same test file asserts that when status is set, a status_note: x line stays unchanged and only the status: line changes; that a status: line in the body, below the frontmatter, stays unchanged; and that text with no frontmatter block throws "Managed document has no YAML frontmatter block to update.""; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-frontmatter-field-set.test.ts, a new test file of at most 50 lines that imports only vitest and src/dispatch/planActivationApply.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
 - **Next:** Advanced to the next eligible Action in the explicit queue order.
 - **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-frontmatter-field-set-ffd044d6b375).
+
+## 2026-11-27 — Completed arcadia/pin-stop-production-question
+
+- **Did:** Completed Action arcadia/pin-stop-production-question from accepted evidence (Candidate 33a5b72994fb0d859d89fa6ec4e84b4ffe33aba7).
+- **Result:** Every declared acceptance criterion was accepted as met: "tests/pin-stop-production-question.test.ts is a new test file that imports asksToStopProduction from ../src/way/lookup.js (lines 655-672) and asserts it is true for "How do I stop production?", "stop everything", "Please HALT the production run", "turn the production off", "turn off production", "shut off the production", "shut everything off" and "where is the off button"."; "The same test file asserts it is false for "turn off notifications", "switch production off", "shut down production", "halt everything", "how do I start production" and "stop the timer"."; "No src/ change is made to make the test pass; if current behaviour differs from these assertions, the Session reports the mismatch instead of changing src/."; "Apart from the settlement records Arcadia writes, the change touches only tests/pin-stop-production-question.test.ts, a new test file of at most 50 lines that imports only vitest and src/way/lookup.ts; no src/, tests/helpers/, tests/fixtures/ or other test file changes, and the test needs no network, timer, child process, database or live service. Proof that this file passes and lints cleanly comes from the required CI jobs on the pull request's head, not from the Session, which cannot run them under headless validation.".
+- **Next:** Advanced to the next eligible Action in the explicit queue order.
+- **Blockers:** None recorded by this settlement (Agent Ask auto-settle-arcadia-pin-stop-production-question-c8fcaff5bc4a).
