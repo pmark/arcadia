@@ -64,12 +64,12 @@ class FakeTmux implements TmuxAdapter {
   }
 }
 
-function scopeWith(grant: ProductionScope["integrationGrant"]): ProductionScope {
+function scopeWith(grant: ProductionScope["integrationGrant"], actions = ["test-project/define-contract", "test-project/second-action"]): ProductionScope {
   return normalizeProductionScope({
     intent: "Preserve and integrate a finished Session candidate.",
     projects: ["test-project"],
     plans: ["test-project/copy-proof"],
-    actions: ["test-project/define-contract", "test-project/second-action"],
+    actions,
     providers: ["claude-code-cli"],
     maxConcurrentSessions: 10,
     mechanicalTransitions: ["validation", "acceptance", "pointer"],
@@ -165,10 +165,10 @@ function reviewIndependently(fixture: Fixture, sessionId: string, verdict: "pass
   });
 }
 
-function interruptedHandoff(expiresAt = "2099-01-01T00:00:00.000Z") {
+function interruptedHandoff(expiresAt = "2099-01-01T00:00:00.000Z", actions?: string[]) {
   const fixture = preparedFixture();
   const tmux = new FakeTmux();
-  activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt, actions: [] }));
+  activatePolicy(fixture, scopeWith({ decisionRef: "0058", expiresAt, actions: [] }, actions));
   const session = launchFirstSession(fixture, tmux);
   finishCandidate(fixture, tmux, session);
   const baseBefore = git(fixture.repo, ["rev-parse", "HEAD"]).trim();
@@ -573,9 +573,14 @@ describe("preserve-on-exit and integrate", () => {
   });
 
   describe("a terminal candidate a guard keeps refusing (Issue #981)", () => {
-    /** The run-4 shape: a drafted Ask committed by preservation on top of the agent's settle commit. */
-    function strayDraftCommitted() {
-      const handoff = interruptedHandoff();
+    /**
+     * The run-4 shape: a drafted Ask committed by preservation on top of the agent's settle commit. `alone` scopes only
+     * this Action: with an independent in-scope Action the refused one is parked and admission continues (Plan
+     * one-stop-never-ends-the-card-20261126, tests/fast-rehearsal/park-stopped-action-continue.test.ts), so the
+     * every-tick refusal and per-head escalation below are pinned where nothing else may be admitted.
+     */
+    function strayDraftCommitted(alone = false) {
+      const handoff = interruptedHandoff(undefined, alone ? ["test-project/define-contract"] : undefined);
       const settlementCommit = git(handoff.session.worktree_path, ["rev-parse", "HEAD"]).trim();
       const stray = path.join(handoff.session.worktree_path, ".arcadia", "asks", "agent-ask-complete-define-contract-run4.yaml");
       writeFileSync(stray, "{\"agent_ask\":\"v1\",\"request_id\":\"complete-define-contract-run4\"}\n");
@@ -600,7 +605,7 @@ describe("preserve-on-exit and integrate", () => {
     }
 
     it("still refuses every tick, but logs and escalates once per head, with the exact blocker and remedy in production status", () => {
-      const { fixture, tmux, session, baseBefore, settlementCommit, strayHead } = strayDraftCommitted();
+      const { fixture, tmux, session, baseBefore, settlementCommit, strayHead } = strayDraftCommitted(true);
       const logs: string[] = [];
       for (let tick = 0; tick < 6; tick += 1) {
         const result = tickAt(fixture, tmux, 120_000 + tick * 3_000, logs);
@@ -635,7 +640,7 @@ describe("preserve-on-exit and integrate", () => {
     });
 
     it("re-escalates once for a new head, and clears when the candidate integrates", () => {
-      const { fixture, tmux, session, settlementCommit } = strayDraftCommitted();
+      const { fixture, tmux, session, settlementCommit } = strayDraftCommitted(true);
       const logs: string[] = [];
       tickAt(fixture, tmux, 120_000, logs);
       tickAt(fixture, tmux, 123_000, logs);
@@ -660,17 +665,23 @@ describe("preserve-on-exit and integrate", () => {
       expect(escalations(fixture).filter((entry) => entry.kind === "terminal_candidate_not_integrable")).toEqual([]);
     });
 
-    it("clears the escalation when production goes Off, and records nothing while it stays Off", () => {
+    // #3136 review round 2: this refusal is Action-local, so the in-scope Action is parked, and a park (with its
+    // escalation) outlives Off; ending it there let the candidate claim the repository again after a re-grant. An
+    // escalation that is not a park's still clears on Off (the `else` branch of the tick's bookkeeping is unchanged).
+    it("keeps a parked Action's escalation when production goes Off, and records nothing while it stays Off", () => {
       const { fixture, tmux } = strayDraftCommitted();
       const logs: string[] = [];
       tickAt(fixture, tmux, 120_000, logs);
       expect(escalations(fixture)).toHaveLength(1);
+      const parks = () => withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT action_key FROM production_action_parks").all());
+      expect(parks()).toEqual([{ action_key: "test-project/define-contract" }]);
       withDatabase(fixture.workspace, (db) => deactivateProduction(db, { requestId: "off-with-stray-draft", now: new Date(fixture.now.getTime() + 121_000) }));
       const off = tickAt(fixture, tmux, 123_000, logs);
       expect(off.handoff?.integration.kind).toBe("refused");
-      expect(escalations(fixture)).toEqual([]);
+      expect(escalations(fixture)).toMatchObject([{ actionKey: "test-project/define-contract", kind: "terminal_candidate_not_integrable" }]);
       tickAt(fixture, tmux, 126_000, logs);
-      expect(escalations(fixture)).toEqual([]);
+      expect(escalations(fixture)).toHaveLength(1);
+      expect(parks()).toEqual([{ action_key: "test-project/define-contract" }]);
       expect(logs.filter((line) => line.includes("terminal_candidate_not_integrable"))).toHaveLength(1);
     });
 

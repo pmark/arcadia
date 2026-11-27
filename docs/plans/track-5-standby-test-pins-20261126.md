@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: track-5-standby-test-pins-20261126
 project: arcadia
-status: active
+status: complete
 milestone: Track 5 standby test pins 20261126
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -71,11 +71,11 @@ actions:
     references: ["src/projects/setup.ts", "tests/pin-github-repository-url-check.test.ts"]
   - id: pin-build-route-declaration
     title: Pin which Actions count as declaring the build route that skips planning runs, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which Actions count as declaring the build route that skips planning runs, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-build-route-declaration-1ba5f79a7c81; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-build-route-declaration
     clarification: clarified
     confidence: high
@@ -91,11 +91,11 @@ actions:
     references: ["src/sessions/packetLifecycle.ts", "tests/pin-build-route-declaration.test.ts"]
   - id: pin-defect-evidence-merge
     title: Pin how defect and lesson evidence lists are merged and which summary words count for duplicate detection, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how defect and lesson evidence lists are merged and which summary words count for duplicate detection, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-defect-evidence-merge-7c8a9255eaef; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-defect-evidence-merge
     clarification: clarified
     confidence: high
@@ -111,11 +111,11 @@ actions:
     references: ["src/defect/signal.ts", "tests/pin-defect-evidence-merge.test.ts"]
   - id: pin-notes-entry-ranges
     title: Pin how the notes file is split into entries for lesson capture, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the notes file is split into entries for lesson capture, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-notes-entry-ranges-89c39fe59da6; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-notes-entry-ranges
     clarification: clarified
     confidence: high
@@ -131,11 +131,11 @@ actions:
     references: ["src/learning/lessons.ts", "tests/pin-notes-entry-ranges.test.ts"]
   - id: pin-review-item-work-kind
     title: Pin how the timeline names the kind of work a review item asks for, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the timeline names the kind of work a review item asks for, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-review-item-work-kind-852512a5794f; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-review-item-work-kind
     clarification: clarified
     confidence: high
@@ -151,11 +151,11 @@ actions:
     references: ["src/timeline/classify.ts", "tests/pin-review-item-work-kind.test.ts"]
   - id: pin-execution-tier-stronger-of
     title: Pin that the execution tier floor helpers return the stronger of two capability tiers or reasoning efforts, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin that the execution tier floor helpers return the stronger of two capability tiers or reasoning efforts, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-execution-tier-stronger-of-76c7f1194dc1; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-execution-tier-stronger-of
     clarification: clarified
     confidence: high
@@ -171,7 +171,6 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
-current_action: pin-build-route-declaration
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
