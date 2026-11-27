@@ -51,11 +51,11 @@ actions:
     references: ["src/agentWatch/contract.ts", "tests/pin-strict-utc-timestamp.test.ts"]
   - id: pin-github-repository-url-check
     title: Pin which repository URLs Project setup accepts as GitHub and how stored string arrays are decoded, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which repository URLs Project setup accepts as GitHub and how stored string arrays are decoded, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-github-repository-url-check-af596b3b71a1; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-github-repository-url-check
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
-current_action: pin-github-repository-url-check
+current_action: pin-build-route-declaration
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
