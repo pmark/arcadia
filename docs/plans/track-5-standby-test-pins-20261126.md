@@ -111,11 +111,11 @@ actions:
     references: ["src/defect/signal.ts", "tests/pin-defect-evidence-merge.test.ts"]
   - id: pin-notes-entry-ranges
     title: Pin how the notes file is split into entries for lesson capture, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the notes file is split into entries for lesson capture, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-notes-entry-ranges-89c39fe59da6; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-notes-entry-ranges
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
-current_action: pin-notes-entry-ranges
+current_action: pin-review-item-work-kind
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
