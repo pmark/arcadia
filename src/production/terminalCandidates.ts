@@ -89,9 +89,32 @@ export function repairBudgetCauseIsActionLocal(db: Database.Database, actionKey:
   } catch { return false; }
 }
 
+/**
+ * Plan one-stop-never-ends-the-card-20261126 (#3107): the stop kinds the tick parks when their cause is Action-local
+ * (src/production/tick.ts, `parkStoppedAction`): a terminal guard that judged only this candidate, or an operator gate
+ * whose only item is the Action's own pending completion Ask. Such a row holds its Action only while the Action's
+ * durable park record names that same kind; any other row of these kinds still stops the scope.
+ */
+export const PARKABLE_STOP_KINDS: ReadonlySet<string> = new Set(["terminal_candidate_not_integrable", "operator_gate_pending"]);
+
+/**
+ * The condition this Action is parked on, or null (#3118 review N4). Unlike `listProductionParks`, the night breaker's
+ * count, which drops parks older than 24 hours or recorded before the latest trip, this per-Action record
+ * (src/production/nightBreaker.ts) lasts until its own cause stops holding (src/production/tick.ts, `releaseResolvedParks`)
+ * or the Action is done in the base, so a parked Action and its dependents are never admitted again meanwhile; neither
+ * the breaker window nor a trip ever ends it. Read-only; a missing table answers null (nothing is passed over).
+ */
+export function parkedActionCondition(db: Database.Database, actionKey: string): { condition: string; parkedAt: number } | null {
+  try {
+    const row = db.prepare("SELECT condition, parked_at FROM production_action_parks WHERE action_key = ?").get(actionKey) as { condition: string; parked_at: number } | undefined;
+    return row ? { condition: row.condition, parkedAt: row.parked_at } : null;
+  } catch { return null; }
+}
+
 /** Whether an escalation of this kind on this Action is an Action-local hold (held, not run-stopping). */
 export function isActionLocalHeldKind(db: Database.Database, actionKey: string, kind: string): boolean {
-  return ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || (kind === REPAIR_BUDGET_EXHAUSTED_KIND && repairBudgetCauseIsActionLocal(db, actionKey));
+  return ACTION_LOCAL_HELD_ESCALATIONS.has(kind) || (kind === REPAIR_BUDGET_EXHAUSTED_KIND && repairBudgetCauseIsActionLocal(db, actionKey))
+    || (PARKABLE_STOP_KINDS.has(kind) && parkedActionCondition(db, actionKey)?.condition === kind);
 }
 
 /** This Action's open escalation when it is one of the Action-local held classes, or null. Read-only; a missing table answers null. */
@@ -237,7 +260,27 @@ export function listPendingTerminalCandidates(
     }
     pending.push(session);
   }
+  // #3136 review round 2: a stopped Action whose park has ended (its candidate moved or its worktree was cleaned) is
+  // judged afresh on its own, never as "ambiguous" against the candidate of the Action the pointer now names. While that
+  // one is pending it goes first; the stopped one waits and is judged once it is alone.
+  if (actionId === null && pointerAction && pending.length > 1 && pending.some((s) => s.action_id === pointerAction)) {
+    return { baseBranch, pending: pending.filter((s) => s.action_id === pointerAction || !releasedStoppedAction(db, `${s.project_slug}/${s.action_id}`)) };
+  }
   return { baseBranch, pending };
+}
+
+/**
+ * Whether this Action was parked on a parkable stop and is no longer parked: a park that ended because its own cause
+ * stopped holding (its escalation may already be cleared by the project-wide clear). Read-only; any failure answers
+ * false (it stays a candidate, as before).
+ */
+function releasedStoppedAction(db: Database.Database, actionKey: string): boolean {
+  try {
+    if (parkedActionCondition(db, actionKey)) return false;
+    const kinds = [...PARKABLE_STOP_KINDS];
+    return Boolean(db.prepare(`SELECT 1 FROM production_park_receipts WHERE action_key = ? AND condition IN (${kinds.map(() => "?").join(", ")}) LIMIT 1`)
+      .get(actionKey, ...kinds));
+  } catch { return false; }
 }
 
 export type TerminalCandidateCheck =
