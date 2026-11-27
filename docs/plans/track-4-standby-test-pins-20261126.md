@@ -7,7 +7,7 @@ status: active
 milestone: Track 4 standby test pins 20261126
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-26
+updated: 2026-11-27
 actions:
   - id: pin-pr-decision-id-clashes
     title: Pin how a Decision file name gives its id and which ids a pull request would duplicate on main, with a new test file.
@@ -131,11 +131,11 @@ actions:
     references: ["src/dispatch/planActivationApply.ts", "tests/pin-frontmatter-field-set.test.ts"]
   - id: pin-stop-production-question
     title: Pin which operator questions the Way lookup reads as asking how to stop production, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which operator questions the Way lookup reads as asking how to stop production, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-stop-production-question-c8fcaff5bc4a; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-stop-production-question
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-stop-production-question
+current_action: pin-evidence-secret-redaction
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---

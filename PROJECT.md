@@ -8,8 +8,8 @@ goal: Turn stated outcomes into clarified, routed, executable work without the o
 outcome: The operator states a desired outcome; Arcadia clarifies it, routes it to the right Project, drives coding agents, and reports back — asking for a decision only when one is genuinely needed.
 milestone: Track 4 standby test pins 20261126
 active_plan: track-4-standby-test-pins-20261126
-updated: 2026-11-26
-current_action: pin-stop-production-question
+updated: 2026-11-27
+current_action: pin-evidence-secret-redaction
 ---
 
 # Arcadia
