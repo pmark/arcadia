@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { runSessionReconcileCommand } from "../../src/commands/advance.js";
@@ -82,6 +82,12 @@ function stopFirstAsTerminal(world: FastRehearsal): ReturnType<FastRehearsal["ex
 }
 const parkRows = (world: FastRehearsal) => withReadOnlyDatabase(world.workspace, (db) =>
   db.prepare("SELECT action_key FROM production_action_parks").all() as Array<{ action_key: string }>);
+const parkCauses = (world: FastRehearsal) => withReadOnlyDatabase(world.workspace, (db) =>
+  (db.prepare("SELECT action_key, cause FROM production_action_parks").all() as Array<{ action_key: string; cause: string }>).map((r) => [r.action_key, r.cause]));
+const trips = (world: FastRehearsal): number => withReadOnlyDatabase(world.workspace, (db) => {
+  const exists = db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'production_night_breaker_trips'").get();
+  return exists ? (db.prepare("SELECT COUNT(*) AS n FROM production_night_breaker_trips").get() as { n: number }).n : 0;
+});
 
 function runIndependent(world: FastRehearsal, ids: readonly string[]): void {
   for (const id of ids) {
@@ -178,6 +184,107 @@ describe("a terminal park ends when its own cause stops holding", () => {
     expect(entry.message).toContain(`at ${newHead})`);
     // Judged afresh at the new head: the same Action-local refusal parks it again, with a second receipt.
     expect(parkReceipts(world).map((r) => r.action_key)).toEqual([world.actionKey(STOPPED), world.actionKey(STOPPED)]);
+  });
+
+  // #3136 review round 2, blocking 2: a worktree-changed park ends once the worktree is readable and clean at that head.
+  it("ends a worktree-changed park once the stray file is moved out, and judges the clean worktree afresh", () => {
+    world.expectError(/worktree is missing or changed/);
+    writeFileSync(path.join(result.brief.worktree, "THIRD-EXTRA.md"), "a third commit\n");
+    git(result.brief.worktree, ["add", "THIRD-EXTRA.md"]);
+    git(result.brief.worktree, ["-c", "user.name=Arcadia Rehearsal Fixture", "-c", "user.email=rehearsal@localhost", "commit", "-qm", "third extra commit"]);
+    const stray = path.join(result.brief.worktree, "stray-notes.txt");
+    writeFileSync(stray, "left in the worktree\n");
+    world.ticks(3);
+    expect(parkCauses(world)).toEqual([[world.actionKey(STOPPED), "The terminal candidate worktree is missing or changed."]]);
+    world.ticks(2);
+    expect(parkCauses(world)).toEqual([[world.actionKey(STOPPED), "The terminal candidate worktree is missing or changed."]]);
+    rmSync(stray);
+    world.ticks(3);
+    expect(world.log.filter((line) => line.includes(`Released the park of ${world.actionKey(STOPPED)}: its worktree is clean again`))).toHaveLength(1);
+    // Judged afresh: the clean head still differs from its settlement, so the same Action is parked on that cause.
+    expect(parkCauses(world)).toEqual([[world.actionKey(STOPPED), "The terminal candidate differs from its exact canonical completion settlement."]]);
+  });
+});
+
+// #3136 review round 2, blocking 1: Off and a re-grant never end a park, so the parked candidate never claims the
+// repository again and the next independent Action integrates.
+describe("a park survives production Off and a re-grant", () => {
+  let world: FastRehearsal;
+  beforeAll(() => {
+    world = build("park-survives-off");
+    stopFirstAsTerminal(world);
+    const second = world.untilLaunched(SECOND, 6);
+    world.execute(second.launch, SECOND, "clean", work(SECOND));
+    world.untilIntegrated(SECOND, 10);
+    // Off before the third Action is admitted, so it is admitted only under the re-grant.
+    world.deactivate("off-while-parked");
+    world.ticks(3);
+    world.activate("re-grant-while-parked");
+    runIndependent(world, [THIRD]);
+  }, SCENARIO_TIMEOUT_MS);
+
+  it("keeps the park and its escalation across Off, records no second receipt, and integrates the next Action", () => {
+    expect(world.planAction(world.repo, THIRD)).toBe("done");
+    expect(world.planAction(world.repo, STOPPED)).toBe("open");
+    expect(parkRows(world)).toEqual([{ action_key: world.actionKey(STOPPED) }]);
+    expect(parkReceipts(world).map((r) => r.action_key)).toEqual([world.actionKey(STOPPED)]);
+    expect(escalationKinds(world)).toEqual([[world.actionKey(STOPPED), "terminal_candidate_not_integrable"]]);
+    expect(world.log.filter((line) => line.includes("integration is ambiguous"))).toEqual([]);
+    expect(world.log.filter((line) => line.includes("Released the park"))).toEqual([]);
+  });
+});
+
+describe("a real night-breaker trip, then a re-grant, does not trip again", () => {
+  let world: FastRehearsal;
+  let tripsAfterTrip: number;
+  beforeAll(() => {
+    world = build("park-trip-regrant");
+    stopFirstAsTerminal(world);
+    // The second Action stops on the same cause: the breaker turns production Off on its next pass.
+    const second = world.untilLaunched(SECOND, 6);
+    world.execute(second.launch, SECOND, "extra-commit-after-settle", work(SECOND));
+    world.tickUntil(() => trips(world) === 1, 8);
+    world.ticks(2);
+    tripsAfterTrip = trips(world);
+    world.activate("re-grant-after-trip");
+    runIndependent(world, [THIRD]);
+  }, SCENARIO_TIMEOUT_MS);
+
+  it("keeps both parks, records no new receipt, and integrates the third Action without a second trip", () => {
+    expect(tripsAfterTrip).toBe(1);
+    expect(trips(world)).toBe(1);
+    expect(world.planAction(world.repo, THIRD)).toBe("done");
+    expect(parkRows(world).map((r) => r.action_key).sort()).toEqual([world.actionKey(STOPPED), world.actionKey(SECOND)].sort());
+    expect(parkReceipts(world).map((r) => r.action_key)).toEqual([world.actionKey(STOPPED), world.actionKey(SECOND)]);
+    expect(world.log.filter((line) => line.includes("integration is ambiguous"))).toEqual([]);
+  });
+});
+
+// #3136 review round 2, blocking 1: a candidate whose park ended is judged on its own, never as "ambiguous" against the
+// in-flight Action's exit.
+describe("a released park's candidate waits behind the pointer's own candidate", () => {
+  let world: FastRehearsal;
+  let result: ReturnType<FastRehearsal["execute"]>;
+  beforeAll(() => {
+    world = build("park-release-race");
+    result = stopFirstAsTerminal(world);
+    const second = world.untilLaunched(SECOND, 6);
+    world.execute(second.launch, SECOND, "clean", work(SECOND));
+    // The parked candidate moves while the second Action's exit is still being judged: its park ends on this pass.
+    writeFileSync(path.join(result.brief.worktree, "RACE-EXTRA.md"), "moved during the next exit\n");
+    git(result.brief.worktree, ["add", "RACE-EXTRA.md"]);
+    git(result.brief.worktree, ["-c", "user.name=Arcadia Rehearsal Fixture", "-c", "user.email=rehearsal@localhost", "commit", "-qm", "race extra commit"]);
+    world.untilIntegrated(SECOND, 10);
+    runIndependent(world, [THIRD]);
+  }, SCENARIO_TIMEOUT_MS);
+
+  it("integrates the second and third Actions, then re-parks the released candidate afresh", () => {
+    expect(world.planAction(world.repo, SECOND)).toBe("done");
+    expect(world.planAction(world.repo, THIRD)).toBe("done");
+    expect(world.log.filter((line) => line.includes("integration is ambiguous"))).toEqual([]);
+    expect(world.log.filter((line) => line.includes(`Released the park of ${world.actionKey(STOPPED)}: its candidate moved off the refused head`))).toHaveLength(1);
+    expect(parkRows(world)).toEqual([{ action_key: world.actionKey(STOPPED) }]);
+    expect(escalationKinds(world)).toEqual([[world.actionKey(STOPPED), "terminal_candidate_not_integrable"]]);
   });
 });
 

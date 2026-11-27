@@ -485,25 +485,33 @@ function releaseStalePark(db: Database.Database, actionKey: string, kind: string
  * integration, or a new park): its escalation row of that kind is gone; a terminal park's candidate is no longer the
  * pending terminal candidate of its Action (it landed, its input was superseded, or another Session's exit replaced it)
  * or sits on another head than the one refused; a gate park's own completion Ask is no longer pending (settled, rejected
- * or superseded). With `all` (production Off or the Project out of scope) every park ends, as its escalation does. An
- * unanswerable terminal check keeps the park. Never the breaker window or a trip (N4).
+ * or superseded); a worktree-changed park's worktree is readable and clean again at the refused head. An unanswerable
+ * check (including an unreadable head or worktree) keeps the park. Production going Off, the Project leaving the scope,
+ * the breaker window and a trip never end a park (#3136 review round 2; N4): the parked Action keeps its escalation
+ * across Off, so a re-grant neither re-records the park nor lets its candidate claim the repository again.
  */
-function releaseResolvedParks(db: Database.Database, input: { repoRoot: string; projectSlug: string; all: boolean; log: (message: string) => void }): void {
-  let rows: Array<{ action_key: string; condition: string; ref: string | null; head: string | null }>;
+function releaseResolvedParks(db: Database.Database, input: { repoRoot: string; projectSlug: string; log: (message: string) => void }): void {
+  let rows: Array<{ action_key: string; condition: string; cause: string; ref: string | null; head: string | null }>;
   try {
-    rows = db.prepare("SELECT action_key, condition, ref, head FROM production_action_parks WHERE substr(action_key, 1, ?) = ?")
+    rows = db.prepare("SELECT action_key, condition, cause, ref, head FROM production_action_parks WHERE substr(action_key, 1, ?) = ?")
       .all(input.projectSlug.length + 1, `${input.projectSlug}/`) as typeof rows;
   } catch { return; }
   let unsettled: Set<string> | null = null;
   for (const row of rows) {
     const actionId = row.action_key.slice(input.projectSlug.length + 1);
-    let why: string | null = input.all ? "production is Off or the Project is outside the Active scope" : null;
+    let why: string | null = null;
     const open = db.prepare("SELECT kind FROM production_operator_escalations WHERE action_key = ?").get(row.action_key) as { kind: string } | undefined;
-    if (!why && open?.kind !== row.condition) why = "its escalation cleared";
+    if (open?.kind !== row.condition) why = "its escalation cleared";
     if (!why && row.condition === TERMINAL_CANDIDATE_ESCALATION) {
       const check = pendingTerminalCandidateFor(db, input.repoRoot, input.projectSlug, actionId);
       if (check.kind === "none" || (check.kind === "pending" && check.session.id !== row.ref)) why = "its candidate is no longer the Action's pending terminal candidate";
-      else if (check.kind === "pending" && (tryGit(check.session.worktree_path, ["rev-parse", "HEAD"])?.trim() ?? null) !== row.head) why = "its candidate moved off the refused head";
+      else if (check.kind === "pending") {
+        // An unreadable head or worktree is unknown, never a change: the park holds (review round 2, note 1).
+        const head = tryGit(check.session.worktree_path, ["rev-parse", "HEAD"])?.trim() || null;
+        if (head && head !== row.head) why = "its candidate moved off the refused head";
+        else if (head && row.cause === WORKTREE_CHANGED_REFUSAL
+          && tryGit(check.session.worktree_path, ["status", "--porcelain", "--untracked-files=all"])?.trim() === "") why = "its worktree is clean again";
+      }
     }
     if (!why && row.condition === OPERATOR_GATE_ESCALATION) {
       unsettled ??= new Set(listUnsettledAgentAskProposals(db).map((ask) => ask.id));
@@ -2697,15 +2705,16 @@ export function runManagedProductionTick(
     // or out of scope), so a later recurrence is logged once again.
     // A terminal guard's refusal is escalated once while production is On for
     // this Project, and cleared when the candidate passes its guards or
-    // integrates, when nothing is pending, or when production is Off.
+    // integrates, when nothing is pending, or when production is Off; a parked
+    // Action's escalation stays (across Off too) while its park lasts.
     try {
       if (!(mayLaunch && handoff?.integration.kind === "refused" && handoff.integration.operatorMergeCommand)) {
         clearIntegrationRefusalLog(db, project.slug);
       }
       // A gated review repair row whose candidate has since merged is closed (Issue #1632).
       try { releaseMergedReviewRepairs(db, { repoRoot, projectSlug: project.slug, baseBranch: resolveBaseBranch(repoRoot), now, log, runCommand: options.review?.runCommand }); } catch { /* retried next tick */ }
-      // A park lasts only while its own cause holds; Off ends every park with its escalation.
-      releaseResolvedParks(db, { repoRoot, projectSlug: project.slug, all: !mayLaunch, log });
+      // A park lasts only while its own cause holds; Off and a trip never end it.
+      try { releaseResolvedParks(db, { repoRoot, projectSlug: project.slug, log }); } catch { /* retried next tick */ }
       // An operator-gate escalation lasts exactly as long as the gate holds a launch.
       clearProjectEscalationsOfKind(db, OPERATOR_GATE_ESCALATION, project.slug, gate.actionKey);
       if (mayLaunch && terminalRefusal) {

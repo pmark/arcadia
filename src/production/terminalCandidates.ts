@@ -260,7 +260,27 @@ export function listPendingTerminalCandidates(
     }
     pending.push(session);
   }
+  // #3136 review round 2: a stopped Action whose park has ended (its candidate moved or its worktree was cleaned) is
+  // judged afresh on its own, never as "ambiguous" against the candidate of the Action the pointer now names. While that
+  // one is pending it goes first; the stopped one waits and is judged once it is alone.
+  if (actionId === null && pointerAction && pending.length > 1 && pending.some((s) => s.action_id === pointerAction)) {
+    return { baseBranch, pending: pending.filter((s) => s.action_id === pointerAction || !releasedStoppedAction(db, `${s.project_slug}/${s.action_id}`)) };
+  }
   return { baseBranch, pending };
+}
+
+/**
+ * Whether this Action was parked on a parkable stop and is no longer parked: a park that ended because its own cause
+ * stopped holding (its escalation may already be cleared by the project-wide clear). Read-only; any failure answers
+ * false (it stays a candidate, as before).
+ */
+function releasedStoppedAction(db: Database.Database, actionKey: string): boolean {
+  try {
+    if (parkedActionCondition(db, actionKey)) return false;
+    const kinds = [...PARKABLE_STOP_KINDS];
+    return Boolean(db.prepare(`SELECT 1 FROM production_park_receipts WHERE action_key = ? AND condition IN (${kinds.map(() => "?").join(", ")}) LIMIT 1`)
+      .get(actionKey, ...kinds));
+  } catch { return false; }
 }
 
 export type TerminalCandidateCheck =

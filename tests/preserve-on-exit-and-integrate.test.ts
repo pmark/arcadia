@@ -665,17 +665,23 @@ describe("preserve-on-exit and integrate", () => {
       expect(escalations(fixture).filter((entry) => entry.kind === "terminal_candidate_not_integrable")).toEqual([]);
     });
 
-    it("clears the escalation when production goes Off, and records nothing while it stays Off", () => {
+    // #3136 review round 2: this refusal is Action-local, so the in-scope Action is parked, and a park (with its
+    // escalation) outlives Off; ending it there let the candidate claim the repository again after a re-grant. An
+    // escalation that is not a park's still clears on Off (the `else` branch of the tick's bookkeeping is unchanged).
+    it("keeps a parked Action's escalation when production goes Off, and records nothing while it stays Off", () => {
       const { fixture, tmux } = strayDraftCommitted();
       const logs: string[] = [];
       tickAt(fixture, tmux, 120_000, logs);
       expect(escalations(fixture)).toHaveLength(1);
+      const parks = () => withReadOnlyDatabase(fixture.workspace, (db) => db.prepare("SELECT action_key FROM production_action_parks").all());
+      expect(parks()).toEqual([{ action_key: "test-project/define-contract" }]);
       withDatabase(fixture.workspace, (db) => deactivateProduction(db, { requestId: "off-with-stray-draft", now: new Date(fixture.now.getTime() + 121_000) }));
       const off = tickAt(fixture, tmux, 123_000, logs);
       expect(off.handoff?.integration.kind).toBe("refused");
-      expect(escalations(fixture)).toEqual([]);
+      expect(escalations(fixture)).toMatchObject([{ actionKey: "test-project/define-contract", kind: "terminal_candidate_not_integrable" }]);
       tickAt(fixture, tmux, 126_000, logs);
-      expect(escalations(fixture)).toEqual([]);
+      expect(escalations(fixture)).toHaveLength(1);
+      expect(parks()).toEqual([{ action_key: "test-project/define-contract" }]);
       expect(logs.filter((line) => line.includes("terminal_candidate_not_integrable"))).toHaveLength(1);
     });
 
