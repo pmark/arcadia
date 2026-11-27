@@ -3,11 +3,11 @@ arcadia: v1
 type: plan
 slug: track-4-standby-test-pins-20261126
 project: arcadia
-status: active
+status: complete
 milestone: Track 4 standby test pins 20261126
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
-updated: 2026-11-26
+updated: 2026-11-27
 actions:
   - id: pin-pr-decision-id-clashes
     title: Pin how a Decision file name gives its id and which ids a pull request would duplicate on main, with a new test file.
@@ -91,11 +91,11 @@ actions:
     references: ["src/ask/agentAsk.ts", "tests/pin-ask-draft-scalar-rewrite.test.ts"]
   - id: pin-pointer-replace-current-action
     title: Pin how the queue rewrites or inserts a document's current_action pointer, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how the queue rewrites or inserts a document's current_action pointer, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-pointer-replace-current-action-eb4c1a39f7a5; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-pointer-replace-current-action
     clarification: clarified
     confidence: high
@@ -111,11 +111,11 @@ actions:
     references: ["src/dispatch/pointer.ts", "tests/pin-pointer-replace-current-action.test.ts"]
   - id: pin-frontmatter-field-set
     title: Pin how Plan activation sets a top-level frontmatter field such as active_plan or status, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how Plan activation sets a top-level frontmatter field such as active_plan or status, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-frontmatter-field-set-ffd044d6b375; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-frontmatter-field-set
     clarification: clarified
     confidence: high
@@ -131,11 +131,11 @@ actions:
     references: ["src/dispatch/planActivationApply.ts", "tests/pin-frontmatter-field-set.test.ts"]
   - id: pin-stop-production-question
     title: Pin which operator questions the Way lookup reads as asking how to stop production, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which operator questions the Way lookup reads as asking how to stop production, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-stop-production-question-c8fcaff5bc4a; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-stop-production-question
     clarification: clarified
     confidence: high
@@ -151,11 +151,11 @@ actions:
     references: ["src/way/lookup.ts", "tests/pin-stop-production-question.test.ts"]
   - id: pin-evidence-secret-redaction
     title: Pin which credential shapes are redacted from recorded command output, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which credential shapes are redacted from recorded command output, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-evidence-secret-redaction-35432926fe4e; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-evidence-secret-redaction
     clarification: clarified
     confidence: high
@@ -171,7 +171,6 @@ actions:
     references: ["src/sessions/validationEvidence.ts", "tests/pin-evidence-secret-redaction.test.ts"]
 questions: []
 decisions: []
-current_action: pin-pointer-replace-current-action
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
