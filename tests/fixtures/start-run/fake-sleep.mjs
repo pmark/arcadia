@@ -31,7 +31,18 @@ if (during && !during.applied) {
   }
 }
 
-if (state.worker.alive && state.worker.heartbeat === "fresh" && state.worker.slowTick?.recovers && existsSync(heartbeatFile)) {
+// Issue #3122, `from: "lead"`: the late beat lands once `arrivesAfterSeconds` of waiting have passed in the gap (each sleep counts
+// its argument), and only once if it `relapses`.
+const slow = state.worker.slowTick;
+let beats = Boolean(slow?.recovers) && slow.from !== "lead";
+if (slow?.from === "lead" && slow.started) {
+  if (!slow.landed) {
+    slow.slept = (slow.slept ?? 0) + Number(process.argv[2] ?? 0);
+    if (slow.recovers && slow.slept >= (slow.arrivesAfterSeconds ?? 0)) { slow.landed = true; beats = true; }
+    writeFileSync(statePath, JSON.stringify(state, null, 2));
+  } else beats = slow.relapses !== true;
+}
+if (state.worker.alive && state.worker.heartbeat === "fresh" && beats && existsSync(heartbeatFile)) {
   const beat = JSON.parse(readFileSync(heartbeatFile, "utf8"));
   beat.at = Date.now();
   writeFileSync(heartbeatFile, JSON.stringify(beat));

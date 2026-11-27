@@ -45,9 +45,14 @@ HEARTBEAT_POLL_SECONDS=2
 # `start-run sign-in` reads the heartbeat once, after its own CLI start-up, against the same 15 s window; the card starts it
 # on a beat at most this old so that start-up has the rest of the window.
 HEARTBEAT_SIGN_IN_LEAD_MS=8000
-# The wait for that lead runs after the sign-in guards, so it is bounded by about one normal tick: the guards are then never more
-# than one tick older than the claim. The slow tick itself is waited out, up to HEARTBEAT_WAIT_SECONDS, before the guards.
-HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS=16
+# The wait for that lead runs after the sign-in guards. Issue #3122: the worker's beat gaps reach 21-30 s at low load, so it may
+# wait up to HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS; a wait longer than about one normal tick (HEARTBEAT_SIGN_IN_GUARD_SECONDS)
+# re-runs the guards and re-requires the lead once, within that tick, so the guards are never more than one tick older than the
+# claim. The slow tick itself is waited out, up to HEARTBEAT_WAIT_SECONDS, before the guards. The lead wait plus the lead
+# (36 + 8 = 44 s, at most 50) stays below the sign-in's wait for the worker's receipt (WORKER_RECEIPT_WAIT_MS, 55 s), so a worker
+# stalled as long as the card tolerates still answers in time; tests/start-run-executor-standing-start.test.ts asserts both.
+HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS=36
+HEARTBEAT_SIGN_IN_GUARD_SECONDS=16
 ACTIVATION_RUNNER_TIMEOUT_SECONDS=300
 PRESS_RECORD_MAX_AGE_MS=120000
 WORKER_INSTALL_TIMEOUT_SECONDS=180
@@ -1123,7 +1128,7 @@ phase_p4() {
 # Decision 0161 (option A), after the bound restart: reuse a fresh receipt of this bound worker, or run the Decision 0143
 # sequence exactly once (claim this press's own sequence record, one Haiku renewal, one bound-worker usage check). No retry.
 phase_p4_sign_in() {
-  local out decision changed bound
+  local out decision changed bound lead_started lead_waited
   phase P4 sign_in
   BOUND_HANDLER="$(jq -r '.binding.handlerHash' "$RUN_DIR/worker-binding.json")"
   # Issue #3030: wait out a slow tick first, for a beat of the bound worker inside the 15 s window, so that the guards below run
@@ -1141,14 +1146,29 @@ phase_p4_sign_in() {
   check_no_competing_session "before the sign-in sequence"
   check_capacity
   # The sequence reads the heartbeat once, after its CLI start-up, against the 15 s window; start it on a beat of the bound worker
-  # at most HEARTBEAT_SIGN_IN_LEAD_MS old. This wait is bounded by about one normal tick (HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS),
-  # so the guards above are never more than one tick older than the claim.
+  # at most HEARTBEAT_SIGN_IN_LEAD_MS old, within HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS (Issue #3122).
+  lead_started=$(date +%s)
   if ! await_fresh_heartbeat bound_worker_matches "$HEARTBEAT_SIGN_IN_LEAD_MS" "$HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS"; then
     heartbeat_wait_result signInLeadHeartbeatWait
     [[ "$HB_OUTCOME" != mismatch ]] || refuse "the worker changed after the sign-in guards; the sign-in sequence was not invoked"
     refuse "the bound worker's heartbeat after the sign-in guards: $(heartbeat_wait_reason "$HEARTBEAT_SIGN_IN_LEAD_MS"); the sign-in sequence was not invoked"
   fi
   heartbeat_wait_result signInLeadHeartbeatWait
+  # A wait longer than one normal tick (real seconds, or polls past the old budget) left the guards older than that tick: re-run
+  # them and re-require the lead once, within one tick. A second long wait refuses; it never loops.
+  lead_waited=$(( $(date +%s) - lead_started ))
+  if (( lead_waited > HEARTBEAT_SIGN_IN_GUARD_SECONDS || (HB_POLLS - 1) * HEARTBEAT_POLL_SECONDS > HEARTBEAT_SIGN_IN_GUARD_SECONDS )); then
+    rec signInLeadGuardRecheck "$(jq -n --argjson waited "$lead_waited" --argjson polls "$HB_POLLS" --argjson budget "$HB_BUDGET" --argjson bound "$HEARTBEAT_SIGN_IN_GUARD_SECONDS" '{waitedSeconds: $waited, polls: $polls, budgetSeconds: $budget, boundSeconds: $bound}')"
+    check_production_off
+    check_no_competing_session "before the sign-in sequence, after the long lead wait"
+    check_capacity
+    if ! await_fresh_heartbeat bound_worker_matches "$HEARTBEAT_SIGN_IN_LEAD_MS" "$HEARTBEAT_SIGN_IN_GUARD_SECONDS"; then
+      heartbeat_wait_result signInLeadRecheckHeartbeatWait
+      [[ "$HB_OUTCOME" != mismatch ]] || refuse "the worker changed after the rechecked sign-in guards; the sign-in sequence was not invoked"
+      refuse "the bound worker's heartbeat after the rechecked sign-in guards: $(heartbeat_wait_reason "$HEARTBEAT_SIGN_IN_LEAD_MS"); the sign-in sequence was not invoked"
+    fi
+    heartbeat_wait_result signInLeadRecheckHeartbeatWait
+  fi
   SIGN_IN_ATTEMPTED=true
   mutated "Decision 0161 sign-in sequence invoked: reuses a fresh receipt of the bound worker, or claims this press's own sequence record before one Haiku renewal and, only on its success, publishes one diagnostic Decision to main and has the bound worker check usage once; a failure consumes this press's sequence, with no retry"
   checkpoint
@@ -1382,7 +1402,8 @@ main() {
   if [[ -f "$LIBRARY_DIR/.start-run-test-fixture" ]]; then
     local fixture_wait; fixture_wait="$(<"$LIBRARY_DIR/.start-run-test-fixture")"
     if [[ "$fixture_wait" =~ ^[0-9]+$ ]]; then WORKER_WAIT_SECONDS="$fixture_wait"; TRANSPORT_WAIT_SECONDS="$fixture_wait"; HEARTBEAT_WAIT_SECONDS="$fixture_wait"
-      (( fixture_wait >= HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS )) || HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS="$fixture_wait"; fi
+      (( fixture_wait >= HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS )) || HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS="$fixture_wait"
+      (( fixture_wait >= HEARTBEAT_SIGN_IN_GUARD_SECONDS )) || HEARTBEAT_SIGN_IN_GUARD_SECONDS="$fixture_wait"; fi
   fi
   mkdir -p "$RUN_DIR"
   # The phases run as a background stage whose output goes through a FIFO into tee -a run.log (no process substitution, so it also
