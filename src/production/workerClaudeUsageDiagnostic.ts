@@ -186,6 +186,20 @@ function safeReading(reading: ProviderUsageReading, now: Date) {
     requestAttempted: reading.requestAttempted === true, httpStatus: Number.isInteger(reading.httpStatus) && reading.httpStatus! >= 100 && reading.httpStatus! <= 599 ? reading.httpStatus : null,
     outcome, windows: success ? windows : [], source: reading.requestAttempted ? "worker_live_request" : "worker_no_request", success };
 }
+/** True only for a request that may still need an answer: a well-formed nonce
+* with no receipt yet. An answered request stays in the checkout until the next
+* press archives it, and answering it again only returns the receipt. */
+export function liveWorkerClaudeUsageRequest(workspace: string, repository: string): boolean {
+  try {
+    const request = boundedJson(path.join(repository, CLAUDE_DIAGNOSTIC_REQUEST)) as { nonce: string };
+    if (!request || !exactKeys(request, "nonce") || !noncePattern.test(request.nonce))
+      return false;
+    return !existsSync(diagnosticResponsePath(workspace, request.nonce));
+  }
+  catch {
+    return false;
+  }
+}
 /** Fixed in-process operation. Requests supply only nonce; all authority comes
 * from the protected grant, canonical Decision and fresh worker policy snapshot. */
 export function processWorkerClaudeUsageRequest(workspace: string, repository: string, binding: DiagnosticWorkerBinding | null, policy: () => DiagnosticPolicy, dependencies: DiagnosticDependencies = {}): Promise<unknown> {

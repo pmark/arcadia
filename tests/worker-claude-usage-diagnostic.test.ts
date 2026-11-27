@@ -339,6 +339,57 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     expect(Date.now() - JSON.parse(readFileSync(path.join(f.workspace, ".arcadia/worker-claude-usage-heartbeat.json"), "utf8")).at).toBeLessThan(4000);
     expect(f.deps.loadClaude).not.toHaveBeenCalled();
   });
+  it("never takes the envelope for an answered request, so a lingering request file leaves routine beats free of the tick (#3122 round 1)", async () => {
+    const f = fixture();
+    vi.stubEnv("CODEX_SANDBOX", "");
+    expect(await f.run()).toMatchObject({ success: true });
+    expect(existsSync(path.join(f.repository, CLAUDE_DIAGNOSTIC_REQUEST))).toBe(true);
+    const cell = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    Atomics.store(cell, 0, 1);
+    const exclusive = vi.fn((run: () => Promise<void>) => withTickEnvelope(cell, 2, run));
+    const poll = pollWorkerClaudeUsageDiagnostics(f.workspace, () => true, { binding: f.binding, repositories: [f.repository], policy: () => f.policy, dependencies: { now: () => now, usage: f.deps } }, { exclusive });
+    const settled = await Promise.race([poll.then(() => "settled"), new Promise(resolve => setTimeout(() => resolve("waiting on the tick"), 1000))]);
+    expect(settled).toBe("settled");
+    expect(exclusive).not.toHaveBeenCalled();
+    expect(Date.now() - JSON.parse(readFileSync(path.join(f.workspace, ".arcadia/worker-claude-usage-heartbeat.json"), "utf8")).at).toBeLessThan(4000);
+    expect(f.deps.requestClaude).toHaveBeenCalledTimes(1);
+    expect(Atomics.load(cell, 0)).toBe(1);
+  });
+  it("beside the tick writes no beat after ownership loss or while the main loop is stale, and carries main-loop progress", async () => {
+    const f = fixture();
+    vi.stubEnv("CODEX_SANDBOX", "");
+    const beat = path.join(f.workspace, ".arcadia/worker-claude-usage-heartbeat.json");
+    const poll = (owns: boolean, mainLoopAt: number) => pollWorkerClaudeUsageDiagnostics(f.workspace, () => owns, { binding: f.binding, repositories: [], policy: () => f.policy, dependencies: { now: () => now, usage: f.deps } }, { bootBinding: f.binding, beside: { mainLoopAt: () => mainLoopAt, mainLoopStaleMs: 20_000 } });
+    await poll(false, Date.now());
+    expect(existsSync(beat)).toBe(false);
+    await poll(true, Date.now() - 25_000);
+    expect(existsSync(beat)).toBe(false);
+    const progress = Date.now() - 1_000;
+    await poll(true, progress);
+    expect(JSON.parse(readFileSync(beat, "utf8"))).toMatchObject({ binding: f.binding, mainLoopAt: progress });
+  });
+  it("re-checks ownership after waiting on the envelope, before the tick body opens the database", async () => {
+    const f = fixture();
+    const cell = new Int32Array(new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT));
+    Atomics.store(cell, 0, 2);
+    let owns = true;
+    const preAdmission = vi.fn(async () => {});
+    const openDb = vi.fn(() => {
+      throw new Error("must not open after ownership lost");
+    });
+    const lost = vi.fn();
+    const tick = createWorkerTick({ workspacePath: f.workspace, pid: process.pid, logfile: path.join(f.root, "worker.log"), preAdmission, openDb, schedule: () => {}, envelope: run => withTickEnvelope(cell, 1, run), ownsWorker: () => owns, onOwnershipLost: lost });
+    tick();
+    await vi.waitFor(() => expect(preAdmission).toHaveBeenCalledTimes(1));
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(lost).not.toHaveBeenCalled();
+    owns = false;
+    Atomics.store(cell, 0, 0);
+    Atomics.notify(cell, 0);
+    await vi.waitFor(() => expect(lost).toHaveBeenCalled());
+    expect(openDb).not.toHaveBeenCalled();
+    expect(Atomics.load(cell, 0)).toBe(0);
+  });
   it("retains interrupted consume after caller restart without a new helper call", async () => {
     const f = fixture();
     const result = diagnosticResponsePath(f.workspace, f.nonce);

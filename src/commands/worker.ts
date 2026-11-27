@@ -1,4 +1,4 @@
-import { CLAUDE_DIAGNOSTIC_REQUEST, captureDiagnosticWorkerBinding, processWorkerClaudeUsageRequest, type DiagnosticWorkerBinding, type DiagnosticPolicy, type DiagnosticDependencies } from "../production/workerClaudeUsageDiagnostic.js";
+import { captureDiagnosticWorkerBinding, liveWorkerClaudeUsageRequest, processWorkerClaudeUsageRequest, type DiagnosticWorkerBinding, type DiagnosticPolicy, type DiagnosticDependencies } from "../production/workerClaudeUsageDiagnostic.js";
 import { Worker, isMainThread, workerData } from "node:worker_threads";
 import { withReadOnlyDatabase } from "../db/connection.js";
 import { getProjectMetadata, listProjects } from "../db/repositories.js";
@@ -6,7 +6,7 @@ import { countLiveAdmissions, readProductionPolicySafely } from "../production/p
 import { finalizeWorkerFailure } from "../execution/runFinalization.js";
 import { tickRecurringSchedules } from "../recurring/scheduler.js";
 import { refuseInExperimentWorkspace } from "../workspace/experimentGuard.js";
-import { appendFileSync, existsSync, lstatSync, realpathSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, lstatSync, realpathSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { homedir } from "node:os";
 import { validateGoBrokerWorkerCode, validateGoBrokerWorkerDefaults } from "./goBrokerInstall.js";
@@ -52,13 +52,26 @@ export async function pollWorkerClaudeUsageDiagnostics(workspace: string, owns: 
 }, options: {
   /** The owning worker's boot binding; the poller thread receives it from the main thread. */
   bootBinding?: DiagnosticWorkerBinding | null;
-  /** Runs a pending request inside the worker's tick envelope (see `withTickEnvelope`). */
+  /** Runs a live request inside the worker's tick envelope (see `withTickEnvelope`). */
   exclusive?: (run: () => Promise<void>) => Promise<void>;
+  /**
+   * Beside the tick (the poller thread): write no beat for a worker that has
+   * lost its ownership fence, or whose main event loop has stamped no progress
+   * for `mainLoopStaleMs`, so a wedged tick still reads stale to START before
+   * anything is claimed, as it did when the poll ran inside the tick.
+   */
+  beside?: { mainLoopAt: () => number; mainLoopStaleMs: number };
 } = {}): Promise<void> {
   if (process.env.CODEX_SANDBOX) return;
   const bootBinding = options.bootBinding !== undefined ? options.bootBinding : diagnosticWorkerBinding;
+  let mainLoopAt: number | undefined;
+  if (options.beside) {
+    if (!owns()) return;
+    mainLoopAt = options.beside.mainLoopAt();
+    if (!(Date.now() - mainLoopAt <= options.beside.mainLoopStaleMs)) return;
+  }
   mkdirSync(path.join(workspace, ".arcadia"), {recursive: true});
-  writeFileSync(path.join(workspace, ".arcadia/worker-claude-usage-heartbeat.json"), JSON.stringify({at: Date.now(), binding: bootBinding}), {mode: 0o600});
+  writeFileSync(path.join(workspace, ".arcadia/worker-claude-usage-heartbeat.json"), JSON.stringify({at: Date.now(), binding: bootBinding, ...(mainLoopAt !== undefined ? { mainLoopAt } : {})}), {mode: 0o600});
   const binding = fixture?.binding ?? bootBinding;
   if (!binding || !owns()) return;
   const repositories = fixture?.repositories ?? withReadOnlyDatabase(workspace, db => listProjects(db)
@@ -80,13 +93,16 @@ export async function pollWorkerClaudeUsageDiagnostics(workspace: string, owns: 
   // Beside the tick, a request is only ever answered inside the tick envelope,
   // so no tick body claims or runs work while the check reads the sign-in
   // (Decisions 0141 and 0143: zero active Runs and Sessions during the check).
-  // A repository with no request file is skipped (processing it would only
-  // return null), so a request appearing after this read waits for the next
-  // poll rather than running outside the envelope; routine beats never wait.
+  // Only a live request (a valid nonce with no receipt yet) is processed;
+  // anything else would only return null or the existing receipt, and an
+  // answered request stays in the checkout until the next press archives it,
+  // so taking the envelope for it would tie every beat back to the tick. A
+  // request that turns live after this read waits for the next poll rather
+  // than running outside the envelope.
   if (!options.exclusive) await processAll(repositories);
   else {
-    const pending = repositories.filter(repository => existsSync(path.join(repository, CLAUDE_DIAGNOSTIC_REQUEST)));
-    if (pending.length) await options.exclusive(() => processAll(pending));
+    const live = repositories.filter(repository => liveWorkerClaudeUsageRequest(workspace, repository));
+    if (live.length) await options.exclusive(() => processAll(live));
   }
   if (failed) throw new Error("diagnostic_poll_unavailable");
 }
@@ -127,7 +143,7 @@ export function runUsagePollLoop(options: {
 /**
  * One cell shared by the tick (main thread) and the poller thread: 0 free,
  * TICK_HOLDS while a tick body runs, DIAGNOSTIC_HOLDS while a request is
- * answered. Only a pending request takes it, so routine beats never wait.
+ * answered. Only a live request takes it, so routine beats never wait.
  */
 // ES2024 `Atomics.waitAsync` (Node >= 16); the project's TypeScript lib predates it.
 const waitAsync = (array: Int32Array, index: number, value: number) => (Atomics as unknown as {
@@ -154,6 +170,17 @@ function releaseTickEnvelope(cell: Int32Array, holder: number): void {
 const USAGE_POLLER_THREAD = "arcadia-worker-usage-poller-v1";
 const USAGE_POLLER_RESTART_BACKOFF_MS = 500;
 const USAGE_POLLER_RESTART_LIMIT = 5;
+/**
+ * How long the main event loop may go without stamping progress before the
+ * poller withholds the usage beat. Above the tick body's measured stretches
+ * between progress points (~10 s at load1 ~5), so a busy tick keeps its beat;
+ * a wedged one stops it and START refuses before it claims anything.
+ */
+export const MAIN_LOOP_STALE_MS = 20_000;
+/** Shared buffer layout: the envelope cell, then the main loop's last progress (epoch ms). */
+const ENVELOPE_BYTES = 16;
+const envelopeCell = (buffer: SharedArrayBuffer) => new Int32Array(buffer, 0, 1);
+const mainLoopCell = (buffer: SharedArrayBuffer) => new BigInt64Array(buffer, 8, 1);
 interface UsagePollerThreadData {
   kind: typeof USAGE_POLLER_THREAD;
   workspace: string;
@@ -162,10 +189,13 @@ interface UsagePollerThreadData {
   intervalMs: number;
   binding: DiagnosticWorkerBinding | null;
   envelope: SharedArrayBuffer;
+  mainLoopStaleMs: number;
 }
 export interface WorkerUsagePoller {
-  /** Runs one tick body inside the envelope a pending diagnostic request shares. */
+  /** Runs one tick body inside the envelope a live diagnostic request shares. */
   envelope: <T>(run: () => Promise<T> | T) => Promise<T>;
+  /** Stamp main-event-loop progress, which the poller requires before each beat. */
+  markLoopProgress: () => void;
   stop: () => void;
 }
 
@@ -177,19 +207,33 @@ export interface WorkerUsagePoller {
  * being read. Restarted with a bounded backoff like the heartbeat beacon.
  */
 export function startWorkerUsagePoller(workspacePath: string, identity: WorkerIdentity, logfile: string, options: {
-  intervalMs?: number; env?: NodeJS.ProcessEnv; binding?: DiagnosticWorkerBinding | null;
+  intervalMs?: number; env?: NodeJS.ProcessEnv; binding?: DiagnosticWorkerBinding | null; mainLoopStaleMs?: number;
 } = {}): WorkerUsagePoller {
-  const envelope = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT);
-  const cell = new Int32Array(envelope);
+  const envelope = new SharedArrayBuffer(ENVELOPE_BYTES);
+  const cell = envelopeCell(envelope);
+  const progress = mainLoopCell(envelope);
+  const markLoopProgress = () => { Atomics.store(progress, 0, BigInt(Date.now())); };
+  markLoopProgress();
   const data: UsagePollerThreadData = {
     kind: USAGE_POLLER_THREAD, workspace: workspacePath, identity, logfile,
     intervalMs: options.intervalMs ?? POLL_INTERVAL_MS,
-    binding: options.binding !== undefined ? options.binding : diagnosticWorkerBinding, envelope
+    binding: options.binding !== undefined ? options.binding : diagnosticWorkerBinding, envelope,
+    mainLoopStaleMs: options.mainLoopStaleMs ?? MAIN_LOOP_STALE_MS
   };
   const typescript = import.meta.url.endsWith(".ts");
   let stopped = false;
   let restarts = 0;
   let thread: Worker | null = null;
+  const retry = (reason: string) => {
+    if (stopped) return;
+    restarts += 1;
+    if (restarts > USAGE_POLLER_RESTART_LIMIT) {
+      log(logfile, `ERROR: Worker Claude diagnostic poller failed ${restarts - 1} times in a row (${reason}); giving up. START refuses on a stale usage heartbeat until the worker restarts.`);
+      return;
+    }
+    log(logfile, `Worker Claude diagnostic poller ${reason}; restarting it in ${USAGE_POLLER_RESTART_BACKOFF_MS}ms (attempt ${restarts}/${USAGE_POLLER_RESTART_LIMIT}).`);
+    setTimeout(spawn, USAGE_POLLER_RESTART_BACKOFF_MS);
+  };
   const spawn = () => {
     if (stopped) return;
     let started: Worker;
@@ -201,7 +245,7 @@ export function startWorkerUsagePoller(workspacePath: string, identity: WorkerId
         ? new Worker(`import(${JSON.stringify(import.meta.resolve("tsx/esm/api"))}).then((api) => { api.register(); return import(${JSON.stringify(import.meta.url)}); });`, { ...threadOptions, eval: true })
         : new Worker(new URL(import.meta.url), threadOptions);
     } catch (error) {
-      log(logfile, `Worker Claude diagnostic poller failed to start: ${error instanceof Error ? error.message : String(error)}`);
+      retry(`failed to start: ${error instanceof Error ? error.message : String(error)}`);
       return;
     }
     thread = started;
@@ -212,19 +256,13 @@ export function startWorkerUsagePoller(workspacePath: string, identity: WorkerId
       clearTimeout(healthy);
       // A thread that died holding the envelope must not block the tick.
       releaseTickEnvelope(cell, DIAGNOSTIC_HOLDS);
-      if (stopped) return;
-      restarts += 1;
-      if (restarts > USAGE_POLLER_RESTART_LIMIT) {
-        log(logfile, `Worker Claude diagnostic poller exited ${restarts - 1} times in a row; giving up. START refuses on a stale usage heartbeat until the worker restarts.`);
-        return;
-      }
-      log(logfile, `Worker Claude diagnostic poller exited (code ${code}); restarting it in ${USAGE_POLLER_RESTART_BACKOFF_MS}ms (attempt ${restarts}/${USAGE_POLLER_RESTART_LIMIT}).`);
-      setTimeout(spawn, USAGE_POLLER_RESTART_BACKOFF_MS);
+      retry(`exited (code ${code})`);
     });
   };
   spawn();
   return {
     envelope: (run) => withTickEnvelope(cell, TICK_HOLDS, run),
+    markLoopProgress,
     stop: () => {
       stopped = true;
       void thread?.terminate();
@@ -233,13 +271,15 @@ export function startWorkerUsagePoller(workspacePath: string, identity: WorkerId
 }
 
 function runUsagePollerThread(data: UsagePollerThreadData): void {
-  const cell = new Int32Array(data.envelope);
+  const cell = envelopeCell(data.envelope);
+  const progress = mainLoopCell(data.envelope);
   runUsagePollLoop({
     logfile: data.logfile,
     intervalMs: data.intervalMs,
     poll: () => pollWorkerClaudeUsageDiagnostics(data.workspace, () => ownsWorker(data.workspace, data.identity), undefined, {
       bootBinding: data.binding,
-      exclusive: (run) => withTickEnvelope(cell, DIAGNOSTIC_HOLDS, run)
+      exclusive: (run) => withTickEnvelope(cell, DIAGNOSTIC_HOLDS, run),
+      beside: { mainLoopAt: () => Number(Atomics.load(progress, 0)), mainLoopStaleMs: data.mainLoopStaleMs }
     })
   });
 }
@@ -772,6 +812,8 @@ export interface WorkerTickOptions {
    * in the tick: see `startWorkerUsagePoller`.
    */
   envelope?: (run: () => void) => Promise<void>;
+  /** Stamps main-event-loop progress for the poller thread (see `MAIN_LOOP_STALE_MS`). */
+  loopProgress?: () => void;
 }
 
 /**
@@ -796,6 +838,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
     ?? ((callback: () => void, delayMs: number) => { setTimeout(callback, delayMs); });
   const owns = options.ownsWorker ?? (() => true);
   const onOwnershipLost = options.onOwnershipLost ?? (() => {});
+  const loopProgress = () => { try { options.loopProgress?.(); } catch {} };
 
   // Consecutive synchronous failures, so a persistent one is summarized rather
   // than written once per 2s tick.
@@ -809,6 +852,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
       return;
     }
     markTickStarted(options.workspacePath, identity);
+    loopProgress();
     try {
       try { writeWorkerHeartbeat(options.workspacePath, identity); } catch {}
       const db = openDb(options.workspacePath);
@@ -824,6 +868,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
           // full ceiling.
           try { writeWorkerHeartbeat(options.workspacePath, identity); } catch {}
           markTickStarted(options.workspacePath, identity);
+          loopProgress();
         });
       } finally {
         db.close();
@@ -841,6 +886,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
       }
     } finally {
       clearTickMarker(options.workspacePath);
+      loopProgress();
       if (owns()) schedule(tick, POLL_INTERVAL_MS);
       else onOwnershipLost();
     }
@@ -863,6 +909,7 @@ export function createWorkerTick(options: WorkerTickOptions): () => void {
     }
     // Stamp the tick as started so the bounded refresh counts toward the ceiling.
     try { markTickStarted(options.workspacePath, identity); } catch {}
+    loopProgress();
     preAdmission()
       .catch((error: unknown) => {
         log(options.logfile, `Pre-admission refresh error: ${error instanceof Error ? error.message : String(error)}`);
@@ -1275,6 +1322,8 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     // own pre-launch probe — keep its freshness window from lapsing. This timer
     // shares the tick's event loop deliberately: a wedged worker must read stale.
     try { refreshPreservationHeartbeat(workspacePath); } catch {}
+    // This loop turning is main-event-loop progress for the poller thread.
+    usagePoller.markLoopProgress();
   }, PRESERVATION_HEARTBEAT_REFRESH_MS);
   log(logfile, `Worker started (PID: ${process.pid}, workspace: ${workspacePath})`);
 
@@ -1299,6 +1348,7 @@ export function runWorkerStartCommand(options: WorkerOptions, dependencies: Work
     ownsWorker: () => ownsWorker(workspacePath, identity),
     onOwnershipLost: stopWhenOwnershipChanges,
     envelope: (run) => usagePoller.envelope(run),
+    loopProgress: () => usagePoller.markLoopProgress(),
     preAdmission: () => refreshClaudeUsageBeforeAdmission(workspacePath)
   });
 

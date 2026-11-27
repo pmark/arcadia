@@ -39,6 +39,7 @@ describe("worker usage poller (Issue #3122)", () => {
     const tick = createWorkerTick({
       workspacePath: root, pid: process.pid, logfile, identity, schedule: () => {},
       envelope: run => poller.envelope(run),
+      loopProgress: () => poller.markLoopProgress(),
       openDb: () => {
         blockSynchronously(6_000);
         ageAtEndOfBlock = Date.now() - beatAt(root);
@@ -48,6 +49,28 @@ describe("worker usage poller (Issue #3122)", () => {
     tick();
     await vi.waitFor(() => expect(ageAtEndOfBlock).toBeTypeOf("number"), { timeout: 20_000 });
     expect(ageAtEndOfBlock).toBeLessThan(4_000);
+  }, 90_000);
+
+  it("stops the beat when the main event loop stamps no progress, so a wedged tick still refuses START before any claim", async () => {
+    const { root, identity, logfile } = workspace();
+    const poller = startWorkerUsagePoller(root, identity, logfile, { intervalMs: 250, binding: null, mainLoopStaleMs: 1_000, env: { ...process.env, CODEX_SANDBOX: "" } });
+    pollers.push(poller);
+    await vi.waitFor(() => expect(() => beatAt(root)).not.toThrow(), { timeout: 60_000, interval: 100 });
+    poller.markLoopProgress();
+    // No loopProgress hook: this tick body is wedged as far as the poller can tell.
+    let ageAtEndOfBlock: number | undefined;
+    const tick = createWorkerTick({
+      workspacePath: root, pid: process.pid, logfile, identity, schedule: () => {},
+      envelope: run => poller.envelope(run),
+      openDb: () => {
+        blockSynchronously(5_000);
+        ageAtEndOfBlock = Date.now() - beatAt(root);
+        throw new Error("fixture database unavailable");
+      }
+    });
+    tick();
+    await vi.waitFor(() => expect(ageAtEndOfBlock).toBeTypeOf("number"), { timeout: 20_000 });
+    expect(ageAtEndOfBlock).toBeGreaterThan(3_000);
   }, 90_000);
 
   it("never overlaps itself: the next poll is scheduled only after the previous one settles", async () => {
