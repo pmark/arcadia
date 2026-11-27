@@ -3,7 +3,7 @@ arcadia: v1
 type: plan
 slug: track-5-standby-test-pins-20261126
 project: arcadia
-status: draft
+status: active
 milestone: Track 5 standby test pins 20261126
 token_impact: medium
 token_budget: Deterministic management and validation; one bounded implementation pass and scoped review per Action after activation. Additional attempts require a named failure and a finite repair budget.
@@ -171,6 +171,9 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
+current_action: pin-image-format-sniffing
+recommended_model: heavy
+recommended_reasoning_effort: high
 ---
 
 # Track 5 standby test pins 20261126
