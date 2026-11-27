@@ -390,6 +390,26 @@ describe("fixed actual-worker Claude diagnostic (fakes only)", () => {
     expect(openDb).not.toHaveBeenCalled();
     expect(Atomics.load(cell, 0)).toBe(0);
   });
+  it("records interrupted for an attempt left by a dead poller thread of this same live process, never retrying it (#3122)", async () => {
+    const f = fixture();
+    const result = diagnosticResponsePath(f.workspace, f.nonce);
+    mkdirSync(path.dirname(result), { recursive: true });
+    const digest = diagnosticGrantAnswer(f.grant).split(" ").at(-1);
+    writeFileSync(result + ".attempt", JSON.stringify({ pid: process.pid, instance: f.binding.instance, thread: "a-dead-poller-thread", startedAt: now.toISOString(), approval: { digest } }), { mode: 0o600 });
+    expect(await f.run()).toMatchObject({ outcome: "interrupted", requestAttempted: null, windows: [] });
+    expect(f.deps.loadClaude).not.toHaveBeenCalled();
+    expect(f.deps.requestClaude).not.toHaveBeenCalled();
+  });
+  it("still treats a same-process attempt with no thread id as owned (alive), as before", async () => {
+    const f = fixture();
+    const result = diagnosticResponsePath(f.workspace, f.nonce);
+    mkdirSync(path.dirname(result), { recursive: true });
+    const digest = diagnosticGrantAnswer(f.grant).split(" ").at(-1);
+    writeFileSync(result + ".attempt", JSON.stringify({ pid: process.pid, instance: f.binding.instance, startedAt: now.toISOString(), approval: { digest } }), { mode: 0o600 });
+    expect(await f.run()).toBeNull();
+    expect(existsSync(result)).toBe(false);
+    expect(f.deps.loadClaude).not.toHaveBeenCalled();
+  });
   it("retains interrupted consume after caller restart without a new helper call", async () => {
     const f = fixture();
     const result = diagnosticResponsePath(f.workspace, f.nonce);

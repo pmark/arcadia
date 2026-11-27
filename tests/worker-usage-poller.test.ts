@@ -33,7 +33,8 @@ describe("worker usage poller (Issue #3122)", () => {
     const poller = startWorkerUsagePoller(root, identity, logfile, { intervalMs: 250, binding: null, env: { ...process.env, CODEX_SANDBOX: "" } });
     pollers.push(poller);
     // The thread loads this module under tsx; wait for its first beat.
-    await vi.waitFor(() => expect(() => beatAt(root)).not.toThrow(), { timeout: 60_000, interval: 100 });
+    // Stamp main-loop progress while the thread starts, as the worker's timer does.
+    await vi.waitFor(() => { poller.markLoopProgress(); expect(() => beatAt(root)).not.toThrow(); }, { timeout: 60_000, interval: 100 });
 
     let ageAtEndOfBlock: number | undefined;
     const tick = createWorkerTick({
@@ -55,7 +56,8 @@ describe("worker usage poller (Issue #3122)", () => {
     const { root, identity, logfile } = workspace();
     const poller = startWorkerUsagePoller(root, identity, logfile, { intervalMs: 250, binding: null, mainLoopStaleMs: 1_000, env: { ...process.env, CODEX_SANDBOX: "" } });
     pollers.push(poller);
-    await vi.waitFor(() => expect(() => beatAt(root)).not.toThrow(), { timeout: 60_000, interval: 100 });
+    // Stamp main-loop progress while the thread starts, as the worker's timer does.
+    await vi.waitFor(() => { poller.markLoopProgress(); expect(() => beatAt(root)).not.toThrow(); }, { timeout: 60_000, interval: 100 });
     poller.markLoopProgress();
     // No loopProgress hook: this tick body is wedged as far as the poller can tell.
     let ageAtEndOfBlock: number | undefined;

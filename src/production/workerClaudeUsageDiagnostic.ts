@@ -159,6 +159,11 @@ function readDiagnosticAuthority(workspace: string, repository: string, binding:
     throw new Error("decision_refused");
   return { grant, digest: answer.split(" ").at(-1) ?? "" };
 }
+/** This module instance's owner id. Each poller thread loads its own instance,
+* so an attempt left by a dead thread of this same live process is told apart
+* from one this instance still owns (Issue #3122: the poll runs on a thread
+* that is restarted after it dies). */
+const threadOwner = randomUUID();
 const inFlight = new Map<string, {
   digest: string | null;
   operation: Promise<unknown>;
@@ -274,6 +279,7 @@ async function processRequest(workspace: string, repository: string, binding: Di
     let owner: {
       pid: number;
       instance: string;
+      thread?: string;
       approval?: {
         digest: string;
       };
@@ -296,6 +302,10 @@ async function processRequest(workspace: string, repository: string, binding: Di
     catch (error) {
       alive = (error as NodeJS.ErrnoException).code !== "ESRCH";
     }
+    // Same live process, another (now dead) poller thread: only one poller
+    // thread runs at a time and a replacement starts only after its exit.
+    if (alive && owner.pid === process.pid && typeof owner.thread === "string" && owner.thread !== threadOwner)
+      alive = false;
     if (alive)
       return null;
     return receipt({ success: false, outcome: "interrupted", requestAttempted: null, httpStatus: null, windows: [], source: "worker_no_request" });
@@ -319,7 +329,7 @@ async function processRequest(workspace: string, repository: string, binding: Di
     authorize();
     approval = { decision: grant.decision, digest: authority.digest, policyRevision: grant.policyRevision, policyEpoch: grant.policyEpoch, provider: "claude", source: "auto", endpoint: CLAUDE_DIAGNOSTIC_ENDPOINT };
     // Complete, exclusive, durable metadata is visible before credential access.
-    if (!publishDiagnosticAttempt(attempt, { nonce, pid: binding.pid, instance: binding.instance, startedAt, approval }))
+    if (!publishDiagnosticAttempt(attempt, { nonce, pid: binding.pid, instance: binding.instance, thread: threadOwner, startedAt, approval }))
       return null;
   }
   catch {
