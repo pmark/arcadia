@@ -11,11 +11,11 @@ updated: 2026-11-27
 actions:
   - id: pin-image-format-sniffing
     title: Pin how a generated image's format is named from its leading bytes and how its width and height are read, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin how a generated image's format is named from its leading bytes and how its width and height are read, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-image-format-sniffing-2872e8752e6c; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-image-format-sniffing
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/execution/profiles.ts", "tests/pin-execution-tier-stronger-of.test.ts"]
 questions: []
 decisions: []
-current_action: pin-image-format-sniffing
+current_action: pin-strict-utc-timestamp
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
