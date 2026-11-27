@@ -82,6 +82,29 @@ The operator answered the freeze-admission menu with "1B 2B, sequenced" (verbati
   - The night-continuity pieces (Plan C Actions 3 and 4, Plan D Action 3) add new press-path code, which needs an unstubbed rule-1 rehearsal before live use.
 - Test-only night cards continue meanwhile.
 
+## Admission (Thu 2026-11-26, evening): "Yes, A" on #3122
+
+The operator answered "Yes, A" (verbatim, a human-origin turn at 2026-11-27T02:37:53Z, 6:37 PM Pacific on 11-26, in Signal 20's session `e1a83b65-af47-4256-b2f1-b001ded2f2a7`, line 6700, uuid `5ddf5b27-6aad-45f3-8cf9-d8679e177d46`). He was answering Signal's two questions (lines 6685 and 6694):
+
+> 1. 🔀 **Merge #3136** once tonight's run ends: yes or no?
+> 2. 🗳️ **#3122:** A means admit the small 36-second fix now. B means admit it and the bigger thread fix. C means wait for the next checkpoint.
+
+Before that he had seen A's full text: "A (recommended): admit the 30-second fix now. It's built and reviewed as a held PR, and merges after tonight's run while production is Off. The thread fix waits for the next checkpoint." Signal then told him the wait would be about 36 seconds rather than 30.
+
+#3122 is the cause that refused Track 4 card A at P4 after consumption. The worker's usage beat goes stale for 21 to 30 s while its synchronous tick body runs, and the sign-in lead wait (16 s) refuses then.
+
+- **The phase stays `freeze-and-prove`** and the engine stays frozen at `a5f041066`. `current.json` does not change. Question 1 (#3136) is already admitted above as Plan A Action 2; his "yes" only sets its merge after tonight's Off.
+- **Admitted through the freeze**, the PR citing `Phase-cause: #3158`, the admission Issue. Rowan or Signal labels #3158 `phase-cause` only after this section merges:
+
+  | PR | Admitted change |
+  |---|---|
+  | The small #3122 fix | `scripts/start-run.sh` only: `HEARTBEAT_SIGN_IN_LEAD_WAIT_SECONDS` 16 to 36, a re-run of the guards and the 8 s lead after a long wait, the fixture shortcut and its tests |
+
+- **Only this is admitted.** A PR citing #3158 that changes any other engine path is not admitted.
+- **Not admitted:** #3154, the worker-thread fix for #3122. It waits for the next checkpoint, which is option C for the thread fix. Every other held engine PR is also not admitted.
+- **When the admission closes:** the PR has merged or been dropped, and Rowan or Signal notes that on #3158 and here.
+- **It still lands like every admitted PR:** on its own exact-head independent review and green checks, in an Off window. It changes the executor (`scripts/start-run.sh`), so every START card after it needs a fresh mint, review and rule-1 rehearsal.
+
 ## How it is enforced
 
 | Guard | Where | What it does |
