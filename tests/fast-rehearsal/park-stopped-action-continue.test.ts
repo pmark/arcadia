@@ -179,8 +179,20 @@ describe("a terminal park ends when its own cause stops holding", () => {
     // Judged afresh at the new head: the same Action-local refusal parks it again, with a second receipt.
     expect(parkReceipts(world).map((r) => r.action_key)).toEqual([world.actionKey(STOPPED), world.actionKey(STOPPED)]);
   });
+});
 
-  it("ends the park once the candidate is no longer pending (the operator lands its settlement commit)", () => {
+describe("a terminal park ends once its candidate is no longer pending", () => {
+  let world: FastRehearsal;
+  let result: ReturnType<FastRehearsal["execute"]>;
+  beforeAll(() => {
+    // Both others depend on the parked Action, so main stays at the candidate's base and the remedy's fast-forward applies.
+    world = build("park-terminal-landed", { [SECOND]: [STOPPED], [THIRD]: [STOPPED] });
+    result = stopFirstAsTerminal(world);
+    world.ticks(2);
+  }, SCENARIO_TIMEOUT_MS);
+
+  it("ends the park when the operator lands the settlement commit, as the escalation's remedy says", () => {
+    expect(parkRows(world)).toEqual([{ action_key: world.actionKey(STOPPED) }]);
     git(world.repo, ["merge", "--ff-only", "--quiet", result.settlementCommit!]);
     git(world.repo, ["push", "-q", "origin", "refs/heads/main:refs/heads/main"]);
     world.ticks(3);
