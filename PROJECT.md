@@ -9,7 +9,7 @@ outcome: The operator states a desired outcome; Arcadia clarifies it, routes it 
 milestone: Track 6 standby test pins 20261127
 active_plan: track-6-standby-test-pins-20261127
 updated: 2026-11-27
-current_action: pin-direction-target-parsing
+current_action: pin-allowed-value-assertion
 ---
 
 # Arcadia

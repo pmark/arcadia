@@ -71,11 +71,11 @@ actions:
     references: ["src/intelligence/jobs/resourceGroup.ts", "tests/pin-intelligence-resource-group.test.ts"]
   - id: pin-direction-target-parsing
     title: Pin which Direction targets and Direction correlations are accepted, with a new test file.
-    status: open
+    status: done
     responsibility: agent
     execution: build
     effort: session
-    next_action: Pin which Direction targets and Direction correlations are accepted, with a new test file.
+    next_action: Completed via Agent Ask auto-settle-arcadia-pin-direction-target-parsing-0f1e03516bfb; no further action.
     expected_artifact: Evidence satisfying Agent Ask pin-direction-target-parsing
     clarification: clarified
     confidence: high
@@ -171,7 +171,7 @@ actions:
     references: ["src/intelligence/validation/validateRequirements.ts", "tests/pin-intelligence-requirement-checks.test.ts"]
 questions: []
 decisions: []
-current_action: pin-direction-target-parsing
+current_action: pin-allowed-value-assertion
 recommended_model: heavy
 recommended_reasoning_effort: high
 ---
